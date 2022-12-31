@@ -31,9 +31,9 @@ class Session(models.Model):
     purchase = models.ForeignKey("Purchase", on_delete=models.CASCADE)
     timestamp_start = models.DateTimeField()
     timestamp_end = models.DateTimeField()
-    duration_manual = models.DurationField()
-    duration_calculated = models.DurationField()
-    note = models.TextField()
+    duration_manual = models.DurationField(blank=True, null=True)
+    duration_calculated = models.DurationField(blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.purchase
