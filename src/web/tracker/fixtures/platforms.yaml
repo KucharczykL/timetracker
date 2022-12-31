@@ -1,0 +1,28 @@
+- model: tracker.Platform
+  fields:
+    name: Steam
+    group: PC
+- model: tracker.Platform
+  fields:
+    name: Xbox Gamepass
+    group: PC
+- model: tracker.Platform
+  fields:
+    name: Epic Games Store
+    group: PC
+- model: tracker.Platform
+  fields:
+    name: Playstation 5
+    group: Playstation
+- model: tracker.Platform
+  fields:
+    name: Playstation 4
+    group: Playstation
+- model: tracker.Platform
+  fields:
+    name: Nintendo Switch
+    group: Nintendo
+- model: tracker.Platform
+  fields:
+    name: Nintendo 3DS
+    group: Nintendo

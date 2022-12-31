@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+
+{% load static %}
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}No Title{% endblock title %}</title>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="{% static 'base.css' %}" />
+</head>
+
+<body class="bg-white dark:bg-slate-800 dark:text-white">
+    <nav class="mb-4 bg-white dark:bg-gray-900 border-gray-200 rounded">
+        <div class="container flex flex-wrap items-center justify-between mx-auto">
+            <a href="#" class="flex items-center">
+                <span class="text-4xl">⌚</span>
+                <span class="self-center text-xl font-semibold whitespace-nowrap">Timetracker</span>
+            </a>
+            <div class="w-full md:block md:w-auto">
+                <ul
+                    class="flex flex-col md:flex-row p-4 mt-4">
+                    <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New Game</a></li>
+                    <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_purchase' %}">New Purchase</a></li>
+                    <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_session' %}">New Session</a></li>
+                    <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'list_sessions' %}">All Sessions</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% block content %}No content here.{% endblock %}
+</body>
+
+</html>
