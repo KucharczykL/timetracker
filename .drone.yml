@@ -7,7 +7,7 @@ steps:
 - name: build container
   image: plugins/docker
   settings:
-    repo: registry.kucharczyk.xyz/timetracker:latest
+    repo: registry.kucharczyk.xyz/timetracker
     tags: latest
 trigger:
   event:
