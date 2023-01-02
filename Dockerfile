@@ -1,5 +1,8 @@
 FROM python:3.10-slim-bullseye
-RUN apt update && apt install --no-install-recommends --yes git
+RUN apt update \
+    && apt install --no-install-recommends --yes \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv pip $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
