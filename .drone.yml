@@ -1,0 +1,17 @@
+---
+kind: pipeline
+type: docker
+name: build image
+
+steps:
+- name: build container
+  image: plugins/docker
+  settings:
+    repo: registry.kucharczyk.xyz/timetracker:latest
+    tags: latest
+trigger:
+  event:
+  - push
+  - cron
+  exclude:
+    - pull_request
