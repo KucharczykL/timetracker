@@ -1,8 +1,12 @@
+.PHONY: createsuperuser
+
 all: css migrate
 
 initialize: css migrate loadplatforms
 
-css: src\input.css src\web\tracker\templates\*.html
+HTMLFILES := $(shell find src\web\tracker\templates -type f)
+
+css: src\input.css $(HTMLFILES)
 	npx tailwindcss -i .\src\input.css -o  .\src\web\tracker\static\base.css
 
 css-dev: css
@@ -25,3 +29,6 @@ loadplatforms:
 
 loadsample:
 	python src\web\manage.py loaddata sample.yaml
+
+createsuperuser:
+	python src\web\manage.py createsuperuser
