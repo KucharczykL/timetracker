@@ -4,9 +4,9 @@ all: css migrate
 
 initialize: css migrate loadplatforms
 
-HTMLFILES := $(shell find src\web\tracker\templates -type f)
+HTMLFILES := $(shell find src/web/tracker/templates -type f)
 
-css: src\input.css $(HTMLFILES)
+css: src\input.css
 	npx tailwindcss -i .\src\input.css -o  .\src\web\tracker\static\base.css
 
 css-dev: css
