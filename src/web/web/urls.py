@@ -19,6 +19,7 @@ from django.views.generic import RedirectView
 
 
 urlpatterns = [
+    path("admin/", admin.site.urls),
     path("", RedirectView.as_view(url="/tracker/list-sessions")),
     path("tracker/", include("tracker.urls")),
 ]

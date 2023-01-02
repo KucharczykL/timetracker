@@ -1,4 +1,5 @@
 from django.db import models
+from datetime import timedelta
 
 
 class Game(models.Model):
@@ -31,12 +32,20 @@ class Session(models.Model):
     purchase = models.ForeignKey("Purchase", on_delete=models.CASCADE)
     timestamp_start = models.DateTimeField()
     timestamp_end = models.DateTimeField()
-    duration_manual = models.DurationField(blank=True, null=True)
+    duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
     duration_calculated = models.DurationField(blank=True, null=True)
     note = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return self.purchase
+        mark = ", manual" if self.duration_manual != None else ""
+        return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.total_duration()}{mark})"
 
     def calculated_duration(self):
         return self.timestamp_end - self.timestamp_start
+
+    def total_duration(self):
+        return (
+            self.calculated_duration()
+            if self.duration_manual == None
+            else self.duration_manual + self.calculated_duration()
+        )
