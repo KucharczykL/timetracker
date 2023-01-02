@@ -1,0 +1,98 @@
+- model: tracker.game
+  pk: 1
+  fields:
+    name: Nioh 2
+    wikidata: Q67482292
+- model: tracker.game
+  pk: 2
+  fields:
+    name: Elden Ring
+    wikidata: Q64826862
+- model: tracker.game
+  pk: 3
+  fields:
+    name: Cyberpunk 2077
+    wikidata: Q3182559
+- model: tracker.purchase
+  pk: 1
+  fields:
+    game: 1
+    platform: 1
+    date_purchased: 2021-02-13
+    date_refunded: null
+- model: tracker.purchase
+  pk: 2
+  fields:
+    game: 2
+    platform: 1
+    date_purchased: 2022-02-24
+    date_refunded: null
+- model: tracker.purchase
+  pk: 3
+  fields:
+    game: 3
+    platform: 1
+    date_purchased: 2020-12-07
+    date_refunded: null
+- model: tracker.platform
+  pk: 1
+  fields:
+    name: Steam
+    group: PC
+- model: tracker.platform
+  pk: 3
+  fields:
+    name: Xbox Gamepass
+    group: PC
+- model: tracker.platform
+  pk: 4
+  fields:
+    name: Epic Games Store
+    group: PC
+- model: tracker.platform
+  pk: 5
+  fields:
+    name: Playstation 5
+    group: Playstation
+- model: tracker.platform
+  pk: 6
+  fields:
+    name: Playstation 4
+    group: Playstation
+- model: tracker.platform
+  pk: 7
+  fields:
+    name: Nintendo Switch
+    group: Nintendo
+- model: tracker.platform
+  pk: 8
+  fields:
+    name: Nintendo 3DS
+    group: Nintendo
+- model: tracker.session
+  pk: 1
+  fields:
+    purchase: 2
+    timestamp_start: 2022-12-31 14:25:58+00:00
+    timestamp_end: 2022-12-31 16:25:22+00:00
+    duration_manual: null
+    duration_calculated: null
+    note: ''
+- model: tracker.session
+  pk: 3
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-01 22:00:23+00:00
+    timestamp_end: 2023-01-01 23:28:23+00:00
+    duration_manual: null
+    duration_calculated: null
+    note: ''
+- model: tracker.session
+  pk: 4
+  fields:
+    purchase: 3
+    timestamp_start: 2020-01-01 23:29:17+00:00
+    timestamp_end: 2020-01-01 23:29:17+00:00
+    duration_manual: '12:00:00'
+    duration_calculated: null
+    note: ''
