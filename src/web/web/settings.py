@@ -131,3 +131,5 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
 }
+
+CSRF_TRUSTED_ORIGINS = ["https://tracker.kucharczyk.xyz"]
