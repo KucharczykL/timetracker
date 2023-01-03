@@ -15,6 +15,5 @@ RUN chown -R timetracker /home/timetracker/app
 RUN poetry install
 RUN make migrate && make loadplatforms
 EXPOSE 8000
-VOLUME [ "/home/timetracker/app/src/web/db.sqlite3" ]
 USER timetracker
 CMD [ "python3", "src/web/manage.py", "runserver", "0.0.0.0:8000" ]
