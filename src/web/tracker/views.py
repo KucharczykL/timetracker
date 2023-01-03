@@ -47,7 +47,8 @@ def add_purchase(request):
         form.save()
 
     context["form"] = form
-    return render(request, "add_purchase.html", context)
+    context["title"] = "Add New Purchase"
+    return render(request, "add.html", context)
 
 
 def add_game(request):
