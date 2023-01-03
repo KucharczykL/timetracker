@@ -12,4 +12,5 @@ COPY entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 USER timetracker
 EXPOSE 8000
+ENV VERSION_NUMBER $(git describe --tags --abbrev=0)
 ENTRYPOINT [ "/entrypoint.sh" ]
