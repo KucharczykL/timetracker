@@ -41,7 +41,10 @@ class Session(models.Model):
         return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.total_duration()}{mark})"
 
     def calculated_duration(self):
-        return self.timestamp_end - self.timestamp_start
+        if self.timestamp_end == None or self.timestamp_start == None:
+            return 0
+        else:
+            return self.timestamp_end - self.timestamp_start
 
     def total_duration(self):
         return (
