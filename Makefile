@@ -6,29 +6,29 @@ initialize: css migrate loadplatforms
 
 HTMLFILES := $(shell find src/web/tracker/templates -type f)
 
-css: src\input.css
-	npx tailwindcss -i .\src\input.css -o  .\src\web\tracker\static\base.css
+css: src/input.css
+	npx tailwindcss -i ./src/input.css -o  ./src/web/tracker/static/base.css
 
 css-dev: css
-	npx tailwindcss -i .\src\input.css -o  .\src\web\tracker\static\base.css --watch
+	npx tailwindcss -i ./src/input.css -o  ./src/web/tracker/static/base.css --watch
 
 makemigrations:
-	python src\web\manage.py makemigrations
+	python src/web/manage.py makemigrations
 
 migrate: makemigrations
-	python src\web\manage.py migrate
+	python src/web/manage.py migrate
 
 dev: migrate
-	python src\web\manage.py runserver
+	python src/web/manage.py runserver
 
 dumptracker:
-	python src\web\manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
+	python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
 
 loadplatforms:
-	python src\web\manage.py loaddata platforms.yaml
+	python src/web/manage.py loaddata platforms.yaml
 
 loadsample:
-	python src\web\manage.py loaddata sample.yaml
+	python src/web/manage.py loaddata sample.yaml
 
 createsuperuser:
-	python src\web\manage.py createsuperuser
+	python src/web/manage.py createsuperuser
