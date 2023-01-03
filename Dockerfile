@@ -15,5 +15,6 @@ RUN chown -R timetracker /home/timetracker/app
 RUN poetry install
 EXPOSE 8000
 USER timetracker
+COPY entrypoint.sh .
 ENTRYPOINT [ "entrypoint.sh" ]
 # CMD [ "python3", "src/web/manage.py", "runserver", "0.0.0.0:8000" ]
