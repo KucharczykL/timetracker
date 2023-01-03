@@ -13,7 +13,7 @@ RUN git clone https://git.kucharczyk.xyz/lukas/timetracker.git /home/timetracker
 WORKDIR /home/timetracker/app
 RUN chown -R timetracker /home/timetracker/app
 RUN poetry install
-RUN make loadplatforms
+RUN make migrate && make loadplatforms
 EXPOSE 8000
 VOLUME [ "/home/timetracker/app/src/web/db.sqlite3" ]
 USER timetracker
