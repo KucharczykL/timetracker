@@ -1,4 +1,4 @@
-.PHONY: createsuperuser
+.PHONY: createsuperuser shell
 
 all: css migrate
 
@@ -35,3 +35,6 @@ loadsample:
 
 createsuperuser:
 	python src/web/manage.py createsuperuser
+
+shell:
+	python src/web/manage.py shell
