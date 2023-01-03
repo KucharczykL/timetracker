@@ -2,9 +2,12 @@
 
 all: css migrate
 
-initialize: css migrate loadplatforms
+initialize: npm css migrate loadplatforms
 
 HTMLFILES := $(shell find src/web/tracker/templates -type f)
+
+npm:
+	npm install
 
 css: src/input.css
 	npx tailwindcss -i ./src/input.css -o  ./src/web/tracker/static/base.css
