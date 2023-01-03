@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "timelogger"
+name = "timetracker"
 version = "0.1.0"
 description = "A simple time tracker."
 authors = ["Lukáš Kucharczyk <lukas@kucharczyk.xyz>"]
