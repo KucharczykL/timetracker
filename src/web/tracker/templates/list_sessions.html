@@ -1,15 +1,21 @@
 {% extends 'base.html' %}
 
-{% block title %}Tracker Entry List{% endblock title %}
+{% block title %}Sessions{% endblock title %}
 
 {% block content %}
+{% if purchase %}
+<div class="text-center text-xl mb-4 dark:text-slate-400">
+    <h1>Listing sessions only for purchase "{{ purchase }}"</h1>
+    <a class="dark:text-white hover:underline" href="{% url 'list_sessions' %}">View all sessions</a>
+</div>
+{% endif %}
 <div class="grid grid-cols-4 gap-4 shadow rounded-xl max-w-screen-lg mx-auto dark:bg-slate-700 p-2 justify-center">
     <div class="dark:border-white dark:text-slate-300 text-lg">Name</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">Start</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">End</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">Duration</div>
     {% for data in dataset %}
-    <div class="dark:text-slate-400">{{ data.purchase }}</div>
+    <div class=""><a class="dark:text-white hover:underline" href="{% url 'list_sessions' data.purchase.id %}">{{ data.purchase }}</a></div>
     <div class="dark:text-slate-400">{{ data.timestamp_start }}</div>
     <div class="dark:text-slate-400">{{ data.timestamp_end }}</div>
     <div class="dark:text-slate-400">{{ data.time_delta }}</div>

@@ -4,6 +4,7 @@ from .models import Game, Platform, Purchase, Session
 from .forms import SessionForm, PurchaseForm, GameForm
 from datetime import datetime
 from django.db.models import ExpressionWrapper, F, DurationField
+import logging
 
 
 def add_session(request):
@@ -18,9 +19,16 @@ def add_session(request):
     return render(request, "add_session.html", context)
 
 
-def list_sessions(request):
+def list_sessions(request, purchase_id=None):
     context = {}
-    dataset = Session.objects.annotate(
+
+    if purchase_id != None:
+        dataset = Session.objects.filter(purchase=purchase_id)
+        context["purchase"] = Purchase.objects.get(id=purchase_id)
+    else:
+        dataset = Session.objects.all()
+
+    dataset = dataset.annotate(
         time_delta=ExpressionWrapper(
             F("timestamp_end") - F("timestamp_start"), output_field=DurationField()
         )
