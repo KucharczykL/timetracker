@@ -8,9 +8,11 @@ steps:
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
+    environment:
+      VERSION_NUMBER: $(git describe --tags --abbrev=0)
     tags:
       - latest
-      - $(git describe --tags --abbrev=0)
+      - $VERSION_NUMBER
 trigger:
   event:
   - push
