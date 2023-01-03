@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+form label {
+    @apply dark:text-slate-400;
+}
+
+form input,select,textarea {
+    @apply dark:bg-slate-500 dark:border dark:border-slate-900 dark:text-slate-100;
+}
+
+form input[type=submit] {
+    @apply p-2 bg-purple-900;
+}
