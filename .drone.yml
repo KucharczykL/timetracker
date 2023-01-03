@@ -8,7 +8,9 @@ steps:
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
-    tags: latest
+    tags:
+      - latest
+      - $(git describe --tags --abbrev=0)
 trigger:
   event:
   - push
