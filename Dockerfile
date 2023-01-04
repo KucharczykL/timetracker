@@ -12,5 +12,5 @@ COPY entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 USER timetracker
 EXPOSE 8000
-ENV VERSION_NUMBER 0.1.0-4-g166dd71
+ENV VERSION_NUMBER 0.1.0-14-g61d2e65
 ENTRYPOINT [ "/entrypoint.sh" ]

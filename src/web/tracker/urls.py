@@ -7,6 +7,11 @@ urlpatterns = [
     path("add-game/", views.add_game, name="add_game"),
     path("add-platform/", views.add_platform, name="add_platform"),
     path("add-session/", views.add_session, name="add_session"),
+    path(
+        "update-session/by-session/<int:session_id>",
+        views.update_session,
+        name="update_session",
+    ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
     path("list-sessions/", views.list_sessions, name="list_sessions"),
     path(

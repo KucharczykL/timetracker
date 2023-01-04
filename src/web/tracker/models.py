@@ -1,5 +1,7 @@
 from django.db import models
-from datetime import timedelta
+from datetime import datetime
+from django.conf import settings
+from zoneinfo import ZoneInfo
 
 
 class Game(models.Model):
@@ -39,6 +41,9 @@ class Session(models.Model):
     def __str__(self):
         mark = ", manual" if self.duration_manual != None else ""
         return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.duration_any()}{mark})"
+
+    def finish_now(self):
+        self.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
 
     def duration_seconds(self):
         if self.timestamp_end == None or self.timestamp_start == None:

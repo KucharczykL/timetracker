@@ -1,10 +1,11 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 
 from .models import Game, Platform, Purchase, Session
 from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from django.conf import settings
+from common.util.time import now as now_with_tz
 
 
 def model_counts(request):
@@ -18,14 +19,21 @@ def model_counts(request):
 
 def add_session(request):
     context = {}
-    now = datetime.now()
-    initial = {"timestamp_start": now, "timestamp_end": now}
+    now = now_with_tz()
+    initial = {"timestamp_start": now}
     form = SessionForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
 
     context["form"] = form
     return render(request, "add_session.html", context)
+
+
+def update_session(request, session_id=None):
+    session = Session.objects.get(id=session_id)
+    session.finish_now()
+    session.save()
+    return redirect("list_sessions")
 
 
 def list_sessions(request, purchase_id=None):

@@ -19,7 +19,7 @@
     <div class="dark:text-slate-400">{{ data.timestamp_start | date:"d/m/Y H:i" }}</div>
     <div class="dark:text-slate-400">
         {% if data.unfinished %}
-        Not finished yet. <button class="bg-red-700 hover:bg-orange-700 border border-red-900 hover:border-dotted hover:border-white rounded p-1 text-white text-sm">Finish now?</button>
+        Not finished yet. <a href="{% url 'update_session' data.id %}"><button class="bg-red-700 hover:bg-orange-700 border border-red-900 hover:border-dotted hover:border-white rounded p-1 text-white text-sm">Finish now?</button></a>
         {% elif data.duration_manual %}
         MANUAL
         {% else %}
