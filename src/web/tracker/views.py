@@ -1,7 +1,7 @@
 from django.shortcuts import render
 
 from .models import Game, Platform, Purchase, Session
-from .forms import SessionForm, PurchaseForm, GameForm
+from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
 from datetime import datetime
 def model_counts(request):
     return {
@@ -65,6 +65,18 @@ def add_game(request):
     context["form"] = form
     context["title"] = "Add New Game"
     return render(request, "add.html", context)
+
+
+def add_platform(request):
+    context = {}
+    form = PlatformForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+
+    context["form"] = form
+    context["title"] = "Add New Platform"
+    return render(request, "add.html", context)
+
 
 def index(request):
     context = {}

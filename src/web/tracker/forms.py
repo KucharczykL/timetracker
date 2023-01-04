@@ -1,5 +1,5 @@
 from django import forms
-from .models import Session, Purchase, Game
+from .models import Session, Purchase, Game, Platform
 
 
 class SessionForm(forms.ModelForm):
@@ -24,3 +24,9 @@ class GameForm(forms.ModelForm):
     class Meta:
         model = Game
         fields = ["name", "wikidata"]
+
+
+class PlatformForm(forms.ModelForm):
+    class Meta:
+        model = Platform
+        fields = ["name", "group"]

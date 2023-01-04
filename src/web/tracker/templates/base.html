@@ -23,6 +23,7 @@
                     <ul
                         class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New Game</a></li>
+                        <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_platform' %}">New Platform</a></li>
                         {% if game_available and platform_available %}
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_purchase' %}">New Purchase</a></li>
                         {% endif %}
