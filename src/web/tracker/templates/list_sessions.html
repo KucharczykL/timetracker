@@ -9,11 +9,12 @@
     <a class="dark:text-white hover:underline" href="{% url 'list_sessions' %}">View all sessions</a>
 </div>
 {% endif %}
-<div class="grid grid-cols-4 gap-4 shadow rounded-xl max-w-screen-lg mx-auto dark:bg-slate-700 p-2 justify-center">
+<div class="grid grid-cols-5 gap-4 shadow rounded-xl max-w-screen-lg mx-auto dark:bg-slate-700 p-2 justify-center">
     <div class="dark:border-white dark:text-slate-300 text-lg">Name</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">Start</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">End</div>
     <div class="dark:border-white dark:text-slate-300 text-lg">Duration</div>
+    <div></div>
     {% for data in dataset %}
     <div class=""><a class="dark:text-white hover:underline" href="{% url 'list_sessions' data.purchase.id %}">{{ data.purchase }}</a></div>
     <div class="dark:text-slate-400">{{ data.timestamp_start | date:"d/m/Y H:i" }}</div>
@@ -27,6 +28,9 @@
         {% endif %}
     </div>
     <div class="dark:text-slate-400">{{ data.duration_formatted }}{% if data.duration_manual %} (M){% endif %}</div>
+    <div>
+        <a href="{% url 'delete_session' data.id %}"><button>❌</button></a>
+    </div>
     {% endfor %}
 </div>
 {% endblock content %}

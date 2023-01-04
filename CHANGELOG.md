@@ -1,4 +1,5 @@
 ## Unreleased
+* Allow deleting sessions
 * Redirect after adding game/platform/purchase/session
 * Fix display of duration_manual
 * Fix display of duration_calculated, display durations less than a minute

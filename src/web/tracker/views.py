@@ -37,6 +37,12 @@ def update_session(request, session_id=None):
     return redirect("list_sessions")
 
 
+def delete_session(request, session_id=None):
+    session = Session.objects.get(id=session_id)
+    session.delete()
+    return redirect("list_sessions")
+
+
 def list_sessions(request, purchase_id=None):
     context = {}
 

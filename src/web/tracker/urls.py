@@ -12,6 +12,11 @@ urlpatterns = [
         views.update_session,
         name="update_session",
     ),
+    path(
+        "delete_session/by-id/<int:session_id>",
+        views.delete_session,
+        name="delete_session",
+    ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
     path("list-sessions/", views.list_sessions, name="list_sessions"),
     path(
