@@ -5,3 +5,4 @@
 * Make it possible to add a new platform
 * Save calculated duration to database if both timestamps are set
 * Improve session listing
+* Set version in the footer to fixed, fix main container height
