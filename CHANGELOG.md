@@ -1,4 +1,5 @@
 ## Unreleased
+* Redirect after adding game/platform/purchase/session
 * Fix display of duration_manual
 * Fix display of duration_calculated, display durations less than a minute
 * Make the "Finish now?" button on session list work
