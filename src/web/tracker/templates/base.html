@@ -23,9 +23,15 @@
                     <ul
                         class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New Game</a></li>
+                        {% if game_available and platform_available %}
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_purchase' %}">New Purchase</a></li>
+                        {% endif %}
+                        {% if purchase_available %}
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_session' %}">New Session</a></li>
+                        {% endif %}
+                        {% if session_count > 0 %}
                         <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'list_sessions' %}">All Sessions</a></li>
+                        {% endif %}
                     </ul>
                 </div>
             </div>

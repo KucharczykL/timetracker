@@ -3,8 +3,13 @@ from django.shortcuts import render
 from .models import Game, Platform, Purchase, Session
 from .forms import SessionForm, PurchaseForm, GameForm
 from datetime import datetime
-from django.db.models import ExpressionWrapper, F, DurationField
-import logging
+def model_counts(request):
+    return {
+        "game_available": Game.objects.count() != 0,
+        "platform_available": Platform.objects.count() != 0,
+        "purchase_available": Purchase.objects.count() != 0,
+        "session_count": Session.objects.count(),
+    }
 
 
 def add_session(request):
