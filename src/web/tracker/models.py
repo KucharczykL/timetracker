@@ -60,10 +60,13 @@ class Session(models.Model):
         if seconds == 0:
             return seconds
         hours, remainder = divmod(seconds, 3600)
-        minutes = remainder % 60
-        hour_string = f"{int(hours)}h" if hours != 0 else ""
-        minute_string = f"{int(minutes)}m" if minutes != 0 else ""
-        return f"{hour_string}{minute_string}"
+        minutes = remainder // 60
+        if hours == 0 and minutes == 0:
+            return "less than a minute"
+        else:
+            hour_string = f"{int(hours)}h" if hours != 0 else ""
+            minute_string = f"{int(minutes)}m" if minutes != 0 else ""
+            return f"{hour_string}{minute_string}"
 
     def duration_any(self):
         return (
