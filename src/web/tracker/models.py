@@ -52,3 +52,8 @@ class Session(models.Model):
             if self.duration_manual == None
             else self.duration_manual + self.calculated_duration()
         )
+
+    def save(self, *args, **kwargs):
+        if self.timestamp_start != None and self.timestamp_end != None:
+            self.duration_calculated = self.timestamp_end - self.timestamp_start
+        super(Session, self).save(*args, **kwargs)
