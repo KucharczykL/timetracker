@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock title %}
+
+{% block content %}
+<div class="text-slate-300 mx-auto max-w-screen-lg text-center">
+{% if session_count > 0 %}
+You have played a total of {{ session_count }} sessions.
+{% else %}
+Start by clicking the links at the top. To track playtime, you need to have at least 1 owned game.
+{% endif %}
+</div>
+{% endblock content %}

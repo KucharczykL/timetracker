@@ -65,3 +65,7 @@ def add_game(request):
     context["form"] = form
     context["title"] = "Add New Game"
     return render(request, "add.html", context)
+
+def index(request):
+    context = {}
+    return render(request, "index.html", context)
