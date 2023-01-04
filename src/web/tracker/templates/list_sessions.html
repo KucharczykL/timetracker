@@ -26,7 +26,6 @@
         {{ data.timestamp_end | date:"d/m/Y H:i" }}
         {% endif %}
     </div>
-    {% load time %}
     <div class="dark:text-slate-400">{{ data.duration_formatted }}{% if data.duration_manual %} (M){% endif %}</div>
     {% endfor %}
 </div>
