@@ -38,19 +38,33 @@ class Session(models.Model):
 
     def __str__(self):
         mark = ", manual" if self.duration_manual != None else ""
-        return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.total_duration()}{mark})"
+        return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.duration_any()}{mark})"
 
-    def calculated_duration(self):
+    def duration_seconds(self):
         if self.timestamp_end == None or self.timestamp_start == None:
-            return 0
+            if self.duration_manual == None:
+                return 0
+            else:
+                value = self.duration_manual
         else:
-            return self.timestamp_end - self.timestamp_start
+            value = self.timestamp_end - self.timestamp_start
+        return value.total_seconds()
 
-    def total_duration(self):
+    def duration_formatted(self):
+        seconds = self.duration_seconds()
+        if seconds == 0:
+            return seconds
+        hours, remainder = divmod(seconds, 3600)
+        minutes = remainder % 60
+        hour_string = f"{int(hours)}h" if hours != 0 else ""
+        minute_string = f"{int(minutes)}m" if minutes != 0 else ""
+        return f"{hour_string}{minute_string}"
+
+    def duration_any(self):
         return (
-            self.calculated_duration()
+            self.duration_formatted()
             if self.duration_manual == None
-            else self.duration_manual + self.calculated_duration()
+            else self.duration_manual
         )
 
     def save(self, *args, **kwargs):

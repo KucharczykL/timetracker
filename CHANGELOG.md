@@ -4,3 +4,4 @@
 * Add homepage, link to it from the logo
 * Make it possible to add a new platform
 * Save calculated duration to database if both timestamps are set
+* Improve session listing

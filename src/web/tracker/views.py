@@ -3,6 +3,10 @@ from django.shortcuts import render
 from .models import Game, Platform, Purchase, Session
 from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from django.conf import settings
+
+
 def model_counts(request):
     return {
         "game_available": Game.objects.count() != 0,
@@ -33,11 +37,11 @@ def list_sessions(request, purchase_id=None):
     else:
         dataset = Session.objects.all()
 
-    dataset = dataset.annotate(
-        time_delta=ExpressionWrapper(
-            F("timestamp_end") - F("timestamp_start"), output_field=DurationField()
-        )
-    )
+    for session in dataset:
+        if session.timestamp_end == None and session.duration_manual == None:
+            session.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
+            session.unfinished = True
+
     context["dataset"] = dataset
 
     return render(request, "list_sessions.html", context)

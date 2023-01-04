@@ -17,8 +17,17 @@
     {% for data in dataset %}
     <div class=""><a class="dark:text-white hover:underline" href="{% url 'list_sessions' data.purchase.id %}">{{ data.purchase }}</a></div>
     <div class="dark:text-slate-400">{{ data.timestamp_start | date:"d/m/Y H:i" }}</div>
-    <div class="dark:text-slate-400">{{ data.timestamp_end | date:"d/m/Y H:i" }}</div>
-    <div class="dark:text-slate-400">{{ data.time_delta }}</div>
+    <div class="dark:text-slate-400">
+        {% if data.unfinished %}
+        Not finished yet. <button class="bg-red-700 hover:bg-orange-700 border border-red-900 hover:border-dotted hover:border-white rounded p-1 text-white text-sm">Finish now?</button>
+        {% elif data.duration_manual %}
+        MANUAL
+        {% else %}
+        {{ data.timestamp_end | date:"d/m/Y H:i" }}
+        {% endif %}
+    </div>
+    {% load time %}
+    <div class="dark:text-slate-400">{{ data.duration_formatted }}{% if data.duration_manual %} (M){% endif %}</div>
     {% endfor %}
 </div>
 {% endblock content %}
