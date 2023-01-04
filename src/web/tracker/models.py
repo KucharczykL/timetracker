@@ -46,13 +46,13 @@ class Session(models.Model):
         self.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
 
     def duration_seconds(self):
-        if self.timestamp_end == None or self.timestamp_start == None:
-            if self.duration_manual == None:
+        if self.duration_manual == None:
+            if self.timestamp_end == None or self.timestamp_start == None:
                 return 0
             else:
-                value = self.duration_manual
+                value = self.timestamp_end - self.timestamp_start
         else:
-            value = self.timestamp_end - self.timestamp_start
+            value = self.duration_manual
         return value.total_seconds()
 
     def duration_formatted(self):
