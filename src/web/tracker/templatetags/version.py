@@ -15,4 +15,4 @@ def version_date():
 
 @register.simple_tag
 def version():
-    return os.environ.get("VERSION_NUMBER", "UNKNOWN VERSION")
+    return os.environ.get("VERSION_NUMBER", "git-main")
