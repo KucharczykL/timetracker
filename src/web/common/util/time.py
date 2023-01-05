@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import re
 
 
-def now():
+def now() -> datetime:
     return datetime.now(ZoneInfo(settings.TIME_ZONE))
 
 
