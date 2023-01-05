@@ -22,7 +22,7 @@ migrate: makemigrations
 	poetry run python src/web/manage.py migrate
 
 dev: migrate sethookdir
-	TZ=Europe/Prague poetry run python src/web/manage.py runserver
+	poetry run python src/web/manage.py runserver_plus
 
 dumptracker:
 	poetry run python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml

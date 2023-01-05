@@ -3,11 +3,12 @@ set -euo pipefail
 echo "----------------"
 echo "Pre-commit hooks"
 echo "================"
-VERSION_NUMBER=$(git describe --tags)
-echo "Updating "VERSION_NUMBER" in Dockerfile to $VERSION_NUMBER"
-sed -i "s/^ENV VERSION_NUMBER.*$/ENV VERSION_NUMBER ${VERSION_NUMBER}/" Dockerfile
-echo "Updating "version" in pyproject.toml to $VERSION_NUMBER"
-sed -i "s/^version = \".*\"$/version = \"${VERSION_NUMBER}\"/" pyproject.toml
+BASE_VERSION_NUMBER=$(git describe --tags --abbrev=0)
+FULL_VERSION_NUMBER=$(git describe --tags)
+echo "Updating "VERSION_NUMBER" in Dockerfile to $FULL_VERSION_NUMBER"
+sed -i "s/^ENV VERSION_NUMBER.*$/ENV VERSION_NUMBER ${FULL_VERSION_NUMBER}/" Dockerfile
+echo "Updating "version" in pyproject.toml to $BASE_VERSION_NUMBER"
+sed -i "s/^version = \".*\"$/version = \"${BASE_VERSION_NUMBER}\"/" pyproject.toml
 git add Dockerfile
 git add pyproject.toml
 echo "----------------"

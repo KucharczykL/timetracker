@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "timetracker"
-version = "0.1.0-34-g8efce77"
+version = "0.1.0"
 description = "A simple time tracker."
 authors = ["Lukáš Kucharczyk <lukas@kucharczyk.xyz>"]
 license = "GPL"
@@ -17,8 +17,8 @@ pyyaml = "^6.0"
 pytest = "^7.2.0"
 django-extensions = "^3.2.1"
 werkzeug = "^2.2.2"
-djlint = "^1.19.11"
 djhtml = "^1.5.2"
+djlint = "^1.19.11"
 
 [build-system]
 requires = ["poetry-core"]

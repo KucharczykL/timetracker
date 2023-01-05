@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-x0_t$gei=_o_p(%%!-db$jezka@y+d67$a8tvw13nl^8$l*t@="
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False if os.environ.get("PROD") else True
 
 ALLOWED_HOSTS = ["*"]
 
@@ -41,6 +41,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 ]
+
+if DEBUG:
+    INSTALLED_APPS.append("django_extensions")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -109,7 +112,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = os.environ.get("TZ", "UTC")
+TIME_ZONE = "Europe/Prague" if DEBUG else os.environ.get("TZ", "UTC")
 
 USE_I18N = True
 
@@ -134,4 +137,7 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "WARNING"},
 }
 
-CSRF_TRUSTED_ORIGINS = ["https://tracker.kucharczyk.xyz"]
+CSRF_TRUSTED_ORIGINS = [""]
+
+if os.environ.get("PROD"):
+    CSRF_TRUSTED_ORIGINS.append(os.environ.get("CSRF_TRUSTED_ORIGINS"))
