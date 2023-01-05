@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from django.conf import settings
 from zoneinfo import ZoneInfo
 from common.util.time import format_duration
+from django.db.models import Sum
 
 
 class Game(models.Model):
@@ -46,7 +47,7 @@ class Session(models.Model):
     def finish_now(self):
         self.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
 
-    def duration_seconds(self):
+    def duration_seconds(self) -> timedelta:
         if self.duration_manual == None:
             if self.timestamp_end == None or self.timestamp_start == None:
                 return timedelta(0)
@@ -54,11 +55,10 @@ class Session(models.Model):
                 value = self.timestamp_end - self.timestamp_start
         else:
             value = self.duration_manual
-        return value.total_seconds()
+        return timedelta(seconds=value.total_seconds())
 
     def duration_formatted(self) -> str:
-        dur = self.duration_seconds()
-        result = format_duration(dur, "%H:%m")
+        result = format_duration(self.duration_seconds(), "%H:%m")
         return result
 
     def duration_any(self):
@@ -67,6 +67,32 @@ class Session(models.Model):
             if self.duration_manual == None
             else self.duration_manual
         )
+
+    @staticmethod
+    def calculated_sum() -> timedelta:
+        calculated_sum_query = Session.objects.all().aggregate(
+            Sum("duration_calculated")
+        )
+        calculated_sum = (
+            timedelta(0)
+            if calculated_sum_query["duration_calculated__sum"] == None
+            else calculated_sum_query["duration_calculated__sum"]
+        )
+        return calculated_sum
+
+    @staticmethod
+    def manual_sum() -> timedelta:
+        manual_sum_query = Session.objects.all().aggregate(Sum("duration_manual"))
+        manual_sum = (
+            timedelta(0)
+            if manual_sum_query["duration_manual__sum"] == None
+            else manual_sum_query["duration_manual__sum"]
+        )
+        return manual_sum
+
+    @staticmethod
+    def total_sum() -> timedelta:
+        return Session.manual_sum() + Session.calculated_sum()
 
     def save(self, *args, **kwargs):
         if self.timestamp_start != None and self.timestamp_end != None:

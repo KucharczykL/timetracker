@@ -2,11 +2,12 @@ from django.shortcuts import render, redirect
 
 from .models import Game, Platform, Purchase, Session
 from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from django.conf import settings
 from common.util.time import now as now_with_tz, format_duration
 from django.db.models import Sum
+import logging
 
 
 def model_counts(request):
@@ -107,10 +108,9 @@ def index(request):
     if Session.objects.count() == 0:
         duration: str = ""
     else:
-        result = Session.objects.all().aggregate(Sum("duration_calculated"))
-        duration = format_duration(
-            result["duration_calculated__sum"], "%H hours %m minutes"
+        context["total_duration"] = format_duration(
+            Session.total_sum(),
+            "%H hours %m minutes",
         )
-    context["total_duration"] = duration
     context["title"] = "Index"
     return render(request, "index.html", context)
