@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+echo "----------------"
+echo "Pre-commit hooks"
+echo "================"
+VERSION_NUMBER=$(git describe --tags)
+echo "Updating "VERSION_NUMBER" in Dockerfile to $VERSION_NUMBER"
+sed -i "s/^ENV VERSION_NUMBER.*$/ENV VERSION_NUMBER ${VERSION_NUMBER}/" Dockerfile
+echo "Updating "version" in pyproject.toml to $VERSION_NUMBER"
+sed -i "s/^version = \".*\"$/version = \"${VERSION_NUMBER}\"/" pyproject.toml
+git add Dockerfile
+git add pyproject.toml
+echo "----------------"

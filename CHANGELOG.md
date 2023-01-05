@@ -1,4 +1,5 @@
 ## Unreleased
+* Add pre-commit hook to update version
 * Improve the newcomer experience by guiding through each step
 * Fix errors with empty database
 * Fix negative playtimes being considered positive

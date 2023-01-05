@@ -2,7 +2,7 @@
 
 all: css migrate
 
-initialize: npm css migrate loadplatforms
+initialize: npm css migrate sethookdir loadplatforms
 
 HTMLFILES := $(shell find src/web/tracker/templates -type f)
 
@@ -21,7 +21,7 @@ makemigrations:
 migrate: makemigrations
 	poetry run python src/web/manage.py migrate
 
-dev: migrate
+dev: migrate sethookdir
 	TZ=Europe/Prague poetry run python src/web/manage.py runserver
 
 dumptracker:
@@ -44,3 +44,6 @@ poetry.lock: pyproject.toml
 
 test: poetry.lock
 	poetry run pytest
+
+sethookdir:
+	git config core.hooksPath .githooks
