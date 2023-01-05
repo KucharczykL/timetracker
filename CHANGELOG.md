@@ -1,4 +1,5 @@
 ## Unreleased
+* Add format_duration to common.util.time
 * Allow deleting sessions
 * Redirect after adding game/platform/purchase/session
 * Fix display of duration_manual
