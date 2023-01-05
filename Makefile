@@ -16,28 +16,28 @@ css-dev: css
 	npx tailwindcss -i ./src/input.css -o  ./src/web/tracker/static/base.css --watch
 
 makemigrations:
-	python src/web/manage.py makemigrations
+	poetry run python src/web/manage.py makemigrations
 
 migrate: makemigrations
-	python src/web/manage.py migrate
+	poetry run python src/web/manage.py migrate
 
 dev: migrate
-	python src/web/manage.py runserver
+	TZ=Europe/Prague poetry run python src/web/manage.py runserver
 
 dumptracker:
-	python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
+	poetry run python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
 
 loadplatforms:
-	python src/web/manage.py loaddata platforms.yaml
+	poetry run python src/web/manage.py loaddata platforms.yaml
 
 loadsample:
-	python src/web/manage.py loaddata sample.yaml
+	poetry run python src/web/manage.py loaddata sample.yaml
 
 createsuperuser:
-	python src/web/manage.py createsuperuser
+	poetry run python src/web/manage.py createsuperuser
 
 shell:
-	python src/web/manage.py shell
+	poetry run python src/web/manage.py shell
 
 poetry.lock: pyproject.toml
 	poetry install
