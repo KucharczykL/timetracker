@@ -103,9 +103,13 @@ def add_platform(request):
 
 def index(request):
     context = {}
-    result = Session.objects.all().aggregate(Sum("duration_calculated"))
-    context["total_duration"] = format_duration(
-        result["duration_calculated__sum"], "%H hours %m minutes"
-    )
+    if Session.objects.count() == 0:
+        duration_value = 0
+    else:
+        result = Session.objects.all().aggregate(Sum("duration_calculated"))
+        context["total_duration"] = format_duration(
+            result["duration_calculated__sum"], "%H hours %m minutes"
+        )
+    context["total_duration"] = duration_value
     context["title"] = "Index"
     return render(request, "index.html", context)
