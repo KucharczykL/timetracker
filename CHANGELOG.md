@@ -1,4 +1,5 @@
 ## Unreleased
+* Display total hours played on homepage
 * Add format_duration to common.util.time
 * Allow deleting sessions
 * Redirect after adding game/platform/purchase/session

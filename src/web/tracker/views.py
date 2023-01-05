@@ -5,7 +5,8 @@ from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from django.conf import settings
-from common.util.time import now as now_with_tz
+from common.util.time import now as now_with_tz, format_duration
+from django.db.models import Sum
 
 
 def model_counts(request):
@@ -102,4 +103,9 @@ def add_platform(request):
 
 def index(request):
     context = {}
+    result = Session.objects.all().aggregate(Sum("duration_calculated"))
+    context["total_duration"] = format_duration(
+        result["duration_calculated__sum"], "%H hours %m minutes"
+    )
+    context["title"] = "Index"
     return render(request, "index.html", context)
