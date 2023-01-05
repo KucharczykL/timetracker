@@ -22,6 +22,8 @@ def format_duration(
     minute_seconds = 60
     hour_seconds = 60 * minute_seconds
     day_seconds = 24 * hour_seconds
+    if not isinstance(duration, timedelta):
+        duration = timedelta(seconds=duration)
     seconds_total = int(duration.total_seconds())
     # timestamps where end is before start
     if seconds_total < 0:
