@@ -1,7 +1,8 @@
 from django.db import models
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.conf import settings
 from zoneinfo import ZoneInfo
+from common.util.time import format_duration
 
 
 class Game(models.Model):
@@ -48,25 +49,17 @@ class Session(models.Model):
     def duration_seconds(self):
         if self.duration_manual == None:
             if self.timestamp_end == None or self.timestamp_start == None:
-                return 0
+                return timedelta(0)
             else:
                 value = self.timestamp_end - self.timestamp_start
         else:
             value = self.duration_manual
         return value.total_seconds()
 
-    def duration_formatted(self):
-        seconds = self.duration_seconds()
-        if seconds == 0:
-            return seconds
-        hours, remainder = divmod(seconds, 3600)
-        minutes = remainder // 60
-        if hours == 0 and minutes == 0:
-            return "less than a minute"
-        else:
-            hour_string = f"{int(hours)}h" if hours != 0 else ""
-            minute_string = f"{int(minutes)}m" if minutes != 0 else ""
-            return f"{hour_string}{minute_string}"
+    def duration_formatted(self) -> str:
+        dur = self.duration_seconds()
+        result = format_duration(dur, "%H:%m")
+        return result
 
     def duration_any(self):
         return (
