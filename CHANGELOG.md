@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.1 / 2023-01-05 23:26+01:00
 * Order by timestamp_start by default
 * Add pre-commit hook to update version
 * Improve the newcomer experience by guiding through each step
