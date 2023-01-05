@@ -53,7 +53,7 @@ def list_sessions(request, purchase_id=None):
         dataset = Session.objects.filter(purchase=purchase_id)
         context["purchase"] = Purchase.objects.get(id=purchase_id)
     else:
-        dataset = Session.objects.all()
+        dataset = Session.objects.all().order_by("timestamp_start")
 
     for session in dataset:
         if session.timestamp_end == None and session.duration_manual == None:

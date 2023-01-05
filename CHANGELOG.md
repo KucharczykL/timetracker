@@ -1,4 +1,5 @@
 ## Unreleased
+* Order by timestamp_start by default
 * Add pre-commit hook to update version
 * Improve the newcomer experience by guiding through each step
 * Fix errors with empty database
