@@ -3,13 +3,20 @@
 @tailwind utilities;
 
 form label {
-    @apply dark:text-slate-400;
+  @apply dark:text-slate-400;
 }
 
-form input,select,textarea {
-    @apply dark:bg-slate-500 dark:border dark:border-slate-900 dark:text-slate-100;
+form input,
+select,
+textarea {
+  @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
 }
 
-form input[type=submit] {
-    @apply p-2 bg-purple-900;
+#session-table {
+  display: grid;
+  grid-template-columns: repeat(3, 2fr) 0.5fr 1fr;
+}
+
+#button-container button {
+  @apply mx-1;
 }
