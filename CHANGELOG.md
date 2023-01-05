@@ -1,4 +1,5 @@
 ## Unreleased
+* Improve the newcomer experience by guiding through each step
 * Fix errors with empty database
 * Fix negative playtimes being considered positive
 * Add %d for days to common.util.time.format_duration

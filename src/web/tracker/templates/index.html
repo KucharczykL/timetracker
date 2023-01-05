@@ -6,8 +6,12 @@
 <div class="text-slate-300 mx-auto max-w-screen-lg text-center">
 {% if session_count > 0 %}
 You have played a total of {{ session_count }} sessions for a total of {{ total_duration }}.
+{% elif not game_available or not platform_available %}
+There are no games in the database. Start by clicking "New Game" and "New Platform".
+{% elif not purchase_available %}
+There are no owned games. Click "New Purchase" at the top.
 {% else %}
-Start by clicking the links at the top. To track playtime, you need to have at least 1 owned game.
+You haven't played any games yet. Click "New Session" to add one now.
 {% endif %}
 </div>
 {% endblock content %}
