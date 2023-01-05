@@ -1,13 +1,13 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}{{ title }}{% endblock title %}
 
 {% block content %}
-<form method="POST" enctype="multipart/form-data" class="mx-auto">
-    {% csrf_token %}
+    <form method="post" enctype="multipart/form-data" class="mx-auto">
+        {% csrf_token %}
 
-    {{ form.as_p }}
+        {{ form.as_p }}
 
-    <input type="submit" value="Submit">
-</form>
+        <input type="submit" value="Submit"/>
+    </form>
 {% endblock content %}

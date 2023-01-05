@@ -1,17 +1,17 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}{{ title }}{% endblock title %}
 
 {% block content %}
-<div class="text-slate-300 mx-auto max-w-screen-lg text-center">
-{% if session_count > 0 %}
-You have played a total of {{ session_count }} sessions for a total of {{ total_duration }}.
-{% elif not game_available or not platform_available %}
-There are no games in the database. Start by clicking "New Game" and "New Platform".
-{% elif not purchase_available %}
-There are no owned games. Click "New Purchase" at the top.
-{% else %}
-You haven't played any games yet. Click "New Session" to add one now.
-{% endif %}
-</div>
+    <div class="text-slate-300 mx-auto max-w-screen-lg text-center">
+        {% if session_count > 0 %}
+            You have played a total of {{ session_count }} sessions for a total of {{ total_duration }}.
+        {% elif not game_available or not platform_available %}
+            There are no games in the database. Start by clicking "New Game" and "New Platform".
+        {% elif not purchase_available %}
+            There are no owned games. Click "New Purchase" at the top.
+        {% else %}
+            You haven't played any games yet. Click "New Session" to add one now.
+        {% endif %}
+    </div>
 {% endblock content %}
