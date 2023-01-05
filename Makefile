@@ -39,7 +39,7 @@ createsuperuser:
 shell:
 	python src/web/manage.py shell
 
-poetry.lock:
+poetry.lock: pyproject.toml
 	poetry install
 
 test: poetry.lock

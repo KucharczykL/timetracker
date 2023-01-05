@@ -1,5 +1,6 @@
 ## Unreleased
-* Add tests for common.util.time
+* Add %d for days to common.util.time.format_duration
+* Set up tests, add tests for common.util.time
 * Display total hours played on homepage
 * Add format_duration to common.util.time
 * Allow deleting sessions
