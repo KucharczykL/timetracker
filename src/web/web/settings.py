@@ -137,7 +137,7 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "WARNING"},
 }
 
-CSRF_TRUSTED_ORIGINS = [""]
+CSRF_TRUSTED_ORIGINS = []
 
 if os.environ.get("PROD"):
     CSRF_TRUSTED_ORIGINS.append(os.environ.get("CSRF_TRUSTED_ORIGINS"))
