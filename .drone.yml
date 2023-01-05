@@ -1,9 +1,14 @@
 ---
 kind: pipeline
 type: docker
-name: build image
+name: default
 
 steps:
+- name: test
+  image: python:3.10
+  commands:
+    - "poetry install"
+    - "pytest"
 - name: build container
   image: plugins/docker
   settings:
