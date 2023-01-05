@@ -47,3 +47,6 @@ test: poetry.lock
 
 sethookdir:
 	git config core.hooksPath .githooks
+
+make date:
+	python3 -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
