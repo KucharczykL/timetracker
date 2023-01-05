@@ -38,3 +38,9 @@ createsuperuser:
 
 shell:
 	python src/web/manage.py shell
+
+poetry.lock:
+	poetry install
+
+test: poetry.lock
+	poetry run pytest
