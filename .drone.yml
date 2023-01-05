@@ -7,13 +7,10 @@ steps:
 - name: test
   image: python:3.10
   commands:
-    - VIRTUAL_ENV=/opt/venv
-    - "python3 -m venv pip $VIRTUAL_ENV"
-    - PATH="$VIRTUAL_ENV/bin:$PATH"
     - python -m pip install poetry
     - poetry install
     - poetry env info
-    - pytest
+    - poetry run pytest
 - name: build container
   image: plugins/docker
   settings:
