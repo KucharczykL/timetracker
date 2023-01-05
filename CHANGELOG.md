@@ -1,4 +1,5 @@
 ## Unreleased
+* Fix negative playtimes being considered positive
 * Add %d for days to common.util.time.format_duration
 * Set up tests, add tests for common.util.time
 * Display total hours played on homepage

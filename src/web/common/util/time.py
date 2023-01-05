@@ -23,6 +23,9 @@ def format_duration(
     hour_seconds = 60 * minute_seconds
     day_seconds = 24 * hour_seconds
     seconds_total = int(duration.total_seconds())
+    # timestamps where end is before start
+    if seconds_total < 0:
+        seconds_total = 0
     days, remainder = divmod(seconds_total, day_seconds)
     hours, remainder = divmod(remainder, hour_seconds)
     minutes, seconds = divmod(remainder, minute_seconds)

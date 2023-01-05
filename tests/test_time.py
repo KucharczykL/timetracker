@@ -51,3 +51,8 @@ class FormatDurationTest(unittest.TestCase):
         self.assertEqual(
             result, "50 days, 10 hours, 34 minutes, 24 seconds, 4358064 total seconds"
         )
+
+    def test_negative(self):
+        delta = timedelta(hours=-2)
+        result = format_duration(delta, "%H hours")
+        self.assertEqual(result, "0 hours")
