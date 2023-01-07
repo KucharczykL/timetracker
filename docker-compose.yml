@@ -1,9 +1,10 @@
 ---
-version: "2.1"
 services:
   timetracker:
     image: registry.kucharczyk.xyz/timetracker
-    build: Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: timetracker
     environment:
       - TZ=Europe/Prague
