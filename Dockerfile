@@ -6,7 +6,7 @@ RUN npm install && \
 
 FROM python:3.10-slim-bullseye
 
-ENV VERSION_NUMBER 0.1.0-49-gf550978
+ENV VERSION_NUMBER 0.1.0-50-gd81dba7
 ENV PROD 1
 
 RUN useradd --create-home --uid 1000 timetracker
