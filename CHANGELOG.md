@@ -1,3 +1,7 @@
+## 0.1.2 / 2023-01-07 22:05+01:00
+
+* Switch to Uvicorn/Gunicorn + Caddy (https://git.kucharczyk.xyz/lukas/timetracker/pulls/4)
+
 ## 0.1.1 / 2023-01-05 23:26+01:00
 * Order by timestamp_start by default
 * Add pre-commit hook to update version
