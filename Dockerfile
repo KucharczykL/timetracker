@@ -4,12 +4,16 @@ COPY . /app
 RUN npm install && \
     npx tailwindcss -i ./src/input.css -o ./src/web/tracker/static/base.css --minify
 
-FROM python:3.10-slim-bullseye
+FROM python:3.10.9-alpine
 
-ENV VERSION_NUMBER 0.1.0-51-g9dead36
+ENV VERSION_NUMBER 0.1.1-3-gd029fda
 ENV PROD 1
 
-RUN useradd --create-home --uid 1000 timetracker
+RUN apk add \
+    vim \
+    curl \
+    caddy
+RUN adduser -D -u 1000 timetracker
 WORKDIR /home/timetracker/app
 COPY . /home/timetracker/app/
 RUN chown -R timetracker:timetracker /home/timetracker/app

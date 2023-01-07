@@ -1,4 +1,5 @@
 from django import template
+from django.conf import settings
 import time
 import os
 
@@ -9,7 +10,11 @@ register = template.Library()
 def version_date():
     return time.strftime(
         "%d-%b-%Y %H:%m",
-        time.gmtime(os.path.getmtime(os.path.abspath(os.path.join(".git")))),
+        time.gmtime(
+            os.path.getmtime(
+                os.path.abspath(os.path.join(settings.BASE_DIR, "..", "..", ".git"))
+            )
+        ),
     )
 
 

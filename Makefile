@@ -1,4 +1,4 @@
-.PHONY: createsuperuser shell
+.PHONY: createsuperuser shell cleanstatic
 
 all: css migrate
 
@@ -24,6 +24,9 @@ migrate: makemigrations
 dev: migrate sethookdir
 	poetry run python src/web/manage.py runserver_plus
 
+dev-prod: migrate collectstatic sethookdir
+	cd src/web/; poetry run python -m gunicorn --bind 0.0.0.0:8001 web.asgi:application -k uvicorn.workers.UvicornWorker
+
 dumptracker:
 	poetry run python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
 
@@ -39,6 +42,9 @@ createsuperuser:
 shell:
 	poetry run python src/web/manage.py shell
 
+collectstatic:
+	poetry run python src/web/manage.py collectstatic
+
 poetry.lock: pyproject.toml
 	poetry install
 
@@ -48,5 +54,10 @@ test: poetry.lock
 sethookdir:
 	git config core.hooksPath .githooks
 
-make date:
+date:
 	python3 -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
+
+cleanstatic:
+	rm -r src/web/static/*
+
+clean: cleanstatic

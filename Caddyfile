@@ -1,0 +1,14 @@
+{ 
+    auto_https off
+    admin off
+}
+
+:8000 {
+    handle_path /static/* {
+        root * src/web/static/
+        file_server
+    }
+    handle {
+        reverse_proxy :8001
+    }
+}

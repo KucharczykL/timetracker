@@ -34,7 +34,6 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "tracker.apps.TrackerConfig",
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -44,6 +43,7 @@ INSTALLED_APPS = [
 
 if DEBUG:
     INSTALLED_APPS.append("django_extensions")
+    INSTALLED_APPS.append("django.contrib.admin")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -123,7 +123,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "/static"
+STATIC_ROOT = BASE_DIR / "static"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
