@@ -1,5 +1,3 @@
-.PHONY: createsuperuser shell cleanstatic
-
 all: css migrate
 
 initialize: npm css migrate sethookdir loadplatforms
@@ -24,8 +22,11 @@ migrate: makemigrations
 dev: migrate sethookdir
 	poetry run python src/web/manage.py runserver_plus
 
+caddy:
+	caddy run --watch
+
 dev-prod: migrate collectstatic sethookdir
-	cd src/web/; poetry run python -m gunicorn --bind 0.0.0.0:8001 web.asgi:application -k uvicorn.workers.UvicornWorker
+	cd src/web/; PROD=1 poetry run python -m gunicorn --bind 0.0.0.0:8001 web.asgi:application -k uvicorn.workers.UvicornWorker
 
 dumptracker:
 	poetry run python src/web/manage.py dumpdata --format yaml tracker --output tracker_fixture.yaml
