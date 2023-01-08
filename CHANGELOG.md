@@ -1,3 +1,7 @@
+## 0.1.3 / 2023-01-08 15:23+01:00
+
+* Fix CSRF error (https://git.kucharczyk.xyz/lukas/timetracker/pulls/22)
+
 ## 0.1.2 / 2023-01-07 22:05+01:00
 
 * Switch to Uvicorn/Gunicorn + Caddy (https://git.kucharczyk.xyz/lukas/timetracker/pulls/4)
