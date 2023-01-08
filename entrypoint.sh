@@ -5,7 +5,7 @@ echo "Apply database migrations"
 poetry run python src/web/manage.py migrate
 
 echo "Collect static files"
-poetry run python src/web/manage.py collectstatic
+poetry run python src/web/manage.py collectstatic --clear --no-input
 
 echo "Starting server"
 caddy start

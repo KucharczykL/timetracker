@@ -44,7 +44,7 @@ shell:
 	poetry run python src/web/manage.py shell
 
 collectstatic:
-	poetry run python src/web/manage.py collectstatic
+	poetry run python src/web/manage.py collectstatic --clear --no-input
 
 poetry.lock: pyproject.toml
 	poetry install
