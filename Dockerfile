@@ -6,7 +6,7 @@ RUN npm install && \
 
 FROM python:3.10.9-alpine
 
-ENV VERSION_NUMBER 0.1.2
+ENV VERSION_NUMBER 0.1.0-59-gc9b2d5b
 ENV PROD 1
 
 RUN apk add \
@@ -28,4 +28,4 @@ RUN pip install --no-cache-dir poetry
 RUN poetry install --without dev
 
 EXPOSE 8000
-ENTRYPOINT [ "/entrypoint.sh" ]
+CMD [ "/entrypoint.sh" ]

@@ -145,7 +145,8 @@ LOGGING = {
     },
 }
 
-CSRF_TRUSTED_ORIGINS = []
-
-if os.environ.get("PROD"):
-    CSRF_TRUSTED_ORIGINS.append(os.environ.get("CSRF_TRUSTED_ORIGINS"))
+_csrf_trusted_origins = os.environ.get("CSRF_TRUSTED_ORIGINS")
+if _csrf_trusted_origins:
+    CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins.split(",")
+else:
+    CSRF_TRUSTED_ORIGINS = []
