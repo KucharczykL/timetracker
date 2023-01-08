@@ -1,3 +1,7 @@
+## Unreleased
+
+* Fix collectstaticfiles causing error when restarting container (https://git.kucharczyk.xyz/lukas/timetracker/issues/23)
+
 ## 0.1.3 / 2023-01-08 15:23+01:00
 
 * Fix CSRF error (https://git.kucharczyk.xyz/lukas/timetracker/pulls/22)
