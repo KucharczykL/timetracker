@@ -1,1 +1,5 @@
 src/web/static/*
+.venv
+.githooks
+.vscode
+node_modules
