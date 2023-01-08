@@ -56,7 +56,7 @@ sethookdir:
 	git config core.hooksPath .githooks
 
 date:
-	python3 -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
+	poetry run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
 
 cleanstatic:
 	rm -r src/web/static/*
