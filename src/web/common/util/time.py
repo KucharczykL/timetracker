@@ -9,7 +9,7 @@ def now() -> datetime:
 
 
 def format_duration(
-    duration: timedelta, format_string: str = "%H hours %m minutes"
+    duration: timedelta | None, format_string: str = "%H hours %m minutes"
 ) -> str:
     """
     Format timedelta into the specified format_string.
@@ -23,7 +23,10 @@ def format_duration(
     hour_seconds = 60 * minute_seconds
     day_seconds = 24 * hour_seconds
     if not isinstance(duration, timedelta):
-        duration = timedelta(seconds=duration)
+        if duration == None:
+            duration = timedelta(seconds=0)
+        else:
+            duration = timedelta(seconds=duration)
     seconds_total = int(duration.total_seconds())
     # timestamps where end is before start
     if seconds_total < 0:

@@ -56,3 +56,9 @@ class FormatDurationTest(unittest.TestCase):
         delta = timedelta(hours=-2)
         result = format_duration(delta, "%H hours")
         self.assertEqual(result, "0 hours")
+
+    def test_none(self):
+        try:
+            format_duration(None)
+        except TypeError as exc:
+            assert False, f"format_duration(None) raised an exception {exc}"
