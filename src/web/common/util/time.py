@@ -8,8 +8,17 @@ def now() -> datetime:
     return datetime.now(ZoneInfo(settings.TIME_ZONE))
 
 
+def _safe_timedelta(duration: timedelta | int | None):
+    if duration == None:
+        return timedelta(0)
+    elif isinstance(duration, int):
+        return timedelta(seconds=duration)
+    elif isinstance(duration, timedelta):
+        return duration
+
+
 def format_duration(
-    duration: timedelta | None, format_string: str = "%H hours %m minutes"
+    duration: timedelta | int | None, format_string: str = "%H hours %m minutes"
 ) -> str:
     """
     Format timedelta into the specified format_string.
@@ -22,11 +31,8 @@ def format_duration(
     minute_seconds = 60
     hour_seconds = 60 * minute_seconds
     day_seconds = 24 * hour_seconds
-    if not isinstance(duration, timedelta):
-        if duration == None:
-            duration = timedelta(seconds=0)
-        else:
-            duration = timedelta(seconds=duration)
+    duration = _safe_timedelta(duration)
+    # we don't need float
     seconds_total = int(duration.total_seconds())
     # timestamps where end is before start
     if seconds_total < 0:

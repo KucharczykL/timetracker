@@ -62,3 +62,7 @@ class FormatDurationTest(unittest.TestCase):
             format_duration(None)
         except TypeError as exc:
             assert False, f"format_duration(None) raised an exception {exc}"
+
+    def test_number(self):
+        self.assertEqual(format_duration(3600, "%H hour"), "1 hour")
+

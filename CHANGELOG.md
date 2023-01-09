@@ -1,3 +1,7 @@
+## Unreleased
+
+* Show playtime total on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/6)
+
 ## 0.1.4 / 2023-01-08 15:45+01:00
 
 * Fix collectstaticfiles causing error when restarting container (https://git.kucharczyk.xyz/lukas/timetracker/issues/23)

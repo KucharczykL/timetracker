@@ -60,6 +60,7 @@ def list_sessions(request, purchase_id=None):
             session.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
             session.unfinished = True
 
+    context["total_duration"] = dataset.total_duration()
     context["dataset"] = dataset
 
     return render(request, "list_sessions.html", context)
@@ -105,12 +106,6 @@ def add_platform(request):
 
 def index(request):
     context = {}
-    if Session.objects.count() == 0:
-        duration: str = ""
-    else:
-        context["total_duration"] = format_duration(
-            Session.total_sum(),
-            "%H hours %m minutes",
-        )
+    context["total_duration"] = Session().duration_sum
     context["title"] = "Index"
     return render(request, "index.html", context)
