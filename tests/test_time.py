@@ -18,15 +18,40 @@ class FormatDurationTest(unittest.TestCase):
         result = format_duration(delta, "%H hours")
         self.assertEqual(result, "1 hours")
 
+    def test_overflow_hours(self):
+        delta = timedelta(hours=25)
+        result = format_duration(delta, "%H hours")
+        self.assertEqual(result, "25 hours")
+
+    def test_overflow_hours_into_days(self):
+        delta = timedelta(hours=25)
+        result = format_duration(delta, "%d days, %H hours")
+        self.assertEqual(result, "1 days, 1 hours")
+
     def test_only_minutes(self):
         delta = timedelta(minutes=34)
         result = format_duration(delta, "%m minutes")
         self.assertEqual(result, "34 minutes")
 
+    def test_only_overflow_minutes(self):
+        delta = timedelta(minutes=61)
+        result = format_duration(delta, "%m minutes")
+        self.assertEqual(result, "61 minutes")
+
+    def test_overflow_minutes_into_hours(self):
+        delta = timedelta(minutes=61)
+        result = format_duration(delta, "%H hours, %m minutes")
+        self.assertEqual(result, "1 hours, 1 minutes")
+
     def test_only_overflow_seconds(self):
         delta = timedelta(seconds=61)
         result = format_duration(delta, "%s seconds")
-        self.assertEqual(result, "1 seconds")
+        self.assertEqual(result, "61 seconds")
+
+    def test_overflow_seconds_into_minutes(self):
+        delta = timedelta(seconds=61)
+        result = format_duration(delta, "%m minutes, %s seconds")
+        self.assertEqual(result, "1 minutes, 1 seconds")
 
     def test_only_rawseconds(self):
         delta = timedelta(seconds=5690)
@@ -65,4 +90,3 @@ class FormatDurationTest(unittest.TestCase):
 
     def test_number(self):
         self.assertEqual(format_duration(3600, "%H hour"), "1 hour")
-

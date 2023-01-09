@@ -18,7 +18,7 @@ def _safe_timedelta(duration: timedelta | int | None):
 
 
 def format_duration(
-    duration: timedelta | int | None, format_string: str = "%H hours %m minutes"
+    duration: timedelta | int | None, format_string: str = "%H hours"
 ) -> str:
     """
     Format timedelta into the specified format_string.
@@ -27,6 +27,10 @@ def format_duration(
     - %m minutes
     - %s seconds
     - %r total seconds
+    Values don't change into higher units if those units are missing
+    from the formatting string. For example:
+    - 61 seconds as "%s" = 61 seconds
+    - 61 seconds as "%m %s" = 1 minutes 1 seconds"
     """
     minute_seconds = 60
     hour_seconds = 60 * minute_seconds
@@ -37,9 +41,14 @@ def format_duration(
     # timestamps where end is before start
     if seconds_total < 0:
         seconds_total = 0
-    days, remainder = divmod(seconds_total, day_seconds)
-    hours, remainder = divmod(remainder, hour_seconds)
-    minutes, seconds = divmod(remainder, minute_seconds)
+    days = hours = minutes = seconds = 0
+    remainder = seconds = seconds_total
+    if "%d" in format_string:
+        days, remainder = divmod(seconds_total, day_seconds)
+    if "%H" in format_string:
+        hours, remainder = divmod(remainder, hour_seconds)
+    if "%m" in format_string:
+        minutes, seconds = divmod(remainder, minute_seconds)
     literals = {
         "%d": str(days),
         "%H": str(hours),

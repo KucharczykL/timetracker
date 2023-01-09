@@ -1,6 +1,7 @@
-## Unreleased
+## 0.2.0 / 2023-01-09 22:42+01:00
 
 * Show playtime total on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/6)
+* Make formatting durations more robust, change default duration display to "X hours" (https://git.kucharczyk.xyz/lukas/timetracker/issues/26)
 
 ## 0.1.4 / 2023-01-08 15:45+01:00
 
