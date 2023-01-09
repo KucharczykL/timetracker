@@ -56,7 +56,7 @@ def list_sessions(request, purchase_id=None):
         dataset = Session.objects.all().order_by("timestamp_start")
 
     for session in dataset:
-        if session.timestamp_end == None and session.duration_manual == None:
+        if session.timestamp_end == None and session.duration_manual.seconds == 0:
             session.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
             session.unfinished = True
 
