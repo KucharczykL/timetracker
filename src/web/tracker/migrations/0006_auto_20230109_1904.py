@@ -7,16 +7,16 @@ from datetime import timedelta
 def set_duration_manual_none_to_zero(apps, schema_editor):
     Session = apps.get_model("tracker", "Session")
     for session in Session.objects.all():
-        if session.duration_calculated == None:
-            session.duration_calculated = timedelta(0)
+        if session.duration_manual == None:
+            session.duration_manual = timedelta(0)
             session.save()
 
 
 def revert_set_duration_manual_none_to_zero(apps, schema_editor):
     Session = apps.get_model("tracker", "Session")
     for session in Session.objects.all():
-        if session.duration_calculated == timedelta(0):
-            session.duration_calculated = None
+        if session.duration_manual == timedelta(0):
+            session.duration_manual = None
             session.save()
 
 
