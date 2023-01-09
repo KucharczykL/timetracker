@@ -6,7 +6,7 @@ RUN npm install && \
 
 FROM python:3.10.9-alpine
 
-ENV VERSION_NUMBER 0.1.2-8-gb77089f
+ENV VERSION_NUMBER 0.1.2-9-g7842d6f
 ENV PROD 1
 
 RUN apk add \
