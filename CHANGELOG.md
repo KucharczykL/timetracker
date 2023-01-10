@@ -1,3 +1,7 @@
+## Unreleased
+
+* List number of sessions when filtering on session list
+
 ## 0.2.0 / 2023-01-09 22:42+01:00
 
 * Show playtime total on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/6)

@@ -5,7 +5,8 @@
 {% block content %}
     {% if purchase %}
         <div class="text-center text-xl mb-4 dark:text-slate-400">
-            <h1>Listing sessions only for purchase "{{ purchase }}" (total playtime: {{ total_duration }})</h1>
+            <h1>Listing sessions only for purchase "{{ purchase }}"</h1>
+            <h2>Total playtime: {{ total_duration }} over {{ dataset.count }} sessions.</h2>
             <a class="dark:text-white hover:underline" href="{% url 'list_sessions' %}">View all sessions</a>
         </div>
     {% endif %}
