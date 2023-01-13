@@ -13,6 +13,11 @@ urlpatterns = [
         name="update_session",
     ),
     path(
+        "start-session/<int:purchase_id>",
+        views.start_session,
+        name="start_session",
+    ),
+    path(
         "delete_session/by-id/<int:session_id>",
         views.delete_session,
         name="delete_session",

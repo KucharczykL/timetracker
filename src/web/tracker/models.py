@@ -4,6 +4,8 @@ from django.conf import settings
 from zoneinfo import ZoneInfo
 from common.util.time import format_duration
 from django.db.models import Sum, F
+from django.db.models import Manager
+from typing import Any
 
 
 class Game(models.Model):
@@ -57,6 +59,9 @@ class Session(models.Model):
     def finish_now(self):
         self.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
 
+    def start_now():
+        self.timestamp_start = datetime.now(ZoneInfo(settings.TIME_ZONE))
+
     def duration_seconds(self) -> timedelta:
         manual = timedelta(0)
         calculated = timedelta(0)
@@ -73,6 +78,10 @@ class Session(models.Model):
     @property
     def duration_sum(self) -> str:
         return Session.objects.all().total_duration()
+
+    @property
+    def last(self) -> Manager[Any]:
+        return Session.objects.all().order_by("timestamp_start")[:-1]
 
     def save(self, *args, **kwargs):
         if self.timestamp_start != None and self.timestamp_end != None:

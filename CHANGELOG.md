@@ -1,6 +1,7 @@
-## Unreleased
+## 0.2.1 / 2023-01-13 16:53+01:00
 
 * List number of sessions when filtering on session list
+* Start sessions of last purchase from list (https://git.kucharczyk.xyz/lukas/timetracker/issues/19)
 
 ## 0.2.0 / 2023-01-09 22:42+01:00
 

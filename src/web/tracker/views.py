@@ -40,6 +40,12 @@ def update_session(request, session_id=None):
     return redirect("list_sessions")
 
 
+def start_session(request, purchase_id=None):
+    session = SessionForm({"purchase": purchase_id, "timestamp_start": now_with_tz()})
+    session.save()
+    return redirect("list_sessions")
+
+
 def delete_session(request, session_id=None):
     session = Session.objects.get(id=session_id)
     session.delete()
