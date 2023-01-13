@@ -20,7 +20,7 @@ migrate: makemigrations
 	poetry run python src/web/manage.py migrate
 
 dev: migrate sethookdir
-	poetry run python src/web/manage.py runserver_plus
+	poetry run python src/web/manage.py runserver
 
 caddy:
 	caddy run --watch
