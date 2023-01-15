@@ -27,6 +27,19 @@ urlpatterns = [
     path(
         "list-sessions/by-purchase/<int:purchase_id>",
         views.list_sessions,
-        name="list_sessions",
+        {"filter": "purchase"},
+        name="list_sessions_by_purchase",
+    ),
+    path(
+        "list-sessions/by-platform/<int:platform_id>",
+        views.list_sessions,
+        {"filter": "platform"},
+        name="list_sessions_by_platform",
+    ),
+    path(
+        "list-sessions/by-game/<int:game_id>",
+        views.list_sessions,
+        {"filter": "game"},
+        name="list_sessions_by_game",
     ),
 ]

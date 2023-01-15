@@ -53,12 +53,18 @@ def delete_session(request, session_id=None):
     return redirect("list_sessions")
 
 
-def list_sessions(request, purchase_id=None):
+def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""):
     context = {}
 
-    if purchase_id != None:
+    if filter == "purchase":
         dataset = Session.objects.filter(purchase=purchase_id)
         context["purchase"] = Purchase.objects.get(id=purchase_id)
+    elif filter == "platform":
+        dataset = Session.objects.filter(purchase__platform=platform_id)
+        context["platform"] = Platform.objects.get(id=platform_id)
+    elif filter == "game":
+        dataset = Session.objects.filter(purchase__game=game_id)
+        context["game"] = Platform.objects.get(id=game_id)
     else:
         dataset = Session.objects.all().order_by("timestamp_start")
 

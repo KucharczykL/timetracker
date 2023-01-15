@@ -1,3 +1,8 @@
+## 0.2.3 / 2023-01-15 23:13+01:00
+
+* Allow filtering by platform and game on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/32)
+* Order session by newest as preparation for https://git.kucharczyk.xyz/lukas/timetracker/issues/33
+
 ## 0.2.2 / 2023-01-15 17:59+01:00
 
 * Display playtime graph on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/29)
