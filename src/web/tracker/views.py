@@ -8,6 +8,7 @@ from django.conf import settings
 from common.util.time import now as now_with_tz, format_duration
 from django.db.models import Sum
 import logging
+from common.util.plots import playtime_over_time_chart
 
 
 def model_counts(request):
@@ -68,6 +69,7 @@ def list_sessions(request, purchase_id=None):
 
     context["total_duration"] = dataset.total_duration()
     context["dataset"] = dataset
+    context["chart"] = playtime_over_time_chart(dataset)
 
     return render(request, "list_sessions.html", context)
 

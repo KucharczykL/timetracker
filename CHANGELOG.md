@@ -1,3 +1,6 @@
+## 0.2.2 / 2023-01-15 17:59+01:00
+
+* Display playtime graph on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/29)
 * Fix error when showing session list with no sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/31)
 
 ## 0.2.1 / 2023-01-13 16:53+01:00
