@@ -66,7 +66,7 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
         dataset = Session.objects.filter(purchase__game=game_id)
         context["game"] = Platform.objects.get(id=game_id)
     else:
-        dataset = Session.objects.all().order_by("timestamp_start")
+        dataset = Session.objects.all().order_by("-timestamp_start")
 
     for session in dataset:
         if session.timestamp_end == None and session.duration_manual.seconds == 0:
