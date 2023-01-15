@@ -4,7 +4,7 @@
 
 {% block content %}
         <div class="text-center text-xl mb-4 dark:text-slate-400">
-            {% if dataset.count > 0 %}
+            {% if dataset.count >= 2 %}
             <a href="{% url 'start_session' dataset.last.purchase.id %}">
                 <button type="button" title="Track last tracked" class="py-1 px-2 bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg ">
                     New session of {{ dataset.last.purchase }}
