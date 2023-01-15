@@ -1,14 +1,13 @@
-from django.shortcuts import render, redirect
-
-from .models import Game, Platform, Purchase, Session
-from .forms import SessionForm, PurchaseForm, GameForm, PlatformForm
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
-from django.conf import settings
-from common.util.time import now as now_with_tz, format_duration
-from django.db.models import Sum
-import logging
+
 from common.util.plots import playtime_over_time_chart
+from common.util.time import now as now_with_tz
+from django.conf import settings
+from django.shortcuts import redirect, render
+
+from .forms import GameForm, PlatformForm, PurchaseForm, SessionForm
+from .models import Game, Platform, Purchase, Session
 
 
 def model_counts(request):

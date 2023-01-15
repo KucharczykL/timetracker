@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
-from django.conf import settings
-from zoneinfo import ZoneInfo
 import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from django.conf import settings
 
 
 def now() -> datetime:

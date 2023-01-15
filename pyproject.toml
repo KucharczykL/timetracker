@@ -23,6 +23,7 @@ django-extensions = "^3.2.1"
 werkzeug = "^2.2.2"
 djhtml = "^1.5.2"
 djlint = "^1.19.11"
+isort = "^5.11.4"
 
 [build-system]
 requires = ["poetry-core"]

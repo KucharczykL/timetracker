@@ -1,14 +1,12 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.dates import date2num
 import base64
-from io import BytesIO
-from tracker.models import Session
-from django.db.models import Sum, IntegerField, F
-from django.db.models.functions import TruncDay
-import logging
 from datetime import datetime
-from django.db.models import QuerySet
+from io import BytesIO
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from django.db.models import F, IntegerField, QuerySet, Sum
+from django.db.models.functions import TruncDay
+from tracker.models import Session
 
 
 def key_value_to_value_value(data):

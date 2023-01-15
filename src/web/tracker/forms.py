@@ -1,5 +1,6 @@
 from django import forms
-from .models import Session, Purchase, Game, Platform
+
+from .models import Game, Platform, Purchase, Session
 
 
 class SessionForm(forms.ModelForm):

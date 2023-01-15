@@ -1,7 +1,8 @@
+import os
+import time
+
 from django import template
 from django.conf import settings
-import time
-import os
 
 register = template.Library()
 

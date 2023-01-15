@@ -1,6 +1,7 @@
 import unittest
-from web.common.util.time import format_duration
 from datetime import timedelta
+
+from web.common.util.time import format_duration
 
 
 class FormatDurationTest(unittest.TestCase):

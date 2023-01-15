@@ -1,11 +1,11 @@
-from django.db import models
 from datetime import datetime, timedelta
-from django.conf import settings
-from zoneinfo import ZoneInfo
-from common.util.time import format_duration
-from django.db.models import Sum, F
-from django.db.models import Manager
 from typing import Any
+from zoneinfo import ZoneInfo
+
+from common.util.time import format_duration
+from django.conf import settings
+from django.db import models
+from django.db.models import F, Manager, Sum
 
 
 class Game(models.Model):
