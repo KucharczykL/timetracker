@@ -13,26 +13,12 @@ class SessionForm(forms.ModelForm):
             "duration_manual",
             "note",
         ]
-        custom_datetime_widget = forms.SplitDateTimeWidget(
-            date_attrs={"type": "date"}, time_attrs={"type": "time"}
-        )
-        widgets = {
-            "timestamp_start": custom_datetime_widget,
-            "timestamp_end": custom_datetime_widget,
-        }
 
 
 class PurchaseForm(forms.ModelForm):
     class Meta:
         model = Purchase
         fields = ["game", "platform", "date_purchased", "date_refunded"]
-        custom_date_widget = forms.DateInput(
-            format=("%d-%m-%Y"), attrs={"type": "date"}
-        )
-        widgets = {
-            "date_purchased": custom_date_widget,
-            "date_refunded": custom_date_widget,
-        }
 
 
 class GameForm(forms.ModelForm):
