@@ -1,9 +1,10 @@
-## Unreleased
+## 0.2.4 / 2023-01-16 19:39+01:00
 
 * Fixed
   * When filtering by game, the "Filtering by (...)" text would erroneously list an unrelated platform
   * Playtime graph would display timeline backwards
   * Playtime graph with many dates would overlap (https://git.kucharczyk.xyz/lukas/timetracker/issues/34)
+  * Manually added times (= without end timestamp) would make graphs look ugly and noisy (https://git.kucharczyk.xyz/lukas/timetracker/issues/35)
 
 ## 0.2.3 / 2023-01-15 23:13+01:00
 

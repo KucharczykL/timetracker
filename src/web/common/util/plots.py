@@ -17,11 +17,12 @@ def key_value_to_value_value(data):
 def playtime_over_time_chart(queryset: QuerySet = Session.objects):
     microsecond_in_second = 1000000
     result = (
-        queryset.annotate(date=TruncDay("timestamp_start"))
+        queryset.exclude(timestamp_end__exact=None)
+        .annotate(date=TruncDay("timestamp_start"))
         .values("date")
         .annotate(
             hours=Sum(
-                F("duration_calculated") + F("duration_manual"),
+                F("duration_calculated"),
                 output_field=IntegerField(),
             )
         )
@@ -37,7 +38,12 @@ def playtime_over_time_chart(queryset: QuerySet = Session.objects):
         running_total += int(item["hours"] / (3600 * microsecond_in_second))
         values.append(running_total)
     data = [keys, values]
-    return get_chart(data, title="Playtime over time", xlabel="Date", ylabel="Hours")
+    return get_chart(
+        data,
+        title="Playtime over time (manual excluded)",
+        xlabel="Date",
+        ylabel="Hours",
+    )
 
 
 def get_graph():
