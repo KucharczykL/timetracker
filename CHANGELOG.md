@@ -1,3 +1,8 @@
+## Unreleased
+
+* Fixed
+  * When filtering by game, the "Filtering by (...)" text would erroneously list an unrelated platform 
+
 ## 0.2.3 / 2023-01-15 23:13+01:00
 
 * Allow filtering by platform and game on session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/32)

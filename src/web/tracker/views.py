@@ -63,7 +63,7 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
         context["platform"] = Platform.objects.get(id=platform_id)
     elif filter == "game":
         dataset = Session.objects.filter(purchase__game=game_id)
-        context["game"] = Platform.objects.get(id=game_id)
+        context["game"] = Game.objects.get(id=game_id)
     else:
         dataset = Session.objects.all().order_by("-timestamp_start")
 
