@@ -19,13 +19,13 @@ makemigrations:
 migrate: makemigrations
 	poetry run python src/web/manage.py migrate
 
-dev: migrate sethookdir
+dev: migrate
 	poetry run python src/web/manage.py runserver
 
 caddy:
 	caddy run --watch
 
-dev-prod: migrate collectstatic sethookdir
+dev-prod: migrate collectstatic
 	cd src/web/; PROD=1 poetry run python -m gunicorn --bind 0.0.0.0:8001 web.asgi:application -k uvicorn.workers.UvicornWorker
 
 dumptracker:
@@ -51,9 +51,6 @@ poetry.lock: pyproject.toml
 
 test: poetry.lock
 	poetry run pytest
-
-sethookdir:
-	git config core.hooksPath .githooks
 
 date:
 	poetry run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
