@@ -81,7 +81,7 @@ class Session(models.Model):
 
     @property
     def last(self) -> Manager[Any]:
-        return Session.objects.all().order_by("timestamp_start")[:-1]
+        return Session.objects.all().order_by("timestamp_start")[0]
 
     def save(self, *args, **kwargs):
         if self.timestamp_start != None and self.timestamp_end != None:

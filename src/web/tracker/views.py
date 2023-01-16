@@ -22,7 +22,8 @@ def model_counts(request):
 def add_session(request):
     context = {}
     now = now_with_tz()
-    initial = {"timestamp_start": now}
+    last = Session.objects.all().last()
+    initial = {"timestamp_start": now, "purchase": last.purchase}
     form = SessionForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
@@ -74,6 +75,7 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
 
     context["total_duration"] = dataset.total_duration()
     context["dataset"] = dataset
+    context["last"] = Session.objects.all().last()
     # charts are always oldest->newest
     context["chart"] = playtime_over_time_chart(dataset.order_by("timestamp_start"))
 
