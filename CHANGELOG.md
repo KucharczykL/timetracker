@@ -2,6 +2,7 @@
 
 * New
   * When adding session, pre-select game with the last session
+  * Date and time input fields now have proper pickers
 
 ## 0.2.4 / 2023-01-16 19:39+01:00
 
