@@ -74,7 +74,8 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
 
     context["total_duration"] = dataset.total_duration()
     context["dataset"] = dataset
-    context["chart"] = playtime_over_time_chart(dataset)
+    # charts are always oldest->newest
+    context["chart"] = playtime_over_time_chart(dataset.order_by("timestamp_start"))
 
     return render(request, "list_sessions.html", context)
 

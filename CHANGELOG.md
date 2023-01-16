@@ -1,7 +1,8 @@
 ## Unreleased
 
 * Fixed
-  * When filtering by game, the "Filtering by (...)" text would erroneously list an unrelated platform 
+  * When filtering by game, the "Filtering by (...)" text would erroneously list an unrelated platform
+  * Playtime graph would display timeline backwards
 
 ## 0.2.3 / 2023-01-15 23:13+01:00
 
