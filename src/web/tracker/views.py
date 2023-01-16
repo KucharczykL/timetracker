@@ -23,7 +23,11 @@ def add_session(request):
     context = {}
     now = now_with_tz()
     last = Session.objects.all().last()
-    initial = {"timestamp_start": now, "purchase": last.purchase}
+    initial = {
+        "timestamp_start_0": now.date(),
+        "timestamp_start_1": now.time(),
+        "purchase": last.purchase,
+    }
     form = SessionForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
