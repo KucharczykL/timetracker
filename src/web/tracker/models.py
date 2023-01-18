@@ -79,10 +79,6 @@ class Session(models.Model):
     def duration_sum(self) -> str:
         return Session.objects.all().total_duration()
 
-    @property
-    def last(self) -> Manager[Any]:
-        return Session.objects.all().order_by("timestamp_start")[0]
-
     def save(self, *args, **kwargs):
         if self.timestamp_start != None and self.timestamp_end != None:
             self.duration_calculated = self.timestamp_end - self.timestamp_start

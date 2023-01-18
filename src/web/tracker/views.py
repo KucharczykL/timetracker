@@ -66,6 +66,7 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
         dataset = Session.objects.filter(purchase__game=game_id)
         context["game"] = Game.objects.get(id=game_id)
     else:
+        # by default, sort from newest to oldest
         dataset = Session.objects.all().order_by("-timestamp_start")
 
     for session in dataset:
@@ -75,7 +76,8 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
 
     context["total_duration"] = dataset.total_duration()
     context["dataset"] = dataset
-    context["last"] = Session.objects.all().last()
+    # cannot use dataset[0] here because that might be only partial QuerySet
+    context["last"] = Session.objects.all().order_by("timestamp_start").last()
     # charts are always oldest->newest
     context["chart"] = playtime_over_time_chart(dataset.order_by("timestamp_start"))
 
