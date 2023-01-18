@@ -1,5 +1,8 @@
-src/web/static/*
-.venv
+.git
 .githooks
+.mypy_cache
+.pytest_cache
+.venv
 .vscode
 node_modules
+src/web/static/*
