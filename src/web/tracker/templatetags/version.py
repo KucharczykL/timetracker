@@ -13,7 +13,9 @@ def version_date():
         "%d-%b-%Y %H:%m",
         time.gmtime(
             os.path.getmtime(
-                os.path.abspath(os.path.join(settings.BASE_DIR, "..", "..", ".git"))
+                os.path.abspath(
+                    os.path.join(settings.BASE_DIR, "..", "..", "pyproject.toml")
+                )
             )
         ),
     )
