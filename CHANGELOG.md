@@ -1,7 +1,11 @@
-## Unreleased
+## 0.2.5 / 2023-01-18 17:01+01:00
 
 * New
   * When adding session, pre-select game with the last session
+* Fixed
+  * Start session now button would take up 100% width, leading to accidental clicks (https://git.kucharczyk.xyz/lukas/timetracker/issues/37)
+* Removed
+  * Session model property `last` is already implemented by Django method `last()`, thus it was removed (https://git.kucharczyk.xyz/lukas/timetracker/issues/38)
 
 ## 0.2.4 / 2023-01-16 19:39+01:00
 
