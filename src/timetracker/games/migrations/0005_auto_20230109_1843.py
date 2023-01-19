@@ -6,7 +6,7 @@ from django.db import migrations
 
 
 def set_duration_calculated_none_to_zero(apps, schema_editor):
-    Session = apps.get_model("tracker", "Session")
+    Session = apps.get_model("games", "Session")
     for session in Session.objects.all():
         if session.duration_calculated == None:
             session.duration_calculated = timedelta(0)
@@ -14,7 +14,7 @@ def set_duration_calculated_none_to_zero(apps, schema_editor):
 
 
 def revert_set_duration_calculated_none_to_zero(apps, schema_editor):
-    Session = apps.get_model("tracker", "Session")
+    Session = apps.get_model("games", "Session")
     for session in Session.objects.all():
         if session.duration_calculated == timedelta(0):
             session.duration_calculated = None
@@ -24,7 +24,7 @@ def revert_set_duration_calculated_none_to_zero(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tracker", "0004_alter_session_duration_manual"),
+        ("games", "0004_alter_session_duration_manual"),
     ]
 
     operations = [

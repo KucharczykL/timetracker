@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tracker", "0003_alter_session_duration_manual_and_more"),
+        ("games", "0003_alter_session_duration_manual_and_more"),
     ]
 
     operations = [

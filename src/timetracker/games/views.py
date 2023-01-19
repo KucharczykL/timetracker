@@ -21,9 +21,15 @@ def model_counts(request):
 
 def add_session(request):
     context = {}
+    initial = {}
+
     now = now_with_tz()
+    initial["timestamp_start"] = now
+
     last = Session.objects.all().last()
-    initial = {"timestamp_start": now, "purchase": last.purchase}
+    if last != None:
+        initial["purchase"] = last.purchase
+
     form = SessionForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()

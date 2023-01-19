@@ -1,0 +1,1091 @@
+- model: games.game
+  pk: 1
+  fields:
+    name: Nioh 2
+    wikidata: Q67482292
+- model: games.game
+  pk: 2
+  fields:
+    name: Elden Ring
+    wikidata: Q64826862
+- model: games.game
+  pk: 3
+  fields:
+    name: Cyberpunk 2077
+    wikidata: Q3182559
+- model: games.game
+  pk: 4
+  fields:
+    name: Xenoblade Chronicles
+    wikidata: Q1287714
+- model: games.game
+  pk: 5
+  fields:
+    name: Shin Megami Tensei V
+    wikidata: Q44379841
+- model: games.game
+  pk: 6
+  fields:
+    name: Forspoken
+    wikidata: Q96240948
+- model: games.game
+  pk: 7
+  fields:
+    name: Metal Hellsinger
+    wikidata: Q96252758
+- model: games.game
+  pk: 8
+  fields:
+    name: Valkyrie Elysium
+    wikidata: Q111200610
+- model: games.game
+  pk: 9
+  fields:
+    name: God of War Ragnarök
+    wikidata: Q99397916
+- model: games.game
+  pk: 10
+  fields:
+    name: 'Metal Gear Solid V: Ground Zeroes'
+    wikidata: Q11879017
+- model: games.game
+  pk: 11
+  fields:
+    name: Grand Theft Auto V
+    wikidata: Q17452
+- model: games.game
+  pk: 12
+  fields:
+    name: 'Wo Long: Fallen Dynasty'
+    wikidata: Q112566486
+- model: games.game
+  pk: 13
+  fields:
+    name: Tony Hawk's Pro Skater 1 + 2
+    wikidata: Q94587084
+- model: games.game
+  pk: 14
+  fields:
+    name: Final Fantasy VII
+    wikidata: Q214232
+- model: games.game
+  pk: 15
+  fields:
+    name: Final Fantasy VII Remake
+    wikidata: Q20155152
+- model: games.game
+  pk: 16
+  fields:
+    name: Stray
+    wikidata: Q96247255
+- model: games.game
+  pk: 17
+  fields:
+    name: 'Metal Gear Solid V: The Phantom Pain'
+    wikidata: Q717600
+- model: games.game
+  pk: 18
+  fields:
+    name: Atelier Ayesha ~The Alchemist of Dusk~
+    wikidata: Q4813026
+- model: games.purchase
+  pk: 1
+  fields:
+    game: 1
+    platform: 1
+    date_purchased: 2021-02-13
+    date_refunded: null
+- model: games.purchase
+  pk: 2
+  fields:
+    game: 2
+    platform: 1
+    date_purchased: 2022-02-24
+    date_refunded: null
+- model: games.purchase
+  pk: 3
+  fields:
+    game: 3
+    platform: 1
+    date_purchased: 2020-12-07
+    date_refunded: null
+- model: games.purchase
+  pk: 4
+  fields:
+    game: 4
+    platform: 9
+    date_purchased: 2023-01-10
+    date_refunded: null
+- model: games.purchase
+  pk: 5
+  fields:
+    game: 5
+    platform: 9
+    date_purchased: 2023-01-10
+    date_refunded: null
+- model: games.purchase
+  pk: 6
+  fields:
+    game: 1
+    platform: 5
+    date_purchased: 2022-11-19
+    date_refunded: null
+- model: games.purchase
+  pk: 7
+  fields:
+    game: 6
+    platform: 5
+    date_purchased: 2022-12-10
+    date_refunded: null
+- model: games.purchase
+  pk: 8
+  fields:
+    game: 7
+    platform: 5
+    date_purchased: 2022-12-11
+    date_refunded: null
+- model: games.purchase
+  pk: 9
+  fields:
+    game: 8
+    platform: 5
+    date_purchased: 2022-12-11
+    date_refunded: null
+- model: games.purchase
+  pk: 10
+  fields:
+    game: 9
+    platform: 5
+    date_purchased: 2022-11-11
+    date_refunded: null
+- model: games.purchase
+  pk: 11
+  fields:
+    game: 10
+    platform: 1
+    date_purchased: 2019-12-01
+    date_refunded: null
+- model: games.purchase
+  pk: 12
+  fields:
+    game: 11
+    platform: 5
+    date_purchased: 2022-03-22
+    date_refunded: null
+- model: games.purchase
+  pk: 13
+  fields:
+    game: 12
+    platform: 5
+    date_purchased: 2022-09-18
+    date_refunded: null
+- model: games.purchase
+  pk: 14
+  fields:
+    game: 13
+    platform: 5
+    date_purchased: 2022-08-17
+    date_refunded: null
+- model: games.purchase
+  pk: 15
+  fields:
+    game: 14
+    platform: 5
+    date_purchased: 2022-07-26
+    date_refunded: null
+- model: games.purchase
+  pk: 16
+  fields:
+    game: 15
+    platform: 5
+    date_purchased: 2022-01-16
+    date_refunded: null
+- model: games.purchase
+  pk: 17
+  fields:
+    game: 16
+    platform: 5
+    date_purchased: 2022-07-19
+    date_refunded: null
+- model: games.purchase
+  pk: 18
+  fields:
+    game: 17
+    platform: 1
+    date_purchased: 2019-01-12
+    date_refunded: null
+- model: games.purchase
+  pk: 19
+  fields:
+    game: 18
+    platform: 5
+    date_purchased: 2022-07-03
+    date_refunded: null
+- model: games.platform
+  pk: 1
+  fields:
+    name: Steam
+    group: PC
+- model: games.platform
+  pk: 2
+  fields:
+    name: Xbox Gamepass
+    group: PC
+- model: games.platform
+  pk: 4
+  fields:
+    name: Epic Games Store
+    group: PC
+- model: games.platform
+  pk: 5
+  fields:
+    name: Playstation 5
+    group: Playstation
+- model: games.platform
+  pk: 6
+  fields:
+    name: Playstation 4
+    group: Playstation
+- model: games.platform
+  pk: 7
+  fields:
+    name: Nintendo Switch
+    group: Nintendo
+- model: games.platform
+  pk: 8
+  fields:
+    name: Nintendo 3DS
+    group: Nintendo
+- model: games.platform
+  pk: 9
+  fields:
+    name: Yuzu
+    group: Emulator
+- model: games.session
+  pk: 25
+  fields:
+    purchase: 3
+    timestamp_start: 2019-12-31 23:00:00+00:00
+    timestamp_end: null
+    duration_manual: '12:00:00'
+    duration_calculated: 00:00:00
+    note: ''
+- model: games.session
+  pk: 26
+  fields:
+    purchase: 2
+    timestamp_start: 2022-12-31 14:25:00+00:00
+    timestamp_end: 2022-12-31 16:25:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:00:00
+    note: ''
+- model: games.session
+  pk: 27
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-01 22:00:00+00:00
+    timestamp_end: 2023-01-01 23:28:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:28:00
+    note: ''
+- model: games.session
+  pk: 28
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-02 21:08:00+00:00
+    timestamp_end: 2023-01-03 00:08:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:00:00
+    note: ''
+- model: games.session
+  pk: 29
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-03 21:36:00+00:00
+    timestamp_end: 2023-01-03 23:12:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:36:00
+    note: ''
+- model: games.session
+  pk: 30
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-04 19:35:00+00:00
+    timestamp_end: 2023-01-04 21:36:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:01:00
+    note: ''
+- model: games.session
+  pk: 31
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-06 17:48:00+00:00
+    timestamp_end: 2023-01-06 22:39:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:51:00
+    note: ''
+- model: games.session
+  pk: 32
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-07 22:49:00+00:00
+    timestamp_end: 2023-01-08 00:43:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:54:00
+    note: ''
+- model: games.session
+  pk: 33
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-08 15:21:00+00:00
+    timestamp_end: 2023-01-08 17:27:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:06:00
+    note: ''
+- model: games.session
+  pk: 34
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-08 18:04:00+00:00
+    timestamp_end: 2023-01-08 21:03:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:59:00
+    note: ''
+- model: games.session
+  pk: 35
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-09 18:35:48+00:00
+    timestamp_end: 2023-01-09 21:13:20.519058+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '02:37:32.519058'
+    note: ''
+- model: games.session
+  pk: 36
+  fields:
+    purchase: 4
+    timestamp_start: 2023-01-10 14:50:12+00:00
+    timestamp_end: 2023-01-10 16:03:45.424429+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '01:13:33.424429'
+    note: ''
+- model: games.session
+  pk: 37
+  fields:
+    purchase: 5
+    timestamp_start: 2023-01-10 16:05:32+00:00
+    timestamp_end: 2023-01-10 16:12:42.417912+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '00:07:10.417912'
+    note: ''
+- model: games.session
+  pk: 38
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-10 16:59:33+00:00
+    timestamp_end: 2023-01-10 19:38:32.848575+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '02:38:59.848575'
+    note: ''
+- model: games.session
+  pk: 39
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-11 17:10:41+00:00
+    timestamp_end: 2023-01-11 20:28:18.457008+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '03:17:37.457008'
+    note: ''
+- model: games.session
+  pk: 40
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-12 18:26:50+00:00
+    timestamp_end: 2023-01-12 20:49:12.263807+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '02:22:22.263807'
+    note: ''
+- model: games.session
+  pk: 41
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-13 14:27:35+00:00
+    timestamp_end: 2023-01-13 15:10:22.347944+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '00:42:47.347944'
+    note: ''
+- model: games.session
+  pk: 42
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-13 16:30:20.198534+00:00
+    timestamp_end: 2023-01-13 21:00:16.376286+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '04:29:56.177752'
+    note: ''
+- model: games.session
+  pk: 43
+  fields:
+    purchase: 2
+    timestamp_start: 2021-12-31 23:00:00+00:00
+    timestamp_end: null
+    duration_manual: 9 00:25:00
+    duration_calculated: 00:00:00
+    note: ''
+- model: games.session
+  pk: 44
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-14 08:29:13.515133+00:00
+    timestamp_end: 2023-01-14 15:29:00.504799+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '06:59:46.989666'
+    note: ''
+- model: games.session
+  pk: 45
+  fields:
+    purchase: 3
+    timestamp_start: 2023-01-14 16:18:26.228000+00:00
+    timestamp_end: 2023-01-14 20:34:42.565242+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '04:16:16.337242'
+    note: ''
+- model: games.session
+  pk: 46
+  fields:
+    purchase: 6
+    timestamp_start: 2022-11-25 20:01:00+00:00
+    timestamp_end: 2022-11-25 20:43:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:42:00
+    note: ''
+- model: games.session
+  pk: 47
+  fields:
+    purchase: 6
+    timestamp_start: 2022-11-25 20:46:00+00:00
+    timestamp_end: 2022-11-25 21:56:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:10:00
+    note: ''
+- model: games.session
+  pk: 48
+  fields:
+    purchase: 6
+    timestamp_start: 2022-11-26 13:18:00+00:00
+    timestamp_end: 2022-11-26 15:28:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:10:00
+    note: ''
+- model: games.session
+  pk: 49
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-03 22:26:00+00:00
+    timestamp_end: 2022-12-04 01:01:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:35:00
+    note: ''
+- model: games.session
+  pk: 50
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-04 14:48:00+00:00
+    timestamp_end: 2022-12-04 17:31:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:43:00
+    note: ''
+- model: games.session
+  pk: 51
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-06 18:43:00+00:00
+    timestamp_end: 2022-12-06 22:16:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:33:00
+    note: ''
+- model: games.session
+  pk: 52
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-07 19:03:00+00:00
+    timestamp_end: 2022-12-07 19:57:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:54:00
+    note: ''
+- model: games.session
+  pk: 53
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-08 20:14:00+00:00
+    timestamp_end: 2022-12-08 22:16:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:02:00
+    note: ''
+- model: games.session
+  pk: 54
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-10 13:44:00+00:00
+    timestamp_end: 2022-12-10 16:29:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:45:00
+    note: ''
+- model: games.session
+  pk: 55
+  fields:
+    purchase: 7
+    timestamp_start: 2022-12-10 16:29:00+00:00
+    timestamp_end: 2022-12-10 17:10:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:41:00
+    note: ''
+- model: games.session
+  pk: 56
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-10 22:11:00+00:00
+    timestamp_end: 2022-12-10 22:26:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:15:00
+    note: ''
+- model: games.session
+  pk: 57
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-10 22:31:00+00:00
+    timestamp_end: 2022-12-10 23:50:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:19:00
+    note: ''
+- model: games.session
+  pk: 58
+  fields:
+    purchase: 8
+    timestamp_start: 2022-12-10 23:50:00+00:00
+    timestamp_end: 2022-12-11 00:07:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:17:00
+    note: ''
+- model: games.session
+  pk: 59
+  fields:
+    purchase: 9
+    timestamp_start: 2022-12-11 00:07:00+00:00
+    timestamp_end: 2022-12-11 00:20:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:13:00
+    note: ''
+- model: games.session
+  pk: 60
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-11 15:01:00+00:00
+    timestamp_end: 2022-12-11 17:21:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:20:00
+    note: ''
+- model: games.session
+  pk: 61
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-12 20:41:00+00:00
+    timestamp_end: 2022-12-12 22:34:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:53:00
+    note: ''
+- model: games.session
+  pk: 62
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-14 20:25:00+00:00
+    timestamp_end: 2022-12-14 21:57:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:32:00
+    note: ''
+- model: games.session
+  pk: 63
+  fields:
+    purchase: 6
+    timestamp_start: 2022-12-17 13:34:00+00:00
+    timestamp_end: 2022-12-17 16:53:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:19:00
+    note: ''
+- model: games.session
+  pk: 64
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-24 17:03:00+00:00
+    timestamp_end: 2022-11-24 19:32:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:29:00
+    note: ''
+- model: games.session
+  pk: 65
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-22 18:41:00+00:00
+    timestamp_end: 2022-11-23 01:52:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 07:11:00
+    note: ''
+- model: games.session
+  pk: 66
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-21 16:52:00+00:00
+    timestamp_end: 2022-11-21 22:51:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 05:59:00
+    note: ''
+- model: games.session
+  pk: 67
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-20 20:11:00+00:00
+    timestamp_end: 2022-11-20 23:13:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:02:00
+    note: ''
+- model: games.session
+  pk: 68
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-20 15:34:00+00:00
+    timestamp_end: 2022-11-20 16:50:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:16:00
+    note: ''
+- model: games.session
+  pk: 69
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-19 21:46:00+00:00
+    timestamp_end: 2022-11-19 23:52:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:06:00
+    note: ''
+- model: games.session
+  pk: 70
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-19 08:30:00+00:00
+    timestamp_end: 2022-11-19 10:14:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:44:00
+    note: ''
+- model: games.session
+  pk: 71
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-18 17:15:00+00:00
+    timestamp_end: 2022-11-18 22:16:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 05:01:00
+    note: ''
+- model: games.session
+  pk: 72
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-18 13:58:00+00:00
+    timestamp_end: 2022-11-18 14:40:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:42:00
+    note: ''
+- model: games.session
+  pk: 73
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-17 21:50:00+00:00
+    timestamp_end: 2022-11-18 00:25:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:35:00
+    note: ''
+- model: games.session
+  pk: 74
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-17 13:36:00+00:00
+    timestamp_end: 2022-11-17 18:26:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:50:00
+    note: ''
+- model: games.session
+  pk: 75
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-17 07:16:00+00:00
+    timestamp_end: 2022-11-17 10:13:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:57:00
+    note: ''
+- model: games.session
+  pk: 76
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-16 15:45:00+00:00
+    timestamp_end: 2022-11-16 16:38:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:53:00
+    note: ''
+- model: games.session
+  pk: 77
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-15 18:14:00+00:00
+    timestamp_end: 2022-11-15 22:28:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:14:00
+    note: ''
+- model: games.session
+  pk: 78
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-14 19:33:00+00:00
+    timestamp_end: 2022-11-14 23:06:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:33:00
+    note: ''
+- model: games.session
+  pk: 79
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-13 18:37:00+00:00
+    timestamp_end: 2022-11-13 22:43:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:06:00
+    note: ''
+- model: games.session
+  pk: 80
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-12 17:32:00+00:00
+    timestamp_end: 2022-11-12 21:45:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:13:00
+    note: ''
+- model: games.session
+  pk: 81
+  fields:
+    purchase: 10
+    timestamp_start: 2022-11-11 21:17:00+00:00
+    timestamp_end: 2022-11-11 23:00:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:43:00
+    note: ''
+- model: games.session
+  pk: 82
+  fields:
+    purchase: 1
+    timestamp_start: 2021-12-31 23:00:00+00:00
+    timestamp_end: null
+    duration_manual: 1 23:54:00
+    duration_calculated: 00:00:00
+    note: ''
+- model: games.session
+  pk: 83
+  fields:
+    purchase: 11
+    timestamp_start: 2019-12-01 23:00:00+00:00
+    timestamp_end: null
+    duration_manual: 00:55:00
+    duration_calculated: 00:00:00
+    note: ''
+- model: games.session
+  pk: 84
+  fields:
+    purchase: 11
+    timestamp_start: 2023-01-15 18:27:33+00:00
+    timestamp_end: 2023-01-15 20:02:39.845888+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '01:35:06.845888'
+    note: ''
+- model: games.session
+  pk: 86
+  fields:
+    purchase: 12
+    timestamp_start: 2022-10-02 11:01:00+00:00
+    timestamp_end: 2022-10-02 11:23:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:22:00
+    note: ''
+- model: games.session
+  pk: 87
+  fields:
+    purchase: 12
+    timestamp_start: 2022-10-01 22:59:00+00:00
+    timestamp_end: 2022-10-02 00:54:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:55:00
+    note: ''
+- model: games.session
+  pk: 88
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-30 07:40:00+00:00
+    timestamp_end: 2022-09-30 11:50:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 04:10:00
+    note: ''
+- model: games.session
+  pk: 89
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-27 07:38:00+00:00
+    timestamp_end: 2022-09-27 09:16:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:38:00
+    note: ''
+- model: games.session
+  pk: 90
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-27 04:27:00+00:00
+    timestamp_end: 2022-09-27 06:09:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:42:00
+    note: ''
+- model: games.session
+  pk: 91
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-26 05:58:00+00:00
+    timestamp_end: 2022-09-26 08:38:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:40:00
+    note: ''
+- model: games.session
+  pk: 92
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-25 08:56:00+00:00
+    timestamp_end: 2022-09-25 11:36:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 02:40:00
+    note: ''
+- model: games.session
+  pk: 93
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-24 23:57:00+00:00
+    timestamp_end: 2022-09-25 01:38:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:41:00
+    note: ''
+- model: games.session
+  pk: 94
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-24 11:04:00+00:00
+    timestamp_end: 2022-09-24 11:12:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:08:00
+    note: ''
+- model: games.session
+  pk: 95
+  fields:
+    purchase: 12
+    timestamp_start: 2022-09-23 05:33:00+00:00
+    timestamp_end: 2022-09-23 08:38:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:05:00
+    note: ''
+- model: games.session
+  pk: 96
+  fields:
+    purchase: 13
+    timestamp_start: 2022-09-18 00:26:00+00:00
+    timestamp_end: 2022-09-18 01:58:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:32:00
+    note: ''
+- model: games.session
+  pk: 97
+  fields:
+    purchase: 12
+    timestamp_start: 2022-08-30 09:42:00+00:00
+    timestamp_end: 2022-08-30 10:15:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:33:00
+    note: ''
+- model: games.session
+  pk: 98
+  fields:
+    purchase: 12
+    timestamp_start: 2022-08-17 22:43:00+00:00
+    timestamp_end: 2022-08-18 00:12:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:29:00
+    note: ''
+- model: games.session
+  pk: 99
+  fields:
+    purchase: 12
+    timestamp_start: 2022-08-17 09:42:00+00:00
+    timestamp_end: 2022-08-17 10:58:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:16:00
+    note: ''
+- model: games.session
+  pk: 100
+  fields:
+    purchase: 14
+    timestamp_start: 2022-08-17 09:40:00+00:00
+    timestamp_end: 2022-08-17 09:42:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:02:00
+    note: ''
+- model: games.session
+  pk: 101
+  fields:
+    purchase: 14
+    timestamp_start: 2022-08-14 00:46:00+00:00
+    timestamp_end: 2022-08-14 01:10:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:24:00
+    note: ''
+- model: games.session
+  pk: 102
+  fields:
+    purchase: 15
+    timestamp_start: 2022-07-26 03:56:00+00:00
+    timestamp_end: 2022-07-26 05:22:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:26:00
+    note: ''
+- model: games.session
+  pk: 103
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-26 02:39:00+00:00
+    timestamp_end: 2022-07-26 03:53:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:14:00
+    note: ''
+- model: games.session
+  pk: 104
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-25 07:12:00+00:00
+    timestamp_end: 2022-07-25 13:37:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 06:25:00
+    note: ''
+- model: games.session
+  pk: 105
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-23 09:09:00+00:00
+    timestamp_end: 2022-07-23 14:33:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 05:24:00
+    note: ''
+- model: games.session
+  pk: 106
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-23 08:34:00+00:00
+    timestamp_end: 2022-07-23 08:48:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:14:00
+    note: ''
+- model: games.session
+  pk: 107
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-23 03:05:00+00:00
+    timestamp_end: 2022-07-23 04:44:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:39:00
+    note: ''
+- model: games.session
+  pk: 108
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-22 02:07:00+00:00
+    timestamp_end: 2022-07-22 10:48:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 08:41:00
+    note: ''
+- model: games.session
+  pk: 109
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-22 00:26:00+00:00
+    timestamp_end: 2022-07-22 00:59:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:33:00
+    note: ''
+- model: games.session
+  pk: 110
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-21 06:27:00+00:00
+    timestamp_end: 2022-07-21 07:43:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:16:00
+    note: ''
+- model: games.session
+  pk: 111
+  fields:
+    purchase: 16
+    timestamp_start: 2022-07-21 05:48:00+00:00
+    timestamp_end: 2022-07-21 05:58:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:10:00
+    note: ''
+- model: games.session
+  pk: 112
+  fields:
+    purchase: 17
+    timestamp_start: 2022-07-20 10:24:00+00:00
+    timestamp_end: 2022-07-20 11:34:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 01:10:00
+    note: ''
+- model: games.session
+  pk: 113
+  fields:
+    purchase: 17
+    timestamp_start: 2022-07-19 08:49:00+00:00
+    timestamp_end: 2022-07-19 12:24:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 03:35:00
+    note: ''
+- model: games.session
+  pk: 115
+  fields:
+    purchase: 11
+    timestamp_start: 2023-01-18 16:29:53.226199+00:00
+    timestamp_end: 2023-01-18 17:59:25.814759+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '01:29:32.588560'
+    note: ''
+- model: games.session
+  pk: 116
+  fields:
+    purchase: 18
+    timestamp_start: 2023-01-18 18:32:02+00:00
+    timestamp_end: 2023-01-18 21:29:53.302342+00:00
+    duration_manual: 00:00:00
+    duration_calculated: '02:57:51.302342'
+    note: ''
+- model: games.session
+  pk: 117
+  fields:
+    purchase: 19
+    timestamp_start: 2022-07-03 18:26:00+00:00
+    timestamp_end: 2022-07-03 18:34:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:08:00
+    note: ''
+- model: games.session
+  pk: 118
+  fields:
+    purchase: 19
+    timestamp_start: 2022-07-01 14:20:00+00:00
+    timestamp_end: 2022-07-01 14:46:00+00:00
+    duration_manual: 00:00:00
+    duration_calculated: 00:26:00
+    note: ''

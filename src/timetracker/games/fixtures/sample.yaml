@@ -1,0 +1,71 @@
+- model: games.game
+  pk: 1
+  fields:
+    name: Nioh 2
+    wikidata: Q67482292
+- model: games.game
+  pk: 2
+  fields:
+    name: Elden Ring
+    wikidata: Q64826862
+- model: games.game
+  pk: 3
+  fields:
+    name: Cyberpunk 2077
+    wikidata: Q3182559
+- model: games.purchase
+  pk: 1
+  fields:
+    game: 1
+    platform: 1
+    date_purchased: 2021-02-13
+    date_refunded: null
+- model: games.purchase
+  pk: 2
+  fields:
+    game: 2
+    platform: 1
+    date_purchased: 2022-02-24
+    date_refunded: null
+- model: games.purchase
+  pk: 3
+  fields:
+    game: 3
+    platform: 1
+    date_purchased: 2020-12-07
+    date_refunded: null
+- model: games.platform
+  pk: 1
+  fields:
+    name: Steam
+    group: PC
+- model: games.platform
+  pk: 3
+  fields:
+    name: Xbox Gamepass
+    group: PC
+- model: games.platform
+  pk: 4
+  fields:
+    name: Epic Games Store
+    group: PC
+- model: games.platform
+  pk: 5
+  fields:
+    name: Playstation 5
+    group: Playstation
+- model: games.platform
+  pk: 6
+  fields:
+    name: Playstation 4
+    group: Playstation
+- model: games.platform
+  pk: 7
+  fields:
+    name: Nintendo Switch
+    group: Nintendo
+- model: games.platform
+  pk: 8
+  fields:
+    name: Nintendo 3DS
+    group: Nintendo

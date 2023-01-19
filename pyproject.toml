@@ -5,6 +5,7 @@ description = "A simple time tracker."
 authors = ["Lukáš Kucharczyk <lukas@kucharczyk.xyz>"]
 license = "GPL"
 readme = "README.md"
+packages = [{include = "timetracker", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"

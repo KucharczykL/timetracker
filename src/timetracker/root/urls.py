@@ -1,4 +1,4 @@
-"""web URL Configuration
+"""timetracker URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/4.1/topics/http/urls/
@@ -20,7 +20,7 @@ from django.views.generic import RedirectView
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/tracker/list-sessions")),
-    path("tracker/", include("tracker.urls")),
+    path("tracker/", include("games.urls")),
 ]
 
 if settings.DEBUG:

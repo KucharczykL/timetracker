@@ -5,4 +5,4 @@
 .venv
 .vscode
 node_modules
-src/web/static/*
+src/timetracker/static/*

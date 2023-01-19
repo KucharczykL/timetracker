@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 import pandas as pd
 from django.db.models import F, IntegerField, QuerySet, Sum
 from django.db.models.functions import TruncDay
-from tracker.models import Session
+from games.models import Session
 
 
 def key_value_to_value_value(data):

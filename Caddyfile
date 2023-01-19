@@ -5,7 +5,7 @@
 
 :8000 {
     handle_path /static/* {
-        root * src/web/static/
+        root * src/timetracker/static/
         file_server
     }
     handle {

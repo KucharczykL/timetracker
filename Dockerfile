@@ -2,7 +2,7 @@ FROM node as css
 WORKDIR /app
 COPY . /app
 RUN npm install && \
-    npx tailwindcss -i ./src/input.css -o ./src/web/tracker/static/base.css --minify
+    npx tailwindcss -i ./src/input.css -o ./src/timetracker/games/static/base.css --minify
 
 FROM python:3.10.9-slim-bullseye
 
@@ -26,7 +26,7 @@ RUN useradd -m --uid 1000 timetracker
 WORKDIR /home/timetracker/app
 COPY . /home/timetracker/app/
 RUN chown -R timetracker:timetracker /home/timetracker/app
-COPY --from=css /app/src/web/tracker/static/base.css /home/timetracker/app/src/web/tracker/static/base.css
+COPY --from=css /app/src/timetracker/games/static/base.css /home/timetracker/app/src/timetracker/games/static/base.css
 COPY entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 

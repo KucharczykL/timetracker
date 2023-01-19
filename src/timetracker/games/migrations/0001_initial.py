@@ -60,14 +60,14 @@ class Migration(migrations.Migration):
                 (
                     "game",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, to="tracker.game"
+                        on_delete=django.db.models.deletion.CASCADE, to="games.game"
                     ),
                 ),
                 (
                     "platform",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="tracker.platform",
+                        to="games.platform",
                     ),
                 ),
             ],
@@ -93,7 +93,7 @@ class Migration(migrations.Migration):
                     "purchase",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="tracker.purchase",
+                        to="games.purchase",
                     ),
                 ),
             ],

@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tracker", "0002_alter_session_duration_manual"),
+        ("games", "0002_alter_session_duration_manual"),
     ]
 
     operations = [
