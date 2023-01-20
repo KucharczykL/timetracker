@@ -31,4 +31,4 @@ RUN pip install --no-cache-dir poetry
 RUN poetry install --without dev
 
 EXPOSE 8000
-ENTRYPOINT [ "/entrypoint.sh" ]
+CMD [ "/entrypoint.sh" ]
