@@ -2,6 +2,7 @@
 
 * Fixed
   * Sort form fields alphabetically (https://git.kucharczyk.xyz/lukas/timetracker/issues/39, https://git.kucharczyk.xyz/lukas/timetracker/issues/40)
+  * Start session button starts different game than it says (#44)
 
 ## 0.2.5 / 2023-01-18 17:01+01:00
 

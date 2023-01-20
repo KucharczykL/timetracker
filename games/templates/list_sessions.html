@@ -18,7 +18,7 @@
             {% if purchase %}<a class="dark:text-white hover:underline block" href="{% url 'list_sessions_by_game' purchase.game.id %}">See all platforms</a>{% endif %}
             {% endif %}
             {% if dataset.count >= 1 %}
-            <a class="clear-both" href="{% url 'start_session' dataset.last.purchase.id %}">
+            <a class="clear-both" href="{% url 'start_session' last.purchase.id %}">
                 <button type="button" title="Track last tracked" class="mt-10 py-1 px-2 bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg ">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="self-center w-6 h-6 inline">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
