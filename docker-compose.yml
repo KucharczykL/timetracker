@@ -1,17 +1,28 @@
 ---
 services:
-  timetracker:
+  backend:
     image: registry.kucharczyk.xyz/timetracker
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: timetracker
     environment:
       - TZ=Europe/Prague
       - CSRF_TRUSTED_ORIGINS="https://tracker.kucharczyk.xyz"
     user: "1000"
-    # volumes:
-    #   - "db:/home/timetracker/app/src/timetracker/db.sqlite3"
+    volumes:
+      - "static-files:/home/timetracker/app/static"
+    restart: unless-stopped
+
+  frontend:
+    image: caddy
+    volumes:
+      - "static-files:/usr/share/caddy"
+      - "$PWD/Caddyfile:/etc/caddy/Caddyfile"
     ports:
       - "8000:8000"
-    restart: unless-stopped
+    depends_on:
+      - backend
+
+volumes:
+  static-files:
+    

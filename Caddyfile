@@ -5,10 +5,10 @@
 
 :8000 {
     handle_path /static/* {
-        root * static/
+        root * /usr/share/caddy
         file_server
     }
     handle {
-        reverse_proxy :8001
+        reverse_proxy backend:8001
     }
 }

@@ -1,0 +1,17 @@
+---
+services:
+  timetracker:
+    image: registry.kucharczyk.xyz/timetracker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: timetracker
+    environment:
+      - TZ=Europe/Prague
+      - CSRF_TRUSTED_ORIGINS="https://tracker.kucharczyk.xyz"
+    user: "1000"
+    # volumes:
+    #   - "db:/home/timetracker/app/src/timetracker/db.sqlite3"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
