@@ -2,10 +2,10 @@
 # Apply database migrations
 set -euo pipefail
 echo "Apply database migrations"
-poetry run python src/timetracker/manage.py migrate
+poetry run python manage.py migrate
 
 echo "Collect static files"
-poetry run python src/timetracker/manage.py collectstatic --clear --no-input
+poetry run python manage.py collectstatic --clear --no-input
 
 echo "Starting server"
 caddy start
