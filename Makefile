@@ -34,6 +34,9 @@ dumpgames:
 loadplatforms:
 	poetry run python manage.py loaddata platforms.yaml
 
+loadall:
+	poetry run python manage.py loaddata data.yaml
+
 loadsample:
 	poetry run python manage.py loaddata sample.yaml
 
