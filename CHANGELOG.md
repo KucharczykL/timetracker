@@ -1,5 +1,7 @@
-## Unreleased
+## 1.0.0 / 2023-01-20 19:54+01:00
 
+* Breaking
+  * Due to major re-arranging and re-naming of the folder structure, tables also had to be renamed.
 * Fixed
   * Sort form fields alphabetically (https://git.kucharczyk.xyz/lukas/timetracker/issues/39, https://git.kucharczyk.xyz/lukas/timetracker/issues/40)
   * Start session button starts different game than it says (#44)
