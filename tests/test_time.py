@@ -1,7 +1,7 @@
 import unittest
 from datetime import timedelta
 
-from timetracker.common.util.time import format_duration
+from common.time import format_duration
 
 
 class FormatDurationTest(unittest.TestCase):

@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from common.util.plots import playtime_over_time_chart
-from common.util.time import now as now_with_tz
+from common.plots import playtime_over_time_chart
+from common.time import now as now_with_tz
 from django.conf import settings
 from django.shortcuts import redirect, render
 

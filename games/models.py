@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from timetracker.common.util.time import format_duration
+from common.time import format_duration
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Manager, Sum

@@ -54,7 +54,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "root.urls"
+ROOT_URLCONF = "timetracker.urls"
 
 TEMPLATES = [
     {
@@ -73,7 +73,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "root.wsgi.application"
+WSGI_APPLICATION = "timetracker.wsgi.application"
 
 
 # Database
