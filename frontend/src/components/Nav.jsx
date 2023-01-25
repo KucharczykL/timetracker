@@ -1,16 +1,18 @@
+import { Link } from 'react-router-dom';
+
 function Nav() {
   return (
     <nav className="mb-4 bg-white dark:bg-gray-900 border-gray-200 rounded">
       <div className="container flex flex-wrap items-center justify-between mx-auto">
-        <a
-          href="{% url 'index' %}"
+        <Link
+          to="/"
           className="flex items-center"
         >
           <span className="text-4xl">⌚</span>
           <span className="self-center text-xl font-semibold whitespace-nowrap text-white">
             Timetracker
           </span>
-        </a>
+        </Link>
         <div className="w-full md:block md:w-auto">
           <ul className="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
             <li>
@@ -51,12 +53,12 @@ function Nav() {
             {/* {% endif %} */}
             {/* {% if session_count > 0 %} */}
             <li>
-              <a
+              <Link
                 className="block py-2 pl-3 pr-4 hover:underline"
-                href="{% url 'list_sessions' %}"
+                to="/sessions"
               >
                 All Sessions
-              </a>
+              </Link>
             </li>
             {/* {% endif %} */}
           </ul>

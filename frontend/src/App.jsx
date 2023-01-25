@@ -1,15 +1,15 @@
-import { useState } from "react";
 import "./App.css";
 import Nav from "./components/Nav";
+import { Outlet, useLoaderData } from "react-router-dom";
 
 function App() {
-  const [count, setCount] = useState(0);
+  
 
   return (
     <>
       <div className="dark:bg-gray-800 min-h-screen">
         <Nav />
-        {/* {% block content %}No content here.{% endblock content %} */}
+        <Outlet />
       </div>
       {/* {% load version %} */}
       {/* <span className="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span> */}
