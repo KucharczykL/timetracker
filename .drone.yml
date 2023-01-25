@@ -25,9 +25,7 @@ steps:
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
-    tags:
-      - ${DRONE_COMMIT_REF}
-      - ${DRONE_COMMIT_BRANCH}
+    auto_tag: true
   when:
     branch:
       exclude:
