@@ -11,15 +11,30 @@ steps:
     - poetry install
     - poetry env info
     - poetry run pytest
-- name: build container
+- name: build container (prod)
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
     tags:
       - latest
+  when:
+    branch:
+      - main
+
+- name: build container (non-prod)
+  image: plugins/docker
+  settings:
+    repo: registry.kucharczyk.xyz/timetracker
+    tags:
+      - ${DRONE_COMMIT_REF}
+      - ${DRONE_COMMIT_BRANCH}
+  when:
+    branch:
+      exclude:
+        - main
+    
+    
 trigger:
   event:
   - push
   - cron
-  exclude:
-    - pull_request
