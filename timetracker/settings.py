@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
 ]
 
 if DEBUG:
@@ -149,3 +150,9 @@ if _csrf_trusted_origins:
     CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins.split(",")
 else:
     CSRF_TRUSTED_ORIGINS = []
+
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
+    ]
+}
