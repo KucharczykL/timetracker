@@ -1,17 +1,11 @@
-all: css migrate
+all: migrate
 
-initialize: npm css migrate sethookdir loadplatforms
+initialize: npm migrate sethookdir loadplatforms
 
 HTMLFILES := $(shell find games/templates -type f)
 
 npm:
 	npm install
-
-css: input.css
-	npx tailwindcss -i ./input.css -o  ./games/static/base.css
-
-css-dev: css
-	npx tailwindcss -i ./input.css -o  ./games/static/base.css --watch
 
 makemigrations:
 	poetry run python manage.py makemigrations
