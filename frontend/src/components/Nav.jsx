@@ -2,7 +2,10 @@ function Nav() {
   return (
     <nav className="mb-4 bg-white dark:bg-gray-900 border-gray-200 rounded">
       <div className="container flex flex-wrap items-center justify-between mx-auto">
-        <a href="{% url 'index' %}" className="flex items-center">
+        <a
+          href="{% url 'index' %}"
+          className="flex items-center"
+        >
           <span className="text-4xl">⌚</span>
           <span className="self-center text-xl font-semibold whitespace-nowrap text-white">
             Timetracker
@@ -63,4 +66,4 @@ function Nav() {
   );
 }
 
-export default Nav
+export default Nav;
