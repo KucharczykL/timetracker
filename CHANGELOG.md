@@ -1,4 +1,4 @@
-## Unrelease
+## 1.0.1 / 2023-01-30 22:17+01:00
 
 * Make it possible to edit sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/46)
 * Show markers on smaller graphs to make it clearer which dates the session belong to
