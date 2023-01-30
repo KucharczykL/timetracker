@@ -23,6 +23,7 @@ urlpatterns = [
         name="delete_session",
     ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
+    path("edit-session/<int:session_id>", views.edit_session, name="edit_session"),
     path("list-sessions/", views.list_sessions, name="list_sessions"),
     path(
         "list-sessions/by-purchase/<int:purchase_id>",

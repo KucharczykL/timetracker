@@ -1,6 +1,7 @@
 ## Unrelease
 
 * Add React
+* Make it possible to edit sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/46)
 
 ## 1.0.0 / 2023-01-20 19:54+01:00
 

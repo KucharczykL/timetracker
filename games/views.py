@@ -47,6 +47,18 @@ def update_session(request, session_id=None):
     return redirect("list_sessions")
 
 
+def edit_session(request, session_id=None):
+    context = {}
+    session = Session.objects.get(id=session_id)
+    form = SessionForm(request.POST or None, instance=session)
+    if form.is_valid():
+        form.save()
+        return redirect("list_sessions")
+    context["title"] = "Edit Session"
+    context["form"] = form
+    return render(request, "add.html", context)
+
+
 def start_session(request, purchase_id=None):
     session = SessionForm({"purchase": purchase_id, "timestamp_start": now_with_tz()})
     session.save()
