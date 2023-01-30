@@ -64,7 +64,7 @@ def get_chart(data, title="", xlabel="", ylabel=""):
     plt.switch_backend("SVG")
     fig, ax = plt.subplots()
     fig.set_size_inches(10, 4)
-    ax.plot(x, y)
+    lines = ax.plot(x, y, "-o")
     first = x[0]
     last = x[-1]
     difference = last - first
@@ -76,7 +76,11 @@ def get_chart(data, title="", xlabel="", ylabel=""):
     elif difference.days < 720:
         ax.xaxis.set_major_locator(mdates.MonthLocator())
         ax.xaxis.set_minor_locator(mdates.WeekdayLocator())
+        for line in lines:
+            line.set_marker("")
     else:
+        for line in lines:
+            line.set_marker("")
         ax.xaxis.set_major_locator(mdates.YearLocator())
         ax.xaxis.set_minor_locator(mdates.MonthLocator())
 
