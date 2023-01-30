@@ -19,7 +19,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 
 urlpatterns = [
-    path("", RedirectView.as_view(url="/tracker/list-sessions")),
+    path("", RedirectView.as_view(url="/tracker")),
     path("tracker/", include("games.urls")),
 ]
 

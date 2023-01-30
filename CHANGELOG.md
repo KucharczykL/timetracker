@@ -2,6 +2,7 @@
 
 * Make it possible to edit sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/46)
 * Show markers on smaller graphs to make it clearer which dates the session belong to
+* Show only last 30 days on the homepage (https://git.kucharczyk.xyz/lukas/timetracker/issues/47)
 
 ## 1.0.0 / 2023-01-20 19:54+01:00
 

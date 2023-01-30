@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from common.plots import playtime_over_time_chart
@@ -73,6 +73,7 @@ def delete_session(request, session_id=None):
 
 def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""):
     context = {}
+    context["title"] = "Sessions"
 
     if filter == "purchase":
         dataset = Session.objects.filter(purchase=purchase_id)
@@ -83,6 +84,11 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
     elif filter == "game":
         dataset = Session.objects.filter(purchase__game=game_id)
         context["game"] = Game.objects.get(id=game_id)
+    elif filter == "recent":
+        dataset = Session.objects.filter(
+            timestamp_start__gte=datetime.now() - timedelta(days=30)
+        )
+        context["title"] = "Last 30 days"
     else:
         # by default, sort from newest to oldest
         dataset = Session.objects.all().order_by("-timestamp_start")
@@ -139,10 +145,3 @@ def add_platform(request):
     context["form"] = form
     context["title"] = "Add New Platform"
     return render(request, "add.html", context)
-
-
-def index(request):
-    context = {}
-    context["total_duration"] = Session().duration_sum
-    context["title"] = "Index"
-    return render(request, "index.html", context)

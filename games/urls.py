@@ -3,7 +3,7 @@ from django.urls import path
 from games import views
 
 urlpatterns = [
-    path("", views.index, name="index"),
+    path("", views.list_sessions, {"filter": "recent"}, name="list_sessions_recent"),
     path("add-game/", views.add_game, name="add_game"),
     path("add-platform/", views.add_platform, name="add_platform"),
     path("add-session/", views.add_session, name="add_session"),
