@@ -87,7 +87,7 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
     elif filter == "recent":
         dataset = Session.objects.filter(
             timestamp_start__gte=datetime.now() - timedelta(days=30)
-        )
+        ).order_by("-timestamp_start")
         context["title"] = "Last 30 days"
     else:
         # by default, sort from newest to oldest
