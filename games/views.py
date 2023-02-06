@@ -116,7 +116,7 @@ def add_purchase(request):
     form = PurchaseForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
-        return redirect("index")
+        return redirect("list_sessions")
 
     context["form"] = form
     context["title"] = "Add New Purchase"
@@ -128,7 +128,7 @@ def add_game(request):
     form = GameForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("index")
+        return redirect("list_sessions")
 
     context["form"] = form
     context["title"] = "Add New Game"
@@ -140,7 +140,7 @@ def add_platform(request):
     form = PlatformForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("index")
+        return redirect("list_sessions")
 
     context["form"] = form
     context["title"] = "Add New Platform"
