@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Add support for device info (https://git.kucharczyk.xyz/lukas/timetracker/issues/49)
 * Add support for purchase ownership information (https://git.kucharczyk.xyz/lukas/timetracker/issues/48)
 * Add support for purchase prices
 * Add support for game editions (https://git.kucharczyk.xyz/lukas/timetracker/issues/28)

@@ -1,6 +1,6 @@
 from django import forms
 
-from games.models import Game, Platform, Purchase, Session, Edition
+from games.models import Game, Platform, Purchase, Session, Edition, Device
 
 
 class SessionForm(forms.ModelForm):
@@ -15,6 +15,7 @@ class SessionForm(forms.ModelForm):
             "timestamp_start",
             "timestamp_end",
             "duration_manual",
+            "device",
             "note",
         ]
 
@@ -52,3 +53,9 @@ class PlatformForm(forms.ModelForm):
     class Meta:
         model = Platform
         fields = ["name", "group"]
+
+
+class DeviceForm(forms.ModelForm):
+    class Meta:
+        model = Device
+        fields = ["name", "type"]

@@ -6,7 +6,14 @@ from common.time import now as now_with_tz
 from django.conf import settings
 from django.shortcuts import redirect, render
 
-from .forms import GameForm, PlatformForm, PurchaseForm, SessionForm, EditionForm
+from .forms import (
+    GameForm,
+    PlatformForm,
+    PurchaseForm,
+    SessionForm,
+    EditionForm,
+    DeviceForm,
+)
 from .models import Game, Platform, Purchase, Session, Edition
 
 
@@ -157,6 +164,18 @@ def add_platform(request):
 
     context["form"] = form
     context["title"] = "Add New Platform"
+    return render(request, "add.html", context)
+
+
+def add_device(request):
+    context = {}
+    form = DeviceForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect("index")
+
+    context["form"] = form
+    context["title"] = "Add New Device"
     return render(request, "add.html", context)
 
 

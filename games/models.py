@@ -81,6 +81,7 @@ class Session(models.Model):
     timestamp_end = models.DateTimeField(blank=True, null=True)
     duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
     duration_calculated = models.DurationField(blank=True, null=True)
+    device = models.ForeignKey("Device", on_delete=models.CASCADE, null=True)
     note = models.TextField(blank=True, null=True)
 
     objects = SessionQuerySet.as_manager()
@@ -118,3 +119,23 @@ class Session(models.Model):
         else:
             self.duration_calculated = timedelta(0)
         super(Session, self).save(*args, **kwargs)
+
+
+class Device(models.Model):
+    PC = "pc"
+    CONSOLE = "co"
+    HANDHELD = "ha"
+    MOBILE = "mo"
+    SBC = "sbc"
+    DEVICE_TYPES = [
+        (PC, "PC"),
+        (CONSOLE, "Console"),
+        (HANDHELD, "Handheld"),
+        (MOBILE, "Mobile"),
+        (SBC, "Single-board computer"),
+    ]
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=3, choices=DEVICE_TYPES, default=PC)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_type_display()})"
