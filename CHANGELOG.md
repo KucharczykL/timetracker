@@ -1,4 +1,4 @@
-## Unreleased
+## 1.0.2 / 2023-02-18 21:48+01:00
 
 * Add support for device info (https://git.kucharczyk.xyz/lukas/timetracker/issues/49)
 * Add support for purchase ownership information (https://git.kucharczyk.xyz/lukas/timetracker/issues/48)
