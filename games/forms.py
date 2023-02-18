@@ -25,7 +25,14 @@ class PurchaseForm(forms.ModelForm):
 
     class Meta:
         model = Purchase
-        fields = ["edition", "platform", "date_purchased", "date_refunded"]
+        fields = [
+            "edition",
+            "platform",
+            "date_purchased",
+            "date_refunded",
+            "price",
+            "price_currency",
+        ]
 
 
 class EditionForm(forms.ModelForm):

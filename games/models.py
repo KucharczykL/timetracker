@@ -30,6 +30,8 @@ class Purchase(models.Model):
     platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
+    price = models.IntegerField(default=0)
+    price_currency = models.CharField(max_length=3, default="USD")
 
     def __str__(self):
         return f"{self.edition} ({self.platform})"
