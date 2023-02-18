@@ -1,10 +1,12 @@
 from django import forms
 
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase, Session, Edition
 
 
 class SessionForm(forms.ModelForm):
-    purchase = forms.ModelChoiceField(queryset=Purchase.objects.order_by("game__name"))
+    purchase = forms.ModelChoiceField(
+        queryset=Purchase.objects.order_by("edition__name")
+    )
 
     class Meta:
         model = Session
@@ -18,12 +20,18 @@ class SessionForm(forms.ModelForm):
 
 
 class PurchaseForm(forms.ModelForm):
-    game = forms.ModelChoiceField(queryset=Game.objects.order_by("name"))
+    edition = forms.ModelChoiceField(queryset=Edition.objects.order_by("name"))
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
 
     class Meta:
         model = Purchase
-        fields = ["game", "platform", "date_purchased", "date_refunded"]
+        fields = ["edition", "platform", "date_purchased", "date_refunded"]
+
+
+class EditionForm(forms.ModelForm):
+    class Meta:
+        model = Edition
+        fields = ["game", "name", "platform"]
 
 
 class GameForm(forms.ModelForm):

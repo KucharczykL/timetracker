@@ -23,6 +23,7 @@ urlpatterns = [
         name="delete_session",
     ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
+    path("add-edition/", views.add_edition, name="add_edition"),
     path("edit-session/<int:session_id>", views.edit_session, name="edit_session"),
     path("list-sessions/", views.list_sessions, name="list_sessions"),
     path(
@@ -38,9 +39,9 @@ urlpatterns = [
         name="list_sessions_by_platform",
     ),
     path(
-        "list-sessions/by-game/<int:game_id>",
+        "list-sessions/by-edition/<int:edition_id>",
         views.list_sessions,
-        {"filter": "game"},
-        name="list_sessions_by_game",
+        {"filter": "edition"},
+        name="list_sessions_by_edition",
     ),
 ]

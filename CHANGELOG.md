@@ -1,3 +1,7 @@
+## Unreleased
+
+* Add support for game editions (https://git.kucharczyk.xyz/lukas/timetracker/issues/28)
+
 ## 1.0.1 / 2023-01-30 22:17+01:00
 
 * Make it possible to edit sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/46)

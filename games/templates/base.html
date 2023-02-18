@@ -27,6 +27,9 @@
                             <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New Game</a></li>
                             <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_platform' %}">New Platform</a></li>
                             {% if game_available and platform_available %}
+                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_edition' %}">New Edition</a></li>
+                            {% endif %}
+                            {% if edition_available %}
                                 <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_purchase' %}">New Purchase</a></li>
                             {% endif %}
                             {% if purchase_available %}

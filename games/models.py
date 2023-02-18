@@ -16,14 +16,23 @@ class Game(models.Model):
         return self.name
 
 
-class Purchase(models.Model):
+class Edition(models.Model):
     game = models.ForeignKey("Game", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.name
+
+
+class Purchase(models.Model):
+    edition = models.ForeignKey("Edition", on_delete=models.CASCADE)
     platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
 
     def __str__(self):
-        return f"{self.game} ({self.platform})"
+        return f"{self.edition} ({self.platform})"
 
 
 class Platform(models.Model):

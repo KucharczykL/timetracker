@@ -6,13 +6,14 @@ from common.time import now as now_with_tz
 from django.conf import settings
 from django.shortcuts import redirect, render
 
-from .forms import GameForm, PlatformForm, PurchaseForm, SessionForm
-from .models import Game, Platform, Purchase, Session
+from .forms import GameForm, PlatformForm, PurchaseForm, SessionForm, EditionForm
+from .models import Game, Platform, Purchase, Session, Edition
 
 
 def model_counts(request):
     return {
         "game_available": Game.objects.count() != 0,
+        "edition_available": Edition.objects.count() != 0,
         "platform_available": Platform.objects.count() != 0,
         "purchase_available": Purchase.objects.count() != 0,
         "session_count": Session.objects.count(),
@@ -71,7 +72,7 @@ def delete_session(request, session_id=None):
     return redirect("list_sessions")
 
 
-def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""):
+def list_sessions(request, filter="", purchase_id="", platform_id="", edition_id=""):
     context = {}
     context["title"] = "Sessions"
 
@@ -81,9 +82,9 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", game_id=""
     elif filter == "platform":
         dataset = Session.objects.filter(purchase__platform=platform_id)
         context["platform"] = Platform.objects.get(id=platform_id)
-    elif filter == "game":
-        dataset = Session.objects.filter(purchase__game=game_id)
-        context["game"] = Game.objects.get(id=game_id)
+    elif filter == "edition":
+        dataset = Session.objects.filter(purchase__edition=edition_id)
+        context["edition"] = Edition.objects.get(id=edition_id)
     elif filter == "recent":
         dataset = Session.objects.filter(
             timestamp_start__gte=datetime.now() - timedelta(days=30)
@@ -132,6 +133,18 @@ def add_game(request):
 
     context["form"] = form
     context["title"] = "Add New Game"
+    return render(request, "add.html", context)
+
+
+def add_edition(request):
+    context = {}
+    form = EditionForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect("index")
+
+    context["form"] = form
+    context["title"] = "Add New Edition"
     return render(request, "add.html", context)
 
 
