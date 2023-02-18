@@ -7,11 +7,11 @@ HTMLFILES := $(shell find games/templates -type f)
 npm:
 	npm install
 
-css: input.css
-	npx tailwindcss -i ./input.css -o  ./games/static/base.css
+css: common/input.css
+	npx tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
 css-dev: css
-	npx tailwindcss -i ./input.css -o  ./games/static/base.css --watch
+	npx tailwindcss -i ./common/input.css -o  ./games/static/base.css --watch
 
 makemigrations:
 	poetry run python manage.py makemigrations
