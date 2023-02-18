@@ -67,8 +67,15 @@ def edit_session(request, session_id=None):
     return render(request, "add.html", context)
 
 
-def start_session(request, purchase_id=None):
-    session = SessionForm({"purchase": purchase_id, "timestamp_start": now_with_tz()})
+def start_session(request, last_session_id: int):
+    last_session = Session.objects.get(id=last_session_id)
+    session = SessionForm(
+        {
+            "purchase": last_session.purchase.id,
+            "timestamp_start": now_with_tz(),
+            "device": last_session.device,
+        }
+    )
     session.save()
     return redirect("list_sessions")
 
