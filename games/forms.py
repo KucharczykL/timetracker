@@ -32,6 +32,7 @@ class PurchaseForm(forms.ModelForm):
             "date_refunded",
             "price",
             "price_currency",
+            "ownership_type",
         ]
 
 

@@ -26,12 +26,34 @@ class Edition(models.Model):
 
 
 class Purchase(models.Model):
+    PHYSICAL = "ph"
+    DIGITAL = "di"
+    DIGITALUPGRADE = "du"
+    RENTED = "re"
+    BORROWED = "bo"
+    TRIAL = "tr"
+    DEMO = "de"
+    PIRATED = "pi"
+    OWNERSHIP_TYPES = [
+        (PHYSICAL, "Physical"),
+        (DIGITAL, "Digital"),
+        (DIGITALUPGRADE, "Digital Upgrade"),
+        (RENTED, "Rented"),
+        (BORROWED, "Borrowed"),
+        (TRIAL, "Trial"),
+        (DEMO, "Demo"),
+        (PIRATED, "Pirated"),
+    ]
+
     edition = models.ForeignKey("Edition", on_delete=models.CASCADE)
     platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
     price = models.IntegerField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
+    ownership_type = models.CharField(
+        max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
+    )
 
     def __str__(self):
         return f"{self.edition} ({self.platform})"
