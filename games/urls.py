@@ -30,6 +30,7 @@ urlpatterns = [
     ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
     path("add-edition/", views.add_edition, name="add_edition"),
+    path("edit-edition/<int:edition_id>", views.edit_edition, name="edit_edition"),
     path("add-device/", views.add_device, name="add_device"),
     path("edit-session/<int:session_id>", views.edit_session, name="edit_session"),
     path("edit-purchase/<int:purchase_id>", views.edit_purchase, name="edit_purchase"),

@@ -79,6 +79,18 @@ def edit_purchase(request, purchase_id=None):
     return render(request, "add.html", context)
 
 
+def edit_edition(request, edition_id=None):
+    context = {}
+    edition = Edition.objects.get(id=edition_id)
+    form = EditionForm(request.POST or None, instance=edition)
+    if form.is_valid():
+        form.save()
+        return redirect("list_sessions")
+    context["title"] = "Edit Edition"
+    context["form"] = form
+    return render(request, "add.html", context)
+
+
 def start_session(request, last_session_id: int):
     last_session = Session.objects.get(id=last_session_id)
     session = SessionForm(
