@@ -3,11 +3,14 @@
 {% block title %}{{ title }}{% endblock title %}
 
 {% block content %}
-    <form method="post" enctype="multipart/form-data" class="mx-auto">
+    <form method="post" enctype="multipart/form-data">
+        <table class="mx-auto">
         {% csrf_token %}
 
-        {{ form.as_p }}
-
-        <input type="submit" value="Submit"/>
+        {{ form.as_table }}
+        <tr>
+            <td><input type="submit" value="Submit"/></td>
+        </tr>
+        </table>
     </form>
 {% endblock content %}
