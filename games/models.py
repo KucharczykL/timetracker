@@ -56,7 +56,7 @@ class Purchase(models.Model):
     )
 
     def __str__(self):
-        return f"{self.edition} ({self.platform})"
+        return f"{self.edition} ({self.platform}, {self.get_ownership_type_display()})"
 
 
 class Platform(models.Model):
