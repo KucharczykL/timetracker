@@ -48,9 +48,21 @@ urlpatterns = [
         name="list_sessions_by_platform",
     ),
     path(
+        "list-sessions/by-game/<int:game_id>",
+        views.list_sessions,
+        {"filter": "game"},
+        name="list_sessions_by_game",
+    ),
+    path(
         "list-sessions/by-edition/<int:edition_id>",
         views.list_sessions,
         {"filter": "edition"},
         name="list_sessions_by_edition",
+    ),
+    path(
+        "list-sessions/by-ownership/<str:ownership_type>",
+        views.list_sessions,
+        {"filter": "ownership_type"},
+        name="list_sessions_by_ownership_type",
     ),
 ]

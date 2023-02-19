@@ -110,7 +110,15 @@ def delete_session(request, session_id=None):
     return redirect("list_sessions")
 
 
-def list_sessions(request, filter="", purchase_id="", platform_id="", edition_id=""):
+def list_sessions(
+    request,
+    filter="",
+    purchase_id="",
+    platform_id="",
+    game_id="",
+    edition_id="",
+    ownership_type: str = "",
+):
     context = {}
     context["title"] = "Sessions"
 
@@ -123,6 +131,12 @@ def list_sessions(request, filter="", purchase_id="", platform_id="", edition_id
     elif filter == "edition":
         dataset = Session.objects.filter(purchase__edition=edition_id)
         context["edition"] = Edition.objects.get(id=edition_id)
+    elif filter == "game":
+        dataset = Session.objects.filter(purchase__edition__game=game_id)
+        context["game"] = Game.objects.get(id=game_id)
+    elif filter == "ownership_type":
+        dataset = Session.objects.filter(purchase__ownership_type=ownership_type)
+        context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
         dataset = Session.objects.filter(
             timestamp_start__gte=datetime.now() - timedelta(days=30)

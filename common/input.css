@@ -14,7 +14,11 @@ textarea {
 
 #session-table {
   display: grid;
-  grid-template-columns: 3fr 1fr repeat(2, 2fr) 0.5fr 1fr;
+  grid-template-columns: 3fr repeat(3, 1fr) 0.5fr 1fr;
+}
+
+.purchase-name:hover > span:nth-child(2) {
+  @apply dark:text-slate-300
 }
 
 #button-container button {

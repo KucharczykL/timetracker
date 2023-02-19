@@ -1,3 +1,7 @@
+## Unreleased
+
+* Allow filtering by game, edition, purchase from the session list
+
 ## 1.0.2 / 2023-02-18 21:48+01:00
 
 * Add support for device info (https://git.kucharczyk.xyz/lukas/timetracker/issues/49)
