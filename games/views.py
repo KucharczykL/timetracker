@@ -156,7 +156,7 @@ def list_sessions(
     # cannot use dataset[0] here because that might be only partial QuerySet
     context["last"] = Session.objects.all().order_by("timestamp_start").last()
     # charts are always oldest->newest
-    if Session.objects.count() >= 2:
+    if dataset.count() >= 2:
         context["chart"] = playtime_over_time_chart(dataset.order_by("timestamp_start"))
 
     return render(request, "list_sessions.html", context)
