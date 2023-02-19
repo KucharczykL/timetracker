@@ -1,6 +1,7 @@
 ## Unreleased
 
 * Allow filtering by game, edition, purchase from the session list
+* Add icons for the above
 
 ## 1.0.2 / 2023-02-18 21:48+01:00
 

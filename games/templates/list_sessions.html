@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% load static %}
+
 {% block title %}{{ title }}{% endblock title %}
 
 {% block content %}
@@ -40,13 +42,18 @@
         <div class="dark:border-white dark:text-slate-300 text-lg text-right">Manage</div>
         {% for data in dataset %}
             <div class="purchase-name">
-                <span class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">{{ data.purchase.edition }} <span class="dark:text-slate-400">({{ data.purchase.get_ownership_type_display }})</span></span>
+                <span class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">{{ data.purchase.edition }} <span class="dark:text-slate-400">(<a class="hover:underline" href="{% url 'list_sessions_by_ownership_type' data.purchase.ownership_type %}">{{ data.purchase.get_ownership_type_display }}</a>)</span></span>
                 
-                <span class="dark:text-slate-700 transition-colors duration-300">
-                    (<a class="hover:underline" href="{% url 'list_sessions_by_game'  data.purchase.edition.game.id %}">G</a>,
-                        <a class="hover:underline" href="{% url 'list_sessions_by_edition'  data.purchase.edition.id %}">E</a>,
-                        <a class="hover:underline" href="{% url 'list_sessions_by_purchase' data.purchase.id %}">P</a>,
-                        <a class="hover:underline" href="{% url 'list_sessions_by_ownership_type' data.purchase.ownership_type %}">O</a>)
+                <span>
+                    <a href="{% url 'list_sessions_by_game'  data.purchase.edition.game.id %}">
+                        <img src="{% static 'icons/game_white.png' %}" width="32" class="inline" alt="Filter by this game" title="Filter by this game" />
+                    </a>
+                    <a href="{% url 'list_sessions_by_edition'  data.purchase.edition.id %}">
+                        <img src="{% static 'icons/edition_white.png' %}" width="32" class="inline" alt="Filter by this edition" title="Filter by this edition" />
+                    </a>
+                    <a href="{% url 'list_sessions_by_purchase' data.purchase.id %}">
+                        <img src="{% static 'icons/purchase_white.png' %}" width="32" class="inline" alt="Filter by this purchase" title="Filter by this purchase" />
+                    </a>
                 </span>
             </div>
             <div class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap"><a class="hover:underline" href="{% url 'list_sessions_by_platform' data.purchase.platform.id %}">{{ data.purchase.platform }}</a></div>
