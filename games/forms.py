@@ -40,7 +40,7 @@ class PurchaseForm(forms.ModelForm):
 class EditionForm(forms.ModelForm):
     class Meta:
         model = Edition
-        fields = ["game", "name", "platform"]
+        fields = ["game", "name", "platform", "year_released", "wikidata"]
 
 
 class GameForm(forms.ModelForm):

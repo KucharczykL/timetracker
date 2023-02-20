@@ -56,7 +56,15 @@
                     </a>
                 </span>
             </div>
-            <div class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap"><a class="hover:underline" href="{% url 'list_sessions_by_platform' data.purchase.platform.id %}">{{ data.purchase.platform }}</a></div>
+            <div class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">
+                <a class="hover:underline" href="{% url 'list_sessions_by_platform' data.purchase.platform.id %}">
+                    {% if data.purchase.platform != data.purchase.edition.platform %}
+                        {{data.purchase.edition.platform}} on {{ data.purchase.platform }}
+                    {% else %}
+                        {{ data.purchase.platform }}
+                    {% endif %}
+                </a>
+            </div>
             <div class="dark:text-slate-400 text-center">{{ data.timestamp_start | date:"d/m/Y H:i" }}</div>
             <div class="dark:text-slate-400 text-center">
                 {% if data.unfinished %}

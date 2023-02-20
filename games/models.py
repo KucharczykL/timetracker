@@ -20,6 +20,8 @@ class Edition(models.Model):
     game = models.ForeignKey("Game", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
+    year_released = models.IntegerField(default=datetime.today().year)
+    wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
 
     def __str__(self):
         return self.name
@@ -56,7 +58,10 @@ class Purchase(models.Model):
     )
 
     def __str__(self):
-        return f"{self.edition} ({self.platform}, {self.get_ownership_type_display()})"
+        platform_info = self.platform
+        if self.platform != self.edition.platform:
+            platform_info = f"{self.edition.platform} version on {self.platform}"
+        return f"{self.edition} ({platform_info}, {self.edition.year_released}, {self.get_ownership_type_display()})"
 
 
 class Platform(models.Model):
