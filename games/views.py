@@ -221,7 +221,7 @@ def add_edition(request):
 
     context["form"] = form
     context["title"] = "Add New Edition"
-    return render(request, "add.html", context)
+    return render(request, "add_edition.html", context)
 
 
 def add_platform(request):
