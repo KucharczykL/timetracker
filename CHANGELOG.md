@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Allow editing filtered entities from session list
 * Add wikidata ID and year for editions
 * Allow filtering by game, edition, purchase from the session list
 * Add icons for the above
