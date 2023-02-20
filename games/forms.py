@@ -43,6 +43,7 @@ class PurchaseForm(forms.ModelForm):
 
 
 class EditionForm(forms.ModelForm):
+    game = forms.ModelChoiceField(queryset=Game.objects.order_by("name"))
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
 
     class Meta:
