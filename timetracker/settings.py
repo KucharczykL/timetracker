@@ -149,3 +149,5 @@ if _csrf_trusted_origins:
     CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins.split(",")
 else:
     CSRF_TRUSTED_ORIGINS = []
+
+USE_L10N = False
