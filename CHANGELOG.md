@@ -1,9 +1,9 @@
-## Unreleased
+## 1.0.3 / 2023-02-20 17:16+01:00
 
-* Allow editing filtered entities from session list
 * Add wikidata ID and year for editions
+* Add icons for game, edition, purchase filters
 * Allow filtering by game, edition, purchase from the session list
-* Add icons for the above
+* Allow editing filtered entities from session list
 
 ## 1.0.2 / 2023-02-18 21:48+01:00
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "timetracker"
-version = "1.0.2"
+version = "1.0.3"
 description = "A simple time tracker."
 authors = ["Lukáš Kucharczyk <lukas@kucharczyk.xyz>"]
 license = "GPL"
