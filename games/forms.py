@@ -20,8 +20,13 @@ class SessionForm(forms.ModelForm):
         ]
 
 
+class EditionChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj) -> str:
+        return f"{obj.name} ({obj.platform}, {obj.year_released})"
+
+
 class PurchaseForm(forms.ModelForm):
-    edition = forms.ModelChoiceField(queryset=Edition.objects.order_by("name"))
+    edition = EditionChoiceField(queryset=Edition.objects.order_by("name"))
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
 
     class Meta:
