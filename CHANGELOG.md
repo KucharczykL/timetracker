@@ -1,3 +1,8 @@
+## Unreleased
+
+* Improve form appearance
+* Add helper buttons next to datime fields
+
 ## 1.0.3 / 2023-02-20 17:16+01:00
 
 * Add wikidata ID and year for editions

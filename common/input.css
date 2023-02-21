@@ -12,6 +12,22 @@ textarea {
   @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
 }
 
+@media screen and  (min-width: 768px) {
+  form input,
+  select,
+  textarea {
+    width: 300px;
+  }
+}
+
+@media screen and  (max-width: 768px) {
+  form input,
+  select,
+  textarea {
+    width: 150px;
+  }
+}
+
 #session-table {
   display: grid;
   grid-template-columns: 3fr 2fr repeat(2, 1fr) 0.5fr 1fr;
@@ -38,9 +54,17 @@ textarea {
 }
 
 th {
-  @apply text-left;
+  @apply text-right;
 }
 
 th label {
   @apply mr-4;
+}
+
+.basic-button-container {
+  @apply flex space-x-2 justify-center
+}
+
+.basic-button {
+  @apply inline-block px-6 py-2.5 bg-blue-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out;
 }
