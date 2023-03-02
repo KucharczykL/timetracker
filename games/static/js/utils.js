@@ -4,6 +4,13 @@
  * @returns {string}
  */
 export function toISOUTCString(date) {
-  let month = (date.getMonth() + 1).toString().padStart(2, 0);
-  return `${date.getFullYear()}-${month}-${date.getDate()}T${date.getHours()}:${date.getMinutes()}`;
+  function stringAndPad(number) {
+    return number.toString().padStart(2, 0);
+  }
+  const year = date.getFullYear();
+  const month = stringAndPad(date.getMonth() + 1);
+  const day = stringAndPad(date.getDate());
+  const hours = stringAndPad(date.getHours());
+  const minutes = stringAndPad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
