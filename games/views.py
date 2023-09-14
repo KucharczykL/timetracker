@@ -162,10 +162,12 @@ def list_sessions(
         dataset = Session.objects.filter(purchase__ownership_type=ownership_type)
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
+        current_year = datetime.now().year
+        first_day_of_year = datetime(current_year, 1, 1)
         dataset = Session.objects.filter(
-            timestamp_start__gte=datetime.now() - timedelta(days=30)
+            timestamp_start__gte=first_day_of_year
         ).order_by("-timestamp_start")
-        context["title"] = "Last 30 days"
+        context["title"] = "This year"
     else:
         # by default, sort from newest to oldest
         dataset = Session.objects.all().order_by("-timestamp_start")
