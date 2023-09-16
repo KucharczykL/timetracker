@@ -28,7 +28,7 @@ RUN chmod +x /entrypoint.sh
 USER timetracker
 ENV PATH="$PATH:/home/timetracker/.local/bin"
 RUN pip install --no-cache-dir poetry
-RUN poetry install --without dev
+RUN poetry install
 
 EXPOSE 8000
 CMD [ "/entrypoint.sh" ]
