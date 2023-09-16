@@ -40,9 +40,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 ]
 
-if DEBUG:
-    INSTALLED_APPS.append("django_extensions")
-    INSTALLED_APPS.append("django.contrib.admin")
+# if DEBUG:
+INSTALLED_APPS.append("django_extensions")
+INSTALLED_APPS.append("django.contrib.admin")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
