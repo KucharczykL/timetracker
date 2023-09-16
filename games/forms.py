@@ -9,8 +9,11 @@ custom_datetime_widget = forms.DateTimeInput(
 
 
 class SessionForm(forms.ModelForm):
+    # purchase = forms.ModelChoiceField(
+    #     queryset=Purchase.objects.filter(date_refunded=None).order_by("edition__name")
+    # )
     purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.filter(date_refunded=None).order_by("edition__name")
+        queryset=Purchase.objects.order_by("edition__name")
     )
 
     class Meta:
