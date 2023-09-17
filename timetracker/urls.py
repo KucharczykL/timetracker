@@ -23,5 +23,8 @@ urlpatterns = [
     path("tracker/", include("games.urls")),
 ]
 
+# if settings.DEBUG:
+#     urlpatterns.append(path("admin/", admin.site.urls))
+
 if settings.DEBUG:
     urlpatterns.append(path("admin/", admin.site.urls))
