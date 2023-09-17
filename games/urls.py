@@ -23,11 +23,11 @@ urlpatterns = [
         views.start_session,
         name="start_session",
     ),
-    path(
-        "delete_session/by-id/<int:session_id>",
-        views.delete_session,
-        name="delete_session",
-    ),
+    # path(
+    #     "delete_session/by-id/<int:session_id>",
+    #     views.delete_session,
+    #     name="delete_session",
+    # ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
     path("add-edition/", views.add_edition, name="add_edition"),
     path("edit-edition/<int:edition_id>", views.edit_edition, name="edit_edition"),

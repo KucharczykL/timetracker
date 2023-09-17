@@ -128,10 +128,10 @@ def start_session(request, last_session_id: int):
     return redirect("list_sessions")
 
 
-def delete_session(request, session_id=None):
-    session = Session.objects.get(id=session_id)
-    session.delete()
-    return redirect("list_sessions")
+# def delete_session(request, session_id=None):
+#     session = Session.objects.get(id=session_id)
+#     session.delete()
+#     return redirect("list_sessions")
 
 
 def list_sessions(
