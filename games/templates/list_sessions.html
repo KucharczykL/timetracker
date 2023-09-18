@@ -6,7 +6,7 @@
 
 {% block content %}
         <div class="text-center text-xl mb-4 dark:text-slate-400">
-            {% if dataset.count >= 2 %}
+            {% if chart %}
             <img src="data:image/svg+xml;base64,{{ chart|safe }}" class="mx-auto mb-3" />
             {% endif %}
             {% if dataset.count >= 1 %}
