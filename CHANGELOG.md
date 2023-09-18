@@ -4,6 +4,8 @@
 * Add helper buttons next to datime fields
 * Change recent session view to current year instead of last 30 days
 * Fix bug when filtering only manual sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/51)
+* Add copy button on Add session page to copy times between fields
+* Use the same form when editing a session as when adding a session
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 
