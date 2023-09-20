@@ -28,7 +28,8 @@ textarea {
   }
 }
 
-#session-table {
+#session-table,
+#session-table-head {
   display: grid;
   grid-template-columns: 3fr 2fr repeat(2, 1fr) 0.5fr 1fr;
 }

@@ -38,7 +38,7 @@
             {% if purchase %}<a class="dark:text-white hover:underline block" href="{% url 'list_sessions_by_edition' purchase.edition.id %}">See all platforms</a>{% endif %}
             {% endif %}
             {% if dataset.count >= 1 %}
-            <a href="{% url 'start_session' last.id %}">
+            <a href="{% url 'start_session' last.id %}" hx-get="{% url 'start_session' last.id %}" hx-swap="afterbegin" hx-target="#session-table" hx-select="#session-table div:nth-child(n+0):nth-child(-n+6)">
                 <button type="button" title="Track last tracked" class="mt-10 py-1 px-2 bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg ">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="self-center w-6 h-6 inline">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
@@ -48,13 +48,16 @@
             </a>
             {% endif %}
         </div>
-    <div id="session-table" class="gap-4 shadow rounded-xl max-w-screen-2xl mx-auto dark:bg-slate-700 p-2 justify-center">
+    <div id="session-table-head" class="gap-4 shadow rounded-xl max-w-screen-2xl mx-auto dark:bg-slate-700 p-2 justify-center">
         <div class="dark:border-white dark:text-slate-300 text-lg">Purchase</div>
         <div class="dark:border-white dark:text-slate-300 text-lg">Platform</div>
         <div class="dark:border-white dark:text-slate-300 text-lg text-center">Start</div>
         <div class="dark:border-white dark:text-slate-300 text-lg text-center">End</div>
         <div class="dark:border-white dark:text-slate-300 text-lg">Duration</div>
         <div class="dark:border-white dark:text-slate-300 text-lg text-right">Manage</div>
+    </div>
+    <div id="session-table" class="gap-4 shadow rounded-xl max-w-screen-2xl mx-auto dark:bg-slate-700 p-2 justify-center">
+    
         {% for data in dataset %}
             <div class="purchase-name">
                 <span class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">{{ data.purchase.edition }} <span class="dark:text-slate-400">(<a class="hover:underline" href="{% url 'list_sessions_by_ownership_type' data.purchase.ownership_type %}">{{ data.purchase.get_ownership_type_display }}</a>)</span></span>
@@ -96,7 +99,7 @@
               {% endif %}</div>
             <div id="button-container" class="flex justify-end">
                 {% if data.unfinished %}
-                    <a href="{% url 'update_session' data.id %}">
+                    <a href="{% url 'update_session' data.id %}" hx-get="{% url 'update_session' data.id %}" hx-swap="outerHTML" hx-target="#session-table" hx-select="#session-table">
                         <button type="button" title="Set to finished" class="py-1 px-2 flex justify-center items-center  bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 w-7 h-4 rounded-lg ">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
                                 <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
