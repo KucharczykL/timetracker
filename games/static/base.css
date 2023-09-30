@@ -3844,12 +3844,10 @@ select {
 }
 
 .responsive-table thead th:not(:first-child),
-td:not(:first-child) {
+.responsive-table td:not(:first-child) {
   border-left-width: 1px;
   --tw-border-opacity: 1;
   border-left-color: rgb(100 116 139 / var(--tw-border-opacity));
-  padding-left: 1rem;
-  padding-right: 1rem;
 }
 
 .responsive-table th, td {
@@ -3858,19 +3856,19 @@ td:not(:first-child) {
 }
 
 @media screen and (max-width: 768px) {
-  .responsive-table thead th:not(:first-child),
+  .responsive-table th, td,
   td {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
   }
-}
 
-.responsive-table td:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-right: 0.5rem;
-  max-width: 20ch;
+  .responsive-table td:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 0.5rem;
+    max-width: 20ch;
+  }
 }
 
 :is(.dark form input),:is(.dark 
@@ -3903,31 +3901,6 @@ textarea) {
   .hide-on-small {
     display: none;
   }
-}
-
-#session-table,
-#session-table-head {
-  display: grid;
-  grid-template-columns: 3fr 2fr repeat(2, 1fr) 0.5fr 1fr;
-}
-
-.purchase-name > span:nth-child(2) {
-  margin-left: 1rem;
-}
-
-.purchase-name > span:nth-child(2) > a > img {
-  opacity: 0;
-  transition-property: opacity;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 500ms;
-}
-
-.purchase-name:hover > span:nth-child(2) > a > img {
-  opacity: 0.5;
-}
-
-.purchase-name > span:nth-child(2) > a > img:hover {
-  opacity: 1;
 }
 
 #button-container button {
