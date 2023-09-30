@@ -41,18 +41,15 @@ form label {
   @apply border-l border-l-slate-500;
 }
 
-.responsive-table th, td {
-  @apply px-4;
-}
-
-@media screen and (max-width: 768px) {
-  .responsive-table th, td,
-  td {
-    @apply px-2;
-  }
-  .responsive-table td:first-child {
-    @apply overflow-hidden text-ellipsis whitespace-nowrap pr-2;
+@layer utilities {
+  .max-w-20char {
     max-width: 20ch;
+  }
+  .max-w-35char {
+    max-width: 40ch;
+  }
+  .max-w-40char {
+    max-width: 40ch;
   }
 }
 
@@ -75,12 +72,6 @@ textarea {
   select,
   textarea {
     width: 150px;
-  }
-}
-
-@media screen and (max-width: 768px) {
-  .hide-on-small {
-    display: none;
   }
 }
 
