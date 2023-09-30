@@ -2,8 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/IBMPlexMono-regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("fonts/IBMPlexSans-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
 form label {
   @apply dark:text-slate-400;
+}
+
+.responsive-table {
+  @apply dark:text-white mx-auto;
+}
+
+.responsive-table tr:nth-child(even) {
+  @apply bg-slate-800
+}
+
+.responsive-table tbody tr:nth-child(odd) {
+  @apply bg-slate-900
+}
+
+.responsive-table thead th {
+  @apply text-left border-b-2 border-b-slate-500 text-xl;
+}
+
+.responsive-table thead th:not(:first-child),
+.responsive-table td:not(:first-child) {
+  @apply border-l border-l-slate-500;
+}
+
+.responsive-table th, td {
+  @apply px-4;
+}
+
+@media screen and (max-width: 768px) {
+  .responsive-table th, td,
+  td {
+    @apply px-2;
+  }
+  .responsive-table td:first-child {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap pr-2;
+    max-width: 20ch;
+  }
 }
 
 form input,
@@ -12,7 +62,7 @@ textarea {
   @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
 }
 
-@media screen and  (min-width: 768px) {
+@media screen and (min-width: 768px) {
   form input,
   select,
   textarea {
@@ -20,7 +70,7 @@ textarea {
   }
 }
 
-@media screen and  (max-width: 768px) {
+@media screen and (max-width: 768px) {
   form input,
   select,
   textarea {
@@ -28,26 +78,10 @@ textarea {
   }
 }
 
-#session-table,
-#session-table-head {
-  display: grid;
-  grid-template-columns: 3fr 2fr repeat(2, 1fr) 0.5fr 1fr;
-}
-
-.purchase-name > span:nth-child(2) {
-  @apply ml-4
-}
-
-.purchase-name > span:nth-child(2) > a > img {
-  @apply opacity-0 transition-opacity duration-500
-}
-
-.purchase-name:hover > span:nth-child(2) > a > img {
-  @apply opacity-50
-}
-
-.purchase-name > span:nth-child(2) > a > img:hover {
-  @apply opacity-100
+@media screen and (max-width: 768px) {
+  .hide-on-small {
+    display: none;
+  }
 }
 
 #button-container button {
@@ -63,7 +97,7 @@ th label {
 }
 
 .basic-button-container {
-  @apply flex space-x-2 justify-center
+  @apply flex space-x-2 justify-center;
 }
 
 .basic-button {
