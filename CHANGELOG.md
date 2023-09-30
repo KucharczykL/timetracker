@@ -8,6 +8,9 @@
 * Use the same form when editing a session as when adding a session
 * Add a hacky way not to reload a page when starting or ending a session (https://git.kucharczyk.xyz/lukas/timetracker/issues/52)
 * Focus important fields on forms
+* Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
+* Change fonts to IBM Plex
+* Only use local font files
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 

@@ -5,124 +5,26 @@
 {% block title %}{{ title }}{% endblock title %}
 
 {% block content %}
-        <div class="text-center text-xl mb-4 dark:text-slate-400">
-            {% if chart %}
-            <img src="data:image/svg+xml;base64,{{ chart|safe }}" class="mx-auto mb-3" />
-            {% endif %}
-            {% if dataset.count >= 1 %}
-            <div class="mb-4">Total playtime: {{ total_duration }} over {{ dataset.count }} sessions.</div>
-            {% endif %}
-            {% if purchase or platform or edition or game or ownership_type %}
-            <span class="block">
-                <a class="text-red-400 inline" href="{% url 'list_sessions' %}">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 inline">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </a>
-                {% if purchase %}
-                Filtering by purchase "{{ purchase }}"
-                (<a href="{% url 'edit_purchase' purchase.id %}" class="hover:underline dark:text-white">Edit</a>)
-                {% elif platform %}
-                Filtering by purchase "{{ platform }}"
-                (<a href="{% url 'edit_platform' platform.id %}" class="hover:underline dark:text-white">Edit</a>)
-                {% elif game %}
-                Filtering by purchase "{{ game }}"
-                (<a href="{% url 'edit_game' game.id %}" class="hover:underline dark:text-white">Edit</a>)
-                {% elif edition %}
-                Filtering by purchase "{{ edition }}"
-                (<a href="{% url 'edit_edition' edition.id %}" class="hover:underline dark:text-white">Edit</a>)
-                {% elif ownership_type %}
-                Filtering by ownership type "{{ ownership_type }}"
-                {% endif%}
-            </span>
-            {% if purchase %}<a class="dark:text-white hover:underline block" href="{% url 'list_sessions_by_edition' purchase.edition.id %}">See all platforms</a>{% endif %}
-            {% endif %}
-            {% if dataset.count >= 1 %}
-            <a href="{% url 'start_session' last.id %}" hx-get="{% url 'start_session' last.id %}" hx-swap="afterbegin" hx-target="#session-table" hx-select="#session-table div:nth-child(n+0):nth-child(-n+6)">
-                <button type="button" title="Track last tracked" class="mt-10 py-1 px-2 bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg ">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="self-center w-6 h-6 inline">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                    </svg>
-                    {{ last.purchase }}
-                </button>
-            </a>
-            {% endif %}
-        </div>
-    <div id="session-table-head" class="gap-4 shadow rounded-xl max-w-screen-2xl mx-auto dark:bg-slate-700 p-2 justify-center">
-        <div class="dark:border-white dark:text-slate-300 text-lg">Purchase</div>
-        <div class="dark:border-white dark:text-slate-300 text-lg">Platform</div>
-        <div class="dark:border-white dark:text-slate-300 text-lg text-center">Start</div>
-        <div class="dark:border-white dark:text-slate-300 text-lg text-center">End</div>
-        <div class="dark:border-white dark:text-slate-300 text-lg">Duration</div>
-        <div class="dark:border-white dark:text-slate-300 text-lg text-right">Manage</div>
-    </div>
-    <div id="session-table" class="gap-4 shadow rounded-xl max-w-screen-2xl mx-auto dark:bg-slate-700 p-2 justify-center">
-    
+
+
+<table class="responsive-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th class="hide-on-small">Start</th>
+            <th class="hide-on-small">End</th>
+            <th>Duration</th>
+        </tr>
+    </thead>
+    <tbody>
         {% for data in dataset %}
-            <div class="purchase-name">
-                <span class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">{{ data.purchase.edition }} <span class="dark:text-slate-400">(<a class="hover:underline" href="{% url 'list_sessions_by_ownership_type' data.purchase.ownership_type %}">{{ data.purchase.get_ownership_type_display }}</a>)</span></span>
-                
-                <span>
-                    <a href="{% url 'list_sessions_by_game'  data.purchase.edition.game.id %}">
-                        <img src="{% static 'icons/game_white.png' %}" width="32" class="inline" alt="Filter by this game" title="Filter by this game" />
-                    </a>
-                    <a href="{% url 'list_sessions_by_edition'  data.purchase.edition.id %}">
-                        <img src="{% static 'icons/edition_white.png' %}" width="32" class="inline" alt="Filter by this edition" title="Filter by this edition" />
-                    </a>
-                    <a href="{% url 'list_sessions_by_purchase' data.purchase.id %}">
-                        <img src="{% static 'icons/purchase_white.png' %}" width="32" class="inline" alt="Filter by this purchase" title="Filter by this purchase" />
-                    </a>
-                </span>
-            </div>
-            <div class="dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">
-                <a class="hover:underline" href="{% url 'list_sessions_by_platform' data.purchase.platform.id %}">
-                    {% if data.purchase.platform != data.purchase.edition.platform %}
-                        {{data.purchase.edition.platform}} on {{ data.purchase.platform }}
-                    {% else %}
-                        {{ data.purchase.platform }}
-                    {% endif %}
-                </a>
-            </div>
-            <div class="dark:text-slate-400 text-center">{{ data.timestamp_start | date:"d/m/Y H:i" }}</div>
-            <div class="dark:text-slate-400 text-center">
-                {% if data.unfinished %}
-                    <span class="text-red-400">Not finished yet.</span>
-                {% elif data.duration_manual %}
-                    --
-                {% else %}
-                    {{ data.timestamp_end | date:"d/m/Y H:i" }}
-                {% endif %}
-            </div>
-            <div class="dark:text-slate-400 flex">{{ data.duration_formatted }}{% if data.duration_manual %} <svg title="Added manually" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 ml-1 self-center">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
-              </svg>
-              {% endif %}</div>
-            <div id="button-container" class="flex justify-end">
-                {% if data.unfinished %}
-                    <a href="{% url 'update_session' data.id %}" hx-get="{% url 'update_session' data.id %}" hx-swap="outerHTML" hx-target="#session-table" hx-select="#session-table">
-                        <button type="button" title="Set to finished" class="py-1 px-2 flex justify-center items-center  bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 w-7 h-4 rounded-lg ">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                                <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </a>
-                {% endif %}
-                <a href="{% url 'edit_session' data.id %}">
-                    <button type="button" title="Edit" class="py-1 px-2 flex justify-center items-center  bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 w-7 h-4 rounded-lg ">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                            <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
-                            <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
-                        </svg>
-                    </button>
-                </a>
-                {% comment %} <a href="{% url 'delete_session' data.id %}">
-                    <button type="button" edit="Delete" class="py-1 px-2 flex justify-center items-center  bg-red-600 hover:bg-red-700 focus:ring-red-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 w-7 h-4 rounded-lg ">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                            <path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                </a> {% endcomment %}
-            </div>
+        <tr>
+            <td class="purchase-name">{{ data.purchase.edition }}</td>
+            <td class="hide-on-small font-mono">{{ data.timestamp_start | date:"d/m/Y H:i" }}</td>
+            <td class="hide-on-small font-mono">{{ data.timestamp_end | date:"d/m/Y H:i" }}</td>
+            <td class="font-mono">{{ data.duration_formatted }}</td>
+        </tr>
         {% endfor %}
-    </div>
+    </tbody>
+</table>
 {% endblock content %}
