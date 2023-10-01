@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock title %}
+
+{% load static %}
+
+{% block content %}
+    <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
+        <h1 class="text-4xl">{{ game.name }} (#{{ game.pk }})</h1>
+        <h2 class="text-lg my-2 ml-2">{{ total_playtime }} ({{ first_session.timestamp_end | date:"M Y"}} — {{ first_session.timestamp_end | date:"M Y"}}) </h2>
+        <hr class="border-slate-500">
+        <h1 class="text-3xl mt-4 mb-1">Editions</h1>
+        <ul>
+            {% for edition in editions %}
+            <li class="sm:pl-2">
+                {{ edition.name }} ({{ edition.platform }}, {{ edition.year_released }})
+                {% if edition.wikidata %}
+                <span class="hidden sm:inline">
+                    <a href="https://www.wikidata.org/wiki/{{ edition.wikidata }}">
+                        <img class="inline mx-2 w-6" src="{% static 'icons/wikidata.png' %}"/>
+                    </a>
+                </span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <h1 class="text-3xl mt-4 mb-1">Purchases</h1>
+        <ul>
+            {% for purchase in purchases %}
+            <li class="sm:pl-2">{{ purchase.platform }} ({{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}, {{ purchase.price }} {{ purchase.price_currency}})</li>
+            {% endfor %}
+        </ul>
+        <h1 class="text-3xl mt-4 mb-1">Sessions</h1>
+        <ul>
+            {% for session in sessions %}
+            <li class="sm:pl-2">{{ session.timestamp_end | date:"d/m/Y" }} ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})</li>
+            {% endfor %}
+        </ul>
+        
+    </div>
+{% endblock content %}

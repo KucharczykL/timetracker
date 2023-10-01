@@ -91,6 +91,20 @@ def edit_game(request, game_id=None):
     return render(request, "add.html", context)
 
 
+def view_game(request, game_id=None):
+    context = {}
+    game = Game.objects.get(id=game_id)
+    context["title"] = "View Game"
+    context["game"] = game
+    context["editions"] = Edition.objects.filter(game_id=game_id)
+    context["purchases"] = Purchase.objects.filter(edition__game_id=game_id)
+    context["sessions"] = Session.objects.filter(purchase__edition__game_id=game_id)
+    context["total_playtime"] = context["sessions"].total_duration()
+    context["last_session"] = context["sessions"].last
+    context["first_session"] = context["sessions"].first
+    return render(request, "view_game.html", context)
+
+
 def edit_platform(request, platform_id=None):
     context = {}
     purchase = Platform.objects.get(id=platform_id)

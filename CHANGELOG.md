@@ -11,6 +11,7 @@
 * Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
 * Change fonts to IBM Plex
 * Only use local WOFF2 font files
+* Add game overview page (https://git.kucharczyk.xyz/lukas/timetracker/issues/8)
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 

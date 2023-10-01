@@ -39,7 +39,11 @@
       <td
         class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char md:max-w-40char"
       >
-        {{ data.purchase.edition }}
+        <a
+          class="underline decoration-slate-500 sm:decoration-2"
+          href="{% url 'view_game' data.purchase.edition.game.id %}">
+            {{ data.purchase.edition }}
+        </a>
       </td>
       <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell">
         {{ data.timestamp_start | date:"d/m/Y H:i" }}
