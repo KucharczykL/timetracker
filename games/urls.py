@@ -32,6 +32,7 @@ urlpatterns = [
     path("add-edition/", views.add_edition, name="add_edition"),
     path("edit-edition/<int:edition_id>", views.edit_edition, name="edit_edition"),
     path("game/<int:game_id>/view", views.view_game, name="view_game"),
+    path("game/<int:game_id>/edit", views.edit_game, name="edit_game"),
     path("edit-platform/<int:platform_id>", views.edit_platform, name="edit_platform"),
     path("add-device/", views.add_device, name="add_device"),
     path("edit-session/<int:session_id>", views.edit_session, name="edit_session"),
