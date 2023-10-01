@@ -98,10 +98,15 @@ def view_game(request, game_id=None):
     context["game"] = game
     context["editions"] = Edition.objects.filter(game_id=game_id)
     context["purchases"] = Purchase.objects.filter(edition__game_id=game_id)
-    context["sessions"] = Session.objects.filter(purchase__edition__game_id=game_id)
+    context["sessions"] = Session.objects.filter(
+        purchase__edition__game_id=game_id
+    ).order_by("-timestamp_start")
     context["total_playtime"] = context["sessions"].total_duration()
-    context["last_session"] = context["sessions"].last
-    context["first_session"] = context["sessions"].first
+    # here first and last is flipped
+    # because sessions are ordered from newest to oldest
+    # so the most recent are on top
+    context["last_session"] = context["sessions"].first()
+    context["first_session"] = context["sessions"].last()
     return render(request, "view_game.html", context)
 
 
