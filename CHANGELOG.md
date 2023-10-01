@@ -10,7 +10,7 @@
 * Focus important fields on forms
 * Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
 * Change fonts to IBM Plex
-* Only use local font files
+* Only use local WOFF2 font files
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 
