@@ -12,6 +12,7 @@
 * Change fonts to IBM Plex
 * Only use local WOFF2 font files
 * Add game overview page (https://git.kucharczyk.xyz/lukas/timetracker/issues/8)
+* Fix session being wrongly considered in progress if it had a certain amount of manual hours (https://git.kucharczyk.xyz/lukas/timetracker/issues/58)
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 
