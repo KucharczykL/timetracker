@@ -1,18 +1,24 @@
 ## Unreleased
 
-* Improve form appearance
-* Add helper buttons next to datime fields
-* Change recent session view to current year instead of last 30 days
-* Fix bug when filtering only manual sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/51)
-* Add copy button on Add session page to copy times between fields
-* Use the same form when editing a session as when adding a session
-* Add a hacky way not to reload a page when starting or ending a session (https://git.kucharczyk.xyz/lukas/timetracker/issues/52)
-* Focus important fields on forms
-* Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
-* Change fonts to IBM Plex
-* Only use local WOFF2 font files
+### New
 * Add game overview page (https://git.kucharczyk.xyz/lukas/timetracker/issues/8)
+* Add helper buttons next to datime fields
+* Add copy button on Add session page to copy times between fields
+* Change fonts to IBM Plex
+
+### Enhancements
+* Improve form appearance
+* Focus important fields on forms
+* Use the same form when editing a session as when adding a session
+* Change recent session view to current year instead of last 30 days
+* Add a hacky way not to reload a page when starting or ending a session (https://git.kucharczyk.xyz/lukas/timetracker/issues/52)
+* Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
+
+### Fixes
+
 * Fix session being wrongly considered in progress if it had a certain amount of manual hours (https://git.kucharczyk.xyz/lukas/timetracker/issues/58)
+* Fix bug when filtering only manual sessions (https://git.kucharczyk.xyz/lukas/timetracker/issues/51)
+
 
 ## 1.0.3 / 2023-02-20 17:16+01:00
 
