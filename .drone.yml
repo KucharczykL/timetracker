@@ -11,17 +11,20 @@ steps:
     - poetry install
     - poetry env info
     - poetry run pytest
-- name: build container (prod)
+
+- name: build-prod
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
     tags:
       - latest
+  depends_on:
+    - "test"
   when:
     branch:
       - main
 
-- name: build container (non-prod)
+- name: build-non-prod
   image: plugins/docker
   settings:
     repo: registry.kucharczyk.xyz/timetracker
@@ -32,6 +35,17 @@ steps:
     branch:
       exclude:
         - main
+  depends_on:
+    - "test"
+
+- name: redeploy on portainer
+  image: plugins/webhook
+  settings:
+    urls:
+      from_secret: PORTAINER_TIMETRACKER_WEBHOOK_URL
+  depends_on:
+    - "build-prod"
+    
     
     
 trigger:
