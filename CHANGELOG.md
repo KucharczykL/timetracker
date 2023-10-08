@@ -1,4 +1,4 @@
-## Unreleased
+## 1.1.0 / 2023-10-09 00:01+02:00
 
 ### New
 * Add game overview page (https://git.kucharczyk.xyz/lukas/timetracker/issues/8)

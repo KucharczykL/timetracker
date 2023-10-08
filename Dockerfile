@@ -6,7 +6,7 @@ RUN npm install && \
 
 FROM python:3.10.9-slim-bullseye
 
-ENV VERSION_NUMBER 1.0.3
+ENV VERSION_NUMBER 1.1.0
 ENV PROD 1
 ENV PYTHONUNBUFFERED=1
 
