@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from common.plots import playtime_over_time_chart
 from common.time import now as now_with_tz
 from django.conf import settings
 from django.shortcuts import redirect, render
@@ -202,10 +201,6 @@ def list_sessions(
     context["dataset"] = dataset
     # cannot use dataset[0] here because that might be only partial QuerySet
     context["last"] = Session.objects.all().order_by("timestamp_start").last()
-    # only if 2 or more non-manual sessions exist
-    if dataset.filter(timestamp_end__isnull=False).count() >= 2:
-        # charts are always oldest->newest
-        context["chart"] = playtime_over_time_chart(dataset.order_by("timestamp_start"))
 
     return render(request, "list_sessions.html", context)
 
