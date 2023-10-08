@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from common.time import now as now_with_tz
+from common.time import format_duration
 from django.conf import settings
 from django.shortcuts import redirect, render
 
@@ -100,7 +101,12 @@ def view_game(request, game_id=None):
     context["sessions"] = Session.objects.filter(
         purchase__edition__game_id=game_id
     ).order_by("-timestamp_start")
-    context["total_playtime"] = context["sessions"].total_duration()
+    context["total_hours"] = int(
+        format_duration(context["sessions"].total_duration_unformatted(), "%H")
+    )
+    context["session_average"] = round(
+        (context["total_hours"]) / int(context["sessions"].count()), 1
+    )
     # here first and last is flipped
     # because sessions are ordered from newest to oldest
     # so the most recent are on top
@@ -197,7 +203,7 @@ def list_sessions(
             session.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
             session.unfinished = True
 
-    context["total_duration"] = dataset.total_duration()
+    context["total_duration"] = dataset.total_duration_formatted()
     context["dataset"] = dataset
     # cannot use dataset[0] here because that might be only partial QuerySet
     context["last"] = Session.objects.all().order_by("timestamp_start").last()

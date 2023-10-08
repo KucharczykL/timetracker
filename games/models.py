@@ -73,11 +73,14 @@ class Platform(models.Model):
 
 
 class SessionQuerySet(models.QuerySet):
-    def total_duration(self):
+    def total_duration_formatted(self):
+        return format_duration(self.total_duration_unformatted())
+
+    def total_duration_unformatted(self):
         result = self.aggregate(
             duration=Sum(F("duration_calculated") + F("duration_manual"))
         )
-        return format_duration(result["duration"])
+        return result["duration"]
 
 
 class Session(models.Model):
@@ -116,7 +119,7 @@ class Session(models.Model):
 
     @property
     def duration_sum(self) -> str:
-        return Session.objects.all().total_duration()
+        return Session.objects.all().total_duration_formatted()
 
     def save(self, *args, **kwargs):
         if self.timestamp_start != None and self.timestamp_end != None:

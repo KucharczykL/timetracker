@@ -36,9 +36,9 @@ def format_duration(
     minute_seconds = 60
     hour_seconds = 60 * minute_seconds
     day_seconds = 24 * hour_seconds
-    duration = _safe_timedelta(duration)
+    safe_duration = _safe_timedelta(duration)
     # we don't need float
-    seconds_total = int(duration.total_seconds())
+    seconds_total = int(safe_duration.total_seconds())
     # timestamps where end is before start
     if seconds_total < 0:
         seconds_total = 0
