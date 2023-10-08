@@ -7,7 +7,7 @@
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
         <h1 class="text-4xl">{{ game.name }} (#{{ game.pk }})</h1>
-        <h2 class="text-lg my-2 ml-2">{{ total_playtime }} ({{ first_session.timestamp_end | date:"M Y"}} — {{ last_session.timestamp_end | date:"M Y"}}) </h2>
+        <h2 class="text-lg my-2 ml-2">{{ total_playtime }} ({{ first_session.timestamp_start | date:"M Y"}} — {{ last_session.timestamp_start | date:"M Y"}}) </h2>
         <hr class="border-slate-500">
         <h1 class="text-3xl mt-4 mb-1">Editions</h1>
         <ul>
