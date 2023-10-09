@@ -10,13 +10,6 @@ ENV VERSION_NUMBER 1.1.0
 ENV PROD 1
 ENV PYTHONUNBUFFERED=1
 
-RUN apt update && \
-    apt install -y \
-    bash \
-    vim \
-    curl && \
-    rm -rf /var/lib/apt/lists/*
-
 RUN useradd -m --uid 1000 timetracker
 WORKDIR /home/timetracker/app
 COPY . /home/timetracker/app/
