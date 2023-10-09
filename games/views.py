@@ -112,6 +112,7 @@ def view_game(request, game_id=None):
     # so the most recent are on top
     context["last_session"] = context["sessions"].first()
     context["first_session"] = context["sessions"].last()
+    context["sessions_with_notes"] = context["sessions"].exclude(note="")
     return render(request, "view_game.html", context)
 
 

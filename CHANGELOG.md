@@ -1,3 +1,11 @@
+## 1.1.1 / 2023-10-09 20:52+02:00
+
+### New
+* Add notes section to game overview
+
+### Enhancements
+* Make it possible to add any data on the game overview page
+
 ## 1.1.0 / 2023-10-09 00:01+02:00
 
 ### New
