@@ -6,7 +6,6 @@ from common.time import format_duration
 
 class FormatDurationTest(unittest.TestCase):
     def setUp(self) -> None:
-
         return super().setUp()
 
     def test_only_days(self):
@@ -18,6 +17,21 @@ class FormatDurationTest(unittest.TestCase):
         delta = timedelta(hours=1)
         result = format_duration(delta, "%H hours")
         self.assertEqual(result, "1 hours")
+
+    def test_only_hours_fractional(self):
+        delta = timedelta(hours=1)
+        result = format_duration(delta, "%.1H hours")
+        self.assertEqual(result, "1.0 hours")
+
+    def test_less_than_hour_with_precision(self):
+        delta = timedelta(hours=0.5)
+        result = format_duration(delta, "%.1H hours")
+        self.assertEqual(result, "0.5 hours")
+
+    def test_less_than_hour_without_precision(self):
+        delta = timedelta(hours=0.5)
+        result = format_duration(delta, "%H hours")
+        self.assertEqual(result, "0 hours")
 
     def test_overflow_hours(self):
         delta = timedelta(hours=25)
