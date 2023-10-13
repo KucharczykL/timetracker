@@ -66,9 +66,12 @@ def format_duration(
         match = re.search(rf"%(\d*\.?\d*){pattern}", formatted_string)
         if match:
             format_spec = match.group(1)
-            if format_spec:
-                # Format the number according to the specifier
+            if "." in format_spec:
+                # Format the number as float if precision is specified
                 replacement = f"{float(replacement):{format_spec}f}"
+            else:
+                # Format the number as integer if no precision is specified
+                replacement = f"{int(float(replacement)):>{format_spec}}"
             # Replace the format specifier with the formatted number
             formatted_string = re.sub(
                 rf"%\d*\.?\d*{pattern}", replacement, formatted_string
