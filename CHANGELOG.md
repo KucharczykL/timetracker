@@ -1,3 +1,11 @@
+## 1.1.2 / 2023-10-13 16:30+02:00
+
+### Enhancements
+* Durations are formatted in a consisent manner across all pages
+
+### Fixes
+* Game Overview: display duration when >1 hour instead of displaying 0
+
 ## 1.1.1 / 2023-10-09 20:52+02:00
 
 ### New

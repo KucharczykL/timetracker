@@ -32,6 +32,8 @@ def format_duration(
     from the formatting string. For example:
     - 61 seconds as "%s" = 61 seconds
     - 61 seconds as "%m %s" = 1 minutes 1 seconds"
+    Format specifiers can include width and precision options:
+    - %5.2H: hours formatted with width 5 and 2 decimal places (padded with zeros)
     """
     minute_seconds = 60
     hour_seconds = 60 * minute_seconds
@@ -46,18 +48,29 @@ def format_duration(
     remainder = seconds = seconds_total
     if "%d" in format_string:
         days, remainder = divmod(seconds_total, day_seconds)
-    if "%H" in format_string:
-        hours, remainder = divmod(remainder, hour_seconds)
-    if "%m" in format_string:
+    if re.search(r"%\d*\.?\d*H", format_string):
+        hours_float, remainder = divmod(remainder, hour_seconds)
+        hours = float(hours_float) + remainder / hour_seconds
+    if re.search(r"%\d*\.?\d*m", format_string):
         minutes, seconds = divmod(remainder, minute_seconds)
     literals = {
-        "%d": str(days),
-        "%H": str(hours),
-        "%m": str(minutes),
-        "%s": str(seconds),
-        "%r": str(seconds_total),
+        "d": str(days),
+        "H": str(hours),
+        "m": str(minutes),
+        "s": str(seconds),
+        "r": str(seconds_total),
     }
     formatted_string = format_string
     for pattern, replacement in literals.items():
-        formatted_string = re.sub(pattern, replacement, formatted_string)
+        # Match format specifiers with optional width and precision
+        match = re.search(rf"%(\d*\.?\d*){pattern}", formatted_string)
+        if match:
+            format_spec = match.group(1)
+            if format_spec:
+                # Format the number according to the specifier
+                replacement = f"{float(replacement):{format_spec}f}"
+            # Replace the format specifier with the formatted number
+            formatted_string = re.sub(
+                rf"%\d*\.?\d*{pattern}", replacement, formatted_string
+            )
     return formatted_string

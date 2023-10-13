@@ -101,8 +101,8 @@ def view_game(request, game_id=None):
     context["sessions"] = Session.objects.filter(
         purchase__edition__game_id=game_id
     ).order_by("-timestamp_start")
-    context["total_hours"] = int(
-        format_duration(context["sessions"].total_duration_unformatted(), "%H")
+    context["total_hours"] = float(
+        format_duration(context["sessions"].total_duration_unformatted(), "%2.1H")
     )
     context["session_average"] = round(
         (context["total_hours"]) / int(context["sessions"].count()), 1

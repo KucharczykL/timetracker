@@ -114,7 +114,7 @@ class Session(models.Model):
         return timedelta(seconds=(manual + calculated).total_seconds())
 
     def duration_formatted(self) -> str:
-        result = format_duration(self.duration_seconds(), "%H:%m")
+        result = format_duration(self.duration_seconds(), "%02.0H:%02.0m")
         return result
 
     @property
