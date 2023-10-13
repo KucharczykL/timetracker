@@ -2,12 +2,13 @@
 title
 text
 {% endcomment %}
-<a
-  href="{{ link }}"
+<button
+  type="button"
   title="{{ title }}"
-  class="truncate max-w-xs py-1 px-2 text-xs bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-sm"
+  autofocus
+  class="truncate max-w-xs sm:max-w-md lg:max-w-lg py-1 px-2 bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg"
 >
-  {% comment %} <svg
+  <svg
     xmlns="http://www.w3.org/2000/svg"
     fill="none"
     viewBox="0 0 24 24"
@@ -19,8 +20,7 @@ text
       stroke-linecap="round"
       stroke-linejoin="round"
       d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"
-      /> 
-    </svg>
-    {% endcomment %}
+    />
+  </svg>
   {{ text }}
-</a>
+</button>

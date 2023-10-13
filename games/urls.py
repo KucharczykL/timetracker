@@ -19,9 +19,14 @@ urlpatterns = [
         name="update_session",
     ),
     path(
-        "start-session/<int:last_session_id>",
-        views.start_session,
-        name="start_session",
+        "start-session-same-as-last/<int:last_session_id>",
+        views.start_session_same_as_last,
+        name="start_session_same_as_last",
+    ),
+    path(
+        "start-session/<int:game_id>",
+        views.start_game_session,
+        name="start_game_session",
     ),
     # path(
     #     "delete_session/by-id/<int:session_id>",

@@ -140,7 +140,24 @@ def edit_edition(request, edition_id=None):
     return render(request, "add.html", context)
 
 
-def start_session(request, last_session_id: int):
+def start_game_session(request, game_id: int):
+    last_session = (
+        Session.objects.filter(purchase__edition__game_id=game_id)
+        .order_by("-timestamp_start")
+        .first()
+    )
+    session = SessionForm(
+        {
+            "purchase": last_session.purchase.id,
+            "timestamp_start": now_with_tz(),
+            "device": last_session.device,
+        }
+    )
+    session.save()
+    return redirect("list_sessions")
+
+
+def start_session_same_as_last(request, last_session_id: int):
     last_session = Session.objects.get(id=last_session_id)
     session = SessionForm(
         {

@@ -47,7 +47,14 @@
             </li>
             {% endfor %}
         </ul>
-        <h1 class="text-3xl mt-4 mb-1">Sessions <span class="dark:text-slate-500">({{ sessions.count }})</span></h1>
+        <h1 class="text-3xl mt-4 mb-1 flex gap-2 items-center">
+            Sessions
+            <span class="dark:text-slate-500">
+                ({{ sessions.count }})
+            </span>
+            {% url 'start_game_session' game.id as add_session_link %}
+            {% include 'components/button.html' with title="Start new session" text="New" link=add_session_link %}
+        </h1>
         <ul>
             {% for session in sessions %}
             <li class="sm:pl-2 flex items-center">

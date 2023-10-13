@@ -10,8 +10,8 @@
 <div class="mx-auto text-center my-4">
   <a
     id="last-session-start"
-    href="{% url 'start_session' last.id %}"
-    hx-get="{% url 'start_session' last.id %}"
+    href="{% url 'start_session_same_as_last' last.id %}"
+    hx-get="{% url 'start_session_same_as_last' last.id %}"
     hx-indicator="#indicator"
     hx-swap="afterbegin"
     hx-target=".responsive-table tbody"
@@ -19,7 +19,7 @@
     onClick="document.querySelector('#last-session-start').classList.add('invisible')"
     class="{% if last.timestamp_end == null %}invisible{% endif %}"
   >
-    {% include 'components/button.html' with text=last.purchase title="Start session of last played game" only %}
+    {% include 'components/button_start.html' with text=last.purchase title="Start session of last played game" only %}
   </a>
 </div>
 {% endif %}

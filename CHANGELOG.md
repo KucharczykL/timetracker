@@ -1,3 +1,8 @@
+## Unreleased
+
+### Enhancements
+* Add a button to start session from game overview
+
 ## 1.1.2 / 2023-10-13 16:30+02:00
 
 ### Enhancements
