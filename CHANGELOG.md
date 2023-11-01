@@ -1,4 +1,4 @@
-## Unreleased
+## 1.2.0 / 2023-11-01 20:18+01:00
 
 ### New
 * Add yearly stats page (https://git.kucharczyk.xyz/lukas/timetracker/issues/15)
