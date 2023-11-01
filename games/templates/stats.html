@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock title %}
+
+{% load static %}
+
+{% block content %}
+    <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
+        <h1 class="text-5xl text-center my-6">Stats for {{ year }}</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Total hours</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Total games</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Total 2023 games</th>
+                </tr>
+            <tbody>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
+                </tr>
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Top games by playtime</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in top_10_by_playtime %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        <a href="{% url 'view_game' purchase.edition.game.id  %}">{{ purchase.edition.name }}
+
+                        </a>
+                    </td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.formatted_playtime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Platforms by playtime</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Platform</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in total_playtime_per_platform %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}                    </td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock content %}

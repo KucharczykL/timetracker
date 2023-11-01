@@ -1,5 +1,8 @@
 ## Unreleased
 
+### New
+* Add yearly stats page (https://git.kucharczyk.xyz/lukas/timetracker/issues/15)
+
 ### Enhancements
 * Add a button to start session from game overview
 
