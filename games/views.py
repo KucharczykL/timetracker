@@ -5,6 +5,7 @@ from common.time import now as now_with_tz
 from common.time import format_duration
 from django.conf import settings
 from django.shortcuts import redirect, render
+from django.db.models import Sum, F
 
 from .forms import (
     GameForm,
@@ -227,6 +228,48 @@ def list_sessions(
     context["last"] = Session.objects.all().order_by("timestamp_start").last()
 
     return render(request, "list_sessions.html", context)
+
+
+def stats(request, year: int):
+    first_day_of_year = datetime(year, 1, 1)
+    year_sessions = Session.objects.filter(timestamp_start__gte=first_day_of_year)
+    year_purchases = Purchase.objects.filter(session__in=year_sessions).distinct()
+    year_purchases_with_playtime = year_purchases.annotate(
+        total_playtime=Sum(
+            F("session__duration_calculated") + F("session__duration_manual")
+        )
+    )
+    top_10_by_playtime = year_purchases_with_playtime.order_by("-total_playtime")[:10]
+    for purchase in top_10_by_playtime:
+        purchase.formatted_playtime = format_duration(purchase.total_playtime, "%2.0H")
+
+    total_playtime_per_platform = (
+        year_sessions.values("purchase__platform__name")  # Group by platform name
+        .annotate(
+            total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
+        )  # Sum the duration_calculated for each group
+        .annotate(platform_name=F("purchase__platform__name"))  # Rename the field
+        .values(
+            "platform_name", "total_playtime"
+        )  # Select the renamed field and total_playtime
+        .order_by("-total_playtime")  # Optional: Order by the renamed platform name
+    )
+    for item in total_playtime_per_platform:
+        item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
+
+    context = {
+        "total_hours": format_duration(
+            year_sessions.total_duration_unformatted(), "%2.0H"
+        ),
+        "total_games": year_purchases.count(),
+        "total_2023_games": year_purchases.filter(edition__year_released=year).count(),
+        "top_10_by_playtime_formatted": top_10_by_playtime,
+        "top_10_by_playtime": top_10_by_playtime,
+        "year": year,
+        "total_playtime_per_platform": total_playtime_per_platform,
+    }
+
+    return render(request, "stats.html", context)
 
 
 def add_purchase(request):
