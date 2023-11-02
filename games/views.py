@@ -30,7 +30,7 @@ def model_counts(request):
 
 
 def stats_dropdown_year_range(request):
-    return {"stats_dropdown_year_range": range(2022, 2024)}
+    return {"stats_dropdown_year_range": range(2018, 2024)}
 
 
 def add_session(request):
