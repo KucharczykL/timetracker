@@ -1,3 +1,8 @@
+## Unreleased
+
+### Fixed
+* Correctly limit sessions to a single year for stats
+
 ## 1.2.0 / 2023-11-01 20:18+01:00
 
 ### New

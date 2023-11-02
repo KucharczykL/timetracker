@@ -232,7 +232,10 @@ def list_sessions(
 
 def stats(request, year: int):
     first_day_of_year = datetime(year, 1, 1)
-    year_sessions = Session.objects.filter(timestamp_start__gte=first_day_of_year)
+    last_day_of_year = datetime(year + 1, 1, 1)
+    year_sessions = Session.objects.filter(
+        timestamp_start__gte=first_day_of_year
+    ).filter(timestamp_start__lt=last_day_of_year)
     year_purchases = Purchase.objects.filter(session__in=year_sessions).distinct()
     year_purchases_with_playtime = year_purchases.annotate(
         total_playtime=Sum(
