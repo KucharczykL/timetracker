@@ -247,14 +247,20 @@ def stats(request, year: int = 0):
         timestamp_start__gte=first_day_of_year
     ).filter(timestamp_start__lt=last_day_of_year)
     year_purchases = Purchase.objects.filter(session__in=year_sessions).distinct()
-    year_purchases_with_playtime = year_purchases.annotate(
-        total_playtime=Sum(
-            F("session__duration_calculated") + F("session__duration_manual")
+
+    games_with_playtime = (
+        Game.objects.filter(edition__purchase__session__in=year_sessions)
+        .annotate(
+            total_playtime=Sum(
+                F("edition__purchase__session__duration_calculated")
+                + F("edition__purchase__session__duration_manual")
+            )
         )
+        .values("id", "name", "total_playtime")
     )
-    top_10_by_playtime = year_purchases_with_playtime.order_by("-total_playtime")[:10]
-    for purchase in top_10_by_playtime:
-        purchase.formatted_playtime = format_duration(purchase.total_playtime, "%2.0H")
+    top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")[:10]
+    for game in top_10_games_by_playtime:
+        game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
         year_sessions.values("purchase__platform__name")  # Group by platform name
@@ -277,7 +283,7 @@ def stats(request, year: int = 0):
         "total_games": year_purchases.count(),
         "total_2023_games": year_purchases.filter(edition__year_released=year).count(),
         "top_10_by_playtime_formatted": top_10_by_playtime,
-        "top_10_by_playtime": top_10_by_playtime,
+        "top_10_games_by_playtime": top_10_games_by_playtime,
         "year": year,
         "total_playtime_per_platform": total_playtime_per_platform,
     }

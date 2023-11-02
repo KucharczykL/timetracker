@@ -39,14 +39,14 @@
                 </tr>
             </thead>
             <tbody>
-                {% for purchase in top_10_by_playtime %}
+                {% for game in top_10_games_by_playtime %}
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <a href="{% url 'view_game' purchase.edition.game.id  %}">{{ purchase.edition.name }}
+                        <a href="{% url 'view_game' game.id  %}">{{ game.name }}
 
                         </a>
                     </td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.formatted_playtime }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
