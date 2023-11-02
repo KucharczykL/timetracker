@@ -263,15 +263,11 @@ def stats(request, year: int = 0):
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
-        year_sessions.values("purchase__platform__name")  # Group by platform name
-        .annotate(
-            total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
-        )  # Sum the duration_calculated for each group
-        .annotate(platform_name=F("purchase__platform__name"))  # Rename the field
-        .values(
-            "platform_name", "total_playtime"
-        )  # Select the renamed field and total_playtime
-        .order_by("-total_playtime")  # Optional: Order by the renamed platform name
+        year_sessions.values("purchase__platform__name")
+        .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
+        .annotate(platform_name=F("purchase__platform__name"))
+        .values("platform_name", "total_playtime")
+        .order_by("-total_playtime")
     )
     for item in total_playtime_per_platform:
         item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
@@ -282,7 +278,6 @@ def stats(request, year: int = 0):
         ),
         "total_games": year_purchases.count(),
         "total_2023_games": year_purchases.filter(edition__year_released=year).count(),
-        "top_10_by_playtime_formatted": top_10_by_playtime,
         "top_10_games_by_playtime": top_10_games_by_playtime,
         "year": year,
         "total_playtime_per_platform": total_playtime_per_platform,
