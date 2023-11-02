@@ -1,13 +1,12 @@
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-from common.time import now as now_with_tz
 from common.time import format_duration
+from common.time import now as now_with_tz
+from datetime import datetime, timedelta
 from django.conf import settings
-from django.shortcuts import redirect, render
 from django.db.models import Sum, F
 from django.http import HttpResponseRedirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
+from zoneinfo import ZoneInfo
 
 from .forms import (
     GameForm,
