@@ -243,10 +243,21 @@ def stats(request, year: int = 0):
         year = now_with_tz().year
     first_day_of_year = datetime(year, 1, 1)
     last_day_of_year = datetime(year + 1, 1, 1)
-    year_sessions = Session.objects.filter(
-        timestamp_start__gte=first_day_of_year
-    ).filter(timestamp_start__lt=last_day_of_year)
-    year_purchases = Purchase.objects.filter(session__in=year_sessions).distinct()
+    year_sessions = Session.objects.filter(timestamp_start__year=year)
+    year_played_purchases = Purchase.objects.filter(
+        session__in=year_sessions
+    ).distinct()
+
+    selected_currency = "CZK"
+    all_purchased_this_year = (
+        Purchase.objects.filter(date_purchased__year=year)
+        .filter(price_currency__exact=selected_currency)
+        .filter(date_refunded__exact=None)
+        .order_by("date_purchased")
+    )
+
+    this_year_spendings = all_purchased_this_year.aggregate(total_spent=Sum(F("price")))
+    total_spent = this_year_spendings["total_spent"]
 
     games_with_playtime = (
         Game.objects.filter(edition__purchase__session__in=year_sessions)
@@ -276,11 +287,17 @@ def stats(request, year: int = 0):
         "total_hours": format_duration(
             year_sessions.total_duration_unformatted(), "%2.0H"
         ),
-        "total_games": year_purchases.count(),
-        "total_2023_games": year_purchases.filter(edition__year_released=year).count(),
+        "total_games": year_played_purchases.count(),
+        "total_2023_games": year_played_purchases.filter(
+            edition__year_released=year
+        ).count(),
         "top_10_games_by_playtime": top_10_games_by_playtime,
         "year": year,
         "total_playtime_per_platform": total_playtime_per_platform,
+        "total_spent": total_spent,
+        "total_spent_currency": selected_currency,
+        "all_purchased_this_year": all_purchased_this_year,
+        "spent_per_game": int(total_spent / all_purchased_this_year.count()),
     }
 
     return render(request, "stats.html", context)

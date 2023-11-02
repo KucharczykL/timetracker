@@ -19,15 +19,21 @@
         <table class="responsive-table">
             <thead>
                 <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Total hours</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Total games</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Released that year</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Hours</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Games</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Purchases</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">{{ total_spent_currency }}/game</th>
                 </tr>
             <tbody>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year.count }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ spent_per_game }}</td>
                 </tr>
             </tbody>
         </table>
@@ -43,7 +49,7 @@
                 {% for game in top_10_games_by_playtime %}
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <a href="{% url 'view_game' game.id  %}">{{ game.name }}
+                        <a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'view_game' game.id  %}">{{ game.name }}
 
                         </a>
                     </td>
@@ -63,8 +69,27 @@
             <tbody>
                 {% for item in total_playtime_per_platform %}
                 <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}                    </td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Purchases</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in all_purchased_this_year %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
