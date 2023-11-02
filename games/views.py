@@ -6,6 +6,8 @@ from common.time import format_duration
 from django.conf import settings
 from django.shortcuts import redirect, render
 from django.db.models import Sum, F
+from django.http import HttpResponseRedirect
+from django.urls import reverse
 
 from .forms import (
     GameForm,
@@ -230,7 +232,12 @@ def list_sessions(
     return render(request, "list_sessions.html", context)
 
 
-def stats(request, year: int):
+def stats(request, year: int = 0):
+    selected_year = request.GET.get("year")
+    if selected_year:
+        return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
+    if year == 0:
+        year = now_with_tz().year
     first_day_of_year = datetime(year, 1, 1)
     last_day_of_year = datetime(year + 1, 1, 1)
     year_sessions = Session.objects.filter(

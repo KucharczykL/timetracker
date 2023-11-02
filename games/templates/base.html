@@ -38,6 +38,7 @@
                                 <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_device' %}">New Device</a></li>
                             {% endif %}
                             {% if session_count > 0 %}
+                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'stats_current_year' %}">Stats</a></li>
                                 <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'list_sessions' %}">All Sessions</a></li>
                             {% endif %}
                         </ul>

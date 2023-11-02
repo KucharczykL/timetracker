@@ -1,5 +1,9 @@
 ## Unreleased
 
+### New
+* Add Stats to the main navigation
+* Allow selecting year on the Stats page
+
 ### Fixed
 * Correctly limit sessions to a single year for stats
 

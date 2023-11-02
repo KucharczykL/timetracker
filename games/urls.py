@@ -73,6 +73,7 @@ urlpatterns = [
         {"filter": "ownership_type"},
         name="list_sessions_by_ownership_type",
     ),
+    path("stats/", views.stats, name="stats_current_year"),
     path(
         "stats/<int:year>",
         views.stats,
