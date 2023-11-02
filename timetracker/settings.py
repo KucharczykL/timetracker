@@ -68,6 +68,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "games.views.model_counts",
+                "games.views.stats_dropdown_year_range",
             ],
         },
     },

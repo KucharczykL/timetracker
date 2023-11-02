@@ -4,6 +4,9 @@
 * Add Stats to the main navigation
 * Allow selecting year on the Stats page
 
+### Improved
+* Make navigation more compact
+
 ### Fixed
 * Correctly limit sessions to a single year for stats
 

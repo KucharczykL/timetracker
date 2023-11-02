@@ -25,20 +25,37 @@
                     <div class="w-full md:block md:w-auto">
                         <ul
                             class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
-                            <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New Game</a></li>
-                            <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_platform' %}">New Platform</a></li>
-                            {% if game_available and platform_available %}
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_edition' %}">New Edition</a></li>
-                            {% endif %}
-                            {% if edition_available %}
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_purchase' %}">New Purchase</a></li>
-                            {% endif %}
-                            {% if purchase_available %}
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_session' %}">New Session</a></li>
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_device' %}">New Device</a></li>
-                            {% endif %}
+                            <li class="relative group">
+                                <a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New</a>
+                                <ul class="absolute hidden text-gray-700 pt-1 group-hover:block  w-auto whitespace-nowrap">
+                                    {% if purchase_available %}
+                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_device' %}">Device</a></li>
+                                    {% endif %}
+                                    <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_game' %}">Game</a></li>
+                                    {% if game_available and platform_available %}
+                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_edition' %}">Edition</a></li>
+                                    {% endif %}
+                                    <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_platform' %}">Platform</a></li>
+                                    {% if edition_available %}
+                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_purchase' %}">Purchase</a></li>
+                                    {% endif %}
+                                    {% if purchase_available %}
+                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_session' %}">Session</a></li>
+                                    {% endif %}
+                                    
+                                </ul>
+                            </li>
                             {% if session_count > 0 %}
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'stats_current_year' %}">Stats</a></li>
+                                    <li class="relative group">
+                                        <a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'stats_current_year' %}">Stats</a>
+                                        <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                            {% for year in stats_dropdown_year_range %}
+                                                <li>
+                                                    <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'stats_by_year' year %}">{{ year }}</a>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </li>
                                 <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'list_sessions' %}">All Sessions</a></li>
                             {% endif %}
                         </ul>

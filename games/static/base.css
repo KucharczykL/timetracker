@@ -755,6 +755,10 @@ select {
   position: absolute;
 }
 
+.relative {
+  position: relative;
+}
+
 .bottom-2 {
   bottom: 0.5rem;
 }
@@ -876,6 +880,10 @@ select {
   width: 1.75rem;
 }
 
+.w-auto {
+  width: auto;
+}
+
 .w-full {
   width: 100%;
 }
@@ -962,6 +970,11 @@ select {
   border-color: rgb(100 116 139 / var(--tw-border-opacity));
 }
 
+.bg-gray-200 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(229 231 235 / var(--tw-bg-opacity));
+}
+
 .bg-green-600 {
   --tw-bg-opacity: 1;
   background-color: rgb(22 163 74 / var(--tw-bg-opacity));
@@ -986,6 +999,11 @@ select {
   padding-right: 0.5rem;
 }
 
+.px-4 {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .py-1 {
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
@@ -1002,6 +1020,10 @@ select {
 
 .pr-4 {
   padding-right: 1rem;
+}
+
+.pt-1 {
+  padding-top: 0.25rem;
 }
 
 .text-center {
@@ -1053,6 +1075,11 @@ select {
 
 .italic {
   font-style: italic;
+}
+
+.text-gray-700 {
+  --tw-text-opacity: 1;
+  color: rgb(55 65 81 / var(--tw-text-opacity));
 }
 
 .text-slate-300 {
@@ -1290,6 +1317,11 @@ th label {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+.hover\:bg-gray-400:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(156 163 175 / var(--tw-bg-opacity));
+}
+
 .hover\:bg-green-700:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(21 128 61 / var(--tw-bg-opacity));
@@ -1335,6 +1367,10 @@ th label {
 
 .focus\:ring-offset-violet-200:focus {
   --tw-ring-offset-color: #ddd6fe;
+}
+
+.group:hover .group-hover\:block {
+  display: block;
 }
 
 :is(.dark .dark\:bg-gray-800) {
