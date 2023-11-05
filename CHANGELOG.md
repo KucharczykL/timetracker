@@ -5,6 +5,9 @@
 * Allow selecting year on the Stats page
 
 ### Improved
+* Make some pages redirect back instead to session list
+
+### Improved
 * Make navigation more compact
 
 ### Fixed

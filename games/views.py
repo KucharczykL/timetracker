@@ -1,11 +1,11 @@
-from common.time import format_duration
-from common.time import now as now_with_tz
+from common.time import format_duration, now as now_with_tz
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.db.models import Sum, F
-from django.http import HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from typing import Callable, Any
 from zoneinfo import ZoneInfo
 
 from .forms import (
@@ -61,6 +61,25 @@ def update_session(request, session_id=None):
     return redirect("list_sessions")
 
 
+def use_custom_redirect(
+    func: Callable[..., HttpResponse]
+) -> Callable[..., HttpResponse]:
+    """
+    Will redirect to "return_path" session variable if set.
+    """
+
+    def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        response = func(request, *args, **kwargs)
+        if isinstance(response, HttpResponseRedirect) and (
+            next_url := request.session.get("return_path")
+        ):
+            return HttpResponseRedirect(next_url)
+        return response
+
+    return wrapper
+
+
+@use_custom_redirect
 def edit_session(request, session_id=None):
     context = {}
     session = Session.objects.get(id=session_id)
@@ -73,6 +92,7 @@ def edit_session(request, session_id=None):
     return render(request, "add_session.html", context)
 
 
+@use_custom_redirect
 def edit_purchase(request, purchase_id=None):
     context = {}
     purchase = Purchase.objects.get(id=purchase_id)
@@ -85,6 +105,7 @@ def edit_purchase(request, purchase_id=None):
     return render(request, "add.html", context)
 
 
+@use_custom_redirect
 def edit_game(request, game_id=None):
     context = {}
     purchase = Game.objects.get(id=game_id)
@@ -119,9 +140,11 @@ def view_game(request, game_id=None):
     context["last_session"] = context["sessions"].first()
     context["first_session"] = context["sessions"].last()
     context["sessions_with_notes"] = context["sessions"].exclude(note="")
+    request.session["return_path"] = request.path
     return render(request, "view_game.html", context)
 
 
+@use_custom_redirect
 def edit_platform(request, platform_id=None):
     context = {}
     purchase = Platform.objects.get(id=platform_id)
@@ -134,6 +157,7 @@ def edit_platform(request, platform_id=None):
     return render(request, "add.html", context)
 
 
+@use_custom_redirect
 def edit_edition(request, edition_id=None):
     context = {}
     edition = Edition.objects.get(id=edition_id)
@@ -146,6 +170,7 @@ def edit_edition(request, edition_id=None):
     return render(request, "add.html", context)
 
 
+@use_custom_redirect
 def start_game_session(request, game_id: int):
     last_session = (
         Session.objects.filter(purchase__edition__game_id=game_id)
@@ -300,6 +325,7 @@ def stats(request, year: int = 0):
         "spent_per_game": int(total_spent / all_purchased_this_year.count()),
     }
 
+    request.session["return_path"] = request.path
     return render(request, "stats.html", context)
 
 
