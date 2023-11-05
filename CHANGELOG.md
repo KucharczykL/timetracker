@@ -1,4 +1,4 @@
-## Unreleased
+## 1.3.0 / 2023-11-05 15:09+01:00
 
 ### New
 * Add Stats to the main navigation
