@@ -50,6 +50,7 @@ class PurchaseForm(forms.ModelForm):
         widgets = {
             "date_purchased": custom_date_widget,
             "date_refunded": custom_date_widget,
+            "date_finished": custom_date_widget,
         }
         model = Purchase
         fields = [
@@ -57,6 +58,7 @@ class PurchaseForm(forms.ModelForm):
             "platform",
             "date_purchased",
             "date_refunded",
+            "date_finished",
             "price",
             "price_currency",
             "ownership_type",
@@ -67,7 +69,9 @@ class EditionForm(forms.ModelForm):
     game = forms.ModelChoiceField(
         queryset=Game.objects.order_by("name"), widget=autofocus_select_widget
     )
-    platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
+    platform = forms.ModelChoiceField(
+        queryset=Platform.objects.order_by("name"), required=False
+    )
 
     class Meta:
         model = Edition
@@ -77,7 +81,7 @@ class EditionForm(forms.ModelForm):
 class GameForm(forms.ModelForm):
     class Meta:
         model = Game
-        fields = ["name", "wikidata"]
+        fields = ["name", "year_released", "wikidata"]
         widgets = {"name": autofocus_input_widget}
 
 

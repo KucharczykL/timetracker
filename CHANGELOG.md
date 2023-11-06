@@ -1,5 +1,19 @@
 ## Unreleased
 
+### New
+* More fields are now optional. This is to make it easier to add new items in bulk.
+  * Game: Wikidata ID
+  * Edition: Platform, Year
+  * Purchase: Platform
+  * Platform: Group
+  * Session: Device
+* New fields:
+  * Game: Year Released
+    * To record original year of release
+    * Upon migration, this will be set to a year of any of the game's edition that has it set
+  * Purchase: Date Finished
+* Editions are now unique combination of name and platform
+
 ### Improved
 * game overview: simplify playtime range display
 

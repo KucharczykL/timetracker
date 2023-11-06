@@ -10,17 +10,23 @@ from django.db.models import F, Manager, Sum
 
 class Game(models.Model):
     name = models.CharField(max_length=255)
-    wikidata = models.CharField(max_length=50)
+    year_released = models.IntegerField(null=True, blank=True, default=None)
+    wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
 
     def __str__(self):
         return self.name
 
 
 class Edition(models.Model):
+    class Meta:
+        unique_together = [["name", "platform"]]
+
     game = models.ForeignKey("Game", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
-    platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
-    year_released = models.IntegerField(default=datetime.today().year)
+    platform = models.ForeignKey(
+        "Platform", on_delete=models.CASCADE, null=True, blank=True, default=None
+    )
+    year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
 
     def __str__(self):
@@ -48,9 +54,12 @@ class Purchase(models.Model):
     ]
 
     edition = models.ForeignKey("Edition", on_delete=models.CASCADE)
-    platform = models.ForeignKey("Platform", on_delete=models.CASCADE)
+    platform = models.ForeignKey(
+        "Platform", on_delete=models.CASCADE, default=None, null=True, blank=True
+    )
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
+    date_finished = models.DateField(blank=True, null=True)
     price = models.IntegerField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
     ownership_type = models.CharField(
@@ -66,7 +75,7 @@ class Purchase(models.Model):
 
 class Platform(models.Model):
     name = models.CharField(max_length=255)
-    group = models.CharField(max_length=255)
+    group = models.CharField(max_length=255, null=True, blank=True, default=None)
 
     def __str__(self):
         return self.name
@@ -89,7 +98,13 @@ class Session(models.Model):
     timestamp_end = models.DateTimeField(blank=True, null=True)
     duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
     duration_calculated = models.DurationField(blank=True, null=True)
-    device = models.ForeignKey("Device", on_delete=models.CASCADE, null=True)
+    device = models.ForeignKey(
+        "Device",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        default=None,
+    )
     note = models.TextField(blank=True, null=True)
 
     objects = SessionQuerySet.as_manager()
@@ -126,6 +141,12 @@ class Session(models.Model):
             self.duration_calculated = self.timestamp_end - self.timestamp_start
         else:
             self.duration_calculated = timedelta(0)
+
+        if not self.device:
+            default_device, _ = Device.objects.get_or_create(
+                type=Device.UNKNOWN, defaults={"name": "Unknown"}
+            )
+            self.device = default_device
         super(Session, self).save(*args, **kwargs)
 
 
@@ -135,15 +156,17 @@ class Device(models.Model):
     HANDHELD = "ha"
     MOBILE = "mo"
     SBC = "sbc"
+    UNKNOWN = "un"
     DEVICE_TYPES = [
         (PC, "PC"),
         (CONSOLE, "Console"),
         (HANDHELD, "Handheld"),
         (MOBILE, "Mobile"),
         (SBC, "Single-board computer"),
+        (UNKNOWN, "Unknown"),
     ]
     name = models.CharField(max_length=255)
-    type = models.CharField(max_length=3, choices=DEVICE_TYPES, default=PC)
+    type = models.CharField(max_length=3, choices=DEVICE_TYPES, default=UNKNOWN)
 
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"
