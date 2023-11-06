@@ -15,9 +15,7 @@
         <h2 class="text-lg my-2 ml-2">
             {{ total_hours }} <span class="dark:text-slate-500">total</span>
             {{ session_average }} <span class="dark:text-slate-500">avg</span> 
-            ({{ first_session.timestamp_start | date:"M Y"}}
-             — 
-            {{ last_session.timestamp_start | date:"M Y"}}) </h2>
+            ({{ playrange }}) </h2>
         <hr class="border-slate-500">
         <h1 class="text-3xl mt-4 mb-1">Editions <span class="dark:text-slate-500">({{ editions.count }})</span></h1>
         <ul>

@@ -137,8 +137,15 @@ def view_game(request, game_id=None):
     # here first and last is flipped
     # because sessions are ordered from newest to oldest
     # so the most recent are on top
-    context["last_session"] = context["sessions"].first()
-    context["first_session"] = context["sessions"].last()
+    playrange_start = context["sessions"].last().timestamp_start.strftime("%b %Y")
+    playrange_end = context["sessions"].first().timestamp_start.strftime("%b %Y")
+
+    context["playrange"] = (
+        playrange_start
+        if playrange_start == playrange_end
+        else f"{playrange_start} — {playrange_end}"
+    )
+
     context["sessions_with_notes"] = context["sessions"].exclude(note="")
     request.session["return_path"] = request.path
     return render(request, "view_game.html", context)
