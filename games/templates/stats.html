@@ -19,20 +19,32 @@
         <table class="responsive-table">
             <thead>
                 <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Hours</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Games</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Purchases</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">{{ total_spent_currency }}/game</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Statistic</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Value</th>
                 </tr>
             <tbody>
                 <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Hours</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Purchases</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year.count }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">{{ total_spent_currency }}/game</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ spent_per_game }}</td>
                 </tr>
             </tbody>
