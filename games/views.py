@@ -1,7 +1,8 @@
 from common.time import format_duration, now as now_with_tz
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.db.models import Sum, F
+from django.db.models import Sum, F, Count
+from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -276,6 +277,12 @@ def stats(request, year: int = 0):
     first_day_of_year = datetime(year, 1, 1)
     last_day_of_year = datetime(year + 1, 1, 1)
     year_sessions = Session.objects.filter(timestamp_start__year=year)
+    unique_days = (
+        year_sessions.annotate(date=TruncDate("timestamp_start"))
+        .values("date")
+        .distinct()
+        .aggregate(dates=Count("date"))
+    )
     year_played_purchases = Purchase.objects.filter(
         session__in=year_sessions
     ).distinct()
@@ -286,6 +293,14 @@ def stats(request, year: int = 0):
         .filter(price_currency__exact=selected_currency)
         .filter(date_refunded__exact=None)
         .order_by("date_purchased")
+    )
+
+    all_finished_this_year = Purchase.objects.filter(date_finished__year=year)
+    this_year_finished_this_year = Purchase.objects.filter(
+        date_finished__year=year
+    ).filter(edition__year_released=year)
+    purchased_this_year_finished_this_year = all_purchased_this_year.filter(
+        date_finished__year=year
     )
 
     this_year_spendings = all_purchased_this_year.aggregate(total_spent=Sum(F("price")))
@@ -330,6 +345,12 @@ def stats(request, year: int = 0):
         "total_spent_currency": selected_currency,
         "all_purchased_this_year": all_purchased_this_year,
         "spent_per_game": int(total_spent / all_purchased_this_year.count()),
+        "all_finished_this_year": all_finished_this_year,
+        "this_year_finished_this_year": this_year_finished_this_year,
+        "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year,
+        "total_sessions": year_sessions.count(),
+        "unique_days": unique_days["dates"],
+        "unique_days_percent": int(unique_days["dates"] / 365 * 100),
     }
 
     request.session["return_path"] = request.path

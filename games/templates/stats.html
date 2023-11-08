@@ -28,6 +28,14 @@
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
                 </tr>
                 <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Sessions</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_sessions }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Days Played</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
+                </tr>
+                <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
                 </tr>
@@ -87,7 +95,58 @@
                 {% endfor %}
             </tbody>
         </table>
-        <h1 class="text-5xl text-center my-6">Purchases</h1>
+        <h1 class="text-5xl text-center my-6">Finished</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in all_finished_this_year %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Finished (2023 games)</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in this_year_finished_this_year %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Bought and Finished ({{ year }})</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in purchased_this_year_finished_this_year %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">All Purchases</h1>
         <table class="responsive-table">
             <thead>
                 <tr>

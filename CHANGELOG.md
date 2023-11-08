@@ -13,6 +13,12 @@
     * Upon migration, this will be set to a year of any of the game's edition that has it set
   * Purchase: Date Finished
 * Editions are now unique combination of name and platform
+* Add more stats:
+  * All finished games
+  * All finished 2023 games
+  * All finished games that were purchased this year
+  * Total sessions
+  * Days played
 
 ### Improved
 * game overview: simplify playtime range display
