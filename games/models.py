@@ -33,6 +33,17 @@ class Edition(models.Model):
         return self.name
 
 
+class PurchaseQueryset(models.QuerySet):
+    def refunded(self):
+        return self.filter(date_refunded__isnull=False)
+
+    def not_refunded(self):
+        return self.filter(date_refunded__isnull=True)
+
+    def finished(self):
+        return self.filter(date_finished__isnull=False)
+
+
 class Purchase(models.Model):
     PHYSICAL = "ph"
     DIGITAL = "di"
@@ -52,6 +63,8 @@ class Purchase(models.Model):
         (DEMO, "Demo"),
         (PIRATED, "Pirated"),
     ]
+
+    objects = PurchaseQueryset().as_manager()
 
     edition = models.ForeignKey("Edition", on_delete=models.CASCADE)
     platform = models.ForeignKey(

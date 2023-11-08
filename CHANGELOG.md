@@ -17,8 +17,11 @@
   * All finished games
   * All finished 2023 games
   * All finished games that were purchased this year
-  * Total sessions
+  * Sessions (count)
   * Days played
+  * Finished (count)
+  * Unfinished (count)
+  * Refunded (count)
 
 ### Improved
 * game overview: simplify playtime range display

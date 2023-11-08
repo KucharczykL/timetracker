@@ -1438,6 +1438,10 @@ th label {
     display: block;
   }
 
+  .md\:w-1\/2 {
+    width: 50%;
+  }
+
   .md\:w-auto {
     width: auto;
   }
