@@ -275,65 +275,57 @@ def stats(request, year: int = 0):
         return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
     if year == 0:
         year = now_with_tz().year
-    first_day_of_year = datetime(year, 1, 1)
-    last_day_of_year = datetime(year + 1, 1, 1)
-    year_sessions = Session.objects.filter(timestamp_start__year=year)
+    this_year_sessions = Session.objects.filter(timestamp_start__year=year)
+    selected_currency = "CZK"
     unique_days = (
-        year_sessions.annotate(date=TruncDate("timestamp_start"))
+        this_year_sessions.annotate(date=TruncDate("timestamp_start"))
         .values("date")
         .distinct()
         .aggregate(dates=Count("date"))
     )
-    year_played_purchases = Purchase.objects.filter(
-        session__in=year_sessions
+    this_year_played_purchases = Purchase.objects.filter(
+        session__in=this_year_sessions
     ).distinct()
 
-    selected_currency = "CZK"
-    all_purchased_this_year = (
-        Purchase.objects.filter(date_purchased__year=year)
-        .filter(price_currency__exact=selected_currency)
-        .order_by("date_purchased")
+    this_year_purchases = Purchase.objects.filter(date_purchased__year=year)
+    this_year_purchases_with_currency = this_year_purchases.filter(
+        price_currency__exact=selected_currency
     )
-    all_purchased_without_refunded_this_year = all_purchased_this_year.not_refunded()
-    all_purchased_refunded_this_year = (
-        Purchase.objects.filter(date_purchased__year=year)
-        .filter(price_currency__exact=selected_currency)
-        .refunded()
-        .order_by("date_purchased")
+    this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
+        date_refunded=None
     )
+    this_year_purchases_refunded = this_year_purchases_with_currency.refunded()
 
-    purchased_unfinished = all_purchased_without_refunded_this_year.filter(
+    this_year_purchases_unfinished = this_year_purchases_without_refunded.filter(
         date_finished__isnull=True
     )
 
-    unfinished_purchases_percent = int(
+    this_year_purchases_unfinished_percent = int(
         safe_division(
-            purchased_unfinished.count(), all_purchased_refunded_this_year.count()
+            this_year_purchases_unfinished.count(), this_year_purchases_refunded.count()
         )
         * 100
     )
 
-    all_finished_this_year = Purchase.objects.filter(date_finished__year=year).order_by(
-        "date_finished"
-    )
-    this_year_finished_this_year = (
-        Purchase.objects.filter(date_finished__year=year)
-        .filter(edition__year_released=year)
-        .order_by("date_finished")
+    purchases_finished_this_year = Purchase.objects.filter(date_finished__year=year)
+    purchases_finished_this_year_released_this_year = (
+        purchases_finished_this_year.filter(edition__year_released=year).order_by(
+            "date_finished"
+        )
     )
     purchased_this_year_finished_this_year = (
-        all_purchased_without_refunded_this_year.filter(
-            date_finished__year=year
+        this_year_purchases_without_refunded.intersection(
+            purchases_finished_this_year
         ).order_by("date_finished")
     )
 
-    this_year_spendings = all_purchased_without_refunded_this_year.aggregate(
+    this_year_spendings = this_year_purchases_without_refunded.aggregate(
         total_spent=Sum(F("price"))
     )
     total_spent = this_year_spendings["total_spent"]
 
     games_with_playtime = (
-        Game.objects.filter(edition__purchase__session__in=year_sessions)
+        Game.objects.filter(edition__purchase__session__in=this_year_sessions)
         .annotate(
             total_playtime=Sum(
                 F("edition__purchase__session__duration_calculated")
@@ -347,7 +339,7 @@ def stats(request, year: int = 0):
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
-        year_sessions.values("purchase__platform__name")
+        this_year_sessions.values("purchase__platform__name")
         .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
         .annotate(platform_name=F("purchase__platform__name"))
         .values("platform_name", "total_playtime")
@@ -358,16 +350,16 @@ def stats(request, year: int = 0):
 
     backlog_decrease_count = (
         Purchase.objects.filter(date_purchased__year__lt=year)
-        .filter(date_finished__year=year)
+        .intersection(purchases_finished_this_year)
         .count()
     )
 
     context = {
         "total_hours": format_duration(
-            year_sessions.total_duration_unformatted(), "%2.0H"
+            this_year_sessions.total_duration_unformatted(), "%2.0H"
         ),
-        "total_games": year_played_purchases.count(),
-        "total_2023_games": year_played_purchases.filter(
+        "total_games": this_year_played_purchases.count(),
+        "total_2023_games": this_year_played_purchases.filter(
             edition__year_released=year
         ).count(),
         "top_10_games_by_playtime": top_10_games_by_playtime,
@@ -375,27 +367,29 @@ def stats(request, year: int = 0):
         "total_playtime_per_platform": total_playtime_per_platform,
         "total_spent": total_spent,
         "total_spent_currency": selected_currency,
-        "all_purchased_this_year": all_purchased_without_refunded_this_year,
+        "all_purchased_this_year": this_year_purchases_without_refunded,
         "spent_per_game": int(
-            safe_division(total_spent, all_purchased_without_refunded_this_year.count())
+            safe_division(total_spent, this_year_purchases_without_refunded.count())
         ),
-        "all_finished_this_year": all_finished_this_year,
-        "this_year_finished_this_year": this_year_finished_this_year,
+        "all_finished_this_year": purchases_finished_this_year,
+        "this_year_finished_this_year": purchases_finished_this_year_released_this_year,
         "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year,
-        "total_sessions": year_sessions.count(),
+        "total_sessions": this_year_sessions.count(),
         "unique_days": unique_days["dates"],
         "unique_days_percent": int(unique_days["dates"] / 365 * 100),
-        "purchased_unfinished": purchased_unfinished,
-        "unfinished_purchases_percent": unfinished_purchases_percent,
+        "purchased_unfinished": this_year_purchases_unfinished,
+        "unfinished_purchases_percent": this_year_purchases_unfinished_percent,
         "refunded_percent": int(
             safe_division(
-                all_purchased_refunded_this_year.count(),
-                all_purchased_this_year.count(),
+                this_year_purchases_refunded.count(),
+                this_year_purchases_with_currency.count(),
             )
             * 100
         ),
-        "all_purchased_refunded_this_year": all_purchased_refunded_this_year,
-        "all_purchased_this_year": all_purchased_this_year,
+        "all_purchased_refunded_this_year": this_year_purchases_refunded,
+        "all_purchased_this_year": this_year_purchases_with_currency.order_by(
+            "date_purchased"
+        ),
         "backlog_decrease_count": backlog_decrease_count,
     }
 
