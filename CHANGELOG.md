@@ -23,6 +23,8 @@
   * Unfinished (count)
   * Refunded (count)
   * Backlog Decrease (count)
+* New workflow:
+  * Adding Game, Edition, Purchase, and Session in a row is now much faster
 
 ### Improved
 * game overview: simplify playtime range display

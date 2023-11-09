@@ -35,21 +35,30 @@ def stats_dropdown_year_range(request):
     return {"stats_dropdown_year_range": range(2018, 2024)}
 
 
-def add_session(request):
+def add_session(request, purchase_id=None):
     context = {}
-    initial = {}
-
-    now = now_with_tz()
-    initial["timestamp_start"] = now
+    initial = {"timestamp_start": now_with_tz()}
 
     last = Session.objects.all().last()
     if last != None:
         initial["purchase"] = last.purchase
 
-    form = SessionForm(request.POST or None, initial=initial)
-    if form.is_valid():
-        form.save()
-        return redirect("list_sessions")
+    if request.method == "POST":
+        form = SessionForm(request.POST or None, initial=initial)
+        if form.is_valid():
+            form.save()
+            return redirect("list_sessions")
+    else:
+        if purchase_id:
+            purchase = Purchase.objects.get(id=purchase_id)
+            form = SessionForm(
+                initial={
+                    **initial,
+                    "purchase": purchase,
+                }
+            )
+        else:
+            form = SessionForm(initial=initial)
 
     context["title"] = "Add New Session"
     context["form"] = form
@@ -397,45 +406,86 @@ def stats(request, year: int = 0):
     return render(request, "stats.html", context)
 
 
-def add_purchase(request):
+def add_purchase(request, edition_id=None):
     context = {}
-    now = datetime.now()
-    initial = {"date_purchased": now}
-    form = PurchaseForm(request.POST or None, initial=initial)
-    if form.is_valid():
-        form.save()
-        return redirect("index")
+    initial = {"date_purchased": now_with_tz()}
+
+    if request.method == "POST":
+        form = PurchaseForm(request.POST or None, initial=initial)
+        if form.is_valid():
+            purchase = form.save()
+            if "submit_and_redirect" in request.POST:
+                return HttpResponseRedirect(
+                    reverse(
+                        "add_session_for_purchase", kwargs={"purchase_id": purchase.id}
+                    )
+                )
+            else:
+                return redirect("index")
+    else:
+        if edition_id:
+            edition = Edition.objects.get(id=edition_id)
+            form = PurchaseForm(
+                initial={
+                    **initial,
+                    "edition": edition,
+                    "platform": edition.platform,
+                }
+            )
+        else:
+            form = PurchaseForm(initial=initial)
 
     context["form"] = form
     context["title"] = "Add New Purchase"
     context["script_name"] = "add_purchase.js"
-    return render(request, "add.html", context)
+    return render(request, "add_purchase.html", context)
 
 
 def add_game(request):
     context = {}
     form = GameForm(request.POST or None)
     if form.is_valid():
-        form.save()
-        return redirect("index")
+        game = form.save()
+        if "submit_and_redirect" in request.POST:
+            return HttpResponseRedirect(
+                reverse("add_edition_for_game", kwargs={"game_id": game.id})
+            )
+        else:
+            return redirect("index")
 
     context["form"] = form
     context["title"] = "Add New Game"
     context["script_name"] = "add_game.js"
-    return render(request, "add.html", context)
+    return render(request, "add_game.html", context)
 
 
-def add_edition(request):
+def add_edition(request, game_id=None):
     context = {}
-    form = EditionForm(request.POST or None)
-    if form.is_valid():
-        form.save()
-        return redirect("index")
+    if request.method == "POST":
+        form = EditionForm(request.POST or None)
+        if form.is_valid():
+            edition = form.save()
+            if "submit_and_redirect" in request.POST:
+                return HttpResponseRedirect(
+                    reverse(
+                        "add_purchase_for_edition", kwargs={"edition_id": edition.id}
+                    )
+                )
+            else:
+                return redirect("index")
+    else:
+        if game_id:
+            game = Game.objects.get(id=game_id)
+            form = EditionForm(
+                initial={"game": game, "name": game.name, "sort_name": game.sort_name}
+            )
+        else:
+            form = EditionForm()
 
     context["form"] = form
     context["title"] = "Add New Edition"
     context["script_name"] = "add_edition.js"
-    return render(request, "add.html", context)
+    return render(request, "add_edition.html", context)
 
 
 def add_platform(request):

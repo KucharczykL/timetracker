@@ -14,6 +14,11 @@ urlpatterns = [
     path("add-platform/", views.add_platform, name="add_platform"),
     path("add-session/", views.add_session, name="add_session"),
     path(
+        "add-session-for-purchase/<int:purchase_id>",
+        views.add_session,
+        name="add_session_for_purchase",
+    ),
+    path(
         "update-session/by-session/<int:session_id>",
         views.update_session,
         name="update_session",
@@ -34,7 +39,17 @@ urlpatterns = [
     #     name="delete_session",
     # ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
+    path(
+        "add-purchase-for-edition/<int:edition_id>",
+        views.add_purchase,
+        name="add_purchase_for_edition",
+    ),
     path("add-edition/", views.add_edition, name="add_edition"),
+    path(
+        "add-edition-for-game/<int:game_id>",
+        views.add_edition,
+        name="add_edition_for_game",
+    ),
     path("edit-edition/<int:edition_id>", views.edit_edition, name="edit_edition"),
     path("game/<int:game_id>/view", views.view_game, name="view_game"),
     path("game/<int:game_id>/edit", views.edit_game, name="edit_game"),
