@@ -18,20 +18,17 @@ class Game(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        # Logic to create sort_name from name
         def get_sort_name(name):
             articles = ["a", "an", "the"]
             name_parts = name.split()
             first_word = name_parts[0].lower()
             if first_word in articles:
-                # Move the first word to the end
-                name_parts.append(name_parts.pop(0))
-                return ", ".join(name_parts).capitalize()
+                return f"{' '.join(name_parts[1:])}, {name_parts[0]}"
             else:
-                return name.capitalize()
+                return name
 
         self.sort_name = get_sort_name(self.name)
-        super().save(*args, **kwargs)  # Call the "real" save() method.
+        super().save(*args, **kwargs)
 
 
 class Edition(models.Model):
@@ -51,20 +48,17 @@ class Edition(models.Model):
         return self.sort_name
 
     def save(self, *args, **kwargs):
-        # Logic to create sort_name from name
         def get_sort_name(name):
             articles = ["a", "an", "the"]
             name_parts = name.split()
             first_word = name_parts[0].lower()
             if first_word in articles:
-                # Move the first word to the end
-                name_parts.append(name_parts.pop(0))
-                return ", ".join(name_parts).capitalize()
+                return f"{' '.join(name_parts[1:])}, {name_parts[0]}"
             else:
-                return name.capitalize()
+                return name
 
         self.sort_name = get_sort_name(self.name)
-        super().save(*args, **kwargs)  # Call the "real" save() method.
+        super().save(*args, **kwargs)
 
 
 class PurchaseQueryset(models.QuerySet):
