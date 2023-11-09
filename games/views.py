@@ -477,7 +477,12 @@ def add_edition(request, game_id=None):
         if game_id:
             game = Game.objects.get(id=game_id)
             form = EditionForm(
-                initial={"game": game, "name": game.name, "sort_name": game.sort_name}
+                initial={
+                    "game": game,
+                    "name": game.name,
+                    "sort_name": game.sort_name,
+                    "year_released": game.year_released,
+                }
             )
         else:
             form = EditionForm()
