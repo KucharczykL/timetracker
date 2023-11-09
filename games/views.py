@@ -380,9 +380,15 @@ def stats(request, year: int = 0):
         "spent_per_game": int(
             safe_division(total_spent, this_year_purchases_without_refunded.count())
         ),
-        "all_finished_this_year": purchases_finished_this_year,
-        "this_year_finished_this_year": purchases_finished_this_year_released_this_year,
-        "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year,
+        "all_finished_this_year": purchases_finished_this_year.order_by(
+            "date_finished"
+        ),
+        "this_year_finished_this_year": purchases_finished_this_year_released_this_year.order_by(
+            "date_finished"
+        ),
+        "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year.order_by(
+            "date_finished"
+        ),
         "total_sessions": this_year_sessions.count(),
         "unique_days": unique_days["dates"],
         "unique_days_percent": int(unique_days["dates"] / 365 * 100),
