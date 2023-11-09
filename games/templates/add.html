@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ title }}{% endblock title %}
 
@@ -15,3 +16,10 @@
         </table>
     </form>
 {% endblock content %}
+
+{% block scripts %}
+    {% if script_name %}
+        <script type="module" src="{% static 'js/'|add:script_name %}"></script>
+    {% endif %}
+{% endblock scripts %}
+        

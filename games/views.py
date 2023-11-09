@@ -407,6 +407,7 @@ def add_purchase(request):
 
     context["form"] = form
     context["title"] = "Add New Purchase"
+    context["script_name"] = "add_purchase.js"
     return render(request, "add.html", context)
 
 
@@ -419,6 +420,7 @@ def add_game(request):
 
     context["form"] = form
     context["title"] = "Add New Game"
+    context["script_name"] = "add_game.js"
     return render(request, "add.html", context)
 
 
@@ -431,7 +433,8 @@ def add_edition(request):
 
     context["form"] = form
     context["title"] = "Add New Edition"
-    return render(request, "add_edition.html", context)
+    context["script_name"] = "add_edition.js"
+    return render(request, "add.html", context)
 
 
 def add_platform(request):

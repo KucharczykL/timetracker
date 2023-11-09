@@ -6,7 +6,6 @@ custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
     attrs={"type": "datetime-local"}, format="%Y-%m-%d %H:%M"
 )
-autofocus_select_widget = forms.Select(attrs={"autofocus": "autofocus"})
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 
@@ -15,8 +14,8 @@ class SessionForm(forms.ModelForm):
     #     queryset=Purchase.objects.filter(date_refunded=None).order_by("edition__name")
     # )
     purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.order_by("edition__name"),
-        widget=autofocus_select_widget,
+        queryset=Purchase.objects.order_by("edition__sort_name"),
+        widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
 
     device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"))
@@ -39,12 +38,21 @@ class SessionForm(forms.ModelForm):
 
 class EditionChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj) -> str:
-        return f"{obj.name} ({obj.platform}, {obj.year_released})"
+        return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
+
+
+class IncludePlatformSelect(forms.Select):
+    def create_option(self, name, value, *args, **kwargs):
+        option = super().create_option(name, value, *args, **kwargs)
+        if value:
+            option["attrs"]["data-platform"] = value.instance.platform.id
+        return option
 
 
 class PurchaseForm(forms.ModelForm):
     edition = EditionChoiceField(
-        queryset=Edition.objects.order_by("name"), widget=autofocus_select_widget
+        queryset=Edition.objects.order_by("sort_name"),
+        widget=IncludePlatformSelect(attrs={"autoselect": "autoselect"}),
     )
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
 
@@ -67,9 +75,24 @@ class PurchaseForm(forms.ModelForm):
         ]
 
 
+class IncludeNameSelect(forms.Select):
+    def create_option(self, name, value, *args, **kwargs):
+        option = super().create_option(name, value, *args, **kwargs)
+        if value:
+            option["attrs"]["data-name"] = value.instance.name
+        return option
+
+
+class GameModelChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        # Use sort_name as the label for the option
+        return obj.sort_name
+
+
 class EditionForm(forms.ModelForm):
-    game = forms.ModelChoiceField(
-        queryset=Game.objects.order_by("name"), widget=autofocus_select_widget
+    game = GameModelChoiceField(
+        queryset=Game.objects.order_by("sort_name"),
+        widget=IncludeNameSelect(attrs={"autofocus": "autofocus"}),
     )
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"), required=False
@@ -77,13 +100,13 @@ class EditionForm(forms.ModelForm):
 
     class Meta:
         model = Edition
-        fields = ["game", "name", "platform", "year_released", "wikidata"]
+        fields = ["game", "name", "sort_name", "platform", "year_released", "wikidata"]
 
 
 class GameForm(forms.ModelForm):
     class Meta:
         model = Game
-        fields = ["name", "year_released", "wikidata"]
+        fields = ["name", "sort_name", "year_released", "wikidata"]
         widgets = {"name": autofocus_input_widget}
 
 

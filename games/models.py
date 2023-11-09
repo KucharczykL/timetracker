@@ -10,11 +10,28 @@ from django.db.models import F, Manager, Sum
 
 class Game(models.Model):
     name = models.CharField(max_length=255)
+    sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # Logic to create sort_name from name
+        def get_sort_name(name):
+            articles = ["a", "an", "the"]
+            name_parts = name.split()
+            first_word = name_parts[0].lower()
+            if first_word in articles:
+                # Move the first word to the end
+                name_parts.append(name_parts.pop(0))
+                return ", ".join(name_parts).capitalize()
+            else:
+                return name.capitalize()
+
+        self.sort_name = get_sort_name(self.name)
+        super().save(*args, **kwargs)  # Call the "real" save() method.
 
 
 class Edition(models.Model):
@@ -23,6 +40,7 @@ class Edition(models.Model):
 
     game = models.ForeignKey("Game", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
+    sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     platform = models.ForeignKey(
         "Platform", on_delete=models.CASCADE, null=True, blank=True, default=None
     )
@@ -30,7 +48,23 @@ class Edition(models.Model):
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
 
     def __str__(self):
-        return self.name
+        return self.sort_name
+
+    def save(self, *args, **kwargs):
+        # Logic to create sort_name from name
+        def get_sort_name(name):
+            articles = ["a", "an", "the"]
+            name_parts = name.split()
+            first_word = name_parts[0].lower()
+            if first_word in articles:
+                # Move the first word to the end
+                name_parts.append(name_parts.pop(0))
+                return ", ".join(name_parts).capitalize()
+            else:
+                return name.capitalize()
+
+        self.sort_name = get_sort_name(self.name)
+        super().save(*args, **kwargs)  # Call the "real" save() method.
 
 
 class PurchaseQueryset(models.QuerySet):
