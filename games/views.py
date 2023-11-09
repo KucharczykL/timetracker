@@ -304,9 +304,17 @@ def stats(request, year: int = 0):
     purchased_unfinished = all_purchased_without_refunded_this_year.filter(
         date_finished__isnull=True
     )
-    unfinished_purchases_percent = int(
-        purchased_unfinished.count() / all_purchased_refunded_this_year.count() * 100
-    )
+    if (
+        purchased_unfinished.count() == 0
+        or all_purchased_refunded_this_year.count() == 0
+    ):
+        unfinished_purchases_percent = 0
+    else:
+        unfinished_purchases_percent = int(
+            purchased_unfinished.count()
+            / all_purchased_refunded_this_year.count()
+            * 100
+        )
 
     all_finished_this_year = Purchase.objects.filter(date_finished__year=year).order_by(
         "date_finished"
