@@ -19,6 +19,8 @@ class SessionForm(forms.ModelForm):
         widget=autofocus_select_widget,
     )
 
+    device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"))
+
     class Meta:
         widgets = {
             "timestamp_start": custom_datetime_widget,
