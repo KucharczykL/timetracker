@@ -1,4 +1,5 @@
 from common.time import format_duration, now as now_with_tz
+from common.utils import safe_division
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.db.models import Sum, F, Count
@@ -304,17 +305,13 @@ def stats(request, year: int = 0):
     purchased_unfinished = all_purchased_without_refunded_this_year.filter(
         date_finished__isnull=True
     )
-    if (
-        purchased_unfinished.count() == 0
-        or all_purchased_refunded_this_year.count() == 0
-    ):
-        unfinished_purchases_percent = 0
-    else:
-        unfinished_purchases_percent = int(
-            purchased_unfinished.count()
-            / all_purchased_refunded_this_year.count()
-            * 100
+
+    unfinished_purchases_percent = int(
+        safe_division(
+            purchased_unfinished.count(), all_purchased_refunded_this_year.count()
         )
+        * 100
+    )
 
     all_finished_this_year = Purchase.objects.filter(date_finished__year=year).order_by(
         "date_finished"
@@ -374,7 +371,7 @@ def stats(request, year: int = 0):
         "total_spent_currency": selected_currency,
         "all_purchased_this_year": all_purchased_without_refunded_this_year,
         "spent_per_game": int(
-            total_spent / all_purchased_without_refunded_this_year.count()
+            safe_division(total_spent, all_purchased_without_refunded_this_year.count())
         ),
         "all_finished_this_year": all_finished_this_year,
         "this_year_finished_this_year": this_year_finished_this_year,
@@ -385,8 +382,10 @@ def stats(request, year: int = 0):
         "purchased_unfinished": purchased_unfinished,
         "unfinished_purchases_percent": unfinished_purchases_percent,
         "refunded_percent": int(
-            all_purchased_refunded_this_year.count()
-            / all_purchased_this_year.count()
+            safe_division(
+                all_purchased_refunded_this_year.count(),
+                all_purchased_this_year.count(),
+            )
             * 100
         ),
         "all_purchased_refunded_this_year": all_purchased_refunded_this_year,
