@@ -1,4 +1,4 @@
-## Unreleased
+## 1.4.0 / 2023-11-09 21:01+01:00
 
 ### New
 * More fields are now optional. This is to make it easier to add new items in bulk.
