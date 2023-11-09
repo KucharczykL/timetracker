@@ -80,6 +80,7 @@ class IncludeNameSelect(forms.Select):
         option = super().create_option(name, value, *args, **kwargs)
         if value:
             option["attrs"]["data-name"] = value.instance.name
+            option["attrs"]["data-year"] = value.instance.year_released
         return option
 
 

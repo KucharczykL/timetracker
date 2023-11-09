@@ -30,7 +30,7 @@
   * added a new sort_name field that gets automatically created
 * automatically fill certain values in forms:
   * new game: name and sort name after typing
-  * new edition: name and sort name when selecting game
+  * new edition: name, sort name, and year when selecting game
   * new purchase: platform when selecting edition
 
 ## 1.3.0 / 2023-11-05 15:09+01:00
