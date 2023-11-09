@@ -22,6 +22,7 @@
   * Finished (count)
   * Unfinished (count)
   * Refunded (count)
+  * Backlog Decrease (count)
 
 ### Improved
 * game overview: simplify playtime range display

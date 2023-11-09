@@ -356,6 +356,12 @@ def stats(request, year: int = 0):
     for item in total_playtime_per_platform:
         item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
 
+    backlog_decrease_count = (
+        Purchase.objects.filter(date_purchased__year__lt=year)
+        .filter(date_finished__year=year)
+        .count()
+    )
+
     context = {
         "total_hours": format_duration(
             year_sessions.total_duration_unformatted(), "%2.0H"
@@ -390,6 +396,7 @@ def stats(request, year: int = 0):
         ),
         "all_purchased_refunded_this_year": all_purchased_refunded_this_year,
         "all_purchased_this_year": all_purchased_this_year,
+        "backlog_decrease_count": backlog_decrease_count,
     }
 
     request.session["return_path"] = request.path
