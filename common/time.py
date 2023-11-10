@@ -44,7 +44,7 @@ def format_duration(
     # timestamps where end is before start
     if seconds_total < 0:
         seconds_total = 0
-    days = hours = minutes = seconds = 0
+    days = hours = hours_float = minutes = seconds = 0
     remainder = seconds = seconds_total
     if "%d" in format_string:
         days, remainder = divmod(seconds_total, day_seconds)
@@ -55,7 +55,7 @@ def format_duration(
         minutes, seconds = divmod(remainder, minute_seconds)
     literals = {
         "d": str(days),
-        "H": str(hours),
+        "H": str(hours) if "m" not in format_string else str(hours_float),
         "m": str(minutes),
         "s": str(seconds),
         "r": str(seconds_total),

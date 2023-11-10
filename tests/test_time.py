@@ -83,6 +83,16 @@ class FormatDurationTest(unittest.TestCase):
         result = format_duration(delta, "%r seconds")
         self.assertEqual(result, "0 seconds")
 
+    def test_specific(self):
+        delta = timedelta(hours=2, minutes=40)
+        result = format_duration(delta, "%H:%m")
+        self.assertEqual(result, "2:40")
+
+    def test_specific_precise_if_unncessary(self):
+        delta = timedelta(hours=2, minutes=40)
+        result = format_duration(delta, "%02.0H:%02.0m")
+        self.assertEqual(result, "02:40")
+
     def test_all_at_once(self):
         delta = timedelta(days=50, hours=10, minutes=34, seconds=24)
         result = format_duration(
