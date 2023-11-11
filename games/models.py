@@ -151,7 +151,7 @@ class Session(models.Model):
     objects = SessionQuerySet.as_manager()
 
     def __str__(self):
-        mark = ", manual" if self.duration_manual != None else ""
+        mark = ", manual" if self.is_manual() else ""
         return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
 
     def finish_now(self):
@@ -163,7 +163,7 @@ class Session(models.Model):
     def duration_seconds(self) -> timedelta:
         manual = timedelta(0)
         calculated = timedelta(0)
-        if not self.duration_manual in (None, 0, timedelta(0)):
+        if self.is_manual():
             manual = self.duration_manual
         if self.timestamp_end != None and self.timestamp_start != None:
             calculated = self.timestamp_end - self.timestamp_start
@@ -172,6 +172,9 @@ class Session(models.Model):
     def duration_formatted(self) -> str:
         result = format_duration(self.duration_seconds(), "%02.0H:%02.0m")
         return result
+
+    def is_manual(self) -> bool:
+        return not self.duration_manual == timedelta(0)
 
     @property
     def duration_sum(self) -> str:
