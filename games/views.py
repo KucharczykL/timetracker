@@ -32,7 +32,12 @@ def model_counts(request):
 
 
 def stats_dropdown_year_range(request):
-    return {"stats_dropdown_year_range": range(2018, 2024)}
+    result = {
+        "stats_dropdown_year_range": range(
+            datetime.now(ZoneInfo(settings.TIME_ZONE)).year, 1999, -1
+        )
+    }
+    return result
 
 
 def add_session(request, purchase_id=None):
