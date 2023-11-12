@@ -10,6 +10,7 @@ steps:
     - python -m pip install poetry
     - poetry install
     - poetry env info
+    - poetry run python manage.py migrate
     - poetry run pytest
 
 - name: build-prod
