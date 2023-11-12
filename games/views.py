@@ -336,7 +336,7 @@ def stats(request, year: int = 0):
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
         total_spent=Sum(F("price"))
     )
-    total_spent = this_year_spendings["total_spent"]
+    total_spent = this_year_spendings["total_spent"] or 0
 
     games_with_playtime = (
         Game.objects.filter(edition__purchase__session__in=this_year_sessions)
