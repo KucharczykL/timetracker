@@ -1429,6 +1429,10 @@ th label {
     padding-right: 1rem;
   }
 
+  .sm\:pl-12 {
+    padding-left: 3rem;
+  }
+
   .sm\:pl-2 {
     padding-left: 0.5rem;
   }

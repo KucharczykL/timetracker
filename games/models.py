@@ -124,7 +124,12 @@ class Purchase(models.Model):
         max_length=255, default="Unknown Name", null=True, blank=True
     )
     related_purchase = models.ForeignKey(
-        "Purchase", on_delete=models.SET_NULL, default=None, null=True, blank=True
+        "Purchase",
+        on_delete=models.SET_NULL,
+        default=None,
+        null=True,
+        blank=True,
+        related_name="related_purchases",
     )
 
     def __str__(self):

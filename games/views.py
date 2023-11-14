@@ -2,7 +2,7 @@ from common.time import format_duration, now as now_with_tz
 from common.utils import safe_division
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.db.models import Sum, F, Count
+from django.db.models import Sum, F, Count, Prefetch
 from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
@@ -136,46 +136,52 @@ def edit_game(request, game_id=None):
 
 
 def view_game(request, game_id=None):
-    context = {}
     game = Game.objects.get(id=game_id)
-    context["title"] = "View Game"
-    context["game"] = game
-    context["editions"] = Edition.objects.filter(game_id=game_id).order_by(
-        "year_released"
+    nongame_related_purchases_prefetch = Prefetch(
+        "related_purchases",
+        queryset=Purchase.objects.exclude(type=Purchase.GAME),
+        to_attr="nongame_related_purchases",
     )
-    game_purchases = (
-        Purchase.objects.filter(edition__game_id=game_id)
-        .filter(type=Purchase.GAME)
-        .order_by("date_purchased")
+    game_purchases_prefetch = Prefetch(
+        "purchase_set",
+        queryset=Purchase.objects.filter(type=Purchase.GAME).prefetch_related(
+            nongame_related_purchases_prefetch
+        ),
+        to_attr="game_purchases",
     )
-    for purchase in game_purchases:
-        purchase.related_purchases = Purchase.objects.exclude(
-            type=Purchase.GAME
-        ).filter(related_purchase=purchase.id)
+    editions = (
+        Edition.objects.filter(game=game)
+        .prefetch_related(game_purchases_prefetch)
+        .order_by("year_released")
+    )
 
-    context["purchases"] = game_purchases
-    context["sessions"] = Session.objects.filter(
-        purchase__edition__game_id=game_id
-    ).order_by("-timestamp_start")
-    context["total_hours"] = float(
-        format_duration(context["sessions"].total_duration_unformatted(), "%2.1H")
-    )
-    context["session_average"] = round(
-        (context["total_hours"]) / int(context["sessions"].count()), 1
-    )
-    # here first and last is flipped
-    # because sessions are ordered from newest to oldest
-    # so the most recent are on top
-    playrange_start = context["sessions"].last().timestamp_start.strftime("%b %Y")
-    playrange_end = context["sessions"].first().timestamp_start.strftime("%b %Y")
+    sessions = Session.objects.filter(purchase__edition__game=game)
+    session_count = sessions.count()
 
-    context["playrange"] = (
+    playrange_start = sessions.first().timestamp_start.strftime("%b %Y")
+    playrange_end = sessions.last().timestamp_start.strftime("%b %Y")
+
+    playrange = (
         playrange_start
         if playrange_start == playrange_end
         else f"{playrange_start} — {playrange_end}"
     )
+    total_hours = float(format_duration(sessions.total_duration_unformatted(), "%2.1H"))
 
-    context["sessions_with_notes"] = context["sessions"].exclude(note="")
+    context = {
+        "edition_count": editions.count(),
+        "editions": editions,
+        "game": game,
+        "playrange": playrange,
+        "purchase_count": Purchase.objects.filter(edition__game=game).count(),
+        "session_average": round(total_hours / int(session_count), 1),
+        "session_count": session_count,
+        "sessions_with_notes": sessions.exclude(note=""),
+        "sessions": sessions.order_by("-timestamp_start"),
+        "title": f"Game Overview - {game.name}",
+        "hours_sum": total_hours,
+    }
+
     request.session["return_path"] = request.path
     return render(request, "view_game.html", context)
 
