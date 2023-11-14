@@ -141,8 +141,10 @@ def view_game(request, game_id=None):
     context["title"] = "View Game"
     context["game"] = game
     context["editions"] = Edition.objects.filter(game_id=game_id)
-    game_purchases = Purchase.objects.filter(edition__game_id=game_id).filter(
-        type=Purchase.GAME
+    game_purchases = (
+        Purchase.objects.filter(edition__game_id=game_id)
+        .filter(type=Purchase.GAME)
+        .order_by("date_purchased")
     )
     for purchase in game_purchases:
         purchase.related_purchases = Purchase.objects.exclude(

@@ -8,6 +8,9 @@
   * Season Pass
   * Battle Pass
 
+## Fixed
+* Order purchases by date on game view
+
 ## 1.4.0 / 2023-11-09 21:01+01:00
 
 ### New
