@@ -181,7 +181,14 @@
             <tbody>
                 {% for purchase in all_purchased_this_year %}
                 <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        <a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">
+                            {{ purchase.edition.name }}
+                        {% if purchase.type != "game" %}
+                        ({{ purchase.name }}, {{ purchase.get_type_display }})
+                        {% endif %}
+                        </a>
+                    </td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
                 </tr>

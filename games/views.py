@@ -118,7 +118,8 @@ def edit_purchase(request, purchase_id=None):
         return redirect("list_sessions")
     context["title"] = "Edit Purchase"
     context["form"] = form
-    return render(request, "add.html", context)
+    context["script_name"] = "add_purchase.js"
+    return render(request, "add_purchase.html", context)
 
 
 @use_custom_redirect
@@ -140,7 +141,15 @@ def view_game(request, game_id=None):
     context["title"] = "View Game"
     context["game"] = game
     context["editions"] = Edition.objects.filter(game_id=game_id)
-    context["purchases"] = Purchase.objects.filter(edition__game_id=game_id)
+    game_purchases = Purchase.objects.filter(edition__game_id=game_id).filter(
+        type=Purchase.GAME
+    )
+    for purchase in game_purchases:
+        purchase.related_purchases = Purchase.objects.exclude(
+            type=Purchase.GAME
+        ).filter(related_purchase=purchase.id)
+
+    context["purchases"] = game_purchases
     context["sessions"] = Session.objects.filter(
         purchase__edition__game_id=game_id
     ).order_by("-timestamp_start")
@@ -312,7 +321,9 @@ def stats(request, year: int = 0):
 
     this_year_purchases_unfinished = this_year_purchases_without_refunded.filter(
         date_finished__isnull=True
-    )
+    ).filter(
+        type=Purchase.GAME
+    )  # do not count DLC etc.
 
     this_year_purchases_unfinished_percent = int(
         safe_division(

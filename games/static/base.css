@@ -1222,6 +1222,15 @@ textarea) {
   color: rgb(241 245 249 / var(--tw-text-opacity));
 }
 
+:is(.dark form input:disabled),:is(.dark 
+select:disabled),:is(.dark 
+textarea:disabled) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(51 65 85 / var(--tw-bg-opacity));
+  --tw-text-opacity: 1;
+  color: rgb(148 163 184 / var(--tw-text-opacity));
+}
+
 @media screen and (min-width: 768px) {
   form input,
   select,
@@ -1426,6 +1435,10 @@ th label {
 
   .sm\:pl-4 {
     padding-left: 1rem;
+  }
+
+  .sm\:pl-6 {
+    padding-left: 1.5rem;
   }
 
   .sm\:decoration-2 {

@@ -66,6 +66,12 @@ textarea {
   @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
 }
 
+form input:disabled,
+select:disabled,
+textarea:disabled {
+  @apply dark:bg-slate-700 dark:text-slate-400;
+}
+
 @media screen and (min-width: 768px) {
   form input,
   select,

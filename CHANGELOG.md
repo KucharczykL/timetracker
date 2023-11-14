@@ -2,6 +2,11 @@
 
 ## New
 * Add stat for finished this year's games
+* Add purchase types:
+  * Game (previously all of them were this type)
+  * DLC
+  * Season Pass
+  * Battle Pass
 
 ## 1.4.0 / 2023-11-09 21:01+01:00
 

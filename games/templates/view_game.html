@@ -42,6 +42,19 @@
                 ({{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}, {{ purchase.price }} {{ purchase.price_currency}})
                 {% url 'edit_purchase' purchase.id as edit_url %}
                 {% include 'components/edit_button.html' with edit_url=edit_url %}
+                {% if purchase.related_purchases %}
+                    <li>
+                        <ul>
+                            {% for related_purchase in purchase.related_purchases %}
+                                <li class="sm:pl-6 flex items-center">
+                                    {{ related_purchase.name}} ({{ related_purchase.get_type_display }}, {{ related_purchase.date_purchased | date:"Y" }}, {{ related_purchase.price }} {{ related_purchase.price_currency}})
+                                    {% url 'edit_purchase' related_purchase.id as edit_url %}
+                                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                {% endif %}
             </li>
             {% endfor %}
         </ul>

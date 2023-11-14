@@ -71,6 +71,9 @@ class PurchaseQueryset(models.QuerySet):
     def finished(self):
         return self.filter(date_finished__isnull=False)
 
+    def games_only(self):
+        return self.filter(type=Purchase.GAME)
+
 
 class Purchase(models.Model):
     PHYSICAL = "ph"
@@ -91,6 +94,16 @@ class Purchase(models.Model):
         (DEMO, "Demo"),
         (PIRATED, "Pirated"),
     ]
+    GAME = "game"
+    DLC = "dlc"
+    SEASONPASS = "season_pass"
+    BATTLEPASS = "battle_pass"
+    TYPES = [
+        (GAME, "Game"),
+        (DLC, "DLC"),
+        (SEASONPASS, "Season Pass"),
+        (BATTLEPASS, "Battle Pass"),
+    ]
 
     objects = PurchaseQueryset().as_manager()
 
@@ -106,12 +119,27 @@ class Purchase(models.Model):
     ownership_type = models.CharField(
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
     )
+    type = models.CharField(max_length=255, choices=TYPES, default=GAME)
+    name = models.CharField(
+        max_length=255, default="Unknown Name", null=True, blank=True
+    )
+    related_purchase = models.ForeignKey(
+        "Purchase", on_delete=models.SET_NULL, default=None, null=True, blank=True
+    )
 
     def __str__(self):
         platform_info = self.platform
         if self.platform != self.edition.platform:
             platform_info = f"{self.edition.platform} version on {self.platform}"
         return f"{self.edition} ({platform_info}, {self.edition.year_released}, {self.get_ownership_type_display()})"
+
+    def is_game(self):
+        return self.type == self.GAME
+
+    def save(self, *args, **kwargs):
+        if self.type == Purchase.GAME:
+            self.name = ""
+        super().save(*args, **kwargs)
 
 
 class Platform(models.Model):

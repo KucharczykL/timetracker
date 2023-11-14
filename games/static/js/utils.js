@@ -87,4 +87,49 @@ function getValueFromProperty(sourceElement, property) {
   }
 }
 
-export { toISOUTCString, syncSelectInputUntilChanged };
+/**
+ * @description Returns a single element by name.
+ * @param {string} selector The selector to look for.
+ */
+function getEl(selector) {
+  if (selector.startsWith("#")) {
+    return document.getElementById(selector.slice(1))
+  }
+  else if (selector.startsWith(".")) {
+    return document.getElementsByClassName(selector)
+  }
+  else {
+    return document.getElementsByName(selector)
+  }
+}
+
+/**
+ * @description Does something to elements when something happens.
+ * @param {() => boolean} condition The condition that is being tested.
+ * @param {string[]} targetElements
+ * @param {(elementName: HTMLElement) => void} callbackfn1 Called when the condition matches.
+ * @param {(elementName: HTMLElement) => void} callbackfn2 Called when the condition doesn't match.
+ */
+function conditionalElementHandler(condition, targetElements, callbackfn1, callbackfn2) {
+  if (condition()) {
+    targetElements.forEach((elementName) => {
+      let el = getEl(elementName);
+      if (el === null) {
+        console.error("Element ${elementName} doesn't exist.");
+      } else {
+        callbackfn1(el);
+      }
+    });
+  } else {
+    targetElements.forEach((elementName) => {
+      let el = getEl(elementName);
+      if (el === null) {
+        console.error("Element ${elementName} doesn't exist.");
+      } else {
+        callbackfn2(el);
+      }
+    });
+  }
+}
+
+export { toISOUTCString, syncSelectInputUntilChanged, getEl, conditionalElementHandler };
