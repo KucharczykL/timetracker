@@ -1,4 +1,9 @@
-import { syncSelectInputUntilChanged, getEl, conditionalElementHandler } from "./utils.js";
+import {
+  syncSelectInputUntilChanged,
+  getEl,
+  disableElementsWhenTrue,
+  disableElementsWhenFalse,
+} from "./utils.js";
 
 let syncData = [
   {
@@ -11,21 +16,15 @@ let syncData = [
 
 syncSelectInputUntilChanged(syncData, "form");
 
-
-let myConfig = [
-  () => {
-    return getEl("#id_type").value == "game";
-  },
-  ["#id_name", "#id_related_purchase"],
-  (el) => {
-    el.disabled = "disabled";
-  },
-  (el) => {
-    el.disabled = "";
-  }
-]
-
-document.DOMContentLoaded = conditionalElementHandler(...myConfig)
-getEl("#id_type").onchange = () => {
-  conditionalElementHandler(...myConfig)
+function setupElementHandlers() {
+  disableElementsWhenTrue("#id_type", "game", [
+    "#id_name",
+    "#id_related_purchase",
+  ]);
+  disableElementsWhenFalse("#id_type", "game", ["#id_date_finished"]);
 }
+
+document.addEventListener("DOMContentLoaded", setupElementHandlers);
+getEl("#id_type").onchange = () => {
+  setupElementHandlers();
+};

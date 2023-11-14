@@ -99,37 +99,72 @@ function getEl(selector) {
     return document.getElementsByClassName(selector)
   }
   else {
-    return document.getElementsByName(selector)
+    return document.getElementsByTagName(selector)
   }
 }
 
 /**
- * @description Does something to elements when something happens.
- * @param {() => boolean} condition The condition that is being tested.
- * @param {string[]} targetElements
- * @param {(elementName: HTMLElement) => void} callbackfn1 Called when the condition matches.
- * @param {(elementName: HTMLElement) => void} callbackfn2 Called when the condition doesn't match.
+ * @description Applies different behaviors to elements based on multiple conditional configurations.
+ * Each configuration is an array containing a condition function, an array of target element selectors,
+ * and two callback functions for handling matched and unmatched conditions.
+ * @param {...Array} configs Each configuration is an array of the form:
+ *   - 0: {function(): boolean} condition - Function that returns true or false based on a condition.
+ *   - 1: {string[]} targetElements - Array of CSS selectors for target elements.
+ *   - 2: {function(HTMLElement): void} callbackfn1 - Function to execute when condition is true.
+ *   - 3: {function(HTMLElement): void} callbackfn2 - Function to execute when condition is false.
  */
-function conditionalElementHandler(condition, targetElements, callbackfn1, callbackfn2) {
-  if (condition()) {
-    targetElements.forEach((elementName) => {
-      let el = getEl(elementName);
-      if (el === null) {
-        console.error("Element ${elementName} doesn't exist.");
-      } else {
-        callbackfn1(el);
-      }
-    });
-  } else {
-    targetElements.forEach((elementName) => {
-      let el = getEl(elementName);
-      if (el === null) {
-        console.error("Element ${elementName} doesn't exist.");
-      } else {
-        callbackfn2(el);
-      }
-    });
-  }
+function conditionalElementHandler(...configs) {
+  configs.forEach(([condition, targetElements, callbackfn1, callbackfn2]) => {
+    if (condition()) {
+      targetElements.forEach(elementName => {
+        let el = getEl(elementName);
+        if (el === null) {
+          console.error(`Element ${elementName} doesn't exist.`);
+        } else {
+          callbackfn1(el);
+        }
+      });
+    } else {
+      targetElements.forEach(elementName => {
+        let el = getEl(elementName);
+        if (el === null) {
+          console.error(`Element ${elementName} doesn't exist.`);
+        } else {
+          callbackfn2(el);
+        }
+      });
+    }
+  });
 }
 
-export { toISOUTCString, syncSelectInputUntilChanged, getEl, conditionalElementHandler };
+function disableElementsWhenFalse(targetSelect, targetValue, elementList) {
+  return conditionalElementHandler([
+    () => {
+      return getEl(targetSelect).value != targetValue;
+    },
+    elementList,
+    (el) => {
+      el.disabled = "disabled";
+    },
+    (el) => {
+      el.disabled = "";
+    },
+  ]);
+}
+
+function disableElementsWhenTrue(targetSelect, targetValue, elementList) {
+  return conditionalElementHandler([
+    () => {
+      return getEl(targetSelect).value == targetValue;
+    },
+    elementList,
+    (el) => {
+      el.disabled = "disabled";
+    },
+    (el) => {
+      el.disabled = "";
+    },
+  ]);
+}
+
+export { toISOUTCString, syncSelectInputUntilChanged, getEl, conditionalElementHandler, disableElementsWhenFalse, disableElementsWhenTrue, getValueFromProperty };
