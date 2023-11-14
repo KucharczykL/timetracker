@@ -128,10 +128,15 @@ class Purchase(models.Model):
     )
 
     def __str__(self):
-        platform_info = self.platform
-        if self.platform != self.edition.platform:
-            platform_info = f"{self.edition.platform} version on {self.platform}"
-        return f"{self.edition} ({platform_info}, {self.edition.year_released}, {self.get_ownership_type_display()})"
+        additional_info = [
+            self.get_type_display() if self.type != Purchase.GAME else "",
+            f"{self.edition.platform} version on {self.platform}"
+            if self.platform != self.edition.platform
+            else self.platform,
+            self.edition.year_released,
+            self.get_ownership_type_display(),
+        ]
+        return f"{self.edition} ({', '.join(filter(None, map(str, additional_info)))})"
 
     def is_game(self):
         return self.type == self.GAME

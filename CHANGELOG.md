@@ -2,6 +2,7 @@
 
 ## Improved
 * Disallow choosing non-game purchase as related purchase
+* Improve display of purchases
 
 ## 1.5.0 / 2023-11-14 19:27+01:00
 
