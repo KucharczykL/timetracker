@@ -56,7 +56,9 @@ class PurchaseForm(forms.ModelForm):
     )
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
     related_purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.order_by("edition__sort_name")
+        queryset=Purchase.objects.filter(type=Purchase.GAME).order_by(
+            "edition__sort_name"
+        )
     )
 
     class Meta:
