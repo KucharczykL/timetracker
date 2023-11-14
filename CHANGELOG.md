@@ -1,4 +1,4 @@
-## 1.5.1 / 2023-11-14 19:55+01:00
+## 1.5.1 / 2023-11-14 21:10+01:00
 
 ## Improved
 * Disallow choosing non-game purchase as related purchase
