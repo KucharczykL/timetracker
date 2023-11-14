@@ -140,7 +140,9 @@ def view_game(request, game_id=None):
     game = Game.objects.get(id=game_id)
     context["title"] = "View Game"
     context["game"] = game
-    context["editions"] = Edition.objects.filter(game_id=game_id)
+    context["editions"] = Edition.objects.filter(game_id=game_id).order_by(
+        "year_released"
+    )
     game_purchases = (
         Purchase.objects.filter(edition__game_id=game_id)
         .filter(type=Purchase.GAME)
