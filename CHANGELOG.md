@@ -1,4 +1,4 @@
-### Unreleased
+## 1.5.0 / 2023-11-14 19:27+01:00
 
 ## New
 * Add stat for finished this year's games
