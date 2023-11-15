@@ -72,6 +72,10 @@ textarea:disabled {
   @apply dark:bg-slate-700 dark:text-slate-400;
 }
 
+.errorlist {
+  @apply mt-4 mb-1 pl-3 py-2 bg-red-600 text-slate-200 w-[300px];
+}
+
 @media screen and (min-width: 768px) {
   form input,
   select,

@@ -58,7 +58,8 @@ class PurchaseForm(forms.ModelForm):
     related_purchase = forms.ModelChoiceField(
         queryset=Purchase.objects.filter(type=Purchase.GAME).order_by(
             "edition__sort_name"
-        )
+        ),
+        required=False,
     )
 
     class Meta:
@@ -81,6 +82,27 @@ class PurchaseForm(forms.ModelForm):
             "related_purchase",
             "name",
         ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        purchase_type = cleaned_data.get("type")
+        related_purchase = cleaned_data.get("related_purchase")
+        name = cleaned_data.get("name")
+
+        # Set the type on the instance to use get_type_display()
+        # This is safe because we're not saving the instance.
+        self.instance.type = purchase_type
+
+        if purchase_type != Purchase.GAME:
+            type_display = self.instance.get_type_display()
+            if not related_purchase:
+                self.add_error(
+                    "related_purchase",
+                    f"{type_display} must have a related purchase.",
+                )
+            if not name:
+                self.add_error("name", f"{type_display} must have a name.")
+        return cleaned_data
 
 
 class IncludeNameSelect(forms.Select):

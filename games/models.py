@@ -2,6 +2,7 @@ from common.time import format_duration
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.db.models import F, Manager, Sum
 from zoneinfo import ZoneInfo
 
@@ -118,9 +119,7 @@ class Purchase(models.Model):
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
     )
     type = models.CharField(max_length=255, choices=TYPES, default=GAME)
-    name = models.CharField(
-        max_length=255, default="Unknown Name", null=True, blank=True
-    )
+    name = models.CharField(max_length=255, default="", null=True, blank=True)
     related_purchase = models.ForeignKey(
         "Purchase",
         on_delete=models.SET_NULL,
@@ -147,6 +146,10 @@ class Purchase(models.Model):
     def save(self, *args, **kwargs):
         if self.type == Purchase.GAME:
             self.name = ""
+        elif self.type != Purchase.GAME and not self.related_purchase:
+            raise ValidationError(
+                f"{self.get_type_display()} must have a related purchase."
+            )
         super().save(*args, **kwargs)
 
 
