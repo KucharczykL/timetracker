@@ -12,7 +12,6 @@
     id="last-session-start"
     href="{% url 'start_session_same_as_last' last.id %}"
     hx-get="{% url 'start_session_same_as_last' last.id %}"
-    hx-indicator="#indicator"
     hx-swap="afterbegin"
     hx-target=".responsive-table tbody"
     hx-select=".responsive-table tbody tr:first-child"

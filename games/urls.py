@@ -44,6 +44,11 @@ urlpatterns = [
         views.add_purchase,
         name="add_purchase_for_edition",
     ),
+    path(
+        "related-purchase-by-edition",
+        views.related_purchase_by_edition,
+        name="related_purchase_by_edition",
+    ),
     path("add-edition/", views.add_edition, name="add_edition"),
     path(
         "add-edition-for-game/<int:game_id>",

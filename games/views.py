@@ -214,6 +214,15 @@ def edit_edition(request, edition_id=None):
     return render(request, "add.html", context)
 
 
+def related_purchase_by_edition(request):
+    edition_id = request.GET.get("edition")
+    form = PurchaseForm()
+    form.fields["related_purchase"].queryset = Purchase.objects.filter(
+        edition_id=edition_id, type=Purchase.GAME
+    ).order_by("edition__sort_name")
+    return render(request, "partials/related_purchase_field.html", {"form": form})
+
+
 @use_custom_redirect
 def start_game_session(request, game_id: int):
     last_session = (

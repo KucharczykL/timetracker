@@ -2,6 +2,7 @@
 
 ## Improved
 * game overview: improve how editions and purchases are displayed
+* add purchase: only allow choosing purchases of selected edition
 
 ## 1.5.1 / 2023-11-14 21:10+01:00
 

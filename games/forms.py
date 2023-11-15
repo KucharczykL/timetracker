@@ -1,5 +1,5 @@
 from django import forms
-
+from django.urls import reverse
 from games.models import Game, Platform, Purchase, Session, Edition, Device
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
@@ -50,6 +50,20 @@ class IncludePlatformSelect(forms.Select):
 
 
 class PurchaseForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Automatically update related_purchase <select/>
+        # to only include purchases of the selected edition.
+        related_purchase_by_edition_url = reverse("related_purchase_by_edition")
+        self.fields["edition"].widget.attrs.update(
+            {
+                "hx-get": related_purchase_by_edition_url,
+                "hx-target": "#id_related_purchase",
+                "hx-swap": "outerHTML",
+            }
+        )
+
     edition = EditionChoiceField(
         queryset=Edition.objects.order_by("sort_name"),
         widget=IncludePlatformSelect(attrs={"autoselect": "autoselect"}),
