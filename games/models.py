@@ -1,10 +1,9 @@
 from common.time import format_duration
-from datetime import datetime, timedelta
-from django.conf import settings
+from datetime import timedelta
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.db.models import F, Manager, Sum
-from zoneinfo import ZoneInfo
 
 
 class Game(models.Model):
@@ -12,6 +11,7 @@ class Game(models.Model):
     sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
@@ -42,6 +42,7 @@ class Edition(models.Model):
     )
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.sort_name
@@ -128,6 +129,7 @@ class Purchase(models.Model):
         blank=True,
         related_name="related_purchases",
     )
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         additional_info = [
@@ -156,6 +158,7 @@ class Purchase(models.Model):
 class Platform(models.Model):
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, null=True, blank=True, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
@@ -173,6 +176,9 @@ class SessionQuerySet(models.QuerySet):
 
 
 class Session(models.Model):
+    class Meta:
+        get_latest_by = "timestamp_start"
+
     purchase = models.ForeignKey("Purchase", on_delete=models.CASCADE)
     timestamp_start = models.DateTimeField()
     timestamp_end = models.DateTimeField(blank=True, null=True)
@@ -186,6 +192,8 @@ class Session(models.Model):
         default=None,
     )
     note = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     objects = SessionQuerySet.as_manager()
 
@@ -194,10 +202,10 @@ class Session(models.Model):
         return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
 
     def finish_now(self):
-        self.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
+        self.timestamp_end = timezone.now()
 
     def start_now():
-        self.timestamp_start = datetime.now(ZoneInfo(settings.TIME_ZONE))
+        self.timestamp_start = timezone.now()
 
     def duration_seconds(self) -> timedelta:
         manual = timedelta(0)
@@ -250,6 +258,7 @@ class Device(models.Model):
     ]
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=3, choices=DEVICE_TYPES, default=UNKNOWN)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"

@@ -1,4 +1,4 @@
-from common.time import format_duration, now as now_with_tz
+from common.time import format_duration
 from common.utils import safe_division
 from datetime import datetime, timedelta
 from django.conf import settings
@@ -7,6 +7,7 @@ from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from typing import Callable, Any
 from zoneinfo import ZoneInfo
 
@@ -32,19 +33,15 @@ def model_counts(request):
 
 
 def stats_dropdown_year_range(request):
-    result = {
-        "stats_dropdown_year_range": range(
-            datetime.now(ZoneInfo(settings.TIME_ZONE)).year, 1999, -1
-        )
-    }
+    result = {"stats_dropdown_year_range": range(timezone.now().year, 1999, -1)}
     return result
 
 
 def add_session(request, purchase_id=None):
     context = {}
-    initial = {"timestamp_start": now_with_tz()}
+    initial = {"timestamp_start": timezone.now()}
 
-    last = Session.objects.all().last()
+    last = Session.objects.last()
     if last != None:
         initial["purchase"] = last.purchase
 
@@ -155,13 +152,11 @@ def view_game(request, game_id=None):
         .order_by("year_released")
     )
 
-    sessions = Session.objects.filter(purchase__edition__game=game).order_by(
-        "timestamp_start"
-    )
+    sessions = Session.objects.filter(purchase__edition__game=game)
     session_count = sessions.count()
 
-    playrange_start = sessions.first().timestamp_start.strftime("%b %Y")
-    playrange_end = sessions.last().timestamp_start.strftime("%b %Y")
+    playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
+    playrange_end = sessions.latest().timestamp_start.strftime("%b %Y")
 
     playrange = (
         playrange_start
@@ -225,15 +220,11 @@ def related_purchase_by_edition(request):
 
 @use_custom_redirect
 def start_game_session(request, game_id: int):
-    last_session = (
-        Session.objects.filter(purchase__edition__game_id=game_id)
-        .order_by("-timestamp_start")
-        .first()
-    )
+    last_session = Session.objects.filter(purchase__edition__game_id=game_id).latest()
     session = SessionForm(
         {
             "purchase": last_session.purchase.id,
-            "timestamp_start": now_with_tz(),
+            "timestamp_start": timezone.now(),
             "device": last_session.device,
         }
     )
@@ -246,7 +237,7 @@ def start_session_same_as_last(request, last_session_id: int):
     session = SessionForm(
         {
             "purchase": last_session.purchase.id,
-            "timestamp_start": now_with_tz(),
+            "timestamp_start": timezone.now(),
             "device": last_session.device,
         }
     )
@@ -296,19 +287,18 @@ def list_sessions(
         context["title"] = "This year"
     else:
         # by default, sort from newest to oldest
-        dataset = Session.objects.all().order_by("-timestamp_start")
+        dataset = Session.objects.order_by("-timestamp_start")
 
     for session in dataset:
         if session.timestamp_end == None and session.duration_manual == timedelta(
             seconds=0
         ):
-            session.timestamp_end = datetime.now(ZoneInfo(settings.TIME_ZONE))
+            session.timestamp_end = timezone.now()
             session.unfinished = True
 
     context["total_duration"] = dataset.total_duration_formatted()
     context["dataset"] = dataset
-    # cannot use dataset[0] here because that might be only partial QuerySet
-    context["last"] = Session.objects.all().order_by("timestamp_start").last()
+    context["last"] = Session.objects.latest()
 
     return render(request, "list_sessions.html", context)
 
@@ -318,7 +308,7 @@ def stats(request, year: int = 0):
     if selected_year:
         return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
     if year == 0:
-        year = now_with_tz().year
+        year = timezone.now().year
     this_year_sessions = Session.objects.filter(timestamp_start__year=year)
     selected_currency = "CZK"
     unique_days = (
@@ -451,7 +441,7 @@ def stats(request, year: int = 0):
 
 def add_purchase(request, edition_id=None):
     context = {}
-    initial = {"date_purchased": now_with_tz()}
+    initial = {"date_purchased": timezone.now()}
 
     if request.method == "POST":
         form = PurchaseForm(request.POST or None, initial=initial)

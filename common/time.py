@@ -1,12 +1,5 @@
 import re
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-from django.conf import settings
-
-
-def now() -> datetime:
-    return datetime.now(ZoneInfo(settings.TIME_ZONE))
+from datetime import timedelta
 
 
 def _safe_timedelta(duration: timedelta | int | None):
