@@ -1,23 +1,19 @@
-from common.time import format_duration
-from common.utils import safe_division
 from datetime import datetime, timedelta
-from django.db.models import Sum, F, Count, Prefetch
+from typing import Any, Callable
+
+from django.db.models import Count, F, Prefetch, Sum
 from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from typing import Callable, Any
 
-from .forms import (
-    GameForm,
-    PlatformForm,
-    PurchaseForm,
-    SessionForm,
-    EditionForm,
-    DeviceForm,
-)
-from .models import Game, Platform, Purchase, Session, Edition
+from common.time import format_duration
+from common.utils import safe_division
+
+from .forms import (DeviceForm, EditionForm, GameForm, PlatformForm,
+                    PurchaseForm, SessionForm)
+from .models import Edition, Game, Platform, Purchase, Session
 
 
 def model_counts(request):

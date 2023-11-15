@@ -1,14 +1,16 @@
-import django
 import os
-from django.test import TestCase
-from django.db import models
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+import django
+from django.db import models
+from django.test import TestCase
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
 django.setup()
 from django.conf import settings
-from games.models import Game, Edition, Purchase, Session
+
+from games.models import Edition, Game, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 

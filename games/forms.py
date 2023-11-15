@@ -1,6 +1,7 @@
 from django import forms
 from django.urls import reverse
-from games.models import Game, Platform, Purchase, Session, Edition, Device
+
+from games.models import Device, Edition, Game, Platform, Purchase, Session
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(

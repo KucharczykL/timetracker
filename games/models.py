@@ -1,9 +1,11 @@
-from common.time import format_duration
 from datetime import timedelta
-from django.db import models
+
 from django.core.exceptions import ValidationError
-from django.utils import timezone
+from django.db import models
 from django.db.models import F, Manager, Sum
+from django.utils import timezone
+
+from common.time import format_duration
 
 
 class Game(models.Model):

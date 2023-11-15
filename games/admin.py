@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from games.models import Game, Platform, Purchase, Session, Edition, Device
+from games.models import Device, Edition, Game, Platform, Purchase, Session
 
 # Register your models here.
 admin.site.register(Game)
