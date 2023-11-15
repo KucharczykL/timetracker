@@ -1,7 +1,6 @@
 from common.time import format_duration
 from common.utils import safe_division
 from datetime import datetime, timedelta
-from django.conf import settings
 from django.db.models import Sum, F, Count, Prefetch
 from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -9,7 +8,6 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from typing import Callable, Any
-from zoneinfo import ZoneInfo
 
 from .forms import (
     GameForm,
@@ -279,7 +277,7 @@ def list_sessions(
         dataset = Session.objects.filter(purchase__ownership_type=ownership_type)
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
-        current_year = datetime.now().year
+        current_year = timezone.now().year
         first_day_of_year = datetime(current_year, 1, 1)
         dataset = Session.objects.filter(
             timestamp_start__gte=first_day_of_year
