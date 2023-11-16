@@ -11,8 +11,14 @@ from django.utils import timezone
 from common.time import format_duration
 from common.utils import safe_division
 
-from .forms import (DeviceForm, EditionForm, GameForm, PlatformForm,
-                    PurchaseForm, SessionForm)
+from .forms import (
+    DeviceForm,
+    EditionForm,
+    GameForm,
+    PlatformForm,
+    PurchaseForm,
+    SessionForm,
+)
 from .models import Edition, Game, Platform, Purchase, Session
 
 
