@@ -5,4 +5,13 @@
 .venv
 .vscode
 node_modules
-src/timetracker/static/*
+static
+.drone.yml
+.editorconfig
+.gitignore
+Caddyfile
+CHANGELOG.md
+db.sqlite3
+docker-compose*
+Dockerfile
+Makefile
