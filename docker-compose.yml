@@ -10,13 +10,14 @@ services:
       - CSRF_TRUSTED_ORIGINS="https://tracker.kucharczyk.xyz"
     user: "1000"
     volumes:
-      - "static-files:/home/timetracker/app/static"
+      - "static-files:/var/www/django/static"
+      - "$PWD/db.sqlite3:/home/timetracker/app/db.sqlite3"
     restart: unless-stopped
 
   frontend:
     image: caddy
     volumes:
-      - "static-files:/usr/share/caddy"
+      - "static-files:/usr/share/caddy:ro"
       - "$PWD/Caddyfile:/etc/caddy/Caddyfile"
     ports:
       - "8000:8000"
@@ -25,4 +26,5 @@ services:
 
 volumes:
   static-files:
+    
     
