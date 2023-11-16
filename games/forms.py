@@ -59,6 +59,7 @@ class PurchaseForm(forms.ModelForm):
         related_purchase_by_edition_url = reverse("related_purchase_by_edition")
         self.fields["edition"].widget.attrs.update(
             {
+                "hx-trigger": "load, click",
                 "hx-get": related_purchase_by_edition_url,
                 "hx-target": "#id_related_purchase",
                 "hx-swap": "outerHTML",

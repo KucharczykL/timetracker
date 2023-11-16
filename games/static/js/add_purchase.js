@@ -25,6 +25,7 @@ function setupElementHandlers() {
 }
 
 document.addEventListener("DOMContentLoaded", setupElementHandlers);
+document.addEventListener("htmx:afterSwap", setupElementHandlers);
 getEl("#id_type").onchange = () => {
   setupElementHandlers();
 };
