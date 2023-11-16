@@ -7,9 +7,9 @@ license = "GPL"
 readme = "README.md"
 packages = [{include = "timetracker"}]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-django = "^4.1.4"
+[tool.poetry.group.main.dependencies]
+python = "^3.12"
+django = "^4.2.0"
 gunicorn = "^20.1.0"
 uvicorn = "^0.20.0"
 
