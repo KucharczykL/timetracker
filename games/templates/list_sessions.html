@@ -23,6 +23,7 @@
 </div>
 {% endif %}
 
+{% if dataset.count != 0 %}
 <table class="responsive-table">
   <thead>
     <tr>
@@ -73,4 +74,7 @@
     {% endfor %}
   </tbody>
 </table>
+{% else %}
+<div class="mx-auto text-center text-slate-300 text-xl">No sessions found.</div>
+{% endif %}
 {% endblock content %}

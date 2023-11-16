@@ -7,6 +7,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.core.exceptions import ObjectDoesNotExist
 
 from common.time import format_duration
 from common.utils import safe_division
@@ -298,7 +299,10 @@ def list_sessions(
 
     context["total_duration"] = dataset.total_duration_formatted()
     context["dataset"] = dataset
-    context["last"] = Session.objects.latest()
+    try:
+        context["last"] = Session.objects.latest()
+    except ObjectDoesNotExist:
+        context["last"] = None
 
     return render(request, "list_sessions.html", context)
 
