@@ -1,27 +1,45 @@
-FROM node as css
-WORKDIR /app
-COPY . /app
-RUN npm install && \
-    npx tailwindcss -i ./common/input.css -o ./static/base.css --minify
+FROM python:3.12.0-slim-bullseye
 
-FROM python:3.10.9-slim-bullseye
+ENV VERSION_NUMBER=1.5.1 \
+    PROD=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    PYTHONHASHSEED=random \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    PIP_ROOT_USER_ACTION=ignore \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_CACHE_DIR='/var/cache/pypoetry' \
+    POETRY_HOME='/usr/local'
 
-ENV VERSION_NUMBER 1.5.1
-ENV PROD 1
-ENV PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get upgrade -y \
+  && apt-get install --no-install-recommends -y \
+    bash \
+    curl \
+  && curl -sSL 'https://install.python-poetry.org' | python - \
+  && poetry --version \
+  && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
+  && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m --uid 1000 timetracker
+RUN useradd -m --uid 1000 timetracker \
+    && mkdir -p '/var/www/django/static' \
+    && chown timetracker:timetracker '/var/www/django/static'
 WORKDIR /home/timetracker/app
 COPY . /home/timetracker/app/
 RUN chown -R timetracker:timetracker /home/timetracker/app
-COPY --from=css ./app/static/base.css /home/timetracker/app/static/base.css
 COPY entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 
+RUN --mount=type=cache,target="$POETRY_CACHE_DIR" \
+    echo "$PROD" \
+    && poetry version \
+    && poetry run pip install -U pip \
+    && poetry install --only main --no-interaction --no-ansi --sync
+
 USER timetracker
-ENV PATH="$PATH:/home/timetracker/.local/bin"
-RUN pip install --no-cache-dir poetry
-RUN poetry install
 
 EXPOSE 8000
 CMD [ "/entrypoint.sh" ]
