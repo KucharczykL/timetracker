@@ -274,7 +274,7 @@ def list_sessions(
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
         current_year = timezone.now().year
-        first_day_of_year = datetime(current_year, 1, 1)
+        first_day_of_year = timezone.make_aware(datetime(current_year, 1, 1))
         dataset = Session.objects.filter(
             timestamp_start__gte=first_day_of_year
         ).order_by("-timestamp_start")
