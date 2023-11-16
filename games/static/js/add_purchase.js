@@ -29,3 +29,15 @@ document.addEventListener("htmx:afterSwap", setupElementHandlers);
 getEl("#id_type").onchange = () => {
   setupElementHandlers();
 };
+
+document.body.addEventListener('htmx:beforeRequest', function(event) {
+  // Assuming 'Purchase1' is the element that triggers the HTMX request
+  if (event.target.id === 'id_edition') {
+      var idEditionValue = document.getElementById('id_edition').value;
+
+      // Condition to check - replace this with your actual logic
+      if (idEditionValue != '') {
+          event.preventDefault(); // This cancels the HTMX request
+      }
+  }
+});
