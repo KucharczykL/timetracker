@@ -24,6 +24,9 @@ djhtml = "^1.5.2"
 djlint = "^1.19.11"
 isort = "^5.11.4"
 
+[tool.isort]
+profile = "black"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
