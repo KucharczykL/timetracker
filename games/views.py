@@ -1,13 +1,18 @@
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count, F, Prefetch, Sum
 from django.db.models.functions import TruncDate
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
+)
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.core.exceptions import ObjectDoesNotExist
 
 from common.time import format_duration
 from common.utils import safe_division
@@ -212,6 +217,8 @@ def edit_edition(request, edition_id=None):
 
 def related_purchase_by_edition(request):
     edition_id = request.GET.get("edition")
+    if not edition_id:
+        return HttpResponseBadRequest("Invalid edition_id")
     form = PurchaseForm()
     form.fields["related_purchase"].queryset = Purchase.objects.filter(
         edition_id=edition_id, type=Purchase.GAME
