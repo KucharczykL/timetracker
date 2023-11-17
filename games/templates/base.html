@@ -1,72 +1,101 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
     {% load static %}
-
     <head>
-        <meta charset="utf-8"/>
-        <meta name="description" content="Self-hosted time-tracker."/>
-        <meta name="keywords" content="time, tracking, video games, self-hosted"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1"/>
-        <title>Timetracker - {% block title %}Untitled{% endblock title %}</title>
+        <meta charset="utf-8" />
+        <meta name="description" content="Self-hosted time-tracker." />
+        <meta name="keywords" content="time, tracking, video games, self-hosted" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Timetracker -
+            {% block title %}
+                Untitled
+            {% endblock title %}
+        </title>
         <script src="{% static 'js/htmx.min.js' %}"></script>
         <link rel="stylesheet" href="{% static 'base.css' %}" />
     </head>
-    
     <body class="dark" hx-indicator="#indicator" hx-boost="true">
-        <img id="indicator" src="{% static 'icons/loading.png' %}" class="absolute right-3 top-3 animate-spin htmx-indicator" />
+        <img id="indicator"
+             src="{% static 'icons/loading.png' %}"
+             class="absolute right-3 top-3 animate-spin htmx-indicator" />
         <div class="dark:bg-gray-800 min-h-screen">
             <nav class="mb-4 bg-white dark:bg-gray-900 border-gray-200 rounded">
                 <div class="container flex flex-wrap items-center justify-between mx-auto">
                     <a href="{% url 'list_sessions_recent' %}" class="flex items-center">
-                        <span class="text-4xl"><img src="{% static 'icons/schedule.png' %}" width="48" class="mr-4" /></span>
+                        <span class="text-4xl">
+                            <img src="{% static 'icons/schedule.png' %}" width="48" class="mr-4" />
+                        </span>
                         <span class="self-center text-xl font-semibold whitespace-nowrap text-white">Timetracker</span>
                     </a>
                     <div class="w-full md:block md:w-auto">
-                        <ul
-                            class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
+                        <ul class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
                             <li class="relative group">
-                                <a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'add_game' %}">New</a>
+                                <a class="block py-2 pl-3 pr-4 hover:underline"
+                                   href="{% url 'add_game' %}">New</a>
                                 <ul class="absolute hidden text-gray-700 pt-1 group-hover:block  w-auto whitespace-nowrap">
                                     {% if purchase_available %}
-                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_device' %}">Device</a></li>
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                               href="{% url 'add_device' %}">Device</a>
+                                        </li>
                                     {% endif %}
-                                    <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_game' %}">Game</a></li>
+                                    <li>
+                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                           href="{% url 'add_game' %}">Game</a>
+                                    </li>
                                     {% if game_available and platform_available %}
-                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_edition' %}">Edition</a></li>
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                               href="{% url 'add_edition' %}">Edition</a>
+                                        </li>
                                     {% endif %}
-                                    <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_platform' %}">Platform</a></li>
+                                    <li>
+                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                           href="{% url 'add_platform' %}">Platform</a>
+                                    </li>
                                     {% if edition_available %}
-                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_purchase' %}">Purchase</a></li>
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                               href="{% url 'add_purchase' %}">Purchase</a>
+                                        </li>
                                     {% endif %}
                                     {% if purchase_available %}
-                                        <li><a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'add_session' %}">Session</a></li>
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                               href="{% url 'add_session' %}">Session</a>
+                                        </li>
                                     {% endif %}
-                                    
                                 </ul>
                             </li>
                             {% if session_count > 0 %}
-                                    <li class="relative group">
-                                        <a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'stats_current_year' %}">Stats</a>
-                                        <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
-                                            {% for year in stats_dropdown_year_range %}
-                                                <li>
-                                                    <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap" href="{% url 'stats_by_year' year %}">{{ year }}</a>
-                                                </li>
-                                            {% endfor %}
-                                        </ul>
-                                    </li>
-                                <li><a class="block py-2 pl-3 pr-4 hover:underline" href="{% url 'list_sessions' %}">All Sessions</a></li>
+                                <li class="relative group">
+                                    <a class="block py-2 pl-3 pr-4 hover:underline"
+                                       href="{% url 'stats_current_year' %}">Stats</a>
+                                    <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                        {% for year in stats_dropdown_year_range %}
+                                            <li>
+                                                <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                   href="{% url 'stats_by_year' year %}">{{ year }}</a>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </li>
+                                <li>
+                                    <a class="block py-2 pl-3 pr-4 hover:underline"
+                                       href="{% url 'list_sessions' %}">All Sessions</a>
+                                </li>
                             {% endif %}
                         </ul>
                     </div>
                 </div>
             </nav>
-            {% block content %}No content here.{% endblock content %}
+            {% block content %}
+                No content here.
+            {% endblock content %}
         </div>
         {% load version %}
         <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
-    {% block scripts %}{% endblock scripts %}
+        {% block scripts %}
+        {% endblock scripts %}
     </body>
-
 </html>

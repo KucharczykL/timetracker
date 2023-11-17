@@ -1,17 +1,19 @@
 {% extends "base.html" %}
-
-{% block title %}{{ title }}{% endblock title %}
-
+{% block title %}
+    {{ title }}
+{% endblock title %}
 {% load static %}
-
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
         <div class="flex justify-center items-center">
             <form method="get" class="text-center">
                 <label class="text-5xl text-center inline-block mb-10" for="yearSelect">Stats for:</label>
-                <select name="year" id="yearSelect" onchange="this.form.submit();" class="mx-2">
+                <select name="year"
+                        id="yearSelect"
+                        onchange="this.form.submit();"
+                        class="mx-2">
                     {% for year_item in stats_dropdown_year_range %}
-                    <option value="{{ year_item }}" {% if year == year_item %}selected{% endif %}>{{ year_item }}</option>
+                        <option value="{{ year_item }}" {% if year == year_item %}selected{% endif %}>{{ year_item }}</option>
                     {% endfor %}
                 </select>
             </form>
@@ -62,11 +64,15 @@
                         </tr>
                         <tr>
                             <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_refunded_this_year.count }} ({{ refunded_percent }}%)</td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {{ all_purchased_refunded_this_year.count }} ({{ refunded_percent }}%)
+                            </td>
                         </tr>
                         <tr>
                             <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchased_unfinished.count }} ({{ unfinished_purchases_percent }}%)</td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {{ purchased_unfinished.count }} ({{ unfinished_purchases_percent }}%)
+                            </td>
                         </tr>
                         <tr>
                             <td class="px-2 sm:px-4 md:px-6 md:py-2">Backlog Decrease</td>
@@ -90,14 +96,13 @@
             </thead>
             <tbody>
                 {% for game in top_10_games_by_playtime %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'view_game' game.id  %}">{{ game.name }}
-
-                        </a>
-                    </td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'view_game' game.id %}">{{ game.name }}</a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -111,10 +116,10 @@
             </thead>
             <tbody>
                 {% for item in total_playtime_per_platform %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -128,10 +133,13 @@
             </thead>
             <tbody>
                 {% for purchase in all_finished_this_year %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -145,10 +153,13 @@
             </thead>
             <tbody>
                 {% for purchase in this_year_finished_this_year %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -162,10 +173,13 @@
             </thead>
             <tbody>
                 {% for purchase in purchased_this_year_finished_this_year %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono"><a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a></td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -180,18 +194,17 @@
             </thead>
             <tbody>
                 {% for purchase in all_purchased_this_year %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <a class="underline decoration-slate-500 sm:decoration-2" href="{% url 'edit_purchase' purchase.id %}">
-                            {{ purchase.edition.name }}
-                        {% if purchase.type != "game" %}
-                        ({{ purchase.name }}, {{ purchase.get_type_display }})
-                        {% endif %}
-                        </a>
-                    </td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
-                </tr>
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'edit_purchase' purchase.id %}">
+                                {{ purchase.edition.name }}
+                                {% if purchase.type != "game" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
+                            </a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>

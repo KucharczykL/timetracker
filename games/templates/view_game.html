@@ -1,9 +1,8 @@
 {% extends "base.html" %}
-
-{% block title %}{{ title }}{% endblock title %}
-
+{% block title %}
+    {{ title }}
+{% endblock title %}
 {% load static %}
-
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
         <h1 class="text-4xl flex items-center">
@@ -14,83 +13,81 @@
         </h1>
         <h2 class="text-lg my-2 ml-2">
             {{ hours_sum }} <span class="dark:text-slate-500">total</span>
-            {{ session_average }} <span class="dark:text-slate-500">avg</span> 
-            ({{ playrange }}) </h2>
+            {{ session_average }} <span class="dark:text-slate-500">avg</span>
+            ({{ playrange }})
+        </h2>
         <hr class="border-slate-500">
-        <h1 class="text-3xl mt-4 mb-1">Editions <span class="dark:text-slate-500">({{ edition_count }})</span> and Purchases <span class="dark:text-slate-500">({{ purchase_count }})</span></h1>
-
+        <h1 class="text-3xl mt-4 mb-1">
+            Editions <span class="dark:text-slate-500">({{ edition_count }})</span> and Purchases <span class="dark:text-slate-500">({{ purchase_count }})</span>
+        </h1>
         <ul>
             {% for edition in editions %}
-            <li class="sm:pl-2 flex items-center">
-                {{ edition.name }} ({{ edition.platform }}, {{ edition.year_released }})
-                {% if edition.wikidata %}
-                    <span class="hidden sm:inline">
-                        <a href="https://www.wikidata.org/wiki/{{ edition.wikidata }}">
-                            <img class="inline mx-2 w-6" src="{% static 'icons/wikidata.png' %}"/>
-                        </a>
-                    </span>
-                {% endif %}
-                {% url 'edit_edition' edition.id as edit_url %}
-                {% include 'components/edit_button.html' with edit_url=edit_url %}         
-            </li>
+                <li class="sm:pl-2 flex items-center">
+                    {{ edition.name }} ({{ edition.platform }}, {{ edition.year_released }})
+                    {% if edition.wikidata %}
+                        <span class="hidden sm:inline">
+                            <a href="https://www.wikidata.org/wiki/{{ edition.wikidata }}">
+                                <img class="inline mx-2 w-6" src="{% static 'icons/wikidata.png' %}" />
+                            </a>
+                        </span>
+                    {% endif %}
+                    {% url 'edit_edition' edition.id as edit_url %}
+                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                </li>
                 <ul>
                     {% for purchase in edition.game_purchases %}
-                    <li class="sm:pl-6 flex items-center">
-                        {{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}, {{ purchase.price }} {{ purchase.price_currency}}
-                        {% url 'edit_purchase' purchase.id as edit_url %}
-                        {% include 'components/edit_button.html' with edit_url=edit_url %}
-                    </li>
-                    <ul>
-                        {% for related_purchase in purchase.nongame_related_purchases %}
-                            <li class="sm:pl-12 flex items-center">
-                                {{ related_purchase.name }} ({{ related_purchase.get_type_display }}, {{ purchase.platform }}, {{ related_purchase.date_purchased | date:"Y" }}, {{ related_purchase.price }} {{ related_purchase.price_currency}})
-                                {% url 'edit_purchase' related_purchase.id as edit_url %}
-                                {% include 'components/edit_button.html' with edit_url=edit_url %}
-                            </li>
-                        {% endfor %}
-                    </ul>
+                        <li class="sm:pl-6 flex items-center">
+                            {{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}, {{ purchase.price }} {{ purchase.price_currency }}
+                            {% url 'edit_purchase' purchase.id as edit_url %}
+                            {% include 'components/edit_button.html' with edit_url=edit_url %}
+                        </li>
+                        <ul>
+                            {% for related_purchase in purchase.nongame_related_purchases %}
+                                <li class="sm:pl-12 flex items-center">
+                                    {{ related_purchase.name }} ({{ related_purchase.get_type_display }}, {{ purchase.platform }}, {{ related_purchase.date_purchased | date:"Y" }}, {{ related_purchase.price }} {{ related_purchase.price_currency }})
+                                    {% url 'edit_purchase' related_purchase.id as edit_url %}
+                                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                                </li>
+                            {% endfor %}
+                        </ul>
                     {% endfor %}
                 </ul>
             {% endfor %}
         </ul>
-
         <h1 class="text-3xl mt-4 mb-1 flex gap-2 items-center">
             Sessions
-            <span class="dark:text-slate-500">
-                ({{ sessions.count }})
-            </span>
+            <span class="dark:text-slate-500">({{ sessions.count }})</span>
             {% url 'start_game_session' game.id as add_session_link %}
             {% include 'components/button.html' with title="Start new session" text="New" link=add_session_link %}
         </h1>
         <ul>
             {% for session in sessions %}
-            <li class="sm:pl-2 flex items-center">
-                {{ session.timestamp_start | date:"d/m/Y" }}
-                ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})
-                {% url 'edit_session' session.id as edit_url %}
-                {% include 'components/edit_button.html' with edit_url=edit_url %}
-            </li>
+                <li class="sm:pl-2 flex items-center">
+                    {{ session.timestamp_start | date:"d/m/Y" }}
+                    ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})
+                    {% url 'edit_session' session.id as edit_url %}
+                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                </li>
             {% endfor %}
         </ul>
-        <h1 class="text-3xl mt-4 mb-1">Notes <span class="dark:text-slate-500">({{ sessions_with_notes.count }})</span></h1>
+        <h1 class="text-3xl mt-4 mb-1">
+            Notes <span class="dark:text-slate-500">({{ sessions_with_notes.count }})</span>
+        </h1>
         <ul>
             {% for session in sessions_with_notes %}
-            <li class="sm:pl-2">
-                <ul>
-                    <li class="block dark:text-slate-500">
-                        <span class="flex items-center">
-                            {{ session.timestamp_start | date:"d/m/Y H:m" }}
-                            {% url 'edit_session' session.id as edit_session_url %}
-                            {% include 'components/edit_button.html' with edit_url=edit_session_url %}
-                        </span>
-                    </li>
-                    <li class="sm:pl-4 italic">
-                        {{ session.note|linebreaks }}
-                    </li>
-                </ul>
-            </li>
+                <li class="sm:pl-2">
+                    <ul>
+                        <li class="block dark:text-slate-500">
+                            <span class="flex items-center">
+                                {{ session.timestamp_start | date:"d/m/Y H:m" }}
+                                {% url 'edit_session' session.id as edit_session_url %}
+                                {% include 'components/edit_button.html' with edit_url=edit_session_url %}
+                            </span>
+                        </li>
+                        <li class="sm:pl-4 italic">{{ session.note|linebreaks }}</li>
+                    </ul>
+                </li>
             {% endfor %}
         </ul>
-        
     </div>
 {% endblock content %}

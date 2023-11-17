@@ -1,35 +1,38 @@
 {% extends "base.html" %}
-
-{% block title %}{{ title }}{% endblock title %}
-
+{% block title %}
+    {{ title }}
+{% endblock title %}
 {% block content %}
     <form method="post" enctype="multipart/form-data">
         <table class="mx-auto">
-        {% csrf_token %}
-
-        {% for field in form %}
-        <tr>
-            <th>{{ field.label_tag }}</th>
-            {% if field.name == "note" %}
-            <td>{{ field }}</td>
-            {% else %}
-            <td>{{ field }}</td>
-            {% endif %}
-            {% if field.name == "timestamp_start" or field.name == "timestamp_end" %}
-            <td>
-                <div class="basic-button-container">
-                    <button class="basic-button" data-target="{{field.name}}" data-type="now">Set to now</button>
-                    <button class="basic-button" data-target="{{field.name}}" data-type="toggle">Toggle text</button>
-                    <button class="basic-button" data-target="{{field.name}}" data-type="copy">Copy</button>
-                </div>
-            </td>
-            {% endif %}
-        </tr>
-        {% endfor %}
-        <tr>
-            <td></td>
-            <td><input type="submit" value="Submit"/></td>
-        </tr>
+            {% csrf_token %}
+            {% for field in form %}
+                <tr>
+                    <th>{{ field.label_tag }}</th>
+                    {% if field.name == "note" %}
+                        <td>{{ field }}</td>
+                    {% else %}
+                        <td>{{ field }}</td>
+                    {% endif %}
+                    {% if field.name == "timestamp_start" or field.name == "timestamp_end" %}
+                        <td>
+                            <div class="basic-button-container">
+                                <button class="basic-button" data-target="{{ field.name }}" data-type="now">Set to now</button>
+                                <button class="basic-button"
+                                        data-target="{{ field.name }}"
+                                        data-type="toggle">Toggle text</button>
+                                <button class="basic-button" data-target="{{ field.name }}" data-type="copy">Copy</button>
+                            </div>
+                        </td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+            <tr>
+                <td></td>
+                <td>
+                    <input type="submit" value="Submit" />
+                </td>
+            </tr>
         </table>
     </form>
     {% load static %}
