@@ -60,34 +60,18 @@
             <span class="dark:text-slate-500">({{ sessions.count }})</span>
             {% url 'start_game_session' game.id as add_session_link %}
             {% include 'components/button.html' with title="Start new session" text="New" link=add_session_link %}
+            and Notes <span class="dark:text-slate-500">({{ sessions_with_notes_count }})</span>
+            
         </h1>
         <ul>
             {% for session in sessions %}
-                <li class="sm:pl-2 flex items-center">
-                    {{ session.timestamp_start | date:"d/m/Y" }}
+                <li class="sm:pl-2 mt-4 mb-2 dark:text-slate-400 flex items-center">
+                    {{ session.timestamp_start | date:"d/m/Y H:m" }}
                     ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})
                     {% url 'edit_session' session.id as edit_url %}
                     {% include 'components/edit_button.html' with edit_url=edit_url %}
                 </li>
-            {% endfor %}
-        </ul>
-        <h1 class="text-3xl mt-4 mb-1">
-            Notes <span class="dark:text-slate-500">({{ sessions_with_notes.count }})</span>
-        </h1>
-        <ul>
-            {% for session in sessions_with_notes %}
-                <li class="sm:pl-2">
-                    <ul>
-                        <li class="block dark:text-slate-500">
-                            <span class="flex items-center">
-                                {{ session.timestamp_start | date:"d/m/Y H:m" }}
-                                {% url 'edit_session' session.id as edit_session_url %}
-                                {% include 'components/edit_button.html' with edit_url=edit_session_url %}
-                            </span>
-                        </li>
-                        <li class="sm:pl-4 italic">{{ session.note|linebreaks }}</li>
-                    </ul>
-                </li>
+                <li class="sm:pl-4 italic">{{ session.note|linebreaks }}</li>
             {% endfor %}
         </ul>
     </div>

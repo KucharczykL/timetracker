@@ -179,7 +179,7 @@ def view_game(request, game_id=None):
         "purchase_count": Purchase.objects.filter(edition__game=game).count(),
         "session_average": round(total_hours / int(session_count), 1),
         "session_count": session_count,
-        "sessions_with_notes": sessions.exclude(note=""),
+        "sessions_with_notes_count": sessions.exclude(note="").count(),
         "sessions": sessions.order_by("-timestamp_start"),
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
