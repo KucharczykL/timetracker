@@ -37,7 +37,8 @@
                 <ul>
                     {% for purchase in edition.game_purchases %}
                         <li class="sm:pl-6 flex items-center">
-                            {{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}, {{ purchase.price }} {{ purchase.price_currency }}
+                            {{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}
+                            {% if purchase.price != 0 %}({{ purchase.price }} {{ purchase.price_currency }}){% endif %}
                             {% url 'edit_purchase' purchase.id as edit_url %}
                             {% include 'components/edit_button.html' with edit_url=edit_url %}
                         </li>
