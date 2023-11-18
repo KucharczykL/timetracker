@@ -38,7 +38,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "graphene_django",
 ]
+
+GRAPHENE = {"SCHEMA": "games.schema.schema"}
 
 if DEBUG:
     INSTALLED_APPS.append("django_extensions")
