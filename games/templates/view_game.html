@@ -61,7 +61,6 @@
             {% url 'start_game_session' game.id as add_session_link %}
             {% include 'components/button.html' with title="Start new session" text="New" link=add_session_link %}
             and Notes <span class="dark:text-slate-500">({{ sessions_with_notes_count }})</span>
-            
         </h1>
         <ul>
             {% for session in sessions %}

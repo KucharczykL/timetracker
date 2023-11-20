@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, F, Prefetch, Sum
+from django.db.models import Count, F, Prefetch, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import (
     HttpRequest,
@@ -344,8 +344,8 @@ def stats(request, year: int = 0):
     this_year_purchases_unfinished = this_year_purchases_without_refunded.filter(
         date_finished__isnull=True
     ).filter(
-        type=Purchase.GAME
-    )  # do not count DLC etc.
+        Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
+    )  # do not count battle passes etc.
 
     this_year_purchases_unfinished_percent = int(
         safe_division(

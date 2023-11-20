@@ -136,7 +136,13 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                               href="{% url 'edit_purchase' purchase.id %}">
+                                {% if purchase.type == 'dlc' %}
+                                    {{ purchase.name }} ({{ purchase.edition.name }} DLC)
+                                {% else %}
+                                    {{ purchase.edition.name }}
+                                {% endif %}
+                            </a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
