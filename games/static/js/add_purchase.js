@@ -2,7 +2,7 @@ import {
   syncSelectInputUntilChanged,
   getEl,
   disableElementsWhenTrue,
-  disableElementsWhenFalse,
+  disableElementsWhenValueNotEqual,
 } from "./utils.js";
 
 let syncData = [
@@ -21,7 +21,11 @@ function setupElementHandlers() {
     "#id_name",
     "#id_related_purchase",
   ]);
-  disableElementsWhenFalse("#id_type", "game", ["#id_date_finished"]);
+  disableElementsWhenValueNotEqual(
+    "#id_type",
+    ["game", "dlc"],
+    ["#id_date_finished"]
+  );
 }
 
 document.addEventListener("DOMContentLoaded", setupElementHandlers);

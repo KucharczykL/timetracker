@@ -138,16 +138,44 @@ function conditionalElementHandler(...configs) {
   });
 }
 
-function disableElementsWhenFalse(targetSelect, targetValue, elementList) {
+function disableElementsWhenValueNotEqual(
+  targetSelect,
+  targetValue,
+  elementList
+) {
   return conditionalElementHandler([
     () => {
-      return getEl(targetSelect).value != targetValue;
+      let target = getEl(targetSelect);
+      console.debug(
+        `${disableElementsWhenTrue.name}: triggered on ${target.id}`
+      );
+      console.debug(`
+      ${disableElementsWhenTrue.name}: matching against value(s): ${targetValue}`);
+      if (targetValue instanceof Array) {
+        if (targetValue.every((value) => target.value != value)) {
+          console.debug(
+            `${disableElementsWhenTrue.name}: none of the values is equal to ${target.value}, returning true.`
+          );
+          return true;
+        }
+      } else {
+        console.debug(
+          `${disableElementsWhenTrue.name}: none of the values is equal to ${target.value}, returning true.`
+        );
+        return target.value != targetValue;
+      }
     },
     elementList,
     (el) => {
+      console.debug(
+        `${disableElementsWhenTrue.name}: evaluated true, disabling ${el.id}.`
+      );
       el.disabled = "disabled";
     },
     (el) => {
+      console.debug(
+        `${disableElementsWhenTrue.name}: evaluated false, NOT disabling ${el.id}.`
+      );
       el.disabled = "";
     },
   ]);
