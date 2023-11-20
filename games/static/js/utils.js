@@ -75,7 +75,10 @@ function syncSelectInputUntilChanged(syncData, parentSelector = document) {
  * @param {string} property - The property to retrieve the value from.
  */
 function getValueFromProperty(sourceElement, property) {
-  let source = (sourceElement instanceof HTMLSelectElement) ? sourceElement.selectedOptions[0] : sourceElement
+  let source =
+    sourceElement instanceof HTMLSelectElement
+      ? sourceElement.selectedOptions[0]
+      : sourceElement;
   if (property.startsWith("dataset.")) {
     let datasetKey = property.slice(8); // Remove 'dataset.' part
     return source.dataset[datasetKey];
@@ -93,13 +96,11 @@ function getValueFromProperty(sourceElement, property) {
  */
 function getEl(selector) {
   if (selector.startsWith("#")) {
-    return document.getElementById(selector.slice(1))
-  }
-  else if (selector.startsWith(".")) {
-    return document.getElementsByClassName(selector)
-  }
-  else {
-    return document.getElementsByTagName(selector)
+    return document.getElementById(selector.slice(1));
+  } else if (selector.startsWith(".")) {
+    return document.getElementsByClassName(selector);
+  } else {
+    return document.getElementsByTagName(selector);
   }
 }
 
@@ -116,7 +117,7 @@ function getEl(selector) {
 function conditionalElementHandler(...configs) {
   configs.forEach(([condition, targetElements, callbackfn1, callbackfn2]) => {
     if (condition()) {
-      targetElements.forEach(elementName => {
+      targetElements.forEach((elementName) => {
         let el = getEl(elementName);
         if (el === null) {
           console.error(`Element ${elementName} doesn't exist.`);
@@ -125,7 +126,7 @@ function conditionalElementHandler(...configs) {
         }
       });
     } else {
-      targetElements.forEach(elementName => {
+      targetElements.forEach((elementName) => {
         let el = getEl(elementName);
         if (el === null) {
           console.error(`Element ${elementName} doesn't exist.`);
@@ -167,4 +168,12 @@ function disableElementsWhenTrue(targetSelect, targetValue, elementList) {
   ]);
 }
 
-export { toISOUTCString, syncSelectInputUntilChanged, getEl, conditionalElementHandler, disableElementsWhenFalse, disableElementsWhenTrue, getValueFromProperty };
+export {
+  toISOUTCString,
+  syncSelectInputUntilChanged,
+  getEl,
+  conditionalElementHandler,
+  disableElementsWhenFalse,
+  disableElementsWhenTrue,
+  getValueFromProperty,
+};
