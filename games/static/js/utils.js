@@ -201,7 +201,7 @@ export {
   syncSelectInputUntilChanged,
   getEl,
   conditionalElementHandler,
-  disableElementsWhenFalse,
+  disableElementsWhenValueNotEqual,
   disableElementsWhenTrue,
   getValueFromProperty,
 };
