@@ -23,6 +23,12 @@
   font-style: normal;
 }
 
+a:hover {
+  text-decoration-color: #ff4400;
+  color: rgb(254, 185, 160);
+  transition: all 0.2s ease-out;
+}
+
 form label {
   @apply dark:text-slate-400;
 }

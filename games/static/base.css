@@ -1173,6 +1173,12 @@ select {
   font-style: normal;
 }
 
+a:hover {
+  text-decoration-color: #ff4400;
+  color: rgb(254, 185, 160);
+  transition: all 0.2s ease-out;
+}
+
 :is(.dark form label) {
   --tw-text-opacity: 1;
   color: rgb(148 163 184 / var(--tw-text-opacity));
