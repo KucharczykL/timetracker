@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
+from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
 from django.db.models.functions import Extract, TruncDate
 from django.http import (
     HttpRequest,
@@ -397,6 +397,14 @@ def stats(request, year: int = 0):
         )
         .values("id", "name", "total_playtime")
     )
+    highest_session_average_game = (
+        Game.objects.filter(edition__purchase__session__in=this_year_sessions)
+        .annotate(
+            session_average=Avg("edition__purchase__session__duration_calculated")
+        )
+        .order_by("-session_average")
+        .first()
+    )
     top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")[:10]
     for game in top_10_games_by_playtime:
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
@@ -467,6 +475,10 @@ def stats(request, year: int = 0):
         "longest_session_game": longest_session.purchase.edition.name,
         "highest_session_count": game_highest_session_count.session_count,
         "highest_session_count_game": game_highest_session_count.name,
+        "highest_session_average": format_duration(
+            highest_session_average_game.session_average, "%2.0Hh %2.0mm"
+        ),
+        "highest_session_average_game": highest_session_average_game,
     }
 
     request.session["return_path"] = request.path
