@@ -30,11 +30,11 @@ from .models import Edition, Game, Platform, Purchase, Session
 
 def model_counts(request):
     return {
-        "game_available": Game.objects.count() != 0,
-        "edition_available": Edition.objects.count() != 0,
-        "platform_available": Platform.objects.count() != 0,
-        "purchase_available": Purchase.objects.count() != 0,
-        "session_count": Session.objects.count(),
+        "game_available": Game.objects.exists(),
+        "edition_available": Edition.objects.exists(),
+        "platform_available": Platform.objects.exists(),
+        "purchase_available": Purchase.objects.exists(),
+        "session_count": Session.objects.exists(),
     }
 
 
