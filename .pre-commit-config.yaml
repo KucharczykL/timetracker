@@ -8,3 +8,8 @@ repos:
   hooks:
     - id: isort
       name: isort (python)
+- repo: https://github.com/Riverside-Healthcare/djLint
+  rev: v1.34.0
+  hooks:
+    - id: djlint-reformat-django
+    - id: djlint-django

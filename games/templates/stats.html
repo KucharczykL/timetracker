@@ -18,37 +18,37 @@
                 </select>
             </form>
         </div>
-                <h1 class="text-5xl text-center my-6">Playtime</h1>
-                <table class="responsive-table">
-                    <tbody>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Hours</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Sessions</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_sessions }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Days</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year.count }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year.count }}</td>
-                        </tr>
+        <h1 class="text-5xl text-center my-6">Playtime</h1>
+        <table class="responsive-table">
+            <tbody>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Hours</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Sessions</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_sessions }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Days</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year.count }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year.count }}</td>
+                </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ longest_session_time }} ({{ longest_session_game }})</td>
@@ -57,37 +57,37 @@
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ highest_session_count }} ({{ highest_session_count_game }})</td>
                 </tr>
-                    </tbody>
-                </table>
-                <h1 class="text-5xl text-center my-6">Purchases</h1>
-                <table class="responsive-table">
-                    <tbody>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Total</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year.count }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                                {{ all_purchased_refunded_this_year.count }} ({{ refunded_percent }}%)
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                                {{ purchased_unfinished.count }} ({{ unfinished_purchases_percent }}%)
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Backlog Decrease</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ backlog_decrease_count }}</td>
-                        </tr>
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }} ({{ spent_per_game }}/game)</td>
-                        </tr>
-                    </tbody>
-                </table>
+            </tbody>
+        </table>
+        <h1 class="text-5xl text-center my-6">Purchases</h1>
+        <table class="responsive-table">
+            <tbody>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Total</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year.count }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        {{ all_purchased_refunded_this_year.count }} ({{ refunded_percent }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        {{ purchased_unfinished.count }} ({{ unfinished_purchases_percent }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Backlog Decrease</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ backlog_decrease_count }}</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }} ({{ spent_per_game }}/game)</td>
+                </tr>
+            </tbody>
+        </table>
         <h1 class="text-5xl text-center my-6">Top games by playtime</h1>
         <table class="responsive-table">
             <thead>
