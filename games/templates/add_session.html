@@ -16,7 +16,7 @@
                     {% endif %}
                     {% if field.name == "timestamp_start" or field.name == "timestamp_end" %}
                         <td>
-                            <div class="basic-button-container">
+                            <div class="basic-button-container" hx-boost="false">
                                 <button class="basic-button" data-target="{{ field.name }}" data-type="now">Set to now</button>
                                 <button class="basic-button"
                                         data-target="{{ field.name }}"
