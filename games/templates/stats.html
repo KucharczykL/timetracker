@@ -51,6 +51,14 @@
                             <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
                             <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year.count }}</td>
                         </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ longest_session_time }} ({{ longest_session_game }})</td>
+                </tr>
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ highest_session_count }} ({{ highest_session_count_game }})</td>
+                </tr>
                     </tbody>
                 </table>
             </div>

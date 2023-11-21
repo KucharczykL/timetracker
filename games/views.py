@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, F, Prefetch, Q, Sum
-from django.db.models.functions import TruncDate
+from django.db.models import Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
+from django.db.models.functions import Extract, TruncDate
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -321,6 +321,22 @@ def stats(request, year: int = 0):
     if year == 0:
         year = timezone.now().year
     this_year_sessions = Session.objects.filter(timestamp_start__year=year)
+    this_year_sessions_with_durations = this_year_sessions.annotate(
+        duration=ExpressionWrapper(
+            F("timestamp_end") - F("timestamp_start"),
+            output_field=fields.DurationField(),
+        )
+    )
+    longest_session = this_year_sessions_with_durations.order_by("-duration").first()
+    this_year_games_with_session_counts = Game.objects.annotate(
+        session_count=Count(
+            "edition__purchase__session",
+            filter=Q(edition__purchase__session__timestamp_start__year=year),
+        )
+    )
+    game_highest_session_count = this_year_games_with_session_counts.order_by(
+        "-session_count"
+    ).first()
     selected_currency = "CZK"
     unique_days = (
         this_year_sessions.annotate(date=TruncDate("timestamp_start"))
@@ -444,6 +460,13 @@ def stats(request, year: int = 0):
             "date_purchased"
         ),
         "backlog_decrease_count": backlog_decrease_count,
+        "longest_session_time": format_duration(
+            longest_session.duration if longest_session else timedelta(0),
+            "%2.0Hh%2.0mm",
+        ),
+        "longest_session_game": longest_session.purchase.edition.name,
+        "highest_session_count": game_highest_session_count.session_count,
+        "highest_session_count_game": game_highest_session_count.name,
     }
 
     request.session["return_path"] = request.path
