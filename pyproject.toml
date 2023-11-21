@@ -24,6 +24,7 @@ djhtml = "^1.5.2"
 djlint = "^1.19.11"
 isort = "^5.11.4"
 pre-commit = "^3.5.0"
+django-debug-toolbar = "^4.2.0"
 
 [tool.isort]
 profile = "black"
