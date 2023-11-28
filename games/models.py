@@ -34,7 +34,7 @@ class Game(models.Model):
 
 class Edition(models.Model):
     class Meta:
-        unique_together = [["name", "platform"]]
+        unique_together = [["name", "platform", "year_released"]]
 
     game = models.ForeignKey("Game", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
