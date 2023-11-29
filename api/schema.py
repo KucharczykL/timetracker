@@ -1,12 +1,12 @@
 import graphene
 from graphene_django import DjangoObjectType
 
-from .models import Device as DeviceModel
-from .models import Edition as EditionModel
-from .models import Game as GameModel
-from .models import Platform as PlatformModel
-from .models import Purchase as PurchaseModel
-from .models import Session as SessionModel
+from games.models import Device as DeviceModel
+from games.models import Edition as EditionModel
+from games.models import Game as GameModel
+from games.models import Platform as PlatformModel
+from games.models import Purchase as PurchaseModel
+from games.models import Session as SessionModel
 
 
 class Game(DjangoObjectType):
