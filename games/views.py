@@ -470,7 +470,7 @@ def stats(request, year: int = 0):
         "backlog_decrease_count": backlog_decrease_count,
         "longest_session_time": format_duration(
             longest_session.duration if longest_session else timedelta(0),
-            "%2.0Hh%2.0mm",
+            "%2.0Hh %2.0mm",
         ),
         "longest_session_game": longest_session.purchase.edition.name,
         "highest_session_count": game_highest_session_count.session_count,
