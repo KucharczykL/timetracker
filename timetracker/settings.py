@@ -33,7 +33,6 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "games.apps.GamesConfig",
-    "api.apps.ApiConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -42,7 +41,7 @@ INSTALLED_APPS = [
     "graphene_django",
 ]
 
-GRAPHENE = {"SCHEMA": "api.schema.schema"}
+GRAPHENE = {"SCHEMA": "games.schema.schema"}
 
 if DEBUG:
     INSTALLED_APPS.append("django_extensions")
