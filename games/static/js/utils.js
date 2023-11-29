@@ -79,6 +79,10 @@ function getValueFromProperty(sourceElement, property) {
     sourceElement instanceof HTMLSelectElement
       ? sourceElement.selectedOptions[0]
       : sourceElement;
+  let source =
+    sourceElement instanceof HTMLSelectElement
+      ? sourceElement.selectedOptions[0]
+      : sourceElement;
   if (property.startsWith("dataset.")) {
     let datasetKey = property.slice(8); // Remove 'dataset.' part
     return source.dataset[datasetKey];
