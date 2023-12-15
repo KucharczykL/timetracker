@@ -479,6 +479,7 @@ def stats(request, year: int = 0):
             highest_session_average_game.session_average, "%2.0Hh %2.0mm"
         ),
         "highest_session_average_game": highest_session_average_game,
+        "title": f"{year} Stats",
     }
 
     request.session["return_path"] = request.path
