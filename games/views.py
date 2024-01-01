@@ -428,6 +428,18 @@ def stats(request, year: int = 0):
         .count()
     )
 
+    first_play_name = "N/A"
+    first_play_date = "N/A"
+    last_play_name = "N/A"
+    last_play_date = "N/A"
+    if this_year_sessions:
+        first_session = this_year_sessions.earliest()
+        first_play_name = first_session.purchase.edition.name
+        first_play_date = first_session.timestamp_start.strftime("%x")
+        last_session = this_year_sessions.latest()
+        last_play_name = last_session.purchase.edition.name
+        last_play_date = last_session.timestamp_start.strftime("%x")
+
     context = {
         "total_hours": format_duration(
             this_year_sessions.total_duration_unformatted(), "%2.0H"
@@ -491,6 +503,10 @@ def stats(request, year: int = 0):
         if highest_session_average_game
         else 0,
         "highest_session_average_game": highest_session_average_game,
+        "first_play_name": first_play_name,
+        "first_play_date": first_play_date,
+        "last_play_name": last_play_name,
+        "last_play_date": last_play_date,
         "title": f"{year} Stats",
     }
 
