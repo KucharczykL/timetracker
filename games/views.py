@@ -368,7 +368,8 @@ def stats(request, year: int = 0):
 
     this_year_purchases_unfinished_percent = int(
         safe_division(
-            this_year_purchases_unfinished.count(), this_year_purchases_refunded.count()
+            this_year_purchases_unfinished.count(),
+            this_year_purchases_without_refunded.count(),
         )
         * 100
     )
