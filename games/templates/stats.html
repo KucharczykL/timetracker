@@ -205,6 +205,33 @@
                 {% endfor %}
             </tbody>
         </table>
+
+        <h1 class="text-5xl text-center my-6">Unfinished Purchases</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in purchased_unfinished %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <a class="underline decoration-slate-500 sm:decoration-2"
+                               href="{% url 'edit_purchase' purchase.id %}">
+                                {{ purchase.edition.name }}
+                                {% if purchase.type == "dlc" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
+                            </a>
+                        </td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
         <h1 class="text-5xl text-center my-6">All Purchases</h1>
         <table class="responsive-table">
             <thead>

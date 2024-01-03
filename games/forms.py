@@ -83,6 +83,7 @@ class PurchaseForm(forms.ModelForm):
             "date_purchased": custom_date_widget,
             "date_refunded": custom_date_widget,
             "date_finished": custom_date_widget,
+            "date_dropped": custom_date_widget,
         }
         model = Purchase
         fields = [
@@ -91,6 +92,8 @@ class PurchaseForm(forms.ModelForm):
             "date_purchased",
             "date_refunded",
             "date_finished",
+            "date_dropped",
+            "infinite",
             "price",
             "price_currency",
             "ownership_type",

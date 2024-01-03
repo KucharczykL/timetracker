@@ -362,10 +362,11 @@ def stats(request, year: int = 0):
     )
     this_year_purchases_refunded = this_year_purchases_with_currency.refunded()
 
-    this_year_purchases_unfinished = this_year_purchases_without_refunded.filter(
-        date_finished__isnull=True
-    ).filter(
-        Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
+    this_year_purchases_unfinished = (
+        this_year_purchases_without_refunded.filter(date_finished__isnull=True)
+        .filter(date_dropped__isnull=True)
+        .filter(infinite=False)
+        .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )  # do not count battle passes etc.
 
     this_year_purchases_without_refunded_count = (

@@ -116,6 +116,8 @@ class Purchase(models.Model):
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
     date_finished = models.DateField(blank=True, null=True)
+    date_dropped = models.DateField(blank=True, null=True)
+    infinite = models.BooleanField(default=False)
     price = models.IntegerField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
     ownership_type = models.CharField(
