@@ -320,7 +320,9 @@ def stats(request, year: int = 0):
         return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
     if year == 0:
         year = timezone.now().year
-    this_year_sessions = Session.objects.filter(timestamp_start__year=year)
+    this_year_sessions = Session.objects.filter(
+        timestamp_start__year=year
+    ).select_related("purchase__edition")
     this_year_sessions_with_durations = this_year_sessions.annotate(
         duration=ExpressionWrapper(
             F("timestamp_end") - F("timestamp_start"),
@@ -352,9 +354,9 @@ def stats(request, year: int = 0):
     ).distinct()
 
     this_year_purchases = Purchase.objects.filter(date_purchased__year=year)
-    this_year_purchases_with_currency = this_year_purchases.filter(
-        price_currency__exact=selected_currency
-    )
+    this_year_purchases_with_currency = this_year_purchases.select_related(
+        "edition"
+    ).filter(price_currency__exact=selected_currency)
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
         date_refunded=None
     )
@@ -366,10 +368,14 @@ def stats(request, year: int = 0):
         Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
     )  # do not count battle passes etc.
 
+    this_year_purchases_without_refunded_count = (
+        this_year_purchases_without_refunded.count()
+    )
+    this_year_purchases_unfinished_count = this_year_purchases_unfinished.count()
     this_year_purchases_unfinished_percent = int(
         safe_division(
-            this_year_purchases_unfinished.count(),
-            this_year_purchases_without_refunded.count(),
+            this_year_purchases_unfinished_count,
+            this_year_purchases_without_refunded_count,
         )
         * 100
     )
@@ -381,10 +387,8 @@ def stats(request, year: int = 0):
         )
     )
     purchased_this_year_finished_this_year = (
-        this_year_purchases_without_refunded.intersection(
-            purchases_finished_this_year
-        ).order_by("date_finished")
-    )
+        this_year_purchases_without_refunded.filter(date_finished__year=year)
+    ).order_by("date_finished")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
         total_spent=Sum(F("price"))
@@ -441,6 +445,8 @@ def stats(request, year: int = 0):
         last_play_name = last_session.purchase.edition.name
         last_play_date = last_session.timestamp_start.strftime("%x")
 
+    all_purchased_this_year_count = this_year_purchases_with_currency.count()
+    all_purchased_refunded_this_year_count = this_year_purchases_refunded.count()
     context = {
         "total_hours": format_duration(
             this_year_sessions.total_duration_unformatted(), "%2.0H"
@@ -456,33 +462,42 @@ def stats(request, year: int = 0):
         "total_spent_currency": selected_currency,
         "all_purchased_this_year": this_year_purchases_without_refunded,
         "spent_per_game": int(
-            safe_division(total_spent, this_year_purchases_without_refunded.count())
+            safe_division(total_spent, this_year_purchases_without_refunded_count)
         ),
-        "all_finished_this_year": purchases_finished_this_year.order_by(
+        "all_finished_this_year": purchases_finished_this_year.select_related(
+            "edition"
+        ).order_by("date_finished"),
+        "all_finished_this_year_count": purchases_finished_this_year.count(),
+        "this_year_finished_this_year": purchases_finished_this_year_released_this_year.select_related(
+            "edition"
+        ).order_by(
             "date_finished"
         ),
-        "this_year_finished_this_year": purchases_finished_this_year_released_this_year.order_by(
-            "date_finished"
-        ),
-        "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year.order_by(
+        "this_year_finished_this_year_count": purchases_finished_this_year_released_this_year.count(),
+        "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year.select_related(
+            "edition"
+        ).order_by(
             "date_finished"
         ),
         "total_sessions": this_year_sessions.count(),
         "unique_days": unique_days["dates"],
         "unique_days_percent": int(unique_days["dates"] / 365 * 100),
         "purchased_unfinished": this_year_purchases_unfinished,
+        "purchased_unfinished_count": this_year_purchases_unfinished_count,
         "unfinished_purchases_percent": this_year_purchases_unfinished_percent,
         "refunded_percent": int(
             safe_division(
-                this_year_purchases_refunded.count(),
-                this_year_purchases_with_currency.count(),
+                all_purchased_refunded_this_year_count,
+                all_purchased_this_year_count,
             )
             * 100
         ),
         "all_purchased_refunded_this_year": this_year_purchases_refunded,
+        "all_purchased_refunded_this_year_count": all_purchased_refunded_this_year_count,
         "all_purchased_this_year": this_year_purchases_with_currency.order_by(
             "date_purchased"
         ),
+        "all_purchased_this_year_count": all_purchased_this_year_count,
         "backlog_decrease_count": backlog_decrease_count,
         "longest_session_time": format_duration(
             longest_session.duration, "%2.0Hh %2.0mm"

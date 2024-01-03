@@ -43,11 +43,11 @@
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year.count }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year_count }}</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year.count }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year_count }}</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
@@ -78,18 +78,18 @@
             <tbody>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Total</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year.count }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year_count }}</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ all_purchased_refunded_this_year.count }} ({{ refunded_percent }}%)
+                        {{ all_purchased_refunded_this_year_count }} ({{ refunded_percent }}%)
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ purchased_unfinished.count }} ({{ unfinished_purchases_percent }}%)
+                        {{ purchased_unfinished_count }} ({{ unfinished_purchases_percent }}%)
                     </td>
                 </tr>
                 <tr>
