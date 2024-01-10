@@ -13,6 +13,7 @@ from django.http import (
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 from common.time import format_duration
 from common.utils import safe_division
@@ -74,11 +75,12 @@ def add_session(request, purchase_id=None):
 
 
 def update_session(request, session_id=None):
-    session = Session.objects.get(id=session_id)
+    session = get_object_or_404(Session, id=session_id)
     session.finish_now()
     session.save()
     if request.htmx:
-        return render(request, "list_sessions.html#session-row")
+        context = {"session": session}
+        return render(request, "list_sessions.html#session-row", context)
     return redirect("list_sessions")
 
 

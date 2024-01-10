@@ -7,13 +7,13 @@
     {% if dataset.count >= 1 %}
         <div class="mx-auto text-center my-4">
             <a id="last-session-start"
-               href="{% url 'start_session_same_as_last' last.id %}"
-               hx-get="{% url 'start_session_same_as_last' last.id %}"
-               hx-swap="afterbegin"
-               hx-target=".responsive-table tbody"
-               hx-select=".responsive-table tbody tr:first-child"
-               onClick="document.querySelector('#last-session-start').classList.add('invisible')"
-               class="{% if last.timestamp_end == null %}invisible{% endif %}">
+                href="{% url 'start_session_same_as_last' last.id %}"
+                hx-get="{% url 'start_session_same_as_last' last.id %}"
+                hx-swap="afterbegin"
+                hx-target=".responsive-table tbody"
+                hx-select=".responsive-table tbody tr:first-child"
+                onClick="document.querySelector('#last-session-start').classList.add('invisible')"
+                class="{% if last.timestamp_end == null %}invisible{% endif %}">
                 {% include 'components/button_start.html' with text=last.purchase title="Start session of last played game" only %}
             </a>
         </div>
@@ -29,38 +29,37 @@
                 </tr>
             </thead>
             <tbody>
-                {% for data in dataset %}
-                {% partialdef session-row inline=True %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char md:max-w-40char">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'view_game' data.purchase.edition.game.id %}">
-                                {{ data.purchase.edition }}
-                            </a>
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell">
-                            {{ data.timestamp_start | date:"d/m/Y H:i" }}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell">
-                            {% if data.unfinished %}
-                                <a href="{% url 'update_session' data.id %}"
-                                   hx-get="{% url 'update_session' data.id %}"
-                                   hx-swap="outerHTML"
-                                   hx-target=".responsive-table tbody tr:first-child"
-                                   hx-select=".responsive-table tbody tr:first-child"
-                                   hx-indicator="#indicator"
-                                   onClick="document.querySelector('#last-session-start').classList.remove('invisible')">
-                                    <span class="text-yellow-300">Finish now?</span>
-                                </a>
-                            {% elif data.duration_manual %}
-                                --
-                            {% else %}
-                                {{ data.timestamp_end | date:"d/m/Y H:i" }}
-                            {% endif %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ data.duration_formatted }}</td>
-                    </tr>
-                {% endpartialdef %}
+                {% for session in dataset %}
+                        {% partialdef session-row inline=True %}
+                            <tr>
+                                <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char md:max-w-40char">
+                                    <a class="underline decoration-slate-500 sm:decoration-2"
+                                        href="{% url 'view_game' session.purchase.edition.game.id %}">
+                                        {{ session.purchase.edition }}
+                                    </a>
+                                </td>
+                                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell">
+                                    {{ session.timestamp_start | date:"d/m/Y H:i" }}
+                                </td>
+                                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell">
+                                    {% if session.unfinished %}
+                                        <a href="{% url 'update_session' session.id %}"
+                                            hx-get="{% url 'update_session' session.id %}"
+                                            hx-target="closest tr"
+                                            hx-swap="outerHTML"
+                                            hx-indicator="#indicator"
+                                            onClick="document.querySelector('#last-session-start').classList.remove('invisible')">
+                                            <span class="text-yellow-300">Finish now?</span>
+                                        </a>
+                                    {% elif session.duration_manual %}
+                                        --
+                                    {% else %}
+                                        {{ session.timestamp_end | date:"d/m/Y H:i" }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ session.duration_formatted }}</td>
+                            </tr>
+                        {% endpartialdef %}
                 {% endfor %}
             </tbody>
         </table>
