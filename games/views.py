@@ -77,6 +77,8 @@ def update_session(request, session_id=None):
     session = Session.objects.get(id=session_id)
     session.finish_now()
     session.save()
+    if request.htmx:
+        return render(request, "list_sessions.html#session-row")
     return redirect("list_sessions")
 
 

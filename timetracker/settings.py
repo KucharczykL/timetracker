@@ -38,7 +38,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "template_partials",
     "graphene_django",
+    "django_htmx",
 ]
 
 GRAPHENE = {"SCHEMA": "games.schema.schema"}
@@ -56,6 +58,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_htmx.middleware.HtmxMiddleware",
 ]
 
 if DEBUG:
@@ -79,6 +82,7 @@ TEMPLATES = [
                 "games.views.model_counts",
                 "games.views.stats_dropdown_year_range",
             ],
+            "builtins": ["template_partials.templatetags.partials"],
         },
     },
 ]

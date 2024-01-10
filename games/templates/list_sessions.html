@@ -30,6 +30,7 @@
             </thead>
             <tbody>
                 {% for data in dataset %}
+                {% partialdef session-row inline=True %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char md:max-w-40char">
                             <a class="underline decoration-slate-500 sm:decoration-2"
@@ -59,6 +60,7 @@
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ data.duration_formatted }}</td>
                     </tr>
+                {% endpartialdef %}
                 {% endfor %}
             </tbody>
         </table>

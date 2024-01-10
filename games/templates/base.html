@@ -1,3 +1,4 @@
+{% load django_htmx %}
 <!DOCTYPE html>
 <html lang="en">
     {% load static %}
@@ -12,6 +13,7 @@
             {% endblock title %}
         </title>
         <script src="{% static 'js/htmx.min.js' %}"></script>
+        {% django_htmx_script %}
         <link rel="stylesheet" href="{% static 'base.css' %}" />
     </head>
     <body class="dark" hx-indicator="#indicator">

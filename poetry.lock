@@ -173,6 +173,24 @@ files = [
 Django = ">=3.2"
 
 [[package]]
+name = "django-template-partials"
+version = "23.4"
+description = "django-template-partials"
+optional = false
+python-versions = "*"
+files = [
+    {file = "django-template-partials-23.4.tar.gz", hash = "sha256:f762b0b7b2222462df0845f0556792640b769eb832eae218a0e7dadd4e5606cc"},
+    {file = "django_template_partials-23.4-py2.py3-none-any.whl", hash = "sha256:d83d9c2d2836be769919e9aaf394d5feb1ac86e1187083030398308070122fca"},
+]
+
+[package.dependencies]
+Django = "*"
+
+[package.extras]
+docs = ["Sphinx"]
+tests = ["coverage", "django_coverage_plugin"]
+
+[[package]]
 name = "djhtml"
 version = "1.5.2"
 description = "Django/Jinja template indenter"
@@ -986,5 +1004,5 @@ watchdog = ["watchdog (>=2.3)"]
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.12"
-content-hash = "e864dc8abf6c84e5bb16ac2aa937c2a70561d15f3e8a1459866b9d6507e8773e"
+python-versions = "^3.11"
+content-hash = "c9ce052c193fdf4cc4b22f0cd1f2368fae6bc9304c38c770843315f39fa08de4"
