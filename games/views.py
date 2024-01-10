@@ -245,15 +245,17 @@ def start_game_session(request, game_id: int):
 
 
 def start_session_same_as_last(request, last_session_id: int):
-    last_session = Session.objects.get(id=last_session_id)
-    session = SessionForm(
-        {
-            "purchase": last_session.purchase.id,
-            "timestamp_start": timezone.now(),
-            "device": last_session.device,
-        }
-    )
+    last_session = get_object_or_404(Session, id=last_session_id)
+    # clone it
+    session = last_session
+    session.pk = None
+    # set new data
+    session.timestamp_start = timezone.now()
+    session.timestamp_end = None
     session.save()
+    if request.htmx:
+        context = {"session": session}
+        return render(request, "list_sessions.html#session-row", context)
     return redirect("list_sessions")
 
 
@@ -300,13 +302,6 @@ def list_sessions(
     else:
         # by default, sort from newest to oldest
         dataset = Session.objects.order_by("-timestamp_start")
-
-    for session in dataset:
-        if session.timestamp_end == None and session.duration_manual == timedelta(
-            seconds=0
-        ):
-            session.timestamp_end = timezone.now()
-            session.unfinished = True
 
     context["total_duration"] = dataset.total_duration_formatted()
     context["dataset"] = dataset

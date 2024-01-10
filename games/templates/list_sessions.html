@@ -11,7 +11,6 @@
                 hx-get="{% url 'start_session_same_as_last' last.id %}"
                 hx-swap="afterbegin"
                 hx-target=".responsive-table tbody"
-                hx-select=".responsive-table tbody tr:first-child"
                 onClick="document.querySelector('#last-session-start').classList.add('invisible')"
                 class="{% if last.timestamp_end == null %}invisible{% endif %}">
                 {% include 'components/button_start.html' with text=last.purchase title="Start session of last played game" only %}
@@ -42,7 +41,7 @@
                                     {{ session.timestamp_start | date:"d/m/Y H:i" }}
                                 </td>
                                 <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell">
-                                    {% if session.unfinished %}
+                                    {% if not session.timestamp_end %}
                                         <a href="{% url 'update_session' session.id %}"
                                             hx-get="{% url 'update_session' session.id %}"
                                             hx-target="closest tr"
