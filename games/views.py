@@ -1,9 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Callable
 
-from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
-from django.db.models.functions import Extract, TruncDate
+from django.db.models import (
+    Avg,
+    Count,
+    ExpressionWrapper,
+    F,
+    Prefetch,
+    Q,
+    Sum,
+    fields,
+)
+from django.db.models.functions import TruncDate
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -277,41 +285,40 @@ def list_sessions(
     context = {}
     context["title"] = "Sessions"
 
-    dataset = Session.objects.prefetch_related(
+    all_sessions = Session.objects.prefetch_related(
         "purchase", "purchase__edition", "purchase__edition__game"
     ).order_by("-timestamp_start")
 
     if filter == "purchase":
-        dataset = dataset.filter(purchase=purchase_id)
+        dataset = all_sessions.filter(purchase=purchase_id)
         context["purchase"] = Purchase.objects.get(id=purchase_id)
     elif filter == "platform":
-        dataset = dataset.filter(purchase__platform=platform_id)
+        dataset = all_sessions.filter(purchase__platform=platform_id)
         context["platform"] = Platform.objects.get(id=platform_id)
     elif filter == "edition":
-        dataset = dataset.filter(purchase__edition=edition_id)
+        dataset = all_sessions.filter(purchase__edition=edition_id)
         context["edition"] = Edition.objects.get(id=edition_id)
     elif filter == "game":
-        dataset = dataset.filter(purchase__edition__game=game_id)
+        dataset = all_sessions.filter(purchase__edition__game=game_id)
         context["game"] = Game.objects.get(id=game_id)
     elif filter == "ownership_type":
-        dataset = dataset.filter(purchase__ownership_type=ownership_type)
+        dataset = all_sessions.filter(purchase__ownership_type=ownership_type)
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
         current_year = timezone.now().year
         first_day_of_year = timezone.make_aware(datetime(current_year, 1, 1))
-        dataset = dataset.filter(timestamp_start__gte=first_day_of_year).order_by(
+        dataset = all_sessions.filter(timestamp_start__gte=first_day_of_year).order_by(
             "-timestamp_start"
         )
         context["title"] = "This year"
+    else:
+        dataset = all_sessions
 
-    context["dataset"] = dataset
-    context["dataset_count"] = dataset.count()
-    try:
-        context["last"] = Session.objects.prefetch_related(
-            "purchase__platform"
-        ).latest()
-    except ObjectDoesNotExist:
-        context["last"] = None
+    context = {
+        "dataset": dataset,
+        "dataset_count": dataset.count(),
+        "last": Session.objects.prefetch_related("purchase__platform").latest(),
+    }
 
     return render(request, "list_sessions.html", context)
 
