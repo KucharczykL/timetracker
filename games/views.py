@@ -303,7 +303,6 @@ def list_sessions(
         # by default, sort from newest to oldest
         dataset = Session.objects.order_by("-timestamp_start")
 
-    context["total_duration"] = dataset.total_duration_formatted()
     context["dataset"] = dataset
     try:
         context["last"] = Session.objects.latest()
