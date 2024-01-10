@@ -4,7 +4,7 @@
     {{ title }}
 {% endblock title %}
 {% block content %}
-    {% if dataset.count >= 1 %}
+    {% if dataset_count >= 1 %}
         <div class="mx-auto text-center my-4">
             <a id="last-session-start"
                 href="{% url 'start_session_same_as_last' last.id %}"
@@ -17,7 +17,7 @@
             </a>
         </div>
     {% endif %}
-    {% if dataset.count != 0 %}
+    {% if dataset_count != 0 %}
         <table class="responsive-table">
             <thead>
                 <tr>

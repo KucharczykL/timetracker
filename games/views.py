@@ -277,35 +277,39 @@ def list_sessions(
     context = {}
     context["title"] = "Sessions"
 
+    dataset = Session.objects.prefetch_related(
+        "purchase", "purchase__edition", "purchase__edition__game"
+    ).order_by("-timestamp_start")
+
     if filter == "purchase":
-        dataset = Session.objects.filter(purchase=purchase_id)
+        dataset = dataset.filter(purchase=purchase_id)
         context["purchase"] = Purchase.objects.get(id=purchase_id)
     elif filter == "platform":
-        dataset = Session.objects.filter(purchase__platform=platform_id)
+        dataset = dataset.filter(purchase__platform=platform_id)
         context["platform"] = Platform.objects.get(id=platform_id)
     elif filter == "edition":
-        dataset = Session.objects.filter(purchase__edition=edition_id)
+        dataset = dataset.filter(purchase__edition=edition_id)
         context["edition"] = Edition.objects.get(id=edition_id)
     elif filter == "game":
-        dataset = Session.objects.filter(purchase__edition__game=game_id)
+        dataset = dataset.filter(purchase__edition__game=game_id)
         context["game"] = Game.objects.get(id=game_id)
     elif filter == "ownership_type":
-        dataset = Session.objects.filter(purchase__ownership_type=ownership_type)
+        dataset = dataset.filter(purchase__ownership_type=ownership_type)
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
     elif filter == "recent":
         current_year = timezone.now().year
         first_day_of_year = timezone.make_aware(datetime(current_year, 1, 1))
-        dataset = Session.objects.filter(
-            timestamp_start__gte=first_day_of_year
-        ).order_by("-timestamp_start")
+        dataset = dataset.filter(timestamp_start__gte=first_day_of_year).order_by(
+            "-timestamp_start"
+        )
         context["title"] = "This year"
-    else:
-        # by default, sort from newest to oldest
-        dataset = Session.objects.order_by("-timestamp_start")
 
     context["dataset"] = dataset
+    context["dataset_count"] = dataset.count()
     try:
-        context["last"] = Session.objects.latest()
+        context["last"] = Session.objects.prefetch_related(
+            "purchase__platform"
+        ).latest()
     except ObjectDoesNotExist:
         context["last"] = None
 

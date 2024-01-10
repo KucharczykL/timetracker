@@ -3,7 +3,9 @@
 ## Improved
 * game overview: improve how editions and purchases are displayed
 * add purchase: only allow choosing purchases of selected edition
-* session list: starting and ending sessions is much faster/doest not reload the page
+* session list:
+  * starting and ending sessions is much faster/doest not reload the page
+  * listing sessions is much faster
 
 ## 1.5.1 / 2023-11-14 21:10+01:00
 
