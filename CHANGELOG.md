@@ -1,4 +1,4 @@
-## Unreleased
+## 1.5.2 / 2024-01-14 21:27+01:00
 
 ## Improved
 * game overview:
