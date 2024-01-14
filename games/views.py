@@ -260,6 +260,7 @@ def start_session_same_as_last(request, last_session_id: int):
     # set new data
     session.timestamp_start = timezone.now()
     session.timestamp_end = None
+    session.note = ""
     session.save()
     if request.htmx:
         context = {"session": session}
