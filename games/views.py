@@ -311,6 +311,7 @@ def list_sessions(
         dataset = all_sessions
 
     context = {
+        **context,
         "dataset": dataset,
         "dataset_count": dataset.count(),
         "last": Session.objects.prefetch_related("purchase__platform").latest(),

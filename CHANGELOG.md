@@ -3,6 +3,9 @@
 ## Improved
 * mark refunded purchases red on game overview
 
+## Fixed
+* Fix title not being displayed on the Recent sessions page
+
 ## 1.5.2 / 2024-01-14 21:27+01:00
 
 ## Improved
