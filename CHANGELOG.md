@@ -1,7 +1,9 @@
 ## Unreleased
 
 ## Improved
-* game overview: improve how editions and purchases are displayed
+* game overview:
+  * improve how editions and purchases are displayed
+  * make it possible to end session from overview
 * add purchase: only allow choosing purchases of selected edition
 * session list:
   * starting and ending sessions is much faster/doest not reload the page

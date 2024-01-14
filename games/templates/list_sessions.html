@@ -5,10 +5,11 @@
 {% endblock title %}
 {% block content %}
     {% if dataset_count >= 1 %}
+        {% url 'list_sessions_start_session_from_session' last.id as start_session_url %}
         <div class="mx-auto text-center my-4">
             <a id="last-session-start"
-                href="{% url 'start_session_same_as_last' last.id %}"
-                hx-get="{% url 'start_session_same_as_last' last.id %}"
+                href="{{ start_session_url }}"
+                hx-get="{{ start_session_url }}"
                 hx-swap="afterbegin"
                 hx-target=".responsive-table tbody"
                 onClick="document.querySelector('#last-session-start').classList.add('invisible')"
@@ -42,8 +43,9 @@
                                 </td>
                                 <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell">
                                     {% if not session.timestamp_end %}
-                                        <a href="{% url 'update_session' session.id %}"
-                                            hx-get="{% url 'update_session' session.id %}"
+                                    {% url 'list_sessions_end_session' session.id as end_session_url %}
+                                        <a  href="{{ end_session_url }}"
+                                            hx-get="{{ end_session_url }}"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             hx-indicator="#indicator"

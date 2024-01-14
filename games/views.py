@@ -82,16 +82,6 @@ def add_session(request, purchase_id=None):
     return render(request, "add_session.html", context)
 
 
-def update_session(request, session_id=None):
-    session = get_object_or_404(Session, id=session_id)
-    session.finish_now()
-    session.save()
-    if request.htmx:
-        context = {"session": session}
-        return render(request, "list_sessions.html#session-row", context)
-    return redirect("list_sessions")
-
-
 def use_custom_redirect(
     func: Callable[..., HttpResponse]
 ) -> Callable[..., HttpResponse]:
@@ -176,7 +166,8 @@ def view_game(request, game_id=None):
     session_count = sessions.count()
 
     playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
-    playrange_end = sessions.latest().timestamp_start.strftime("%b %Y")
+    latest_session = sessions.latest()
+    playrange_end = latest_session.timestamp_start.strftime("%b %Y")
 
     playrange = (
         playrange_start
@@ -197,6 +188,7 @@ def view_game(request, game_id=None):
         "sessions": sessions.order_by("-timestamp_start"),
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
+        "latest_session_id": latest_session.pk,
     }
 
     request.session["return_path"] = request.path
@@ -240,33 +232,34 @@ def related_purchase_by_edition(request):
     return render(request, "partials/related_purchase_field.html", {"form": form})
 
 
+def clone_session_by_id(session_id: int) -> Session:
+    session = get_object_or_404(Session, id=session_id)
+    clone = session
+    clone.pk = None
+    clone.timestamp_start = timezone.now()
+    clone.timestamp_end = None
+    clone.note = ""
+    clone.save()
+    return clone
+
+
 @use_custom_redirect
-def start_game_session(request, game_id: int):
-    last_session = Session.objects.filter(purchase__edition__game_id=game_id).latest()
-    session = SessionForm(
-        {
-            "purchase": last_session.purchase.id,
-            "timestamp_start": timezone.now(),
-            "device": last_session.device,
-        }
-    )
-    session.save()
+def new_session_from_existing_session(request, session_id: int, template: str = ""):
+    session = clone_session_by_id(session_id)
+    if request.htmx:
+        context = {"session": session}
+        return render(request, template, context)
     return redirect("list_sessions")
 
 
-def start_session_same_as_last(request, last_session_id: int):
-    last_session = get_object_or_404(Session, id=last_session_id)
-    # clone it
-    session = last_session
-    session.pk = None
-    # set new data
-    session.timestamp_start = timezone.now()
-    session.timestamp_end = None
-    session.note = ""
+@use_custom_redirect
+def end_session(request, session_id: int, template: str = ""):
+    session = get_object_or_404(Session, id=session_id)
+    session.timestamp_end = timezone.now()
     session.save()
     if request.htmx:
         context = {"session": session}
-        return render(request, "list_sessions.html#session-row", context)
+        return render(request, template, context)
     return redirect("list_sessions")
 
 
