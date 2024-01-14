@@ -57,7 +57,7 @@
         </ul>
         <h1 class="text-3xl mt-4 mb-1 flex gap-2 items-center">
             Sessions
-            <span class="dark:text-slate-500">({{ sessions.count }})</span>
+            <span class="dark:text-slate-500">({{ session_count }})</span>
             {% url 'start_game_session' game.id as add_session_link %}
             {% include 'components/button.html' with title="Start new session" text="New" link=add_session_link %}
             and Notes <span class="dark:text-slate-500">({{ sessions_with_notes_count }})</span>

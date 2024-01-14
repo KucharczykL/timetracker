@@ -170,7 +170,9 @@ def view_game(request, game_id=None):
         .order_by("year_released")
     )
 
-    sessions = Session.objects.filter(purchase__edition__game=game)
+    sessions = Session.objects.prefetch_related("device").filter(
+        purchase__edition__game=game
+    )
     session_count = sessions.count()
 
     playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
