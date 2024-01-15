@@ -57,13 +57,14 @@
         </ul>
         <h1 class="text-3xl mt-4 mb-1 flex gap-2 items-center">
             Sessions
-            <span class="dark:text-slate-500">({{ session_count }})</span>
+            <span class="dark:text-slate-500" id="session-count">({{ session_count }})</span>
             {% url 'view_game_start_session_from_session' latest_session_id as add_session_link %}
             <a
                 class="truncate max-w-xs py-1 px-2 text-xs bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-sm"
                 title="Start new session"
                 href="{{ add_session_link }}"
                 hx-get="{{ add_session_link }}"
+                hx-vals="js:{session_count:getSessionCount()}"
                 hx-target="#session-list"
                 hx-swap="afterbegin"
             >New</a>
@@ -85,18 +86,27 @@
                             hx-get="{{ end_session_url }}"
                             hx-target="closest li"
                             hx-swap="outerHTML"
+                            hx-vals="js:{session_count:getSessionCount()}"
                             hx-indicator="#indicator"
                         >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="#ffffff" class="h-3" x="0px" y="0px" viewBox="0 0 24 24">
                             <path d="M 12 2 C 6.486 2 2 6.486 2 12 C 2 17.514 6.486 22 12 22 C 17.514 22 22 17.514 22 12 C 22 10.874 21.803984 9.7942031 21.458984 8.7832031 L 19.839844 10.402344 C 19.944844 10.918344 20 11.453 20 12 C 20 16.411 16.411 20 12 20 C 7.589 20 4 16.411 4 12 C 4 7.589 7.589 4 12 4 C 13.633 4 15.151922 4.4938906 16.419922 5.3378906 L 17.851562 3.90625 C 16.203562 2.71225 14.185 2 12 2 z M 21.292969 3.2929688 L 11 13.585938 L 7.7070312 10.292969 L 6.2929688 11.707031 L 11 16.414062 L 22.707031 4.7070312 L 21.292969 3.2929688 z"></path>
                         </svg>
                         </a>
-                        
+
                         {% endif %}
                     </li>
                     <li class="sm:pl-4 italic">{{ session.note|linebreaks }}</li>
+                    <div class="hidden" hx-swap-oob="innerHTML:#session-count">
+                        ({{ session_count }})
+                    </div>
                 {% endpartialdef %}
             {% endfor %}
         </ul>
     </div>
+    <script>
+        function getSessionCount() {
+            return document.getElementById('session-count').textContent.match("[0-9]+");
+        }
+    </script>
 {% endblock content %}

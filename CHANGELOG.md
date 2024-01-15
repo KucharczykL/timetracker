@@ -2,6 +2,7 @@
 
 ## Improved
 * mark refunded purchases red on game overview
+* increase session count on game overview when starting a new session
 
 ## Fixed
 * Fix title not being displayed on the Recent sessions page

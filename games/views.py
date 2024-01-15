@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Callable
+import re
 
 from django.db.models import (
     Avg,
@@ -247,7 +248,10 @@ def clone_session_by_id(session_id: int) -> Session:
 def new_session_from_existing_session(request, session_id: int, template: str = ""):
     session = clone_session_by_id(session_id)
     if request.htmx:
-        context = {"session": session}
+        context = {
+            "session": session,
+            "session_count": int(request.GET.get("session_count", 0)) + 1,
+        }
         return render(request, template, context)
     return redirect("list_sessions")
 
@@ -258,7 +262,10 @@ def end_session(request, session_id: int, template: str = ""):
     session.timestamp_end = timezone.now()
     session.save()
     if request.htmx:
-        context = {"session": session}
+        context = {
+            "session": session,
+            "session_count": request.GET.get("session_count", 0),
+        }
         return render(request, template, context)
     return redirect("list_sessions")
 
