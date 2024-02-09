@@ -15,6 +15,7 @@ uvicorn = "^0.20.0"
 graphene-django = "^3.1.5"
 django-htmx = "^1.17.2"
 django-template-partials = "^23.4"
+markdown = "^3.5.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"

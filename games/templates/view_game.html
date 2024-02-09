@@ -3,6 +3,7 @@
     {{ title }}
 {% endblock title %}
 {% load static %}
+{% load markdown_extras %}
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
         <h1 class="text-4xl flex items-center">
@@ -96,7 +97,7 @@
 
                         {% endif %}
                     </li>
-                    <li class="sm:pl-4 italic">{{ session.note|linebreaks }}</li>
+                    <li class="sm:pl-4 markdown-content">{{ session.note|markdown }}</li>
                     <div class="hidden" hx-swap-oob="innerHTML:#session-count">
                         ({{ session_count }})
                     </div>

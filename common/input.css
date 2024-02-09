@@ -117,3 +117,31 @@ th label {
 .basic-button {
   @apply inline-block px-6 py-2.5 bg-blue-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out;
 }
+
+.markdown-content ul {
+  list-style-type: disc;
+  list-style-position: inside;
+  padding-left: 1em;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+  list-style-position: inside;
+  padding-left: 1em;
+}
+
+.markdown-content ul, 
+.markdown-content ol {
+    list-style-position: outside;
+    padding-left: 1em;
+}
+
+.markdown-content ul ul, 
+.markdown-content ul ol, 
+.markdown-content ol ul, 
+.markdown-content ol ol {
+    list-style-type: circle;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 1em;
+}

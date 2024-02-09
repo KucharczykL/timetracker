@@ -1,5 +1,8 @@
 ## Unreleased
 
+## New
+* Render notes as Markdown
+
 ## Improved
 * mark refunded purchases red on game overview
 * increase session count on game overview when starting a new session
