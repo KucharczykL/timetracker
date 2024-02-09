@@ -241,7 +241,6 @@ def related_purchase_by_edition(request):
     return render(request, "partials/related_purchase_field.html", {"form": form})
 
 
-@login_required
 def clone_session_by_id(session_id: int) -> Session:
     session = get_object_or_404(Session, id=session_id)
     clone = session
