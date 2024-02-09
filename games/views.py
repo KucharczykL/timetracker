@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Callable
-import re
+
+from django.contrib.auth.decorators import login_required
 
 from django.db.models import (
     Avg,
@@ -53,6 +54,7 @@ def stats_dropdown_year_range(request):
     return result
 
 
+@login_required
 def add_session(request, purchase_id=None):
     context = {}
     initial = {"timestamp_start": timezone.now()}
@@ -101,6 +103,7 @@ def use_custom_redirect(
     return wrapper
 
 
+@login_required
 @use_custom_redirect
 def edit_session(request, session_id=None):
     context = {}
@@ -114,6 +117,7 @@ def edit_session(request, session_id=None):
     return render(request, "add_session.html", context)
 
 
+@login_required
 @use_custom_redirect
 def edit_purchase(request, purchase_id=None):
     context = {}
@@ -128,6 +132,7 @@ def edit_purchase(request, purchase_id=None):
     return render(request, "add_purchase.html", context)
 
 
+@login_required
 @use_custom_redirect
 def edit_game(request, game_id=None):
     context = {}
@@ -141,6 +146,7 @@ def edit_game(request, game_id=None):
     return render(request, "add.html", context)
 
 
+@login_required
 def view_game(request, game_id=None):
     game = Game.objects.get(id=game_id)
     nongame_related_purchases_prefetch = Prefetch(
@@ -196,6 +202,7 @@ def view_game(request, game_id=None):
     return render(request, "view_game.html", context)
 
 
+@login_required
 @use_custom_redirect
 def edit_platform(request, platform_id=None):
     context = {}
@@ -209,6 +216,7 @@ def edit_platform(request, platform_id=None):
     return render(request, "add.html", context)
 
 
+@login_required
 @use_custom_redirect
 def edit_edition(request, edition_id=None):
     context = {}
@@ -233,6 +241,7 @@ def related_purchase_by_edition(request):
     return render(request, "partials/related_purchase_field.html", {"form": form})
 
 
+@login_required
 def clone_session_by_id(session_id: int) -> Session:
     session = get_object_or_404(Session, id=session_id)
     clone = session
@@ -244,6 +253,7 @@ def clone_session_by_id(session_id: int) -> Session:
     return clone
 
 
+@login_required
 @use_custom_redirect
 def new_session_from_existing_session(request, session_id: int, template: str = ""):
     session = clone_session_by_id(session_id)
@@ -256,6 +266,7 @@ def new_session_from_existing_session(request, session_id: int, template: str = 
     return redirect("list_sessions")
 
 
+@login_required
 @use_custom_redirect
 def end_session(request, session_id: int, template: str = ""):
     session = get_object_or_404(Session, id=session_id)
@@ -276,6 +287,7 @@ def end_session(request, session_id: int, template: str = ""):
 #     return redirect("list_sessions")
 
 
+@login_required
 def list_sessions(
     request,
     filter="",
@@ -327,6 +339,7 @@ def list_sessions(
     return render(request, "list_sessions.html", context)
 
 
+@login_required
 def stats(request, year: int = 0):
     selected_year = request.GET.get("year")
     if selected_year:
@@ -544,6 +557,7 @@ def stats(request, year: int = 0):
     return render(request, "stats.html", context)
 
 
+@login_required
 def add_purchase(request, edition_id=None):
     context = {}
     initial = {"date_purchased": timezone.now()}
@@ -579,6 +593,7 @@ def add_purchase(request, edition_id=None):
     return render(request, "add_purchase.html", context)
 
 
+@login_required
 def add_game(request):
     context = {}
     form = GameForm(request.POST or None)
@@ -597,6 +612,7 @@ def add_game(request):
     return render(request, "add_game.html", context)
 
 
+@login_required
 def add_edition(request, game_id=None):
     context = {}
     if request.method == "POST":
@@ -631,6 +647,7 @@ def add_edition(request, game_id=None):
     return render(request, "add_edition.html", context)
 
 
+@login_required
 def add_platform(request):
     context = {}
     form = PlatformForm(request.POST or None)
@@ -643,6 +660,7 @@ def add_platform(request):
     return render(request, "add.html", context)
 
 
+@login_required
 def add_device(request):
     context = {}
     form = DeviceForm(request.POST or None)
@@ -655,5 +673,6 @@ def add_device(request):
     return render(request, "add.html", context)
 
 
+@login_required
 def index(request):
     return redirect("list_sessions_recent")

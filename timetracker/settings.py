@@ -67,6 +67,9 @@ if DEBUG:
     DEBUG_TOOLBAR_CONFIG = {"ROOT_TAG_EXTRA_ATTRS": "hx-preserve"}
 
 ROOT_URLCONF = "timetracker.urls"
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/login/"
 
 TEMPLATES = [
     {

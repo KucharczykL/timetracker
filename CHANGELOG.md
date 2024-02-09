@@ -2,6 +2,7 @@
 
 ## New
 * Render notes as Markdown
+* Require login by default
 
 ## Improved
 * mark refunded purchases red on game overview
