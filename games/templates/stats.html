@@ -9,9 +9,9 @@
             <form method="get" class="text-center">
                 <label class="text-5xl text-center inline-block mb-10" for="yearSelect">Stats for:</label>
                 <select name="year"
-                        id="yearSelect"
-                        onchange="this.form.submit();"
-                        class="mx-2">
+                    id="yearSelect"
+                    onchange="this.form.submit();"
+                    class="mx-2">
                     {% for year_item in stats_dropdown_year_range %}
                         <option value="{{ year_item }}" {% if year == year_item %}selected{% endif %}>{{ year_item }}</option>
                     {% endfor %}
@@ -115,7 +115,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'view_game' game.id %}">{{ game.name }}</a>
+                                href="{% url 'view_game' game.id %}">{{ game.name }}</a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
                     </tr>
@@ -152,7 +152,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
+                                href="{% url 'edit_purchase' purchase.id %}">
                                 {% if purchase.type == 'dlc' %}
                                     {{ purchase.name }} ({{ purchase.edition.name }} DLC)
                                 {% else %}
@@ -178,7 +178,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                                href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
@@ -198,7 +198,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                                href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
@@ -220,7 +220,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
+                                href="{% url 'edit_purchase' purchase.id %}">
                                 {{ purchase.edition.name }}
                                 {% if purchase.type == "dlc" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
                             </a>
@@ -246,7 +246,7 @@
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
+                                href="{% url 'edit_purchase' purchase.id %}">
                                 {{ purchase.edition.name }}
                                 {% if purchase.type != "game" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
                             </a>

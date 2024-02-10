@@ -18,21 +18,21 @@
     </head>
     <body class="dark" hx-indicator="#indicator">
         <img id="indicator"
-             src="{% static 'icons/loading.png' %}"
-             class="absolute right-3 top-3 animate-spin htmx-indicator"
-             height="24"
-             width="24"
-             alt="loading indicator" />
-        <div class="dark:bg-gray-800 min-h-screen">
-            <nav class="mb-4 bg-white dark:bg-gray-900 border-gray-200 rounded">
+            src="{% static 'icons/loading.png' %}"
+            class="absolute right-3 top-3 animate-spin htmx-indicator"
+            height="24"
+            width="24"
+            alt="loading indicator" />
+        <div class="flex flex-col min-h-screen">
+            <nav class="dark:bg-gray-900 border-gray-200 h-24 flex items-center">
                 <div class="container flex flex-wrap items-center justify-between mx-auto">
                     <a href="{% url 'list_sessions_recent' %}" class="flex items-center">
                         <span class="text-4xl">
                             <img src="{% static 'icons/schedule.png' %}"
-                                 height="48"
-                                 width="48"
-                                 alt="Timetracker Logo"
-                                 class="mr-4" />
+                                height="48"
+                                width="48"
+                                alt="Timetracker Logo"
+                                class="mr-4" />
                         </span>
                         <span class="self-center text-xl font-semibold whitespace-nowrap text-white">Timetracker</span>
                     </a>
@@ -40,77 +40,79 @@
                         <ul class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
                             <li class="relative group">
                                 {% if user.is_authenticated %}
-                                <a class="block py-2 pl-3 pr-4 hover:underline"
-                                   href="{% url 'add_game' %}">New</a>
-                                <ul class="absolute hidden text-gray-700 pt-1 group-hover:block  w-auto whitespace-nowrap">
-                                    {% if purchase_available %}
-                                        <li>
-                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                               href="{% url 'add_device' %}">Device</a>
-                                        </li>
-                                    {% endif %}
-                                    <li>
-                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                           href="{% url 'add_game' %}">Game</a>
-                                    </li>
-                                    {% if game_available and platform_available %}
-                                        <li>
-                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                               href="{% url 'add_edition' %}">Edition</a>
-                                        </li>
-                                    {% endif %}
-                                    <li>
-                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                           href="{% url 'add_platform' %}">Platform</a>
-                                    </li>
-                                    {% if edition_available %}
-                                        <li>
-                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                               href="{% url 'add_purchase' %}">Purchase</a>
-                                        </li>
-                                    {% endif %}
-                                    {% if purchase_available %}
-                                        <li>
-                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                               href="{% url 'add_session' %}">Session</a>
-                                        </li>
-                                    {% endif %}
-                                </ul>
-                            </li>
-                            {% if session_count > 0 %}
-                                <li class="relative group">
                                     <a class="block py-2 pl-3 pr-4 hover:underline"
-                                       href="{% url 'stats_current_year' %}">Stats</a>
-                                    <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
-                                        {% for year in stats_dropdown_year_range %}
+                                        href="{% url 'add_game' %}">New</a>
+                                    <ul class="absolute hidden text-gray-700 pt-1 group-hover:block  w-auto whitespace-nowrap">
+                                        {% if purchase_available %}
                                             <li>
                                                 <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                                   href="{% url 'stats_by_year' year %}">{{ year }}</a>
+                                                    href="{% url 'add_device' %}">Device</a>
                                             </li>
-                                        {% endfor %}
+                                        {% endif %}
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                href="{% url 'add_game' %}">Game</a>
+                                        </li>
+                                        {% if game_available and platform_available %}
+                                            <li>
+                                                <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                    href="{% url 'add_edition' %}">Edition</a>
+                                            </li>
+                                        {% endif %}
+                                        <li>
+                                            <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                href="{% url 'add_platform' %}">Platform</a>
+                                        </li>
+                                        {% if edition_available %}
+                                            <li>
+                                                <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                    href="{% url 'add_purchase' %}">Purchase</a>
+                                            </li>
+                                        {% endif %}
+                                        {% if purchase_available %}
+                                            <li>
+                                                <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                    href="{% url 'add_session' %}">Session</a>
+                                            </li>
+                                        {% endif %}
                                     </ul>
-                                </li>
-                                <li>
-                                    <a class="block py-2 pl-3 pr-4 hover:underline"
-                                       href="{% url 'list_sessions' %}">All Sessions</a>
-                                </li>
-                                <li>
-                                    <a class="block py-2 pl-3 pr-4 hover:underline"
-                                       href="{% url 'logout' %}">Log Out</a>
-                                </li>
+                                    </li>
+                                    {% if session_count > 0 %}
+                                        <li class="relative group">
+                                            <a class="block py-2 pl-3 pr-4 hover:underline"
+                                                href="{% url 'stats_current_year' %}">Stats</a>
+                                            <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                                {% for year in stats_dropdown_year_range %}
+                                                    <li>
+                                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                            href="{% url 'stats_by_year' year %}">{{ year }}</a>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </li>
+                                        <li>
+                                            <a class="block py-2 pl-3 pr-4 hover:underline"
+                                                href="{% url 'list_sessions' %}">All Sessions</a>
+                                        </li>
+                                        <li>
+                                            <a class="block py-2 pl-3 pr-4 hover:underline"
+                                                href="{% url 'logout' %}">Log Out</a>
+                                        </li>
+                                    {% endif %}
                                 {% endif %}
-                            {% endif %}
-                        </ul>
+                            </ul>
+                        </div>
                     </div>
+                </nav>
+                <div class="flex flex-1 dark:bg-gray-800 justify-center pt-8 pb-16">
+                    {% block content %}
+                        No content here.
+                    {% endblock content %}
                 </div>
-            </nav>
-            {% block content %}
-                No content here.
-            {% endblock content %}
-        </div>
-        {% load version %}
-        <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
-        {% block scripts %}
-        {% endblock scripts %}
-    </body>
-</html>
+                {% load version %}
+                <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
+            </div>
+            {% block scripts %}
+            {% endblock scripts %}
+        </body>
+    </html>
