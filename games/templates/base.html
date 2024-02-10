@@ -39,6 +39,7 @@
                     <div class="w-full md:block md:w-auto">
                         <ul class="flex flex-col md:flex-row p-4 mt-4 dark:text-white">
                             <li class="relative group">
+                                {% if user.is_authenticated %}
                                 <a class="block py-2 pl-3 pr-4 hover:underline"
                                    href="{% url 'add_game' %}">New</a>
                                 <ul class="absolute hidden text-gray-700 pt-1 group-hover:block  w-auto whitespace-nowrap">
@@ -93,6 +94,11 @@
                                     <a class="block py-2 pl-3 pr-4 hover:underline"
                                        href="{% url 'list_sessions' %}">All Sessions</a>
                                 </li>
+                                <li>
+                                    <a class="block py-2 pl-3 pr-4 hover:underline"
+                                       href="{% url 'logout' %}">Log Out</a>
+                                </li>
+                                {% endif %}
                             {% endif %}
                         </ul>
                     </div>
