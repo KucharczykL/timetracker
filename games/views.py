@@ -525,25 +525,29 @@ def stats(request, year: int = 0):
         ),
         "all_purchased_this_year_count": all_purchased_this_year_count,
         "backlog_decrease_count": backlog_decrease_count,
-        "longest_session_time": format_duration(
-            longest_session.duration, "%2.0Hh %2.0mm"
-        )
-        if longest_session
-        else 0,
-        "longest_session_game": longest_session.purchase.edition.name
-        if longest_session
-        else "N/A",
-        "highest_session_count": game_highest_session_count.session_count
-        if game_highest_session_count
-        else 0,
-        "highest_session_count_game": game_highest_session_count.name
-        if game_highest_session_count
-        else "N/A",
-        "highest_session_average": format_duration(
-            highest_session_average_game.session_average, "%2.0Hh %2.0mm"
-        )
-        if highest_session_average_game
-        else 0,
+        "longest_session_time": (
+            format_duration(longest_session.duration, "%2.0Hh %2.0mm")
+            if longest_session
+            else 0
+        ),
+        "longest_session_game": (
+            longest_session.purchase.edition.name if longest_session else "N/A"
+        ),
+        "highest_session_count": (
+            game_highest_session_count.session_count
+            if game_highest_session_count
+            else 0
+        ),
+        "highest_session_count_game": (
+            game_highest_session_count.name if game_highest_session_count else "N/A"
+        ),
+        "highest_session_average": (
+            format_duration(
+                highest_session_average_game.session_average, "%2.0Hh %2.0mm"
+            )
+            if highest_session_average_game
+            else 0
+        ),
         "highest_session_average_game": highest_session_average_game,
         "first_play_name": first_play_name,
         "first_play_date": first_play_date,
