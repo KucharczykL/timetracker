@@ -151,7 +151,9 @@ def view_game(request, game_id=None):
     game = Game.objects.get(id=game_id)
     nongame_related_purchases_prefetch = Prefetch(
         "related_purchases",
-        queryset=Purchase.objects.exclude(type=Purchase.GAME),
+        queryset=Purchase.objects.exclude(type=Purchase.GAME).order_by(
+            "date_purchased"
+        ),
         to_attr="nongame_related_purchases",
     )
     game_purchases_prefetch = Prefetch(
@@ -164,7 +166,7 @@ def view_game(request, game_id=None):
     editions = (
         Edition.objects.filter(game=game)
         .prefetch_related(game_purchases_prefetch)
-        .order_by("year_released", "purchase__date_purchased")
+        .order_by("year_released")
     )
 
     sessions = Session.objects.prefetch_related("device").filter(
