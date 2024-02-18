@@ -164,7 +164,7 @@ def view_game(request, game_id=None):
     editions = (
         Edition.objects.filter(game=game)
         .prefetch_related(game_purchases_prefetch)
-        .order_by("year_released")
+        .order_by("year_released", "purchase__date_purchased")
     )
 
     sessions = Session.objects.prefetch_related("device").filter(
