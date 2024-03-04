@@ -18,19 +18,6 @@ class Game(models.Model):
     def __str__(self):
         return self.name
 
-    def save(self, *args, **kwargs):
-        def get_sort_name(name):
-            articles = ["a", "an", "the"]
-            name_parts = name.split()
-            first_word = name_parts[0].lower()
-            if first_word in articles:
-                return f"{' '.join(name_parts[1:])}, {name_parts[0]}"
-            else:
-                return name
-
-        self.sort_name = get_sort_name(self.name)
-        super().save(*args, **kwargs)
-
 
 class Edition(models.Model):
     class Meta:
@@ -48,19 +35,6 @@ class Edition(models.Model):
 
     def __str__(self):
         return self.sort_name
-
-    def save(self, *args, **kwargs):
-        def get_sort_name(name):
-            articles = ["a", "an", "the"]
-            name_parts = name.split()
-            first_word = name_parts[0].lower()
-            if first_word in articles:
-                return f"{' '.join(name_parts[1:])}, {name_parts[0]}"
-            else:
-                return name
-
-        self.sort_name = get_sort_name(self.name)
-        super().save(*args, **kwargs)
 
 
 class PurchaseQueryset(models.QuerySet):
