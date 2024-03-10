@@ -389,12 +389,22 @@ def stats(request, year: int = 0):
     )
     this_year_purchases_refunded = this_year_purchases_with_currency.refunded()
 
-    this_year_purchases_unfinished = (
+    this_year_purchases_unfinished_dropped_nondropped = (
         this_year_purchases_without_refunded.filter(date_finished__isnull=True)
-        .filter(date_dropped__isnull=True)
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )  # do not count battle passes etc.
+
+    this_year_purchases_unfinished = (
+        this_year_purchases_unfinished_dropped_nondropped.filter(
+            date_dropped__isnull=True
+        )
+    )
+    this_year_purchases_dropped = (
+        this_year_purchases_unfinished_dropped_nondropped.filter(
+            date_dropped__isnull=False
+        )
+    )
 
     this_year_purchases_without_refunded_count = (
         this_year_purchases_without_refunded.count()
@@ -475,6 +485,12 @@ def stats(request, year: int = 0):
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
     all_purchased_refunded_this_year_count = this_year_purchases_refunded.count()
+
+    this_year_purchases_dropped_count = this_year_purchases_dropped.count()
+    this_year_purchases_dropped_percentage = int(
+        safe_division(this_year_purchases_dropped_count, all_purchased_this_year_count)
+        * 100
+    )
     context = {
         "total_hours": format_duration(
             this_year_sessions.total_duration_unformatted(), "%2.0H"
@@ -513,6 +529,8 @@ def stats(request, year: int = 0):
         "purchased_unfinished": this_year_purchases_unfinished,
         "purchased_unfinished_count": this_year_purchases_unfinished_count,
         "unfinished_purchases_percent": this_year_purchases_unfinished_percent,
+        "dropped_count": this_year_purchases_dropped_count,
+        "dropped_percentage": this_year_purchases_dropped_percentage,
         "refunded_percent": int(
             safe_division(
                 all_purchased_refunded_this_year_count,
