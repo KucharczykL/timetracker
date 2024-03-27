@@ -75,7 +75,7 @@
             {% for session in sessions %}
                 {% partialdef session-info inline=True %}
                     <li class="sm:pl-2 mt-4 mb-2 dark:text-slate-400 flex items-center space-x-1">
-                        {{ session.timestamp_start | date:"d/m/Y H:m" }}{% if session.timestamp_end %}-{{ session.timestamp_end | date:"H:m" }}{% endif %}
+                        {{ session.timestamp_start | date:"d/m/Y H:i" }}{% if session.timestamp_end %}-{{ session.timestamp_end | date:"H:i" }}{% endif %}
                         ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})
                         {% url 'edit_session' session.id as edit_url %}
                         {% include 'components/edit_button.html' with edit_url=edit_url %}
