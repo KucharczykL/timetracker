@@ -3,7 +3,7 @@
 ## New
 * Render notes as Markdown
 * Require login by default
-* Add stats for dropped purchases
+* Add stats for dropped purchases, monthly playtimes
 
 ## Improved
 * mark refunded purchases red on game overview

@@ -12,8 +12,9 @@ from django.db.models import (
     Q,
     Sum,
     fields,
+    IntegerField,
 )
-from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncDate, ExtractMonth, TruncMonth
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -443,6 +444,15 @@ def stats(request, year: int = 0):
         )
         .values("id", "name", "total_playtime")
     )
+    month_playtimes = (
+        this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
+        .values("month")
+        .annotate(playtime=Sum("duration_calculated"))
+        .order_by("month")
+    )
+    for month in month_playtimes:
+        month["playtime"] = format_duration(month["playtime"], "%2.0H")
+
     highest_session_average_game = (
         Game.objects.filter(edition__purchase__session__in=this_year_sessions)
         .annotate(
@@ -574,6 +584,7 @@ def stats(request, year: int = 0):
         "last_play_name": last_play_name,
         "last_play_date": last_play_date,
         "title": f"{year} Stats",
+        "month_playtimes": month_playtimes,
     }
 
     request.session["return_path"] = request.path
