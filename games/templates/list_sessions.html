@@ -9,12 +9,12 @@
             {% url 'list_sessions_start_session_from_session' last.id as start_session_url %}
             <div class="mx-auto text-center my-4">
                 <a id="last-session-start"
-                    href="{{ start_session_url }}"
-                    hx-get="{{ start_session_url }}"
-                    hx-swap="afterbegin"
-                    hx-target=".responsive-table tbody"
-                    onClick="document.querySelector('#last-session-start').classList.add('invisible')"
-                    class="{% if last.timestamp_end == null %}invisible{% endif %}">
+                   href="{{ start_session_url }}"
+                   hx-get="{{ start_session_url }}"
+                   hx-swap="afterbegin"
+                   hx-target=".responsive-table tbody"
+                   onClick="document.querySelector('#last-session-start').classList.add('invisible')"
+                   class="{% if last.timestamp_end == null %}invisible{% endif %}">
                     {% include 'components/button_start.html' with text=last.purchase title="Start session of last played game" only %}
                 </a>
             </div>
@@ -35,7 +35,7 @@
                             <tr>
                                 <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char md:max-w-40char">
                                     <a class="underline decoration-slate-500 sm:decoration-2"
-                                        href="{% url 'view_game' session.purchase.edition.game.id %}">
+                                       href="{% url 'view_game' session.purchase.edition.game.id %}">
                                         {{ session.purchase.edition }}
                                     </a>
                                 </td>
@@ -46,11 +46,11 @@
                                     {% if not session.timestamp_end %}
                                         {% url 'list_sessions_end_session' session.id as end_session_url %}
                                         <a  href="{{ end_session_url }}"
-                                            hx-get="{{ end_session_url }}"
-                                            hx-target="closest tr"
-                                            hx-swap="outerHTML"
-                                            hx-indicator="#indicator"
-                                            onClick="document.querySelector('#last-session-start').classList.remove('invisible')">
+                                           hx-get="{{ end_session_url }}"
+                                           hx-target="closest tr"
+                                           hx-swap="outerHTML"
+                                           hx-indicator="#indicator"
+                                           onClick="document.querySelector('#last-session-start').classList.remove('invisible')">
                                             <span class="text-yellow-300">Finish now?</span>
                                         </a>
                                     {% elif session.duration_manual %}
