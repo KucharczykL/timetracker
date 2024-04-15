@@ -3,6 +3,15 @@
     {{ title }}
 {% endblock title %}
 {% load static %}
+
+{% partialdef purchase-name %}
+    {% if purchase.type != 'game' %}
+        {{ purchase.name }} ({{ purchase.edition.name }} {{ purchase.get_type_display }})
+    {% else %}
+        {{ purchase.edition.name }}
+    {% endif %}
+{% endpartialdef %}
+
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
         <div class="flex justify-center items-center">
@@ -172,11 +181,7 @@
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
                                href="{% url 'edit_purchase' purchase.id %}">
-                                {% if purchase.type == 'dlc' %}
-                                    {{ purchase.name }} ({{ purchase.edition.name }} DLC)
-                                {% else %}
-                                    {{ purchase.edition.name }}
-                                {% endif %}
+                                {% partial purchase-name %}
                             </a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
@@ -240,8 +245,7 @@
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
                                href="{% url 'edit_purchase' purchase.id %}">
-                                {{ purchase.edition.name }}
-                                {% if purchase.type == "dlc" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
+                               {% partial purchase-name %}
                             </a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
@@ -266,8 +270,7 @@
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                             <a class="underline decoration-slate-500 sm:decoration-2"
                                href="{% url 'edit_purchase' purchase.id %}">
-                                {{ purchase.edition.name }}
-                                {% if purchase.type != "game" %}({{ purchase.name }}, {{ purchase.get_type_display }}){% endif %}
+                               {% partial purchase-name %}
                             </a>
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>

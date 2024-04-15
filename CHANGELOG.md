@@ -9,6 +9,7 @@
 * mark refunded purchases red on game overview
 * increase session count on game overview when starting a new session
 * game overview: sort purchases also by date purchased (on top of date released)
+* stats: improve purchase name consistency
 
 ## Fixed
 * Fix title not being displayed on the Recent sessions page
