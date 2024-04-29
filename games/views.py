@@ -129,6 +129,7 @@ def edit_purchase(request, purchase_id=None):
         return redirect("list_sessions")
     context["title"] = "Edit Purchase"
     context["form"] = form
+    context["purchase_id"] = purchase_id
     context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
@@ -590,6 +591,11 @@ def stats(request, year: int = 0):
     request.session["return_path"] = request.path
     return render(request, "stats.html", context)
 
+@login_required
+def delete_purchase(request, purchase_id=None):
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    purchase.delete()
+    return redirect("list_sessions")
 
 @login_required
 def add_purchase(request, edition_id=None):

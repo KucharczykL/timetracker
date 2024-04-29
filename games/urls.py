@@ -47,6 +47,11 @@ urlpatterns = [
     #     views.delete_session,
     #     name="delete_session",
     # ),
+    path(
+        "purchase/<int:purchase_id>/delete",
+        views.delete_purchase,
+        name="delete_purchase",
+    ),
     path("add-purchase/", views.add_purchase, name="add_purchase"),
     path(
         "add-purchase-for-edition/<int:edition_id>",
