@@ -11,6 +11,7 @@
 * increase session count on game overview when starting a new session
 * game overview: sort purchases also by date purchased (on top of date released)
 * stats: improve purchase name consistency
+* session list: use display name instead of sort name
 
 ## Fixed
 * Fix title not being displayed on the Recent sessions page
