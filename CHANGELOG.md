@@ -9,7 +9,9 @@
 ## Improved
 * mark refunded purchases red on game overview
 * increase session count on game overview when starting a new session
-* game overview: sort purchases also by date purchased (on top of date released)
+* game overview:
+  * sort purchases also by date purchased (on top of date released)
+  * improve header format 
 * stats: improve purchase name consistency
 * session list: use display name instead of sort name
 

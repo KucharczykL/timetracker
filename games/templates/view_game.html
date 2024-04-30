@@ -6,16 +6,19 @@
 {% load markdown_extras %}
 {% block content %}
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
-        <h1 class="text-4xl flex items-center">
+        <h1 class="text-5xl flex items-center">
             {{ game.name }}
-            <span class="dark:text-slate-500">(#{{ game.pk }})</span>
             {% url 'edit_game' game.id as edit_url %}
             {% include 'components/edit_button.html' with edit_url=edit_url %}
         </h1>
+        <h2 class="text-lg my-2 ml-2 dark:text-slate-500">First Released: <span class="text-white">{{ game.year_released }}</span></h2>
         <h2 class="text-lg my-2 ml-2">
-            {{ hours_sum }} <span class="dark:text-slate-500">total</span>
-            {{ session_average }} <span class="dark:text-slate-500">avg</span>
-            ({{ playrange }})
+            <span class="dark:text-slate-500">Playtime: </span>
+            {{ hours_sum }} <span class="dark:text-slate-500">hours over</span> {{ session_count }} <span class="dark:text-slate-500">sessions (</span>{{ session_average }}<span class="dark:text-slate-500">/session)</span>
+        </h2>
+        <h2 class="text-lg my-2 ml-2">
+            <span class="dark:text-slate-500">Played in: </span>
+            {{ playrange }}
         </h2>
         <hr class="border-slate-500">
         <h1 class="text-3xl mt-4 mb-1">
