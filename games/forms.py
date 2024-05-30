@@ -1,5 +1,6 @@
 from django import forms
 from django.urls import reverse
+from common.utils import safe_getattr
 
 from games.models import Device, Edition, Game, Platform, Purchase, Session
 
@@ -45,8 +46,8 @@ class EditionChoiceField(forms.ModelChoiceField):
 class IncludePlatformSelect(forms.Select):
     def create_option(self, name, value, *args, **kwargs):
         option = super().create_option(name, value, *args, **kwargs)
-        if value:
-            option["attrs"]["data-platform"] = value.instance.platform.id
+        if platform_id := safe_getattr(value, 'instance.platform.id'):
+            option["attrs"]["data-platform"] = platform_id
         return option
 
 
