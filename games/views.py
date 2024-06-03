@@ -283,6 +283,7 @@ def end_session(request, session_id: int, template: str = ""):
         return render(request, template, context)
     return redirect("list_sessions")
 
+
 @login_required
 def delete_session(request, session_id=None):
     session = get_object_or_404(Session, id=session_id)
@@ -591,11 +592,13 @@ def stats(request, year: int = 0):
     request.session["return_path"] = request.path
     return render(request, "stats.html", context)
 
+
 @login_required
 def delete_purchase(request, purchase_id=None):
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.delete()
     return redirect("list_sessions")
+
 
 @login_required
 def add_purchase(request, edition_id=None):

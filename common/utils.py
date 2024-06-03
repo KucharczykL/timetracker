@@ -7,7 +7,8 @@ def safe_division(numerator: int | float, denominator: int | float) -> int | flo
         return numerator / denominator
     except ZeroDivisionError:
         return 0
-    
+
+
 def safe_getattr(obj, attr_chain, default=None):
     """
     Safely get the nested attribute from an object.
@@ -20,7 +21,7 @@ def safe_getattr(obj, attr_chain, default=None):
     Returns:
     The value of the nested attribute if it exists, otherwise the default value.
     """
-    attrs = attr_chain.split('.')
+    attrs = attr_chain.split(".")
     for attr in attrs:
         try:
             obj = getattr(obj, attr)
