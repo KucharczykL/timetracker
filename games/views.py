@@ -283,11 +283,11 @@ def end_session(request, session_id: int, template: str = ""):
         return render(request, template, context)
     return redirect("list_sessions")
 
-
-# def delete_session(request, session_id=None):
-#     session = Session.objects.get(id=session_id)
-#     session.delete()
-#     return redirect("list_sessions")
+@login_required
+def delete_session(request, session_id=None):
+    session = get_object_or_404(Session, id=session_id)
+    session.delete()
+    return redirect("list_sessions")
 
 
 @login_required

@@ -42,11 +42,11 @@ urlpatterns = [
         {"template": "list_sessions.html#session-row"},
         name="list_sessions_end_session",
     ),
-    # path(
-    #     "session/<int:session_id>/delete",
-    #     views.delete_session,
-    #     name="delete_session",
-    # ),
+    path(
+        "session/<int:session_id>/delete",
+        views.delete_session,
+        name="delete_session",
+    ),
     path(
         "purchase/<int:purchase_id>/delete",
         views.delete_purchase,
