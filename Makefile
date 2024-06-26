@@ -3,6 +3,7 @@ all: css migrate
 initialize: npm css migrate sethookdir loadplatforms
 
 HTMLFILES := $(shell find games/templates -type f)
+PYTHON_VERSION = 3.12
 
 npm:
 	npm install
@@ -10,17 +11,26 @@ npm:
 css: common/input.css
 	npx tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
-css-dev: css
-	npx tailwindcss -i ./common/input.css -o  ./games/static/base.css --watch
-
 makemigrations:
 	poetry run python manage.py makemigrations
 
 migrate: makemigrations
 	poetry run python manage.py migrate
 
-dev: migrate
-	poetry run python manage.py runserver
+init:
+	pyenv install -s $(PYTHON_VERSION)
+	pyenv local $(PYTHON_VERSION)
+	pip install poetry
+	poetry install
+	npm install
+
+dev:
+	@npx concurrently \
+		--names "Django,Tailwind" \
+		--prefix-colors "blue,green" \
+		"poetry run python manage.py runserver" \
+		"npx tailwindcss -i ./common/input.css -o ./games/static/base.css --watch"
+
 
 caddy:
 	caddy run --watch
