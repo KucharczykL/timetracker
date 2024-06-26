@@ -28,7 +28,7 @@ dev:
 	@npx concurrently \
 		--names "Django,Tailwind" \
 		--prefix-colors "blue,green" \
-		"poetry run python manage.py runserver" \
+		"poetry run python -Wa manage.py runserver" \
 		"npx tailwindcss -i ./common/input.css -o ./games/static/base.css --watch"
 
 
