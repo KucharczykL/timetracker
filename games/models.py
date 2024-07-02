@@ -152,6 +152,19 @@ class SessionQuerySet(models.QuerySet):
         )
         return result["duration"]
 
+    def calculated_duration_formatted(self):
+        return format_duration(self.calculated_duration_unformatted())
+
+    def calculated_duration_unformatted(self):
+        result = self.aggregate(duration=Sum(F("duration_calculated")))
+        return result["duration"]
+
+    def without_manual(self):
+        return self.exclude(duration_calculated__iexact=0)
+
+    def only_manual(self):
+        return self.filter(duration_calculated__iexact=0)
+
 
 class Session(models.Model):
     class Meta:

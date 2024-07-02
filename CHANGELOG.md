@@ -12,6 +12,7 @@
 * game overview:
   * sort purchases also by date purchased (on top of date released)
   * improve header format 
+  * ignore manual sessions when calculating session average
 * stats: improve purchase name consistency
 * session list: use display name instead of sort name
 

@@ -175,6 +175,9 @@ def view_game(request, game_id=None):
         purchase__edition__game=game
     )
     session_count = sessions.count()
+    session_count_without_manual = (
+        Session.objects.without_manual().filter(purchase__edition__game=game).count()
+    )
 
     playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
     latest_session = sessions.latest()
@@ -186,14 +189,21 @@ def view_game(request, game_id=None):
         else f"{playrange_start} — {playrange_end}"
     )
     total_hours = float(format_duration(sessions.total_duration_unformatted(), "%2.1H"))
-
+    total_hours_without_manual = float(
+        format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
+    )
     context = {
         "edition_count": editions.count(),
         "editions": editions,
         "game": game,
         "playrange": playrange,
         "purchase_count": Purchase.objects.filter(edition__game=game).count(),
-        "session_average": round(total_hours / int(session_count), 1),
+        "session_average_without_manual": round(
+            safe_division(
+                total_hours_without_manual, int(session_count_without_manual)
+            ),
+            1,
+        ),
         "session_count": session_count,
         "sessions_with_notes_count": sessions.exclude(note="").count(),
         "sessions": sessions.order_by("-timestamp_start"),
