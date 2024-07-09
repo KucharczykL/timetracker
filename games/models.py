@@ -112,9 +112,11 @@ class Purchase(models.Model):
     def __str__(self):
         additional_info = [
             self.get_type_display() if self.type != Purchase.GAME else "",
-            f"{self.edition.platform} version on {self.platform}"
-            if self.platform != self.edition.platform
-            else self.platform,
+            (
+                f"{self.edition.platform} version on {self.platform}"
+                if self.platform != self.edition.platform
+                else self.platform
+            ),
             self.edition.year_released,
             self.get_ownership_type_display(),
         ]
