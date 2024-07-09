@@ -27,7 +27,7 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 
 from common.time import format_duration
-from common.utils import safe_division
+from common.utils import safe_division, safe_getattr
 
 from .forms import (
     DeviceForm,
@@ -179,15 +179,20 @@ def view_game(request, game_id=None):
         Session.objects.without_manual().filter(purchase__edition__game=game).count()
     )
 
-    playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
-    latest_session = sessions.latest()
-    playrange_end = latest_session.timestamp_start.strftime("%b %Y")
+    if sessions:
+        playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
+        latest_session = sessions.latest()
+        playrange_end = latest_session.timestamp_start.strftime("%b %Y")
 
-    playrange = (
-        playrange_start
-        if playrange_start == playrange_end
-        else f"{playrange_start} — {playrange_end}"
-    )
+        playrange = (
+            playrange_start
+            if playrange_start == playrange_end
+            else f"{playrange_start} — {playrange_end}"
+        )
+    else:
+        playrange = "N/A"
+        latest_session = None
+
     total_hours = float(format_duration(sessions.total_duration_unformatted(), "%2.1H"))
     total_hours_without_manual = float(
         format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
@@ -209,7 +214,7 @@ def view_game(request, game_id=None):
         "sessions": sessions.order_by("-timestamp_start"),
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
-        "latest_session_id": latest_session.pk,
+        "latest_session_id": safe_getattr(latest_session, "pk"),
     }
 
     request.session["return_path"] = request.path

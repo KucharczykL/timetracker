@@ -18,6 +18,7 @@
 
 ## Fixed
 * Fix title not being displayed on the Recent sessions page
+* Avoid errors when displaying game overview with zero sessions
 
 ## 1.5.2 / 2024-01-14 21:27+01:00
 
