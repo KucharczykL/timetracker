@@ -504,10 +504,10 @@ def stats(request, year: int = 0):
     last_play_date = "N/A"
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
-        first_play_name = first_session.purchase.edition.name
+        first_play_game = first_session.purchase.edition.game
         first_play_date = first_session.timestamp_start.strftime("%x")
         last_session = this_year_sessions.latest()
-        last_play_name = last_session.purchase.edition.name
+        last_play_game = last_session.purchase.edition.game
         last_play_date = last_session.timestamp_start.strftime("%x")
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
@@ -578,7 +578,7 @@ def stats(request, year: int = 0):
             else 0
         ),
         "longest_session_game": (
-            longest_session.purchase.edition.name if longest_session else "N/A"
+            longest_session.purchase.edition.game if longest_session else None
         ),
         "highest_session_count": (
             game_highest_session_count.session_count
@@ -586,7 +586,7 @@ def stats(request, year: int = 0):
             else 0
         ),
         "highest_session_count_game": (
-            game_highest_session_count.name if game_highest_session_count else "N/A"
+            game_highest_session_count if game_highest_session_count else None
         ),
         "highest_session_average": (
             format_duration(
@@ -596,9 +596,9 @@ def stats(request, year: int = 0):
             else 0
         ),
         "highest_session_average_game": highest_session_average_game,
-        "first_play_name": first_play_name,
+        "first_play_game": first_play_game,
         "first_play_date": first_play_date,
-        "last_play_name": last_play_name,
+        "last_play_game": last_play_game,
         "last_play_date": last_play_date,
         "title": f"{year} Stats",
         "month_playtimes": month_playtimes,

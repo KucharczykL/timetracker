@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "template_partials",
     "graphene_django",
     "django_htmx",
+    "slippers",
 ]
 
 GRAPHENE = {"SCHEMA": "games.schema.schema"}
@@ -85,7 +86,10 @@ TEMPLATES = [
                 "games.views.model_counts",
                 "games.views.stats_dropdown_year_range",
             ],
-            "builtins": ["template_partials.templatetags.partials"],
+            "builtins": [
+                "template_partials.templatetags.partials",
+                "slippers.templatetags.slippers",
+            ],
         },
     },
 ]

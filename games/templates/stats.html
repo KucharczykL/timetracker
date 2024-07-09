@@ -6,9 +6,11 @@
 
 {% partialdef purchase-name %}
     {% if purchase.type != 'game' %}
-        {{ purchase.name }} ({{ purchase.edition.name }} {{ purchase.get_type_display }})
+        {% #gamelink game_id=purchase.edition.game.id %}
+            {{ purchase.name }} ({{ purchase.edition.name }} {{ purchase.get_type_display }})
+        {% /gamelink %}
     {% else %}
-        {{ purchase.edition.name }}
+        {% gamelink game_id=purchase.edition.game.id name=purchase.edition.name %}
     {% endif %}
 {% endpartialdef %}
 
@@ -60,25 +62,25 @@
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ longest_session_time }} ({{ longest_session_game }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ longest_session_time }} ({% gamelink game_id=longest_session_game.id name=longest_session_game.name %})</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ highest_session_count }} ({{ highest_session_count_game }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ highest_session_count }} ({% gamelink game_id=highest_session_count_game.id name=highest_session_count_game.name %})</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ highest_session_average }} ({{ highest_session_average_game }})
+                        {{ highest_session_average }} ({% gamelink game_id=highest_session_average_game.id name=highest_session_average_game.name %})
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ first_play_name }} ({{ first_play_date }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% gamelink game_id=first_play_game.id name=first_play_game.name %} ({{ first_play_date }})</td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ last_play_name }} ({{ last_play_date }})</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% gamelink game_id=last_play_game.id name=last_play_game.name %} ({{ last_play_date }})</td>
                 </tr>
             </tbody>
         </table>
@@ -142,8 +144,7 @@
                 {% for game in top_10_games_by_playtime %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'view_game' game.id %}">{{ game.name }}</a>
+                            {% gamelink game_id=game.id name=game.name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
                     </tr>
@@ -179,10 +180,7 @@
                 {% for purchase in all_finished_this_year %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
-                                {% partial purchase-name %}
-                            </a>
+                            {% partial purchase-name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
@@ -201,8 +199,7 @@
                 {% for purchase in this_year_finished_this_year %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                            {% partial purchase-name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
@@ -221,8 +218,7 @@
                 {% for purchase in purchased_this_year_finished_this_year %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">{{ purchase.edition.name }}</a>
+                            {% partial purchase-name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
@@ -243,10 +239,7 @@
                 {% for purchase in purchased_unfinished %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
-                                {% partial purchase-name %}
-                            </a>
+                            {% partial purchase-name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
@@ -268,10 +261,7 @@
                 {% for purchase in all_purchased_this_year %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <a class="underline decoration-slate-500 sm:decoration-2"
-                               href="{% url 'edit_purchase' purchase.id %}">
-                                {% partial purchase-name %}
-                            </a>
+                            {% partial purchase-name %}
                         </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>

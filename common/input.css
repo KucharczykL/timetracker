@@ -23,18 +23,18 @@
   font-style: normal;
 }
 
-a:hover {
+/* a:hover {
   text-decoration-color: #ff4400;
   color: rgb(254, 185, 160);
   transition: all 0.2s ease-out;
-}
+} */
 
 form label {
   @apply dark:text-slate-400;
 }
 
 .responsive-table {
-  @apply dark:text-white mx-auto;
+  @apply dark:text-white mx-auto table-fixed;
 }
 
 .responsive-table tr:nth-child(even) {
@@ -58,8 +58,11 @@ form label {
   .max-w-20char {
     max-width: 20ch;
   }
+  .max-w-30char {
+    max-width: 30ch;
+  }
   .max-w-35char {
-    max-width: 40ch;
+    max-width: 35ch;
   }
   .max-w-40char {
     max-width: 40ch;
@@ -144,4 +147,14 @@ th label {
     margin-top: 0.5em;
     margin-bottom: 0.5em;
     padding-left: 1em;
+}
+
+.truncate-container {
+  @apply inline-block relative transition-all;
+  a {
+    @apply inline-block truncate max-w-20char;
+    &:hover {
+      @apply absolute max-w-none -top-8 -left-6 min-w-60 px-6 py-3.5 bg-purple-600 rounded-sm outline-dashed outline-purple-400 outline-4;
+    }
+  }  
 }

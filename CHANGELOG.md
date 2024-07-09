@@ -15,6 +15,7 @@
   * ignore manual sessions when calculating session average
 * stats: improve purchase name consistency
 * session list: use display name instead of sort name
+* unify the appearance of game links, and make them expand to full size on hover
 
 ## Fixed
 * Fix title not being displayed on the Recent sessions page
