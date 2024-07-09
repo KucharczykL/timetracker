@@ -149,6 +149,13 @@ def edit_game(request, game_id=None):
 
 
 @login_required
+def delete_game(request, game_id=None):
+    game = get_object_or_404(Game, id=game_id)
+    game.delete()
+    return redirect("list_sessions")
+
+
+@login_required
 def view_game(request, game_id=None):
     game = Game.objects.get(id=game_id)
     nongame_related_purchases_prefetch = Prefetch(

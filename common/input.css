@@ -23,6 +23,21 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: "IBM Plex Serif";
+  src: url("fonts/IBMPlexSerif-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  src: url("fonts/IBMPlexSansCondensed-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+
+
 /* a:hover {
   text-decoration-color: #ff4400;
   color: rgb(254, 185, 160);
@@ -149,12 +164,10 @@ th label {
     padding-left: 1em;
 }
 
-.truncate-container {
-  @apply inline-block relative transition-all;
+/* .truncate-container {
+  @apply inline-block relative;
   a {
-    @apply inline-block truncate max-w-20char;
-    &:hover {
-      @apply absolute max-w-none -top-8 -left-6 min-w-60 px-6 py-3.5 bg-purple-600 rounded-sm outline-dashed outline-purple-400 outline-4;
-    }
+    @apply inline-block truncate max-w-20char transition-all group-hover:absolute group-hover:max-w-none group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 group-hover:rounded-sm group-hover:outline-dashed group-hover:outline-purple-400 group-hover:outline-4;
+    
   }  
-}
+} */

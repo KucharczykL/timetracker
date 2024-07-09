@@ -1,0 +1,9 @@
+<!-- needs data-popover-target on triggering block -->
+<!-- id -->
+<!-- children -->
+<div data-popover id="{{ id }}" role="tooltip" class="absolute z-10 invisible inline-block text-sm text-white transition-opacity duration-300 bg-white border border-purple-200 rounded-lg shadow-sm opacity-0 dark:text-white dark:border-purple-600 dark:bg-purple-800">
+    <div class="px-3 py-2">
+        {{ children }}
+    </div>
+    <div data-popper-arrow></div>
+</div>
