@@ -33,8 +33,12 @@
                     {% for session in dataset %}
                         {% partialdef session-row inline=True %}
                             <tr>
-                                <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name relative align-top w-24 h-12">
-                                    {% gamelink game_id=session.purchase.edition.game.id name=session.purchase.edition.name %}
+                                <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name relative align-top w-24 h-12 group">
+                                    <span class="inline-block relative">
+                                        <a class="underline decoration-slate-500 sm:decoration-2 inline-block truncate max-w-20char group-hover:absolute group-hover:max-w-none group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 group-hover:rounded-sm group-hover:outline-dashed group-hover:outline-purple-400 group-hover:outline-4 group-hover:decoration-purple-900 group-hover:text-purple-100" href="{% url 'view_game' session.purchase.edition.game.id %}">
+                                            {{ session.purchase.edition.name }}
+                                        </a>
+                                    </span>
                                 </td>
                                 <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell">
                                     {{ session.timestamp_start | date:"d/m/Y H:i" }}
