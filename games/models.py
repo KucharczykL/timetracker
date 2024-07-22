@@ -203,7 +203,7 @@ class Session(models.Model):
     def duration_seconds(self) -> timedelta:
         manual = timedelta(0)
         calculated = timedelta(0)
-        if self.is_manual():
+        if self.is_manual() and isinstance(self.duration_manual, timedelta):
             manual = self.duration_manual
         if self.timestamp_end != None and self.timestamp_start != None:
             calculated = self.timestamp_end - self.timestamp_start
@@ -225,6 +225,9 @@ class Session(models.Model):
             self.duration_calculated = self.timestamp_end - self.timestamp_start
         else:
             self.duration_calculated = timedelta(0)
+
+        if not isinstance(self.duration_manual, timedelta):
+            self.duration_manual = timedelta(0)
 
         if not self.device:
             default_device, _ = Device.objects.get_or_create(
