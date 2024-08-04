@@ -10,9 +10,9 @@
             <div class="flex gap-5 mb-3">
                 <span class="text-wrap max-w-80 text-4xl">
                     <span class="font-bold font-serif">{{ game.name }}</span>&nbsp;<span data-popover-target="popover-year" class="text-slate-500 text-2xl">{{ game.year_released }}</span>
-                        {% #popover id="popover-year" %}
-                            Original release year
-                        {% /popover %}
+                    {% #popover id="popover-year" %}
+                        Original release year
+                    {% /popover %}
                 </span>
             </div>
             <div class="flex gap-4 dark:text-slate-400 mb-3">
@@ -22,7 +22,7 @@
                     </svg>
                     {{ hours_sum }}
                     {% #popover id="popover-hours" %}
-                    Total hours played
+                        Total hours played
                     {% /popover %}
                 </span>
                 <span data-popover-target="popover-sessions" class="flex gap-2 items-center">
@@ -31,7 +31,7 @@
                     </svg>
                     {{ session_count }}
                     {% #popover id="popover-sessions" %}
-                    Number of sessions
+                        Number of sessions
                     {% /popover %}
                 </span>
                 <span data-popover-target="popover-average" class="flex gap-2 items-center">
@@ -40,7 +40,7 @@
                     </svg>
                     {{ session_average_without_manual }}
                     {% #popover id="popover-average" %}
-                    Average playtime per session
+                        Average playtime per session
                     {% /popover %}
                 </span>
                 <span data-popover-target="popover-playrange" class="flex gap-2 items-center">
@@ -49,19 +49,19 @@
                     </svg>
                     {{ playrange }}
                     {% #popover id="popover-playrange" %}
-                    Earliest and latest dates played
+                        Earliest and latest dates played
                     {% /popover %}
                 </span>
             </div>
             <div class="inline-flex rounded-md shadow-sm mb-3" role="group">
                 <a href="{% url 'edit_game' game.id %}">
                     <button type="button" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white">
-                    Edit
+                        Edit
                     </button>
                 </a>
                 <a href="{% url 'delete_game' game.id %}">
                     <button type="button" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-e-lg hover:bg-red-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white">
-                    Delete
+                        Delete
                     </button>
                 </a>
             </div>
@@ -108,18 +108,18 @@
         <h1 class="text-3xl mt-4 mb-1 flex gap-2 items-center font-condensed">
             Sessions
             <span class="dark:text-slate-500" id="session-count">({{ session_count }})</span>
-{% if latest_session_id %}
-            {% url 'view_game_start_session_from_session' latest_session_id as add_session_link %}
-            <a
-                class="truncate max-w-xs py-1 px-2 text-xs bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-sm"
-                title="Start new session"
-                href="{{ add_session_link }}"
-                hx-get="{{ add_session_link }}"
-                hx-vals="js:{session_count:getSessionCount()}"
-                hx-target="#session-list"
-                hx-swap="afterbegin"
-            >New</a>
-{% endif %}
+            {% if latest_session_id %}
+                {% url 'view_game_start_session_from_session' latest_session_id as add_session_link %}
+                <a
+                    class="truncate max-w-xs py-1 px-2 text-xs bg-green-600 hover:bg-green-700 focus:ring-green-500 focus:ring-offset-blue-200 text-white transition ease-in duration-200 text-center font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-sm"
+                    title="Start new session"
+                    href="{{ add_session_link }}"
+                    hx-get="{{ add_session_link }}"
+                    hx-vals="js:{session_count:getSessionCount()}"
+                    hx-target="#session-list"
+                    hx-swap="afterbegin"
+                >New</a>
+            {% endif %}
             and Notes <span class="dark:text-slate-500">({{ sessions_with_notes_count }})</span>
         </h1>
         <ul id="session-list">
