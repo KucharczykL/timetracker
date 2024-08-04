@@ -1,5 +1,5 @@
 /*
-! tailwindcss v3.4.4 | MIT License | https://tailwindcss.com
+! tailwindcss v3.4.7 | MIT License | https://tailwindcss.com
 */
 
 /*
@@ -1246,18 +1246,6 @@ input:checked + .toggle-bg {
   }
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
 .visible {
   visibility: visible;
 }
@@ -1386,10 +1374,6 @@ input:checked + .toggle-bg {
   margin-bottom: 2rem;
 }
 
-.me-2 {
-  margin-inline-end: 0.5rem;
-}
-
 .ml-1 {
   margin-left: 0.25rem;
 }
@@ -1451,6 +1435,10 @@ input:checked + .toggle-bg {
   height: 6rem;
 }
 
+.h-3 {
+  height: 0.75rem;
+}
+
 .h-4 {
   height: 1rem;
 }
@@ -1505,14 +1493,6 @@ input:checked + .toggle-bg {
 
 .w-full {
   width: 100%;
-}
-
-.min-w-14 {
-  min-width: 3.5rem;
-}
-
-.max-w-24 {
-  max-width: 6rem;
 }
 
 .max-w-80 {
@@ -1812,10 +1792,6 @@ input:checked + .toggle-bg {
 
 .p-1 {
   padding: 0.25rem;
-}
-
-.p-2 {
-  padding: 0.5rem;
 }
 
 .p-2\.5 {
@@ -2555,11 +2531,6 @@ th label {
   padding-right: 1.5rem;
 }
 
-.group:hover .group-hover\:py-3 {
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
-}
-
 .group:hover .group-hover\:py-3\.5 {
   padding-top: 0.875rem;
   padding-bottom: 0.875rem;
@@ -2731,11 +2702,6 @@ th label {
 .dark\:focus\:ring-blue-500:focus:is(.dark *) {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(63 131 248 / var(--tw-ring-opacity));
-}
-
-.dark\:focus\:ring-blue-800:focus:is(.dark *) {
-  --tw-ring-opacity: 1;
-  --tw-ring-color: rgb(30 66 159 / var(--tw-ring-opacity));
 }
 
 @media (min-width: 640px) {

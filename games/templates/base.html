@@ -81,8 +81,12 @@
                                     {% if session_count > 0 %}
                                         <li class="relative group">
                                             <a class="block py-2 pl-3 pr-4 hover:underline"
-                                               href="{% url 'stats_current_year' %}">Stats</a>
+                                               href="{% url 'stats_by_year' 0 %}">Stats</a>
                                             <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                                <li>
+                                                    <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                       href="{% url 'stats_by_year' 0 %}">Overall</a>
+                                                </li>
                                                 {% for year in stats_dropdown_year_range %}
                                                     <li>
                                                         <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"

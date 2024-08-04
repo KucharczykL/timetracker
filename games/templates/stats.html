@@ -44,18 +44,22 @@
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Days</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
                 </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
-                </tr>
+                {% if total_games %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
+                    </tr>
+                {% endif %}
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
                 </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year_count }}</td>
-                </tr>
+                {% if all_finished_this_year_count %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year_count }}</td>
+                    </tr>
+                {% endif %}
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year_count }}</td>
@@ -85,17 +89,19 @@
             </tbody>
         </table>
 
-        <h1 class="text-5xl text-center my-6">Playtime per month</h1>
-        <table class="responsive-table">
-            <tbody>
-                {% for month in month_playtimes %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">{{ month.month | date:"F" }}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ month.playtime }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        {% if month_playtime %}
+            <h1 class="text-5xl text-center my-6">Playtime per month</h1>
+            <table class="responsive-table">
+                <tbody>
+                    {% for month in month_playtimes %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2">{{ month.month | date:"F" }}</td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ month.playtime }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
 
         <h1 class="text-5xl text-center my-6">Purchases</h1>
         <table class="responsive-table">
@@ -168,106 +174,119 @@
                 {% endfor %}
             </tbody>
         </table>
-        <h1 class="text-5xl text-center my-6">Finished</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for purchase in all_finished_this_year %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {% partial purchase-name %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <h1 class="text-5xl text-center my-6">Finished ({{ year }} games)</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for purchase in this_year_finished_this_year %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {% partial purchase-name %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <h1 class="text-5xl text-center my-6">Bought and Finished ({{ year }})</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for purchase in purchased_this_year_finished_this_year %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {% partial purchase-name %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
 
-        <h1 class="text-5xl text-center my-6">Unfinished Purchases</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for purchase in purchased_unfinished %}
+        {% if all_finished_this_year %}
+            <h1 class="text-5xl text-center my-6">Finished</h1>
+            <table class="responsive-table">
+                <thead>
                     <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {% partial purchase-name %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {% for purchase in all_finished_this_year %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {% partial purchase-name %}
+                            </td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
 
-        <h1 class="text-5xl text-center my-6">All Purchases</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for purchase in all_purchased_this_year %}
+        {% if this_year_finished_this_year %}
+            <h1 class="text-5xl text-center my-6">Finished ({{ year }} games)</h1>
+            <table class="responsive-table">
+                <thead>
                     <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {% partial purchase-name %}
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {% for purchase in this_year_finished_this_year %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {% partial purchase-name %}
+                            </td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        {% if purchased_this_year_finished_this_year %}
+            <h1 class="text-5xl text-center my-6">Bought and Finished ({{ year }})</h1>
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for purchase in purchased_this_year_finished_this_year %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {% partial purchase-name %}
+                            </td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        {% if purchased_unfinished %}
+            <h1 class="text-5xl text-center my-6">Unfinished Purchases</h1>
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for purchase in purchased_unfinished %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {% partial purchase-name %}
+                            </td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        {% if all_purchased_this_year %}
+            <h1 class="text-5xl text-center my-6">All Purchases</h1>
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for purchase in all_purchased_this_year %}
+                        <tr>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                                {% partial purchase-name %}
+                            </td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
     </div>
 {% endblock content %}

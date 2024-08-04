@@ -5,6 +5,7 @@
 * Require login by default
 * Add stats for dropped purchases, monthly playtimes
 * Allow deleting purchases
+* Add all-time stats
 
 ## Improved
 * mark refunded purchases red on game overview
