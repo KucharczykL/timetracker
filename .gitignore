@@ -9,3 +9,4 @@ db.sqlite3
 dist/
 .DS_Store
 .python-version
+.direnv
