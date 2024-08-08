@@ -1,0 +1,15 @@
+{% fragment as default_content %}
+{% for td in data %}
+    {% if forloop.first %}
+        <th scope="row"
+            class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{{ td }}</th>
+    {% else %}
+        {% #table_td %}
+        {{ td }}
+        {% /table_td %}
+    {% endif %}
+{% endfor %}
+{% endfragment %}
+<tr class="[&_td:first-of-type]:px-6 [&_td:first-of-type]:py-4 [&_td:first-of-type]:font-medium [&_td:first-of-type]:text-gray-900 [&_td:first-of-type]:whitespace-nowrap [&_td:first-of-type]:dark:text-white odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 border-b">
+    {{ children|default:default_content }}
+</tr>

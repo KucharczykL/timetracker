@@ -27,6 +27,9 @@ from .forms import (
 )
 from .models import Edition, Game, Platform, Purchase, Session
 
+dateformat: str = "%d/%m/%Y"
+datetimeformat: str = "%d/%m/%Y %H:%M"
+
 
 def model_counts(request):
     return {

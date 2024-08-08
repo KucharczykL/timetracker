@@ -1,6 +1,6 @@
 from django.urls import path
 
-from games import views
+from games import purchaseviews, views
 
 urlpatterns = [
     path("", views.index, name="index"),
@@ -24,6 +24,11 @@ urlpatterns = [
         "purchase/<int:purchase_id>/delete",
         views.delete_purchase,
         name="delete_purchase",
+    ),
+    path(
+        "purchase/list",
+        purchaseviews.list_purchases,
+        name="list_purchases",
     ),
     path(
         "purchase/related-purchase-by-edition",

@@ -120,14 +120,6 @@ textarea:disabled {
   @apply mx-1;
 }
 
-th {
-  @apply text-right;
-}
-
-th label {
-  @apply mr-4;
-}
-
 .basic-button-container {
   @apply flex space-x-2 justify-center;
 }

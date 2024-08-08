@@ -6,6 +6,7 @@
 * Add stats for dropped purchases, monthly playtimes
 * Allow deleting purchases
 * Add all-time stats
+* Manage purchases
 
 ## Improved
 * mark refunded purchases red on game overview
