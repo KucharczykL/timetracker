@@ -77,47 +77,47 @@
                                             </li>
                                         {% endif %}
                                     </ul>
-                                    </li>
-                                    {% if session_count > 0 %}
-                                        <li class="relative group">
-                                            <a class="block py-2 pl-3 pr-4 hover:underline"
-                                               href="{% url 'stats_by_year' 0 %}">Stats</a>
-                                            <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                </li>
+                                {% if session_count > 0 %}
+                                    <li class="relative group">
+                                        <a class="block py-2 pl-3 pr-4 hover:underline"
+                                           href="{% url 'stats_by_year' 0 %}">Stats</a>
+                                        <ul class="absolute hidden text-gray-700 pt-1 group-hover:block">
+                                            <li>
+                                                <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
+                                                   href="{% url 'stats_by_year' 0 %}">Overall</a>
+                                            </li>
+                                            {% for year in stats_dropdown_year_range %}
                                                 <li>
                                                     <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                                       href="{% url 'stats_by_year' 0 %}">Overall</a>
+                                                       href="{% url 'stats_by_year' year %}">{{ year }}</a>
                                                 </li>
-                                                {% for year in stats_dropdown_year_range %}
-                                                    <li>
-                                                        <a class="bg-gray-200 hover:bg-gray-400 py-2 px-4 block whitespace-no-wrap"
-                                                           href="{% url 'stats_by_year' year %}">{{ year }}</a>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
-                                        </li>
-                                        <li>
-                                            <a class="block py-2 pl-3 pr-4 hover:underline"
-                                               href="{% url 'list_sessions' %}">All Sessions</a>
-                                        </li>
-                                        <li>
-                                            <a class="block py-2 pl-3 pr-4 hover:underline"
-                                               href="{% url 'logout' %}">Log Out</a>
-                                        </li>
-                                    {% endif %}
+                                            {% endfor %}
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <a class="block py-2 pl-3 pr-4 hover:underline"
+                                           href="{% url 'list_sessions' %}">All Sessions</a>
+                                    </li>
+                                    <li>
+                                        <a class="block py-2 pl-3 pr-4 hover:underline"
+                                           href="{% url 'logout' %}">Log Out</a>
+                                    </li>
                                 {% endif %}
-                            </ul>
-                        </div>
+                            {% endif %}
+                        </ul>
                     </div>
-                </nav>
-                <div class="flex flex-1 dark:bg-gray-800 justify-center pt-8 pb-16">
-                    {% block content %}
-                        No content here.
-                    {% endblock content %}
                 </div>
-                {% load version %}
-                <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
+            </nav>
+            <div class="flex flex-1 dark:bg-gray-800 justify-center pt-8 pb-16">
+                {% block content %}
+                    No content here.
+                {% endblock content %}
             </div>
-            {% block scripts %}
-            {% endblock scripts %}
-        </body>
-    </html>
+            {% load version %}
+            <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
+        </div>
+        {% block scripts %}
+        {% endblock scripts %}
+    </body>
+</html>
