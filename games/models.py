@@ -19,15 +19,24 @@ class Game(models.Model):
         return self.name
 
 
+class Platform(models.Model):
+    name = models.CharField(max_length=255)
+    group = models.CharField(max_length=255, null=True, blank=True, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Edition(models.Model):
     class Meta:
         unique_together = [["name", "platform", "year_released"]]
 
-    game = models.ForeignKey("Game", on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     platform = models.ForeignKey(
-        "Platform", on_delete=models.CASCADE, null=True, blank=True, default=None
+        Platform, on_delete=models.CASCADE, null=True, blank=True, default=None
     )
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
@@ -83,9 +92,9 @@ class Purchase(models.Model):
 
     objects = PurchaseQueryset().as_manager()
 
-    edition = models.ForeignKey("Edition", on_delete=models.CASCADE)
+    edition = models.ForeignKey(Edition, on_delete=models.CASCADE)
     platform = models.ForeignKey(
-        "Platform", on_delete=models.CASCADE, default=None, null=True, blank=True
+        Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
     )
     date_purchased = models.DateField()
     date_refunded = models.DateField(blank=True, null=True)
@@ -100,7 +109,7 @@ class Purchase(models.Model):
     type = models.CharField(max_length=255, choices=TYPES, default=GAME)
     name = models.CharField(max_length=255, default="", null=True, blank=True)
     related_purchase = models.ForeignKey(
-        "Purchase",
+        "self",
         on_delete=models.SET_NULL,
         default=None,
         null=True,
@@ -135,15 +144,6 @@ class Purchase(models.Model):
         super().save(*args, **kwargs)
 
 
-class Platform(models.Model):
-    name = models.CharField(max_length=255)
-    group = models.CharField(max_length=255, null=True, blank=True, default=None)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.name
-
-
 class SessionQuerySet(models.QuerySet):
     def total_duration_formatted(self):
         return format_duration(self.total_duration_unformatted())
@@ -172,7 +172,7 @@ class Session(models.Model):
     class Meta:
         get_latest_by = "timestamp_start"
 
-    purchase = models.ForeignKey("Purchase", on_delete=models.CASCADE)
+    purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE)
     timestamp_start = models.DateTimeField()
     timestamp_end = models.DateTimeField(blank=True, null=True)
     duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
