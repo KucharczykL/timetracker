@@ -2287,14 +2287,6 @@ textarea:disabled:is(.dark *) {
   margin-right: 0.25rem;
 }
 
-/* th {
-  @apply text-right;
-} */
-
-/* th label {
-  @apply mr-4;
-} */
-
 .basic-button-container {
   display: flex;
   justify-content: center;
