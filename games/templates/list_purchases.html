@@ -4,5 +4,5 @@
     {{ title }}
 {% endblock title %}
 {% block content %}
-    {% simple_table columns=data.columns rows=data.rows %}
+    {% simple_table columns=data.columns rows=data.rows page_obj=page_obj elided_page_range=elided_page_range %}
 {% endblock content %}

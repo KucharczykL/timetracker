@@ -1,4 +1,5 @@
-<div class="relative overflow-x-auto">
+<div class="relative overflow-x-auto shadow-md sm:rounded-lg"
+     hx-boost="false">
     <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
             <tr>
@@ -11,4 +12,37 @@
             {% endfor %}
         </tbody>
     </table>
+    <nav class="flex items-center flex-column flex-wrap md:flex-row justify-between pt-4"
+         aria-label="Table navigation">
+        <span class="text-sm font-normal text-gray-500 dark:text-gray-400 mb-4 md:mb-0 block w-full md:inline md:w-auto">Showing <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.paginator.page_range.start }}-{{ page_obj.paginator.page_range.stop }}</span> of <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.paginator.count }}</span></span>
+        <ul class="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8">
+            <li>
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}"
+                       class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 bg-white border border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">Previous</a>
+                {% else %}
+                    <a aria-current="page"
+                       class="cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-s-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400">Previous</a>
+                {% endif %}
+                {% for page in elided_page_range %}
+                    <li>
+                        {% if page != page_obj.number %}
+                            <a href="?page={{ page }}"
+                               class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">{{ page }}</a>
+                        {% else %}
+                            <a aria-current="page"
+                               class="cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400">{{ page }}</a>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}"
+                       class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">Next</a>
+                {% else %}
+                    <a aria-current="page"
+                       class="cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400">Next</a>
+                {% endif %}
+            </li>
+        </ul>
+    </nav>
 </div>

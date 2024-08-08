@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
@@ -14,9 +15,16 @@ from games.views import dateformat
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
-    purchases: BaseManager[Purchase] = Purchase.objects.all()[0:10]
+    paginator = Paginator(Purchase.objects.order_by("created_at"), 10)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+    purchases = page_obj.object_list
     context = {
         "title": "Manage purchases",
+        "page_obj": page_obj,
+        "elided_page_range": page_obj.paginator.get_elided_page_range(
+            page_number, on_each_side=1, on_ends=1
+        ),
         "data": {
             "columns": [
                 "Name",
