@@ -12,9 +12,8 @@ from django.db.models import (
     Q,
     Sum,
     fields,
-    IntegerField,
 )
-from django.db.models.functions import TruncDate, ExtractMonth, TruncMonth
+from django.db.models.functions import TruncDate, TruncMonth
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -492,9 +491,7 @@ def stats_alltime(request):
         Purchase.objects.all().intersection(purchases_finished_this_year).count()
     )
 
-    first_play_name = "N/A"
     first_play_date = "N/A"
-    last_play_name = "N/A"
     last_play_date = "N/A"
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
@@ -719,9 +716,7 @@ def stats(request, year: int = 0):
         .count()
     )
 
-    first_play_name = "N/A"
     first_play_date = "N/A"
-    last_play_name = "N/A"
     last_play_date = "N/A"
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
