@@ -5,10 +5,13 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     nodejs
-    (poetry.override { python3 = python312; })
+    python3
+    poetry
   ];
 
   shellHook = ''
+    python -m venv .venv
+    . .venv/bin/activate
     poetry install
   '';
 }
