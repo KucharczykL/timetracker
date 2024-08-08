@@ -1,3 +1,6 @@
+from typing import Any
+
+
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
     """
     Divides without triggering division by zero exception.
@@ -9,7 +12,7 @@ def safe_division(numerator: int | float, denominator: int | float) -> int | flo
         return 0
 
 
-def safe_getattr(obj, attr_chain, default=None):
+def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> object:
     """
     Safely get the nested attribute from an object.
 

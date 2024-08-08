@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import F, Manager, Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from common.time import format_duration
@@ -14,6 +14,9 @@ class Game(models.Model):
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    session_average: float | int | timedelta | None
+    session_count: int | None
 
     def __str__(self):
         return self.name
@@ -220,7 +223,7 @@ class Session(models.Model):
     def duration_sum(self) -> str:
         return Session.objects.all().total_duration_formatted()
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         if self.timestamp_start != None and self.timestamp_end != None:
             self.duration_calculated = self.timestamp_end - self.timestamp_start
         else:

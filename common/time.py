@@ -12,7 +12,7 @@ def _safe_timedelta(duration: timedelta | int | None):
 
 
 def format_duration(
-    duration: timedelta | int | None, format_string: str = "%H hours"
+    duration: timedelta | int | float | None, format_string: str = "%H hours"
 ) -> str:
     """
     Format timedelta into the specified format_string.

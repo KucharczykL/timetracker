@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
 from django.db.models.functions import TruncDate, TruncMonth
+from django.db.models.manager import BaseManager
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -25,13 +26,13 @@ from .forms import (
     PurchaseForm,
     SessionForm,
 )
-from .models import Edition, Game, Platform, Purchase, Session
+from .models import Edition, Game, Platform, Purchase, PurchaseQueryset, Session
 
 dateformat: str = "%d/%m/%Y"
 datetimeformat: str = "%d/%m/%Y %H:%M"
 
 
-def model_counts(request):
+def model_counts(request: HttpRequest) -> dict[str, bool]:
     return {
         "game_available": Game.objects.exists(),
         "edition_available": Edition.objects.exists(),
@@ -41,15 +42,15 @@ def model_counts(request):
     }
 
 
-def stats_dropdown_year_range(request):
+def stats_dropdown_year_range(request: HttpRequest) -> dict[str, range]:
     result = {"stats_dropdown_year_range": range(timezone.now().year, 1999, -1)}
     return result
 
 
 @login_required
-def add_session(request, purchase_id=None):
+def add_session(request: HttpRequest, purchase_id: int) -> HttpResponse:
     context = {}
-    initial = {"timestamp_start": timezone.now()}
+    initial: dict[str, Any] = {"timestamp_start": timezone.now()}
 
     last = Session.objects.last()
     if last != None:
@@ -97,9 +98,9 @@ def use_custom_redirect(
 
 @login_required
 @use_custom_redirect
-def edit_session(request, session_id=None):
+def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     context = {}
-    session = Session.objects.get(id=session_id)
+    session = get_object_or_404(Session, id=session_id)
     form = SessionForm(request.POST or None, instance=session)
     if form.is_valid():
         form.save()
@@ -111,25 +112,25 @@ def edit_session(request, session_id=None):
 
 @login_required
 @use_custom_redirect
-def edit_purchase(request, purchase_id=None):
+def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     context = {}
-    purchase = Purchase.objects.get(id=purchase_id)
+    purchase = get_object_or_404(Purchase, id=purchase_id)
     form = PurchaseForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
         return redirect("list_sessions")
     context["title"] = "Edit Purchase"
     context["form"] = form
-    context["purchase_id"] = purchase_id
+    context["purchase_id"] = str(purchase_id)
     context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
 
 @login_required
 @use_custom_redirect
-def edit_game(request, game_id=None):
+def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
     context = {}
-    purchase = Game.objects.get(id=game_id)
+    purchase = get_object_or_404(Game, id=game_id)
     form = GameForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
@@ -140,23 +141,23 @@ def edit_game(request, game_id=None):
 
 
 @login_required
-def delete_game(request, game_id=None):
+def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
     game.delete()
     return redirect("list_sessions")
 
 
 @login_required
-def view_game(request, game_id=None):
+def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
-    nongame_related_purchases_prefetch = Prefetch(
+    nongame_related_purchases_prefetch: Prefetch[Purchase] = Prefetch(
         "related_purchases",
         queryset=Purchase.objects.exclude(type=Purchase.GAME).order_by(
             "date_purchased"
         ),
         to_attr="nongame_related_purchases",
     )
-    game_purchases_prefetch = Prefetch(
+    game_purchases_prefetch: Prefetch[Purchase] = Prefetch(
         "purchase_set",
         queryset=Purchase.objects.filter(type=Purchase.GAME).prefetch_related(
             nongame_related_purchases_prefetch
@@ -221,9 +222,9 @@ def view_game(request, game_id=None):
 
 @login_required
 @use_custom_redirect
-def edit_platform(request, platform_id=None):
+def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     context = {}
-    purchase = Platform.objects.get(id=platform_id)
+    purchase = get_object_or_404(Purchase, id=platform_id)
     form = PlatformForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
@@ -235,9 +236,9 @@ def edit_platform(request, platform_id=None):
 
 @login_required
 @use_custom_redirect
-def edit_edition(request, edition_id=None):
+def edit_edition(request: HttpRequest, edition_id: int) -> HttpResponse:
     context = {}
-    edition = Edition.objects.get(id=edition_id)
+    edition = get_object_or_404(Edition, id=edition_id)
     form = EditionForm(request.POST or None, instance=edition)
     if form.is_valid():
         form.save()
@@ -247,7 +248,7 @@ def edit_edition(request, edition_id=None):
     return render(request, "add.html", context)
 
 
-def related_purchase_by_edition(request):
+def related_purchase_by_edition(request: HttpRequest) -> HttpResponse:
     edition_id = request.GET.get("edition")
     if not edition_id:
         return HttpResponseBadRequest("Invalid edition_id")
@@ -271,7 +272,9 @@ def clone_session_by_id(session_id: int) -> Session:
 
 @login_required
 @use_custom_redirect
-def new_session_from_existing_session(request, session_id: int, template: str = ""):
+def new_session_from_existing_session(
+    request: HttpRequest, session_id: int, template: str = ""
+) -> HttpResponse:
     session = clone_session_by_id(session_id)
     if request.htmx:
         context = {
@@ -284,7 +287,9 @@ def new_session_from_existing_session(request, session_id: int, template: str = 
 
 @login_required
 @use_custom_redirect
-def end_session(request, session_id: int, template: str = ""):
+def end_session(
+    request: HttpRequest, session_id: int, template: str = ""
+) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_end = timezone.now()
     session.save()
@@ -298,7 +303,7 @@ def end_session(request, session_id: int, template: str = ""):
 
 
 @login_required
-def delete_session(request, session_id=None):
+def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.delete()
     return redirect("list_sessions")
@@ -306,14 +311,14 @@ def delete_session(request, session_id=None):
 
 @login_required
 def list_sessions(
-    request,
-    filter="",
-    purchase_id="",
-    platform_id="",
-    game_id="",
-    edition_id="",
+    request: HttpRequest,
+    filter: str = "",
+    purchase_id: int = 0,
+    platform_id: int = 0,
+    game_id: int = 0,
+    edition_id: int = 0,
     ownership_type: str = "",
-):
+) -> HttpResponse:
     context = {}
     context["title"] = "Sessions"
 
@@ -357,7 +362,7 @@ def list_sessions(
 
 
 @login_required
-def stats_alltime(request):
+def stats_alltime(request: HttpRequest) -> HttpResponse:
     year = "Alltime"
     this_year_sessions = Session.objects.all().select_related("purchase__edition")
     this_year_sessions_with_durations = this_year_sessions.annotate(
@@ -425,7 +430,7 @@ def stats_alltime(request):
         * 100
     )
 
-    purchases_finished_this_year = Purchase.objects.finished()
+    purchases_finished_this_year: BaseManager[Purchase] = Purchase.objects.finished()
     purchases_finished_this_year_released_this_year = (
         purchases_finished_this_year.all().order_by("date_finished")
     )
@@ -494,7 +499,7 @@ def stats_alltime(request):
         last_play_date = last_session.timestamp_start.strftime("%x")
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
-    all_purchased_refunded_this_year_count = this_year_purchases_refunded.count()
+    all_purchased_refunded_this_year_count: int = this_year_purchases_refunded.count()
 
     this_year_purchases_dropped_count = this_year_purchases_dropped.count()
     this_year_purchases_dropped_percentage = int(
@@ -569,7 +574,7 @@ def stats_alltime(request):
 
 
 @login_required
-def stats(request, year: int = 0):
+def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     selected_year = request.GET.get("year")
     if selected_year:
         return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
@@ -710,6 +715,8 @@ def stats(request, year: int = 0):
 
     first_play_date = "N/A"
     last_play_date = "N/A"
+    first_play_game = None
+    last_play_game = None
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
         first_play_game = first_session.purchase.edition.game
@@ -817,15 +824,15 @@ def stats(request, year: int = 0):
 
 
 @login_required
-def delete_purchase(request, purchase_id=None):
+def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.delete()
     return redirect("list_sessions")
 
 
 @login_required
-def add_purchase(request, edition_id=None):
-    context = {}
+def add_purchase(request: HttpRequest, edition_id: int) -> HttpResponse:
+    context: dict[str, Any] = {}
     initial = {"date_purchased": timezone.now()}
 
     if request.method == "POST":
@@ -860,8 +867,8 @@ def add_purchase(request, edition_id=None):
 
 
 @login_required
-def add_game(request):
-    context = {}
+def add_game(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
     form = GameForm(request.POST or None)
     if form.is_valid():
         game = form.save()
@@ -879,8 +886,8 @@ def add_game(request):
 
 
 @login_required
-def add_edition(request, game_id=None):
-    context = {}
+def add_edition(request: HttpRequest, game_id: int) -> HttpResponse:
+    context: dict[str, Any] = {}
     if request.method == "POST":
         form = EditionForm(request.POST or None)
         if form.is_valid():
@@ -895,7 +902,7 @@ def add_edition(request, game_id=None):
                 return redirect("index")
     else:
         if game_id:
-            game = Game.objects.get(id=game_id)
+            game = get_object_or_404(Game, id=game_id)
             form = EditionForm(
                 initial={
                     "game": game,
@@ -914,8 +921,8 @@ def add_edition(request, game_id=None):
 
 
 @login_required
-def add_platform(request):
-    context = {}
+def add_platform(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
     form = PlatformForm(request.POST or None)
     if form.is_valid():
         form.save()
@@ -927,8 +934,8 @@ def add_platform(request):
 
 
 @login_required
-def add_device(request):
-    context = {}
+def add_device(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
     form = DeviceForm(request.POST or None)
     if form.is_valid():
         form.save()
@@ -940,5 +947,5 @@ def add_device(request):
 
 
 @login_required
-def index(request):
+def index(request: HttpRequest) -> HttpResponse:
     return redirect("list_sessions_recent")
