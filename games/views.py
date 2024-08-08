@@ -2,17 +2,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
-
-from django.db.models import (
-    Avg,
-    Count,
-    ExpressionWrapper,
-    F,
-    Prefetch,
-    Q,
-    Sum,
-    fields,
-)
+from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
 from django.db.models.functions import TruncDate, TruncMonth
 from django.http import (
     HttpRequest,
@@ -20,10 +10,9 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseRedirect,
 )
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.shortcuts import get_object_or_404
 
 from common.time import format_duration
 from common.utils import safe_division, safe_getattr

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% load static %}
 {% block title %}
     {{ title }}
@@ -15,7 +15,7 @@
                    hx-target=".responsive-table tbody"
                    onClick="document.querySelector('#last-session-start').classList.add('invisible')"
                    class="{% if last.timestamp_end == null %}invisible{% endif %}">
-                    {% include 'components/button_start.html' with text=last.purchase title="Start session of last played game" only %}
+                    {% include "components/button_start.html" with text=last.purchase title="Start session of last played game" only %}
                 </a>
             </div>
         {% endif %}

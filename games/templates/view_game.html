@@ -100,12 +100,16 @@
                     {% if edition.wikidata %}
                         <span class="hidden sm:inline">
                             <a href="https://www.wikidata.org/wiki/{{ edition.wikidata }}">
-                                <img class="inline mx-2 w-6" src="{% static 'icons/wikidata.png' %}" />
+                                <img class="inline mx-2 w-6"
+                                     width="48"
+                                     height="48"
+                                     alt="Wikidata Icon"
+                                     src="{% static 'icons/wikidata.png' %}" />
                             </a>
                         </span>
                     {% endif %}
                     {% url 'edit_edition' edition.id as edit_url %}
-                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                    {% include "components/edit_button.html" with edit_url=edit_url %}
                 </li>
                 <ul>
                     {% for purchase in edition.game_purchases %}
@@ -113,14 +117,14 @@
                             {{ purchase.get_ownership_type_display }}, {{ purchase.date_purchased | date:"Y" }}
                             {% if purchase.price != 0 %}({{ purchase.price }} {{ purchase.price_currency }}){% endif %}
                             {% url 'edit_purchase' purchase.id as edit_url %}
-                            {% include 'components/edit_button.html' with edit_url=edit_url %}
+                            {% include "components/edit_button.html" with edit_url=edit_url %}
                         </li>
                         <ul>
                             {% for related_purchase in purchase.nongame_related_purchases %}
                                 <li class="sm:pl-12 flex items-center">
                                     {{ related_purchase.name }} ({{ related_purchase.get_type_display }}, {{ purchase.platform }}, {{ related_purchase.date_purchased | date:"Y" }}, {{ related_purchase.price }} {{ related_purchase.price_currency }})
                                     {% url 'edit_purchase' related_purchase.id as edit_url %}
-                                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                                    {% include "components/edit_button.html" with edit_url=edit_url %}
                                 </li>
                             {% endfor %}
                         </ul>
@@ -151,7 +155,7 @@
                     {% if session.timestamp_end %}-{{ session.timestamp_end | date:"H:i" }}{% endif %}
                     ({{ session.device.get_type_display | default:"Unknown" }}, {{ session.duration_formatted }})
                     {% url 'edit_session' session.id as edit_url %}
-                    {% include 'components/edit_button.html' with edit_url=edit_url %}
+                    {% include "components/edit_button.html" with edit_url=edit_url %}
                     {% if not session.timestamp_end %}
                         {% url 'view_game_end_session' session.id as end_session_url %}
                         <a class="flex bg-green-600 rounded-full px-2 w-7 h-4 text-white justify-center items-center"
