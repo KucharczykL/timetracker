@@ -70,8 +70,14 @@ form label {
 }
 
 @layer utilities {
+  .min-w-20char {
+    min-width: 20ch;
+  }
   .max-w-20char {
     max-width: 20ch;
+  }
+  .min-w-30char {
+    min-width: 30ch;
   }
   .max-w-30char {
     max-width: 30ch;

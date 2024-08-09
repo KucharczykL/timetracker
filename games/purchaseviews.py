@@ -15,7 +15,7 @@ from games.views import dateformat
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
-    paginator = Paginator(Purchase.objects.order_by("created_at"), 10)
+    paginator = Paginator(Purchase.objects.order_by("-date_purchased"), 10)
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
     purchases = page_obj.object_list
