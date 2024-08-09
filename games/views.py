@@ -48,7 +48,7 @@ def stats_dropdown_year_range(request: HttpRequest) -> dict[str, range]:
 
 
 @login_required
-def add_session(request: HttpRequest, purchase_id: int) -> HttpResponse:
+def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
     context = {}
     initial: dict[str, Any] = {"timestamp_start": timezone.now()}
 
@@ -831,7 +831,7 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 @login_required
-def add_purchase(request: HttpRequest, edition_id: int) -> HttpResponse:
+def add_purchase(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
     context: dict[str, Any] = {}
     initial = {"date_purchased": timezone.now()}
 
@@ -886,7 +886,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_edition(request: HttpRequest, game_id: int) -> HttpResponse:
+def add_edition(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     context: dict[str, Any] = {}
     if request.method == "POST":
         form = EditionForm(request.POST or None)
