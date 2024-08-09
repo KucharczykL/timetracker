@@ -20,7 +20,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     purchases = Purchase.objects.order_by("-date_purchased")
     page_obj = None
     if int(limit) != 0:
-        paginator = Paginator(Purchase.objects.order_by("-date_purchased"), limit)
+        paginator = Paginator(purchases, limit)
         page_obj = paginator.get_page(page_number)
         purchases = page_obj.object_list
 
