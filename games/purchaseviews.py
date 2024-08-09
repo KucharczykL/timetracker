@@ -15,15 +15,24 @@ from games.views import dateformat
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
-    paginator = Paginator(Purchase.objects.order_by("-date_purchased"), 10)
     page_number = request.GET.get("page", 1)
-    page_obj = paginator.get_page(page_number)
-    purchases = page_obj.object_list
+    limit = request.GET.get("limit", 10)
+    purchases = Purchase.objects.order_by("-date_purchased")
+    page_obj = None
+    if int(limit) != 0:
+        paginator = Paginator(Purchase.objects.order_by("-date_purchased"), limit)
+        page_obj = paginator.get_page(page_number)
+        purchases = page_obj.object_list
+
     context = {
         "title": "Manage purchases",
-        "page_obj": page_obj,
-        "elided_page_range": page_obj.paginator.get_elided_page_range(
-            page_number, on_each_side=1, on_ends=1
+        "page_obj": page_obj or None,
+        "elided_page_range": (
+            page_obj.paginator.get_elided_page_range(
+                page_number, on_each_side=1, on_ends=1
+            )
+            if page_obj
+            else None
         ),
         "data": {
             "columns": [
