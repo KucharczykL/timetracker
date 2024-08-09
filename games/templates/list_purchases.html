@@ -4,7 +4,7 @@
     {{ title }}
 {% endblock title %}
 {% block content %}
-    <div class="max-w-screen-2xl min-w-screen-2xl self-center">
+    <div class="2xl:max-w-screen-2xl md:max-w-screen-md sm:max-w-screen-sm self-center">
         {% simple_table columns=data.columns rows=data.rows page_obj=page_obj elided_page_range=elided_page_range %}
     </div>
 {% endblock content %}
