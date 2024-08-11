@@ -30,6 +30,7 @@ from .models import Edition, Game, Platform, Purchase, PurchaseQueryset, Session
 
 dateformat: str = "%d/%m/%Y"
 datetimeformat: str = "%d/%m/%Y %H:%M"
+timeformat = "%H:%M"
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:

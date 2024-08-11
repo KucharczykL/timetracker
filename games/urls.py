@@ -1,6 +1,6 @@
 from django.urls import path
 
-from games import purchaseviews, views
+from games import purchaseviews, sessionviews, views
 
 urlpatterns = [
     path("", views.index, name="index"),
@@ -76,7 +76,7 @@ urlpatterns = [
         {"template": "list_sessions.html#session-row"},
         name="list_sessions_end_session",
     ),
-    path("session/list", views.list_sessions, name="list_sessions"),
+    path("session/list", sessionviews.list_sessions, name="list_sessions"),
     path(
         "session/list/recent",
         views.list_sessions,
