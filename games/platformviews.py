@@ -7,7 +7,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from games.forms import PlatformForm
 from games.models import Platform
 from games.views import dateformat
 
@@ -74,3 +73,8 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     return render(request, "list_purchases.html", context)
 
 
+@login_required
+def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
+    platform = get_object_or_404(Platform, id=platform_id)
+    platform.delete()
+    return redirect("list_platforms")
