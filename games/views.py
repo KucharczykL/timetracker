@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
@@ -26,7 +26,7 @@ from .forms import (
     PurchaseForm,
     SessionForm,
 )
-from .models import Edition, Game, Platform, Purchase, PurchaseQueryset, Session
+from .models import Edition, Game, Platform, Purchase, Session
 
 dateformat: str = "%d/%m/%Y"
 datetimeformat: str = "%d/%m/%Y %H:%M"
@@ -80,7 +80,7 @@ def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
 
 
 def use_custom_redirect(
-    func: Callable[..., HttpResponse]
+    func: Callable[..., HttpResponse],
 ) -> Callable[..., HttpResponse]:
     """
     Will redirect to "return_path" session variable if set.
