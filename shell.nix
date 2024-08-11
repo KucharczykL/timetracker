@@ -7,6 +7,7 @@ pkgs.mkShell {
     nodejs
     python3
     poetry
+    ruff
   ];
 
   shellHook = ''
