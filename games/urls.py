@@ -83,12 +83,6 @@ urlpatterns = [
     ),
     path("session/list", sessionviews.list_sessions, name="list_sessions"),
     path(
-        "session/list/recent",
-        views.list_sessions,
-        {"filter": "recent"},
-        name="list_sessions_recent",
-    ),
-    path(
         "session/list/by-purchase/<int:purchase_id>",
         views.list_sessions,
         {"filter": "purchase"},

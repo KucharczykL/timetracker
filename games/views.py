@@ -342,12 +342,6 @@ def list_sessions(
     elif filter == "ownership_type":
         dataset = all_sessions.filter(purchase__ownership_type=ownership_type)
         context["ownership_type"] = dict(Purchase.OWNERSHIP_TYPES)[ownership_type]
-    elif filter == "recent":
-        current_year = timezone.now().year
-        first_day_of_year = timezone.make_aware(datetime(current_year, 1, 1))
-        dataset = all_sessions.filter(timestamp_start__gte=first_day_of_year).order_by(
-            "-timestamp_start"
-        )
         context["title"] = "This year"
     else:
         dataset = all_sessions
@@ -949,4 +943,4 @@ def add_device(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def index(request: HttpRequest) -> HttpResponse:
-    return redirect("list_sessions_recent")
+    return redirect("list_sessions")
