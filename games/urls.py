@@ -2,6 +2,7 @@ from django.urls import path
 
 from games import (
     deviceviews,
+    editionviews,
     gameviews,
     platformviews,
     purchaseviews,
@@ -24,6 +25,12 @@ urlpatterns = [
         name="add_edition_for_game",
     ),
     path("edition/<int:edition_id>/edit", views.edit_edition, name="edit_edition"),
+    path("edition/list", editionviews.list_editions, name="list_editions"),
+    path(
+        "edition/<int:edition_id>/delete",
+        editionviews.delete_edition,
+        name="delete_edition",
+    ),
     path("game/add", views.add_game, name="add_game"),
     path("game/<int:game_id>/edit", views.edit_game, name="edit_game"),
     path("game/<int:game_id>/view", views.view_game, name="view_game"),

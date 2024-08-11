@@ -1,4 +1,30 @@
+from random import choices
+from string import ascii_lowercase
 from typing import Any
+
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
+
+
+def Popover(
+    wrapped_content: str,
+    popover_content: str = "",
+) -> str:
+    id = randomid()
+    if popover_content == "":
+        popover_content = wrapped_content
+    content = f"<span data-popover-target={id}>{wrapped_content}</span>"
+    result = mark_safe(
+        str(content)
+        + render_to_string(
+            "components/popover.html",
+            {
+                "id": id,
+                "children": popover_content,
+            },
+        )
+    )
+    return result
 
 
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
@@ -31,3 +57,24 @@ def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> ob
         except AttributeError:
             return default
     return obj
+
+
+def truncate(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
+    return (
+        (f"{input_string[:length-len(ellipsis)]}{ellipsis}")
+        if len(input_string) > 30
+        else input_string
+    )
+
+
+def truncate_with_popover(input_string: str) -> str:
+    if (truncated := truncate(input_string)) != input_string:
+        print(f"Not the same after: {truncated=}")
+        return Popover(wrapped_content=truncated, popover_content=input_string)
+    else:
+        print("Strings are the same!")
+        return input_string
+
+
+def randomid(seed: str = "", length: int = 10) -> str:
+    return seed + "".join(choices(ascii_lowercase, k=length))
