@@ -6,9 +6,14 @@
     "python.testing.pytestEnabled": true,
     "python.analysis.typeCheckingMode": "strict",
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        },
     },
+    "ruff.path": ["/nix/store/s3q6qc2954x62bkcs9dwaxyiqchl7j01-ruff-0.5.6/bin/ruff"],
     "tailwind-fold.supportedLanguages": [
         "html",
         "typescriptreact",
