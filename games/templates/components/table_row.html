@@ -1,9 +1,16 @@
 {% fragment as default_content %}
+{% load randomid %}
 {% for td in data %}
     {% if forloop.first %}
         <th scope="row"
-            class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white min-w-30-char max-w-30char text-ellipsis overflow-hidden">
-            <span title="{{ td }}">{{ td }}</span>
+            class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white min-w-30char">
+            {% randomid td as th_popover_id %}
+            <span data-popover-target="{{ th_popover_id }}">{{ td|truncatechars:30 }}</span>
+            {% if td|length > 30 %}
+                {% #popover id=th_popover_id %}
+                {{ td }}
+                {% /popover %}
+            {% endif %}
         </th>
     {% else %}
         {% #table_td %}
