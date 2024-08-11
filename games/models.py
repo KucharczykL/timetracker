@@ -182,7 +182,7 @@ class Session(models.Model):
     duration_calculated = models.DurationField(blank=True, null=True)
     device = models.ForeignKey(
         "Device",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_DEFAULT,
         null=True,
         blank=True,
         default=None,

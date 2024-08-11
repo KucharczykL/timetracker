@@ -1,10 +1,15 @@
 from django.urls import path
 
-from games import purchaseviews, sessionviews, views
+from games import deviceviews, purchaseviews, sessionviews, views
 
 urlpatterns = [
     path("", views.index, name="index"),
     path("device/add", views.add_device, name="add_device"),
+    path(
+        "device/delete/<int:device_id>", deviceviews.delete_device, name="delete_device"
+    ),
+    path("device/edit/<int:device_id>", deviceviews.edit_device, name="edit_device"),
+    path("device/list", deviceviews.list_devices, name="list_devices"),
     path("edition/add", views.add_edition, name="add_edition"),
     path(
         "edition/add/for-game/<int:game_id>",
