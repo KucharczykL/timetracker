@@ -24,7 +24,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
-    sessions = Session.objects.order_by("-created_at")
+    sessions = Session.objects.order_by("-timestamp_start")
     page_obj = None
     if int(limit) != 0:
         paginator = Paginator(sessions, limit)
