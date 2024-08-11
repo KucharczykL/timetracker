@@ -224,11 +224,11 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
 @use_custom_redirect
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     context = {}
-    purchase = get_object_or_404(Purchase, id=platform_id)
-    form = PlatformForm(request.POST or None, instance=purchase)
+    platform = get_object_or_404(Platform, id=platform_id)
+    form = PlatformForm(request.POST or None, instance=platform)
     if form.is_valid():
         form.save()
-        return redirect("list_sessions")
+        return redirect("list_platforms")
     context["title"] = "Edit Platform"
     context["form"] = form
     return render(request, "add.html", context)
@@ -750,15 +750,11 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         "all_finished_this_year_count": purchases_finished_this_year.count(),
         "this_year_finished_this_year": purchases_finished_this_year_released_this_year.select_related(
             "edition"
-        ).order_by(
-            "date_finished"
-        ),
+        ).order_by("date_finished"),
         "this_year_finished_this_year_count": purchases_finished_this_year_released_this_year.count(),
         "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year.select_related(
             "edition"
-        ).order_by(
-            "date_finished"
-        ),
+        ).order_by("date_finished"),
         "total_sessions": this_year_sessions.count(),
         "unique_days": unique_days["dates"],
         "unique_days_percent": int(unique_days["dates"] / 365 * 100),

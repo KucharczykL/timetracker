@@ -1,8 +1,11 @@
 repos:
--   repo: https://github.com/psf/black
-    rev: 24.8.0
-    hooks:
-    -   id: black
+# disable due to incomaptible formatting between
+# black and ruff
+# TODO: replace with ruff when it works on NixOS
+# -   repo: https://github.com/psf/black
+#     rev: 24.8.0
+#     hooks:
+#     -   id: black
 - repo: https://github.com/pycqa/isort
   rev: 5.13.2
   hooks:
