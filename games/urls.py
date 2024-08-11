@@ -1,6 +1,6 @@
 from django.urls import path
 
-from games import deviceviews, purchaseviews, sessionviews, views
+from games import deviceviews, gameviews, purchaseviews, sessionviews, views
 
 urlpatterns = [
     path("", views.index, name="index"),
@@ -21,6 +21,7 @@ urlpatterns = [
     path("game/<int:game_id>/edit", views.edit_game, name="edit_game"),
     path("game/<int:game_id>/view", views.view_game, name="view_game"),
     path("game/<int:game_id>/delete", views.delete_game, name="delete_game"),
+    path("game/list", gameviews.list_games, name="list_games"),
     path("platform/add", views.add_platform, name="add_platform"),
     path("platform/<int:platform_id>/edit", views.edit_platform, name="edit_platform"),
     path("purchase/add", views.add_purchase, name="add_purchase"),
