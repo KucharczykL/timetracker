@@ -7,6 +7,7 @@ from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.utils import truncate_with_popover
 from games.models import Game
 from games.views import dateformat
 
@@ -44,8 +45,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    game.name,
-                    game.sort_name,
+                    truncate_with_popover(game.name),
+                    truncate_with_popover(
+                        game.sort_name
+                        if game.sort_name is not None and game.name != game.sort_name
+                        else "(identical)"
+                    ),
                     game.year_released,
                     game.wikidata,
                     game.created_at.strftime(dateformat),

@@ -2,12 +2,12 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.utils import truncate_with_popover
 from games.models import Purchase
 from games.views import dateformat
 
@@ -50,7 +50,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    purchase.edition.name,
+                    truncate_with_popover(purchase.edition.name),
                     purchase.platform,
                     purchase.price,
                     purchase.price_currency,

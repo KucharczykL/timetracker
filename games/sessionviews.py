@@ -8,8 +8,15 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.time import format_duration
+from common.utils import truncate_with_popover
 from games.models import Session
-from games.views import dateformat, datetimeformat, timeformat
+from games.views import (
+    dateformat,
+    datetimeformat,
+    durationformat,
+    durationformat_manual,
+    timeformat,
+)
 
 
 @login_required
@@ -46,15 +53,15 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    session.purchase.edition.name,
+                    truncate_with_popover(session.purchase.edition.name),
                     f"{session.timestamp_start.strftime(datetimeformat)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
                     (
-                        format_duration(session.duration_calculated, "%2.1H hours")
+                        format_duration(session.duration_calculated, durationformat)
                         if session.duration_calculated
                         else "-"
                     ),
                     (
-                        format_duration(session.duration_manual)
+                        format_duration(session.duration_manual, durationformat_manual)
                         if session.duration_manual
                         else "-"
                     ),

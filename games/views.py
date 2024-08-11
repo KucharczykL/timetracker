@@ -29,7 +29,9 @@ from .models import Edition, Game, Platform, Purchase, Session
 
 dateformat: str = "%d/%m/%Y"
 datetimeformat: str = "%d/%m/%Y %H:%M"
-timeformat = "%H:%M"
+timeformat: str = "%H:%M"
+durationformat: str = "%2.1H hours"
+durationformat_manual: str = "%H hours"
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
