@@ -16,7 +16,7 @@ from django.utils import timezone
 from common.utils import truncate_with_popover
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
-from games.views import dateformat, use_custom_redirect
+from games.views.general import dateformat, use_custom_redirect
 
 
 @login_required

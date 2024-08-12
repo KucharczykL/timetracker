@@ -7,12 +7,10 @@ from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils import timezone
 
 from common.time import format_duration
 from common.utils import safe_division
-
-from .models import Edition, Game, Platform, Purchase, Session
+from games.models import Edition, Game, Platform, Purchase, Session
 
 dateformat: str = "%d/%m/%Y"
 datetimeformat: str = "%d/%m/%Y %H:%M"
@@ -29,11 +27,6 @@ def model_counts(request: HttpRequest) -> dict[str, bool]:
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
     }
-
-
-def stats_dropdown_year_range(request: HttpRequest) -> dict[str, range]:
-    result = {"stats_dropdown_year_range": range(timezone.now().year, 1999, -1)}
-    return result
 
 
 def use_custom_redirect(

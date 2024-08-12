@@ -12,7 +12,7 @@ from common.time import format_duration
 from common.utils import truncate_with_popover
 from games.forms import SessionForm
 from games.models import Purchase, Session
-from games.views import (
+from games.views.general import (
     dateformat,
     datetimeformat,
     durationformat,

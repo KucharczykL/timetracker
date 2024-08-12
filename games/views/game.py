@@ -11,7 +11,7 @@ from common.time import format_duration
 from common.utils import safe_division, safe_getattr, truncate_with_popover
 from games.forms import GameForm
 from games.models import Game, Purchase, Session
-from games.views import dateformat, use_custom_redirect
+from games.views.general import dateformat, use_custom_redirect
 
 
 @login_required

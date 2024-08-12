@@ -10,7 +10,7 @@ from django.urls import reverse
 from common.utils import truncate_with_popover
 from games.forms import EditionForm
 from games.models import Edition, Game
-from games.views import dateformat
+from games.views.general import dateformat
 
 
 @login_required

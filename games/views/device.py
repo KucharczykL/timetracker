@@ -7,25 +7,25 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from games.forms import PlatformForm
-from games.models import Platform
-from games.views import dateformat, use_custom_redirect
+from games.forms import DeviceForm
+from games.models import Device
+from games.views.general import dateformat
 
 
 @login_required
-def list_platforms(request: HttpRequest) -> HttpResponse:
+def list_devices(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
-    platforms = Platform.objects.order_by("-created_at")
+    devices = Device.objects.order_by("-created_at")
     page_obj = None
     if int(limit) != 0:
-        paginator = Paginator(platforms, limit)
+        paginator = Paginator(devices, limit)
         page_obj = paginator.get_page(page_number)
-        platforms = page_obj.object_list
+        devices = page_obj.object_list
 
     context = {
-        "title": "Manage platforms",
+        "title": "Manage devices",
         "page_obj": page_obj or None,
         "elided_page_range": (
             page_obj.paginator.get_elided_page_range(
@@ -37,29 +37,25 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         "data": {
             "columns": [
                 "Name",
-                "Group",
+                "Type",
                 "Created",
                 "Actions",
             ],
             "rows": [
                 [
-                    platform.name,
-                    platform.group,
-                    platform.created_at.strftime(dateformat),
+                    device.name,
+                    device.get_type_display(),
+                    device.created_at.strftime(dateformat),
                     render_to_string(
                         "components/button_group_sm.html",
                         {
                             "buttons": [
                                 {
-                                    "href": reverse(
-                                        "edit_platform", args=[platform.pk]
-                                    ),
+                                    "href": reverse("edit_device", args=[device.pk]),
                                     "text": "Edit",
                                 },
                                 {
-                                    "href": reverse(
-                                        "delete_platform", args=[platform.pk]
-                                    ),
+                                    "href": reverse("delete_device", args=[device.pk]),
                                     "text": "Delete",
                                     "color": "red",
                                 },
@@ -67,7 +63,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                         },
                     ),
                 ]
-                for platform in platforms
+                for device in devices
             ],
         },
     }
@@ -75,34 +71,32 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    platform = get_object_or_404(Platform, id=platform_id)
-    platform.delete()
-    return redirect("list_platforms")
-
-
-@login_required
-@use_custom_redirect
-def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
-    context = {}
-    platform = get_object_or_404(Platform, id=platform_id)
-    form = PlatformForm(request.POST or None, instance=platform)
+def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
+    device = get_object_or_404(Device, id=device_id)
+    form = DeviceForm(request.POST or None, instance=device)
     if form.is_valid():
         form.save()
-        return redirect("list_platforms")
-    context["title"] = "Edit Platform"
-    context["form"] = form
+        return redirect("list_devices")
+
+    context: dict[str, Any] = {"form": form, "title": "Edit device"}
     return render(request, "add.html", context)
 
 
 @login_required
-def add_platform(request: HttpRequest) -> HttpResponse:
+def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
+    device = get_object_or_404(Device, id=device_id)
+    device.delete()
+    return redirect("list_sessions")
+
+
+@login_required
+def add_device(request: HttpRequest) -> HttpResponse:
     context: dict[str, Any] = {}
-    form = PlatformForm(request.POST or None)
+    form = DeviceForm(request.POST or None)
     if form.is_valid():
         form.save()
         return redirect("index")
 
     context["form"] = form
-    context["title"] = "Add New Platform"
+    context["title"] = "Add New Device"
     return render(request, "add.html", context)
