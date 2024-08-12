@@ -87,3 +87,16 @@ def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     device = get_object_or_404(Device, id=device_id)
     device.delete()
     return redirect("list_sessions")
+
+
+@login_required
+def add_device(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
+    form = DeviceForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect("index")
+
+    context["form"] = form
+    context["title"] = "Add New Device"
+    return render(request, "add.html", context)

@@ -3,19 +3,22 @@ from typing import Any
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 
 from common.time import format_duration
 from common.utils import truncate_with_popover
-from games.models import Session
+from games.forms import SessionForm
+from games.models import Purchase, Session
 from games.views import (
     dateformat,
     datetimeformat,
     durationformat,
     durationformat_manual,
     timeformat,
+    use_custom_redirect,
 )
 
 
@@ -91,3 +94,98 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         },
     }
     return render(request, "list_purchases.html", context)
+
+
+@login_required
+def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
+    context = {}
+    initial: dict[str, Any] = {"timestamp_start": timezone.now()}
+
+    last = Session.objects.last()
+    if last != None:
+        initial["purchase"] = last.purchase
+
+    if request.method == "POST":
+        form = SessionForm(request.POST or None, initial=initial)
+        if form.is_valid():
+            form.save()
+            return redirect("list_sessions")
+    else:
+        if purchase_id:
+            purchase = Purchase.objects.get(id=purchase_id)
+            form = SessionForm(
+                initial={
+                    **initial,
+                    "purchase": purchase,
+                }
+            )
+        else:
+            form = SessionForm(initial=initial)
+
+    context["title"] = "Add New Session"
+    context["form"] = form
+    return render(request, "add_session.html", context)
+
+
+@login_required
+@use_custom_redirect
+def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
+    context = {}
+    session = get_object_or_404(Session, id=session_id)
+    form = SessionForm(request.POST or None, instance=session)
+    if form.is_valid():
+        form.save()
+        return redirect("list_sessions")
+    context["title"] = "Edit Session"
+    context["form"] = form
+    return render(request, "add_session.html", context)
+
+
+def clone_session_by_id(session_id: int) -> Session:
+    session = get_object_or_404(Session, id=session_id)
+    clone = session
+    clone.pk = None
+    clone.timestamp_start = timezone.now()
+    clone.timestamp_end = None
+    clone.note = ""
+    clone.save()
+    return clone
+
+
+@login_required
+@use_custom_redirect
+def new_session_from_existing_session(
+    request: HttpRequest, session_id: int, template: str = ""
+) -> HttpResponse:
+    session = clone_session_by_id(session_id)
+    if request.htmx:
+        context = {
+            "session": session,
+            "session_count": int(request.GET.get("session_count", 0)) + 1,
+        }
+        return render(request, template, context)
+    return redirect("list_sessions")
+
+
+@login_required
+@use_custom_redirect
+def end_session(
+    request: HttpRequest, session_id: int, template: str = ""
+) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+    session.timestamp_end = timezone.now()
+    session.save()
+    if request.htmx:
+        context = {
+            "session": session,
+            "session_count": request.GET.get("session_count", 0),
+        }
+        return render(request, template, context)
+    return redirect("list_sessions")
+
+
+@login_required
+def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+    session.delete()
+    return redirect("list_sessions")

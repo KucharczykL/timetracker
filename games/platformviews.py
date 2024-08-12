@@ -7,8 +7,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from games.forms import PlatformForm
 from games.models import Platform
-from games.views import dateformat
+from games.views import dateformat, use_custom_redirect
 
 
 @login_required
@@ -78,3 +79,30 @@ def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
     platform.delete()
     return redirect("list_platforms")
+
+
+@login_required
+@use_custom_redirect
+def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
+    context = {}
+    platform = get_object_or_404(Platform, id=platform_id)
+    form = PlatformForm(request.POST or None, instance=platform)
+    if form.is_valid():
+        form.save()
+        return redirect("list_platforms")
+    context["title"] = "Edit Platform"
+    context["form"] = form
+    return render(request, "add.html", context)
+
+
+@login_required
+def add_platform(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
+    form = PlatformForm(request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect("index")
+
+    context["form"] = form
+    context["title"] = "Add New Platform"
+    return render(request, "add.html", context)

@@ -2,14 +2,16 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.utils import truncate_with_popover
-from games.models import Game
-from games.views import dateformat
+from common.time import format_duration
+from common.utils import safe_division, safe_getattr, truncate_with_popover
+from games.forms import GameForm
+from games.models import Game, Purchase, Session
+from games.views import dateformat, use_custom_redirect
 
 
 @login_required
@@ -76,3 +78,116 @@ def list_games(request: HttpRequest) -> HttpResponse:
         },
     }
     return render(request, "list_purchases.html", context)
+
+
+@login_required
+def add_game(request: HttpRequest) -> HttpResponse:
+    context: dict[str, Any] = {}
+    form = GameForm(request.POST or None)
+    if form.is_valid():
+        game = form.save()
+        if "submit_and_redirect" in request.POST:
+            return HttpResponseRedirect(
+                reverse("add_edition_for_game", kwargs={"game_id": game.id})
+            )
+        else:
+            return redirect("list_games")
+
+    context["form"] = form
+    context["title"] = "Add New Game"
+    context["script_name"] = "add_game.js"
+    return render(request, "add_game.html", context)
+
+
+@login_required
+def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
+    game = get_object_or_404(Game, id=game_id)
+    game.delete()
+    return redirect("list_sessions")
+
+
+@login_required
+@use_custom_redirect
+def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
+    context = {}
+    purchase = get_object_or_404(Game, id=game_id)
+    form = GameForm(request.POST or None, instance=purchase)
+    if form.is_valid():
+        form.save()
+        return redirect("list_sessions")
+    context["title"] = "Edit Game"
+    context["form"] = form
+    return render(request, "add.html", context)
+
+
+@login_required
+def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
+    game = Game.objects.get(id=game_id)
+    nongame_related_purchases_prefetch: Prefetch[Purchase] = Prefetch(
+        "related_purchases",
+        queryset=Purchase.objects.exclude(type=Purchase.GAME).order_by(
+            "date_purchased"
+        ),
+        to_attr="nongame_related_purchases",
+    )
+    game_purchases_prefetch: Prefetch[Purchase] = Prefetch(
+        "purchase_set",
+        queryset=Purchase.objects.filter(type=Purchase.GAME).prefetch_related(
+            nongame_related_purchases_prefetch
+        ),
+        to_attr="game_purchases",
+    )
+    editions = (
+        Edition.objects.filter(game=game)
+        .prefetch_related(game_purchases_prefetch)
+        .order_by("year_released")
+    )
+
+    sessions = Session.objects.prefetch_related("device").filter(
+        purchase__edition__game=game
+    )
+    session_count = sessions.count()
+    session_count_without_manual = (
+        Session.objects.without_manual().filter(purchase__edition__game=game).count()
+    )
+
+    if sessions:
+        playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
+        latest_session = sessions.latest()
+        playrange_end = latest_session.timestamp_start.strftime("%b %Y")
+
+        playrange = (
+            playrange_start
+            if playrange_start == playrange_end
+            else f"{playrange_start} — {playrange_end}"
+        )
+    else:
+        playrange = "N/A"
+        latest_session = None
+
+    total_hours = float(format_duration(sessions.total_duration_unformatted(), "%2.1H"))
+    total_hours_without_manual = float(
+        format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
+    )
+    context = {
+        "edition_count": editions.count(),
+        "editions": editions,
+        "game": game,
+        "playrange": playrange,
+        "purchase_count": Purchase.objects.filter(edition__game=game).count(),
+        "session_average_without_manual": round(
+            safe_division(
+                total_hours_without_manual, int(session_count_without_manual)
+            ),
+            1,
+        ),
+        "session_count": session_count,
+        "sessions_with_notes_count": sessions.exclude(note="").count(),
+        "sessions": sessions.order_by("-timestamp_start"),
+        "title": f"Game Overview - {game.name}",
+        "hours_sum": total_hours,
+        "latest_session_id": safe_getattr(latest_session, "pk"),
+    }
+
+    request.session["return_path"] = request.path
+    return render(request, "view_game.html", context)

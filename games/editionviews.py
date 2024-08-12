@@ -2,14 +2,14 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.utils import truncate_with_popover
 from games.forms import EditionForm
-from games.models import Edition
+from games.models import Edition, Game
 from games.views import dateformat
 
 
@@ -91,7 +91,7 @@ def list_editions(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def edit_device(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
+def edit_edition(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
     edition = get_object_or_404(Edition, id=edition_id)
     form = EditionForm(request.POST or None, instance=edition)
     if form.is_valid():
@@ -107,3 +107,38 @@ def delete_edition(request: HttpRequest, edition_id: int) -> HttpResponse:
     edition = get_object_or_404(Edition, id=edition_id)
     edition.delete()
     return redirect("list_editions")
+
+
+@login_required
+def add_edition(request: HttpRequest, game_id: int = 0) -> HttpResponse:
+    context: dict[str, Any] = {}
+    if request.method == "POST":
+        form = EditionForm(request.POST or None)
+        if form.is_valid():
+            edition = form.save()
+            if "submit_and_redirect" in request.POST:
+                return HttpResponseRedirect(
+                    reverse(
+                        "add_purchase_for_edition", kwargs={"edition_id": edition.id}
+                    )
+                )
+            else:
+                return redirect("index")
+    else:
+        if game_id:
+            game = get_object_or_404(Game, id=game_id)
+            form = EditionForm(
+                initial={
+                    "game": game,
+                    "name": game.name,
+                    "sort_name": game.sort_name,
+                    "year_released": game.year_released,
+                }
+            )
+        else:
+            form = EditionForm()
+
+    context["form"] = form
+    context["title"] = "Add New Edition"
+    context["script_name"] = "add_edition.js"
+    return render(request, "add_edition.html", context)

@@ -2,14 +2,21 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
+)
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 
 from common.utils import truncate_with_popover
-from games.models import Purchase
-from games.views import dateformat
+from games.forms import PurchaseForm
+from games.models import Edition, Purchase
+from games.views import dateformat, use_custom_redirect
 
 
 @login_required
@@ -98,3 +105,73 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         },
     }
     return render(request, "list_purchases.html", context)
+
+
+@login_required
+def add_purchase(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
+    context: dict[str, Any] = {}
+    initial = {"date_purchased": timezone.now()}
+
+    if request.method == "POST":
+        form = PurchaseForm(request.POST or None, initial=initial)
+        if form.is_valid():
+            purchase = form.save()
+            if "submit_and_redirect" in request.POST:
+                return HttpResponseRedirect(
+                    reverse(
+                        "add_session_for_purchase", kwargs={"purchase_id": purchase.id}
+                    )
+                )
+            else:
+                return redirect("list_purchases")
+    else:
+        if edition_id:
+            edition = Edition.objects.get(id=edition_id)
+            form = PurchaseForm(
+                initial={
+                    **initial,
+                    "edition": edition,
+                    "platform": edition.platform,
+                }
+            )
+        else:
+            form = PurchaseForm(initial=initial)
+
+    context["form"] = form
+    context["title"] = "Add New Purchase"
+    context["script_name"] = "add_purchase.js"
+    return render(request, "add_purchase.html", context)
+
+
+@login_required
+@use_custom_redirect
+def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    context = {}
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    form = PurchaseForm(request.POST or None, instance=purchase)
+    if form.is_valid():
+        form.save()
+        return redirect("list_sessions")
+    context["title"] = "Edit Purchase"
+    context["form"] = form
+    context["purchase_id"] = str(purchase_id)
+    context["script_name"] = "add_purchase.js"
+    return render(request, "add_purchase.html", context)
+
+
+@login_required
+def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    purchase.delete()
+    return redirect("list_sessions")
+
+
+def related_purchase_by_edition(request: HttpRequest) -> HttpResponse:
+    edition_id = request.GET.get("edition")
+    if not edition_id:
+        return HttpResponseBadRequest("Invalid edition_id")
+    form = PurchaseForm()
+    form.fields["related_purchase"].queryset = Purchase.objects.filter(
+        edition_id=edition_id, type=Purchase.GAME
+    ).order_by("edition__sort_name")
+    return render(request, "partials/related_purchase_field.html", {"form": form})
