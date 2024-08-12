@@ -13,7 +13,7 @@
             "source.organizeImports": "explicit"
         },
     },
-    "ruff.path": ["/nix/store/s3q6qc2954x62bkcs9dwaxyiqchl7j01-ruff-0.5.6/bin/ruff"],
+    "ruff.path": ["/nix/store/jaibb3v0rrnlw5ib54qqq3452yhp1xcb-ruff-0.5.7/bin/ruff"],
     "tailwind-fold.supportedLanguages": [
         "html",
         "typescriptreact",
