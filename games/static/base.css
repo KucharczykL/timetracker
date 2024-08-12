@@ -2207,10 +2207,6 @@ input:checked + .toggle-bg {
   max-width: 20ch;
 }
 
-.min-w-30char {
-  min-width: 30ch;
-}
-
 .\[a-zA-Z\:\\-\] {
   a-z-a--z: \-;
 }
