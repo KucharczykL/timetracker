@@ -1390,6 +1390,10 @@ input:checked + .toggle-bg {
   margin-bottom: 2rem;
 }
 
+.me-2 {
+  margin-inline-end: 0.5rem;
+}
+
 .ml-1 {
   margin-left: 0.25rem;
 }
@@ -1402,6 +1406,10 @@ input:checked + .toggle-bg {
   margin-inline-start: 0px;
 }
 
+.ms-2 {
+  margin-inline-start: 0.5rem;
+}
+
 .ms-2\.5 {
   margin-inline-start: 0.625rem;
 }
@@ -1412,6 +1420,14 @@ input:checked + .toggle-bg {
 
 .mt-4 {
   margin-top: 1rem;
+}
+
+.mb-5 {
+  margin-bottom: 1.25rem;
+}
+
+.mb-6 {
+  margin-bottom: 1.5rem;
 }
 
 .block {
@@ -1826,6 +1842,11 @@ input:checked + .toggle-bg {
   border-color: rgb(220 215 254 / var(--tw-border-opacity));
 }
 
+.bg-blue-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(225 239 254 / var(--tw-bg-opacity));
+}
+
 .bg-blue-700 {
   --tw-bg-opacity: 1;
   background-color: rgb(26 86 219 / var(--tw-bg-opacity));
@@ -1900,6 +1921,11 @@ input:checked + .toggle-bg {
   padding-right: 0.5rem;
 }
 
+.px-2\.5 {
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
 .px-3 {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
@@ -1918,6 +1944,11 @@ input:checked + .toggle-bg {
 .px-6 {
   padding-left: 1.5rem;
   padding-right: 1.5rem;
+}
+
+.py-0\.5 {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
 }
 
 .py-1 {
@@ -1959,6 +1990,10 @@ input:checked + .toggle-bg {
 
 .text-center {
   text-align: center;
+}
+
+.text-right {
+  text-align: right;
 }
 
 .align-top {
@@ -2026,6 +2061,10 @@ input:checked + .toggle-bg {
   font-weight: 700;
 }
 
+.font-extrabold {
+  font-weight: 800;
+}
+
 .font-medium {
   font-weight: 500;
 }
@@ -2050,13 +2089,26 @@ input:checked + .toggle-bg {
   line-height: 2.25rem;
 }
 
+.leading-none {
+  line-height: 1;
+}
+
 .leading-tight {
   line-height: 1.25;
+}
+
+.tracking-tight {
+  letter-spacing: -0.025em;
 }
 
 .text-blue-600 {
   --tw-text-opacity: 1;
   color: rgb(28 100 242 / var(--tw-text-opacity));
+}
+
+.text-blue-800 {
+  --tw-text-opacity: 1;
+  color: rgb(30 66 159 / var(--tw-text-opacity));
 }
 
 .text-gray-300 {
@@ -2718,6 +2770,11 @@ textarea:disabled:is(.dark *) {
   border-color: transparent;
 }
 
+.dark\:bg-blue-200:is(.dark *) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(195 221 253 / var(--tw-bg-opacity));
+}
+
 .dark\:bg-blue-600:is(.dark *) {
   --tw-bg-opacity: 1;
   background-color: rgb(28 100 242 / var(--tw-bg-opacity));
@@ -2759,6 +2816,11 @@ textarea:disabled:is(.dark *) {
 .dark\:text-blue-500:is(.dark *) {
   --tw-text-opacity: 1;
   color: rgb(63 131 248 / var(--tw-text-opacity));
+}
+
+.dark\:text-blue-800:is(.dark *) {
+  --tw-text-opacity: 1;
+  color: rgb(30 66 159 / var(--tw-text-opacity));
 }
 
 .dark\:text-gray-200:is(.dark *) {
@@ -2876,6 +2938,11 @@ textarea:disabled:is(.dark *) {
   --tw-ring-color: rgb(63 131 248 / var(--tw-ring-opacity));
 }
 
+.dark\:focus\:ring-blue-800:focus:is(.dark *) {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(30 66 159 / var(--tw-ring-opacity));
+}
+
 .dark\:focus\:ring-gray-600:focus:is(.dark *) {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(75 85 99 / var(--tw-ring-opacity));
@@ -2887,10 +2954,6 @@ textarea:disabled:is(.dark *) {
 }
 
 @media (min-width: 640px) {
-  .sm\:inline {
-    display: inline;
-  }
-
   .sm\:table-cell {
     display: table-cell;
   }
@@ -2916,20 +2979,12 @@ textarea:disabled:is(.dark *) {
     padding-right: 1rem;
   }
 
-  .sm\:pl-12 {
-    padding-left: 3rem;
-  }
-
   .sm\:pl-2 {
     padding-left: 0.5rem;
   }
 
   .sm\:pl-4 {
     padding-left: 1rem;
-  }
-
-  .sm\:pl-6 {
-    padding-left: 1.5rem;
   }
 
   .sm\:decoration-2 {
@@ -3003,6 +3058,11 @@ textarea:disabled:is(.dark *) {
     padding-bottom: 0.5rem;
   }
 
+  .md\:text-5xl {
+    font-size: 3rem;
+    line-height: 1;
+  }
+
   .md\:text-blue-700 {
     --tw-text-opacity: 1;
     color: rgb(26 86 219 / var(--tw-text-opacity));
@@ -3053,6 +3113,11 @@ textarea:disabled:is(.dark *) {
   .lg\:max-w-lg {
     max-width: 32rem;
   }
+
+  .lg\:text-6xl {
+    font-size: 3.75rem;
+    line-height: 1;
+  }
 }
 
 @media (min-width: 1536px) {
@@ -3068,6 +3133,10 @@ textarea:disabled:is(.dark *) {
 
 .rtl\:space-x-reverse:where([dir="rtl"], [dir="rtl"] *) > :not([hidden]) ~ :not([hidden]) {
   --tw-space-x-reverse: 1;
+}
+
+.rtl\:text-left:where([dir="rtl"], [dir="rtl"] *) {
+  text-align: left;
 }
 
 .rtl\:text-right:where([dir="rtl"], [dir="rtl"] *) {

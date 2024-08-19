@@ -13,7 +13,7 @@
             </tbody>
         </table>
     </div>
-    {% if page_obj %}
+    {% if page_obj and elided_page_range %}
         <nav class="flex items-center flex-column md:flex-row justify-between px-6 py-4"
              aria-label="Table navigation">
             <span class="text-sm font-normal text-gray-500 dark:text-gray-400 mb-4 md:mb-0 block w-full md:inline md:w-auto">Showing <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.start_index }}</span>—<span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.end_index }}</span> of <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.paginator.count }}</span></span>

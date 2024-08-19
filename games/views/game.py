@@ -2,16 +2,24 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db.models import Prefetch
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.time import format_duration
-from common.utils import safe_division, safe_getattr, truncate_with_popover
+from common.utils import safe_division, truncate_with_popover
 from games.forms import GameForm
-from games.models import Game, Purchase, Session
-from games.views.general import dateformat, use_custom_redirect
+from games.models import Edition, Game, Purchase, Session
+from games.views.general import (
+    dateformat,
+    datetimeformat,
+    durationformat,
+    durationformat_manual,
+    timeformat,
+    use_custom_redirect,
+)
 
 
 @login_required
@@ -143,6 +151,8 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         .order_by("year_released")
     )
 
+    purchases = Purchase.objects.filter(edition__game=game).order_by("date_purchased")
+
     sessions = Session.objects.prefetch_related("device").filter(
         purchase__edition__game=game
     )
@@ -169,7 +179,114 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     total_hours_without_manual = float(
         format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
     )
-    context = {
+
+    edition_data: dict[str, Any] = {
+        "columns": [
+            "Name",
+            "Platform",
+            "Year Released",
+            "Actions",
+        ],
+        "rows": [
+            [
+                edition.name,
+                edition.platform,
+                edition.year_released,
+                render_to_string(
+                    "components/button_group_sm.html",
+                    {
+                        "buttons": [
+                            {
+                                "href": reverse("edit_edition", args=[edition.pk]),
+                                "text": "Edit",
+                            },
+                            {
+                                "href": reverse("delete_edition", args=[edition.pk]),
+                                "text": "Delete",
+                                "color": "red",
+                            },
+                        ]
+                    },
+                ),
+            ]
+            for edition in editions
+        ],
+    }
+
+    purchase_data: dict[str, Any] = {
+        "columns": ["Name", "Type", "Price", "Actions"],
+        "rows": [
+            [
+                purchase.name if purchase.name else purchase.edition.name,
+                purchase.get_type_display(),
+                f"{purchase.price} {purchase.price_currency}",
+                render_to_string(
+                    "components/button_group_sm.html",
+                    {
+                        "buttons": [
+                            {
+                                "href": reverse("edit_purchase", args=[purchase.pk]),
+                                "text": "Edit",
+                            },
+                            {
+                                "href": reverse("delete_purchase", args=[purchase.pk]),
+                                "text": "Delete",
+                                "color": "red",
+                            },
+                        ]
+                    },
+                ),
+            ]
+            for purchase in purchases
+        ],
+    }
+
+    sessions_all = Session.objects.filter(purchase__edition__game=game).order_by(
+        "-timestamp_start"
+    )
+    session_count = sessions_all.count()
+    session_paginator = Paginator(sessions_all, 5)
+    page_number = request.GET.get("page", 1)
+    session_page_obj = session_paginator.get_page(page_number)
+    sessions = session_page_obj.object_list
+
+    session_data: dict[str, Any] = {
+        "columns": ["Date", "Duration", "Duration (manual)", "Actions"],
+        "rows": [
+            [
+                f"{session.timestamp_start.strftime(datetimeformat)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
+                (
+                    format_duration(session.duration_calculated, durationformat)
+                    if session.duration_calculated
+                    else "-"
+                ),
+                (
+                    format_duration(session.duration_manual, durationformat_manual)
+                    if session.duration_manual
+                    else "-"
+                ),
+                render_to_string(
+                    "components/button_group_sm.html",
+                    {
+                        "buttons": [
+                            {
+                                "href": reverse("edit_session", args=[session.pk]),
+                                "text": "Edit",
+                            },
+                            {
+                                "href": reverse("delete_session", args=[session.pk]),
+                                "text": "Delete",
+                                "color": "red",
+                            },
+                        ]
+                    },
+                ),
+            ]
+            for session in sessions
+        ],
+    }
+
+    context: dict[str, Any] = {
         "edition_count": editions.count(),
         "editions": editions,
         "game": game,
@@ -182,11 +299,20 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
             1,
         ),
         "session_count": session_count,
-        "sessions_with_notes_count": sessions.exclude(note="").count(),
-        "sessions": sessions.order_by("-timestamp_start"),
+        "sessions": sessions,
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
-        "latest_session_id": safe_getattr(latest_session, "pk"),
+        "edition_data": edition_data,
+        "purchase_data": purchase_data,
+        "session_data": session_data,
+        "session_page_obj": session_page_obj,
+        "session_elided_page_range": (
+            session_page_obj.paginator.get_elided_page_range(
+                page_number, on_each_side=1, on_ends=1
+            )
+            if session_page_obj and session_count > 5
+            else None
+        ),
     }
 
     request.session["return_path"] = request.path

@@ -7,3 +7,4 @@ components:
   simple_table: "components/simple_table.html"
   button_group_sm: "components/button_group_sm.html"
   button_group_button_sm: "components/button_group_button_sm.html"
+  h1: "components/h1.html"
