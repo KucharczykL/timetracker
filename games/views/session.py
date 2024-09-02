@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.time import format_duration
-from common.utils import truncate_with_popover
+from common.utils import A, truncate_with_popover
 from games.forms import SessionForm
 from games.models import Purchase, Session
 from games.views.general import (
@@ -56,7 +56,18 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    truncate_with_popover(session.purchase.edition.name),
+                    A(
+                        [
+                            (
+                                "href",
+                                reverse(
+                                    "view_game",
+                                    args=[session.purchase.edition.game.pk],
+                                ),
+                            )
+                        ],
+                        truncate_with_popover(session.purchase.edition.name),
+                    ),
                     f"{session.timestamp_start.strftime(datetimeformat)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
                     (
                         format_duration(session.duration_calculated, durationformat)

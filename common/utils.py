@@ -27,6 +27,20 @@ def Popover(
     return result
 
 
+HTMLAttribute = tuple[str, str]
+HTMLTag = str
+
+
+def A(attributes: list[HTMLAttribute], children: list[HTMLTag] | HTMLTag) -> HTMLTag:
+    if isinstance(children, str):
+        children = [children]
+    childrenBlob = "\n".join(children)
+    attributesList = [f'{name} = "{value}"' for name, value in attributes]
+    attributesBlob = " ".join(attributesList)
+    tag: str = f"<a {attributesBlob}>{childrenBlob}</a>"
+    return mark_safe(tag)
+
+
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
     """
     Divides without triggering division by zero exception.

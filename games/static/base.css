@@ -1386,16 +1386,16 @@ input:checked + .toggle-bg {
   margin-bottom: 1rem;
 }
 
+.mb-6 {
+  margin-bottom: 1.5rem;
+}
+
 .mb-8 {
   margin-bottom: 2rem;
 }
 
 .me-2 {
   margin-inline-end: 0.5rem;
-}
-
-.ml-1 {
-  margin-left: 0.25rem;
 }
 
 .mr-4 {
@@ -1420,14 +1420,6 @@ input:checked + .toggle-bg {
 
 .mt-4 {
   margin-top: 1rem;
-}
-
-.mb-5 {
-  margin-bottom: 1.25rem;
-}
-
-.mb-6 {
-  margin-bottom: 1.5rem;
 }
 
 .block {
@@ -1477,10 +1469,6 @@ input:checked + .toggle-bg {
 
 .h-2\.5 {
   height: 0.625rem;
-}
-
-.h-3 {
-  height: 0.75rem;
 }
 
 .h-4 {
@@ -1541,10 +1529,6 @@ input:checked + .toggle-bg {
 
 .w-64 {
   width: 16rem;
-}
-
-.w-7 {
-  width: 1.75rem;
 }
 
 .w-full {
@@ -1705,12 +1689,6 @@ input:checked + .toggle-bg {
   margin-left: calc(-1px * calc(1 - var(--tw-space-x-reverse)));
 }
 
-.space-x-1 > :not([hidden]) ~ :not([hidden]) {
-  --tw-space-x-reverse: 0;
-  margin-right: calc(0.25rem * var(--tw-space-x-reverse));
-  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));
-}
-
 .space-x-2 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-x-reverse: 0;
   margin-right: calc(0.5rem * var(--tw-space-x-reverse));
@@ -1762,10 +1740,6 @@ input:checked + .toggle-bg {
 
 .rounded {
   border-radius: 0.25rem;
-}
-
-.rounded-full {
-  border-radius: 9999px;
 }
 
 .rounded-lg {
@@ -1886,11 +1860,6 @@ input:checked + .toggle-bg {
   background-color: rgb(5 122 85 / var(--tw-bg-opacity));
 }
 
-.bg-violet-600 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(124 58 237 / var(--tw-bg-opacity));
-}
-
 .bg-white {
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity));
@@ -1998,10 +1967,6 @@ input:checked + .toggle-bg {
 
 .align-top {
   vertical-align: top;
-}
-
-.font-condensed {
-  font-family: IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 .font-mono {
@@ -2174,6 +2139,18 @@ input:checked + .toggle-bg {
   text-decoration-color: #64748b;
 }
 
+.decoration-wavy {
+  text-decoration-style: wavy;
+}
+
+.underline-offset-2 {
+  text-underline-offset: 2px;
+}
+
+.underline-offset-4 {
+  text-underline-offset: 4px;
+}
+
 .opacity-0 {
   opacity: 0;
 }
@@ -2239,12 +2216,26 @@ input:checked + .toggle-bg {
   transition-duration: 150ms;
 }
 
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
 .duration-200 {
   transition-duration: 200ms;
 }
 
 .duration-300 {
   transition-duration: 300ms;
+}
+
+.duration-1000 {
+  transition-duration: 1000ms;
+}
+
+.duration-500 {
+  transition-duration: 500ms;
 }
 
 .ease-in {
@@ -2573,11 +2564,6 @@ textarea:disabled:is(.dark *) {
   background-color: rgb(240 82 82 / var(--tw-bg-opacity));
 }
 
-.hover\:bg-violet-700:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(109 40 217 / var(--tw-bg-opacity));
-}
-
 .hover\:bg-white:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity));
@@ -2611,6 +2597,10 @@ textarea:disabled:is(.dark *) {
 .hover\:text-white:hover {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity));
+}
+
+.hover\:decoration-red-600:hover {
+  text-decoration-color: #E02424;
 }
 
 .focus\:z-10:focus {
@@ -2664,21 +2654,12 @@ textarea:disabled:is(.dark *) {
   --tw-ring-color: rgb(4 108 78 / var(--tw-ring-opacity));
 }
 
-.focus\:ring-violet-500:focus {
-  --tw-ring-opacity: 1;
-  --tw-ring-color: rgb(139 92 246 / var(--tw-ring-opacity));
-}
-
 .focus\:ring-offset-2:focus {
   --tw-ring-offset-width: 2px;
 }
 
 .focus\:ring-offset-blue-200:focus {
   --tw-ring-offset-color: #C3DDFD;
-}
-
-.focus\:ring-offset-violet-200:focus {
-  --tw-ring-offset-color: #ddd6fe;
 }
 
 .group:hover .group-hover\:absolute {
@@ -2848,11 +2829,6 @@ textarea:disabled:is(.dark *) {
   color: rgb(148 163 184 / var(--tw-text-opacity));
 }
 
-.dark\:text-slate-500:is(.dark *) {
-  --tw-text-opacity: 1;
-  color: rgb(100 116 139 / var(--tw-text-opacity));
-}
-
 .dark\:text-slate-600:is(.dark *) {
   --tw-text-opacity: 1;
   color: rgb(71 85 105 / var(--tw-text-opacity));
@@ -2979,14 +2955,6 @@ textarea:disabled:is(.dark *) {
     padding-right: 1rem;
   }
 
-  .sm\:pl-2 {
-    padding-left: 0.5rem;
-  }
-
-  .sm\:pl-4 {
-    padding-left: 1rem;
-  }
-
   .sm\:decoration-2 {
     text-decoration-thickness: 2px;
   }
@@ -3058,11 +3026,6 @@ textarea:disabled:is(.dark *) {
     padding-bottom: 0.5rem;
   }
 
-  .md\:text-5xl {
-    font-size: 3rem;
-    line-height: 1;
-  }
-
   .md\:text-blue-700 {
     --tw-text-opacity: 1;
     color: rgb(26 86 219 / var(--tw-text-opacity));
@@ -3113,11 +3076,6 @@ textarea:disabled:is(.dark *) {
   .lg\:max-w-lg {
     max-width: 32rem;
   }
-
-  .lg\:text-6xl {
-    font-size: 3.75rem;
-    line-height: 1;
-  }
 }
 
 @media (min-width: 1536px) {
@@ -3151,4 +3109,77 @@ textarea:disabled:is(.dark *) {
 .\[\&\:last-of-type_button\]\:rounded-e-lg:last-of-type button {
   border-start-end-radius: 0.5rem;
   border-end-end-radius: 0.5rem;
+}
+
+.\[\&\>a\]\:underline>a {
+  text-decoration-line: underline;
+}
+
+.\[\&_a\]\:underline a {
+  text-decoration-line: underline;
+}
+
+.\[\&_a\]\:decoration-double a {
+  text-decoration-style: double;
+}
+
+.\[\&_a\]\:decoration-dashed a {
+  text-decoration-style: dashed;
+}
+
+.\[\&_a\]\:decoration-wavy a {
+  text-decoration-style: wavy;
+}
+
+.\[\&_a\]\:decoration-2 a {
+  text-decoration-thickness: 2px;
+}
+
+.\[\&_a\]\:underline-offset-4 a {
+  text-underline-offset: 4px;
+}
+
+.\[\&_a\]\:hover\:bg-purple-800:hover a {
+  --tw-bg-opacity: 1;
+  background-color: rgb(85 33 181 / var(--tw-bg-opacity));
+}
+
+.\[\&_a\]\:hover\:p-5:hover a {
+  padding: 1.25rem;
+}
+
+.\[\&_a\]\:hover\:p-1:hover a {
+  padding: 0.25rem;
+}
+
+.\[\&_a\]\:hover\:decoration-red-600:hover a {
+  text-decoration-color: #E02424;
+}
+
+.\[\&_a\]\:hover\:decoration-purple-600:hover a {
+  text-decoration-color: #7E3AF2;
+}
+
+.\[\&_a\]\:hover\:decoration-purple-300:hover a {
+  text-decoration-color: #CABFFD;
+}
+
+.\[\&_a\]\:hover\:decoration-purple-400:hover a {
+  text-decoration-color: #AC94FA;
+}
+
+.\[\&_a\]\:hover\:decoration-purple-500:hover a {
+  text-decoration-color: #9061F9;
+}
+
+.\[\&_a\]\:hover\:decoration-purple-900:hover a {
+  text-decoration-color: #4A1D96;
+}
+
+.\[\&_a\]\:hover\:decoration-gray-800:hover a {
+  text-decoration-color: #1F2937;
+}
+
+.\[\&_a\]\:hover\:underline-offset-8:hover a {
+  text-underline-offset: 8px;
 }

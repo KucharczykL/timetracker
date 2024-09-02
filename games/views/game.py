@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.time import format_duration
-from common.utils import safe_division, truncate_with_popover
+from common.utils import A, safe_division, truncate_with_popover
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
 from games.views.general import (
@@ -55,7 +55,18 @@ def list_games(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    truncate_with_popover(game.name),
+                    A(
+                        [
+                            (
+                                "href",
+                                reverse(
+                                    "view_game",
+                                    args=[game.pk],
+                                ),
+                            )
+                        ],
+                        truncate_with_popover(game.name),
+                    ),
                     truncate_with_popover(
                         game.sort_name
                         if game.sort_name is not None and game.name != game.sort_name

@@ -13,7 +13,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.utils import truncate_with_popover
+from common.utils import A, truncate_with_popover
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
 from games.views.general import dateformat, use_custom_redirect
@@ -57,7 +57,18 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    truncate_with_popover(purchase.edition.name),
+                    A(
+                        [
+                            (
+                                "href",
+                                reverse(
+                                    "view_game",
+                                    args=[purchase.edition.game.pk],
+                                ),
+                            ),
+                        ],
+                        truncate_with_popover(purchase.edition.game.name),
+                    ),
                     purchase.platform,
                     purchase.price,
                     purchase.price_currency,

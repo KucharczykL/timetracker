@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.utils import truncate_with_popover
+from common.utils import A, truncate_with_popover
 from games.forms import EditionForm
 from games.models import Edition, Game
 from games.views.general import dateformat
@@ -48,7 +48,18 @@ def list_editions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    truncate_with_popover(edition.game.name),
+                    A(
+                        [
+                            (
+                                "href",
+                                reverse(
+                                    "view_game",
+                                    args=[edition.game.pk],
+                                ),
+                            )
+                        ],
+                        truncate_with_popover(edition.game.name),
+                    ),
                     truncate_with_popover(
                         edition.name
                         if edition.game.name != edition.name
