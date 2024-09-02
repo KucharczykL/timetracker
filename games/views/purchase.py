@@ -44,6 +44,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         "data": {
             "columns": [
                 "Name",
+                "Type",
                 "Platform",
                 "Price",
                 "Currency",
@@ -67,8 +68,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                 ),
                             ),
                         ],
-                        truncate_with_popover(purchase.edition.game.name),
+                        truncate_with_popover(
+                            purchase.edition.game.name
+                            if purchase.type == "game"
+                            else f"{purchase.edition.game.name} ({purchase.name})"
+                        ),
                     ),
+                    purchase.get_type_display(),
                     purchase.platform,
                     purchase.price,
                     purchase.price_currency,
