@@ -2139,18 +2139,6 @@ input:checked + .toggle-bg {
   text-decoration-color: #64748b;
 }
 
-.decoration-wavy {
-  text-decoration-style: wavy;
-}
-
-.underline-offset-2 {
-  text-underline-offset: 2px;
-}
-
-.underline-offset-4 {
-  text-underline-offset: 4px;
-}
-
 .opacity-0 {
   opacity: 0;
 }
@@ -2216,26 +2204,12 @@ input:checked + .toggle-bg {
   transition-duration: 150ms;
 }
 
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
 .duration-200 {
   transition-duration: 200ms;
 }
 
 .duration-300 {
   transition-duration: 300ms;
-}
-
-.duration-1000 {
-  transition-duration: 1000ms;
-}
-
-.duration-500 {
-  transition-duration: 500ms;
 }
 
 .ease-in {
@@ -2597,10 +2571,6 @@ textarea:disabled:is(.dark *) {
 .hover\:text-white:hover {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity));
-}
-
-.hover\:decoration-red-600:hover {
-  text-decoration-color: #E02424;
 }
 
 .focus\:z-10:focus {
@@ -3111,24 +3081,8 @@ textarea:disabled:is(.dark *) {
   border-end-end-radius: 0.5rem;
 }
 
-.\[\&\>a\]\:underline>a {
-  text-decoration-line: underline;
-}
-
 .\[\&_a\]\:underline a {
   text-decoration-line: underline;
-}
-
-.\[\&_a\]\:decoration-double a {
-  text-decoration-style: double;
-}
-
-.\[\&_a\]\:decoration-dashed a {
-  text-decoration-style: dashed;
-}
-
-.\[\&_a\]\:decoration-wavy a {
-  text-decoration-style: wavy;
 }
 
 .\[\&_a\]\:decoration-2 a {
@@ -3137,49 +3091,4 @@ textarea:disabled:is(.dark *) {
 
 .\[\&_a\]\:underline-offset-4 a {
   text-underline-offset: 4px;
-}
-
-.\[\&_a\]\:hover\:bg-purple-800:hover a {
-  --tw-bg-opacity: 1;
-  background-color: rgb(85 33 181 / var(--tw-bg-opacity));
-}
-
-.\[\&_a\]\:hover\:p-5:hover a {
-  padding: 1.25rem;
-}
-
-.\[\&_a\]\:hover\:p-1:hover a {
-  padding: 0.25rem;
-}
-
-.\[\&_a\]\:hover\:decoration-red-600:hover a {
-  text-decoration-color: #E02424;
-}
-
-.\[\&_a\]\:hover\:decoration-purple-600:hover a {
-  text-decoration-color: #7E3AF2;
-}
-
-.\[\&_a\]\:hover\:decoration-purple-300:hover a {
-  text-decoration-color: #CABFFD;
-}
-
-.\[\&_a\]\:hover\:decoration-purple-400:hover a {
-  text-decoration-color: #AC94FA;
-}
-
-.\[\&_a\]\:hover\:decoration-purple-500:hover a {
-  text-decoration-color: #9061F9;
-}
-
-.\[\&_a\]\:hover\:decoration-purple-900:hover a {
-  text-decoration-color: #4A1D96;
-}
-
-.\[\&_a\]\:hover\:decoration-gray-800:hover a {
-  text-decoration-color: #1F2937;
-}
-
-.\[\&_a\]\:hover\:underline-offset-8:hover a {
-  text-underline-offset: 8px;
 }
