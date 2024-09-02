@@ -10,9 +10,9 @@
             <div class="flex gap-5 mb-3">
                 <span class="text-wrap max-w-80 text-4xl">
                     <span class="font-bold font-serif">{{ game.name }}</span>&nbsp;<span data-popover-target="popover-year" class="text-slate-500 text-2xl">{{ game.year_released }}</span>
-                    {% #popover id="popover-year" %}
+                    <c-popover id="popover-year">
                     Original release year
-                    {% /popover %}
+                    </c-popover>
                 </span>
             </div>
             <div class="flex gap-4 dark:text-slate-400 mb-3">
@@ -26,9 +26,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                     </svg>
                     {{ hours_sum }}
-                    {% #popover id="popover-hours" %}
+                    <c-popover id="popover-hours">
                     Total hours played
-                    {% /popover %}
+                    </c-popover>
                 </span>
                 <span data-popover-target="popover-sessions"
                       class="flex gap-2 items-center">
@@ -41,9 +41,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
                     </svg>
                     {{ session_count }}
-                    {% #popover id="popover-sessions" %}
+                    <c-popover id="popover-sessions">
                     Number of sessions
-                    {% /popover %}
+                    </c-popover>
                 </span>
                 <span data-popover-target="popover-average" class="flex gap-2 items-center">
                     <svg xmlns="http://www.w3.org/2000/svg"
@@ -55,9 +55,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V6A2.25 2.25 0 0 0 18 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25Z" />
                     </svg>
                     {{ session_average_without_manual }}
-                    {% #popover id="popover-average" %}
+                    <c-popover id="popover-average">
                     Average playtime per session
-                    {% /popover %}
+                    </c-popover>
                 </span>
                 <span data-popover-target="popover-playrange"
                       class="flex gap-2 items-center">
@@ -70,9 +70,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />
                     </svg>
                     {{ playrange }}
-                    {% #popover id="popover-playrange" %}
+                    <c-popover id="popover-playrange">
                     Earliest and latest dates played
-                    {% /popover %}
+                    </c-popover>
                 </span>
             </div>
             <div class="inline-flex rounded-md shadow-sm mb-3" role="group">
@@ -90,15 +90,17 @@
                 </a>
             </div>
         </div>
-        {% #h1 badge=edition_count %}Editions{% /h1 %}
-        <div class="mb-6">{% simple_table rows=edition_data.rows columns=edition_data.columns %}</div>
+        <c-h1 :badge=edition_count>Editions</c-h1>
         <div class="mb-6">
-            {% #h1 badge=purchase_count %}Purchases{% /h1 %}
-            {% simple_table rows=purchase_data.rows columns=purchase_data.columns %}
+            <c-simple-table :rows=edition_data.rows :columns=edition_data.columns />
         </div>
         <div class="mb-6">
-            {% #h1 badge=session_count %}Sessions{% /h1 %}
-            {% simple_table rows=session_data.rows columns=session_data.columns page_obj=session_page_obj elided_page_range=session_elided_page_range %}
+            <c-h1 :badge=purchase_count>Purchases</c-h1>
+            <c-simple-table :rows=purchase_data.rows :columns=purchase_data.columns />
+        </div>
+        <div class="mb-6">
+            <c-h1 :badge=session_count>Sessions</c-h1>
+            <c-simple-table :rows=session_data.rows :columns=session_data.columns :page_obj=session_page_obj :elided_page_range=session_elided_page_range />
         </div>
     </div>
     <script>

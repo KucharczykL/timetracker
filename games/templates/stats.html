@@ -5,11 +5,11 @@
 {% load static %}
 {% partialdef purchase-name %}
 {% if purchase.type != 'game' %}
-    {% #gamelink game_id=purchase.edition.game.id %}
+    <c-gamelink :game_id=purchase.edition.game.id>
     {{ purchase.name }} ({{ purchase.edition.name }} {{ purchase.get_type_display }})
-    {% /gamelink %}
+    </c-gamelink>
 {% else %}
-    {% gamelink game_id=purchase.edition.game.id name=purchase.edition.name %}
+    <c-gamelink :game_id=purchase.edition.game.id name=purchase.edition.name />
 {% endif %}
 {% endpartialdef %}
 {% block content %}
@@ -65,31 +65,31 @@
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ longest_session_time }} ({% gamelink game_id=longest_session_game.id name=longest_session_game.name %})
+                        {{ longest_session_time }} (<c-gamelink :game_id=longest_session_game.id :name=longest_session_game.name />)
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ highest_session_count }} ({% gamelink game_id=highest_session_count_game.id name=highest_session_count_game.name %})
+                        {{ highest_session_count }} (<c-gamelink :game_id=highest_session_count_game.id :name=highest_session_count_game.name />)
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ highest_session_average }} ({% gamelink game_id=highest_session_average_game.id name=highest_session_average_game.name %})
+                        {{ highest_session_average }} (<c-gamelink :game_id=highest_session_average_game.id :name=highest_session_average_game.name />)
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {% gamelink game_id=first_play_game.id name=first_play_game.name %} ({{ first_play_date }})
+                        <c-gamelink :game_id=first_play_game.id :name=first_play_game.name /> ({{ first_play_date }})
                     </td>
                 </tr>
                 <tr>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {% gamelink game_id=last_play_game.id name=last_play_game.name %} ({{ last_play_date }})
+                        <c-gamelink :game_id=last_play_game.id :name=last_play_game.name /> ({{ last_play_date }})
                     </td>
                 </tr>
             </tbody>
@@ -151,7 +151,9 @@
             <tbody>
                 {% for game in top_10_games_by_playtime %}
                     <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% gamelink game_id=game.id name=game.name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <c-gamelink :game_id=game.id :name=game.name />
+                        </td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
                     </tr>
                 {% endfor %}

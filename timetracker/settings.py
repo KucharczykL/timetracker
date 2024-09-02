@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     "template_partials",
     "graphene_django",
     "django_htmx",
-    "slippers",
+    "django_cotton",
 ]
 
 GRAPHENE = {"SCHEMA": "games.schema.schema"}
@@ -87,7 +87,6 @@ TEMPLATES = [
             ],
             "builtins": [
                 "template_partials.templatetags.partials",
-                "slippers.templatetags.slippers",
             ],
         },
     },

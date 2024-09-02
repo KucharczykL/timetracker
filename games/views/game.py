@@ -65,12 +65,13 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     game.wikidata,
                     game.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_game", args=[game.pk]),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse("delete_game", args=[game.pk]),
@@ -193,12 +194,13 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 edition.platform,
                 edition.year_released,
                 render_to_string(
-                    "components/button_group_sm.html",
+                    "cotton/button_group_sm.html",
                     {
                         "buttons": [
                             {
                                 "href": reverse("edit_edition", args=[edition.pk]),
                                 "text": "Edit",
+                                "color": "gray",
                             },
                             {
                                 "href": reverse("delete_edition", args=[edition.pk]),
@@ -221,12 +223,13 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 purchase.get_type_display(),
                 f"{purchase.price} {purchase.price_currency}",
                 render_to_string(
-                    "components/button_group_sm.html",
+                    "cotton/button_group_sm.html",
                     {
                         "buttons": [
                             {
                                 "href": reverse("edit_purchase", args=[purchase.pk]),
                                 "text": "Edit",
+                                "color": "gray",
                             },
                             {
                                 "href": reverse("delete_purchase", args=[purchase.pk]),
@@ -266,12 +269,13 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     else "-"
                 ),
                 render_to_string(
-                    "components/button_group_sm.html",
+                    "cotton/button_group_sm.html",
                     {
                         "buttons": [
                             {
                                 "href": reverse("edit_session", args=[session.pk]),
                                 "text": "Edit",
+                                "color": "gray",
                             },
                             {
                                 "href": reverse("delete_session", args=[session.pk]),

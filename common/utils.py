@@ -17,10 +17,10 @@ def Popover(
     result = mark_safe(
         str(content)
         + render_to_string(
-            "components/popover.html",
+            "cotton/popover.html",
             {
                 "id": id,
-                "children": popover_content,
+                "slot": popover_content,
             },
         )
     )

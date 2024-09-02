@@ -15,4 +15,6 @@ repos:
   rev: v1.34.0
   hooks:
     - id: djlint-reformat-django
+      args: ["--ignore", "H011"]
     - id: djlint-django
+      args: ["--ignore", "H011"]

@@ -80,7 +80,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                     ),
                     purchase.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
@@ -88,6 +88,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                         "edit_purchase", args=[purchase.pk]
                                     ),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse(

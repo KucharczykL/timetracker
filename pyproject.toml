@@ -30,7 +30,7 @@ django-template-partials = "^24.2"
 markdown = "^3.6"
 
 
-slippers = "^0.6.2"
+django-cotton = "^0.9.34"
 [tool.isort]
 profile = "black"
 

@@ -1,8 +1,8 @@
 <span class="truncate-container">
     <a class="underline decoration-slate-500 sm:decoration-2"
        href="{% url 'view_game' game_id %}">
-        {% if children %}
-            {{ children }}
+        {% if slot %}
+            {{ slot }}
         {% else %}
             {{ name }}
         {% endif %}

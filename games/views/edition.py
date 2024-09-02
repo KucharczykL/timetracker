@@ -65,12 +65,13 @@ def list_editions(request: HttpRequest) -> HttpResponse:
                     edition.wikidata,
                     edition.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_edition", args=[edition.pk]),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse(

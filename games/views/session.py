@@ -71,12 +71,13 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                     session.device,
                     session.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_session", args=[session.pk]),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse(

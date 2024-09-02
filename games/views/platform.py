@@ -47,7 +47,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                     platform.group,
                     platform.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
@@ -55,6 +55,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                                         "edit_platform", args=[platform.pk]
                                     ),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse(

@@ -47,12 +47,13 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                     device.get_type_display(),
                     device.created_at.strftime(dateformat),
                     render_to_string(
-                        "components/button_group_sm.html",
+                        "cotton/button_group_sm.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_device", args=[device.pk]),
                                     "text": "Edit",
+                                    "color": "gray",
                                 },
                                 {
                                     "href": reverse("delete_device", args=[device.pk]),
