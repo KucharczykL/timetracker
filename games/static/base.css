@@ -1,5 +1,5 @@
 /*
-! tailwindcss v3.4.7 | MIT License | https://tailwindcss.com
+! tailwindcss v3.4.10 | MIT License | https://tailwindcss.com
 */
 
 /*
@@ -1816,6 +1816,11 @@ input:checked + .toggle-bg {
   border-color: rgb(220 215 254 / var(--tw-border-opacity));
 }
 
+.\!bg-gray-50 {
+  --tw-bg-opacity: 1 !important;
+  background-color: rgb(249 250 251 / var(--tw-bg-opacity)) !important;
+}
+
 .bg-blue-100 {
   --tw-bg-opacity: 1;
   background-color: rgb(225 239 254 / var(--tw-bg-opacity));
@@ -1959,10 +1964,6 @@ input:checked + .toggle-bg {
 
 .text-center {
   text-align: center;
-}
-
-.text-right {
-  text-align: right;
 }
 
 .align-top {
@@ -2721,6 +2722,11 @@ textarea:disabled:is(.dark *) {
   border-color: transparent;
 }
 
+.dark\:\!bg-gray-700:is(.dark *) {
+  --tw-bg-opacity: 1 !important;
+  background-color: rgb(55 65 81 / var(--tw-bg-opacity)) !important;
+}
+
 .dark\:bg-blue-200:is(.dark *) {
   --tw-bg-opacity: 1;
   background-color: rgb(195 221 253 / var(--tw-bg-opacity));
@@ -3048,6 +3054,12 @@ textarea:disabled:is(.dark *) {
   }
 }
 
+@media (min-width: 1280px) {
+  .xl\:max-w-screen-xl {
+    max-width: 1280px;
+  }
+}
+
 @media (min-width: 1536px) {
   .\32xl\:max-w-screen-2xl {
     max-width: 1536px;
@@ -3061,10 +3073,6 @@ textarea:disabled:is(.dark *) {
 
 .rtl\:space-x-reverse:where([dir="rtl"], [dir="rtl"] *) > :not([hidden]) ~ :not([hidden]) {
   --tw-space-x-reverse: 1;
-}
-
-.rtl\:text-left:where([dir="rtl"], [dir="rtl"] *) {
-  text-align: left;
 }
 
 .rtl\:text-right:where([dir="rtl"], [dir="rtl"] *) {
