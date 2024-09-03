@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.utils import A, Button
 from games.forms import PlatformForm
 from games.models import Platform
 from games.views.general import dateformat, use_custom_redirect
@@ -35,6 +36,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
+            "header_action": A([], Button([], "Add platform"), url="add_platform"),
             "columns": [
                 "Name",
                 "Group",

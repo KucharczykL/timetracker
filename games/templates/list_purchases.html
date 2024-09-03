@@ -5,6 +5,6 @@
 {% endblock title %}
 {% block content %}
     <div class="2xl:max-w-screen-2xl xl:max-w-screen-xl md:max-w-screen-md sm:max-w-screen-sm self-center">
-        <c-simple-table :columns=data.columns :rows=data.rows :page_obj=page_obj :elided_page_range=elided_page_range />
+        <c-simple-table :columns=data.columns :rows=data.rows :page_obj=page_obj :elided_page_range=elided_page_range :header_action=data.header_action />
     </div>
 {% endblock content %}

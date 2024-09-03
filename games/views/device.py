@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.utils import A, Button
 from games.forms import DeviceForm
 from games.models import Device
 from games.views.general import dateformat
@@ -35,6 +36,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
+            "header_action": A([], Button([], "Add device"), url="add_device"),
             "columns": [
                 "Name",
                 "Type",

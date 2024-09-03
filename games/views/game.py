@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.time import format_duration
-from common.utils import A, safe_division, truncate_with_popover
+from common.utils import A, Button, safe_division, truncate_with_popover
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
 from games.views.general import (
@@ -45,6 +45,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
+            "header_action": A([], Button([], "Add game"), url="add_game"),
             "columns": [
                 "Name",
                 "Sort Name",

@@ -13,7 +13,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.utils import A, truncate_with_popover
+from common.utils import A, Button, truncate_with_popover
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
 from games.views.general import dateformat, use_custom_redirect
@@ -42,6 +42,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
+            "header_action": A([], Button([], "Add purchase"), url="add_purchase"),
             "columns": [
                 "Name",
                 "Type",
