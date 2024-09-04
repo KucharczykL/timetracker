@@ -1,6 +1,7 @@
+from datetime import date
 from random import choices
 from string import ascii_lowercase
-from typing import Any, Callable
+from typing import Any, Callable, Generator, TypeVar
 
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
@@ -145,3 +146,23 @@ def truncate_with_popover(input_string: str) -> str:
 
 def randomid(seed: str = "", length: int = 10) -> str:
     return seed + "".join(choices(ascii_lowercase, k=length))
+
+
+T = TypeVar("T", str, int, date)
+
+
+def generate_split_ranges(
+    value_list: list[T], split_points: list[T]
+) -> Generator[tuple[T, T], None, None]:
+    for x in range(0, len(split_points) + 1):
+        if x == 0:
+            start = 0
+        elif x >= len(split_points):
+            start = value_list.index(split_points[x - 1]) + 1
+        else:
+            start = value_list.index(split_points[x - 1]) + 1
+        try:
+            end = value_list.index(split_points[x])
+        except IndexError:
+            end = len(value_list)
+        yield (value_list[start], value_list[end - 1])
