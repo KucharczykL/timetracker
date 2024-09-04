@@ -8,18 +8,18 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.time import format_duration
+from common.time import (
+    dateformat,
+    durationformat,
+    durationformat_manual,
+    format_duration,
+    local_strftime,
+    timeformat,
+)
 from common.utils import A, Button, safe_division, truncate_with_popover
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
-from games.views.general import (
-    dateformat,
-    datetimeformat,
-    durationformat,
-    durationformat_manual,
-    timeformat,
-    use_custom_redirect,
-)
+from games.views.general import use_custom_redirect
 
 
 @login_required
@@ -75,7 +75,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     ),
                     game.year_released,
                     game.wikidata,
-                    game.created_at.strftime(dateformat),
+                    local_strftime(game.created_at, dateformat),
                     render_to_string(
                         "cotton/button_group_sm.html",
                         {
@@ -175,9 +175,9 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     )
 
     if sessions:
-        playrange_start = sessions.earliest().timestamp_start.strftime("%b %Y")
+        playrange_start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
         latest_session = sessions.latest()
-        playrange_end = latest_session.timestamp_start.strftime("%b %Y")
+        playrange_end = local_strftime(latest_session.timestamp_start, "%b %Y")
 
         playrange = (
             playrange_start
@@ -269,7 +269,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "columns": ["Date", "Duration", "Duration (manual)", "Actions"],
         "rows": [
             [
-                f"{session.timestamp_start.strftime(datetimeformat)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
+                f"{local_strftime(session.timestamp_start)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
                 (
                     format_duration(session.duration_calculated, durationformat)
                     if session.duration_calculated

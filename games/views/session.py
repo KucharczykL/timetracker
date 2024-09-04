@@ -8,18 +8,18 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.time import format_duration
+from common.time import (
+    dateformat,
+    durationformat,
+    durationformat_manual,
+    format_duration,
+    local_strftime,
+    timeformat,
+)
 from common.utils import A, Button, truncate_with_popover
 from games.forms import SessionForm
 from games.models import Purchase, Session
-from games.views.general import (
-    dateformat,
-    datetimeformat,
-    durationformat,
-    durationformat_manual,
-    timeformat,
-    use_custom_redirect,
-)
+from games.views.general import use_custom_redirect
 
 
 @login_required
@@ -64,7 +64,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                             args=[session.purchase.edition.game.pk],
                         ),
                     ),
-                    f"{session.timestamp_start.strftime(datetimeformat)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
+                    f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
                     (
                         format_duration(session.duration_calculated, durationformat)
                         if session.duration_calculated

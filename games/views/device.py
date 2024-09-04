@@ -7,10 +7,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.time import dateformat, local_strftime
 from common.utils import A, Button
 from games.forms import DeviceForm
 from games.models import Device
-from games.views.general import dateformat
 
 
 @login_required
@@ -47,7 +47,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                 [
                     device.name,
                     device.get_type_display(),
-                    device.created_at.strftime(dateformat),
+                    local_strftime(device.created_at, dateformat),
                     render_to_string(
                         "cotton/button_group_sm.html",
                         {

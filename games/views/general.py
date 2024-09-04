@@ -12,12 +12,6 @@ from common.time import format_duration
 from common.utils import safe_division
 from games.models import Edition, Game, Platform, Purchase, Session
 
-dateformat: str = "%d/%m/%Y"
-datetimeformat: str = "%d/%m/%Y %H:%M"
-timeformat: str = "%H:%M"
-durationformat: str = "%2.1H hours"
-durationformat_manual: str = "%H hours"
-
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
     return {

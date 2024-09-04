@@ -13,10 +13,11 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
+from common.time import dateformat, local_strftime
 from common.utils import A, Button, truncate_with_popover
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
-from games.views.general import dateformat, use_custom_redirect
+from games.views.general import use_custom_redirect
 
 
 @login_required
@@ -80,23 +81,23 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                     purchase.price,
                     purchase.price_currency,
                     purchase.infinite,
-                    purchase.date_purchased.strftime(dateformat),
+                    local_strftime(purchase.date_purchased, dateformat),
                     (
-                        purchase.date_refunded.strftime(dateformat)
+                        local_strftime(purchase.date_refunded, dateformat)
                         if purchase.date_refunded
                         else "-"
                     ),
                     (
-                        purchase.date_finished.strftime(dateformat)
+                        local_strftime(purchase.date_finished, dateformat)
                         if purchase.date_finished
                         else "-"
                     ),
                     (
-                        purchase.date_dropped.strftime(dateformat)
+                        local_strftime(purchase.date_dropped, dateformat)
                         if purchase.date_dropped
                         else "-"
                     ),
-                    purchase.created_at.strftime(dateformat),
+                    local_strftime(purchase.created_at, dateformat),
                     render_to_string(
                         "cotton/button_group_sm.html",
                         {

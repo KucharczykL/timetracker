@@ -7,10 +7,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.time import dateformat, local_strftime
 from common.utils import A, Button, truncate_with_popover
 from games.forms import EditionForm
 from games.models import Edition, Game
-from games.views.general import dateformat
 
 
 @login_required
@@ -75,7 +75,7 @@ def list_editions(request: HttpRequest) -> HttpResponse:
                     truncate_with_popover(str(edition.platform)),
                     edition.year_released,
                     edition.wikidata,
-                    edition.created_at.strftime(dateformat),
+                    local_strftime(edition.created_at, dateformat),
                     render_to_string(
                         "cotton/button_group_sm.html",
                         {

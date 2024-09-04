@@ -7,10 +7,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.time import dateformat, local_strftime
 from common.utils import A, Button
 from games.forms import PlatformForm
 from games.models import Platform
-from games.views.general import dateformat, use_custom_redirect
+from games.views.general import use_custom_redirect
 
 
 @login_required
@@ -47,7 +48,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 [
                     platform.name,
                     platform.group,
-                    platform.created_at.strftime(dateformat),
+                    local_strftime(platform.created_at, dateformat),
                     render_to_string(
                         "cotton/button_group_sm.html",
                         {

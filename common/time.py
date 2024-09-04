@@ -1,5 +1,13 @@
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+from django.utils import timezone
+
+dateformat: str = "%d/%m/%Y"
+datetimeformat: str = "%d/%m/%Y %H:%M"
+timeformat: str = "%H:%M"
+durationformat: str = "%2.1H hours"
+durationformat_manual: str = "%H hours"
 
 
 def _safe_timedelta(duration: timedelta | int | None):
@@ -70,3 +78,9 @@ def format_duration(
                 rf"%\d*\.?\d*{pattern}", replacement, formatted_string
             )
     return formatted_string
+
+
+def local_strftime(datetime: datetime, format: str = datetimeformat) -> str:
+    return timezone.localtime(datetime).strftime(format)
+
+
