@@ -1,4 +1,5 @@
 const defaultTheme = require('tailwindcss/defaultTheme')
+const colors = require('tailwindcss/colors');
 
 module.exports = {
   darkMode: 'class',
@@ -10,6 +11,10 @@ module.exports = {
         'mono': ['IBM Plex Mono', ...defaultTheme.fontFamily.mono],
         'serif': ['IBM Plex Serif', ...defaultTheme.fontFamily.serif],
         'condensed': ['IBM Plex Sans Condensed', ...defaultTheme.fontFamily.sans],
+      },
+      colors: {
+        'accent': colors.violet[600],
+        'background': colors.gray[800],
       }
     },
   },
