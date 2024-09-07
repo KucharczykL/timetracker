@@ -50,7 +50,6 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 "Name",
                 "Date",
                 "Duration",
-                "Duration (manual)",
                 "Device",
                 "Created",
                 "Actions",
@@ -68,12 +67,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                     (
                         format_duration(session.duration_calculated, durationformat)
                         if session.duration_calculated
-                        else "-"
-                    ),
-                    (
-                        format_duration(session.duration_manual, durationformat_manual)
-                        if session.duration_manual
-                        else "-"
+                        else f"{format_duration(session.duration_manual, durationformat_manual)}*"
                     ),
                     session.device,
                     session.created_at.strftime(dateformat),

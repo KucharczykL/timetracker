@@ -266,19 +266,14 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     sessions = session_page_obj.object_list
 
     session_data: dict[str, Any] = {
-        "columns": ["Date", "Duration", "Duration (manual)", "Actions"],
+        "columns": ["Date", "Duration", "Actions"],
         "rows": [
             [
                 f"{local_strftime(session.timestamp_start)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
                 (
                     format_duration(session.duration_calculated, durationformat)
                     if session.duration_calculated
-                    else "-"
-                ),
-                (
-                    format_duration(session.duration_manual, durationformat_manual)
-                    if session.duration_manual
-                    else "-"
+                    else f"{format_duration(session.duration_manual, durationformat_manual)}*"
                 ),
                 render_to_string(
                     "cotton/button_group_sm.html",
