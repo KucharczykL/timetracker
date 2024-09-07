@@ -9,7 +9,7 @@
     {{ purchase.name }} ({{ purchase.edition.name }} {{ purchase.get_type_display }})
     </c-gamelink>
 {% else %}
-    <c-gamelink :game_id=purchase.edition.game.id name=purchase.edition.name />
+    <c-gamelink :game_id=purchase.edition.game.id :name=purchase.edition.name />
 {% endif %}
 {% endpartialdef %}
 {% block content %}
