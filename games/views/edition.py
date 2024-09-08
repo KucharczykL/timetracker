@@ -7,8 +7,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.components import A, Button, Icon
 from common.time import dateformat, local_strftime
-from common.utils import A, Button, truncate_with_popover
+from common.utils import truncate_with_popover
 from games.forms import EditionForm
 from games.models import Edition, Game
 
@@ -77,19 +78,19 @@ def list_editions(request: HttpRequest) -> HttpResponse:
                     edition.wikidata,
                     local_strftime(edition.created_at, dateformat),
                     render_to_string(
-                        "cotton/button_group_sm.html",
+                        "cotton/button_group.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_edition", args=[edition.pk]),
-                                    "text": "Edit",
+                                    "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
                                     "href": reverse(
                                         "delete_edition", args=[edition.pk]
                                     ),
-                                    "text": "Delete",
+                                    "slot": Icon("delete"),
                                     "color": "red",
                                 },
                             ]

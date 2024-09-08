@@ -8,6 +8,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
+from common.components import A, Button, Div, Icon, Popover
 from common.time import (
     dateformat,
     durationformat,
@@ -16,7 +17,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import A, Button, truncate_with_popover
+from common.utils import truncate, truncate_with_popover
 from games.forms import SessionForm
 from games.models import Purchase, Session
 from games.views.general import use_custom_redirect
@@ -28,6 +29,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
     sessions = Session.objects.order_by("-timestamp_start")
+    last_session = sessions.latest()
     page_obj = None
     if int(limit) != 0:
         paginator = Paginator(sessions, limit)
@@ -45,7 +47,40 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add session"), url="add_session"),
+            "header_action": Div(
+                children=[
+                    A(
+                        url="add_session",
+                        children=Button(
+                            icon=True,
+                            size="xs",
+                            children=[Icon("play"), "LOG"],
+                        ),
+                    ),
+                    A(
+                        url=reverse(
+                            "list_sessions_start_session_from_session",
+                            args=[last_session.pk],
+                        ),
+                        children=Popover(
+                            popover_content=last_session.purchase.edition.name,
+                            children=[
+                                Button(
+                                    icon=True,
+                                    color="gray",
+                                    size="xs",
+                                    children=[
+                                        Icon("play"),
+                                        truncate(
+                                            f"{last_session.purchase.edition.name}"
+                                        ),
+                                    ],
+                                )
+                            ],
+                        ),
+                    ),
+                ],
+            ),
             "columns": [
                 "Name",
                 "Date",
@@ -72,20 +107,39 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                     session.device,
                     session.created_at.strftime(dateformat),
                     render_to_string(
-                        "cotton/button_group_sm.html",
+                        "cotton/button_group.html",
                         {
                             "buttons": [
                                 {
+                                    "href": reverse(
+                                        "list_sessions_end_session", args=[session.pk]
+                                    ),
+                                    "slot": Icon("end"),
+                                    "title": "Finish session now",
+                                    "color": "green",
+                                    "hover": "green",
+                                }
+                                if session.timestamp_end is None
+                                # this only works without leaving an empty
+                                # a element and wrong rounding of button edges
+                                # because we check if button.href is not None
+                                # in the button group component
+                                else {},
+                                {
                                     "href": reverse("edit_session", args=[session.pk]),
-                                    "text": "Edit",
-                                    "color": "gray",
+                                    "slot": Icon("edit"),
+                                    "title": "Edit",
+                                    # "color": "gray",
+                                    "hover": "green",
                                 },
                                 {
                                     "href": reverse(
                                         "delete_session", args=[session.pk]
                                     ),
-                                    "text": "Delete",
+                                    "slot": Icon("delete"),
+                                    "title": "Delete",
                                     "color": "red",
+                                    "hover": "red",
                                 },
                             ]
                         },
@@ -155,7 +209,6 @@ def clone_session_by_id(session_id: int) -> Session:
 
 
 @login_required
-@use_custom_redirect
 def new_session_from_existing_session(
     request: HttpRequest, session_id: int, template: str = ""
 ) -> HttpResponse:
@@ -170,7 +223,6 @@ def new_session_from_existing_session(
 
 
 @login_required
-@use_custom_redirect
 def end_session(
     request: HttpRequest, session_id: int, template: str = ""
 ) -> HttpResponse:

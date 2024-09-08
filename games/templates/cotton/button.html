@@ -1,5 +1,6 @@
+<c-vars color="blue" size="base" />
 <button type="button"
-        class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 mt-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
-    {{ text }}
+        title="{{ title }}"
+        class=" {% if color == "blue" %} bg-blue-700 dark:bg-blue-600 dark:focus:ring-blue-800 dark:hover:bg-blue-700 focus:ring-blue-300 hover:bg-blue-800 text-white {% elif color == "red" %} bg-red-700 dark:bg-red-600 dark:focus:ring-red-900 dark:hover:bg-red-700 focus:ring-red-300 hover:bg-red-800 text-white {% elif color == "gray" %} bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:focus:ring-gray-700 dark:hover:bg-gray-700 dark:hover:text-white dark:text-gray-400 focus:ring-gray-100 hover:bg-gray-100 hover:text-blue-700 text-gray-900 border {% elif color == "green" %} bg-green-700 dark:bg-green-600 dark:focus:ring-green-800 dark:hover:bg-green-700 focus:ring-green-300 hover:bg-green-800 text-white {% endif %} focus:outline-none focus:ring-4 font-medium mb-2 me-2 rounded-lg {% if size == "xs" %} px-3 py-2 text-xs {% elif size == "sm" %} px-3 py-2 text-sm {% elif size == "base" %} px-5 py-2.5 text-sm {% elif size == "lg" %} px-5 py-3 text-base {% elif size == "xl" %} px-6 py-3.5 text-base {% endif %} {% if icon %} inline-flex text-center items-center gap-2 {% else %} {% endif %} ">
     {{ slot }}
 </button>

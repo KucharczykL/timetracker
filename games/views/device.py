@@ -7,8 +7,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.components import A, Button, Icon
 from common.time import dateformat, local_strftime
-from common.utils import A, Button
 from games.forms import DeviceForm
 from games.models import Device
 
@@ -49,17 +49,17 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                     device.get_type_display(),
                     local_strftime(device.created_at, dateformat),
                     render_to_string(
-                        "cotton/button_group_sm.html",
+                        "cotton/button_group.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_device", args=[device.pk]),
-                                    "text": "Edit",
+                                    "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
                                     "href": reverse("delete_device", args=[device.pk]),
-                                    "text": "Delete",
+                                    "slot": Icon("delete"),
                                     "color": "red",
                                 },
                             ]

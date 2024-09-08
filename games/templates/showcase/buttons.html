@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}
+    {{ title }}
+{% endblock title %}
+{% block content %}
+    <div class="flex self-center m-4 flex-col gap-4 [&_h1]:mb-2">
+        <div>
+            <h1 class="text-white text-lg">No size</h1>
+            <c-button>
+            No attributes
+            </c-button>
+            <c-button color="blue">
+            No attributes, blue
+            </c-button>
+            <c-button color="red">
+            No attributes, red
+            </c-button>
+            <c-button color="green">
+            No attributes, green
+            </c-button>
+            <c-button color="gray">
+            No attributes, gray
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">No size, icons</h1>
+            <c-button>
+            <c-icon.edit />
+            </c-button>
+            <c-button>
+            <c-icon.finish />
+            </c-button>
+            <c-button>
+            <c-icon.end />
+            </c-button>
+            <c-button>
+            <c-icon.delete />
+            </c-button>
+            <c-button>
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Extra Small, icons</h1>
+            <c-button icon="true" size="xs">
+            <c-icon.edit /> Edit
+            </c-button>
+            <c-button icon="true" size="xs">
+            <c-icon.finish />
+            </c-button>
+            <c-button icon="true" size="xs">
+            <c-icon.end />
+            </c-button>
+            <c-button icon="true" size="xs">
+            <c-icon.delete />
+            </c-button>
+            <c-button icon="true" size="xs">
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Small, icons</h1>
+            <c-button icon="true" size="sm">
+            <c-icon.edit /> Edit
+            </c-button>
+            <c-button icon="true" size="sm">
+            <c-icon.finish />
+            </c-button>
+            <c-button icon="true" size="sm">
+            <c-icon.end />
+            </c-button>
+            <c-button icon="true" size="sm">
+            <c-icon.delete />
+            </c-button>
+            <c-button icon="true" size="sm">
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Base, icons</h1>
+            <c-button icon="true" size="base">
+            <c-icon.edit /> Edit
+            </c-button>
+            <c-button icon="true" size="base">
+            <c-icon.finish />
+            </c-button>
+            <c-button icon="true" size="base">
+            <c-icon.end />
+            </c-button>
+            <c-button icon="true" size="base">
+            <c-icon.delete />
+            </c-button>
+            <c-button icon="true" size="base">
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Large, icons</h1>
+            <c-button icon="true" size="lg">
+            <c-icon.edit /> Edit
+            </c-button>
+            <c-button icon="true" size="lg">
+            <c-icon.finish />
+            </c-button>
+            <c-button icon="true" size="lg">
+            <c-icon.end />
+            </c-button>
+            <c-button icon="true" size="lg">
+            <c-icon.delete />
+            </c-button>
+            <c-button icon="true" size="lg">
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Extra Large, icons</h1>
+            <c-button icon="true" size="xl">
+            <c-icon.edit /> Edit
+            </c-button>
+            <c-button icon="true" size="xl">
+            <c-icon.finish />
+            </c-button>
+            <c-button icon="true" size="xl">
+            <c-icon.end />
+            </c-button>
+            <c-button icon="true" size="xl">
+            <c-icon.delete />
+            </c-button>
+            <c-button icon="true" size="xl">
+            <c-icon.play />
+            </c-button>
+        </div>
+        <div>
+            <h1 class="text-white text-lg">Group (sm)</h1>
+            <c-button-group>
+            <c-button-group-button-sm>
+            No attributes
+            </c-button-group-button-sm>
+            <c-button-group-button-sm color="blue">
+            No attributes, blue
+            </c-button-group-button-sm>
+            <c-button-group-button-sm color="red">
+            No attributes, red
+            </c-button-group-button-sm>
+            <c-button-group-button-sm color="green">
+            No attributes, green
+            </c-button-group-button-sm>
+            <c-button-group-button-sm color="gray">
+            No attributes, gray
+            </c-button-group-button-sm>
+            </c-button-group>
+        </div>
+    </div>
+{% endblock content %}

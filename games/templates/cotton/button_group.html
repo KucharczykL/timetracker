@@ -1,0 +1,8 @@
+<div class="inline-flex rounded-md shadow-sm" role="group">
+    {% if slot %}{{ slot }}{% endif %}
+    {% for button in buttons %}
+        {% if button.slot %}
+            <c-button-group-button-sm :href=button.href :slot=button.slot :color=button.color :hover=button.hover :title=button.title />
+        {% endif %}
+    {% endfor %}
+</div>

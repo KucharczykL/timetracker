@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from common.components import A, Button, Div, Icon, Popover
 from common.time import (
     dateformat,
     durationformat,
@@ -16,7 +17,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import A, Button, safe_division, truncate_with_popover
+from common.utils import safe_division, truncate, truncate_with_popover
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
 from games.views.general import use_custom_redirect
@@ -77,17 +78,17 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     game.wikidata,
                     local_strftime(game.created_at, dateformat),
                     render_to_string(
-                        "cotton/button_group_sm.html",
+                        "cotton/button_group.html",
                         {
                             "buttons": [
                                 {
                                     "href": reverse("edit_game", args=[game.pk]),
-                                    "text": "Edit",
+                                    "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
                                     "href": reverse("delete_game", args=[game.pk]),
-                                    "text": "Delete",
+                                    "slot": Icon("delete"),
                                     "color": "red",
                                 },
                             ]
@@ -206,17 +207,17 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 edition.platform,
                 edition.year_released,
                 render_to_string(
-                    "cotton/button_group_sm.html",
+                    "cotton/button_group.html",
                     {
                         "buttons": [
                             {
                                 "href": reverse("edit_edition", args=[edition.pk]),
-                                "text": "Edit",
+                                "slot": Icon("edit"),
                                 "color": "gray",
                             },
                             {
                                 "href": reverse("delete_edition", args=[edition.pk]),
-                                "text": "Delete",
+                                "slot": Icon("delete"),
                                 "color": "red",
                             },
                         ]
@@ -235,17 +236,17 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 purchase.get_type_display(),
                 f"{purchase.price} {purchase.price_currency}",
                 render_to_string(
-                    "cotton/button_group_sm.html",
+                    "cotton/button_group.html",
                     {
                         "buttons": [
                             {
                                 "href": reverse("edit_purchase", args=[purchase.pk]),
-                                "text": "Edit",
+                                "slot": Icon("edit"),
                                 "color": "gray",
                             },
                             {
                                 "href": reverse("delete_purchase", args=[purchase.pk]),
-                                "text": "Delete",
+                                "slot": Icon("delete"),
                                 "color": "red",
                             },
                         ]
@@ -259,6 +260,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     sessions_all = Session.objects.filter(purchase__edition__game=game).order_by(
         "-timestamp_start"
     )
+    last_session = sessions_all.latest()
     session_count = sessions_all.count()
     session_paginator = Paginator(sessions_all, 5)
     page_number = request.GET.get("page", 1)
@@ -266,6 +268,38 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     sessions = session_page_obj.object_list
 
     session_data: dict[str, Any] = {
+        "header_action": Div(
+            children=[
+                A(
+                    url="add_session",
+                    children=Button(
+                        icon=True,
+                        size="xs",
+                        children=[Icon("play"), "LOG"],
+                    ),
+                ),
+                A(
+                    url=reverse(
+                        "list_sessions_start_session_from_session",
+                        args=[last_session.pk],
+                    ),
+                    children=Popover(
+                        popover_content=last_session.purchase.edition.name,
+                        children=[
+                            Button(
+                                icon=True,
+                                color="gray",
+                                size="xs",
+                                children=[
+                                    Icon("play"),
+                                    truncate(f"{last_session.purchase.edition.name}"),
+                                ],
+                            )
+                        ],
+                    ),
+                ),
+            ],
+        ),
         "columns": ["Date", "Duration", "Actions"],
         "rows": [
             [
@@ -276,17 +310,32 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     else f"{format_duration(session.duration_manual, durationformat_manual)}*"
                 ),
                 render_to_string(
-                    "cotton/button_group_sm.html",
+                    "cotton/button_group.html",
                     {
                         "buttons": [
                             {
+                                "href": reverse(
+                                    "list_sessions_end_session", args=[session.pk]
+                                ),
+                                "slot": Icon("end"),
+                                "title": "Finish session now",
+                                "color": "green",
+                                "hover": "green",
+                            }
+                            if session.timestamp_end is None
+                            # this only works without leaving an empty
+                            # a element and wrong rounding of button edges
+                            # because we check if button.href is not None
+                            # in the button group component
+                            else {},
+                            {
                                 "href": reverse("edit_session", args=[session.pk]),
-                                "text": "Edit",
+                                "slot": Icon("edit"),
                                 "color": "gray",
                             },
                             {
                                 "href": reverse("delete_session", args=[session.pk]),
-                                "text": "Delete",
+                                "slot": Icon("delete"),
                                 "color": "red",
                             },
                         ]
