@@ -108,6 +108,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                         "edit_purchase", args=[purchase.pk]
                                     ),
                                     "slot": Icon("edit"),
+                                    "title": "Edit",
                                     "color": "gray",
                                 },
                                 {
@@ -115,6 +116,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                         "delete_purchase", args=[purchase.pk]
                                     ),
                                     "slot": Icon("delete"),
+                                    "title": "Delete",
                                     "color": "red",
                                 },
                             ]
