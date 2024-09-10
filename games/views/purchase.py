@@ -204,7 +204,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.delete()
-    return redirect("list_sessions")
+    return redirect("list_purchases")
 
 
 @login_required
@@ -212,7 +212,7 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.date_dropped = timezone.now()
     purchase.save()
-    return redirect("list_sessions")
+    return redirect("list_purchases")
 
 
 @login_required
@@ -220,7 +220,7 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.date_refunded = timezone.now()
     purchase.save()
-    return redirect("list_sessions")
+    return redirect("list_purchases")
 
 
 def related_purchase_by_edition(request: HttpRequest) -> HttpResponse:
