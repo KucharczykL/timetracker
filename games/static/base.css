@@ -1539,8 +1539,8 @@ input:checked + .toggle-bg {
   width: 100%;
 }
 
-.max-w-80 {
-  max-width: 20rem;
+.max-w-\[30rem\] {
+  max-width: 30rem;
 }
 
 .max-w-screen-lg {
@@ -1557,18 +1557,6 @@ input:checked + .toggle-bg {
 
 .max-w-xs {
   max-width: 20rem;
-}
-
-.max-w-\[90\] {
-  max-width: 90;
-}
-
-.max-w-\[90rem\] {
-  max-width: 90rem;
-}
-
-.max-w-\[30rem\] {
-  max-width: 30rem;
 }
 
 .flex-1 {
@@ -1750,20 +1738,8 @@ input:checked + .toggle-bg {
   white-space: nowrap;
 }
 
-.text-wrap {
-  text-wrap: wrap;
-}
-
-.text-nowrap {
-  text-wrap: nowrap;
-}
-
 .text-balance {
   text-wrap: balance;
-}
-
-.text-pretty {
-  text-wrap: pretty;
 }
 
 .rounded {
