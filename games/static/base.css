@@ -3188,6 +3188,10 @@ textarea:disabled:is(.dark *) {
   border-end-end-radius: 0.5rem;
 }
 
+.\[\&_\:last-child\]\:text-right :last-child {
+  text-align: right;
+}
+
 .\[\&_a\]\:underline a {
   text-decoration-line: underline;
 }
