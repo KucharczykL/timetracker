@@ -45,6 +45,11 @@ urlpatterns = [
         name="edit_purchase",
     ),
     path(
+        "purchase/<int:purchase_id>/drop",
+        purchase.drop_purchase,
+        name="drop_purchase",
+    ),
+    path(
         "purchase/<int:purchase_id>/delete",
         purchase.delete_purchase,
         name="delete_purchase",
