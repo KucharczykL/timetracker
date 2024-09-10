@@ -114,6 +114,15 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                 else {},
                                 {
                                     "href": reverse(
+                                        "refund_purchase", args=[purchase.pk]
+                                    ),
+                                    "slot": Icon("refund"),
+                                    "title": "Mark as refunded",
+                                }
+                                if not purchase.date_refunded
+                                else {},
+                                {
+                                    "href": reverse(
                                         "edit_purchase", args=[purchase.pk]
                                     ),
                                     "slot": Icon("edit"),
@@ -202,6 +211,14 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.date_dropped = timezone.now()
+    purchase.save()
+    return redirect("list_sessions")
+
+
+@login_required
+def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    purchase.date_refunded = timezone.now()
     purchase.save()
     return redirect("list_sessions")
 

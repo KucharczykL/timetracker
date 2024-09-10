@@ -60,6 +60,11 @@ urlpatterns = [
         name="list_purchases",
     ),
     path(
+        "purchase/<int:purchase_id>/refund",
+        purchase.refund_purchase,
+        name="refund_purchase",
+    ),
+    path(
         "purchase/related-purchase-by-edition",
         purchase.related_purchase_by_edition,
         name="related_purchase_by_edition",
