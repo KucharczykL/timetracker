@@ -229,11 +229,12 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     }
 
     purchase_data: dict[str, Any] = {
-        "columns": ["Name", "Type", "Price", "Actions"],
+        "columns": ["Name", "Type", "Date", "Price", "Actions"],
         "rows": [
             [
                 purchase.name if purchase.name else purchase.edition.name,
                 purchase.get_type_display(),
+                purchase.date_purchased.strftime(dateformat),
                 f"{purchase.price} {purchase.price_currency}",
                 render_to_string(
                     "cotton/button_group.html",
