@@ -241,7 +241,6 @@ def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.delete()
     return redirect("list_sessions")
-    return redirect("list_sessions")
 
 
 @login_required
