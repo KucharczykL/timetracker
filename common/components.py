@@ -21,11 +21,16 @@ def Component(
     if isinstance(children, str):
         children = [children]
     childrenBlob = "\n".join(children)
-    attributesList = [f'{name} = "{value}"' for name, value in attributes]
-    attributesBlob = " ".join(attributesList)
+    if len(attributes) == 0:
+        attributesBlob = ""
+    else:
+        attributesList = [f'{name}="{value}"' for name, value in attributes]
+        # make attribute list into a string
+        # and insert space between tag and attribute list
+        attributesBlob = f" {" ".join(attributesList)}"
     tag: str = ""
     if tag_name != "":
-        tag = f"<a {attributesBlob}>{childrenBlob}</a>"
+        tag = f"<{tag_name}{attributesBlob}>{childrenBlob}</{tag_name}>"
     elif template != "":
         tag = render_to_string(
             template,
