@@ -19,7 +19,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
-    platforms = Platform.objects.order_by("-created_at")
+    platforms = Platform.objects.order_by("name")
     page_obj = None
     if int(limit) != 0:
         paginator = Paginator(platforms, limit)
