@@ -13,7 +13,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Icon
+from common.components import A, Button, Div, Icon
 from common.time import dateformat
 from common.utils import truncate_with_popover
 from games.forms import PurchaseForm
@@ -48,7 +48,6 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             "columns": [
                 "Name",
                 "Type",
-                "Platform",
                 "Price",
                 "Currency",
                 "Infinite",
@@ -71,14 +70,27 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                                 ),
                             ),
                         ],
-                        truncate_with_popover(
-                            purchase.edition.game.name
-                            if purchase.type == "game"
-                            else f"{purchase.edition.game.name} ({purchase.name})"
+                        Div(
+                            attributes=[("class", "inline-flex gap-2 items-center")],
+                            children=[
+                                Icon(
+                                    str(purchase.platform)
+                                    .lower()
+                                    .translate(
+                                        str(purchase.platform)
+                                        .lower()
+                                        .maketrans("", "", ". /()")
+                                    )
+                                ),
+                                truncate_with_popover(
+                                    purchase.edition.game.name
+                                    if purchase.type == "game"
+                                    else f"{purchase.edition.game.name} ({purchase.name})"
+                                ),
+                            ],
                         ),
                     ),
                     purchase.get_type_display(),
-                    purchase.platform,
                     purchase.price,
                     purchase.price_currency,
                     purchase.infinite,

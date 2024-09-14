@@ -204,7 +204,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "rows": [
             [
                 edition.name,
-                edition.platform,
+                Icon(str(edition.platform).lower().replace(".", "")),
                 edition.year_released,
                 render_to_string(
                     "cotton/button_group.html",

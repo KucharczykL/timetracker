@@ -1,0 +1,12 @@
+<c-vars fill="currentColor" viewbox="0 0 48 48" />
+<svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" viewBox="{{ viewbox }}" {% if not class %}class="text-black dark:text-white w-4 h-4"{% endif %} {{ attrs }}>
+    {% if path %}
+        <path fill="{{ fill }}" d="{{ path }}">
+        {% if title %}<title>{{ title }}</title>{% endif %}
+        </path>
+    {% elif slot %}
+        {{ slot }}
+    {% else %}
+        No SVG data specified
+    {% endif %}
+</svg>
