@@ -8,7 +8,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.components import A, Button, Div, Icon, Popover
+from common.components import (
+    A,
+    Button,
+    Div,
+    Icon,
+    NameWithPlatformIcon,
+    Popover,
+    PopoverTruncated,
+)
 from common.time import (
     dateformat,
     durationformat,
@@ -17,7 +25,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import safe_division, truncate, truncate_with_popover
+from common.utils import safe_division, truncate
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
 from games.views.general import use_custom_redirect
@@ -67,9 +75,9 @@ def list_games(request: HttpRequest) -> HttpResponse:
                                 ),
                             )
                         ],
-                        truncate_with_popover(game.name),
+                        PopoverTruncated(game.name),
                     ),
-                    truncate_with_popover(
+                    PopoverTruncated(
                         game.sort_name
                         if game.sort_name is not None and game.name != game.sort_name
                         else "(identical)"
@@ -197,14 +205,15 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     edition_data: dict[str, Any] = {
         "columns": [
             "Name",
-            "Platform",
             "Year Released",
             "Actions",
         ],
         "rows": [
             [
-                edition.name,
-                Icon(str(edition.platform).lower().replace(".", "")),
+                NameWithPlatformIcon(
+                    name=edition.name,
+                    platform=edition.platform,
+                ),
                 edition.year_released,
                 render_to_string(
                     "cotton/button_group.html",
@@ -232,7 +241,10 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "columns": ["Name", "Type", "Date", "Price", "Actions"],
         "rows": [
             [
-                purchase.name if purchase.name else purchase.edition.name,
+                NameWithPlatformIcon(
+                    name=purchase.name if purchase.name else purchase.edition.name,
+                    platform=purchase.platform,
+                ),
                 purchase.get_type_display(),
                 purchase.date_purchased.strftime(dateformat),
                 f"{purchase.price} {purchase.price_currency}",
@@ -301,9 +313,15 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 ),
             ],
         ),
-        "columns": ["Date", "Duration", "Actions"],
+        "columns": ["Edition", "Date", "Duration", "Actions"],
         "rows": [
             [
+                NameWithPlatformIcon(
+                    name=session.purchase.name
+                    if session.purchase.name
+                    else session.purchase.edition.name,
+                    platform=session.purchase.platform,
+                ),
                 f"{local_strftime(session.timestamp_start)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
                 (
                     format_duration(session.duration_calculated, durationformat)

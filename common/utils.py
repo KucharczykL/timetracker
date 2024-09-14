@@ -1,8 +1,6 @@
 from datetime import date
 from typing import Any, Generator, TypeVar
 
-from common.components import Popover
-
 
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
     """
@@ -42,13 +40,6 @@ def truncate(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
         if len(input_string) > 30
         else input_string
     )
-
-
-def truncate_with_popover(input_string: str) -> str:
-    if (truncated := truncate(input_string)) != input_string:
-        return Popover(wrapped_content=truncated, popover_content=input_string)
-    else:
-        return input_string
 
 
 T = TypeVar("T", str, int, date)

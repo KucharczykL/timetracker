@@ -3207,3 +3207,7 @@ textarea:disabled:is(.dark *) {
 .\[\&_h1\]\:mb-2 h1 {
   margin-bottom: 0.5rem;
 }
+
+.\[\&_td\:last-child\]\:text-right td:last-child {
+  text-align: right;
+}

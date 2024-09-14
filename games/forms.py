@@ -164,7 +164,11 @@ class GameForm(forms.ModelForm):
 class PlatformForm(forms.ModelForm):
     class Meta:
         model = Platform
-        fields = ["name", "group"]
+        fields = [
+            "name",
+            "icon",
+            "group",
+        ]
         widgets = {"name": autofocus_input_widget}
 
 

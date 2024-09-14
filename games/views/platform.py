@@ -40,6 +40,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             "header_action": A([], Button([], "Add platform"), url="add_platform"),
             "columns": [
                 "Name",
+                "Icon",
                 "Group",
                 "Created",
                 "Actions",
@@ -47,6 +48,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             "rows": [
                 [
                     platform.name,
+                    Icon(platform.icon),
                     platform.group,
                     local_strftime(platform.created_at, dateformat),
                     render_to_string(

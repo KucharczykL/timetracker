@@ -13,9 +13,8 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Div, Icon
+from common.components import A, Button, Icon, LinkedNameWithPlatformIcon
 from common.time import dateformat
-from common.utils import truncate_with_popover
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
 from games.views.general import use_custom_redirect
@@ -60,35 +59,10 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    A(
-                        [
-                            (
-                                "href",
-                                reverse(
-                                    "view_game",
-                                    args=[purchase.edition.game.pk],
-                                ),
-                            ),
-                        ],
-                        Div(
-                            attributes=[("class", "inline-flex gap-2 items-center")],
-                            children=[
-                                Icon(
-                                    str(purchase.platform)
-                                    .lower()
-                                    .translate(
-                                        str(purchase.platform)
-                                        .lower()
-                                        .maketrans("", "", ". /()")
-                                    )
-                                ),
-                                truncate_with_popover(
-                                    purchase.edition.game.name
-                                    if purchase.type == "game"
-                                    else f"{purchase.edition.game.name} ({purchase.name})"
-                                ),
-                            ],
-                        ),
+                    LinkedNameWithPlatformIcon(
+                        name=purchase.edition.name,
+                        game_id=purchase.edition.game.pk,
+                        platform=purchase.platform,
                     ),
                     purchase.get_type_display(),
                     purchase.price,

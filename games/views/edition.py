@@ -7,9 +7,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.components import A, Button, Icon
+from common.components import (
+    A,
+    Button,
+    Icon,
+    LinkedNameWithPlatformIcon,
+    PopoverTruncated,
+)
 from common.time import dateformat, local_strftime
-from common.utils import truncate_with_popover
 from games.forms import EditionForm
 from games.models import Edition, Game
 
@@ -42,7 +47,6 @@ def list_editions(request: HttpRequest) -> HttpResponse:
                 "Game",
                 "Name",
                 "Sort Name",
-                "Platform",
                 "Year",
                 "Wikidata",
                 "Created",
@@ -50,30 +54,22 @@ def list_editions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    A(
-                        [
-                            (
-                                "href",
-                                reverse(
-                                    "view_game",
-                                    args=[edition.game.pk],
-                                ),
-                            )
-                        ],
-                        truncate_with_popover(edition.game.name),
+                    LinkedNameWithPlatformIcon(
+                        name=edition.name,
+                        game_id=edition.game.id,
+                        platform=edition.platform,
                     ),
-                    truncate_with_popover(
+                    PopoverTruncated(
                         edition.name
                         if edition.game.name != edition.name
                         else "(identical)"
                     ),
-                    truncate_with_popover(
+                    PopoverTruncated(
                         edition.sort_name
                         if edition.sort_name is not None
                         and edition.game.name != edition.sort_name
                         else "(identical)"
                     ),
-                    truncate_with_popover(str(edition.platform)),
                     edition.year_released,
                     edition.wikidata,
                     local_strftime(edition.created_at, dateformat),

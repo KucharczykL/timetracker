@@ -4,7 +4,9 @@ from typing import Any, Callable
 
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
-from django.utils.safestring import mark_safe
+from django.utils.safestring import SafeText, mark_safe
+
+from common.utils import truncate
 
 HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
@@ -65,6 +67,13 @@ def Popover(
     )
 
 
+def PopoverTruncated(input_string: str) -> str:
+    if (truncated := truncate(input_string)) != input_string:
+        return Popover(wrapped_content=truncated, popover_content=input_string)
+    else:
+        return input_string
+
+
 def A(
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
@@ -120,3 +129,39 @@ def Icon(
     attributes: list[HTMLAttribute] = [],
 ):
     return Component(template=f"cotton/icon/{name}.html", attributes=attributes)
+
+
+def LinkedNameWithPlatformIcon(name: str, game_id: int, platform: str) -> SafeText:
+    link = reverse("view_game", args=[int(game_id)])
+    a_content = Div(
+        [("class", "inline-flex gap-2 items-center")],
+        [
+            Icon(
+                platform.icon,
+                [("title", platform.name)],
+            ),
+            PopoverTruncated(name),
+        ],
+    )
+
+    return mark_safe(
+        A(
+            url=link,
+            children=[a_content],
+        ),
+    )
+
+
+def NameWithPlatformIcon(name: str, platform: str) -> SafeText:
+    content = Div(
+        [("class", "inline-flex gap-2 items-center")],
+        [
+            Icon(
+                platform.icon,
+                [("title", platform.name)],
+            ),
+            PopoverTruncated(name),
+        ],
+    )
+
+    return mark_safe(content)

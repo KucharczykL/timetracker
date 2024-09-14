@@ -8,7 +8,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Div, Icon, Popover
+from common.components import A, Button, Div, Icon, LinkedNameWithPlatformIcon, Popover
 from common.time import (
     dateformat,
     durationformat,
@@ -17,7 +17,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import truncate, truncate_with_popover
+from common.utils import truncate
 from games.forms import SessionForm
 from games.models import Purchase, Session
 from games.views.general import use_custom_redirect
@@ -91,12 +91,10 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    A(
-                        children=truncate_with_popover(session.purchase.edition.name),
-                        url=reverse(
-                            "view_game",
-                            args=[session.purchase.edition.game.pk],
-                        ),
+                    LinkedNameWithPlatformIcon(
+                        name=session.purchase.edition.name,
+                        game_id=session.purchase.edition.game.pk,
+                        platform=session.purchase.platform,
                     ),
                     f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
                     (
@@ -235,6 +233,14 @@ def end_session(
             "session_count": request.GET.get("session_count", 0),
         }
         return render(request, template, context)
+    return redirect("list_sessions")
+
+
+@login_required
+def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+    session.delete()
+    return redirect("list_sessions")
     return redirect("list_sessions")
 
 

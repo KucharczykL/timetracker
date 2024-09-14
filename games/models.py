@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Sum
+from django.template.defaultfilters import slugify
 from django.utils import timezone
 
 from common.time import format_duration
@@ -25,10 +26,16 @@ class Game(models.Model):
 class Platform(models.Model):
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, null=True, blank=True, default=None)
+    icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.icon:
+            self.icon = slugify(self.name)
+        super().save(*args, **kwargs)
 
 
 class Edition(models.Model):
