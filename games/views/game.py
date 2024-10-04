@@ -273,7 +273,9 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     sessions_all = Session.objects.filter(purchase__edition__game=game).order_by(
         "-timestamp_start"
     )
-    last_session = sessions_all.latest()
+    last_session = None
+    if sessions_all.exists():
+        last_session = sessions_all.latest()
     session_count = sessions_all.count()
     session_paginator = Paginator(sessions_all, 5)
     page_number = request.GET.get("page", 1)
@@ -310,7 +312,9 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                             )
                         ],
                     ),
-                ),
+                )
+                if last_session
+                else "",
             ],
         ),
         "columns": ["Edition", "Date", "Duration", "Actions"],
