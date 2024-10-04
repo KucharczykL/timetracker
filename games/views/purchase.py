@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from common.components import A, Button, Icon, LinkedNameWithPlatformIcon
 from common.time import dateformat
+from common.utils import format_float_or_int
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
 from games.views.general import use_custom_redirect
@@ -65,7 +66,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                         platform=purchase.platform,
                     ),
                     purchase.get_type_display(),
-                    purchase.price,
+                    format_float_or_int(purchase.price),
                     purchase.price_currency,
                     purchase.infinite,
                     purchase.date_purchased.strftime(dateformat),

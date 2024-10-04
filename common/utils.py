@@ -60,3 +60,7 @@ def generate_split_ranges(
         except IndexError:
             end = len(value_list)
         yield (value_list[start], value_list[end - 1])
+
+
+def format_float_or_int(number: int | float):
+    return int(number) if float(number).is_integer() else f"{number:03.2f}"

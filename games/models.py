@@ -111,7 +111,7 @@ class Purchase(models.Model):
     date_finished = models.DateField(blank=True, null=True)
     date_dropped = models.DateField(blank=True, null=True)
     infinite = models.BooleanField(default=False)
-    price = models.IntegerField(default=0)
+    price = models.FloatField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
     ownership_type = models.CharField(
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
