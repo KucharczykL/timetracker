@@ -8,7 +8,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from common.time import format_duration
+from common.time import dateformat, format_duration
 from common.utils import safe_division
 from games.models import Edition, Game, Platform, Purchase, Session
 
@@ -173,10 +173,10 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
         first_play_game = first_session.purchase.edition.game
-        first_play_date = first_session.timestamp_start.strftime("%x")
+        first_play_date = first_session.timestamp_start.strftime(dateformat)
         last_session = this_year_sessions.latest()
         last_play_game = last_session.purchase.edition.game
-        last_play_date = last_session.timestamp_start.strftime("%x")
+        last_play_date = last_session.timestamp_start.strftime(dateformat)
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
     all_purchased_refunded_this_year_count: int = this_year_purchases_refunded.count()
@@ -400,10 +400,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
         first_play_game = first_session.purchase.edition.game
-        first_play_date = first_session.timestamp_start.strftime("%x")
+        first_play_date = first_session.timestamp_start.strftime(dateformat)
         last_session = this_year_sessions.latest()
         last_play_game = last_session.purchase.edition.game
-        last_play_date = last_session.timestamp_start.strftime("%x")
+        last_play_date = last_session.timestamp_start.strftime(dateformat)
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
     all_purchased_refunded_this_year_count = this_year_purchases_refunded.count()
