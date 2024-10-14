@@ -326,7 +326,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     else session.purchase.edition.name,
                     platform=session.purchase.platform,
                 ),
-                f"{local_strftime(session.timestamp_start)}{f" — {session.timestamp_end.strftime(timeformat)}" if session.timestamp_end else ""}",
+                f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
                 (
                     format_duration(session.duration_calculated, durationformat)
                     if session.duration_calculated
