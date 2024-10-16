@@ -62,36 +62,46 @@
                     <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year_count }}</td>
                 </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ longest_session_time }} (<c-gamelink :game_id=longest_session_game.id :name=longest_session_game.name />)
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ highest_session_count }} (<c-gamelink :game_id=highest_session_count_game.id :name=highest_session_count_game.name />)
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ highest_session_average }} (<c-gamelink :game_id=highest_session_average_game.id :name=highest_session_average_game.name />)
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <c-gamelink :game_id=first_play_game.id :name=first_play_game.name /> ({{ first_play_date }})
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        <c-gamelink :game_id=last_play_game.id :name=last_play_game.name /> ({{ last_play_date }})
-                    </td>
-                </tr>
+                {% if longest_session_game.id %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            {{ longest_session_time }} (<c-gamelink :game_id=longest_session_game.id :name=longest_session_game.name />)
+                        </td>
+                    </tr>
+                {% endif %}
+                {% if highest_session_count_game.id %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            {{ highest_session_count }} (<c-gamelink :game_id=highest_session_count_game.id :name=highest_session_count_game.name />)
+                        </td>
+                    </tr>
+                {% endif %}
+                {% if highest_session_average_game.id %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            {{ highest_session_average }} (<c-gamelink :game_id=highest_session_average_game.id :name=highest_session_average_game.name />)
+                        </td>
+                    </tr>
+                {% endif %}
+                {% if first_play_game.id %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <c-gamelink :game_id=first_play_game.id :name=first_play_game.name /> ({{ first_play_date }})
+                        </td>
+                    </tr>
+                {% endif %}
+                {% if last_play_game.id %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                            <c-gamelink :game_id=last_play_game.id :name=last_play_game.name /> ({{ last_play_date }})
+                        </td>
+                    </tr>
+                {% endif %}
             </tbody>
         </table>
         {% if month_playtime %}
