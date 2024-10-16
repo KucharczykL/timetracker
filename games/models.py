@@ -38,6 +38,12 @@ class Platform(models.Model):
         super().save(*args, **kwargs)
 
 
+def get_sentinel_platform():
+    return Platform.objects.get_or_create(
+        name="Unspecified", icon="unspecified", group="Unspecified"
+    )[0]
+
+
 class Edition(models.Model):
     class Meta:
         unique_together = [["name", "platform", "year_released"]]
@@ -54,6 +60,11 @@ class Edition(models.Model):
 
     def __str__(self):
         return self.sort_name
+
+    def save(self, *args, **kwargs):
+        if self.platform is None:
+            self.platform = get_sentinel_platform()
+        super().save(*args, **kwargs)
 
 
 class PurchaseQueryset(models.QuerySet):
