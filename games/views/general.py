@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
@@ -8,7 +9,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from common.time import dateformat, format_duration
+from common.time import available_stats_year_range, dateformat, format_duration
 from common.utils import safe_division
 from games.models import Edition, Game, Platform, Purchase, Session
 
@@ -21,6 +22,10 @@ def model_counts(request: HttpRequest) -> dict[str, bool]:
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
     }
+
+
+def global_current_year(request: HttpRequest) -> dict[str, int]:
+    return {"global_current_year": datetime.now().year}
 
 
 def use_custom_redirect(
@@ -247,6 +252,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         "last_play_game": last_play_game,
         "last_play_date": last_play_date,
         "title": f"{year} Stats",
+        "stats_dropdown_year_range": available_stats_year_range(),
     }
 
     request.session["return_path"] = request.path
@@ -493,6 +499,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         "last_play_date": last_play_date,
         "title": f"{year} Stats",
         "month_playtimes": month_playtimes,
+        "stats_dropdown_year_range": available_stats_year_range(),
     }
 
     request.session["return_path"] = request.path

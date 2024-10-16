@@ -163,3 +163,7 @@ def streak_bruteforce(datelist: list[date]) -> dict[str, int | tuple[date, date]
         else:
             increment_streak()
     return {"days": highest_streak, "dates": highest_streak_daterange}
+
+
+def available_stats_year_range():
+    return range(datetime.now().year, 1999, -1)

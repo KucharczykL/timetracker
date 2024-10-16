@@ -84,6 +84,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "games.views.general.model_counts",
+                "games.views.general.global_current_year",
             ],
             "builtins": [
                 "template_partials.templatetags.partials",
