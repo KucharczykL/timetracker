@@ -1,0 +1,25 @@
+<c-layouts.base>
+{% load static %}
+{% if form_content %}
+    {{ form_content }}
+{% else %}
+    <form method="post" enctype="multipart/form-data">
+        <table class="mx-auto">
+            {% csrf_token %}
+            {{ form.as_table }}
+            <tr>
+                <td></td>
+                <td>
+                    <input type="submit" value="Submit" />
+                </td>
+            </tr>
+            {{ additional_row }}
+        </table>
+    </form>
+{% endif %}
+<c-slot name="scripts">
+{% if script_name %}
+    <script type="module" src="{% static 'js/'|add:script_name %}"></script>
+{% endif %}
+</c-slot>
+</c-layouts.base>

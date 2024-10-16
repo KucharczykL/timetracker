@@ -177,6 +177,7 @@ def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
             form = SessionForm(initial=initial)
 
     context["title"] = "Add New Session"
+    context["script_name"] = "add_session.js"
     context["form"] = form
     return render(request, "add_session.html", context)
 

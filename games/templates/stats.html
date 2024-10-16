@@ -1,7 +1,4 @@
-{% extends "base.html" %}
-{% block title %}
-    {{ title }}
-{% endblock title %}
+<c-layouts.base>
 {% load static %}
 {% partialdef purchase-name %}
 {% if purchase.type != 'game' %}
@@ -12,278 +9,277 @@
     <c-gamelink :game_id=purchase.edition.game.id :name=purchase.edition.name />
 {% endif %}
 {% endpartialdef %}
-{% block content %}
-    <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
-        <div class="flex justify-center items-center">
-            <form method="get" class="text-center">
-                <label class="text-5xl text-center inline-block mb-10" for="yearSelect">Stats for:</label>
-                <select name="year"
-                        id="yearSelect"
-                        onchange="this.form.submit();"
-                        class="mx-2">
-                    {% for year_item in stats_dropdown_year_range %}
-                        <option value="{{ year_item }}" {% if year == year_item %}selected{% endif %}>{{ year_item }}</option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
-        <h1 class="text-5xl text-center my-6">Playtime</h1>
-        <table class="responsive-table">
-            <tbody>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Hours</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Sessions</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_sessions }}</td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Days</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
-                </tr>
-                {% if total_games %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
-                    </tr>
-                {% endif %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
-                </tr>
-                {% if all_finished_this_year_count %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year_count }}</td>
-                    </tr>
-                {% endif %}
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year_count }}</td>
-                </tr>
-                {% if longest_session_game.id %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {{ longest_session_time }} (<c-gamelink :game_id=longest_session_game.id :name=longest_session_game.name />)
-                        </td>
-                    </tr>
-                {% endif %}
-                {% if highest_session_count_game.id %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {{ highest_session_count }} (<c-gamelink :game_id=highest_session_count_game.id :name=highest_session_count_game.name />)
-                        </td>
-                    </tr>
-                {% endif %}
-                {% if highest_session_average_game.id %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            {{ highest_session_average }} (<c-gamelink :game_id=highest_session_average_game.id :name=highest_session_average_game.name />)
-                        </td>
-                    </tr>
-                {% endif %}
-                {% if first_play_game.id %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <c-gamelink :game_id=first_play_game.id :name=first_play_game.name /> ({{ first_play_date }})
-                        </td>
-                    </tr>
-                {% endif %}
-                {% if last_play_game.id %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <c-gamelink :game_id=last_play_game.id :name=last_play_game.name /> ({{ last_play_date }})
-                        </td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-        {% if month_playtime %}
-            <h1 class="text-5xl text-center my-6">Playtime per month</h1>
-            <table class="responsive-table">
-                <tbody>
-                    {% for month in month_playtimes %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2">{{ month.month | date:"F" }}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ month.playtime }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-        <h1 class="text-5xl text-center my-6">Purchases</h1>
-        <table class="responsive-table">
-            <tbody>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Total</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year_count }}</td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ all_purchased_refunded_this_year_count }} ({{ refunded_percent }}%)
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Dropped</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ dropped_count }} ({{ dropped_percentage }}%)</td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                        {{ purchased_unfinished_count }} ({{ unfinished_purchases_percent }}%)
-                    </td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Backlog Decrease</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ backlog_decrease_count }}</td>
-                </tr>
-                <tr>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }} ({{ spent_per_game }}/game)</td>
-                </tr>
-            </tbody>
-        </table>
-        <h1 class="text-5xl text-center my-6">Top games by playtime</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Name</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for game in top_10_games_by_playtime %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
-                            <c-gamelink :game_id=game.id :name=game.name />
-                        </td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
-                    </tr>
+<div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
+    <div class="flex justify-center items-center">
+        <form method="get" class="text-center">
+            <label class="text-5xl text-center inline-block mb-10" for="yearSelect">Stats for:</label>
+            <select name="year"
+                    id="yearSelect"
+                    onchange="this.form.submit();"
+                    class="mx-2">
+                {% for year_item in stats_dropdown_year_range %}
+                    <option value="{{ year_item }}" {% if year == year_item %}selected{% endif %}>{{ year_item }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
-        <h1 class="text-5xl text-center my-6">Platforms by playtime</h1>
-        <table class="responsive-table">
-            <thead>
-                <tr>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Platform</th>
-                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in total_playtime_per_platform %}
-                    <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if all_finished_this_year %}
-            <h1 class="text-5xl text-center my-6">Finished</h1>
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for purchase in all_finished_this_year %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-        {% if this_year_finished_this_year %}
-            <h1 class="text-5xl text-center my-6">Finished ({{ year }} games)</h1>
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for purchase in this_year_finished_this_year %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-        {% if purchased_this_year_finished_this_year %}
-            <h1 class="text-5xl text-center my-6">Bought and Finished ({{ year }})</h1>
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for purchase in purchased_this_year_finished_this_year %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-        {% if purchased_unfinished %}
-            <h1 class="text-5xl text-center my-6">Unfinished Purchases</h1>
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for purchase in purchased_unfinished %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-        {% if all_purchased_this_year %}
-            <h1 class="text-5xl text-center my-6">All Purchases</h1>
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
-                        <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for purchase in all_purchased_this_year %}
-                        <tr>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
-                            <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
+            </select>
+        </form>
     </div>
-{% endblock content %}
+    <h1 class="text-5xl text-center my-6">Playtime</h1>
+    <table class="responsive-table">
+        <tbody>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Hours</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_hours }}</td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Sessions</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_sessions }}</td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Days</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ unique_days }} ({{ unique_days_percent }}%)</td>
+            </tr>
+            {% if total_games %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Games</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_games }}</td>
+                </tr>
+            {% endif %}
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Games ({{ year }})</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_2023_games }}</td>
+            </tr>
+            {% if all_finished_this_year_count %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_finished_this_year_count }}</td>
+                </tr>
+            {% endif %}
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Finished ({{ year }})</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ this_year_finished_this_year_count }}</td>
+            </tr>
+            {% if longest_session_game.id %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Longest session</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        {{ longest_session_time }} (<c-gamelink :game_id=longest_session_game.id :name=longest_session_game.name />)
+                    </td>
+                </tr>
+            {% endif %}
+            {% if highest_session_count_game.id %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Most sessions</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        {{ highest_session_count }} (<c-gamelink :game_id=highest_session_count_game.id :name=highest_session_count_game.name />)
+                    </td>
+                </tr>
+            {% endif %}
+            {% if highest_session_average_game.id %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Highest session average</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        {{ highest_session_average }} (<c-gamelink :game_id=highest_session_average_game.id :name=highest_session_average_game.name />)
+                    </td>
+                </tr>
+            {% endif %}
+            {% if first_play_game.id %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">First play</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        <c-gamelink :game_id=first_play_game.id :name=first_play_game.name /> ({{ first_play_date }})
+                    </td>
+                </tr>
+            {% endif %}
+            {% if last_play_game.id %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2">Last play</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        <c-gamelink :game_id=last_play_game.id :name=last_play_game.name /> ({{ last_play_date }})
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    {% if month_playtime %}
+        <h1 class="text-5xl text-center my-6">Playtime per month</h1>
+        <table class="responsive-table">
+            <tbody>
+                {% for month in month_playtimes %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2">{{ month.month | date:"F" }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ month.playtime }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    <h1 class="text-5xl text-center my-6">Purchases</h1>
+    <table class="responsive-table">
+        <tbody>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Total</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ all_purchased_this_year_count }}</td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Refunded</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                    {{ all_purchased_refunded_this_year_count }} ({{ refunded_percent }}%)
+                </td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Dropped</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ dropped_count }} ({{ dropped_percentage }}%)</td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Unfinished</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                    {{ purchased_unfinished_count }} ({{ unfinished_purchases_percent }}%)
+                </td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Backlog Decrease</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ backlog_decrease_count }}</td>
+            </tr>
+            <tr>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2">Spendings ({{ total_spent_currency }})</td>
+                <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ total_spent }} ({{ spent_per_game }}/game)</td>
+            </tr>
+        </tbody>
+    </table>
+    <h1 class="text-5xl text-center my-6">Top games by playtime</h1>
+    <table class="responsive-table">
+        <thead>
+            <tr>
+                <th class="px-2 sm:px-4 md:px-6 md:py-2">Name</th>
+                <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for game in top_10_games_by_playtime %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
+                        <c-gamelink :game_id=game.id :name=game.name />
+                    </td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.formatted_playtime }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <h1 class="text-5xl text-center my-6">Platforms by playtime</h1>
+    <table class="responsive-table">
+        <thead>
+            <tr>
+                <th class="px-2 sm:px-4 md:px-6 md:py-2">Platform</th>
+                <th class="px-2 sm:px-4 md:px-6 md:py-2">Playtime (hours)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in total_playtime_per_platform %}
+                <tr>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.platform_name }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ item.formatted_playtime }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if all_finished_this_year %}
+        <h1 class="text-5xl text-center my-6">Finished</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in all_finished_this_year %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    {% if this_year_finished_this_year %}
+        <h1 class="text-5xl text-center my-6">Finished ({{ year }} games)</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in this_year_finished_this_year %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    {% if purchased_this_year_finished_this_year %}
+        <h1 class="text-5xl text-center my-6">Bought and Finished ({{ year }})</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in purchased_this_year_finished_this_year %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    {% if purchased_unfinished %}
+        <h1 class="text-5xl text-center my-6">Unfinished Purchases</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in purchased_unfinished %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    {% if all_purchased_this_year %}
+        <h1 class="text-5xl text-center my-6">All Purchases</h1>
+        <table class="responsive-table">
+            <thead>
+                <tr>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name truncate max-w-20char">Name</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Price ({{ total_spent_currency }})</th>
+                    <th class="px-2 sm:px-4 md:px-6 md:py-2">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in all_purchased_this_year %}
+                    <tr>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+</div>
+</c-layouts.base>

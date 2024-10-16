@@ -7,11 +7,7 @@
         <meta name="description" content="Self-hosted time-tracker." />
         <meta name="keywords" content="time, tracking, video games, self-hosted" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Timetracker -
-            {% block title %}
-                Untitled
-            {% endblock title %}
-        </title>
+        <title>Timetracker - {{ title }}</title>
         <script src="{% static 'js/htmx.min.js' %}"></script>
         {% django_htmx_script %}
         <link rel="stylesheet" href="{% static 'base.css' %}" />
@@ -34,16 +30,11 @@
              alt="loading indicator" />
         <div class="flex flex-col min-h-screen">
             {% include "navbar.html" %}
-            <div class="flex flex-1 flex-col dark:bg-gray-800 pt-8">
-                {% block content %}
-                    No content here.
-                {% endblock content %}
-            </div>
+            <div class="flex flex-1 flex-col dark:bg-gray-800 pt-8">{{ slot }}</div>
             {% load version %}
             <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
         </div>
-        {% block scripts %}
-        {% endblock scripts %}
+        {{ scripts }}
         <script>
             var themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
             var themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
