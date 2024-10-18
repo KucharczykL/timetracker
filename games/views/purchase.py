@@ -26,7 +26,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
-    purchases = Purchase.objects.order_by("-date_purchased")
+    purchases = Purchase.objects.order_by("-date_purchased", "-created_at")
     page_obj = None
     if int(limit) != 0:
         paginator = Paginator(purchases, limit)
