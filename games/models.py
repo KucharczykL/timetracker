@@ -259,12 +259,12 @@ class Session(models.Model):
 
 
 class Device(models.Model):
-    PC = "pc"
-    CONSOLE = "co"
-    HANDHELD = "ha"
-    MOBILE = "mo"
-    SBC = "sbc"
-    UNKNOWN = "un"
+    PC = "PC"
+    CONSOLE = "Console"
+    HANDHELD = "Handheld"
+    MOBILE = "Mobile"
+    SBC = "Single-board computer"
+    UNKNOWN = "Unknown"
     DEVICE_TYPES = [
         (PC, "PC"),
         (CONSOLE, "Console"),
@@ -274,8 +274,8 @@ class Device(models.Model):
         (UNKNOWN, "Unknown"),
     ]
     name = models.CharField(max_length=255)
-    type = models.CharField(max_length=3, choices=DEVICE_TYPES, default=UNKNOWN)
+    type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.name} ({self.get_type_display()})"
+        return f"{self.name} ({self.type})"
