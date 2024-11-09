@@ -2,6 +2,7 @@ from random import choices as random_choices
 from string import ascii_lowercase
 from typing import Any, Callable
 
+from django.template import TemplateDoesNotExist
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import SafeText, mark_safe
@@ -124,11 +125,38 @@ def Div(
     return Component(tag_name="div", attributes=attributes, children=children)
 
 
+def Input(
+    type: str = "text",
+    attributes: list[HTMLAttribute] = [],
+    children: list[HTMLTag] | HTMLTag = [],
+):
+    return Component(
+        tag_name="input", attributes=attributes + [("type", type)], children=children
+    )
+
+
+def Form(
+    action="",
+    method="get",
+    attributes: list[HTMLAttribute] = [],
+    children: list[HTMLTag] | HTMLTag = [],
+):
+    return Component(
+        tag_name="form",
+        attributes=attributes + [("action", action), ("method", method)],
+        children=children,
+    )
+
+
 def Icon(
     name: str,
     attributes: list[HTMLAttribute] = [],
 ):
-    return Component(template=f"cotton/icon/{name}.html", attributes=attributes)
+    try:
+        result = Component(template=f"cotton/icon/{name}.html", attributes=attributes)
+    except TemplateDoesNotExist:
+        result = Icon(name="unspecified", attributes=attributes)
+    return result
 
 
 def LinkedNameWithPlatformIcon(name: str, game_id: int, platform: str) -> SafeText:
