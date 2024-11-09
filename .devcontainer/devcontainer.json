@@ -1,0 +1,21 @@
+{
+    "name": "Django Time Tracker",
+    "dockerFile": "Dockerfile",
+    "customizations": {
+      "vscode": {
+        "settings": {
+          "python.pythonPath": "/usr/local/bin/python",
+          "python.defaultInterpreterPath": "/usr/local/bin/python",
+          "terminal.integrated.defaultProfile.linux": "bash"
+        },
+        "extensions": [
+          "ms-python.python",
+          "ms-python.vscode-pylance",
+          "ms-azuretools.vscode-docker"
+        ]
+      }
+    },
+    "forwardPorts": [8000],
+    "postCreateCommand": "poetry install && poetry run python manage.py migrate",
+    "remoteUser": "vscode"
+  }
