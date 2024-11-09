@@ -70,7 +70,11 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                     Form(
                         children=[
                             render_to_string(
-                                "cotton/search_field.html", {"id": "search_string"}
+                                "cotton/search_field.html",
+                                {
+                                    "id": "search_string",
+                                    "search_string": search_string,
+                                },
                             )
                         ]
                     ),
