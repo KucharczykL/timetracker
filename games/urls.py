@@ -116,6 +116,7 @@ urlpatterns = [
         name="list_sessions_end_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
+    path("session/search", session.search_sessions, name="search_sessions"),
     path("stats/", general.stats_alltime, name="stats_alltime"),
     path(
         "stats/<int:year>",

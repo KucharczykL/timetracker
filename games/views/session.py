@@ -8,7 +8,15 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Div, Icon, LinkedNameWithPlatformIcon, Popover
+from common.components import (
+    A,
+    Button,
+    Div,
+    Form,
+    Icon,
+    LinkedNameWithPlatformIcon,
+    Popover,
+)
 from common.time import (
     dateformat,
     durationformat,
@@ -24,11 +32,14 @@ from games.views.general import use_custom_redirect
 
 
 @login_required
-def list_sessions(request: HttpRequest) -> HttpResponse:
+def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
     sessions = Session.objects.order_by("-timestamp_start")
+    search_string = request.GET.get("search_string", search_string)
+    if search_string != "":
+        sessions = sessions.filter(purchase__edition__name__icontains=search_string)
     last_session = sessions.latest()
     page_obj = None
     if int(limit) != 0:
@@ -49,37 +60,49 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         "data": {
             "header_action": Div(
                 children=[
-                    A(
-                        url="add_session",
-                        children=Button(
-                            icon=True,
-                            size="xs",
-                            children=[Icon("play"), "LOG"],
-                        ),
+                    Form(
+                        children=[
+                            render_to_string(
+                                "cotton/search_field.html", {"id": "search_string"}
+                            )
+                        ]
                     ),
-                    A(
-                        url=reverse(
-                            "list_sessions_start_session_from_session",
-                            args=[last_session.pk],
-                        ),
-                        children=Popover(
-                            popover_content=last_session.purchase.edition.name,
-                            children=[
-                                Button(
+                    Div(
+                        children=[
+                            A(
+                                url="add_session",
+                                children=Button(
                                     icon=True,
-                                    color="gray",
                                     size="xs",
+                                    children=[Icon("play"), "LOG"],
+                                ),
+                            ),
+                            A(
+                                url=reverse(
+                                    "list_sessions_start_session_from_session",
+                                    args=[last_session.pk],
+                                ),
+                                children=Popover(
+                                    popover_content=last_session.purchase.edition.name,
                                     children=[
-                                        Icon("play"),
-                                        truncate(
-                                            f"{last_session.purchase.edition.name}"
-                                        ),
+                                        Button(
+                                            icon=True,
+                                            color="gray",
+                                            size="xs",
+                                            children=[
+                                                Icon("play"),
+                                                truncate(
+                                                    f"{last_session.purchase.edition.name}"
+                                                ),
+                                            ],
+                                        )
                                     ],
-                                )
-                            ],
-                        ),
+                                ),
+                            ),
+                        ]
                     ),
                 ],
+                attributes=[("class", "flex justify-between")],
             ),
             "columns": [
                 "Name",
@@ -148,6 +171,11 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         },
     }
     return render(request, "list_purchases.html", context)
+
+
+@login_required
+def search_sessions(request: HttpRequest) -> HttpResponse:
+    return list_sessions(request, search_string=request.GET.get("search_string", ""))
 
 
 @login_required
