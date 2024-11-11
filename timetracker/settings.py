@@ -42,7 +42,17 @@ INSTALLED_APPS = [
     "graphene_django",
     "django_htmx",
     "django_cotton",
+    "django_q",
 ]
+
+Q_CLUSTER = {
+    "name": "DjangoQ",
+    "workers": 4,
+    "recycle": 500,
+    "timeout": 60,
+    "retry": 120,
+    "orm": "default",
+}
 
 GRAPHENE = {"SCHEMA": "games.schema.schema"}
 

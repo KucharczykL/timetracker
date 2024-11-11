@@ -78,9 +78,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     ).distinct()
 
     this_year_purchases = Purchase.objects.all()
-    this_year_purchases_with_currency = this_year_purchases.select_related(
-        "edition"
-    ).filter(price_currency__exact=selected_currency)
+    this_year_purchases_with_currency = this_year_purchases.select_related("edition")
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
         date_refunded=None
     )
@@ -124,7 +122,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     ).order_by("date_finished")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
-        total_spent=Sum(F("price"))
+        total_spent=Sum(F("converted_price"))
     )
     total_spent = this_year_spendings["total_spent"] or 0
 
@@ -300,12 +298,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     ).distinct()
 
     this_year_purchases = Purchase.objects.filter(date_purchased__year=year)
-    this_year_purchases_with_currency = this_year_purchases.select_related(
-        "edition"
-    ).filter(price_currency__exact=selected_currency)
+    this_year_purchases_with_currency = this_year_purchases.select_related("edition")
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
         date_refunded=None
-    )
+    ).exclude(ownership_type=Purchase.DEMO)
     this_year_purchases_refunded = this_year_purchases_with_currency.refunded()
 
     this_year_purchases_unfinished_dropped_nondropped = (
@@ -348,7 +344,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     ).order_by("date_finished")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
-        total_spent=Sum(F("price"))
+        total_spent=Sum(F("converted_price"))
     )
     total_spent = this_year_spendings["total_spent"] or 0
 

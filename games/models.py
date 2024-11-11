@@ -124,6 +124,8 @@ class Purchase(models.Model):
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
+    converted_price = models.FloatField(null=True)
+    converted_currency = models.CharField(max_length=3, null=True)
     ownership_type = models.CharField(
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
     )
@@ -162,6 +164,16 @@ class Purchase(models.Model):
             raise ValidationError(
                 f"{self.get_type_display()} must have a related purchase."
             )
+        if self.pk is not None:
+            # Retrieve the existing instance from the database
+            existing_purchase = Purchase.objects.get(pk=self.pk)
+            # If price has changed, reset converted fields
+            if (
+                existing_purchase.price != self.price
+                or existing_purchase.price_currency != self.price_currency
+            ):
+                self.converted_price = None
+                self.converted_currency = None
         super().save(*args, **kwargs)
 
 
@@ -279,3 +291,16 @@ class Device(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.type})"
+
+
+class ExchangeRate(models.Model):
+    currency_from = models.CharField(max_length=255)
+    currency_to = models.CharField(max_length=255)
+    year = models.PositiveIntegerField()
+    rate = models.FloatField()
+
+    class Meta:
+        unique_together = ("currency_from", "currency_to", "year")
+
+    def __str__(self):
+        return f"{self.currency_from}/{self.currency_to} - {self.rate} ({self.year})"

@@ -1,0 +1,112 @@
+- model: games.exchangerate
+  pk: 1
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2024
+    rate: 23.4
+- model: games.exchangerate
+  pk: 2
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2024
+    rate: 3.267
+- model: games.exchangerate
+  pk: 3
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2019
+    rate: 22.466
+- model: games.exchangerate
+  pk: 4
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2023
+    rate: 22.63
+- model: games.exchangerate
+  pk: 5
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2017
+    rate: 25.819
+- model: games.exchangerate
+  pk: 6
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2013
+    rate: 19.023
+- model: games.exchangerate
+  pk: 7
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2019
+    rate: 3.295
+- model: games.exchangerate
+  pk: 8
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2016
+    rate: 3.795
+- model: games.exchangerate
+  pk: 9
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2015
+    rate: 3.707
+- model: games.exchangerate
+  pk: 10
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2020
+    rate: 3.26
+- model: games.exchangerate
+  pk: 11
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2012
+    rate: 25.51
+- model: games.exchangerate
+  pk: 12
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2010
+    rate: 26.465
+- model: games.exchangerate
+  pk: 13
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2014
+    rate: 27.52
+- model: games.exchangerate
+  pk: 14
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2024
+    rate: 25.21
+- model: games.exchangerate
+  pk: 15
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2022
+    rate: 24.325
+- model: games.exchangerate
+  pk: 16
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2018
+    rate: 3.268

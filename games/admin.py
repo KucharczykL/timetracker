@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from games.models import Device, Edition, Game, Platform, Purchase, Session
+from games.models import (
+    Device,
+    Edition,
+    ExchangeRate,
+    Game,
+    Platform,
+    Purchase,
+    Session,
+)
 
 # Register your models here.
 admin.site.register(Game)
@@ -9,3 +17,4 @@ admin.site.register(Platform)
 admin.site.register(Session)
 admin.site.register(Edition)
 admin.site.register(Device)
+admin.site.register(ExchangeRate)

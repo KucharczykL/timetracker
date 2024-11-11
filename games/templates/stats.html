@@ -253,7 +253,7 @@
                 {% for purchase in purchased_unfinished %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.converted_price }}</td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
                     </tr>
                 {% endfor %}
@@ -274,7 +274,7 @@
                 {% for purchase in all_purchased_this_year %}
                     <tr>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.price }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.converted_price }}</td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_purchased | date:"d/m/Y" }}</td>
                     </tr>
                 {% endfor %}

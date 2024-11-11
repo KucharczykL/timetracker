@@ -7,6 +7,7 @@
 * Allow deleting purchases
 * Add all-time stats
 * Manage purchases
+* Automatically convert purchase prices
 
 ## Improved
 * mark refunded purchases red on game overview

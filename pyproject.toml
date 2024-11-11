@@ -30,6 +30,9 @@ django-template-partials = "^24.2"
 markdown = "^3.6"
 django-cotton = "^1.2.1"
 
+django-q2 = "^1.7.4"
+croniter = "^5.0.1"
+requests = "^2.32.3"
 [tool.isort]
 profile = "black"
 
