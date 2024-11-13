@@ -7,20 +7,20 @@
                 {{ header_action }}
                 </c-table-header>
             {% endif %}
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 [&_th:not(:first-child):not(:last-child)]:max-sm:hidden">
                 <tr>
                     {% for column in columns %}<th scope="col" class="px-6 py-3">{{ column }}</th>{% endfor %}
                 </tr>
             </thead>
-            <tbody class="dark:divide-y">
+            <tbody class="dark:divide-y [&_td:not(:first-child):not(:last-child)]:max-sm:hidden">
                 {% for row in rows %}<c-table-row :data=row />{% endfor %}
             </tbody>
         </table>
     </div>
     {% if page_obj and elided_page_range %}
-        <nav class="flex items-center flex-column md:flex-row justify-between px-6 py-4 dark:bg-gray-900 sm:rounded-b-lg"
+        <nav class="flex items-center flex-col md:flex-row md:justify-between px-6 py-4 dark:bg-gray-900 sm:rounded-b-lg"
              aria-label="Table navigation">
-            <span class="text-sm font-normal text-gray-500 dark:text-gray-400 mb-4 md:mb-0 block w-full md:inline md:w-auto">Showing <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.start_index }}</span>—<span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.end_index }}</span> of <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.paginator.count }}</span></span>
+            <span class="text-sm text-center font-normal text-gray-500 dark:text-gray-400 mb-4 md:mb-0 block w-full md:inline md:w-auto"><span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.start_index }}</span>—<span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.end_index }}</span> of <span class="font-semibold text-gray-900 dark:text-white">{{ page_obj.paginator.count }}</span></span>
             <ul class="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8">
                 <li>
                     {% if page_obj.has_previous %}

@@ -3117,6 +3117,10 @@ textarea:disabled:is(.dark *) {
     flex-direction: row;
   }
 
+  .md\:justify-between {
+    justify-content: space-between;
+  }
+
   .md\:space-x-8 > :not([hidden]) ~ :not([hidden]) {
     --tw-space-x-reverse: 0;
     margin-right: calc(2rem * var(--tw-space-x-reverse));
@@ -3259,4 +3263,14 @@ textarea:disabled:is(.dark *) {
 
 .\[\&_td\:last-child\]\:text-right td:last-child {
   text-align: right;
+}
+
+@media not all and (min-width: 640px) {
+  .\[\&_td\:not\(\:first-child\)\:not\(\:last-child\)\]\:max-sm\:hidden td:not(:first-child):not(:last-child) {
+    display: none;
+  }
+
+  .\[\&_th\:not\(\:first-child\)\:not\(\:last-child\)\]\:max-sm\:hidden th:not(:first-child):not(:last-child) {
+    display: none;
+  }
 }
