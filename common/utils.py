@@ -37,7 +37,7 @@ def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> ob
 def truncate(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
     return (
         (f"{input_string[:length-len(ellipsis)]}{ellipsis}")
-        if len(input_string) > 30
+        if len(input_string) > length
         else input_string
     )
 
