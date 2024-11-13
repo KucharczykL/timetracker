@@ -68,8 +68,8 @@ def Popover(
     )
 
 
-def PopoverTruncated(input_string: str) -> str:
-    if (truncated := truncate(input_string)) != input_string:
+def PopoverTruncated(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
+    if (truncated := truncate(input_string, length, ellipsis)) != input_string:
         return Popover(wrapped_content=truncated, popover_content=input_string)
     else:
         return input_string
