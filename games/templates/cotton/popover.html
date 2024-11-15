@@ -1,8 +1,10 @@
-<span data-popover-target={{ id }} class="{{ class }}">{{ wrapped_content|default:slot }}</span>
+<span data-popover-target={{ id }} class="{{ wrapped_classes }}">{{ wrapped_content|default:slot }}</span>
 <div data-popover
      id="{{ id }}"
      role="tooltip"
      class="absolute z-10 invisible inline-block text-sm text-white transition-opacity duration-300 bg-white border border-purple-200 rounded-lg shadow-sm opacity-0 dark:text-white dark:border-purple-600 dark:bg-purple-800">
     <div class="px-3 py-2">{{ popover_content }}</div>
     <div data-popper-arrow></div>
+    <!-- for Tailwind CSS to generate decoration-dotted CSS from Python component -->
+    <span class="hidden decoration-dotted"></span>
 </div>

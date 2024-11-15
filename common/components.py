@@ -3,6 +3,7 @@ from string import ascii_lowercase
 from typing import Any, Callable
 
 from django.template import TemplateDoesNotExist
+from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import SafeText, mark_safe
@@ -50,6 +51,7 @@ def randomid(seed: str = "", length: int = 10) -> str:
 def Popover(
     popover_content: str,
     wrapped_content: str = "",
+    wrapped_classes: str = "",
     children: list[HTMLTag] = [],
     attributes: list[HTMLAttribute] = [],
 ) -> str:
@@ -62,6 +64,7 @@ def Popover(
             ("id", id),
             ("wrapped_content", wrapped_content),
             ("popover_content", popover_content),
+            ("wrapped_classes", wrapped_classes),
         ],
         children=children,
         template="cotton/popover.html",
@@ -193,3 +196,11 @@ def NameWithPlatformIcon(name: str, platform: str) -> SafeText:
     )
 
     return mark_safe(content)
+
+
+def PurchasePrice(purchase) -> str:
+    return Popover(
+        popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
+        wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
+        wrapped_classes="underline decoration-dotted",
+    )

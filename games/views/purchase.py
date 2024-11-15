@@ -13,9 +13,8 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Icon, LinkedNameWithPlatformIcon
+from common.components import A, Button, Icon, LinkedNameWithPlatformIcon, PurchasePrice
 from common.time import dateformat
-from common.utils import format_float_or_int
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
 from games.views.general import use_custom_redirect
@@ -49,7 +48,6 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 "Name",
                 "Type",
                 "Price",
-                "Currency",
                 "Infinite",
                 "Purchased",
                 "Refunded",
@@ -66,8 +64,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                         platform=purchase.platform,
                     ),
                     purchase.get_type_display(),
-                    format_float_or_int(purchase.price),
-                    purchase.price_currency,
+                    PurchasePrice(purchase),
                     purchase.infinite,
                     purchase.date_purchased.strftime(dateformat),
                     (

@@ -16,6 +16,7 @@ from common.components import (
     NameWithPlatformIcon,
     Popover,
     PopoverTruncated,
+    PurchasePrice,
 )
 from common.time import (
     dateformat,
@@ -25,7 +26,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import format_float_or_int, safe_division, truncate
+from common.utils import safe_division, truncate
 from games.forms import GameForm
 from games.models import Edition, Game, Purchase, Session
 from games.views.general import use_custom_redirect
@@ -247,7 +248,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 ),
                 purchase.get_type_display(),
                 purchase.date_purchased.strftime(dateformat),
-                f"{format_float_or_int(purchase.price)} {purchase.price_currency}",
+                PurchasePrice(purchase),
                 render_to_string(
                     "cotton/button_group.html",
                     {

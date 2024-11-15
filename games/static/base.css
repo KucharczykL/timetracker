@@ -2192,6 +2192,10 @@ input:checked + .toggle-bg {
   text-decoration-color: #64748b;
 }
 
+.decoration-dotted {
+  text-decoration-style: dotted;
+}
+
 .opacity-0 {
   opacity: 0;
 }
