@@ -47,7 +47,10 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             | Q(device__name__icontains=search_string)
             | Q(device__type__icontains=search_string)
         )
-    last_session = sessions.latest()
+    try:
+        last_session = sessions.latest()
+    except Session.DoesNotExist:
+        last_session = None
     page_obj = None
     if int(limit) != 0:
         paginator = Paginator(sessions, limit)
@@ -109,7 +112,9 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                         )
                                     ],
                                 ),
-                            ),
+                            )
+                            if last_session
+                            else "",
                         ]
                     ),
                 ],
