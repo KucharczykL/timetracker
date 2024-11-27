@@ -3,7 +3,7 @@
     <div id="game-info" class="mb-10">
         <div class="flex gap-5 mb-3">
             <span class="text-balance max-w-[30rem] text-4xl">
-                <span class="font-bold font-serif">{{ game.name }}</span>&nbsp;<c-popover id="popover-year" popover_content="Original release year" class="text-slate-500 text-2xl">{{ game.year_released }}</c-popover>
+                <span class="font-bold font-serif">{{ game.name }}</span>{% if game.year_released %}&nbsp;<c-popover id="popover-year" popover_content="Original release year" class="text-slate-500 text-2xl">{{ game.year_released }}</c-popover>{% endif %}
                 </span>
             </div>
             <div class="flex gap-4 dark:text-slate-400 mb-3">
