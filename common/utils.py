@@ -34,11 +34,28 @@ def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> ob
     return obj
 
 
-def truncate(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
+def truncate_(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
     return (
         (f"{input_string[:length-len(ellipsis)].rstrip()}{ellipsis}")
         if len(input_string) > length
         else input_string
+    )
+
+
+def truncate(
+    input_string: str, length: int = 30, ellipsis: str = "…", endpart: str = ""
+) -> str:
+    max_content_length = length - len(endpart)
+    if max_content_length < 0:
+        raise ValueError("Length cannot be shorter than the length of endpart.")
+
+    if len(input_string) > max_content_length:
+        return f"{input_string[:max_content_length - len(ellipsis)].rstrip()}{ellipsis}{endpart}"
+
+    return (
+        f"{input_string}{endpart}"
+        if len(input_string) + len(endpart) <= length
+        else f"{input_string[:length - len(ellipsis) - len(endpart)].rstrip()}{ellipsis}{endpart}"
     )
 
 

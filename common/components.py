@@ -9,6 +9,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.utils import truncate
+from games.models import Purchase
 
 HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
@@ -71,11 +72,36 @@ def Popover(
     )
 
 
-def PopoverTruncated(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
-    if (truncated := truncate(input_string, length, ellipsis)) != input_string:
-        return Popover(wrapped_content=truncated, popover_content=input_string)
+def PopoverTruncated(
+    input_string: str,
+    popover_content: str = "",
+    popover_if_not_truncated: bool = False,
+    length: int = 30,
+    ellipsis: str = "…",
+    endpart: str = "",
+) -> str:
+    """
+    Returns `input_string` truncated after `length` of characters
+    and displays the untruncated text in a popover HTML element.
+    The truncated text ends in `ellipsis`, and optionally
+    an always-visible `endpart` can be specified.
+    `popover_content` can be specified if:
+    1. It needs to be always displayed regardless if text is truncated.
+    2. It needs to differ from `input_string`.
+    """
+    if (truncated := truncate(input_string, length, ellipsis, endpart)) != input_string:
+        return Popover(
+            wrapped_content=truncated,
+            popover_content=popover_content if popover_content else input_string,
+        )
     else:
-        return input_string
+        if popover_content and popover_if_not_truncated:
+            return Popover(
+                wrapped_content=input_string,
+                popover_content=popover_content if popover_content else "",
+            )
+        else:
+            return input_string
 
 
 def A(
@@ -181,6 +207,47 @@ def LinkedNameWithPlatformIcon(name: str, game_id: int, platform: str) -> SafeTe
             children=[a_content],
         ),
     )
+
+
+def LinkedPurchase(purchase: Purchase) -> SafeText:
+    link = reverse("view_purchase", args=[int(purchase.id)])
+    link_content = ""
+    popover_content = ""
+    edition_count = purchase.editions.count()
+    popover_if_not_truncated = False
+    if edition_count == 1:
+        link_content += purchase.editions.first().name
+        popover_content = link_content
+    if edition_count > 1:
+        if purchase.name:
+            link_content += f"{purchase.name}"
+            popover_content += f"<h1>{purchase.name}</h1><br>"
+        else:
+            link_content += f"{edition_count} games"
+            popover_if_not_truncated = True
+        popover_content += f"""
+        <ul class="list-disc list-inside">
+            {"".join(f"<li>{edition.name}</li>" for edition in purchase.editions.all())}
+        </ul>
+        """
+    icon = purchase.platform.icon if edition_count == 1 else "unspecified"
+    if link_content == "":
+        raise ValueError("link_content is empty!!")
+    a_content = Div(
+        [("class", "inline-flex gap-2 items-center")],
+        [
+            Icon(
+                icon,
+                [("title", "Multiple")],
+            ),
+            PopoverTruncated(
+                input_string=link_content,
+                popover_content=mark_safe(popover_content),
+                popover_if_not_truncated=popover_if_not_truncated,
+            ),
+        ],
+    )
+    return mark_safe(A(url=link, children=[a_content]))
 
 
 def NameWithPlatformIcon(name: str, platform: str) -> SafeText:

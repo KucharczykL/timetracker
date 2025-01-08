@@ -113,7 +113,7 @@ class Purchase(models.Model):
 
     objects = PurchaseQueryset().as_manager()
 
-    edition = models.ForeignKey(Edition, on_delete=models.CASCADE)
+    editions = models.ManyToManyField(Edition, related_name="purchases", blank=True)
     platform = models.ForeignKey(
         Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
     )
@@ -141,26 +141,28 @@ class Purchase(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def first_edition(self):
+        return self.editions.first()
+
     def __str__(self):
         additional_info = [
             self.get_type_display() if self.type != Purchase.GAME else "",
             (
-                f"{self.edition.platform} version on {self.platform}"
-                if self.platform != self.edition.platform
+                f"{self.first_edition.platform} version on {self.platform}"
+                if self.platform != self.first_edition.platform
                 else self.platform
             ),
-            self.edition.year_released,
+            self.first_edition.year_released,
             self.get_ownership_type_display(),
         ]
-        return f"{self.edition} ({', '.join(filter(None, map(str, additional_info)))})"
+        return f"{self.first_edition} ({', '.join(filter(None, map(str, additional_info)))})"
 
     def is_game(self):
         return self.type == self.GAME
 
     def save(self, *args, **kwargs):
-        if self.type == Purchase.GAME:
-            self.name = ""
-        elif self.type != Purchase.GAME and not self.related_purchase:
+        if self.type != Purchase.GAME and not self.related_purchase:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related purchase."
             )

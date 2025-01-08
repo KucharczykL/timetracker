@@ -13,6 +13,7 @@ from common.components import (
     Button,
     Div,
     Icon,
+    LinkedPurchase,
     NameWithPlatformIcon,
     Popover,
     PopoverTruncated,
@@ -162,7 +163,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         to_attr="nongame_related_purchases",
     )
     game_purchases_prefetch: Prefetch[Purchase] = Prefetch(
-        "purchase_set",
+        "purchases",
         queryset=Purchase.objects.filter(type=Purchase.GAME).prefetch_related(
             nongame_related_purchases_prefetch
         ),
@@ -174,14 +175,14 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         .order_by("year_released")
     )
 
-    purchases = Purchase.objects.filter(edition__game=game).order_by("date_purchased")
+    purchases = Purchase.objects.filter(editions__game=game).order_by("date_purchased")
 
     sessions = Session.objects.prefetch_related("device").filter(
-        purchase__edition__game=game
+        purchase__editions__game=game
     )
     session_count = sessions.count()
     session_count_without_manual = (
-        Session.objects.without_manual().filter(purchase__edition__game=game).count()
+        Session.objects.without_manual().filter(purchase__editions__game=game).count()
     )
 
     if sessions:
@@ -242,10 +243,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "columns": ["Name", "Type", "Date", "Price", "Actions"],
         "rows": [
             [
-                NameWithPlatformIcon(
-                    name=purchase.name if purchase.name else purchase.edition.name,
-                    platform=purchase.platform,
-                ),
+                LinkedPurchase(purchase),
                 purchase.get_type_display(),
                 purchase.date_purchased.strftime(dateformat),
                 PurchasePrice(purchase),
@@ -271,7 +269,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         ],
     }
 
-    sessions_all = Session.objects.filter(purchase__edition__game=game).order_by(
+    sessions_all = Session.objects.filter(purchase__editions__game=game).order_by(
         "-timestamp_start"
     )
     last_session = None
@@ -300,7 +298,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                         args=[last_session.pk],
                     ),
                     children=Popover(
-                        popover_content=last_session.purchase.edition.name,
+                        popover_content=last_session.purchase.first_edition.name,
                         children=[
                             Button(
                                 icon=True,
@@ -308,7 +306,9 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                                 size="xs",
                                 children=[
                                     Icon("play"),
-                                    truncate(f"{last_session.purchase.edition.name}"),
+                                    truncate(
+                                        f"{last_session.purchase.first_edition.name}"
+                                    ),
                                 ],
                             )
                         ],
@@ -324,7 +324,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 NameWithPlatformIcon(
                     name=session.purchase.name
                     if session.purchase.name
-                    else session.purchase.edition.name,
+                    else session.purchase.first_edition.name,
                     platform=session.purchase.platform,
                 ),
                 f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
@@ -375,7 +375,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "editions": editions,
         "game": game,
         "playrange": playrange,
-        "purchase_count": Purchase.objects.filter(edition__game=game).count(),
+        "purchase_count": Purchase.objects.filter(editions__game=game).count(),
         "session_average_without_manual": round(
             safe_division(
                 total_hours_without_manual, int(session_count_without_manual)

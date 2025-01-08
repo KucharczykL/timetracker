@@ -16,7 +16,7 @@ class SessionForm(forms.ModelForm):
     #     queryset=Purchase.objects.filter(date_refunded=None).order_by("edition__name")
     # )
     purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.order_by("edition__sort_name"),
+        queryset=Purchase.objects.all(),
         widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
 
@@ -38,12 +38,12 @@ class SessionForm(forms.ModelForm):
         ]
 
 
-class EditionChoiceField(forms.ModelChoiceField):
+class EditionChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj) -> str:
         return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
 
 
-class IncludePlatformSelect(forms.Select):
+class IncludePlatformSelect(forms.SelectMultiple):
     def create_option(self, name, value, *args, **kwargs):
         option = super().create_option(name, value, *args, **kwargs)
         if platform_id := safe_getattr(value, "instance.platform.id"):
@@ -58,7 +58,7 @@ class PurchaseForm(forms.ModelForm):
         # Automatically update related_purchase <select/>
         # to only include purchases of the selected edition.
         related_purchase_by_edition_url = reverse("related_purchase_by_edition")
-        self.fields["edition"].widget.attrs.update(
+        self.fields["editions"].widget.attrs.update(
             {
                 "hx-trigger": "load, click",
                 "hx-get": related_purchase_by_edition_url,
@@ -67,15 +67,13 @@ class PurchaseForm(forms.ModelForm):
             }
         )
 
-    edition = EditionChoiceField(
+    editions = EditionChoiceField(
         queryset=Edition.objects.order_by("sort_name"),
         widget=IncludePlatformSelect(attrs={"autoselect": "autoselect"}),
     )
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
     related_purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.filter(type=Purchase.GAME).order_by(
-            "edition__sort_name"
-        ),
+        queryset=Purchase.objects.filter(type=Purchase.GAME),
         required=False,
     )
 
@@ -88,7 +86,7 @@ class PurchaseForm(forms.ModelForm):
         }
         model = Purchase
         fields = [
-            "edition",
+            "editions",
             "platform",
             "date_purchased",
             "date_refunded",

@@ -97,7 +97,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                     args=[last_session.pk],
                                 ),
                                 children=Popover(
-                                    popover_content=last_session.purchase.edition.name,
+                                    popover_content=last_session.purchase.first_edition.name,
                                     children=[
                                         Button(
                                             icon=True,
@@ -106,7 +106,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                             children=[
                                                 Icon("play"),
                                                 truncate(
-                                                    f"{last_session.purchase.edition.name}"
+                                                    f"{last_session.purchase.first_edition.name}"
                                                 ),
                                             ],
                                         )
@@ -131,8 +131,8 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             "rows": [
                 [
                     LinkedNameWithPlatformIcon(
-                        name=session.purchase.edition.name,
-                        game_id=session.purchase.edition.game.pk,
+                        name=session.purchase.first_edition.name,
+                        game_id=session.purchase.first_edition.game.pk,
                         platform=session.purchase.platform,
                     ),
                     f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",

@@ -13,7 +13,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from common.components import A, Button, Icon, LinkedNameWithPlatformIcon, PurchasePrice
+from common.components import A, Button, Icon, LinkedPurchase, PurchasePrice
 from common.time import dateformat
 from games.forms import PurchaseForm
 from games.models import Edition, Purchase
@@ -58,11 +58,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    LinkedNameWithPlatformIcon(
-                        name=purchase.edition.name,
-                        game_id=purchase.edition.game.pk,
-                        platform=purchase.platform,
-                    ),
+                    LinkedPurchase(purchase),
                     purchase.get_type_display(),
                     PurchasePrice(purchase),
                     purchase.infinite,
@@ -173,7 +169,7 @@ def add_purchase(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
 
     context["form"] = form
     context["title"] = "Add New Purchase"
-    context["script_name"] = "add_purchase.js"
+    # context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
 
@@ -189,7 +185,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     context["title"] = "Edit Purchase"
     context["form"] = form
     context["purchase_id"] = str(purchase_id)
-    context["script_name"] = "add_purchase.js"
+    # context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
 
@@ -198,6 +194,12 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.delete()
     return redirect("list_purchases")
+
+
+@login_required
+def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    return render(request, "view_purchase.html", {"purchase": purchase})
 
 
 @login_required
