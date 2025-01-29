@@ -156,7 +156,7 @@ class EditionForm(forms.ModelForm):
 class GameForm(forms.ModelForm):
     class Meta:
         model = Game
-        fields = ["name", "sort_name", "year_released", "wikidata"]
+        fields = ["name", "sort_name", "platform", "year_released", "wikidata"]
         widgets = {"name": autofocus_input_widget}
 
 

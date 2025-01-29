@@ -10,10 +10,17 @@ from common.time import format_duration
 
 
 class Game(models.Model):
+    class Meta:
+        unique_together = [["name", "platform", "year_released"]]
+
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
+    platform = models.ForeignKey(
+        "Platform", on_delete=models.SET_DEFAULT, null=True, blank=True, default=None
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     session_average: float | int | timedelta | None

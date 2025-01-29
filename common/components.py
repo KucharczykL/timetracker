@@ -263,6 +263,8 @@ def NameWithIcon(
             game = Game.objects.get(pk=game_id)
         name = edition.name if edition else game.name
         platform = edition.platform if edition else None
+        if game.platform:
+            platform = game.platform
         link = reverse("view_game", args=[int(game_id)])
     content = Div(
         [("class", "inline-flex gap-2 items-center")],
