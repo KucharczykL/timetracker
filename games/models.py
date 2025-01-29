@@ -48,7 +48,7 @@ class Edition(models.Model):
     class Meta:
         unique_together = [["name", "platform", "year_released"]]
 
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="editions")
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     platform = models.ForeignKey(
