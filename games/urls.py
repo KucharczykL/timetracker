@@ -1,6 +1,6 @@
 from django.urls import path
 
-from games.views import device, edition, game, general, platform, purchase, session
+from games.views import device, game, general, platform, purchase, session
 
 urlpatterns = [
     path("", general.index, name="index"),
@@ -8,19 +8,6 @@ urlpatterns = [
     path("device/delete/<int:device_id>", device.delete_device, name="delete_device"),
     path("device/edit/<int:device_id>", device.edit_device, name="edit_device"),
     path("device/list", device.list_devices, name="list_devices"),
-    path("edition/add", edition.add_edition, name="add_edition"),
-    path(
-        "edition/add/for-game/<int:game_id>",
-        edition.add_edition,
-        name="add_edition_for_game",
-    ),
-    path("edition/<int:edition_id>/edit", edition.edit_edition, name="edit_edition"),
-    path("edition/list", edition.list_editions, name="list_editions"),
-    path(
-        "edition/<int:edition_id>/delete",
-        edition.delete_edition,
-        name="delete_edition",
-    ),
     path("game/add", game.add_game, name="add_game"),
     path("game/<int:game_id>/edit", game.edit_game, name="edit_game"),
     path("game/<int:game_id>/view", game.view_game, name="view_game"),
@@ -39,6 +26,11 @@ urlpatterns = [
     ),
     path("platform/list", platform.list_platforms, name="list_platforms"),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
+    path(
+        "purchase/add/for-game/<int:game_id>",
+        purchase.add_purchase,
+        name="add_purchase_for_game",
+    ),
     path(
         "purchase/<int:purchase_id>/edit",
         purchase.edit_purchase,
@@ -75,20 +67,15 @@ urlpatterns = [
         name="refund_purchase",
     ),
     path(
-        "purchase/related-purchase-by-edition",
-        purchase.related_purchase_by_edition,
-        name="related_purchase_by_edition",
-    ),
-    path(
-        "purchase/add/for-edition/<int:edition_id>",
-        purchase.add_purchase,
-        name="add_purchase_for_edition",
+        "purchase/related-purchase-by-game",
+        purchase.related_purchase_by_game,
+        name="related_purchase_by_game",
     ),
     path("session/add", session.add_session, name="add_session"),
     path(
-        "session/add/for-purchase/<int:purchase_id>",
+        "session/add/for-game/<int:game_id>",
         session.add_session,
-        name="add_session_for_purchase",
+        name="add_session_for_game",
     ),
     path(
         "session/add/from-game/<int:session_id>",

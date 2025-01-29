@@ -2,7 +2,7 @@ from django import forms
 from django.urls import reverse
 
 from common.utils import safe_getattr
-from games.models import Device, Edition, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase, Session
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
@@ -12,11 +12,8 @@ autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 
 class SessionForm(forms.ModelForm):
-    # purchase = forms.ModelChoiceField(
-    #     queryset=Purchase.objects.filter(date_refunded=None).order_by("edition__name")
-    # )
-    purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.all(),
+    game = forms.ModelChoiceField(
+        queryset=Game.objects.order_by("sort_name"),
         widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
 
@@ -29,7 +26,7 @@ class SessionForm(forms.ModelForm):
         }
         model = Session
         fields = [
-            "purchase",
+            "game",
             "timestamp_start",
             "timestamp_end",
             "duration_manual",
@@ -39,7 +36,7 @@ class SessionForm(forms.ModelForm):
         ]
 
 
-class EditionChoiceField(forms.ModelMultipleChoiceField):
+class GameChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj) -> str:
         return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
 
@@ -57,19 +54,19 @@ class PurchaseForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         # Automatically update related_purchase <select/>
-        # to only include purchases of the selected edition.
-        related_purchase_by_edition_url = reverse("related_purchase_by_edition")
-        self.fields["editions"].widget.attrs.update(
+        # to only include purchases of the selected game.
+        related_purchase_by_game_url = reverse("related_purchase_by_game")
+        self.fields["games"].widget.attrs.update(
             {
                 "hx-trigger": "load, click",
-                "hx-get": related_purchase_by_edition_url,
+                "hx-get": related_purchase_by_game_url,
                 "hx-target": "#id_related_purchase",
                 "hx-swap": "outerHTML",
             }
         )
 
-    editions = EditionChoiceField(
-        queryset=Edition.objects.order_by("sort_name"),
+    games = GameChoiceField(
+        queryset=Game.objects.order_by("sort_name"),
         widget=IncludePlatformSelect(attrs={"autoselect": "autoselect"}),
     )
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
@@ -87,7 +84,7 @@ class PurchaseForm(forms.ModelForm):
         }
         model = Purchase
         fields = [
-            "editions",
+            "games",
             "platform",
             "date_purchased",
             "date_refunded",
@@ -139,21 +136,11 @@ class GameModelChoiceField(forms.ModelChoiceField):
         return obj.sort_name
 
 
-class EditionForm(forms.ModelForm):
-    game = GameModelChoiceField(
-        queryset=Game.objects.order_by("sort_name"),
-        widget=IncludeNameSelect(attrs={"autofocus": "autofocus"}),
-    )
+class GameForm(forms.ModelForm):
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"), required=False
     )
 
-    class Meta:
-        model = Edition
-        fields = ["game", "name", "sort_name", "platform", "year_released", "wikidata"]
-
-
-class GameForm(forms.ModelForm):
     class Meta:
         model = Game
         fields = ["name", "sort_name", "platform", "year_released", "wikidata"]

@@ -28,7 +28,7 @@ from common.time import (
 )
 from common.utils import truncate
 from games.forms import SessionForm
-from games.models import Purchase, Session
+from games.models import Game, Session
 from games.views.general import use_custom_redirect
 
 
@@ -37,13 +37,13 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
-    sessions = Session.objects.order_by("-timestamp_start")
+    sessions = Session.objects.order_by("-timestamp_start", "created_at")
     search_string = request.GET.get("search_string", search_string)
     if search_string != "":
         sessions = sessions.filter(
-            Q(purchase__edition__name__icontains=search_string)
-            | Q(purchase__edition__game__name__icontains=search_string)
-            | Q(purchase__platform__name__icontains=search_string)
+            Q(game__name__icontains=search_string)
+            | Q(game__name__icontains=search_string)
+            | Q(game__platform__name__icontains=search_string)
             | Q(device__name__icontains=search_string)
             | Q(device__type__icontains=search_string)
         )
@@ -97,7 +97,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                     args=[last_session.pk],
                                 ),
                                 children=Popover(
-                                    popover_content=last_session.purchase.first_edition.name,
+                                    popover_content=last_session.game.name,
                                     children=[
                                         Button(
                                             icon=True,
@@ -105,9 +105,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                             size="xs",
                                             children=[
                                                 Icon("play"),
-                                                truncate(
-                                                    f"{last_session.purchase.first_edition.name}"
-                                                ),
+                                                truncate(f"{last_session.game.name}"),
                                             ],
                                         )
                                     ],
@@ -191,13 +189,13 @@ def search_sessions(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
+def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     context = {}
     initial: dict[str, Any] = {"timestamp_start": timezone.now()}
 
     last = Session.objects.last()
     if last != None:
-        initial["purchase"] = last.purchase
+        initial["game"] = last.game
 
     if request.method == "POST":
         form = SessionForm(request.POST or None, initial=initial)
@@ -205,12 +203,12 @@ def add_session(request: HttpRequest, purchase_id: int = 0) -> HttpResponse:
             form.save()
             return redirect("list_sessions")
     else:
-        if purchase_id:
-            purchase = Purchase.objects.get(id=purchase_id)
+        if game_id:
+            game = Game.objects.get(id=game_id)
             form = SessionForm(
                 initial={
                     **initial,
-                    "purchase": purchase,
+                    "game": game,
                 }
             )
         else:

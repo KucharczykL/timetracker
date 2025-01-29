@@ -36,7 +36,7 @@ function addToggleButton(targetNode) {
   targetNode.parentElement.appendChild(manualToggleButton);
 }
 
-const toggleableFields = ["#id_game", "#id_edition", "#id_platform"];
+const toggleableFields = ["#id_games", "#id_platform"];
 
 toggleableFields.map((selector) => {
   addToggleButton(document.querySelector(selector));

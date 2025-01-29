@@ -29,7 +29,7 @@ from common.time import (
 )
 from common.utils import safe_division, truncate
 from games.forms import GameForm
-from games.models import Edition, Game, Purchase, Session
+from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
 
 
@@ -109,7 +109,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         game = form.save()
         if "submit_and_redirect" in request.POST:
             return HttpResponseRedirect(
-                reverse("add_edition_for_game", kwargs={"game_id": game.id})
+                reverse("add_purchase_for_game", kwargs={"game_id": game.id})
             )
         else:
             return redirect("list_games")
@@ -158,21 +158,12 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         ),
         to_attr="game_purchases",
     )
-    editions = (
-        Edition.objects.filter(game=game)
-        .prefetch_related(game_purchases_prefetch)
-        .order_by("year_released")
-    )
 
-    purchases = Purchase.objects.filter(editions__game=game).order_by("date_purchased")
+    purchases = game.purchases.order_by("date_purchased")
 
-    sessions = Session.objects.prefetch_related("device").filter(
-        purchase__editions__game=game
-    )
+    sessions = game.sessions
     session_count = sessions.count()
-    session_count_without_manual = (
-        Session.objects.without_manual().filter(purchase__editions__game=game).count()
-    )
+    session_count_without_manual = game.sessions.without_manual().count()
 
     if sessions:
         playrange_start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
@@ -192,38 +183,6 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     total_hours_without_manual = float(
         format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
     )
-
-    edition_data: dict[str, Any] = {
-        "columns": [
-            "Name",
-            "Year Released",
-            "Actions",
-        ],
-        "rows": [
-            [
-                NameWithIcon(edition_id=edition.pk),
-                edition.year_released,
-                render_to_string(
-                    "cotton/button_group.html",
-                    {
-                        "buttons": [
-                            {
-                                "href": reverse("edit_edition", args=[edition.pk]),
-                                "slot": Icon("edit"),
-                                "color": "gray",
-                            },
-                            {
-                                "href": reverse("delete_edition", args=[edition.pk]),
-                                "slot": Icon("delete"),
-                                "color": "red",
-                            },
-                        ]
-                    },
-                ),
-            ]
-            for edition in editions
-        ],
-    }
 
     purchase_data: dict[str, Any] = {
         "columns": ["Name", "Type", "Date", "Price", "Actions"],
@@ -255,9 +214,8 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         ],
     }
 
-    sessions_all = Session.objects.filter(purchase__editions__game=game).order_by(
-        "-timestamp_start"
-    )
+    sessions_all = game.sessions.order_by("-timestamp_start")
+
     last_session = None
     if sessions_all.exists():
         last_session = sessions_all.latest()
@@ -284,7 +242,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                         args=[last_session.pk],
                     ),
                     children=Popover(
-                        popover_content=last_session.purchase.first_edition.name,
+                        popover_content=last_session.game.name,
                         children=[
                             Button(
                                 icon=True,
@@ -292,9 +250,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                                 size="xs",
                                 children=[
                                     Icon("play"),
-                                    truncate(
-                                        f"{last_session.purchase.first_edition.name}"
-                                    ),
+                                    truncate(f"{last_session.game.name}"),
                                 ],
                             )
                         ],
@@ -304,7 +260,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 else "",
             ],
         ),
-        "columns": ["Edition", "Date", "Duration", "Actions"],
+        "columns": ["Game", "Date", "Duration", "Actions"],
         "rows": [
             [
                 NameWithIcon(
@@ -354,11 +310,9 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     }
 
     context: dict[str, Any] = {
-        "edition_count": editions.count(),
-        "editions": editions,
         "game": game,
         "playrange": playrange,
-        "purchase_count": Purchase.objects.filter(editions__game=game).count(),
+        "purchase_count": game.purchases.count(),
         "session_average_without_manual": round(
             safe_division(
                 total_hours_without_manual, int(session_count_without_manual)
@@ -369,7 +323,6 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "sessions": sessions,
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
-        "edition_data": edition_data,
         "purchase_data": purchase_data,
         "session_data": session_data,
         "session_page_obj": session_page_obj,

@@ -2,11 +2,11 @@
 {% load static %}
 {% partialdef purchase-name %}
 {% if purchase.type != 'game' %}
-    <c-gamelink :game_id=purchase.first_edition.game.id>
-    {{ purchase.name }} ({{ purchase.first_edition.edition.name }} {{ purchase.get_type_display }})
+    <c-gamelink :game_id=purchase.first_game.id>
+    {{ purchase.name }} ({{ purchase.first_game.name }} {{ purchase.get_type_display }})
     </c-gamelink>
 {% else %}
-    <c-gamelink :game_id=purchase.first_edition.game.id :name=purchase.first_edition.name />
+    <c-gamelink :game_id=purchase.first_game.id :name=purchase.first_game.name />
 {% endif %}
 {% endpartialdef %}
 <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">

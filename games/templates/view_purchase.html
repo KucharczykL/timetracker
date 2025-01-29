@@ -3,7 +3,7 @@
     
     <div class="flex flex-col gap-5 mb-3">
     <span class="text-balance max-w-[30rem] text-4xl">
-        <span class="font-bold font-serif">{% if purchase.name %}{{ purchase.name }}{% else %}Unnamed purchase{% endif %}</span> <span class="text-slate-500 text-2xl">({{ purchase.editions.count }} games)</span>
+        <span class="font-bold font-serif">{% if purchase.name %}{{ purchase.name }}{% else %}Unnamed purchase{% endif %}</span> <span class="text-slate-500 text-2xl">({{ purchase.games.count }} games)</span>
     </span>
     <div class="inline-flex rounded-md shadow-sm mb-3" role="group">
         <a href="{% url 'edit_purchase' purchase.id %}">
@@ -19,12 +19,20 @@
             </button>
         </a>
     </div>
-    <div>Price: {{ purchase.converted_price | floatformat }} {{ purchase.converted_currency }} ({{ purchase.price | floatformat }} {{ purchase.price_currency }})</div>
+    <div>
+        Price:
+        {% if purchase.converted_price %}
+            {{ purchase.converted_price | floatformat }} {{ purchase.converted_currency }}
+        {% else %}
+        None
+        {% endif %}
+         ({{ purchase.price | floatformat }} {{ purchase.price_currency }})
+    </div>
     <div>
         <h2 class="text-base">Items:</h2>
         <ul class="list-disc list-inside">
-        {% for edition in purchase.editions.all %}
-        <li><c-gamelink :game_id=edition.game.id :name=edition.name /></li>
+        {% for game in purchase.games.all %}
+        <li><c-gamelink :game_id=game.id :name=game.name /></li>
         {% endfor %}
         </ul>
     </div>

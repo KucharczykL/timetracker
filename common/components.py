@@ -9,7 +9,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.utils import truncate
-from games.models import Edition, Game, Purchase, Session
+from games.models import Game, Purchase, Session
 
 HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
@@ -192,24 +192,24 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
     link = reverse("view_purchase", args=[int(purchase.id)])
     link_content = ""
     popover_content = ""
-    edition_count = purchase.editions.count()
+    game_count = purchase.games.count()
     popover_if_not_truncated = False
-    if edition_count == 1:
-        link_content += purchase.editions.first().name
+    if game_count == 1:
+        link_content += purchase.games.first().name
         popover_content = link_content
-    if edition_count > 1:
+    if game_count > 1:
         if purchase.name:
             link_content += f"{purchase.name}"
             popover_content += f"<h1>{purchase.name}</h1><br>"
         else:
-            link_content += f"{edition_count} games"
+            link_content += f"{game_count} games"
             popover_if_not_truncated = True
         popover_content += f"""
         <ul class="list-disc list-inside">
-            {"".join(f"<li>{edition.name}</li>" for edition in purchase.editions.all())}
+            {"".join(f"<li>{game.name}</li>" for game in purchase.games.all())}
         </ul>
         """
-    icon = purchase.platform.icon if edition_count == 1 else "unspecified"
+    icon = purchase.platform.icon if game_count == 1 else "unspecified"
     if link_content == "":
         raise ValueError("link_content is empty!!")
     a_content = Div(
@@ -235,36 +235,25 @@ def NameWithIcon(
     game_id: int = 0,
     session_id: int = 0,
     purchase_id: int = 0,
-    edition_id: int = 0,
     linkify: bool = True,
     emulated: bool = False,
 ) -> SafeText:
     create_link = False
     link = ""
-    edition = None
     platform = None
-    if (
-        game_id != 0 or session_id != 0 or purchase_id != 0 or edition_id != 0
-    ) and linkify:
+    if (game_id != 0 or session_id != 0 or purchase_id != 0) and linkify:
         create_link = True
         if session_id:
             session = Session.objects.get(pk=session_id)
             emulated = session.emulated
-            edition = session.purchase.first_edition
-            game_id = edition.game.pk
+            game_id = session.game.pk
         if purchase_id:
             purchase = Purchase.objects.get(pk=purchase_id)
-            edition = purchase.first_edition
-            game_id = purchase.edition.game.pk
-        if edition_id:
-            edition = Edition.objects.get(pk=edition_id)
-            game_id = edition.game.pk
+            game_id = purchase.games.first().pk
         if game_id:
             game = Game.objects.get(pk=game_id)
-        name = edition.name if edition else game.name
-        platform = edition.platform if edition else None
-        if game.platform:
-            platform = game.platform
+        name = game.name
+        platform = game.platform
         link = reverse("view_game", args=[int(game_id)])
     content = Div(
         [("class", "inline-flex gap-2 items-center")],

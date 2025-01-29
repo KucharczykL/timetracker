@@ -29,6 +29,17 @@ class Game(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.platform is None:
+            self.platform = get_sentinel_platform()
+        super().save(*args, **kwargs)
+
+
+def get_sentinel_platform():
+    return Platform.objects.get_or_create(
+        name="Unspecified", icon="unspecified", group="Unspecified"
+    )[0]
+
 
 class Platform(models.Model):
     name = models.CharField(max_length=255)
@@ -42,35 +53,6 @@ class Platform(models.Model):
     def save(self, *args, **kwargs):
         if not self.icon:
             self.icon = slugify(self.name)
-        super().save(*args, **kwargs)
-
-
-def get_sentinel_platform():
-    return Platform.objects.get_or_create(
-        name="Unspecified", icon="unspecified", group="Unspecified"
-    )[0]
-
-
-class Edition(models.Model):
-    class Meta:
-        unique_together = [["name", "platform", "year_released"]]
-
-    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="editions")
-    name = models.CharField(max_length=255)
-    sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
-    platform = models.ForeignKey(
-        Platform, on_delete=models.SET_DEFAULT, null=True, blank=True, default=None
-    )
-    year_released = models.IntegerField(null=True, blank=True, default=None)
-    wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.sort_name
-
-    def save(self, *args, **kwargs):
-        if self.platform is None:
-            self.platform = get_sentinel_platform()
         super().save(*args, **kwargs)
 
 
@@ -120,7 +102,8 @@ class Purchase(models.Model):
 
     objects = PurchaseQueryset().as_manager()
 
-    editions = models.ManyToManyField(Edition, related_name="purchases", blank=True)
+    games = models.ManyToManyField(Game, related_name="purchases", blank=True)
+
     platform = models.ForeignKey(
         Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
     )
@@ -150,24 +133,26 @@ class Purchase(models.Model):
 
     @property
     def standardized_name(self):
-        return self.name if self.name else self.first_edition.name
+        return self.name if self.name else self.first_game.name
 
     @property
-    def first_edition(self):
-        return self.editions.first()
+    def first_game(self):
+        return self.games.first()
 
     def __str__(self):
         additional_info = [
             self.get_type_display() if self.type != Purchase.GAME else "",
             (
-                f"{self.first_edition.platform} version on {self.platform}"
-                if self.platform != self.first_edition.platform
+                f"{self.first_game.platform} version on {self.platform}"
+                if self.platform != self.first_game.platform
                 else self.platform
             ),
-            self.first_edition.year_released,
+            self.first_game.year_released,
             self.get_ownership_type_display(),
         ]
-        return f"{self.first_edition} ({', '.join(filter(None, map(str, additional_info)))})"
+        return (
+            f"{self.first_game} ({', '.join(filter(None, map(str, additional_info)))})"
+        )
 
     def is_game(self):
         return self.type == self.GAME
@@ -218,7 +203,14 @@ class Session(models.Model):
     class Meta:
         get_latest_by = "timestamp_start"
 
-    purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE)
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        default=None,
+        related_name="sessions",
+    )
     timestamp_start = models.DateTimeField()
     timestamp_end = models.DateTimeField(blank=True, null=True)
     duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
@@ -240,7 +232,7 @@ class Session(models.Model):
 
     def __str__(self):
         mark = ", manual" if self.is_manual() else ""
-        return f"{str(self.purchase)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
+        return f"{str(self.game)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
 
     def finish_now(self):
         self.timestamp_end = timezone.now()

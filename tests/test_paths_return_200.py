@@ -10,7 +10,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
 django.setup()
 from django.conf import settings
 
-from games.models import Edition, Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -21,10 +21,8 @@ class PathWorksTest(TestCase):
         pl.save()
         g = Game(name="The Test Game")
         g.save()
-        e = Edition(game=g, name="The Test Game Edition", platform=pl)
-        e.save()
         p = Purchase(
-            edition=e,
+            games=[e],
             platform=pl,
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
         )
@@ -50,11 +48,6 @@ class PathWorksTest(TestCase):
 
     def test_add_game_returns_200(self):
         url = reverse("add_game")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-
-    def test_add_edition_returns_200(self):
-        url = reverse("add_edition")
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 

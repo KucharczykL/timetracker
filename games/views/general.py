@@ -11,13 +11,12 @@ from django.urls import reverse
 
 from common.time import available_stats_year_range, dateformat, format_duration
 from common.utils import safe_division
-from games.models import Edition, Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase, Session
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
     return {
         "game_available": Game.objects.exists(),
-        "edition_available": Edition.objects.exists(),
         "platform_available": Platform.objects.exists(),
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
@@ -49,9 +48,7 @@ def use_custom_redirect(
 @login_required
 def stats_alltime(request: HttpRequest) -> HttpResponse:
     year = "Alltime"
-    this_year_sessions = Session.objects.all().prefetch_related(
-        Prefetch("purchase__editions")
-    )
+    this_year_sessions = Session.objects.all().prefetch_related(Prefetch("game"))
     this_year_sessions_with_durations = this_year_sessions.annotate(
         duration=ExpressionWrapper(
             F("timestamp_end") - F("timestamp_start"),
@@ -59,11 +56,9 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         )
     )
     longest_session = this_year_sessions_with_durations.order_by("-duration").first()
-    this_year_games = Game.objects.filter(
-        editions__purchase__session__in=this_year_sessions
-    ).distinct()
+    this_year_games = Game.objects.filter(sessions__in=this_year_sessions).distinct()
     this_year_games_with_session_counts = this_year_games.annotate(
-        session_count=Count("editions__purchase__session"),
+        session_count=Count("sessions"),
     )
     game_highest_session_count = this_year_games_with_session_counts.order_by(
         "-session_count"
@@ -76,11 +71,11 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         .aggregate(dates=Count("date"))
     )
     this_year_played_purchases = Purchase.objects.filter(
-        session__in=this_year_sessions
+        games__sessions__in=this_year_sessions
     ).distinct()
 
     this_year_purchases = Purchase.objects.all()
-    this_year_purchases_with_currency = this_year_purchases.select_related("editions")
+    this_year_purchases_with_currency = this_year_purchases.select_related("games")
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
         date_refunded=None
     )
@@ -129,11 +124,10 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     total_spent = this_year_spendings["total_spent"] or 0
 
     games_with_playtime = (
-        Game.objects.filter(editions__purchase__session__in=this_year_sessions)
+        Game.objects.filter(sessions__in=this_year_sessions)
         .annotate(
             total_playtime=Sum(
-                F("editions__purchase__session__duration_calculated")
-                + F("editions__purchase__session__duration_manual")
+                F("sessions__duration_calculated") + F("sessions__duration_manual")
             )
         )
         .values("id", "name", "total_playtime")
@@ -148,10 +142,8 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         month["playtime"] = format_duration(month["playtime"], "%2.0H")
 
     highest_session_average_game = (
-        Game.objects.filter(editions__purchase__session__in=this_year_sessions)
-        .annotate(
-            session_average=Avg("editions__purchase__session__duration_calculated")
-        )
+        Game.objects.filter(sessions__in=this_year_sessions)
+        .annotate(session_average=Avg("sessions__duration_calculated"))
         .order_by("-session_average")
         .first()
     )
@@ -160,9 +152,9 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
-        this_year_sessions.values("purchase__platform__name")
+        this_year_sessions.values("game__platform__name")
         .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
-        .annotate(platform_name=F("purchase__platform__name"))
+        .annotate(platform_name=F("game__platform__name"))
         .values("platform_name", "total_playtime")
         .order_by("-total_playtime")
     )
@@ -177,10 +169,10 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     last_play_date = "N/A"
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
-        first_play_game = first_session.purchase.first_edition.game
+        first_play_game = first_session.game
         first_play_date = first_session.timestamp_start.strftime(dateformat)
         last_session = this_year_sessions.latest()
-        last_play_game = last_session.purchase.first_edition.game
+        last_play_game = last_session.game
         last_play_date = last_session.timestamp_start.strftime(dateformat)
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
@@ -228,9 +220,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
             if longest_session
             else 0
         ),
-        "longest_session_game": (
-            longest_session.purchase.first_edition.game if longest_session else None
-        ),
+        "longest_session_game": (longest_session.game if longest_session else None),
         "highest_session_count": (
             game_highest_session_count.session_count
             if game_highest_session_count
@@ -268,7 +258,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("stats_alltime"))
     this_year_sessions = Session.objects.filter(
         timestamp_start__year=year
-    ).prefetch_related("purchase__editions")
+    ).prefetch_related("game")
     this_year_sessions_with_durations = this_year_sessions.annotate(
         duration=ExpressionWrapper(
             F("timestamp_end") - F("timestamp_start"),
@@ -276,13 +266,11 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         )
     )
     longest_session = this_year_sessions_with_durations.order_by("-duration").first()
-    this_year_games = Game.objects.filter(
-        edition__purchases__session__in=this_year_sessions
-    ).distinct()
+    this_year_games = Game.objects.filter(sessions__in=this_year_sessions).distinct()
     this_year_games_with_session_counts = this_year_games.annotate(
         session_count=Count(
-            "edition__purchases__session",
-            filter=Q(edition__purchases__session__timestamp_start__year=year),
+            "sessions",
+            filter=Q(sessions__timestamp_start__year=year),
         )
     )
     game_highest_session_count = this_year_games_with_session_counts.order_by(
@@ -296,11 +284,11 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         .aggregate(dates=Count("date"))
     )
     this_year_played_purchases = Purchase.objects.filter(
-        session__in=this_year_sessions
+        games__sessions__in=this_year_sessions
     ).distinct()
 
     this_year_purchases = Purchase.objects.filter(date_purchased__year=year)
-    this_year_purchases_with_currency = this_year_purchases.prefetch_related("editions")
+    this_year_purchases_with_currency = this_year_purchases.prefetch_related("games")
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
         date_refunded=None
     ).exclude(ownership_type=Purchase.DEMO)
@@ -337,7 +325,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
 
     purchases_finished_this_year = Purchase.objects.filter(date_finished__year=year)
     purchases_finished_this_year_released_this_year = (
-        purchases_finished_this_year.filter(editions__year_released=year).order_by(
+        purchases_finished_this_year.filter(games__year_released=year).order_by(
             "date_finished"
         )
     )
@@ -351,11 +339,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     total_spent = this_year_spendings["total_spent"] or 0
 
     games_with_playtime = (
-        Game.objects.filter(edition__purchases__session__in=this_year_sessions)
+        Game.objects.filter(sessions__in=this_year_sessions)
         .annotate(
             total_playtime=Sum(
-                F("edition__purchases__session__duration_calculated")
-                + F("edition__purchases__session__duration_manual")
+                F("sessions__duration_calculated") + F("sessions__duration_manual")
             )
         )
         .values("id", "name", "total_playtime")
@@ -370,10 +357,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         month["playtime"] = format_duration(month["playtime"], "%2.0H")
 
     highest_session_average_game = (
-        Game.objects.filter(edition__purchases__session__in=this_year_sessions)
-        .annotate(
-            session_average=Avg("edition__purchases__session__duration_calculated")
-        )
+        Game.objects.filter(sessions__in=this_year_sessions)
+        .annotate(session_average=Avg("sessions__duration_calculated"))
         .order_by("-session_average")
         .first()
     )
@@ -382,9 +367,9 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
-        this_year_sessions.values("purchase__platform__name")
+        this_year_sessions.values("game__platform__name")
         .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
-        .annotate(platform_name=F("purchase__platform__name"))
+        .annotate(platform_name=F("game__platform__name"))
         .values("platform_name", "total_playtime")
         .order_by("-total_playtime")
     )
@@ -403,10 +388,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     last_play_game = None
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
-        first_play_game = first_session.purchase.first_edition.game
+        first_play_game = first_session.game
         first_play_date = first_session.timestamp_start.strftime(dateformat)
         last_session = this_year_sessions.latest()
-        last_play_game = last_session.purchase.first_edition.game
+        last_play_game = last_session.game
         last_play_date = last_session.timestamp_start.strftime(dateformat)
 
     all_purchased_this_year_count = this_year_purchases_with_currency.count()
@@ -423,7 +408,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         ),
         "total_games": this_year_played_purchases.count(),
         "total_2023_games": this_year_played_purchases.filter(
-            editions__year_released=year
+            games__year_released=year
         ).count(),
         "top_10_games_by_playtime": top_10_games_by_playtime,
         "year": year,
@@ -435,15 +420,15 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
             safe_division(total_spent, this_year_purchases_without_refunded_count)
         ),
         "all_finished_this_year": purchases_finished_this_year.prefetch_related(
-            "editions"
+            "games"
         ).order_by("date_finished"),
         "all_finished_this_year_count": purchases_finished_this_year.count(),
         "this_year_finished_this_year": purchases_finished_this_year_released_this_year.prefetch_related(
-            "editions"
+            "games"
         ).order_by("date_finished"),
         "this_year_finished_this_year_count": purchases_finished_this_year_released_this_year.count(),
         "purchased_this_year_finished_this_year": purchased_this_year_finished_this_year.prefetch_related(
-            "editions"
+            "games"
         ).order_by("date_finished"),
         "total_sessions": this_year_sessions.count(),
         "unique_days": unique_days["dates"],
@@ -472,9 +457,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
             if longest_session
             else 0
         ),
-        "longest_session_game": (
-            longest_session.purchase.first_edition.game if longest_session else None
-        ),
+        "longest_session_game": (longest_session.game if longest_session else None),
         "highest_session_count": (
             game_highest_session_count.session_count
             if game_highest_session_count

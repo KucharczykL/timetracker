@@ -16,7 +16,7 @@ from django.utils import timezone
 from common.components import A, Button, Icon, LinkedPurchase, PurchasePrice
 from common.time import dateformat
 from games.forms import PurchaseForm
-from games.models import Edition, Purchase
+from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
 
 
@@ -138,7 +138,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_purchase(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
+def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     context: dict[str, Any] = {}
     initial = {"date_purchased": timezone.now()}
 
@@ -149,19 +149,20 @@ def add_purchase(request: HttpRequest, edition_id: int = 0) -> HttpResponse:
             if "submit_and_redirect" in request.POST:
                 return HttpResponseRedirect(
                     reverse(
-                        "add_session_for_purchase", kwargs={"purchase_id": purchase.id}
+                        "add_session_for_game",
+                        kwargs={"game_id": purchase.first_game.id},
                     )
                 )
             else:
                 return redirect("list_purchases")
     else:
-        if edition_id:
-            edition = Edition.objects.get(id=edition_id)
+        if game_id:
+            game = Game.objects.get(id=game_id)
             form = PurchaseForm(
                 initial={
                     **initial,
-                    "edition": edition,
-                    "platform": edition.platform,
+                    "games": [game],
+                    "platform": game.platform,
                 }
             )
         else:
@@ -226,12 +227,14 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("list_purchases")
 
 
-def related_purchase_by_edition(request: HttpRequest) -> HttpResponse:
-    edition_id = request.GET.get("edition")
-    if not edition_id:
-        return HttpResponseBadRequest("Invalid edition_id")
+def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
+    games = request.GET.getlist("games")
+    if not games:
+        return HttpResponseBadRequest("Invalid game_id")
+    if isinstance(games, int) or isinstance(games, str):
+        games = [games]
     form = PurchaseForm()
     form.fields["related_purchase"].queryset = Purchase.objects.filter(
-        edition_id=edition_id, type=Purchase.GAME
-    ).order_by("edition__sort_name")
+        games__in=games, type=Purchase.GAME
+    ).order_by("games__sort_name")
     return render(request, "partials/related_purchase_field.html", {"form": form})

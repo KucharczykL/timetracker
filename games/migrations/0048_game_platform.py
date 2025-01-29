@@ -29,12 +29,15 @@ def copy_platform_to_game(apps, schema_editor):
                 print(
                     f"Game '{game}' with ID '{game.pk}' missing edition with platform '{e.platform}', creating..."
                 )
-                Game.objects.create(
+                newgame = Game.objects.create(
                     name=e.name,
                     sort_name=e.sort_name,
                     platform=e.platform,
                     year_released=e.year_released,
                 )
+                print(f"Setting edition to a newly created game with id '{newgame.pk}'")
+                e.game = newgame
+                e.save()
 
 
 class Migration(migrations.Migration):

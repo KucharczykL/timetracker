@@ -7,7 +7,7 @@ import {
 
 let syncData = [
   {
-    source: "#id_edition",
+    source: "#id_games",
     source_value: "dataset.platform",
     target: "#id_platform",
     target_value: "value",
@@ -36,8 +36,8 @@ getEl("#id_type").onchange = () => {
 
 document.body.addEventListener("htmx:beforeRequest", function (event) {
   // Assuming 'Purchase1' is the element that triggers the HTMX request
-  if (event.target.id === "id_edition") {
-    var idEditionValue = document.getElementById("id_edition").value;
+  if (event.target.id === "id_games") {
+    var idEditionValue = document.getElementById("id_games").value;
 
     // Condition to check - replace this with your actual logic
     if (idEditionValue != "") {
