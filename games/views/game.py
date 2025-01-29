@@ -14,7 +14,7 @@ from common.components import (
     Div,
     Icon,
     LinkedPurchase,
-    NameWithPlatformIcon,
+    NameWithIcon,
     Popover,
     PopoverTruncated,
     PurchasePrice,
@@ -67,18 +67,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    A(
-                        [
-                            (
-                                "href",
-                                reverse(
-                                    "view_game",
-                                    args=[game.pk],
-                                ),
-                            )
-                        ],
-                        PopoverTruncated(game.name),
-                    ),
+                    NameWithIcon(game_id=game.pk),
                     PopoverTruncated(
                         game.sort_name
                         if game.sort_name is not None and game.name != game.sort_name
@@ -212,10 +201,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         ],
         "rows": [
             [
-                NameWithPlatformIcon(
-                    name=edition.name,
-                    platform=edition.platform,
-                ),
+                NameWithIcon(edition_id=edition.pk),
                 edition.year_released,
                 render_to_string(
                     "cotton/button_group.html",
@@ -321,13 +307,10 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "columns": ["Edition", "Date", "Duration", "Actions"],
         "rows": [
             [
-                NameWithPlatformIcon(
-                    name=session.purchase.name
-                    if session.purchase.name
-                    else session.purchase.first_edition.name,
-                    platform=session.purchase.platform,
+                NameWithIcon(
+                    session_id=session.pk,
                 ),
-                f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
+                f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
                 (
                     format_duration(session.duration_calculated, durationformat)
                     if session.duration_calculated

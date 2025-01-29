@@ -8,6 +8,7 @@
 * Add all-time stats
 * Manage purchases
 * Automatically convert purchase prices
+* Add emulated property to sessions
 
 ## Improved
 * mark refunded purchases red on game overview

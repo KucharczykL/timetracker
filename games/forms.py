@@ -33,6 +33,7 @@ class SessionForm(forms.ModelForm):
             "timestamp_start",
             "timestamp_end",
             "duration_manual",
+            "emulated",
             "device",
             "note",
         ]

@@ -15,7 +15,7 @@ from common.components import (
     Div,
     Form,
     Icon,
-    LinkedNameWithPlatformIcon,
+    NameWithIcon,
     Popover,
 )
 from common.time import (
@@ -130,12 +130,8 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             ],
             "rows": [
                 [
-                    LinkedNameWithPlatformIcon(
-                        name=session.purchase.first_edition.name,
-                        game_id=session.purchase.first_edition.game.pk,
-                        platform=session.purchase.platform,
-                    ),
-                    f"{local_strftime(session.timestamp_start)}{f" — {local_strftime(session.timestamp_end, timeformat)}" if session.timestamp_end else ""}",
+                    NameWithIcon(session_id=session.pk),
+                    f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
                     (
                         format_duration(session.duration_calculated, durationformat)
                         if session.duration_calculated

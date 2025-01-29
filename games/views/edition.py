@@ -11,7 +11,7 @@ from common.components import (
     A,
     Button,
     Icon,
-    LinkedNameWithPlatformIcon,
+    NameWithIcon,
     PopoverTruncated,
 )
 from common.time import dateformat, local_strftime
@@ -54,11 +54,7 @@ def list_editions(request: HttpRequest) -> HttpResponse:
             ],
             "rows": [
                 [
-                    LinkedNameWithPlatformIcon(
-                        name=edition.name,
-                        game_id=edition.game.id,
-                        platform=edition.platform,
-                    ),
+                    NameWithIcon(edition_id=edition.pk),
                     PopoverTruncated(
                         edition.name
                         if edition.game.name != edition.name

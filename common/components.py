@@ -9,7 +9,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.utils import truncate
-from games.models import Purchase
+from games.models import Edition, Game, Purchase, Session
 
 HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
@@ -32,7 +32,7 @@ def Component(
         attributesList = [f'{name}="{value}"' for name, value in attributes]
         # make attribute list into a string
         # and insert space between tag and attribute list
-        attributesBlob = f" {" ".join(attributesList)}"
+        attributesBlob = f" {' '.join(attributesList)}"
     tag: str = ""
     if tag_name != "":
         tag = f"<{tag_name}{attributesBlob}>{childrenBlob}</{tag_name}>"
@@ -188,27 +188,6 @@ def Icon(
     return result
 
 
-def LinkedNameWithPlatformIcon(name: str, game_id: int, platform: str) -> SafeText:
-    link = reverse("view_game", args=[int(game_id)])
-    a_content = Div(
-        [("class", "inline-flex gap-2 items-center")],
-        [
-            Icon(
-                platform.icon,
-                [("title", platform.name)],
-            ),
-            PopoverTruncated(name),
-        ],
-    )
-
-    return mark_safe(
-        A(
-            url=link,
-            children=[a_content],
-        ),
-    )
-
-
 def LinkedPurchase(purchase: Purchase) -> SafeText:
     link = reverse("view_purchase", args=[int(purchase.id)])
     link_content = ""
@@ -250,19 +229,63 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
     return mark_safe(A(url=link, children=[a_content]))
 
 
-def NameWithPlatformIcon(name: str, platform: str) -> SafeText:
+def NameWithIcon(
+    name: str = "",
+    platform: str = "",
+    game_id: int = 0,
+    session_id: int = 0,
+    purchase_id: int = 0,
+    edition_id: int = 0,
+    linkify: bool = True,
+    emulated: bool = False,
+) -> SafeText:
+    create_link = False
+    link = ""
+    edition = None
+    platform = None
+    if (
+        game_id != 0 or session_id != 0 or purchase_id != 0 or edition_id != 0
+    ) and linkify:
+        create_link = True
+        if session_id:
+            session = Session.objects.get(pk=session_id)
+            emulated = session.emulated
+            edition = session.purchase.first_edition
+            game_id = edition.game.pk
+        if purchase_id:
+            purchase = Purchase.objects.get(pk=purchase_id)
+            edition = purchase.first_edition
+            game_id = purchase.edition.game.pk
+        if edition_id:
+            edition = Edition.objects.get(pk=edition_id)
+            game_id = edition.game.pk
+        if game_id:
+            game = Game.objects.get(pk=game_id)
+        name = edition.name if edition else game.name
+        platform = edition.platform if edition else None
+        link = reverse("view_game", args=[int(game_id)])
     content = Div(
         [("class", "inline-flex gap-2 items-center")],
         [
             Icon(
                 platform.icon,
                 [("title", platform.name)],
-            ),
+            )
+            if platform
+            else "",
+            Icon("emulated", [("title", "Emulated")]) if emulated else "",
             PopoverTruncated(name),
         ],
     )
 
-    return mark_safe(content)
+    return mark_safe(
+        A(
+            url=link,
+            children=[content],
+        )
+        if create_link
+        else content,
+    )
 
 
 def PurchasePrice(purchase) -> str:

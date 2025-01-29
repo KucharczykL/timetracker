@@ -142,6 +142,10 @@ class Purchase(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
+    def standardized_name(self):
+        return self.name if self.name else self.first_edition.name
+
+    @property
     def first_edition(self):
         return self.editions.first()
 
@@ -220,6 +224,8 @@ class Session(models.Model):
         default=None,
     )
     note = models.TextField(blank=True, null=True)
+    emulated = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
