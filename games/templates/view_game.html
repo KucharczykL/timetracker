@@ -69,11 +69,19 @@
         </div>
         <div class="mb-6">
             <c-h1 :badge="purchase_count">Purchases</c-h1>
+            {% if purchase_count %}
             <c-simple-table :rows=purchase_data.rows :columns=purchase_data.columns />
+            {% else %}
+            No purchases yet.
+            {% endif %}
         </div>
         <div class="mb-6">
             <c-h1 :badge="session_count">Sessions</c-h1>
+            {% if session_count %}
             <c-simple-table :rows=session_data.rows :columns=session_data.columns :header_action=session_data.header_action :page_obj=session_page_obj :elided_page_range=session_elided_page_range />
+            {% else %}
+            No sessions yet.
+            {% endif %}
         </div>
     </div>
     <script>
