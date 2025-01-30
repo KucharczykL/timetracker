@@ -26,6 +26,7 @@ def schedule_tasks(sender, **kwargs):
             name="Update converted prices",
             schedule_type=Schedule.MINUTES,
             next_run=now() + timedelta(seconds=30),
+            catchup=False,
         )
 
     if not Schedule.objects.filter(name="Update price per game").exists():
@@ -34,6 +35,7 @@ def schedule_tasks(sender, **kwargs):
             name="Update price per game",
             schedule_type=Schedule.MINUTES,
             next_run=now() + timedelta(seconds=30),
+            catchup=False,
         )
 
     from games.models import ExchangeRate
