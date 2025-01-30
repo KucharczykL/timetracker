@@ -165,7 +165,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     session_count = sessions.count()
     session_count_without_manual = game.sessions.without_manual().count()
 
-    if sessions:
+    if sessions.exists():
         playrange_start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
         latest_session = sessions.latest()
         playrange_end = local_strftime(latest_session.timestamp_start, "%b %Y")
