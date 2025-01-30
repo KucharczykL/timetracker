@@ -32,21 +32,29 @@ def convert_prices():
         ).first()
 
         if not exchange_rate:
+            print(
+                f"Getting exchange rate from {currency_from} to {currency_to} for {year}..."
+            )
             try:
+                # this API endpoint only accepts lowercase currency string
                 response = requests.get(
-                    f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency_from}.json"
+                    f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency_from.lower()}.json"
                 )
                 response.raise_for_status()
                 data = response.json()
-                rate = data[currency_from].get(currency_to)
+                currency_from_data = data.get(currency_from.lower())
+                rate = currency_from_data.get(currency_to.lower())
 
                 if rate:
+                    print(f"Got {rate}, saving...")
                     exchange_rate = ExchangeRate.objects.create(
                         currency_from=currency_from,
                         currency_to=currency_to,
                         year=year,
                         rate=rate,
                     )
+                else:
+                    print("Could not get an exchange rate.")
             except requests.RequestException as e:
                 print(
                     f"Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
