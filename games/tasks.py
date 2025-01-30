@@ -1,4 +1,8 @@
 import requests
+from django.db.models import ExpressionWrapper, F, FloatField, Q
+from django.template.defaultfilters import floatformat
+from django.utils.timezone import now
+from django_q.models import Task
 
 from games.models import ExchangeRate, Purchase
 
@@ -51,7 +55,7 @@ def convert_prices():
                         currency_from=currency_from,
                         currency_to=currency_to,
                         year=year,
-                        rate=rate,
+                        rate=floatformat(rate, 2),
                     )
                 else:
                     print("Could not get an exchange rate.")
@@ -61,5 +65,24 @@ def convert_prices():
                 )
         if exchange_rate:
             save_converted_info(
-                purchase, purchase.price * exchange_rate.rate, currency_to
+                purchase,
+                floatformat(purchase.price * exchange_rate.rate, 0),
+                currency_to,
             )
+
+
+def calculate_price_per_game():
+    try:
+        last_task = Task.objects.filter(group="Update price per game").first()
+        last_run = last_task.started
+    except Task.DoesNotExist or AttributeError:
+        last_run = now()
+    purchases = Purchase.objects.filter(converted_price__isnull=False).filter(
+        Q(updated_at__gte=last_run) | Q(price_per_game__isnull=True)
+    )
+    print(f"Updating {purchases.count()} purchases.")
+    purchases.update(
+        price_per_game=ExpressionWrapper(
+            F("converted_price") / F("num_purchases"), output_field=FloatField()
+        )
+    )

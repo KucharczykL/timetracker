@@ -47,7 +47,7 @@ INSTALLED_APPS = [
 
 Q_CLUSTER = {
     "name": "DjangoQ",
-    "workers": 4,
+    "workers": 1,
     "recycle": 500,
     "timeout": 60,
     "retry": 120,

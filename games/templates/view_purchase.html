@@ -20,13 +20,12 @@
         </a>
     </div>
     <div>
-        Price:
-        {% if purchase.converted_price %}
-            {{ purchase.converted_price | floatformat }} {{ purchase.converted_currency }}
-        {% else %}
-        None
-        {% endif %}
-         ({{ purchase.price | floatformat }} {{ purchase.price_currency }})
+        <p>
+            Price:
+            <c-price-converted>{{ purchase.standardized_price }}</c-price-converted>
+             ({{ purchase.price | floatformat:2 }} {{ purchase.price_currency }})
+        </p>
+        <p>Price per game: <c-price-converted>{{ purchase.price_per_game | floatformat:0 }} {{ purchase.converted_currency }}</c-price-converted> </p>
     </div>
     <div>
         <h2 class="text-base">Items:</h2>

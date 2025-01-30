@@ -116,6 +116,8 @@ class Purchase(models.Model):
     price_currency = models.CharField(max_length=3, default="USD")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, null=True)
+    price_per_game = models.FloatField(null=True)
+    num_purchases = models.IntegerField(default=0)
     ownership_type = models.CharField(
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
     )
@@ -130,18 +132,15 @@ class Purchase(models.Model):
         related_name="related_purchases",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     @property
     def standardized_price(self):
         return (
-            f"{floatformat(self.converted_price)} {self.converted_currency}"
+            f"{floatformat(self.converted_price, 0)} {self.converted_currency}"
             if self.converted_price
             else None
         )
-
-    @property
-    def num_purchases(self):
-        return self.games.count()
 
     @property
     def has_one_item(self):

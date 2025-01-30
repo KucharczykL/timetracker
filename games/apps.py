@@ -11,6 +11,8 @@ class GamesConfig(AppConfig):
     name = "games"
 
     def ready(self):
+        import games.signals  # noqa: F401
+
         post_migrate.connect(schedule_tasks, sender=self)
 
 
@@ -22,6 +24,14 @@ def schedule_tasks(sender, **kwargs):
         schedule(
             "games.tasks.convert_prices",
             name="Update converted prices",
+            schedule_type=Schedule.MINUTES,
+            next_run=now() + timedelta(seconds=30),
+        )
+
+    if not Schedule.objects.filter(name="Update price per game").exists():
+        schedule(
+            "games.tasks.calculate_price_per_game",
+            name="Update price per game",
             schedule_type=Schedule.MINUTES,
             next_run=now() + timedelta(seconds=30),
         )
