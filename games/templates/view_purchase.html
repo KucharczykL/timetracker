@@ -2,8 +2,17 @@
     <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
     
     <div class="flex flex-col gap-5 mb-3">
+        <div class="font-bold font-serif text-slate-500 text-2xl">
+        {% if not purchase.name %}
+            Unnamed purchase
+        {% else %}
+            {{ purchase.name }}
+        {% endif %}
+        </div>
     <span class="text-balance max-w-[30rem] text-4xl">
-        <span class="font-bold font-serif">{% if purchase.name %}{{ purchase.name }}{% else %}Unnamed purchase{% endif %}</span> <span class="text-slate-500 text-2xl">({{ purchase.games.count }} games)</span>
+        <span class="font-bold font-serif">
+            {{ purchase.date_purchased }} ({{ purchase.num_purchases }} game{{ purchase.num_purchases|pluralize}})
+        </span>
     </span>
     <div class="inline-flex rounded-md shadow-sm mb-3" role="group">
         <a href="{% url 'edit_purchase' purchase.id %}">

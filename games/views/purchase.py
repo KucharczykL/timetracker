@@ -200,7 +200,11 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    return render(request, "view_purchase.html", {"purchase": purchase})
+    return render(
+        request,
+        "view_purchase.html",
+        {"purchase": purchase, "title": f"Purchase: {purchase.full_name}"},
+    )
 
 
 @login_required

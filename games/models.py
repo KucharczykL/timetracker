@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Sum
-from django.template.defaultfilters import floatformat, slugify
+from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.utils import timezone
 
 from common.time import format_duration
@@ -148,14 +148,27 @@ class Purchase(models.Model):
 
     @property
     def standardized_name(self):
-        return self.name if self.name else self.first_game.name
+        return self.name or self.first_game.name
 
     @property
     def first_game(self):
         return self.games.first()
 
     def __str__(self):
-        return f"{self.standardized_name} ({self.num_purchases}, {self.date_purchased}, {self.standardized_price})"
+        return self.standardized_name
+
+    @property
+    def full_name(self):
+        additional_info = [
+            str(item)
+            for item in [
+                f"{self.num_purchases} game{pluralize(self.num_purchases)}",
+                self.date_purchased,
+                self.standardized_price,
+            ]
+            if item
+        ]
+        return f"{self.standardized_name} ({', '.join(additional_info)})"
 
     def is_game(self):
         return self.type == self.GAME
