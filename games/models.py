@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Sum
-from django.template.defaultfilters import slugify
+from django.template.defaultfilters import floatformat, slugify
 from django.utils import timezone
 
 from common.time import format_duration
@@ -132,6 +132,22 @@ class Purchase(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
+    def standardized_price(self):
+        return (
+            f"{floatformat(self.converted_price)} {self.converted_currency}"
+            if self.converted_price
+            else None
+        )
+
+    @property
+    def num_purchases(self):
+        return self.games.count()
+
+    @property
+    def has_one_item(self):
+        return self.games.count() == 1
+
+    @property
     def standardized_name(self):
         return self.name if self.name else self.first_game.name
 
@@ -140,19 +156,7 @@ class Purchase(models.Model):
         return self.games.first()
 
     def __str__(self):
-        additional_info = [
-            self.get_type_display() if self.type != Purchase.GAME else "",
-            (
-                f"{self.first_game.platform} version on {self.platform}"
-                if self.platform != self.first_game.platform
-                else self.platform
-            ),
-            self.first_game.year_released,
-            self.get_ownership_type_display(),
-        ]
-        return (
-            f"{self.first_game} ({', '.join(filter(None, map(str, additional_info)))})"
-        )
+        return f"{self.standardized_name} ({self.num_purchases}, {self.date_purchased}, {self.standardized_price})"
 
     def is_game(self):
         return self.type == self.GAME
