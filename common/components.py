@@ -252,7 +252,7 @@ def NameWithIcon(
             game_id = purchase.games.first().pk
         if game_id:
             game = Game.objects.get(pk=game_id)
-        name = game.name
+        name = name or game.name
         platform = game.platform
         link = reverse("view_game", args=[int(game_id)])
     content = Div(
