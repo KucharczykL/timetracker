@@ -187,7 +187,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         "total_hours": format_duration(
             this_year_sessions.total_duration_unformatted(), "%2.0H"
         ),
-        "total_2023_games": this_year_played_purchases.all().count(),
+        "total_year_games": this_year_played_purchases.all().count(),
         "top_10_games_by_playtime": top_10_games_by_playtime,
         "year": year,
         "total_playtime_per_platform": total_playtime_per_platform,
@@ -287,6 +287,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         games__sessions__in=this_year_sessions
     ).distinct()
 
+    this_year_played_games = Game.objects.filter(
+        sessions__in=this_year_sessions
+    ).distinct()
+
     this_year_purchases = Purchase.objects.filter(date_purchased__year=year)
     this_year_purchases_with_currency = this_year_purchases.prefetch_related("games")
     this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
@@ -362,7 +366,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         .order_by("-session_average")
         .first()
     )
-    top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")[:10]
+    top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")
     for game in top_10_games_by_playtime:
         game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
@@ -406,8 +410,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         "total_hours": format_duration(
             this_year_sessions.total_duration_unformatted(), "%2.0H"
         ),
-        "total_games": this_year_played_purchases.count(),
-        "total_2023_games": this_year_played_purchases.filter(
+        "total_games": this_year_played_games.count(),
+        "total_year_games": this_year_played_purchases.filter(
             games__year_released=year
         ).count(),
         "top_10_games_by_playtime": top_10_games_by_playtime,
