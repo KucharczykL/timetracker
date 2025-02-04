@@ -1600,6 +1600,14 @@ input:checked + .toggle-bg {
   max-width: 20rem;
 }
 
+.max-w-full {
+  max-width: 100%;
+}
+
+.max-w-xl {
+  max-width: 36rem;
+}
+
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -1688,10 +1696,6 @@ input:checked + .toggle-bg {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-.flex-row {
-  flex-direction: row;
-}
-
 .flex-col {
   flex-direction: column;
 }
@@ -1738,14 +1742,6 @@ input:checked + .toggle-bg {
 
 .gap-5 {
   gap: 1.25rem;
-}
-
-.gap-3 {
-  gap: 0.75rem;
-}
-
-.gap-6 {
-  gap: 1.5rem;
 }
 
 .-space-x-px > :not([hidden]) ~ :not([hidden]) {
@@ -2091,10 +2087,6 @@ input:checked + .toggle-bg {
   vertical-align: top;
 }
 
-.align-middle {
-  vertical-align: middle;
-}
-
 .font-mono {
   font-family: IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
@@ -2242,6 +2234,11 @@ input:checked + .toggle-bg {
   color: rgb(203 213 225 / var(--tw-text-opacity));
 }
 
+.text-slate-400 {
+  --tw-text-opacity: 1;
+  color: rgb(148 163 184 / var(--tw-text-opacity));
+}
+
 .text-slate-500 {
   --tw-text-opacity: 1;
   color: rgb(100 116 139 / var(--tw-text-opacity));
@@ -2255,11 +2252,6 @@ input:checked + .toggle-bg {
 .text-yellow-300 {
   --tw-text-opacity: 1;
   color: rgb(250 202 21 / var(--tw-text-opacity));
-}
-
-.text-slate-400 {
-  --tw-text-opacity: 1;
-  color: rgb(148 163 184 / var(--tw-text-opacity));
 }
 
 .underline {
@@ -2419,10 +2411,9 @@ input:checked + .toggle-bg {
   transition: all 0.2s ease-out;
 } */
 
-form label:is(.dark *) {
-  --tw-text-opacity: 1;
-  color: rgb(148 163 184 / var(--tw-text-opacity));
-}
+/* form label {
+  @apply dark:text-slate-400;
+} */
 
 .responsive-table {
   margin-left: auto;
@@ -2461,25 +2452,25 @@ form label:is(.dark *) {
   border-left-color: rgb(100 116 139 / var(--tw-border-opacity));
 }
 
-form input:is(.dark *),
-select:is(.dark *),
-textarea:is(.dark *) {
-  border-width: 1px;
-  --tw-border-opacity: 1;
-  border-color: rgb(15 23 42 / var(--tw-border-opacity));
-  --tw-bg-opacity: 1;
-  background-color: rgb(100 116 139 / var(--tw-bg-opacity));
-  --tw-text-opacity: 1;
-  color: rgb(241 245 249 / var(--tw-text-opacity));
+/* form input,
+select,
+textarea {
+  @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
+} */
+
+form input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
 }
 
 form input:disabled:is(.dark *),
 select:disabled:is(.dark *),
 textarea:disabled:is(.dark *) {
   --tw-bg-opacity: 1;
-  background-color: rgb(51 65 85 / var(--tw-bg-opacity));
+  background-color: rgb(30 41 59 / var(--tw-bg-opacity));
   --tw-text-opacity: 1;
-  color: rgb(148 163 184 / var(--tw-text-opacity));
+  color: rgb(100 116 139 / var(--tw-text-opacity));
 }
 
 .errorlist {
@@ -2495,21 +2486,21 @@ textarea:disabled:is(.dark *) {
   color: rgb(226 232 240 / var(--tw-text-opacity));
 }
 
-@media screen and (min-width: 768px) {
+/* @media screen and (min-width: 768px) {
   form input,
   select,
   textarea {
     width: 300px;
   }
-}
+} */
 
-@media screen and (max-width: 768px) {
+/* @media screen and (max-width: 768px) {
   form input,
   select,
   textarea {
     width: 150px;
   }
-}
+} */
 
 #button-container button {
   margin-left: 0.25rem;
@@ -2617,6 +2608,47 @@ textarea:disabled:is(.dark *) {
     
   }  
 } */
+
+label:is(.dark *) {
+  --tw-text-opacity: 1;
+  color: rgb(100 116 139 / var(--tw-text-opacity));
+}
+
+[type="text"]:is(.dark *), [type="datetime-local"]:is(.dark *), [type="datetime"]:is(.dark *), [type="date"]:is(.dark *), [type="number"]:is(.dark *), select:is(.dark *), textarea:is(.dark *) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(71 85 105 / var(--tw-bg-opacity));
+  --tw-text-opacity: 1;
+  color: rgb(203 213 225 / var(--tw-text-opacity));
+}
+
+[type="submit"] {
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+[type="submit"]:is(.dark *) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(28 100 242 / var(--tw-bg-opacity));
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity));
+}
+
+form div label:is(.dark *) {
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity));
+}
+
+form div {
+  display: flex;
+  flex-direction: column;
+}
+
+div [type="submit"] {
+  margin-top: 0.75rem;
+}
 
 .odd\:bg-white:nth-child(odd) {
   --tw-bg-opacity: 1;

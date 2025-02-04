@@ -3,19 +3,18 @@
 {% if form_content %}
     {{ form_content }}
 {% else %}
-    <form method="post" enctype="multipart/form-data">
-        <table class="mx-auto">
+<div class="max-width-container">
+    <div class="form-container max-w-xl mx-auto">
+        <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
-            {{ form.as_table }}
-            <tr>
-                <td></td>
-                <td>
-                    <input type="submit" value="Submit" />
-                </td>
-            </tr>
-            {{ additional_row }}
-        </table>
-    </form>
+            {{ form.as_div }}
+            <div><input type="submit" value="Submit" /></div>
+            <div class="submit-button-container">
+                {{ additional_row }}
+            </div>
+        </form>
+    </div>
+</div>
 {% endif %}
 <c-slot name="scripts">
 {% if script_name %}

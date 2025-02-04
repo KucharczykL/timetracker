@@ -217,7 +217,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     context["title"] = "Add New Session"
     context["script_name"] = "add_session.js"
     context["form"] = form
-    return render(request, "add_session.html", context)
+    return render(request, "add.html", context)
 
 
 @login_required
