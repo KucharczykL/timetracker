@@ -11,8 +11,13 @@ custom_datetime_widget = forms.DateTimeInput(
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 
+class GameChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj) -> str:
+        return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
+
+
 class SessionForm(forms.ModelForm):
-    game = forms.ModelChoiceField(
+    game = GameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
@@ -34,11 +39,6 @@ class SessionForm(forms.ModelForm):
             "device",
             "note",
         ]
-
-
-class GameChoiceField(forms.ModelMultipleChoiceField):
-    def label_from_instance(self, obj) -> str:
-        return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
 
 
 class IncludePlatformSelect(forms.SelectMultiple):
