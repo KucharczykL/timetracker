@@ -52,6 +52,18 @@
                 {{ playrange }}
                 </c-popover>
             </div>
+            <div class="mb-6 text-slate-400">
+                <div class="flex gap-2 items-center">
+                    <span class="uppercase font-bold text-slate-300">Status</span>
+                    <c-gamestatus :status="game.status">
+                        {{ game.get_status_display }}
+                    </c-gamestatus>
+                </div>
+                <div class="flex gap-2 items-center">
+                    <span class="uppercase font-bold text-slate-300">Platform</span>
+                    <span>{{ game.platform }}</span>
+                </div>
+            </div>
             <div class="inline-flex rounded-md shadow-sm mb-3" role="group">
                 <a href="{% url 'edit_game' game.id %}">
                     <button type="button"

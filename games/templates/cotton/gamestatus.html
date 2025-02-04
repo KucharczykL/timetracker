@@ -1,0 +1,16 @@
+<div class="relative ml-3">
+    <span class="rounded-xl w-2 h-2 absolute -left-3 top-2
+    {% if status == "u" %}
+    bg-gray-500
+    {% elif status == "p" %}
+    bg-orange-400
+    {% elif status == "f" %}
+    bg-green-500
+    {% elif status == "a" %}
+    bg-red-500
+    {% elif status == "r" %}
+    bg-purple-500
+    {% endif %}
+    ">&nbsp;</span>
+    {{ slot }}
+</div>

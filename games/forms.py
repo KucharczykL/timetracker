@@ -24,6 +24,12 @@ class SessionForm(forms.ModelForm):
 
     device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"))
 
+    mark_as_played = forms.BooleanField(
+        required=False,
+        initial={"mark_as_played": True},
+        label="Set game status to Played if Unplayed",
+    )
+
     class Meta:
         widgets = {
             "timestamp_start": custom_datetime_widget,
@@ -38,7 +44,20 @@ class SessionForm(forms.ModelForm):
             "emulated",
             "device",
             "note",
+            "mark_as_played",
         ]
+
+    def save(self, commit=True):
+        session = super().save(commit=False)
+        if self.cleaned_data.get("mark_as_played"):
+            game_instance = session.game
+            if game_instance.status == "u":
+                game_instance.status = "p"
+            if commit:
+                game_instance.save()
+        if commit:
+            session.save()
+        return session
 
 
 class IncludePlatformSelect(forms.SelectMultiple):
@@ -143,7 +162,14 @@ class GameForm(forms.ModelForm):
 
     class Meta:
         model = Game
-        fields = ["name", "sort_name", "platform", "year_released", "wikidata"]
+        fields = [
+            "name",
+            "sort_name",
+            "platform",
+            "year_released",
+            "status",
+            "wikidata",
+        ]
         widgets = {"name": autofocus_input_widget}
 
 

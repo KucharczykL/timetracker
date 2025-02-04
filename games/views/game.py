@@ -61,6 +61,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 "Name",
                 "Sort Name",
                 "Year",
+                "Status",
                 "Wikidata",
                 "Created",
                 "Actions",
@@ -74,6 +75,10 @@ def list_games(request: HttpRequest) -> HttpResponse:
                         else "(identical)"
                     ),
                     game.year_released,
+                    render_to_string(
+                        "cotton/gamestatus.html",
+                        {"status": game.status, "slot": game.get_status_display()},
+                    ),
                     game.wikidata,
                     local_strftime(game.created_at, dateformat),
                     render_to_string(

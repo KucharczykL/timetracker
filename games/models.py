@@ -23,6 +23,31 @@ class Game(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Status(models.TextChoices):
+        UNPLAYED = (
+            "u",
+            "Unplayed",
+        )
+        PLAYED = (
+            "p",
+            "Played",
+        )
+        FINISHED = (
+            "f",
+            "Finished",
+        )
+        RETIRED = (
+            "r",
+            "Retired",
+        )
+        ABANDONED = (
+            "a",
+            "Abandoned",
+        )
+
+    status = models.CharField(max_length=1, choices=Status, default=Status.UNPLAYED)
+    mastered = models.BooleanField(default=False)
+
     session_average: float | int | timedelta | None
     session_count: int | None
 
