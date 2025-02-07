@@ -11,7 +11,7 @@ custom_datetime_widget = forms.DateTimeInput(
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 
-class GameChoiceField(forms.ModelChoiceField):
+class GameChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj) -> str:
         return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
 
