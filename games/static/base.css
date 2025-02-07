@@ -1596,16 +1596,12 @@ input:checked + .toggle-bg {
   max-width: 24rem;
 }
 
-.max-w-xs {
-  max-width: 20rem;
-}
-
-.max-w-full {
-  max-width: 100%;
-}
-
 .max-w-xl {
   max-width: 36rem;
+}
+
+.max-w-xs {
+  max-width: 20rem;
 }
 
 .flex-1 {
@@ -2614,7 +2610,7 @@ label:is(.dark *) {
   color: rgb(100 116 139 / var(--tw-text-opacity));
 }
 
-[type="text"]:is(.dark *), [type="datetime-local"]:is(.dark *), [type="datetime"]:is(.dark *), [type="date"]:is(.dark *), [type="number"]:is(.dark *), select:is(.dark *), textarea:is(.dark *) {
+[type="text"]:is(.dark *), [type="password"]:is(.dark *), [type="datetime-local"]:is(.dark *), [type="datetime"]:is(.dark *), [type="date"]:is(.dark *), [type="number"]:is(.dark *), select:is(.dark *), textarea:is(.dark *) {
   --tw-bg-opacity: 1;
   background-color: rgb(71 85 105 / var(--tw-bg-opacity));
   --tw-text-opacity: 1;
