@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
@@ -8,6 +8,7 @@ from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.timezone import now as timezone_now
 
 from common.time import available_stats_year_range, dateformat, format_duration
 from common.utils import safe_division
@@ -15,11 +16,20 @@ from games.models import Game, Platform, Purchase, Session
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
+    today_played = Session.objects.filter(
+        timestamp_start__year=2025, timestamp_start__day=8, timestamp_start__month=2
+    ).aggregate(time=Sum(F("duration_calculated")))["time"]
+    last_7_played = Session.objects.filter(
+        timestamp_start__gte=(timezone_now() - timedelta(days=7))
+    ).aggregate(time=Sum(F("duration_calculated")))["time"]
+
     return {
         "game_available": Game.objects.exists(),
         "platform_available": Platform.objects.exists(),
         "purchase_available": Purchase.objects.exists(),
         "session_count": Session.objects.exists(),
+        "today_played": format_duration(today_played, "%H h %m m"),
+        "last_7_played": format_duration(last_7_played, "%H h %m m"),
     }
 
 

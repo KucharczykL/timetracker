@@ -9,6 +9,7 @@
 * Manage purchases
 * Automatically convert purchase prices
 * Add emulated property to sessions
+* Add today's and last 7 days playtime stats to navbar
 
 ## Improved
 * mark refunded purchases red on game overview
