@@ -215,7 +215,8 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             form = SessionForm(initial=initial)
 
     context["title"] = "Add New Session"
-    context["script_name"] = "add_session.js"
+    # TODO: re-add custom buttons #91
+    # context["script_name"] = "add_session.js"
     context["form"] = form
     return render(request, "add.html", context)
 
@@ -231,7 +232,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         return redirect("list_sessions")
     context["title"] = "Edit Session"
     context["form"] = form
-    return render(request, "add_session.html", context)
+    return render(request, "add.html", context)
 
 
 def clone_session_by_id(session_id: int) -> Session:
