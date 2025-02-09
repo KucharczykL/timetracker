@@ -16,11 +16,15 @@ from games.models import Game, Platform, Purchase, Session
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
+    now = timezone_now()
+    this_day, this_month, this_year = now.day, now.month, now.year
     today_played = Session.objects.filter(
-        timestamp_start__year=2025, timestamp_start__day=8, timestamp_start__month=2
+        timestamp_start__day=this_day,
+        timestamp_start__month=this_month,
+        timestamp_start__year=this_year,
     ).aggregate(time=Sum(F("duration_calculated")))["time"]
     last_7_played = Session.objects.filter(
-        timestamp_start__gte=(timezone_now() - timedelta(days=7))
+        timestamp_start__gte=(now - timedelta(days=7))
     ).aggregate(time=Sum(F("duration_calculated")))["time"]
 
     return {
