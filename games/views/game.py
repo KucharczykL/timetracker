@@ -2,7 +2,7 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -12,6 +12,7 @@ from common.components import (
     A,
     Button,
     Div,
+    Form,
     Icon,
     LinkedPurchase,
     NameWithIcon,
@@ -27,19 +28,39 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import safe_division, truncate
+from common.utils import build_dynamic_filter, safe_division, truncate
 from games.forms import GameForm
 from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
 
 
 @login_required
-def list_games(request: HttpRequest) -> HttpResponse:
+def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
     context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
     games = Game.objects.order_by("-created_at")
     page_obj = None
+    search_string = request.GET.get("search_string", search_string)
+    if search_string != "":
+        filters = [
+            Q(name__icontains=search_string),
+            Q(sort_name__icontains=search_string),
+            Q(platform__name__icontains=search_string),
+        ]
+        try:
+            year_value = int(search_string)
+        except ValueError:
+            year_value = None
+        if year_value:
+            filters.append(Q(year_released=year_value))
+        search_string_parts = search_string.split()
+        # only search for status if it exactly matches and is the only word
+        if len(search_string_parts) == 1:
+            if search_string.title() in Game.Status.labels:
+                search_status = Game.Status[search_string.upper()]
+                filters.append(Q(status=search_status))
+        games = games.filter(build_dynamic_filter(filters, "|"))
     if int(limit) != 0:
         paginator = Paginator(games, limit)
         page_obj = paginator.get_page(page_number)
@@ -56,7 +77,23 @@ def list_games(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add game"), url="add_game"),
+            "header_action": Div(
+                children=[
+                    Form(
+                        children=[
+                            render_to_string(
+                                "cotton/search_field.html",
+                                {
+                                    "id": "search_string",
+                                    "search_string": search_string,
+                                },
+                            )
+                        ]
+                    ),
+                    A([], Button([], "Add game"), url="add_game"),
+                ],
+                attributes=[("class", "flex justify-between")],
+            ),
             "columns": [
                 "Name",
                 "Sort Name",

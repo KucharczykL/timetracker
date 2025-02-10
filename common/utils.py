@@ -1,6 +1,10 @@
+import operator
+from dataclasses import dataclass
 from datetime import date
-from typing import Any, Generator, TypeVar
+from functools import reduce
+from typing import Any, Callable, Generator, Literal, TypeVar
 
+from django.db.models import Q
 
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
     """
@@ -81,3 +85,46 @@ def generate_split_ranges(
 
 def format_float_or_int(number: int | float):
     return int(number) if float(number).is_integer() else f"{number:03.2f}"
+
+
+OperatorType = Literal["|", "&"]
+
+
+@dataclass
+class FilterEntry:
+    condition: Q
+    operator: OperatorType = "&"
+
+
+def build_dynamic_filter(
+    filters: list[FilterEntry | Q], default_operator: OperatorType = "&"
+):
+    """
+    Constructs a Django Q filter from a list of filter conditions.
+
+    Args:
+        filters (list): A list where each item is either:
+            - A Q object (default AND logic applied)
+            - A tuple of (Q object, operator) where operator is "|" (OR) or "&" (AND)
+
+    Returns:
+        Q: A combined Q object that can be passed to Django's filter().
+    """
+    op_map: dict[OperatorType, Callable[[Q, Q], Q]] = {
+        "|": operator.or_,
+        "&": operator.and_,
+    }
+
+    # Convert all plain Q objects into (Q, "&") for default AND behavior
+    processed_filters = [
+        FilterEntry(f, default_operator) if isinstance(f, Q) else f for f in filters
+    ]
+
+    # Reduce with dynamic operators
+    return reduce(
+        lambda combined_filters, filter: op_map[filter.operator](
+            combined_filters, filter.condition
+        ),
+        processed_filters,
+        Q(),
+    )
