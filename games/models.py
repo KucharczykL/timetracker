@@ -284,7 +284,7 @@ class Session(models.Model):
         calculated = timedelta(0)
         if self.is_manual() and isinstance(self.duration_manual, timedelta):
             manual = self.duration_manual
-        if self.timestamp_end != None and self.timestamp_start != None:
+        if self.timestamp_end is not None and self.timestamp_start is not None:
             calculated = self.timestamp_end - self.timestamp_start
         return timedelta(seconds=(manual + calculated).total_seconds())
 
@@ -300,7 +300,7 @@ class Session(models.Model):
         return Session.objects.all().total_duration_formatted()
 
     def save(self, *args, **kwargs) -> None:
-        if self.timestamp_start != None and self.timestamp_end != None:
+        if self.timestamp_start is not None and self.timestamp_end is not None:
             self.duration_calculated = self.timestamp_end - self.timestamp_start
         else:
             self.duration_calculated = timedelta(0)
