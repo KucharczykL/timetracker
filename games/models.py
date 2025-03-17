@@ -14,9 +14,9 @@ class Game(models.Model):
         unique_together = [["name", "platform", "year_released"]]
 
     name = models.CharField(max_length=255)
-    sort_name = models.CharField(max_length=255, null=True, blank=True, default=None)
+    sort_name = models.CharField(max_length=255, blank=True, default="")
     year_released = models.IntegerField(null=True, blank=True, default=None)
-    wikidata = models.CharField(max_length=50, null=True, blank=True, default=None)
+    wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
         "Platform", on_delete=models.SET_DEFAULT, null=True, blank=True, default=None
     )
@@ -68,7 +68,7 @@ def get_sentinel_platform():
 
 class Platform(models.Model):
     name = models.CharField(max_length=255)
-    group = models.CharField(max_length=255, null=True, blank=True, default=None)
+    group = models.CharField(max_length=255, blank=True, default="")
     icon = models.SlugField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -127,7 +127,7 @@ class Purchase(models.Model):
 
     objects = PurchaseQueryset().as_manager()
 
-    games = models.ManyToManyField(Game, related_name="purchases", blank=True)
+    games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
         Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
@@ -140,20 +140,19 @@ class Purchase(models.Model):
     price = models.FloatField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
     converted_price = models.FloatField(null=True)
-    converted_currency = models.CharField(max_length=3, null=True)
+    converted_currency = models.CharField(max_length=3, blank=True, default="")
     price_per_game = models.FloatField(null=True)
     num_purchases = models.IntegerField(default=0)
     ownership_type = models.CharField(
         max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
     )
     type = models.CharField(max_length=255, choices=TYPES, default=GAME)
-    name = models.CharField(max_length=255, default="", null=True, blank=True)
+    name = models.CharField(max_length=255, blank=True, default="")
     related_purchase = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
         default=None,
         null=True,
-        blank=True,
         related_name="related_purchases",
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -247,7 +246,6 @@ class Session(models.Model):
     game = models.ForeignKey(
         Game,
         on_delete=models.CASCADE,
-        blank=True,
         null=True,
         default=None,
         related_name="sessions",
@@ -263,7 +261,7 @@ class Session(models.Model):
         blank=True,
         default=None,
     )
-    note = models.TextField(blank=True, null=True)
+    note = models.TextField(blank=True, default="")
     emulated = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
