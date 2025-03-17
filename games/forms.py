@@ -173,6 +173,7 @@ class GameForm(forms.ModelForm):
             "platform",
             "year_released",
             "status",
+            "mastered",
             "wikidata",
         ]
         widgets = {"name": autofocus_input_widget}
