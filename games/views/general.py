@@ -22,10 +22,10 @@ def model_counts(request: HttpRequest) -> dict[str, bool]:
         timestamp_start__day=this_day,
         timestamp_start__month=this_month,
         timestamp_start__year=this_year,
-    ).aggregate(time=Sum(F("duration_calculated")))["time"]
+    ).aggregate(time=Sum(F("duration_calculated") + F("duration_manual")))["time"]
     last_7_played = Session.objects.filter(
         timestamp_start__gte=(now - timedelta(days=7))
-    ).aggregate(time=Sum(F("duration_calculated")))["time"]
+    ).aggregate(time=Sum(F("duration_calculated") + F("duration_manual")))["time"]
 
     return {
         "game_available": Game.objects.exists(),
