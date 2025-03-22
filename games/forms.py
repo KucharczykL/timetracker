@@ -2,7 +2,15 @@ from django import forms
 from django.urls import reverse
 
 from common.utils import safe_getattr
-from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+from games.models import (
+    Device,
+    Game,
+    GameStatusChange,
+    Platform,
+    PlayEvent,
+    Purchase,
+    Session,
+)
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
@@ -211,4 +219,18 @@ class PlayEventForm(forms.ModelForm):
         widgets = {
             "started": custom_date_widget,
             "ended": custom_date_widget,
+        }
+
+
+class GameStatusChangeForm(forms.ModelForm):
+    class Meta:
+        model = GameStatusChange
+        fields = [
+            "game",
+            "old_status",
+            "new_status",
+            "timestamp",
+        ]
+        widgets = {
+            "timestamp": custom_datetime_widget,
         }

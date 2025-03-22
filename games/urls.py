@@ -1,7 +1,16 @@
 from django.urls import path
 
 from games.api import api
-from games.views import device, game, general, platform, playevent, purchase, session
+from games.views import (
+    device,
+    game,
+    general,
+    platform,
+    playevent,
+    purchase,
+    session,
+    statuschange,
+)
 
 urlpatterns = [
     path("", general.index, name="index"),
@@ -127,6 +136,26 @@ urlpatterns = [
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("session/search", session.search_sessions, name="search_sessions"),
+    path(
+        "statuschange/add",
+        statuschange.AddStatusChangeView.as_view(),
+        name="add_statuschange",
+    ),
+    path(
+        "statuschange/edit/<int:statuschange_id>",
+        statuschange.EditStatusChangeView.as_view(),
+        name="edit_statuschange",
+    ),
+    path(
+        "statuschange/delete/<int:pk>",
+        statuschange.GameStatusChangeDeleteView.as_view(),
+        name="delete_statuschange",
+    ),
+    path(
+        "statuschange/list",
+        statuschange.GameStatusChangeListView.as_view(),
+        name="list_statuschanges",
+    ),
     path("stats/", general.stats_alltime, name="stats_alltime"),
     path(
         "stats/<int:year>",

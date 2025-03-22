@@ -159,7 +159,7 @@
             <ul class="list-disc list-inside">
                 {% for change in statuschanges %}
                 <li class="text-slate-500">
-                    {% if change.timestamp %}{{ change.timestamp | date:"d/m/Y H:i" }}: Changed{% else %}At some point changed{% endif %} status from <c-gamestatus :status="change.old_status" class="text-white">{{ change.get_old_status_display }}</c-gamestatus> to <c-gamestatus :status="change.new_status" class="text-white">{{ change.get_new_status_display }}</c-gamestatus></li>
+                    {% if change.timestamp %}{{ change.timestamp | date:"d/m/Y H:i" }}: Changed{% else %}At some point changed{% endif %} status from <c-gamestatus :status="change.old_status" class="text-white">{{ change.get_old_status_display }}</c-gamestatus> to <c-gamestatus :status="change.new_status" class="text-white">{{ change.get_new_status_display }}</c-gamestatus> (<a href="{% url 'edit_statuschange' change.id %}">Edit</a>, <a href="{% url 'delete_statuschange' change.id %}">Delete</a>)</li>
                 {% endfor %}
             </ul>
         </div>
