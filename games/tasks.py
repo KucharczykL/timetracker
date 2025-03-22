@@ -3,6 +3,9 @@ from django.db.models import ExpressionWrapper, F, FloatField, Q
 from django.template.defaultfilters import floatformat
 from django.utils.timezone import now
 from django_q.models import Task
+import logging
+
+logger = logging.getLogger("games")
 
 from games.models import ExchangeRate, Purchase
 
@@ -12,8 +15,8 @@ currency_to = currency_to.upper()
 
 
 def save_converted_info(purchase, converted_price, converted_currency):
-    print(
-        f"Changing converted price of {purchase} to {converted_price} {converted_currency} "
+    logger.info(
+        f"Setting converted price of {purchase} to {converted_price} {converted_currency} (originally {purchase.price} {purchase.price_currency})"
     )
     purchase.converted_price = converted_price
     purchase.converted_currency = converted_currency
@@ -24,6 +27,8 @@ def convert_prices():
     purchases = Purchase.objects.filter(
         converted_price__isnull=True, converted_currency=""
     )
+    if purchases.count() == 0:
+        logger.info("[convert_prices]: No prices to convert.")
 
     for purchase in purchases:
         if purchase.price_currency.upper() == currency_to or purchase.price == 0:
@@ -31,13 +36,14 @@ def convert_prices():
             continue
         year = purchase.date_purchased.year
         currency_from = purchase.price_currency.upper()
+
         exchange_rate = ExchangeRate.objects.filter(
             currency_from=currency_from, currency_to=currency_to, year=year
         ).first()
-
+        logger.info(f"[convert_prices]: Looking for exchange rate in database: {currency_from}->{currency_to}")
         if not exchange_rate:
-            print(
-                f"Getting exchange rate from {currency_from} to {currency_to} for {year}..."
+            logger.info(
+                f"[convert_prices]: Getting exchange rate from {currency_from} to {currency_to} for {year}..."
             )
             try:
                 # this API endpoint only accepts lowercase currency string
@@ -50,7 +56,7 @@ def convert_prices():
                 rate = currency_from_data.get(currency_to.lower())
 
                 if rate:
-                    print(f"Got {rate}, saving...")
+                    logger.info(f"[convert_prices]: Got {rate}, saving...")
                     exchange_rate = ExchangeRate.objects.create(
                         currency_from=currency_from,
                         currency_to=currency_to,
@@ -58,10 +64,10 @@ def convert_prices():
                         rate=floatformat(rate, 2),
                     )
                 else:
-                    print("Could not get an exchange rate.")
+                    logger.info("[convert_prices]: Could not get an exchange rate.")
             except requests.RequestException as e:
-                print(
-                    f"Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
+                logger.info(
+                    f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
                 )
         if exchange_rate:
             save_converted_info(
@@ -80,7 +86,7 @@ def calculate_price_per_game():
     purchases = Purchase.objects.filter(converted_price__isnull=False).filter(
         Q(updated_at__gte=last_run) | Q(price_per_game__isnull=True)
     )
-    print(f"Updating {purchases.count()} purchases.")
+    logger.info(f"[calculate_price_per_game]: Updating {purchases.count()} purchases.")
     purchases.update(
         price_per_game=ExpressionWrapper(
             F("converted_price") / F("num_purchases"), output_field=FloatField()
