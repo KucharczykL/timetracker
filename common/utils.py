@@ -1,10 +1,14 @@
 import operator
 from dataclasses import dataclass
 from datetime import date
-from functools import reduce
+from functools import reduce, wraps
 from typing import Any, Callable, Generator, Literal, TypeVar
+from urllib.parse import urlencode
 
 from django.db.models import Q
+from django.http import HttpRequest
+from django.shortcuts import redirect
+
 
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:
     """
@@ -40,7 +44,7 @@ def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> ob
 
 def truncate_(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
     return (
-        (f"{input_string[:length-len(ellipsis)].rstrip()}{ellipsis}")
+        (f"{input_string[: length - len(ellipsis)].rstrip()}{ellipsis}")
         if len(input_string) > length
         else input_string
     )
@@ -54,12 +58,12 @@ def truncate(
         raise ValueError("Length cannot be shorter than the length of endpart.")
 
     if len(input_string) > max_content_length:
-        return f"{input_string[:max_content_length - len(ellipsis)].rstrip()}{ellipsis}{endpart}"
+        return f"{input_string[: max_content_length - len(ellipsis)].rstrip()}{ellipsis}{endpart}"
 
     return (
         f"{input_string}{endpart}"
         if len(input_string) + len(endpart) <= length
-        else f"{input_string[:length - len(ellipsis) - len(endpart)].rstrip()}{ellipsis}{endpart}"
+        else f"{input_string[: length - len(ellipsis) - len(endpart)].rstrip()}{ellipsis}{endpart}"
     )
 
 
@@ -128,3 +132,36 @@ def build_dynamic_filter(
         processed_filters,
         Q(),
     )
+
+
+def redirect_to(default_view: str, *default_args):
+    """
+    A decorator that redirects the user back to the referring page or a default view if no 'next' parameter is provided.
+
+    :param default_view: The name of the default view to redirect to if 'next' is missing.
+    :param default_args: Any arguments required for the default view.
+    """
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped_view(request: HttpRequest, *args, **kwargs):
+            next_url = request.GET.get("next")
+            if not next_url:
+                from django.urls import (
+                    reverse,  # Import inside function to avoid circular imports
+                )
+
+                next_url = reverse(default_view, args=default_args)
+
+            response = view_func(
+                request, *args, **kwargs
+            )  # Execute the original view logic
+            return redirect(next_url)
+
+        return wrapped_view
+
+    return decorator
+
+
+def add_next_param_to_url(url: str, nexturl: str) -> str:
+    return f"{url}?{urlencode({'next': nexturl})}"

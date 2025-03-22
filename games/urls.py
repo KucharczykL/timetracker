@@ -1,6 +1,7 @@
 from django.urls import path
 
-from games.views import device, game, general, platform, purchase, session
+from games.api import api
+from games.views import device, game, general, platform, playevent, purchase, session
 
 urlpatterns = [
     path("", general.index, name="index"),
@@ -25,6 +26,23 @@ urlpatterns = [
         name="delete_platform",
     ),
     path("platform/list", platform.list_platforms, name="list_platforms"),
+    path("playevent/list", playevent.list_playevents, name="list_playevents"),
+    path("playevent/add", playevent.add_playevent, name="add_playevent"),
+    path(
+        "playevent/add/for-game/<int:game_id>",
+        playevent.add_playevent,
+        name="add_playevent_for_game",
+    ),
+    path(
+        "playevent/edit/<int:playevent_id>",
+        playevent.edit_playevent,
+        name="edit_playevent",
+    ),
+    path(
+        "playevent/delete/<int:playevent_id>",
+        playevent.delete_playevent,
+        name="delete_playevent",
+    ),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
         "purchase/add/for-game/<int:game_id>",
@@ -115,4 +133,5 @@ urlpatterns = [
         general.stats,
         name="stats_by_year",
     ),
+    path("api/", api.urls),
 ]

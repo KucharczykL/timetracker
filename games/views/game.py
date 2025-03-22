@@ -32,6 +32,7 @@ from common.utils import build_dynamic_filter, safe_division, truncate
 from games.forms import GameForm
 from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
+from games.views.playevent import create_playevent_tabledata
 
 
 @login_required
@@ -351,7 +352,34 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         ],
     }
 
+    playevents = game.playevents.all()
+    playevent_count = playevents.count()
+    playevent_data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
+
+    statuschanges = game.status_changes.all()
+    statuschange_count = statuschanges.count()
+    statuschange_data = {
+        "columns": [
+            "Old Status",
+            "New Status",
+            "Timestamp",
+        ],
+        "rows": [
+            [
+                statuschange.get_old_status_display()
+                if statuschange.old_status
+                else "-",
+                statuschange.get_new_status_display(),
+                local_strftime(statuschange.timestamp, dateformat),
+            ]
+            for statuschange in statuschanges
+        ],
+    }
+
     context: dict[str, Any] = {
+        "statuschange_data": statuschange_data,
+        "statuschange_count": statuschange_count,
+        "statuschanges": statuschanges,
         "game": game,
         "playrange": playrange,
         "purchase_count": game.purchases.count(),
@@ -366,6 +394,8 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "title": f"Game Overview - {game.name}",
         "hours_sum": total_hours,
         "purchase_data": purchase_data,
+        "playevent_data": playevent_data,
+        "playevent_count": playevent_count,
         "session_data": session_data,
         "session_page_obj": session_page_obj,
         "session_elided_page_range": (

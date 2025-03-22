@@ -2,7 +2,7 @@ from django import forms
 from django.urls import reverse
 
 from common.utils import safe_getattr
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
@@ -103,8 +103,6 @@ class PurchaseForm(forms.ModelForm):
         widgets = {
             "date_purchased": custom_date_widget,
             "date_refunded": custom_date_widget,
-            "date_finished": custom_date_widget,
-            "date_dropped": custom_date_widget,
         }
         model = Purchase
         fields = [
@@ -112,8 +110,6 @@ class PurchaseForm(forms.ModelForm):
             "platform",
             "date_purchased",
             "date_refunded",
-            "date_finished",
-            "date_dropped",
             "infinite",
             "price",
             "price_currency",
@@ -171,6 +167,7 @@ class GameForm(forms.ModelForm):
             "name",
             "sort_name",
             "platform",
+            "original_year_released",
             "year_released",
             "status",
             "mastered",
@@ -195,3 +192,23 @@ class DeviceForm(forms.ModelForm):
         model = Device
         fields = ["name", "type"]
         widgets = {"name": autofocus_input_widget}
+
+
+class PlayEventForm(forms.ModelForm):
+    game = GameModelChoiceField(
+        queryset=Game.objects.order_by("sort_name"),
+        widget=forms.Select(attrs={"autofocus": "autofocus"}),
+    )
+
+    class Meta:
+        model = PlayEvent
+        fields = [
+            "game",
+            "started",
+            "ended",
+            "note",
+        ]
+        widgets = {
+            "started": custom_date_widget,
+            "ended": custom_date_widget,
+        }

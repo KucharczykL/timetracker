@@ -51,8 +51,6 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 "Infinite",
                 "Purchased",
                 "Refunded",
-                "Finished",
-                "Dropped",
                 "Created",
                 "Actions",
             ],
@@ -68,39 +66,11 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                         if purchase.date_refunded
                         else "-"
                     ),
-                    (
-                        purchase.date_finished.strftime(dateformat)
-                        if purchase.date_finished
-                        else "-"
-                    ),
-                    (
-                        purchase.date_dropped.strftime(dateformat)
-                        if purchase.date_dropped
-                        else "-"
-                    ),
                     purchase.created_at.strftime(dateformat),
                     render_to_string(
                         "cotton/button_group.html",
                         {
                             "buttons": [
-                                {
-                                    "href": reverse(
-                                        "finish_purchase", args=[purchase.pk]
-                                    ),
-                                    "slot": Icon("checkmark"),
-                                    "title": "Mark as finished",
-                                }
-                                if not purchase.date_finished
-                                else {},
-                                {
-                                    "href": reverse(
-                                        "drop_purchase", args=[purchase.pk]
-                                    ),
-                                    "slot": Icon("eject"),
-                                    "title": "Mark as dropped",
-                                }
-                                if not purchase.date_dropped
-                                else {},
                                 {
                                     "href": reverse(
                                         "refund_purchase", args=[purchase.pk]
