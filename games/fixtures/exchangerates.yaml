@@ -110,3 +110,395 @@
     currency_to: CZK
     year: 2018
     rate: 3.268
+- model: games.exchangerate
+  pk: 17
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2023
+    rate: 3.281
+- model: games.exchangerate
+  pk: 18
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2009
+    rate: 26.445
+- model: games.exchangerate
+  pk: 19
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2025
+    rate: 3.35
+- model: games.exchangerate
+  pk: 20
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2016
+    rate: 27.033
+- model: games.exchangerate
+  pk: 21
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2025
+    rate: 25.2021966
+- model: games.exchangerate
+  pk: 22
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2017
+    rate: 26.33
+- model: games.exchangerate
+  pk: 23
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2000
+    rate: 36.13
+- model: games.exchangerate
+  pk: 24
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2000
+    rate: 35.979
+- model: games.exchangerate
+  pk: 25
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2001
+    rate: 35.09
+- model: games.exchangerate
+  pk: 26
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2001
+    rate: 37.813
+- model: games.exchangerate
+  pk: 27
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2002
+    rate: 31.98
+- model: games.exchangerate
+  pk: 28
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2002
+    rate: 36.259
+- model: games.exchangerate
+  pk: 29
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2003
+    rate: 31.6
+- model: games.exchangerate
+  pk: 30
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2003
+    rate: 30.141
+- model: games.exchangerate
+  pk: 31
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2004
+    rate: 32.405
+- model: games.exchangerate
+  pk: 32
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2004
+    rate: 25.654
+- model: games.exchangerate
+  pk: 33
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2005
+    rate: 30.465
+- model: games.exchangerate
+  pk: 34
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2005
+    rate: 22.365
+- model: games.exchangerate
+  pk: 35
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2006
+    rate: 29.005
+- model: games.exchangerate
+  pk: 36
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2006
+    rate: 24.588
+- model: games.exchangerate
+  pk: 37
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2006
+    rate: 3.047
+- model: games.exchangerate
+  pk: 38
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2007
+    rate: 27.495
+- model: games.exchangerate
+  pk: 39
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2007
+    rate: 20.876
+- model: games.exchangerate
+  pk: 40
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2007
+    rate: 2.674
+- model: games.exchangerate
+  pk: 41
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2008
+    rate: 26.62
+- model: games.exchangerate
+  pk: 42
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2008
+    rate: 18.078
+- model: games.exchangerate
+  pk: 43
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2008
+    rate: 2.475
+- model: games.exchangerate
+  pk: 44
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2009
+    rate: 19.346
+- model: games.exchangerate
+  pk: 45
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2009
+    rate: 2.836
+- model: games.exchangerate
+  pk: 46
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2010
+    rate: 18.368
+- model: games.exchangerate
+  pk: 47
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2010
+    rate: 2.691
+- model: games.exchangerate
+  pk: 48
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2011
+    rate: 25.06
+- model: games.exchangerate
+  pk: 49
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2011
+    rate: 18.751
+- model: games.exchangerate
+  pk: 50
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2011
+    rate: 2.845
+- model: games.exchangerate
+  pk: 51
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2012
+    rate: 19.94
+- model: games.exchangerate
+  pk: 52
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2012
+    rate: 3.168
+- model: games.exchangerate
+  pk: 53
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2013
+    rate: 25.14
+- model: games.exchangerate
+  pk: 54
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2013
+    rate: 3.059
+- model: games.exchangerate
+  pk: 55
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2014
+    rate: 19.894
+- model: games.exchangerate
+  pk: 56
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2014
+    rate: 3.286
+- model: games.exchangerate
+  pk: 57
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2015
+    rate: 27.725
+- model: games.exchangerate
+  pk: 58
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2015
+    rate: 22.834
+- model: games.exchangerate
+  pk: 59
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2016
+    rate: 24.824
+- model: games.exchangerate
+  pk: 60
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2017
+    rate: 3.693
+- model: games.exchangerate
+  pk: 61
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2018
+    rate: 25.54
+- model: games.exchangerate
+  pk: 62
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2018
+    rate: 21.291
+- model: games.exchangerate
+  pk: 63
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2019
+    rate: 25.725
+- model: games.exchangerate
+  pk: 64
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2020
+    rate: 25.41
+- model: games.exchangerate
+  pk: 65
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2020
+    rate: 22.621
+- model: games.exchangerate
+  pk: 66
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2021
+    rate: 26.245
+- model: games.exchangerate
+  pk: 67
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2021
+    rate: 21.387
+- model: games.exchangerate
+  pk: 68
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2021
+    rate: 3.273
+- model: games.exchangerate
+  pk: 69
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2022
+    rate: 21.951
+- model: games.exchangerate
+  pk: 70
+  fields:
+    currency_from: CNY
+    currency_to: CZK
+    year: 2022
+    rate: 3.458
+- model: games.exchangerate
+  pk: 71
+  fields:
+    currency_from: EUR
+    currency_to: CZK
+    year: 2023
+    rate: 24.115
+- model: games.exchangerate
+  pk: 72
+  fields:
+    currency_from: USD
+    currency_to: CZK
+    year: 2025
+    rate: 24.237
