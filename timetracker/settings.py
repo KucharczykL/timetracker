@@ -173,8 +173,9 @@ LOGGING = {
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "WARNING",
         },
+        "games": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }
 
