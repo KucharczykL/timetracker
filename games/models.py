@@ -212,7 +212,7 @@ class Purchase(models.Model):
                 or existing_purchase.price_currency != self.price_currency
             ):
                 self.converted_price = None
-                self.converted_currency = None
+                self.converted_currency = ""
         super().save(*args, **kwargs)
 
 

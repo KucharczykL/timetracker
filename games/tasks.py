@@ -22,7 +22,7 @@ def save_converted_info(purchase, converted_price, converted_currency):
 
 def convert_prices():
     purchases = Purchase.objects.filter(
-        converted_price__isnull=True, converted_currency__isnull=True
+        converted_price__isnull=True, converted_currency=""
     )
 
     for purchase in purchases:
