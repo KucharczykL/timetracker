@@ -3,10 +3,14 @@
 {% partialdef purchase-name %}
 {% if purchase.type != 'game' %}
     <c-gamelink :game_id=purchase.first_game.id>
-    {{ purchase.name }} ({{ purchase.first_game.name }} {{ purchase.get_type_display }})
+    {% if purchase.game_name %}{{ purchase.game_name }}{% else %}{{ purchase.name }}{% endif %} ({{ purchase.first_game.name }} {{ purchase.get_type_display }})
     </c-gamelink>
 {% else %}
-    <c-gamelink :game_id=purchase.first_game.id :name=purchase.first_game.name />
+    {% if purchase.game_name %}
+        <c-gamelink :game_id=purchase.first_game.id :name=purchase.game_name />
+    {% else %}
+        <c-gamelink :game_id=purchase.first_game.id :name=purchase.first_game.name />
+    {% endif %}
 {% endif %}
 {% endpartialdef %}
 <div class="dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto">
@@ -196,7 +200,7 @@
             <tbody>
                 {% for purchase in all_finished_this_year %}
                     <tr>
-                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.game_name }}</td>
+                        <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{% partial purchase-name %}</td>
                         <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ purchase.date_finished | date:"d/m/Y" }}</td>
                     </tr>
                 {% endfor %}
