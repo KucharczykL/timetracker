@@ -35,6 +35,13 @@ class SessionForm(forms.ModelForm):
         widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
 
+    duration_manual = forms.DurationField(
+        required=False,
+        widget=forms.TextInput(
+            attrs={"x-mask": "99:99:99", "placeholder": "HH:MM:SS", "x-data": ""}
+        ),
+        label="Manual duration",
+    )
     device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"))
 
     mark_as_played = forms.BooleanField(
@@ -105,6 +112,18 @@ class PurchaseForm(forms.ModelForm):
     related_purchase = forms.ModelChoiceField(
         queryset=Purchase.objects.filter(type=Purchase.GAME),
         required=False,
+    )
+
+    price_currency = forms.CharField(
+        widget=forms.TextInput(
+            attrs={
+                "x-mask": "aaa",
+                "placeholder": "CZK",
+                "x-data": "",
+                "class": "uppercase",
+            }
+        ),
+        label="Currency",
     )
 
     class Meta:
