@@ -22,10 +22,10 @@ def model_counts(request: HttpRequest) -> dict[str, bool]:
         timestamp_start__day=this_day,
         timestamp_start__month=this_month,
         timestamp_start__year=this_year,
-    ).aggregate(time=Sum(F("duration_calculated") + F("duration_manual")))["time"]
+    ).aggregate(time=Sum(F("duration_total")))["time"]
     last_7_played = Session.objects.filter(
         timestamp_start__gte=(now - timedelta(days=7))
-    ).aggregate(time=Sum(F("duration_calculated") + F("duration_manual")))["time"]
+    ).aggregate(time=Sum(F("duration_total")))["time"]
 
     return {
         "game_available": Game.objects.exists(),
@@ -137,19 +137,13 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     )
     total_spent = this_year_spendings["total_spent"] or 0
 
-    games_with_playtime = (
-        Game.objects.filter(sessions__in=this_year_sessions)
-        .annotate(
-            total_playtime=Sum(
-                F("sessions__duration_calculated") + F("sessions__duration_manual")
-            )
-        )
-        .values("id", "name", "total_playtime")
-    )
+    games_with_playtime = Game.objects.filter(
+        sessions__in=this_year_sessions
+    ).distinct()
     month_playtimes = (
         this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
         .values("month")
-        .annotate(playtime=Sum("duration_calculated"))
+        .annotate(playtime=Sum("duration_total"))
         .order_by("month")
     )
     for month in month_playtimes:
@@ -162,18 +156,14 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         .first()
     )
     top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")[:10]
-    for game in top_10_games_by_playtime:
-        game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
 
     total_playtime_per_platform = (
         this_year_sessions.values("game__platform__name")
-        .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
+        .annotate(playtime=Sum(F("duration_total")))
         .annotate(platform_name=F("game__platform__name"))
-        .values("platform_name", "total_playtime")
-        .order_by("-total_playtime")
+        .values("platform_name", "playtime")
+        .order_by("-playtime")
     )
-    for item in total_playtime_per_platform:
-        item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
 
     backlog_decrease_count = (
         Purchase.objects.all().intersection(purchases_finished_this_year).count()
@@ -362,7 +352,11 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         )
     )
     purchased_this_year_finished_this_year = (
-        this_year_purchases_without_refunded.filter(games__playevents__ended__year=year)
+        this_year_purchases_without_refunded.filter(
+            games__playevents__ended__year=year
+        ).annotate(
+            game_name=F("games__name"), date_finished=F("games__playevents__ended")
+        )
     ).order_by("games__playevents__ended")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
@@ -370,23 +364,15 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     )
     total_spent = this_year_spendings["total_spent"] or 0
 
-    games_with_playtime = (
-        Game.objects.filter(sessions__in=this_year_sessions)
-        .annotate(
-            total_playtime=Sum(
-                F("sessions__duration_calculated") + F("sessions__duration_manual")
-            )
-        )
-        .values("id", "name", "total_playtime")
-    )
+    games_with_playtime = Game.objects.filter(
+        sessions__in=this_year_sessions
+    ).distinct()
     month_playtimes = (
         this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
         .values("month")
-        .annotate(playtime=Sum("duration_calculated"))
+        .annotate(playtime=Sum("duration_total"))
         .order_by("month")
     )
-    for month in month_playtimes:
-        month["playtime"] = format_duration(month["playtime"], "%2.0H")
 
     highest_session_average_game = (
         Game.objects.filter(sessions__in=this_year_sessions)
@@ -394,19 +380,15 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         .order_by("-session_average")
         .first()
     )
-    top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")
-    for game in top_10_games_by_playtime:
-        game["formatted_playtime"] = format_duration(game["total_playtime"], "%2.0H")
+    top_10_games_by_playtime = games_with_playtime.order_by("-playtime")
 
     total_playtime_per_platform = (
         this_year_sessions.values("game__platform__name")
-        .annotate(total_playtime=Sum(F("duration_calculated") + F("duration_manual")))
+        .annotate(playtime=Sum(F("duration_total")))
         .annotate(platform_name=F("game__platform__name"))
-        .values("platform_name", "total_playtime")
-        .order_by("-total_playtime")
+        .values("platform_name", "playtime")
+        .order_by("-playtime")
     )
-    for item in total_playtime_per_platform:
-        item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
 
     backlog_decrease_count = (
         Purchase.objects.filter(date_purchased__year__lt=year)

@@ -13,7 +13,7 @@ durationformat_manual: str = "%H hours"
 
 
 def _safe_timedelta(duration: timedelta | int | None):
-    if duration == None:
+    if duration is None:
         return timedelta(0)
     elif isinstance(duration, int):
         return timedelta(seconds=duration)
