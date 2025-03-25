@@ -354,7 +354,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     )
 
     purchases_finished_this_year = Purchase.objects.filter(
-        games__playevents__ended__year=2025
+        games__playevents__ended__year=year
     ).annotate(game_name=F("games__name"), date_finished=F("games__playevents__ended"))
     purchases_finished_this_year_released_this_year = (
         purchases_finished_this_year.filter(games__year_released=year).order_by(
@@ -409,9 +409,9 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         item["formatted_playtime"] = format_duration(item["total_playtime"], "%2.0H")
 
     backlog_decrease_count = (
-        Purchase.objects.filter(date_purchased__year__lt=2025)
+        Purchase.objects.filter(date_purchased__year__lt=year)
         .filter(games__status="f")
-        .filter(games__playevents__ended__year=2025)
+        .filter(games__playevents__ended__year=year)
         .count()
     )
 
