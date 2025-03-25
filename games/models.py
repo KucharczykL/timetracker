@@ -29,6 +29,8 @@ class Game(models.Model):
         "Platform", on_delete=models.SET_DEFAULT, null=True, blank=True, default=None
     )
 
+    playtime = models.DurationField(blank=True, editable=False, default=timedelta(0))
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -77,6 +79,9 @@ class Game(models.Model):
 
     def unplayed(self):
         return self.status == self.Status.UNPLAYED
+
+    def playtime_formatted(self):
+        return format_duration(self.playtime, "%2.1H")
 
     def save(self, *args, **kwargs):
         if self.platform is None:
@@ -153,13 +158,8 @@ class Purchase(models.Model):
     platform = models.ForeignKey(
         Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
     )
-    date_purchased = models.DateField()
-    date_refunded = models.DateField(blank=True, null=True)
-    # move date_finished to PlayEvent model's Finished field
-    # also set Game's model Status field to Finished
-    # date_finished = models.DateField(blank=True, null=True)
-    # move date_dropped to Game model's field Status (Abandoned)
-    # date_dropped = models.DateField(blank=True, null=True)
+    date_purchased = models.DateField(verbose_name="Purchased")
+    date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
     price_currency = models.CharField(max_length=3, default="USD")
@@ -288,10 +288,23 @@ class Session(models.Model):
         default=None,
         related_name="sessions",
     )
-    timestamp_start = models.DateTimeField()
-    timestamp_end = models.DateTimeField(blank=True, null=True)
-    duration_manual = models.DurationField(blank=True, null=True, default=timedelta(0))
-    duration_calculated = models.DurationField(blank=True, null=True)
+    timestamp_start = models.DateTimeField(verbose_name="Start")
+    timestamp_end = models.DateTimeField(blank=True, null=True, verbose_name="End")
+    duration_manual = models.DurationField(
+        blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"
+    )
+    duration_calculated = GeneratedField(
+        expression=Coalesce(F("timestamp_end") - F("timestamp_start"), 0),
+        output_field=models.DurationField(),
+        db_persist=True,
+        editable=False,
+    )
+    duration_total = GeneratedField(
+        expression=F("duration_calculated") + F("duration_manual"),
+        output_field=models.DurationField(),
+        db_persist=True,
+        editable=False,
+    )
     device = models.ForeignKey(
         "Device",
         on_delete=models.SET_DEFAULT,
@@ -308,7 +321,7 @@ class Session(models.Model):
     objects = SessionQuerySet.as_manager()
 
     def __str__(self):
-        mark = ", manual" if self.is_manual() else ""
+        mark = "*" if self.is_manual() else ""
         return f"{str(self.game)} {str(self.timestamp_start.date())} ({self.duration_formatted()}{mark})"
 
     def finish_now(self):
@@ -317,32 +330,18 @@ class Session(models.Model):
     def start_now():
         self.timestamp_start = timezone.now()
 
-    def duration_seconds(self) -> timedelta:
-        manual = timedelta(0)
-        calculated = timedelta(0)
-        if self.is_manual() and isinstance(self.duration_manual, timedelta):
-            manual = self.duration_manual
-        if self.timestamp_end is not None and self.timestamp_start is not None:
-            calculated = self.timestamp_end - self.timestamp_start
-        return timedelta(seconds=(manual + calculated).total_seconds())
-
     def duration_formatted(self) -> str:
-        result = format_duration(self.duration_seconds(), "%02.0H:%02.0m")
+        result = format_duration(self.duration_total, "%02.1H")
         return result
+
+    def duration_formatted_with_mark(self) -> str:
+        mark = "*" if self.is_manual() else ""
+        return f"{self.duration_formatted()}{mark}"
 
     def is_manual(self) -> bool:
         return not self.duration_manual == timedelta(0)
 
-    @property
-    def duration_sum(self) -> str:
-        return Session.objects.all().total_duration_formatted()
-
     def save(self, *args, **kwargs) -> None:
-        if self.timestamp_start is not None and self.timestamp_end is not None:
-            self.duration_calculated = self.timestamp_end - self.timestamp_start
-        else:
-            self.duration_calculated = timedelta(0)
-
         if not isinstance(self.duration_manual, timedelta):
             self.duration_manual = timedelta(0)
 

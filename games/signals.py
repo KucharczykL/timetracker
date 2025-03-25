@@ -1,8 +1,9 @@
-from django.db.models.signals import m2m_changed, pre_save
+from django.db.models import F, Sum
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils.timezone import now
 
-from games.models import Game, GameStatusChange, Purchase
+from games.models import Game, GameStatusChange, Purchase, Session
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)
@@ -10,6 +11,16 @@ def update_num_purchases(sender, instance, **kwargs):
     instance.num_purchases = instance.games.count()
     instance.updated_at = now()
     instance.save(update_fields=["num_purchases"])
+
+
+@receiver([post_save, post_delete], sender=Session)
+def update_game_playtime(sender, instance, **kwargs):
+    game = instance.game
+    total_playtime = game.sessions.aggregate(
+        total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
+    )["total_playtime"]
+    game.playtime = total_playtime if total_playtime else 0
+    game.save(update_fields=["playtime"])
 
 
 @receiver(pre_save, sender=Game)

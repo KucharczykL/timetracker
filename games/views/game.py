@@ -22,8 +22,6 @@ from common.components import (
 )
 from common.time import (
     dateformat,
-    durationformat,
-    durationformat_manual,
     format_duration,
     local_strftime,
     timeformat,
@@ -310,11 +308,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     session_id=session.pk,
                 ),
                 f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                (
-                    format_duration(session.duration_calculated, durationformat)
-                    if session.duration_calculated
-                    else f"{format_duration(session.duration_manual, durationformat_manual)}*"
-                ),
+                session.duration_formatted_with_mark,
                 render_to_string(
                     "cotton/button_group.html",
                     {
