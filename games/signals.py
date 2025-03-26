@@ -1,9 +1,14 @@
+import logging
+from datetime import timedelta
+
 from django.db.models import F, Sum
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils.timezone import now
 
 from games.models import Game, GameStatusChange, Purchase, Session
+
+logger = logging.getLogger("games")
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)
@@ -19,7 +24,7 @@ def update_game_playtime(sender, instance, **kwargs):
     total_playtime = game.sessions.aggregate(
         total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
     )["total_playtime"]
-    game.playtime = total_playtime if total_playtime else 0
+    game.playtime = total_playtime if total_playtime else timedelta(0)
     game.save(update_fields=["playtime"])
 
 
@@ -31,14 +36,18 @@ def game_status_changed(sender, instance, **kwargs):
     try:
         old_instance = sender.objects.get(pk=instance.pk)
         old_status = old_instance.status
-        print("Got old instance")
+        logger.info("[game_status_changed]: Previous status exists.")
     except sender.DoesNotExist:
         # Handle the case where the instance was deleted before the signal was sent
-        print("Instance does not exist")
+        logger.info("[game_status_changed]: Previous status does not exist.")
         return
 
     if old_status != instance.status:
-        print("Status changed")
+        logger.info(
+            "[game_status_changed]: Status changed from {} to {}".format(
+                old_status, instance.status
+            )
+        )
         GameStatusChange.objects.create(
             game=instance,
             old_status=old_status,
@@ -46,6 +55,4 @@ def game_status_changed(sender, instance, **kwargs):
             timestamp=instance.updated_at,
         )
     else:
-        print("Status not changed")
-        print(f"{old_instance.status}")
-        print(f"{instance.status}")
+        logger.info("[game_status_changed]: Status has not changed")
