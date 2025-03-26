@@ -115,6 +115,8 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         # coming from add_playevent_for_game url path
         game = get_object_or_404(Game, id=game_id)
         initial["game"] = game
+        initial["started"] = game.sessions.earliest().timestamp_start
+        initial["ended"] = game.sessions.latest().timestamp_start
     form = PlayEventForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
