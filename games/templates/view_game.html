@@ -74,7 +74,7 @@
                             <span x-text="played"></span> times
                         </button>
                         </a>
-                        <button type="button" x-on:click="open = !open" class="relative px-4 py-2 text-sm font-medium text-gray-900 bg-white border-e border-b border-t border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white align-middle">
+                        <button type="button" x-on:click="open = !open" @click.outside="open = false" class="relative px-4 py-2 text-sm font-medium text-gray-900 bg-white border-e border-b border-t border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white align-middle">
                             <svg class="text-white w-3" viewBox="5 8 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
