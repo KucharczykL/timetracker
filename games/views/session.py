@@ -26,7 +26,6 @@ from common.time import (
 from common.utils import truncate
 from games.forms import SessionForm
 from games.models import Game, Session
-from games.views.general import use_custom_redirect
 
 
 @login_required
@@ -215,7 +214,6 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 
 @login_required
-@use_custom_redirect
 def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     context = {}
     session = get_object_or_404(Session, id=session_id)
