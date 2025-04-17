@@ -364,9 +364,16 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     )
     total_spent = this_year_spendings["total_spent"] or 0
 
-    games_with_playtime = Game.objects.filter(
-        sessions__in=this_year_sessions
-    ).distinct()
+    games_with_playtime = (
+        Game.objects.filter(sessions__timestamp_start__year=year)
+        .annotate(
+            total_playtime=Sum(
+                F("sessions__duration_calculated"),
+            )
+        )
+        .filter(total_playtime__gt=timedelta(0))
+    )
+
     month_playtimes = (
         this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
         .values("month")
@@ -380,7 +387,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         .order_by("-session_average")
         .first()
     )
-    top_10_games_by_playtime = games_with_playtime.order_by("-playtime")
+    top_10_games_by_playtime = games_with_playtime.order_by("-total_playtime")
 
     total_playtime_per_platform = (
         this_year_sessions.values("game__platform__name")

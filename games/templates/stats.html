@@ -167,7 +167,7 @@
                     <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">
                         <c-gamelink :game_id=game.id :name=game.name />
                     </td>
-                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.playtime | format_duration }}</td>
+                    <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono">{{ game.total_playtime | format_duration }}</td>
                 </tr>
             {% endfor %}
         </tbody>
