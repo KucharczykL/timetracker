@@ -1,4 +1,5 @@
 from django import forms
+from django.db import transaction
 from django.urls import reverse
 
 from common.utils import safe_getattr
@@ -227,18 +228,29 @@ class PlayEventForm(forms.ModelForm):
         widget=forms.Select(attrs={"autofocus": "autofocus"}),
     )
 
+    mark_as_finished = forms.BooleanField(
+        required=False,
+        initial={"mark_as_finished": True},
+        label="Set game status to Finished",
+    )
+
     class Meta:
         model = PlayEvent
-        fields = [
-            "game",
-            "started",
-            "ended",
-            "note",
-        ]
+        fields = ["game", "started", "ended", "note", "mark_as_finished"]
         widgets = {
             "started": custom_date_widget,
             "ended": custom_date_widget,
         }
+
+    def save(self, commit=True):
+        with transaction.atomic():
+            session = super().save(commit=False)
+            if self.cleaned_data.get("mark_as_finished"):
+                game_instance = session.game
+                game_instance.status = "f"
+                game_instance.save()
+            session.save()
+        return session
 
 
 class GameStatusChangeForm(forms.ModelForm):
