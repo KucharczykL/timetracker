@@ -52,7 +52,7 @@ def game_status_changed(sender, instance, **kwargs):
             game=instance,
             old_status=old_status,
             new_status=instance.status,
-            timestamp=instance.updated_at,
+            timestamp=now(),
         )
     else:
         logger.info("[game_status_changed]: Status has not changed")
