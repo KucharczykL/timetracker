@@ -20,7 +20,15 @@ def update_num_purchases(sender, instance, **kwargs):
 
 @receiver([post_save, post_delete], sender=Session)
 def update_game_playtime(sender, instance, **kwargs):
-    game = instance.game
+    # During cascade deletes the related Game may already have been removed.
+    # Use the FK id to look up the Game safely and bail out if it no longer exists.
+    game_pk = getattr(instance, "game_id", None)
+    if not game_pk:
+        return
+    game = Game.objects.filter(pk=game_pk).first()
+    if not game:
+        return
+
     total_playtime = game.sessions.aggregate(
         total_playtime=Sum(F("duration_calculated") + F("duration_manual"))
     )["total_playtime"]
