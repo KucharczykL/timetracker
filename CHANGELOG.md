@@ -1,6 +1,7 @@
-## Unreleased
+## 1.6.0 / 2025-01-15 23:13+01:00
 
-## New
+### New
+* Visual overhaul of many pages
 * Render notes as Markdown
 * Require login by default
 * Add stats for dropped purchases, monthly playtimes
@@ -11,7 +12,7 @@
 * Add emulated property to sessions
 * Add today's and last 7 days playtime stats to navbar
 
-## Improved
+### Improved
 * mark refunded purchases red on game overview
 * increase session count on game overview when starting a new session
 * game overview:
@@ -22,7 +23,7 @@
 * session list: use display name instead of sort name
 * unify the appearance of game links, and make them expand to full size on hover
 
-## Fixed
+### Fixed
 * Fix title not being displayed on the Recent sessions page
 * Avoid errors when displaying game overview with zero sessions
 
