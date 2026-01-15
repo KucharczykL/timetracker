@@ -112,8 +112,12 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     ),
                     game.year_released,
                     render_to_string(
-                        "cotton/gamestatus.html",
-                        {"status": game.status, "slot": game.get_status_display()},
+                        "partials/gamestatus_selector.html",
+                        {
+                            "game": game,
+                            "game_statuses": Game.Status.choices,
+                        },
+                        request=request,
                     ),
                     game.wikidata,
                     local_strftime(game.created_at, dateformat),
