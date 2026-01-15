@@ -162,5 +162,4 @@ urlpatterns = [
         general.stats,
         name="stats_by_year",
     ),
-    path("api/", api.urls),
 ]

@@ -5,12 +5,17 @@ from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema
 
-from games.models import PlayEvent
+from games.models import Game, PlayEvent
 
 api = NinjaAPI()
 playevent_router = Router()
+game_router = Router()
 
 NOW_FACTORY = django_timezone_now
+
+
+class GameStatusUpdate(Schema):
+    status: str
 
 
 class PlayEventIn(Schema):
@@ -42,6 +47,14 @@ class PlayEventOut(Schema):
     note: str = ""
     updated_at: datetime
     created_at: datetime
+
+
+@game_router.patch("/{game_id}/status", response={204: None})
+def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
+    game = get_object_or_404(Game, id=game_id)
+    setattr(game, "status", payload.status)
+    game.save()
+    return 204, None
 
 
 @playevent_router.get("/", response=List[PlayEventOut])
@@ -78,3 +91,5 @@ def delete_playevent(request, playevent_id: int):
 
 
 api.add_router("/playevent", playevent_router)
+api.add_router("/games", game_router)
+

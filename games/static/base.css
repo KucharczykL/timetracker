@@ -1299,10 +1299,6 @@ input:checked + .toggle-bg {
   bottom: 0px;
 }
 
-.-left-3 {
-  left: -0.75rem;
-}
-
 .-left-\[1px\] {
   left: -1px;
 }
@@ -1343,16 +1339,16 @@ input:checked + .toggle-bg {
   top: 0px;
 }
 
-.top-2 {
-  top: 0.5rem;
-}
-
 .top-3 {
   top: 0.75rem;
 }
 
 .top-\[100\%\] {
   top: 100%;
+}
+
+.top-\[105\%\] {
+  top: 105%;
 }
 
 .z-10 {
@@ -1431,10 +1427,6 @@ input:checked + .toggle-bg {
   margin-inline-end: 0.5rem;
 }
 
-.ml-3 {
-  margin-left: 0.75rem;
-}
-
 .mr-4 {
   margin-right: 1rem;
 }
@@ -1508,12 +1500,12 @@ input:checked + .toggle-bg {
   height: 3rem;
 }
 
-.h-2 {
-  height: 0.5rem;
-}
-
 .h-2\.5 {
   height: 0.625rem;
+}
+
+.h-3 {
+  height: 0.75rem;
 }
 
 .h-4 {
@@ -1546,10 +1538,6 @@ input:checked + .toggle-bg {
 
 .w-10 {
   width: 2.5rem;
-}
-
-.w-2 {
-  width: 0.5rem;
 }
 
 .w-2\.5 {
@@ -1708,6 +1696,10 @@ input:checked + .toggle-bg {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+.flex-row {
+  flex-direction: row;
+}
+
 .flex-col {
   flex-direction: column;
 }
@@ -1862,6 +1854,11 @@ input:checked + .toggle-bg {
 .rounded-s-lg {
   border-start-start-radius: 0.5rem;
   border-end-start-radius: 0.5rem;
+}
+
+.rounded-t-none {
+  border-top-left-radius: 0px;
+  border-top-right-radius: 0px;
 }
 
 .rounded-tl-none {
@@ -3432,6 +3429,15 @@ div [type="submit"] {
 
 .\[\&_h1\]\:mb-2 h1 {
   margin-bottom: 0.5rem;
+}
+
+.\[\&_li\:first-of-type\]\:rounded-none li:first-of-type {
+  border-radius: 0px;
+}
+
+.\[\&_li\:last-of-type\]\:rounded-t-none li:last-of-type {
+  border-top-left-radius: 0px;
+  border-top-right-radius: 0px;
 }
 
 .\[\&_td\:last-child\]\:text-right td:last-child {

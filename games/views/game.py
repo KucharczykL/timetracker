@@ -375,6 +375,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "statuschange_count": statuschange_count,
         "statuschanges": statuschanges,
         "game": game,
+        "game_statuses": Game.Status.choices,
         "playrange": playrange,
         "purchase_count": game.purchases.count(),
         "session_average_without_manual": round(
