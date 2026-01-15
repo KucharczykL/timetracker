@@ -2,7 +2,13 @@ import logging
 from datetime import timedelta
 
 from django.db.models import F, Sum
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
+from django.db.models.signals import (
+    m2m_changed,
+    post_delete,
+    post_save,
+    pre_delete,
+    pre_save,
+)
 from django.dispatch import receiver
 from django.utils.timezone import now
 
@@ -12,10 +18,27 @@ logger = logging.getLogger("games")
 
 
 @receiver(m2m_changed, sender=Purchase.games.through)
-def update_num_purchases(sender, instance, **kwargs):
-    instance.num_purchases = instance.games.count()
-    instance.updated_at = now()
-    instance.save(update_fields=["num_purchases"])
+def update_num_purchases(sender, instance, action, reverse, **kwargs):
+    if not reverse and action.startswith("post_"):
+        instance.num_purchases = instance.games.count()
+        instance.updated_at = now()
+        instance.save(update_fields=["num_purchases", "updated_at"])
+
+
+@receiver(pre_delete, sender=Game)
+def update_purchase_counts_on_game_delete(sender, instance, **kwargs):
+    """
+    Update num_purchases on related Purchase objects when a Game is deleted.
+    m2m_changed is not fired when a related object is deleted.
+    """
+    for purchase in instance.purchases.all():
+        if purchase.num_purchases > 0:
+            purchase.num_purchases -= 1
+            if purchase.num_purchases == 0:
+                purchase.delete()
+            else:
+                purchase.updated_at = now()
+                purchase.save(update_fields=["num_purchases", "updated_at"])
 
 
 @receiver([post_save, post_delete], sender=Session)
