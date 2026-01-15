@@ -1,9 +1,7 @@
-import requests
-from django.db.models import ExpressionWrapper, F, FloatField, Q
-from django.template.defaultfilters import floatformat
-from django.utils.timezone import now
-from django_q.models import Task
 import logging
+
+import requests
+from django.template.defaultfilters import floatformat
 
 logger = logging.getLogger("games")
 
@@ -40,7 +38,9 @@ def convert_prices():
         exchange_rate = ExchangeRate.objects.filter(
             currency_from=currency_from, currency_to=currency_to, year=year
         ).first()
-        logger.info(f"[convert_prices]: Looking for exchange rate in database: {currency_from}->{currency_to}")
+        logger.info(
+            f"[convert_prices]: Looking for exchange rate in database: {currency_from}->{currency_to}"
+        )
         if not exchange_rate:
             logger.info(
                 f"[convert_prices]: Getting exchange rate from {currency_from} to {currency_to} for {year}..."
@@ -75,20 +75,3 @@ def convert_prices():
                 floatformat(purchase.price * exchange_rate.rate, 0),
                 currency_to,
             )
-
-
-def calculate_price_per_game():
-    try:
-        last_task = Task.objects.filter(group="Update price per game").first()
-        last_run = last_task.started
-    except Task.DoesNotExist or AttributeError:
-        last_run = now()
-    purchases = Purchase.objects.filter(converted_price__isnull=False).filter(
-        Q(updated_at__gte=last_run) | Q(price_per_game__isnull=True)
-    )
-    logger.info(f"[calculate_price_per_game]: Updating {purchases.count()} purchases.")
-    purchases.update(
-        price_per_game=ExpressionWrapper(
-            F("converted_price") / F("num_purchases"), output_field=FloatField()
-        )
-    )
