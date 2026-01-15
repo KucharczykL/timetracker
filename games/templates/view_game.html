@@ -75,7 +75,10 @@
                                      'X-CSRFToken': '{{ csrf_token }}'
                                  },
                                  body: JSON.stringify({ status: newStatus })
-                             }).finally(() => this.saving = false);
+                             }).then(() => {
+                                 document.body.dispatchEvent(new CustomEvent('status-changed'));
+                             })
+                             .finally(() => this.saving = false);
                          }
                      }"
                 >
@@ -204,14 +207,9 @@
                 No play events yet.
             {% endif %}
         </div>
-        <div class="mb-6">
+        <div class="mb-6" id="history-container" hx-get="" hx-trigger="status-changed from:body" hx-select="#history-container" hx-swap="outerHTML">
             <c-h1 :badge="statuschange_count">History</c-h1>
-            <ul class="list-disc list-inside">
-                {% for change in statuschanges %}
-                <li class="text-slate-500">
-                    {% if change.timestamp %}{{ change.timestamp | date:"d/m/Y H:i" }}: Changed{% else %}At some point changed{% endif %} status from <c-gamestatus :status="change.old_status" class="text-white">{{ change.get_old_status_display }}</c-gamestatus> to <c-gamestatus :status="change.new_status" class="text-white">{{ change.get_new_status_display }}</c-gamestatus> (<a href="{% url 'edit_statuschange' change.id %}">Edit</a>, <a href="{% url 'delete_statuschange' change.id %}">Delete</a>)</li>
-                {% endfor %}
-            </ul>
+            {% include "partials/history.html" %}
         </div>
     </div>
     <script>
