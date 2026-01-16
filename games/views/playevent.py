@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Any, Callable, TypedDict
 
 from django.contrib.auth.decorators import login_required
@@ -11,9 +12,9 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 
 from common.components import A, Button, Icon
-from common.time import dateformat, local_strftime
+from common.time import dateformat, format_duration, local_strftime
 from games.forms import PlayEventForm
-from games.models import Game, PlayEvent
+from games.models import Game, PlayEvent, Session
 
 logger = logging.getLogger("games")
 
@@ -83,6 +84,39 @@ def create_playevent_tabledata(
     }
 
 
+def _get_formatted_playtime_for_game_sessions_in_range(
+    game: Game,
+    start_timestamp: datetime | None = None,
+    end_timestamp: datetime | None = None,
+) -> str:
+    """
+    Calculates and formats the total playtime for a game's sessions
+    between specified start and end timestamps. If timestamps are not provided,
+    it uses the earliest and latest session start times for the game.
+    Returns "0h 00m" if no sessions exist for the game or if the range is invalid.
+    """
+    sessions_queryset = game.sessions.all()
+
+    if not sessions_queryset.exists():
+        return "0h 00m"
+
+    actual_start_ts = (
+        start_timestamp
+        if start_timestamp is not None
+        else sessions_queryset.earliest("timestamp_start").timestamp_start
+    )
+    actual_end_ts = (
+        end_timestamp
+        if end_timestamp is not None
+        else sessions_queryset.latest("timestamp_start").timestamp_start
+    )
+
+    sessions_in_range = sessions_queryset.filter(
+        timestamp_start__gte=actual_start_ts, timestamp_start__lte=actual_end_ts
+    )
+    return format_duration(sessions_in_range.total_duration_unformatted(), "%Hh %mm")
+
+
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
     page_number = request.GET.get("page", 1)
@@ -115,8 +149,18 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         # coming from add_playevent_for_game url path
         game = get_object_or_404(Game, id=game_id)
         initial["game"] = game
-        initial["started"] = game.sessions.earliest().timestamp_start
-        initial["ended"] = game.sessions.latest().timestamp_start
+        try:
+            started_ts = game.sessions.earliest("timestamp_start").timestamp_start
+            ended_ts = game.sessions.latest("timestamp_start").timestamp_start
+            initial["started"] = started_ts
+            initial["ended"] = ended_ts
+            initial["note"] = _get_formatted_playtime_for_game_sessions_in_range(
+                game, started_ts, ended_ts
+            )
+        except Session.DoesNotExist:
+            initial["started"] = None
+            initial["ended"] = None
+            initial["note"] = "0h 00m"
     form = PlayEventForm(request.POST or None, initial=initial)
     if form.is_valid():
         form.save()
