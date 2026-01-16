@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, TypedDict
 
 from django.contrib.auth.decorators import login_required
@@ -150,12 +150,39 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         game = get_object_or_404(Game, id=game_id)
         initial["game"] = game
         try:
-            started_ts = game.sessions.earliest("timestamp_start").timestamp_start
-            ended_ts = game.sessions.latest("timestamp_start").timestamp_start
-            initial["started"] = started_ts
-            initial["ended"] = ended_ts
+            # First, try to get the latest session. If no sessions, then no playtime.
+            latest_session = game.sessions.latest("timestamp_start")
+            latest_session_ts = latest_session.timestamp_start
+
+            # Now, determine the start date for the new playevent.
+            # This will be either the day after the last playevent ended, or the earliest session.
+            try:
+                latest_playevent = game.playevents.latest("ended")
+                # Start date for the new PlayEvent form
+                new_playevent_form_start_date = latest_playevent.ended + timedelta(
+                    days=1
+                )
+                initial["started"] = new_playevent_form_start_date
+
+                # Start timestamp for playtime calculation
+                playtime_calc_start_ts = datetime.combine(
+                    new_playevent_form_start_date, datetime.min.time()
+                )
+
+            except PlayEvent.DoesNotExist:
+                # No previous playevents, so the new playevent starts from the earliest session.
+                earliest_session_ts = game.sessions.earliest(
+                    "timestamp_start"
+                ).timestamp_start
+                initial["started"] = earliest_session_ts.date()
+                playtime_calc_start_ts = earliest_session_ts
+
+            # The end date for the new PlayEvent form and playtime calculation is the latest session's start date.
+            initial["ended"] = latest_session_ts.date()
+            playtime_calc_end_ts = latest_session_ts
+
             initial["note"] = _get_formatted_playtime_for_game_sessions_in_range(
-                game, started_ts, ended_ts
+                game, playtime_calc_start_ts, playtime_calc_end_ts
             )
         except Session.DoesNotExist:
             initial["started"] = None
