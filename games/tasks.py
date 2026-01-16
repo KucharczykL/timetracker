@@ -75,3 +75,16 @@ def convert_prices():
                 floatformat(purchase.price * exchange_rate.rate, 0),
                 currency_to,
             )
+
+
+def calculate_price_per_game():
+    """
+    This task is deprecated because price_per_game is now a GeneratedField.
+    It is kept here to prevent errors from lingering scheduled tasks.
+    """
+    try:
+        from django_q.models import Schedule
+
+        Schedule.objects.filter(func="games.tasks.calculate_price_per_game").delete()
+    except Exception:
+        pass
