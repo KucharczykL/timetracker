@@ -53,11 +53,11 @@
 }
 
 .responsive-table tr:nth-child(even) {
-  @apply bg-slate-800
+  @apply bg-indigo-100 dark:bg-slate-800
 }
 
 .responsive-table tbody tr:nth-child(odd) {
-  @apply bg-slate-900
+  @apply bg-indigo-200 dark:bg-slate-900
 }
 
 .responsive-table thead th {

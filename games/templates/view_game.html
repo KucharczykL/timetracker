@@ -52,10 +52,10 @@
                 {{ playrange }}
                 </c-popover>
             </div>
-            <div class="flex flex-col mb-6 text-slate-400 gap-y-4">
+            <div class="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4">
                 <div class="flex gap-2 items-center">
                     <span class="uppercase">Original year</span>
-                    <span class="text-slate-300">{{ game.original_year_released }}</span>
+                    <span class="text-black dark:text-slate-300">{{ game.original_year_released }}</span>
                 </div>
                 <div class="flex gap-2 items-center"
                 >
@@ -74,9 +74,7 @@
                         </button>
                         </a>
                         <button type="button" x-on:click="open = !open" @click.outside="open = false" class="relative px-4 py-2 text-sm font-medium text-gray-900 bg-white border-e border-b border-t border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white align-middle">
-                            <svg class="text-white w-3" viewBox="5 8 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
+                            <c-icon.arrowdown />
                             <div
                                 class="absolute top-[100%] -left-[1px] w-auto whitespace-nowrap z-10 text-sm font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border border-gray-200 dark:border-gray-700"
                                 x-show="open"
@@ -110,7 +108,7 @@
   
                 <div class="flex gap-2 items-center">
                     <span class="uppercase">Platform</span>
-                    <span class="text-slate-300">{{ game.platform }}</span>
+                    <span class="text-black dark:text-slate-300">{{ game.platform }}</span>
                 </div>
             </div>
             <div class="inline-flex rounded-md shadow-sm mb-3" role="group">

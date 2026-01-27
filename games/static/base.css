@@ -2268,6 +2268,11 @@ input:checked + .toggle-bg {
   color: rgb(107 114 128 / var(--tw-text-opacity, 1));
 }
 
+.text-gray-600 {
+  --tw-text-opacity: 1;
+  color: rgb(75 85 99 / var(--tw-text-opacity, 1));
+}
+
 .text-gray-700 {
   --tw-text-opacity: 1;
   color: rgb(55 65 81 / var(--tw-text-opacity, 1));
@@ -2286,11 +2291,6 @@ input:checked + .toggle-bg {
 .text-slate-300 {
   --tw-text-opacity: 1;
   color: rgb(203 213 225 / var(--tw-text-opacity, 1));
-}
-
-.text-slate-400 {
-  --tw-text-opacity: 1;
-  color: rgb(148 163 184 / var(--tw-text-opacity, 1));
 }
 
 .text-slate-500 {
@@ -2492,10 +2492,20 @@ input:checked + .toggle-bg {
 
 .responsive-table tr:nth-child(even) {
   --tw-bg-opacity: 1;
+  background-color: rgb(229 237 255 / var(--tw-bg-opacity, 1));
+}
+
+.responsive-table tr:nth-child(even):is(.dark *) {
+  --tw-bg-opacity: 1;
   background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));
 }
 
 .responsive-table tbody tr:nth-child(odd) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(205 219 254 / var(--tw-bg-opacity, 1));
+}
+
+.responsive-table tbody tr:nth-child(odd):is(.dark *) {
   --tw-bg-opacity: 1;
   background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));
 }
@@ -3079,6 +3089,11 @@ div [type="submit"] {
 .dark\:text-gray-600:is(.dark *) {
   --tw-text-opacity: 1;
   color: rgb(75 85 99 / var(--tw-text-opacity, 1));
+}
+
+.dark\:text-slate-300:is(.dark *) {
+  --tw-text-opacity: 1;
+  color: rgb(203 213 225 / var(--tw-text-opacity, 1));
 }
 
 .dark\:text-slate-400:is(.dark *) {
