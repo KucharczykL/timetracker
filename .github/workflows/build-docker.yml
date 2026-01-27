@@ -13,7 +13,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          enable-cache: false
           python-version: "3.12"
 
       - name: Install dependencies
@@ -46,5 +46,5 @@ jobs:
           tags: |
             registry.kucharczyk.xyz/timetracker:latest
             registry.kucharczyk.xyz/timetracker:${{ env.VERSION_NUMBER }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
