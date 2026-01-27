@@ -4,7 +4,7 @@ ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /home/timetracker/app
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -20,7 +20,7 @@ FROM python:3.12-slim-bookworm
 
 ENV PROD=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/home/timetracker/app/.venv/bin:$PATH"
 
 RUN useradd -m --uid 1000 timetracker \
     && mkdir -p /var/www/django/static \
@@ -28,7 +28,7 @@ RUN useradd -m --uid 1000 timetracker \
     
 WORKDIR /home/timetracker/app
 
-COPY --from=builder --chown=timetracker:timetracker /app /home/timetracker/app
+COPY --from=builder --chown=timetracker:timetracker /home/timetracker/app /home/timetracker/app
 
 COPY --chown=timetracker:timetracker entrypoint.sh /
 RUN chmod +x /entrypoint.sh
