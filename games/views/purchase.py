@@ -140,7 +140,7 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
     context["form"] = form
     context["title"] = "Add New Purchase"
-    # context["script_name"] = "add_purchase.js"
+    context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
 
@@ -156,7 +156,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     context["title"] = "Edit Purchase"
     context["form"] = form
     context["purchase_id"] = str(purchase_id)
-    # context["script_name"] = "add_purchase.js"
+    context["script_name"] = "add_purchase.js"
     return render(request, "add_purchase.html", context)
 
 
@@ -208,7 +208,12 @@ def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
     if isinstance(games, int) or isinstance(games, str):
         games = [games]
     form = PurchaseForm()
-    form.fields["related_purchase"].queryset = Purchase.objects.filter(
-        games__in=games, type=Purchase.GAME
-    ).order_by("games__sort_name")
+    qs = Purchase.objects.filter(games__in=games, type=Purchase.GAME).order_by(
+        "games__sort_name"
+    )
+
+    form.fields["related_purchase"].queryset = qs
+    first_option = qs.first()
+    if first_option:
+        form.fields["related_purchase"].initial = first_option.id
     return render(request, "partials/related_purchase_field.html", {"form": form})

@@ -43,6 +43,7 @@ function syncSelectInputUntilChanged(syncData, parentSelector = document) {
         const targetElement = document.querySelector(syncItem.target);
 
         if (targetElement && valueToSync !== null) {
+          console.log(`Changing value of ${syncItem.target} to ${valueToSync}`)
           targetElement[syncItem.target_value] = valueToSync;
         }
       }
@@ -184,13 +185,17 @@ function disableElementsWhenValueNotEqual(
 function disableElementsWhenTrue(targetSelect, targetValue, elementList) {
   return conditionalElementHandler([
     () => {
+      console.log(`${disableElementsWhenTrue.name}: triggered on ${targetSelect}`)
+      console.log(`Value of ${targetSelect} is ${targetValue}: ${getEl(targetSelect).value == targetValue}`)
       return getEl(targetSelect).value == targetValue;
     },
     elementList,
     (el) => {
+      console.log(`${disableElementsWhenTrue.name}: disabling ${el.id}`)
       el.disabled = "disabled";
     },
     (el) => {
+      console.log(`${disableElementsWhenTrue.name}: enabling ${el.id}`)
       el.disabled = "";
     },
   ]);
