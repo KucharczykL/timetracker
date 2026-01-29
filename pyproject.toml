@@ -43,6 +43,7 @@ dev = [
     "isort>=5.13.2,<6",
     "pre-commit>=3.7.1,<4",
     "django-debug-toolbar>=4.4.2,<5",
+    "ruff"
 ]
 
 [tool.uv]

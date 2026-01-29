@@ -6,13 +6,13 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     nodejs
     python3
-    poetry
+    uv
     ruff
   ];
 
   shellHook = ''
-    python -m venv .venv
+    uv venv --clear
     . .venv/bin/activate
-    poetry install
+    uv sync
   '';
 }
