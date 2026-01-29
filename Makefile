@@ -9,7 +9,7 @@ npm:
 	npm install
 
 css: common/input.css
-	npx tailwindcss -i ./common/input.css -o  ./games/static/base.css
+	npx @tailwindcss/cli -i ./common/input.css -o  ./games/static/base.css
 
 makemigrations:
 	uv run python manage.py makemigrations
@@ -33,7 +33,7 @@ dev:
 		--names "Django,Tailwind" \
 		--prefix-colors "blue,green" \
 		"uv run python -Wa manage.py runserver" \
-		"npx tailwindcss -i ./common/input.css -o ./games/static/base.css --watch"
+		"npx @tailwindcss/cli -i ./common/input.css -o ./games/static/base.css --watch"
 
 
 caddy:

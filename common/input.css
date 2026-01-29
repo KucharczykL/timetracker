@@ -1,92 +1,137 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-@font-face {
-  font-family: "IBM Plex Mono";
-  src: url("fonts/IBMPlexMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
+@plugin '@tailwindcss/typography';
+@plugin '@tailwindcss/forms';
+@plugin 'flowbite/plugin';
+
+@source '../node_modules/flowbite/**/*.js';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans:
+    IBM Plex Sans, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  --font-serif:
+    IBM Plex Serif, ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-condensed:
+    IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+  --color-accent: #7c3aed;
+  --color-background: #1f2937;
 }
 
-@font-face {
-  font-family: "IBM Plex Sans";
-  src: url("fonts/IBMPlexSans-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-@font-face {
-  font-family: "IBM Plex Serif";
-  src: url("fonts/IBMPlexSerif-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
+@utility min-w-20char {
+  min-width: 20ch;
 }
 
-@font-face {
-  font-family: "IBM Plex Serif";
-  src: url("fonts/IBMPlexSerif-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
+@utility max-w-20char {
+  max-width: 20ch;
 }
 
-@font-face {
-  font-family: "IBM Plex Sans Condensed";
-  src: url("fonts/IBMPlexSansCondensed-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
+@utility min-w-30char {
+  min-width: 30ch;
 }
 
+@utility max-w-30char {
+  max-width: 30ch;
+}
 
-/* a:hover {
+@utility max-w-35char {
+  max-width: 35ch;
+}
+
+@utility max-w-40char {
+  max-width: 40ch;
+}
+
+@layer utilities {
+  @font-face {
+    font-family: 'IBM Plex Mono';
+    src: url('fonts/IBMPlexMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    src: url('fonts/IBMPlexSans-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'IBM Plex Serif';
+    src: url('fonts/IBMPlexSerif-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'IBM Plex Serif';
+    src: url('fonts/IBMPlexSerif-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'IBM Plex Sans Condensed';
+    src: url('fonts/IBMPlexSansCondensed-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  /* a:hover {
   text-decoration-color: #ff4400;
   color: rgb(254, 185, 160);
   transition: all 0.2s ease-out;
 } */
 
-/* form label {
+  /* form label {
   @apply dark:text-slate-400;
 } */
 
-.responsive-table {
-  @apply dark:text-white mx-auto table-fixed;
-}
-
-.responsive-table tr:nth-child(even) {
-  @apply bg-indigo-100 dark:bg-slate-800
-}
-
-.responsive-table tbody tr:nth-child(odd) {
-  @apply bg-indigo-200 dark:bg-slate-900
-}
-
-.responsive-table thead th {
-  @apply text-left border-b-2 border-b-slate-500 text-xl;
-}
-
-.responsive-table thead th:not(:first-child),
-.responsive-table td:not(:first-child) {
-  @apply border-l border-l-slate-500;
-}
-
-@layer utilities {
-  .min-w-20char {
-    min-width: 20ch;
+  .responsive-table {
+    @apply dark:text-white mx-auto table-fixed;
   }
-  .max-w-20char {
-    max-width: 20ch;
+
+  .responsive-table tr:nth-child(even) {
+    @apply bg-indigo-100 dark:bg-slate-800;
   }
-  .min-w-30char {
-    min-width: 30ch;
+
+  .responsive-table tbody tr:nth-child(odd) {
+    @apply bg-indigo-200 dark:bg-slate-900;
   }
-  .max-w-30char {
-    max-width: 30ch;
+
+  .responsive-table thead th {
+    @apply text-left border-b-2 border-b-slate-500 text-xl;
   }
-  .max-w-35char {
-    max-width: 35ch;
-  }
-  .max-w-40char {
-    max-width: 40ch;
+
+  .responsive-table thead th:not(:first-child),
+  .responsive-table td:not(:first-child) {
+    @apply border-l border-l-slate-500;
   }
 }
 
@@ -131,7 +176,7 @@ textarea:disabled {
 }
 
 .basic-button {
-  @apply inline-block px-6 py-2.5 bg-blue-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out;
+  @apply inline-block px-6 py-2.5 bg-blue-600 text-white font-medium text-xs leading-tight uppercase rounded-sm shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out;
 }
 
 .markdown-content ul {

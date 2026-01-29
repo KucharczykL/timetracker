@@ -3,7 +3,7 @@
     {{ title }}
 {% endblock title %}
 {% block content %}
-    <div class="text-slate-300 mx-auto max-w-screen-lg text-center">
+    <div class="text-slate-300 mx-auto max-w-(--breakpoint-lg) text-center">
         {% if session_count > 0 %}
             You have played a total of {{ session_count }} sessions for a total of {{ total_duration_formatted }}.
         {% elif not game_available or not platform_available %}
