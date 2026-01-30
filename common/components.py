@@ -142,7 +142,13 @@ def Button(
 ):
     return Component(
         template="cotton/button.html",
-        attributes=attributes + [("size", size), ("icon", icon), ("color", color)],
+        attributes=attributes
+        + [
+            ("size", size),
+            ("icon", icon),
+            ("color", color),
+            ("class", "hover:cursor-pointer"),
+        ],
         children=children,
     )
 
