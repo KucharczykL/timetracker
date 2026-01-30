@@ -1,9 +1,10 @@
-## Unreleased
+## 1.6.1 / 2026-01-30 11:48+01:00
 
 ### New
 * Pre-fill time played into new playevent, also tracks time since last playevent
 * Improve light theme and fix light/dark theme switcher
 * Fix purchase form logic
+* Update dependencies
 
 ## 1.6.0 / 2025-01-15 23:13+01:00
 

@@ -1,6 +1,6 @@
 [project]
 name = "timetracker"
-version = "1.6.0"
+version = "1.6.1"
 description = "A simple time tracker."
 authors = [{ name = "Lukáš Kucharczyk", email = "lukas@kucharczyk.xyz" }]
 requires-python = ">=3.13,<4"

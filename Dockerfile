@@ -35,5 +35,7 @@ RUN chmod +x /entrypoint.sh
 
 USER timetracker
 
+ENV VERSION_NUMBER=1.6.1
+
 EXPOSE 8000
 CMD [ "/entrypoint.sh" ]
