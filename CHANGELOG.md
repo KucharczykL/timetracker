@@ -1,3 +1,8 @@
+## Unreleased
+
+### Improved
+* Add a prompt to set game to Abandoned upon refund
+
 ## 1.6.1 / 2026-01-30 11:48+01:00
 
 ### New

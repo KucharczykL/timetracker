@@ -89,6 +89,11 @@ urlpatterns = [
         name="list_purchases",
     ),
     path(
+        "purchase/<int:purchase_id>/refund/confirm",
+        purchase.refund_purchase_confirmation,
+        name="refund_purchase_confirmation",
+    ),
+    path(
         "purchase/<int:purchase_id>/refund",
         purchase.refund_purchase,
         name="refund_purchase",

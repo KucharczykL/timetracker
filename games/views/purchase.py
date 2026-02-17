@@ -72,9 +72,12 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                         {
                             "buttons": [
                                 {
-                                    "href": reverse(
-                                        "refund_purchase", args=[purchase.pk]
+                                    "href": "#",
+                                    "hx_get": reverse(
+                                        "refund_purchase_confirmation",
+                                        args=[purchase.pk],
                                     ),
+                                    "hx_target": "#global-modal-container",
                                     "slot": Icon("refund"),
                                     "title": "Mark as refunded",
                                 }
@@ -186,11 +189,32 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 @login_required
+def refund_purchase_confirmation(
+    request: HttpRequest, purchase_id: int
+) -> HttpResponse:
+    # purchase = get_object_or_404(Purchase, id=purchase_id)
+    return render(
+        request,
+        "partials/refund_purchase_confirmation.html",
+        {"purchase_id": purchase_id},
+    )
+
+
+@login_required
+@require_POST
 def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    purchase.date_refunded = timezone.now()
-    purchase.save()
-    return redirect("list_purchases")
+
+    if request.POST.get("set_abandoned"):
+        for game in purchase.games.all():
+            game.status = Game.Status.ABANDONED
+            game.save()
+
+    purchase.refund()
+
+    response = HttpResponse(status=204)
+    response["HX-Redirect"] = reverse("list_purchases")
+    return response
 
 
 @login_required

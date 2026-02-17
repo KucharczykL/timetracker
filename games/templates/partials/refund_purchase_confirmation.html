@@ -1,0 +1,23 @@
+<div id="refund-confirmation-modal" class="fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto h-full w-full flex items-center justify-center">
+    <div class="relative mx-auto p-5 border-accent border w-full max-w-md shadow-lg/50 rounded-md bg-white dark:bg-gray-900">
+        <div class="">
+            <h1 class="text-2xl leading-6 font-medium dark:text-white text-center">Confirm Refund</h3>
+                <p class="dark:text-white text-center mt-5">
+                    Are you sure you want to mark this purchase as refunded?
+                </p>
+            <form class="" hx-post="{% url 'refund_purchase' purchase_id %}" hx-target="#modal-container" hx-swap="innerHTML">
+                {% csrf_token %}
+                <div class="mt-5 text-center">
+                    <label class="flex flex-row items-center justify-center align-baseline gap-5">
+                        <input type="checkbox" name="set_abandoned" class="form-checkbox h-5 w-5 text-blue-600">
+                        <span class="text-gray-700 dark:text-gray-500 underline decoration-dotted" title="Set the status of all games associated with this purchase to 'Abandoned'">Set status to 'Abandoned'</span>
+                    </label>
+                </div>
+                <div class="items-center mt-5">
+                    <c-button color="blue" size="lg" type="submit" class="w-full">Refund</c-button>
+                    <c-button color="gray" size="base" class="mt-0 w-full" onclick="this.closest('#refund-confirmation-modal').remove()">Cancel</c-button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
