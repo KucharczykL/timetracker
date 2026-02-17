@@ -1,0 +1,17 @@
+<c-vars without_buttons="false" submit_text="Submit" close_text="Cancel" />
+<div id="modal-container">
+    <div class="tt-modal fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto h-full w-full flex items-center justify-center">
+        <div class="relative mx-auto p-5 border-accent border w-full max-w-md shadow-lg/50 rounded-md bg-white dark:bg-gray-900">
+            <div class="{{ container_class }}">
+                    {{ slot }}
+                    {% if not without_buttons %}
+                    <div class="items-center mt-5">
+                        <c-button color="blue" size="lg" type="submit" class="w-full">{{ submit_text }}</c-button>
+                        <c-button color="gray" size="base" class="mt-0 w-full" onclick="this.closest('.tt-modal').remove()">{{ close_text }}</c-button>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

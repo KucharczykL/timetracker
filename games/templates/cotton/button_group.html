@@ -2,7 +2,7 @@
     {% if slot %}{{ slot }}{% endif %}
     {% for button in buttons %}
         {% if button.slot %}
-            <c-button-group-button-sm :href=button.href :slot=button.slot :color=button.color :hover=button.hover :title=button.title />
+            <c-button-group-button-sm :href=button.href :slot=button.slot :color=button.color :hover=button.hover :title=button.title :hx_get=button.hx_get :hx_target=button.hx_target :hx_swap=button.hx_swap />
         {% endif %}
     {% endfor %}
 </div>

@@ -3,7 +3,6 @@ import graphene
 from games.graphql.mutations import GameMutation
 from games.graphql.queries import (
     DeviceQuery,
-    EditionQuery,
     GameQuery,
     PlatformQuery,
     PurchaseQuery,
@@ -13,7 +12,6 @@ from games.graphql.queries import (
 
 class Query(
     GameQuery,
-    EditionQuery,
     DeviceQuery,
     PlatformQuery,
     PurchaseQuery,

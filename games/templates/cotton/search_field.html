@@ -1,5 +1,5 @@
 <c-vars :name="id" />
-<div class="pb-4 bg-white dark:bg-gray-900">
+<!-- <div class="pb-4 bg-white dark:bg-gray-900">
     <label for="table-search" class="sr-only">Search</label>
     <div class="relative mt-1">
         <div class="absolute inset-y-3 rtl:inset-r-0 start-0 flex items-center ps-3 pointer-events-none">
@@ -9,4 +9,17 @@
         </div>
         <input type="text" id="{{ id }}" name="{{ name }}" value="{{ search_string }}" class="block pt-2 ps-10 text-sm text-gray-900 border border-gray-300 rounded-lg w-80 bg-gray-50 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}">
     </div>
-</div>
+</div> -->
+
+
+<form class="max-w-md mx-auto">   
+    <label for="search" class="block mb-2.5 text-sm font-medium text-heading sr-only ">Search</label>
+    <div class="relative">
+        <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+            <svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-linecap="round" stroke-width="2" d="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+        </div>
+        <input type="search" id="{{ id }}" name="{{ name }}" value="{{ search_string }}" class="block w-full p-3 ps-9 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body" placeholder="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}" required />
+        <button type="button" class="absolute end-1.5 bottom-1.5 text-white bg-brand hover:bg-brand-strong box-border border border-transparent focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded text-xs px-3 py-1.5 focus:outline-none">Search</button>
+    </div>
+</form>
+

@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.1.18",
-    "flowbite": "^2.4.1"
+    "flowbite": "^4.0.1"
   }
 }

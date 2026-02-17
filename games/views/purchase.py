@@ -5,13 +5,13 @@ from django.core.paginator import Paginator
 from django.http import (
     HttpRequest,
     HttpResponse,
-    HttpResponseBadRequest,
     HttpResponseRedirect,
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from common.components import A, Button, Icon, LinkedPurchase, PurchasePrice
 from common.time import dateformat
@@ -202,18 +202,21 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
+    games: list[str] = []
     games = request.GET.getlist("games")
-    if not games:
-        return HttpResponseBadRequest("Invalid game_id")
-    if isinstance(games, int) or isinstance(games, str):
-        games = [games]
-    form = PurchaseForm()
-    qs = Purchase.objects.filter(games__in=games, type=Purchase.GAME).order_by(
-        "games__sort_name"
-    )
+    context = {}
+    if games:
+        form = PurchaseForm()
+        qs = Purchase.objects.filter(games__in=games, type=Purchase.GAME).order_by(
+            "games__sort_name"
+        )
 
-    form.fields["related_purchase"].queryset = qs
-    first_option = qs.first()
-    if first_option:
-        form.fields["related_purchase"].initial = first_option.id
-    return render(request, "partials/related_purchase_field.html", {"form": form})
+        form.fields["related_purchase"].queryset = qs
+        first_option = qs.first()
+        if first_option:
+            form.fields["related_purchase"].initial = first_option.id
+        context["form"] = form
+        return render(request, "partials/related_purchase_field.html", context)
+    else:
+        # abort swap
+        return HttpResponse(status=204)

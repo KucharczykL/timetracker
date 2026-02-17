@@ -232,6 +232,10 @@ class Purchase(models.Model):
             or self.price_currency != purchase_to_compare.price_currency
         )
 
+    def refund(self):
+        self.date_refunded = timezone.now()
+        self.save()
+
     def save(self, *args, **kwargs):
         if self.type != Purchase.GAME and not self.related_purchase:
             raise ValidationError(

@@ -1,5 +1,7 @@
 <c-vars color="gray" />
 <a href="{{ href }}"
+   {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
+   {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
    class="[&:first-of-type_button]:rounded-s-lg [&:last-of-type_button]:rounded-e-lg">
     {% if color == "gray" %}
         <button type="button"

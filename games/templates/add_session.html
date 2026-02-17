@@ -1,36 +1,38 @@
 <c-layouts.add>
 <c-slot name="form_content">
-<form method="post" enctype="multipart/form-data">
-    <table class="mx-auto">
-        {% csrf_token %}
-        {% for field in form %}
-            <tr>
-                <th>{{ field.label_tag }}</th>
+<div class="max-width-container">
+    <div id="add-form" class="form-container max-w-xl mx-auto">
+        <form method="post" enctype="multipart/form-data" class="">
+            {% csrf_token %}
+            {% for field in form %}
+            <div>
+                {{ field.label_tag }}
                 {% if field.name == "note" %}
-                    <td>{{ field }}</td>
+                    {{ field }}
                 {% else %}
-                    <td>{{ field }}</td>
+                    {{ field }}
                 {% endif %}
                 {% if field.name == "timestamp_start" or field.name == "timestamp_end" %}
-                    <td>
-                        <div class="basic-button-container" hx-boost="false">
-                            <button class="basic-button" data-target="{{ field.name }}" data-type="now">Set to now</button>
-                            <button class="basic-button"
-                                    data-target="{{ field.name }}"
-                                    data-type="toggle">Toggle text</button>
-                            <button class="basic-button" data-target="{{ field.name }}" data-type="copy">Copy</button>
-                        </div>
-                    </td>
+                    <span class="form-row-button-group flex-row gap-3 justify-start mt-3" hx-boost="false">
+                        <c-button data-target="{{ field.name }}" data-type="now" size="xs">Set to now</c-button>
+                        <c-button data-target="{{ field.name }}" data-type="toggle" size="xs">Toggle text</c-button>
+                        <c-button data-target="{{ field.name }}" data-type="copy" size="xs">
+                            Copy {%if field.name == "timestamp_start" %}start{% else %}end{% endif %} value to {%if field.name == "timestamp_start" %}end{% else %}start{% endif %}
+                        </c-button>
+                    </span>
                 {% endif %}
-            </tr>
+            </div>
         {% endfor %}
-        <tr>
-            <td></td>
-            <td>
-                <input type="submit" value="Submit" />
-            </td>
-        </tr>
-    </table>
-</form>
+            <div>
+                <c-button type="submit">
+                    Submit
+                </c-button>
+            </div>
+            <div class="submit-button-container">
+                {{ additional_row }}
+            </div>
+        </form>
+    </div>
+</div>
 </c-slot>
 </c-layouts.add>

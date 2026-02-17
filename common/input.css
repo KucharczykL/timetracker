@@ -4,7 +4,8 @@
 @plugin '@tailwindcss/forms';
 @plugin 'flowbite/plugin';
 
-@source '../node_modules/flowbite/**/*.js';
+@source "../node_modules/flowbite";
+@import "flowbite/src/themes/default";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -24,6 +25,7 @@
   --color-accent: #7c3aed;
   --color-background: #1f2937;
 }
+
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
@@ -103,16 +105,6 @@
     font-style: normal;
   }
 
-  /* a:hover {
-  text-decoration-color: #ff4400;
-  color: rgb(254, 185, 160);
-  transition: all 0.2s ease-out;
-} */
-
-  /* form label {
-  @apply dark:text-slate-400;
-} */
-
   .responsive-table {
     @apply dark:text-white mx-auto table-fixed;
   }
@@ -135,37 +127,16 @@
   }
 }
 
-/* form input,
-select,
-textarea {
-  @apply dark:border dark:border-slate-900 dark:bg-slate-500 dark:text-slate-100;
-} */
-
 form input:disabled,
 select:disabled,
 textarea:disabled {
-  @apply dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed;
+  @apply cursor-not-allowed bg-neutral-secondary-strong text-fg-disabled;
+   
 }
 
 .errorlist {
   @apply mt-4 mb-1 pl-3 py-2 bg-red-600 text-slate-200 w-[300px];
 }
-
-/* @media screen and (min-width: 768px) {
-  form input,
-  select,
-  textarea {
-    width: 300px;
-  }
-} */
-
-/* @media screen and (max-width: 768px) {
-  form input,
-  select,
-  textarea {
-    width: 150px;
-  }
-} */
 
 #button-container button {
   @apply mx-1;
@@ -207,34 +178,43 @@ textarea:disabled {
     padding-left: 1em;
 }
 
-/* .truncate-container {
-  @apply inline-block relative;
-  a {
-    @apply inline-block truncate max-w-20char transition-all group-hover:absolute group-hover:max-w-none group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 group-hover:rounded-sm group-hover:outline-dashed group-hover:outline-purple-400 group-hover:outline-4;
-    
-  }  
-} */
-
-label {
-  @apply dark:text-slate-500;
-}
-
-[type="text"], [type="password"], [type="datetime-local"], [type="datetime"], [type="date"], [type="number"], select, textarea {
-  @apply dark:bg-slate-600 dark:text-slate-300;
-}
-
-[type="submit"] {
-  @apply dark:text-white font-bold dark:bg-blue-600 px-4 py-2;
-}
-
-form div label {
-  @apply dark:text-white;
-}
-
-form div {
-  @apply flex flex-col;
-}
-
-div [type="submit"] {
-  @apply mt-3;
+#add-form {
+  .form-row-button-group {
+    display: flex;
+    flex-direction: row;
+    @apply gap-0 p-0;
+    button {
+      @apply mr-0;
+      &:first-child {
+        @apply rounded-e-none;
+      }
+      &:nth-child(2) {
+        @apply rounded-none;
+      }
+      &:last-child {
+        @apply rounded-s-none;
+      }
+    }
+  }
+  label {
+    @apply mb-2.5 text-sm font-medium text-heading;
+  }
+  input:not([type="checkbox"]) {
+    @apply mb-3 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body; 
+  }
+  input[type="checkbox"] {
+    @apply  w-4 h-4 border border-default-medium rounded-xs bg-neutral-secondary-medium focus:ring-2 focus:ring-brand-soft;
+  }
+  select {
+    @apply w-full px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body;
+  }
+  textarea {
+    @apply bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 shadow-xs placeholder:text-body;
+  }
+  :has(> label + input[type="checkbox"]) {
+    @apply mb-3 mt-6;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+  }
 }

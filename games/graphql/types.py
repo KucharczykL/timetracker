@@ -1,7 +1,8 @@
 from graphene_django import DjangoObjectType
 
 from games.models import Device as DeviceModel
-from games.models import Edition as EditionModel
+
+# from games.models import Edition as EditionModel
 from games.models import Game as GameModel
 from games.models import Platform as PlatformModel
 from games.models import Purchase as PurchaseModel
@@ -14,10 +15,10 @@ class Game(DjangoObjectType):
         fields = "__all__"
 
 
-class Edition(DjangoObjectType):
-    class Meta:
-        model = EditionModel
-        fields = "__all__"
+# class Edition(DjangoObjectType):
+#     class Meta:
+#         model = EditionModel
+#         fields = "__all__"
 
 
 class Purchase(DjangoObjectType):
