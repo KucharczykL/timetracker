@@ -179,6 +179,13 @@ textarea:disabled {
 }
 
 #add-form {
+  label + select, input, textarea {
+    @apply mt-1;
+  }
+  form {
+    @apply flex flex-col gap-3;
+  }
+
   .form-row-button-group {
     display: flex;
     flex-direction: row;
@@ -212,7 +219,7 @@ textarea:disabled {
     @apply bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 shadow-xs placeholder:text-body;
   }
   :has(> label + input[type="checkbox"]) {
-    @apply mb-3 mt-6;
+    @apply mt-3; /* needed because compared to all other form elements checkbox and its label are on the same row */
     display: flex;
     flex-direction: row;
     justify-content: space-between;

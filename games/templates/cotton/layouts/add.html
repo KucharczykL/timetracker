@@ -3,7 +3,7 @@
 {% if form_content %}
     {{ form_content }}
 {% else %}
-<div class="max-width-container">
+<div id="add-form" class="max-width-container">
     <div id="add-form" class="form-container max-w-xl mx-auto">
         <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
