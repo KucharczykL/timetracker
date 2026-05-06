@@ -222,8 +222,9 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         form.save()
         return redirect("list_sessions")
     context["title"] = "Edit Session"
+    context["script_name"] = "add_session.js"
     context["form"] = form
-    return render(request, "add.html", context)
+    return render(request, "add_session.html", context)
 
 
 def clone_session_by_id(session_id: int) -> Session:
