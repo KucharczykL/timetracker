@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import List
 
+from django.contrib import messages
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema
@@ -54,6 +55,7 @@ def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
     game = get_object_or_404(Game, id=game_id)
     setattr(game, "status", payload.status)
     game.save()
+    messages.success(request, "Status updated")
     return 204, None
 
 
@@ -65,6 +67,7 @@ def list_playevents(request):
 @playevent_router.post("/", response={201: PlayEventOut})
 def create_playevent(request, payload: PlayEventIn):
     playevent = PlayEvent.objects.create(**payload.dict())
+    messages.success(request, "Game played!")
     return playevent
 
 
@@ -105,6 +108,7 @@ def partial_update_session_device(request, session_id: int, payload: SessionDevi
     session = get_object_or_404(Session, id=session_id)
     session.device_id = payload.device_id
     session.save()
+    messages.success(request, "Device updated")
     return 204, None
 
 

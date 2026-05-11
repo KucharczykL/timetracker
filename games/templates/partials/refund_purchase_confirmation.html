@@ -1,11 +1,11 @@
 <div id="refund-confirmation-modal" class="fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto h-full w-full flex items-center justify-center">
     <div class="relative mx-auto p-5 border-accent border w-full max-w-md shadow-lg/50 rounded-md bg-white dark:bg-gray-900">
         <div class="">
-            <h1 class="text-2xl leading-6 font-medium dark:text-white text-center">Confirm Refund</h3>
+            <h1 class="text-2xl leading-6 font-medium dark:text-white text-center">Confirm Refund</h1>
                 <p class="dark:text-white text-center mt-5">
                     Are you sure you want to mark this purchase as refunded?
                 </p>
-            <form class="" hx-post="{% url 'refund_purchase' purchase_id %}" hx-target="#global-modal-container" hx-swap="innerHTML">
+            <form class="" hx-post="{% url 'refund_purchase' purchase_id %}" hx-target="#purchase-row-{{ purchase_id }}" hx-swap="outerHTML">
                 {% csrf_token %}
                 <div class="mt-5 text-center">
                     <label class="flex flex-row items-center justify-center align-baseline gap-5">

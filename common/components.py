@@ -291,3 +291,26 @@ def PurchasePrice(purchase) -> str:
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
         wrapped_classes="underline decoration-dotted",
     )
+
+
+def Toast(
+    message: str = "",
+    type: str = "info",
+    attributes: list = [],
+):
+    valid_types = ["success", "error", "info"]
+    if type not in valid_types:
+        type = "info"
+
+    safe_message = message.replace("\\", "\\\\").replace("`", "\\`")
+    safe_type = type.replace("\\", "\\\\").replace("`", "\\`")
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("class", "hidden"),
+            ("x-data", "toastStore"),
+            ("x-init", f"addToast(`{safe_message}`, `{safe_type}`)"),
+        ]
+        + attributes,
+        children=[message],
+    )

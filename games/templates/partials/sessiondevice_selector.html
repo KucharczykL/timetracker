@@ -6,34 +6,29 @@
          deviceName: '{{ session.device.name|default:'Unknown'|escapejs }}',
          open: false,
          saving: false,
-         error: '',
-         success: false,
          setDevice(newDeviceId, newDeviceName) {
-             this.deviceId = newDeviceId;
-             this.deviceName = newDeviceName;
-             this.saving = true;
-             this.error = '';
-             this.success = false;
-             fetch(`/api/session/{{ session.id }}/device`, {
-                 method: 'PATCH',
-                 headers: {
-                     'Content-Type': 'application/json',
-                     'X-CSRFToken': '{{ csrf_token }}'
-                 },
-                 body: JSON.stringify({ device_id: newDeviceId })
-             })
-             .then(() => {
-                 this.success = true;
-                 this.error = '';
-                 document.body.dispatchEvent(new CustomEvent('device-changed'));
-             })
-             .catch(() => {
-                 this.error = 'Failed to update device';
-                 this.deviceName = this.originalDeviceName;
-                 this.deviceId = this.originalDeviceId;
-             })
-             .finally(() => this.saving = false);
-         }
+               this.deviceId = newDeviceId;
+               this.deviceName = newDeviceName;
+               this.saving = true;
+               // TODO: migrate to hx-post + hx-on::after-request for HTMX-native toast handling
+                fetchWithHtmxTriggers(`/api/session/{{ session.id }}/device`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ device_id: newDeviceId })
+                })
+               .then((res) => {
+                   document.body.dispatchEvent(new CustomEvent('device-changed'));
+               })
+               .catch(() => {
+                   this.deviceName = this.originalDeviceName;
+                   this.deviceId = this.originalDeviceId;
+                   console.error('Failed to update device');
+               })
+               .finally(() => this.saving = false);
+          }
      }"
 >
     <div class="inline-flex rounded-md shadow-2xs" role="group" @click.outside="open = false">
@@ -51,6 +46,4 @@
             </div>
         </button>
     </div>
-    <div x-show="success" class="text-xs text-green-600 dark:text-green-400" style="display: none;">Saved</div>
-    <div x-show="error" x-text="error" class="text-xs text-red-600 dark:text-red-400" style="display: none;"></div>
 </div>

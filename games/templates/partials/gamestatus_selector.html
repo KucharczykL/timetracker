@@ -8,17 +8,22 @@
              this.status = newStatus;
              this.status_display = newStatusDisplay;
              this.saving = true;
-             fetch(`/api/games/{{ game.id }}/status`, {
-                 method: 'PATCH',
-                 headers: {
-                     'Content-Type': 'application/json',
-                     'X-CSRFToken': '{{ csrf_token }}'
-                 },
-                 body: JSON.stringify({ status: newStatus })
-             }).then(() => {
-                 document.body.dispatchEvent(new CustomEvent('status-changed'));
-             })
-             .finally(() => this.saving = false);
+              // TODO: migrate to hx-post + hx-on::after-request for HTMX-native toast handling
+               fetchWithHtmxTriggers(`/api/games/{{ game.id }}/status`, {
+                   method: 'PATCH',
+                   headers: {
+                       'Content-Type': 'application/json',
+                       'X-CSRFToken': '{{ csrf_token }}'
+                   },
+                   body: JSON.stringify({ status: newStatus })
+               })
+             .then(() => {
+                   document.body.dispatchEvent(new CustomEvent('status-changed'));
+               })
+               .catch(() => {
+                   console.error('Failed to update status');
+               })
+               .finally(() => this.saving = false);
          }
      }"
 >
@@ -41,5 +46,4 @@
             </div>
         </button>
     </div>
-    <div x-show="saving" style="display: none;">Saving...</div>
 </div>

@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import (
@@ -18,6 +19,62 @@ from common.time import dateformat
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
+
+
+def _render_purchase_buttons(purchase_id, is_refunded):
+    """Return button group HTML for a purchase row."""
+    return render_to_string(
+        "cotton/button_group.html",
+        {
+            "buttons": [
+                {
+                    "href": "#",
+                    "hx_get": reverse(
+                        "refund_purchase_confirmation",
+                        args=[purchase_id],
+                    ),
+                    "hx_target": "#global-modal-container",
+                    "slot": Icon("refund"),
+                    "title": "Mark as refunded",
+                }
+                if not is_refunded
+                else {},
+                {
+                    "href": reverse("edit_purchase", args=[purchase_id]),
+                    "slot": Icon("edit"),
+                    "title": "Edit",
+                    "color": "gray",
+                },
+                {
+                    "href": reverse("delete_purchase", args=[purchase_id]),
+                    "slot": Icon("delete"),
+                    "title": "Delete",
+                    "color": "red",
+                },
+            ]
+        },
+    )
+
+
+def _render_purchase_row(purchase):
+    """Return a row dict for simple-table rendering."""
+    return {
+        "row_id": f"purchase-row-{purchase.id}",
+        "cell_data": [
+            LinkedPurchase(purchase),
+            purchase.get_type_display(),
+            PurchasePrice(purchase),
+            purchase.infinite,
+            purchase.date_purchased.strftime(dateformat),
+            (
+                purchase.date_refunded.strftime(dateformat)
+                if purchase.date_refunded
+                else "-"
+            ),
+            purchase.created_at.strftime(dateformat),
+            _render_purchase_buttons(purchase.id, bool(purchase.date_refunded)),
+        ],
+    }
 
 
 @login_required
@@ -54,57 +111,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 "Created",
                 "Actions",
             ],
-            "rows": [
-                [
-                    LinkedPurchase(purchase),
-                    purchase.get_type_display(),
-                    PurchasePrice(purchase),
-                    purchase.infinite,
-                    purchase.date_purchased.strftime(dateformat),
-                    (
-                        purchase.date_refunded.strftime(dateformat)
-                        if purchase.date_refunded
-                        else "-"
-                    ),
-                    purchase.created_at.strftime(dateformat),
-                    render_to_string(
-                        "cotton/button_group.html",
-                        {
-                            "buttons": [
-                                {
-                                    "href": "#",
-                                    "hx_get": reverse(
-                                        "refund_purchase_confirmation",
-                                        args=[purchase.pk],
-                                    ),
-                                    "hx_target": "#global-modal-container",
-                                    "slot": Icon("refund"),
-                                    "title": "Mark as refunded",
-                                }
-                                if not purchase.date_refunded
-                                else {},
-                                {
-                                    "href": reverse(
-                                        "edit_purchase", args=[purchase.pk]
-                                    ),
-                                    "slot": Icon("edit"),
-                                    "title": "Edit",
-                                    "color": "gray",
-                                },
-                                {
-                                    "href": reverse(
-                                        "delete_purchase", args=[purchase.pk]
-                                    ),
-                                    "slot": Icon("delete"),
-                                    "title": "Delete",
-                                    "color": "red",
-                                },
-                            ]
-                        },
-                    ),
-                ]
-                for purchase in purchases
-            ],
+            "rows": [_render_purchase_row(purchase) for purchase in purchases],
         },
     }
     return render(request, "list_purchases.html", context)
@@ -192,7 +199,6 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 def refund_purchase_confirmation(
     request: HttpRequest, purchase_id: int
 ) -> HttpResponse:
-    # purchase = get_object_or_404(Purchase, id=purchase_id)
     return render(
         request,
         "partials/refund_purchase_confirmation.html",
@@ -212,9 +218,16 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
     purchase.refund()
 
-    response = HttpResponse(status=204)
-    response["HX-Redirect"] = reverse("list_purchases")
-    return response
+    messages.success(request, "Purchase refunded")
+    row_data = _render_purchase_row(purchase)
+    row_html = render_to_string(
+        "cotton/table_row.html",
+        {"data": row_data},
+    )
+    modal_close = (
+        '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
+    )
+    return HttpResponse(row_html + modal_close, status=200)
 
 
 @login_required

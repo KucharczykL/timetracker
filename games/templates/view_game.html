@@ -94,7 +94,16 @@
                                     <script>
                                        function createPlayEvent() {
                                         this.played++;
-                                        fetch('{% url 'api-1.0.0:create_playevent' %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: '{"game_id": {{ game.id }}}'})
+                                        // TODO: migrate to hx-post + hx-on::after-request for HTMX-native toast handling
+                                        fetchWithHtmxTriggers('{% url 'api-1.0.0:create_playevent' %}', {
+                                            method: 'POST',
+                                            headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json' },
+                                            body: '{"game_id": {{ game.id }}}'
+                                        })
+                                        .catch(() => {
+                                            this.played--;
+                                            console.error('Failed to record play');
+                                        });
                                        }
                                     </script>
                                 </ul>

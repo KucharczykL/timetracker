@@ -225,3 +225,9 @@ textarea:disabled {
     justify-content: space-between;
   }
 }
+
+@layer utilities {
+  .toast-container {
+    @apply fixed z-50 flex flex-col items-end bottom-0 right-0 p-4;
+  }
+}
