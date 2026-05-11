@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema
 
-from games.models import Game, PlayEvent
+from games.models import Game, PlayEvent, Session
 
 api = NinjaAPI()
 playevent_router = Router()
@@ -92,4 +92,21 @@ def delete_playevent(request, playevent_id: int):
 
 api.add_router("/playevent", playevent_router)
 api.add_router("/games", game_router)
+
+session_router = Router()
+
+
+class SessionDeviceUpdate(Schema):
+    device_id: int
+
+
+@session_router.patch("/{session_id}/device", response={204: None})
+def partial_update_session_device(request, session_id: int, payload: SessionDeviceUpdate):
+    session = get_object_or_404(Session, id=session_id)
+    session.device_id = payload.device_id
+    session.save()
+    return 204, None
+
+
+api.add_router("/session", session_router)
 

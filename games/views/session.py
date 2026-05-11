@@ -25,7 +25,7 @@ from common.time import (
 )
 from common.utils import truncate
 from games.forms import SessionForm
-from games.models import Game, Session
+from games.models import Device, Game, Session
 
 
 @login_required
@@ -34,6 +34,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
     sessions = Session.objects.order_by("-timestamp_start", "created_at")
+    device_list = Device.objects.order_by("name")
     search_string = request.GET.get("search_string", search_string)
     if search_string != "":
         sessions = sessions.filter(
@@ -123,51 +124,66 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                 "Actions",
             ],
             "rows": [
-                [
-                    NameWithIcon(session_id=session.pk),
-                    f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                    session.duration_formatted_with_mark,
-                    session.device,
-                    session.created_at.strftime(dateformat),
-                    render_to_string(
-                        "cotton/button_group.html",
-                        {
-                            "buttons": [
-                                {
-                                    "href": reverse(
-                                        "list_sessions_end_session", args=[session.pk]
-                                    ),
-                                    "slot": Icon("end"),
-                                    "title": "Finish session now",
-                                    "color": "green",
-                                    "hover": "green",
-                                }
-                                if session.timestamp_end is None
-                                # this only works without leaving an empty
-                                # a element and wrong rounding of button edges
-                                # because we check if button.href is not None
-                                # in the button group component
-                                else {},
-                                {
-                                    "href": reverse("edit_session", args=[session.pk]),
-                                    "slot": Icon("edit"),
-                                    "title": "Edit",
-                                    # "color": "gray",
-                                    "hover": "green",
-                                },
-                                {
-                                    "href": reverse(
-                                        "delete_session", args=[session.pk]
-                                    ),
-                                    "slot": Icon("delete"),
-                                    "title": "Delete",
-                                    "color": "red",
-                                    "hover": "red",
-                                },
-                            ]
-                        },
-                    ),
-                ]
+                {
+                    "row_id": f"session-row-{session.pk}",
+                    "hx_trigger": "device-changed from:body",
+                    "hx_get": "",
+                    "hx_select": f"#session-row-{session.pk}",
+                    "hx_swap": "outerHTML",
+                    "cell_data": [
+                        NameWithIcon(session_id=session.pk),
+                        f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+                        session.duration_formatted_with_mark,
+                        render_to_string(
+                            "partials/sessiondevice_selector.html",
+                            {
+                                "session": session,
+                                "session_device": session.device,
+                                "session_devices": device_list,
+                            },
+                            request=request,
+                        ),
+                        session.created_at.strftime(dateformat),
+                        render_to_string(
+                            "cotton/button_group.html",
+                            {
+                                "buttons": [
+                                    {
+                                        "href": reverse(
+                                            "list_sessions_end_session", args=[session.pk]
+                                        ),
+                                        "slot": Icon("end"),
+                                        "title": "Finish session now",
+                                        "color": "green",
+                                        "hover": "green",
+                                    }
+                                    if session.timestamp_end is None
+                                    # this only works without leaving an empty
+                                    # a element and wrong rounding of button edges
+                                    # because we check if button.href is not None
+                                    # in the button group component
+                                    else {},
+                                    {
+                                        "href": reverse("edit_session", args=[session.pk]),
+                                        "slot": Icon("edit"),
+                                        "title": "Edit",
+                                        # "color": "gray",
+                                        "hover": "green",
+                                    },
+                                    {
+                                        "href": reverse(
+                                            "delete_session", args=[session.pk]
+                                        ),
+                                        "slot": Icon("delete"),
+                                        "title": "Delete",
+                                        "color": "red",
+                                        "hover": "red",
+                                    },
+                                ]
+                            },
+                        ),
+                    ],
+                }
                 for session in sessions
             ],
         },

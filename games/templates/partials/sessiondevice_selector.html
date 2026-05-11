@@ -1,0 +1,56 @@
+<div class="flex gap-2 items-center"
+     x-data="{
+         originalDeviceId: {{ session.device.id|default:'null' }},
+         originalDeviceName: '{{ session.device.name|default:'Unknown'|escapejs }}',
+         deviceId: {{ session.device.id|default:'null' }},
+         deviceName: '{{ session.device.name|default:'Unknown'|escapejs }}',
+         open: false,
+         saving: false,
+         error: '',
+         success: false,
+         setDevice(newDeviceId, newDeviceName) {
+             this.deviceId = newDeviceId;
+             this.deviceName = newDeviceName;
+             this.saving = true;
+             this.error = '';
+             this.success = false;
+             fetch(`/api/session/{{ session.id }}/device`, {
+                 method: 'PATCH',
+                 headers: {
+                     'Content-Type': 'application/json',
+                     'X-CSRFToken': '{{ csrf_token }}'
+                 },
+                 body: JSON.stringify({ device_id: newDeviceId })
+             })
+             .then(() => {
+                 this.success = true;
+                 this.error = '';
+                 document.body.dispatchEvent(new CustomEvent('device-changed'));
+             })
+             .catch(() => {
+                 this.error = 'Failed to update device';
+                 this.deviceName = this.originalDeviceName;
+                 this.deviceId = this.originalDeviceId;
+             })
+             .finally(() => this.saving = false);
+         }
+     }"
+>
+    <div class="inline-flex rounded-md shadow-2xs" role="group" @click.outside="open = false">
+        <button type="button" @click="open = !open" class="relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 rounded-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white align-middle hover:cursor-pointer">
+            <span class="flex flex-row gap-4 justify-between items-center">
+                <span x-text="deviceName"></span>
+                <c-icon.arrowdown />
+            </span>
+            <div class="absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none border border-gray-200 dark:border-gray-700" x-show="open" style="display: none;">
+                <ul class="[&_li:first-of-type_a]:rounded-none [&_li:last-of-type_a]:rounded-t-none">
+                    {% for device in session_devices %}
+                        <li><a href="#" @click.prevent.stop="setDevice({{ device.id }}, '{{ device.name|escapejs }}'); open = false;" class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" :class="{ 'font-bold': deviceId === {{ device.id }} }">{{ device.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </button>
+    </div>
+    <div x-show="success" class="text-xs text-green-600 dark:text-green-400" style="display: none;">Saved</div>
+    <div x-show="error" x-text="error" class="text-xs text-red-600 dark:text-red-400" style="display: none;"></div>
+</div>
