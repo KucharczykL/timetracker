@@ -8,7 +8,7 @@ django.setup()
 from django.contrib.messages import constants as message_constants
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.http import HttpRequest, HttpResponse
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from games.htmx_middleware import HTMXMessagesMiddleware
 
@@ -24,7 +24,7 @@ class HtmxDetails:
 
 
 class HTMXMessagesMiddlewareTest(TestCase):
-    def _build_request(self, htmx=True):
+    def _build_request(self, htmx=True, message_level=None):
         """Build a request with FallbackStorage message backend."""
         request = HttpRequest()
         request.method = "GET"
@@ -33,6 +33,8 @@ class HTMXMessagesMiddlewareTest(TestCase):
         request.session = {}
 
         storage = FallbackStorage(request)
+        if message_level is not None:
+            storage._set_level(message_level)
         request._messages = storage
 
         if htmx:
@@ -109,9 +111,10 @@ class HTMXMessagesMiddlewareTest(TestCase):
         data = json.loads(response["HX-Trigger"])
         self.assertEqual(data["show-toast"]["type"], "warning")
 
+    @override_settings(DEBUG=True)
     def test_debug_message_maps_to_debug(self):
         """Debug messages should map to 'debug' toast type."""
-        request = self._build_request(htmx=True)
+        request = self._build_request(htmx=True, message_level=message_constants.DEBUG)
         request._messages.add(message_constants.DEBUG, "Debug info")
         middleware = HTMXMessagesMiddleware(get_response_ok)
 

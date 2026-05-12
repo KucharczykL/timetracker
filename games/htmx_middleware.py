@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.contrib import messages as django_messages
 from django.contrib.messages import constants as message_constants
 
@@ -33,7 +34,11 @@ class HTMXMessagesMiddleware:
         if "HX-Redirect" in response:
             return response
 
-        messages = list(django_messages.get_messages(request))
+        min_level = message_constants.DEBUG if settings.DEBUG else message_constants.INFO
+        backend = django_messages.get_messages(request)
+        if hasattr(backend, '_set_level') and backend._get_level() > min_level:
+            backend._set_level(min_level)
+        messages = list(backend)
         if not messages:
             return response
 
