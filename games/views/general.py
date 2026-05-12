@@ -257,9 +257,9 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     selected_year = request.GET.get("year")
     if selected_year:
-        return HttpResponseRedirect(reverse("stats_by_year", args=[selected_year]))
+        return HttpResponseRedirect(reverse("games:stats_by_year", args=[selected_year]))
     if year == 0:
-        return HttpResponseRedirect(reverse("stats_alltime"))
+        return HttpResponseRedirect(reverse("games:stats_alltime"))
     this_year_sessions = Session.objects.filter(
         timestamp_start__year=year
     ).prefetch_related("game")
@@ -512,4 +512,4 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
 
 @login_required
 def index(request: HttpRequest) -> HttpResponse:
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")

@@ -36,7 +36,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add device"), url_name="add_device"),
+            "header_action": A([], Button([], "Add device"), url_name="games:add_device"),
             "columns": [
                 "Name",
                 "Type",
@@ -53,12 +53,12 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                         {
                             "buttons": [
                                 {
-                                    "href": reverse("edit_device", args=[device.pk]),
+                                    "href": reverse("games:edit_device", args=[device.pk]),
                                     "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
-                                    "href": reverse("delete_device", args=[device.pk]),
+                                    "href": reverse("games:delete_device", args=[device.pk]),
                                     "slot": Icon("delete"),
                                     "color": "red",
                                 },
@@ -79,7 +79,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
     form = DeviceForm(request.POST or None, instance=device)
     if form.is_valid():
         form.save()
-        return redirect("list_devices")
+        return redirect("games:list_devices")
 
     context: dict[str, Any] = {"form": form, "title": "Edit device"}
     return render(request, "add.html", context)
@@ -89,7 +89,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     device = get_object_or_404(Device, id=device_id)
     device.delete()
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")
 
 
 @login_required
@@ -98,7 +98,7 @@ def add_device(request: HttpRequest) -> HttpResponse:
     form = DeviceForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("index")
+        return redirect("games:index")
 
     context["form"] = form
     context["title"] = "Add New Device"

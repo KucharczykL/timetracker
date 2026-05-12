@@ -37,7 +37,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add platform"), url_name="add_platform"),
+            "header_action": A([], Button([], "Add platform"), url_name="games:add_platform"),
             "columns": [
                 "Name",
                 "Icon",
@@ -57,14 +57,14 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                             "buttons": [
                                 {
                                     "href": reverse(
-                                        "edit_platform", args=[platform.pk]
+                                        "games:edit_platform", args=[platform.pk]
                                     ),
                                     "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
                                     "href": reverse(
-                                        "delete_platform", args=[platform.pk]
+                                        "games:delete_platform", args=[platform.pk]
                                     ),
                                     "slot": Icon("delete"),
                                     "color": "red",
@@ -84,7 +84,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
     platform.delete()
-    return redirect("list_platforms")
+    return redirect("games:list_platforms")
 
 
 @login_required
@@ -95,7 +95,7 @@ def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     form = PlatformForm(request.POST or None, instance=platform)
     if form.is_valid():
         form.save()
-        return redirect("list_platforms")
+        return redirect("games:list_platforms")
     context["title"] = "Edit Platform"
     context["form"] = form
     return render(request, "add.html", context)
@@ -107,7 +107,7 @@ def add_platform(request: HttpRequest) -> HttpResponse:
     form = PlatformForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("index")
+        return redirect("games:index")
 
     context["form"] = form
     context["title"] = "Add New Platform"

@@ -58,12 +58,12 @@ def create_playevent_tabledata(
                 {
                     "buttons": [
                         {
-                            "href": reverse("edit_playevent", args=[playevent.pk]),
+                            "href": reverse("games:edit_playevent", args=[playevent.pk]),
                             "slot": Icon("edit"),
                             "color": "gray",
                         },
                         {
-                            "href": reverse("delete_playevent", args=[playevent.pk]),
+                            "href": reverse("games:delete_playevent", args=[playevent.pk]),
                             "slot": Icon("delete"),
                             "color": "red",
                         },
@@ -78,7 +78,7 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-         "header_action": A([], Button([], "Add play event"), url_name="add_playevent"),
+         "header_action": A([], Button([], "Add play event"), url_name="games:add_playevent"),
         "columns": list(filtered_column_list),
         "rows": filtered_row_list,
     }
@@ -194,7 +194,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         if not game_id:
             # coming from add_playevent url path
             game_id = form.instance.game.id
-        return HttpResponseRedirect(reverse("view_game", args=[game_id]))
+        return HttpResponseRedirect(reverse("games:view_game", args=[game_id]))
 
     return render(request, "add.html", {"form": form, "title": "Add new playthrough"})
 
@@ -205,7 +205,7 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     form = PlayEventForm(request.POST or None, instance=playevent)
     if form.is_valid():
         form.save()
-        return HttpResponseRedirect(reverse("view_game", args=[playevent.game.id]))
+        return HttpResponseRedirect(reverse("games:view_game", args=[playevent.game.id]))
 
     context = {
         "form": form,

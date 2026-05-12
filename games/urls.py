@@ -1,5 +1,7 @@
 from django.urls import path
 
+app_name = "games"
+
 from games.api import api
 from games.views import (
     device,

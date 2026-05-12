@@ -17,7 +17,7 @@ class EditStatusChangeView(LoginRequiredMixin, UpdateView):
         return get_object_or_404(GameStatusChange, id=self.kwargs["statuschange_id"])
 
     def get_success_url(self):
-        return reverse_lazy("list_platforms")
+        return reverse_lazy("games:list_platforms")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -31,7 +31,7 @@ class AddStatusChangeView(LoginRequiredMixin, CreateView):
     template_name = "add.html"
 
     def get_success_url(self):
-        return reverse_lazy("view_game", kwargs={"pk": self.object.game.id})
+        return reverse_lazy("games:view_game", kwargs={"pk": self.object.game.id})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -54,4 +54,4 @@ class GameStatusChangeDeleteView(LoginRequiredMixin, DeleteView):
     template_name = "gamestatuschange_confirm_delete.html"
 
     def get_success_url(self):
-        return reverse_lazy("view_game", kwargs={"game_id": self.object.game.id})
+        return reverse_lazy("games:view_game", kwargs={"game_id": self.object.game.id})

@@ -6,7 +6,7 @@
 {% block content %}
     <div class="flex-col">
         {% if dataset_count >= 1 %}
-            {% url 'list_sessions_start_session_from_session' last.id as start_session_url %}
+            {% url 'games:list_sessions_start_session_from_session' last.id as start_session_url %}
             <div class="mx-auto text-center my-4">
                 <a id="last-session-start"
                    href="{{ start_session_url }}"
@@ -36,7 +36,7 @@
                             <td class="px-2 sm:px-4 md:px-6 md:py-2 purchase-name relative align-top w-24 h-12 group">
                                 <span class="inline-block relative">
                                     <a class="underline decoration-slate-500 sm:decoration-2 inline-block truncate max-w-20char group-hover:absolute group-hover:max-w-none group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 group-hover:rounded-xs group-hover:outline-dashed group-hover:outline-purple-400 group-hover:outline-4 group-hover:decoration-purple-900 group-hover:text-purple-100"
-                                       href="{% url 'view_game' session.game.id %}">
+                                       href="{% url 'games:view_game' session.game.id %}">
                                         {{ session.game.name }}
                                     </a>
                                 </span>
@@ -46,7 +46,7 @@
                             </td>
                             <td class="px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell">
                                 {% if not session.timestamp_end %}
-                                    {% url 'list_sessions_end_session' session.id as end_session_url %}
+                                    {% url 'games:list_sessions_end_session' session.id as end_session_url %}
                                     <a href="{{ end_session_url }}"
                                        hx-get="{{ end_session_url }}"
                                        hx-target="closest tr"

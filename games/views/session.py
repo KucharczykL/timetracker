@@ -81,7 +81,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                     Div(
                         children=[
                             A(
-                                url_name="add_session",
+                                url_name="games:add_session",
                                 children=Button(
                                     icon=True,
                                     size="xs",
@@ -90,7 +90,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             ),
                             A(
                                 href=reverse(
-                                    "list_sessions_start_session_from_session",
+                                    "games:list_sessions_start_session_from_session",
                                     args=[last_session.pk],
                                 ),
                                 children=Popover(
@@ -150,7 +150,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                 "buttons": [
                                     {
                                         "href": reverse(
-                                            "list_sessions_end_session", args=[session.pk]
+                                            "games:list_sessions_end_session", args=[session.pk]
                                         ),
                                         "slot": Icon("end"),
                                         "title": "Finish session now",
@@ -164,7 +164,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                     # in the button group component
                                     else {},
                                     {
-                                        "href": reverse("edit_session", args=[session.pk]),
+                                        "href": reverse("games:edit_session", args=[session.pk]),
                                         "slot": Icon("edit"),
                                         "title": "Edit",
                                         # "color": "gray",
@@ -172,7 +172,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                     },
                                     {
                                         "href": reverse(
-                                            "delete_session", args=[session.pk]
+                                            "games:delete_session", args=[session.pk]
                                         ),
                                         "slot": Icon("delete"),
                                         "title": "Delete",
@@ -209,7 +209,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         form = SessionForm(request.POST or None, initial=initial)
         if form.is_valid():
             form.save()
-            return redirect("list_sessions")
+            return redirect("games:list_sessions")
     else:
         if game_id:
             game = Game.objects.get(id=game_id)
@@ -236,7 +236,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     form = SessionForm(request.POST or None, instance=session)
     if form.is_valid():
         form.save()
-        return redirect("list_sessions")
+        return redirect("games:list_sessions")
     context["title"] = "Edit Session"
     context["script_name"] = "add_session.js"
     context["form"] = form
@@ -265,7 +265,7 @@ def new_session_from_existing_session(
             "session_count": int(request.GET.get("session_count", 0)) + 1,
         }
         return render(request, template, context)
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")
 
 
 @login_required
@@ -281,18 +281,18 @@ def end_session(
             "session_count": request.GET.get("session_count", 0),
         }
         return render(request, template, context)
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")
 
 
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.delete()
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")
 
 
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.delete()
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")

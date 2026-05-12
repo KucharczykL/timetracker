@@ -30,7 +30,7 @@ def _render_purchase_buttons(purchase_id, is_refunded):
                 {
                     "href": "#",
                     "hx_get": reverse(
-                        "refund_purchase_confirmation",
+                        "games:refund_purchase_confirmation",
                         args=[purchase_id],
                     ),
                     "hx_target": "#global-modal-container",
@@ -40,13 +40,13 @@ def _render_purchase_buttons(purchase_id, is_refunded):
                 if not is_refunded
                 else {},
                 {
-                    "href": reverse("edit_purchase", args=[purchase_id]),
+                    "href": reverse("games:edit_purchase", args=[purchase_id]),
                     "slot": Icon("edit"),
                     "title": "Edit",
                     "color": "gray",
                 },
                 {
-                    "href": reverse("delete_purchase", args=[purchase_id]),
+                    "href": reverse("games:delete_purchase", args=[purchase_id]),
                     "slot": Icon("delete"),
                     "title": "Delete",
                     "color": "red",
@@ -100,7 +100,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add purchase"), url_name="add_purchase"),
+            "header_action": A([], Button([], "Add purchase"), url_name="games:add_purchase"),
             "columns": [
                 "Name",
                 "Type",
@@ -129,12 +129,12 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             if "submit_and_redirect" in request.POST:
                 return HttpResponseRedirect(
                     reverse(
-                        "add_session_for_game",
+                        "games:add_session_for_game",
                         kwargs={"game_id": purchase.first_game.id},
                     )
                 )
             else:
-                return redirect("list_purchases")
+                return redirect("games:list_purchases")
     else:
         if game_id:
             game = Game.objects.get(id=game_id)
@@ -162,7 +162,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     form = PurchaseForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
-        return redirect("list_sessions")
+        return redirect("games:list_sessions")
     context["title"] = "Edit Purchase"
     context["form"] = form
     context["purchase_id"] = str(purchase_id)
@@ -174,7 +174,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.delete()
-    return redirect("list_purchases")
+    return redirect("games:list_purchases")
 
 
 @login_required
@@ -192,7 +192,7 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.date_dropped = timezone.now()
     purchase.save()
-    return redirect("list_purchases")
+    return redirect("games:list_purchases")
 
 
 @login_required
@@ -235,7 +235,7 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     purchase.date_finished = timezone.now()
     purchase.save()
-    return redirect("list_purchases")
+    return redirect("games:list_purchases")
 
 
 def related_purchase_by_game(request: HttpRequest) -> HttpResponse:

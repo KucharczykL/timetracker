@@ -5,7 +5,7 @@
                 <p class="dark:text-white text-center mt-5">
                     Are you sure you want to mark this purchase as refunded?
                 </p>
-            <form class="" hx-post="{% url 'refund_purchase' purchase_id %}" hx-target="#purchase-row-{{ purchase_id }}" hx-swap="outerHTML">
+            <form class="" hx-post="{% url 'games:refund_purchase' purchase_id %}" hx-target="#purchase-row-{{ purchase_id }}" hx-swap="outerHTML">
                 {% csrf_token %}
                 <div class="mt-5 text-center">
                     <label class="flex flex-row items-center justify-center align-baseline gap-5">

@@ -89,7 +89,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                             )
                         ]
                     ),
-                    A([], Button([], "Add game"), url_name="add_game"),
+                    A([], Button([], "Add game"), url_name="games:add_game"),
                 ],
                 attributes=[("class", "flex justify-between")],
             ),
@@ -126,12 +126,12 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                         {
                             "buttons": [
                                 {
-                                    "href": reverse("edit_game", args=[game.pk]),
+                                    "href": reverse("games:edit_game", args=[game.pk]),
                                     "slot": Icon("edit"),
                                     "color": "gray",
                                 },
                                 {
-                                    "href": reverse("delete_game", args=[game.pk]),
+                                    "href": reverse("games:delete_game", args=[game.pk]),
                                     "slot": Icon("delete"),
                                     "color": "red",
                                 },
@@ -154,10 +154,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
         game = form.save()
         if "submit_and_redirect" in request.POST:
             return HttpResponseRedirect(
-                reverse("add_purchase_for_game", kwargs={"game_id": game.id})
+                reverse("games:add_purchase_for_game", kwargs={"game_id": game.id})
             )
         else:
-            return redirect("list_games")
+            return redirect("games:list_games")
 
     context["form"] = form
     context["title"] = "Add New Game"
@@ -169,7 +169,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
     game.delete()
-    return redirect("list_sessions")
+    return redirect("games:list_sessions")
 
 
 @login_required
@@ -180,7 +180,7 @@ def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
     form = GameForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
-        return redirect("list_sessions")
+        return redirect("games:list_sessions")
     context["title"] = "Edit Game"
     context["form"] = form
     return render(request, "add.html", context)
@@ -242,12 +242,12 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     {
                         "buttons": [
                             {
-                                "href": reverse("edit_purchase", args=[purchase.pk]),
+                                "href": reverse("games:edit_purchase", args=[purchase.pk]),
                                 "slot": Icon("edit"),
                                 "color": "gray",
                             },
                             {
-                                "href": reverse("delete_purchase", args=[purchase.pk]),
+                                "href": reverse("games:delete_purchase", args=[purchase.pk]),
                                 "slot": Icon("delete"),
                                 "color": "red",
                             },
@@ -274,7 +274,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "header_action": Div(
             children=[
                 A(
-                    url_name="add_session",
+                    url_name="games:add_session",
                     children=Button(
                         icon=True,
                         size="xs",
@@ -283,7 +283,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 ),
                 A(
                     href=reverse(
-                        "list_sessions_start_session_from_session",
+                        "games:list_sessions_start_session_from_session",
                         args=[last_session.pk],
                     ),
                     children=Popover(
@@ -317,7 +317,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                         "buttons": [
                             {
                                 "href": reverse(
-                                    "list_sessions_end_session", args=[session.pk]
+                                    "games:list_sessions_end_session", args=[session.pk]
                                 ),
                                 "slot": Icon("end"),
                                 "title": "Finish session now",
@@ -331,12 +331,12 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                             # in the button group component
                             else {},
                             {
-                                "href": reverse("edit_session", args=[session.pk]),
+                                "href": reverse("games:edit_session", args=[session.pk]),
                                 "slot": Icon("edit"),
                                 "color": "gray",
                             },
                             {
-                                "href": reverse("delete_session", args=[session.pk]),
+                                "href": reverse("games:delete_session", args=[session.pk]),
                                 "slot": Icon("delete"),
                                 "color": "red",
                             },

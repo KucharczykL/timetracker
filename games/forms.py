@@ -95,7 +95,7 @@ class PurchaseForm(forms.ModelForm):
 
         # Automatically update related_purchase <select/>
         # to only include purchases of the selected game.
-        related_purchase_by_game_url = reverse("related_purchase_by_game")
+        related_purchase_by_game_url = reverse("games:related_purchase_by_game")
         self.fields["games"].widget.attrs.update(
             {
                 "hx-trigger": "load, click",
