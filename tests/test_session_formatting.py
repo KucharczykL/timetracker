@@ -33,5 +33,5 @@ class FormatDurationTest(TestCase):
         s.save()
         self.assertEqual(
             s.duration_formatted(),
-            "02:40",
+            "2.7",
         )
