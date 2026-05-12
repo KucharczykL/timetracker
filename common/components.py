@@ -1,7 +1,6 @@
+import hashlib
 import json
 from functools import lru_cache
-from random import choices as random_choices
-from string import ascii_lowercase
 from typing import Any, Callable
 
 from django.conf import settings
@@ -63,8 +62,13 @@ def Component(
     return mark_safe(tag)
 
 
-def randomid(seed: str = "", length: int = 10) -> str:
-    return seed + "".join(random_choices(ascii_lowercase, k=length))
+def randomid(seed: str = "", content: str = "", length: int = 10) -> str:
+    if not seed and not content:
+        return seed
+    hash_input = f"{seed}:{content}" if seed else content
+    content_hash = hashlib.sha1(hash_input.encode()).hexdigest()
+    base = content_hash[:length] if not seed else content_hash[:max(0, length - len(seed))]
+    return seed + base
 
 
 def Popover(
@@ -76,7 +80,7 @@ def Popover(
 ) -> str:
     if not wrapped_content and not children:
         raise ValueError("One of wrapped_content or children is required.")
-    id = randomid()
+    id = randomid(content=f"{wrapped_content}:{popover_content}:{wrapped_classes}")
     return Component(
         attributes=attributes
         + [
