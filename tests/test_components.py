@@ -168,5 +168,183 @@ class ComponentIntegrationTest(unittest.TestCase):
         self.assertNotEqual(r1, r2)
 
 
+class RandomidDeterministicTest(unittest.TestCase):
+    """Test that randomid() produces deterministic, reproducible IDs."""
+
+    def test_same_content_same_id(self):
+        r1 = components.randomid(content="foo")
+        r2 = components.randomid(content="foo")
+        self.assertEqual(r1, r2)
+
+    def test_different_content_different_id(self):
+        r1 = components.randomid(content="foo")
+        r2 = components.randomid(content="bar")
+        self.assertNotEqual(r1, r2)
+
+    def test_seed_prepended(self):
+        result = components.randomid(seed="a", content="x")
+        self.assertTrue(result.startswith("a"))
+
+    def test_seed_respects_length(self):
+        result = components.randomid(seed="ab", content="x", length=10)
+        self.assertEqual(len(result), 10)
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(components.randomid(), "")
+
+    def test_output_is_lowercase_alphanum(self):
+        result = components.randomid(content="test")
+        self.assertTrue(all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in result))
+
+    def test_output_length_is_correct(self):
+        for length in [5, 10, 15, 20]:
+            result = components.randomid(content="test", length=length)
+            self.assertEqual(len(result), length)
+
+    def test_hash_reproducible_across_calls(self):
+        results = [components.randomid(content="reproducible_test") for _ in range(100)]
+        self.assertEqual(len(set(results)), 1)
+
+
+class RandomidVsOldBehaviorTest(unittest.TestCase):
+    """Prove the new hash-based approach is deterministic while the old random approach was not."""
+
+    def _old_random_id(self, seed="", length=10):
+        from random import choices
+        from string import ascii_lowercase
+        return seed + "".join(choices(ascii_lowercase, k=length))
+
+    def test_old_random_produces_different_ids(self):
+        results = [self._old_random_id() for _ in range(50)]
+        self.assertEqual(len(set(results)), 50)
+
+    def test_new_hash_produces_same_id(self):
+        results = [components.randomid(content="determinism_test") for _ in range(50)]
+        self.assertEqual(len(set(results)), 1)
+
+    def test_new_hash_deterministic_per_content(self):
+        results = [components.randomid(content=c) for c in ["aaa", "bbb", "ccc"]]
+        self.assertEqual(len(set(results)), 3)
+
+
+class PopoverDeterministicTest(unittest.TestCase):
+    """Test that Popover() produces deterministic HTML output."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_same_popover_same_id(self):
+        r1 = components.Popover("hello", wrapped_content="hello")
+        r2 = components.Popover("hello", wrapped_content="hello")
+        self.assertEqual(r1, r2)
+
+    def test_different_content_different_id(self):
+        r1 = components.Popover("content_a", wrapped_content="content_a")
+        r2 = components.Popover("content_b", wrapped_content="content_b")
+        self.assertNotEqual(r1, r2)
+
+    def test_wrapped_classes_affect_id(self):
+        r1 = components.Popover("c", wrapped_content="c", wrapped_classes="class_x")
+        r2 = components.Popover("c", wrapped_content="c", wrapped_classes="class_y")
+        self.assertNotEqual(r1, r2)
+
+    def test_wrapped_content_affects_id(self):
+        r1 = components.Popover("popover", wrapped_content="wrapped_a")
+        r2 = components.Popover("popover", wrapped_content="wrapped_b")
+        self.assertNotEqual(r1, r2)
+
+    def test_popover_content_affects_id(self):
+        r1 = components.Popover("popover_a", wrapped_content="wrapped")
+        r2 = components.Popover("popover_b", wrapped_content="wrapped")
+        self.assertNotEqual(r1, r2)
+
+    def test_full_html_deterministic(self):
+        r1 = components.Popover("hello world", wrapped_content="hello world")
+        r2 = components.Popover("hello world", wrapped_content="hello world")
+        self.assertEqual(r1.encode(), r2.encode())
+
+
+class PopoverCacheIntegrationTest(unittest.TestCase):
+    """Test that Popover() output works correctly with LRU caching."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def _get_popover_context(self, popover_content, wrapped_content="", wrapped_classes=""):
+        """Build the context JSON that _render_cached would receive for a Popover."""
+        import json
+        content = f"{wrapped_content}:{popover_content}:{wrapped_classes}"
+        id = components.randomid(content=content)
+        context = {
+            "id": id,
+            "wrapped_content": wrapped_content,
+            "popover_content": popover_content,
+            "wrapped_classes": wrapped_classes,
+            "slot": "",
+        }
+        return json.dumps(context, sort_keys=True)
+
+    def test_popover_first_call_no_cache_hit(self):
+        components.Popover("test_content", wrapped_content="test_content")
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.hits, 0)
+
+    def test_popover_second_call_cache_hit(self):
+        components.Popover("test_content", wrapped_content="test_content")
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.hits, 0)
+        components.Popover("test_content", wrapped_content="test_content")
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.hits, 1)
+
+    def test_popover_different_content_different_entry(self):
+        components.Popover("content_a", wrapped_content="content_a")
+        components.Popover("content_b", wrapped_content="content_b")
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.currsize, 2)
+
+    def test_popover_repeated_call_increments_hits(self):
+        for _ in range(5):
+            components.Popover("repeated_test", wrapped_content="repeated_test")
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.hits, 4)
+
+
+class TemplatetagRandomidTest(unittest.TestCase):
+    """Test games/templatetags/randomid.py produces deterministic IDs."""
+
+    def test_same_seed_same_id(self):
+        from games.templatetags import randomid
+        r1 = randomid.randomid(seed="foo")
+        r2 = randomid.randomid(seed="foo")
+        self.assertEqual(r1, r2)
+
+    def test_different_seed_different_id(self):
+        from games.templatetags import randomid
+        r1 = randomid.randomid(seed="foo")
+        r2 = randomid.randomid(seed="bar")
+        self.assertNotEqual(r1, r2)
+
+    def test_output_length_ten(self):
+        from games.templatetags import randomid
+        for seed in ["a", "hello", "test1234"]:
+            result = randomid.randomid(seed=seed)
+            self.assertEqual(len(result), 10)
+
+    def test_empty_seed_returns_hash(self):
+        from games.templatetags import randomid
+        result = randomid.randomid()
+        self.assertEqual(len(result), 10)
+        self.assertTrue(all(c in "abcdef0123456789" for c in result))
+
+
 if __name__ == "__main__":
     unittest.main()
