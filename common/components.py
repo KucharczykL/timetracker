@@ -1,7 +1,10 @@
+import json
+from functools import lru_cache
 from random import choices as random_choices
 from string import ascii_lowercase
 from typing import Any, Callable
 
+from django.conf import settings
 from django.template import TemplateDoesNotExist
 from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
@@ -13,6 +16,16 @@ from games.models import Game, Purchase, Session
 
 HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
+
+
+def _render_cached(template: str, context_json: str) -> str:
+    context = json.loads(context_json)
+    context["slot"] = mark_safe(context["slot"])
+    return render_to_string(template, context)
+
+
+if not settings.DEBUG:
+    _render_cached = lru_cache(maxsize=4096)(_render_cached)
 
 
 def Component(
@@ -37,11 +50,8 @@ def Component(
     if tag_name != "":
         tag = f"<{tag_name}{attributesBlob}>{childrenBlob}</{tag_name}>"
     elif template != "":
-        tag = render_to_string(
-            template,
-            {name: value for name, value in attributes}
-            | {"slot": mark_safe("\n".join(children))},
-        )
+        context = {name: value for name, value in attributes} | {"slot": "\n".join(children)}
+        tag = _render_cached(template, json.dumps(context, sort_keys=True))
     return mark_safe(tag)
 
 
