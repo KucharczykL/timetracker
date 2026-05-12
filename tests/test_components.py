@@ -906,5 +906,186 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertFalse(emulated)
 
 
+class SimpleTableRenderingTest(unittest.TestCase):
+    """Test that c-simple-table renders rows correctly."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_simple_table_renders_list_rows(self):
+        """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started", "Ended"],
+                "rows": [["Game1", "2025-01-01", "2025-03-01"]],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        # body rows (not thead)
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertIn("<tr", tbody)
+        self.assertIn("Game1", tbody)
+        self.assertIn("2025-01-01", tbody)
+        self.assertIn("2025-03-01", tbody)
+        # first cell is <th scope="row">
+        self.assertIn("th scope=\"row\"", tbody)
+        # subsequent cells are <td>
+        self.assertIn("<td", tbody)
+
+    def test_simple_table_empty_rows(self):
+        """Verify empty rows list renders empty <tbody>."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started"],
+                "rows": [],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        self.assertIn("<tbody", result)
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertNotIn("<tr", tbody)
+        self.assertNotIn("<td", tbody)
+
+    def test_simple_table_multiple_rows(self):
+        """Verify multiple rows all render."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started"],
+                "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertIn("GameA", tbody)
+        self.assertIn("GameB", tbody)
+        self.assertIn("<tr", tbody)
+        # two separate <tr> elements
+        self.assertEqual(tbody.count("<tr"), 2)
+
+    def test_simple_table_dict_rows_with_cell_data(self):
+        """Verify dict-style rows with row_id and cell_data render correctly."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Name", "Date"],
+                "rows": [
+                    {
+                        "row_id": "session-row-1",
+                        "hx_trigger": "device-changed",
+                        "cell_data": ["Game1", "2025-01-01"],
+                    }
+                ],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertIn('id="session-row-1"', tbody)
+        self.assertIn("device-changed", tbody)
+        self.assertIn("th scope=\"row\"", tbody)
+        self.assertIn("Game1", tbody)
+        self.assertIn("2025-01-01", tbody)
+        self.assertIn("2025-03-01", result)
+
+    def test_simple_table_empty_rows(self):
+        """Verify empty rows list renders empty <tbody>."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started"],
+                "rows": [],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        self.assertIn("<tbody", result)
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertNotIn("<tr", tbody)
+        self.assertNotIn("<td", tbody)
+
+    def test_simple_table_multiple_rows(self):
+        """Verify multiple rows all render."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started"],
+                "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertIn("GameA", tbody)
+        self.assertIn("GameB", tbody)
+        self.assertIn("<tr", tbody)
+        self.assertEqual(tbody.count("<tr"), 2)
+
+    def test_simple_table_header_action_as_caption(self):
+        """Verify header_action renders inside <caption>."""
+        from django.template.loader import render_to_string
+        from django.utils.safestring import mark_safe
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Game", "Started"],
+                "rows": [["Game1", "2025-01-01"]],
+                "header_action": mark_safe('<a href="/add">Add</a>'),
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        self.assertIn("<caption", result)
+        self.assertIn('href="/add"', result)
+        self.assertIn(">Add</", result)
+
+    def test_simple_table_dict_rows_with_cell_data(self):
+        """Verify dict-style rows with row_id and cell_data render correctly."""
+        from django.template.loader import render_to_string
+        result = render_to_string(
+            "cotton/simple_table.html",
+            {
+                "columns": ["Name", "Date"],
+                "rows": [
+                    {
+                        "row_id": "session-row-1",
+                        "hx_trigger": "device-changed",
+                        "cell_data": ["Game1", "2025-01-01"],
+                    }
+                ],
+                "header_action": None,
+                "page_obj": None,
+                "elided_page_range": None,
+            },
+        )
+        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        self.assertIn('id="session-row-1"', tbody)
+        self.assertIn("device-changed", tbody)
+        self.assertIn("th scope=\"row\"", tbody)
+        self.assertIn("Game1", tbody)
+        self.assertIn("2025-01-01", tbody)
+
+
 if __name__ == "__main__":
     unittest.main()
