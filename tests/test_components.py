@@ -12,6 +12,7 @@ from django.template import TemplateDoesNotExist
 from django.utils.safestring import SafeText
 
 from common import components
+from games.models import Platform, Game, Purchase, Session
 
 
 class RenderCachedImplTest(unittest.TestCase):
@@ -413,6 +414,392 @@ class ComponentReturnTypeTest(unittest.TestCase):
         result = components.NameWithIcon(name="Test", platform="Steam", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertNotIsInstance(result, tuple)
+
+
+class ComponentEdgeCasesTest(unittest.TestCase):
+    """Test Component() edge cases and error handling."""
+
+    def test_no_template_or_tag_name_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            components.Component(children="hello")
+        self.assertIn("template or tag_name", str(ctx.exception))
+
+    def test_single_string_children_wrapped(self):
+        result = components.Component(tag_name="span", children="hello")
+        self.assertIn("hello", result)
+
+    def test_multiple_children_joined_with_newlines(self):
+        result = components.Component(
+            tag_name="div", children=["<span>a</span>", "<span>b</span>"]
+        )
+        self.assertIn("<span>a</span>", result)
+        self.assertIn("<span>b</span>", result)
+        self.assertIn("<div>", result)
+        self.assertIn("</div>", result)
+
+    def test_attributes_serialized_correctly(self):
+        result = components.Component(
+            tag_name="div", attributes=[("class", "foo"), ("id", "bar")]
+        )
+        self.assertIn('class="foo"', result)
+        self.assertIn('id="bar"', result)
+
+    def test_empty_attributes_no_extra_space(self):
+        result = components.Component(tag_name="span", children="x")
+        self.assertEqual(result, "<span>x</span>")
+        self.assertNotIn(" <span", result)
+
+    def test_non_string_children_not_supported(self):
+        """Component only accepts str for children, not integers."""
+        result = components.Component(tag_name="span", children=str(42))
+        self.assertIn("42", result)
+
+    def test_returns_safetext(self):
+        result = components.Component(tag_name="div", children="test")
+        self.assertIsInstance(result, SafeText)
+
+
+class IconTest(unittest.TestCase):
+    """Test Icon() component function."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_valid_icon_renders_svg(self):
+        result = components.Icon("play")
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("<svg", result)
+        self.assertIn("</svg>", result)
+
+    def test_unavailable_icon_falls_back(self):
+        result = components.Icon("zzz_nonexistent_platform")
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("<svg", result)
+
+    def test_icon_passes_attributes_to_template(self):
+        result = components.Icon("play", attributes=[("title", "Play")])
+        self.assertIsInstance(result, SafeText)
+
+    def test_returns_safetext(self):
+        result = components.Icon("delete")
+        self.assertIsInstance(result, SafeText)
+
+
+class FormInputTest(unittest.TestCase):
+    """Test Form(), Input(), and Div() functions."""
+
+    def test_form_default_method_get(self):
+        result = components.Form()
+        self.assertIn('method="get"', result)
+        self.assertIn('<form', result)
+
+    def test_form_post_method(self):
+        result = components.Form(method="post")
+        self.assertIn('method="post"', result)
+        self.assertIn('<form', result)
+
+    def test_form_action(self):
+        result = components.Form(action="/submit/")
+        self.assertIn('action="/submit/"', result)
+
+    def test_form_children_rendered(self):
+        child = components.Input(type="text", attributes=[("name", "email")])
+        result = components.Form(children=[child])
+        self.assertIn('<input', result)
+        self.assertIn('type="text"', result)
+        self.assertIn('name="email"', result)
+
+    def test_input_default_type_text(self):
+        result = components.Input()
+        self.assertIn('<input', result)
+        self.assertIn('type="text"', result)
+
+    def test_input_custom_type(self):
+        result = components.Input(type="submit")
+        self.assertIn('type="submit"', result)
+
+    def test_input_attributes_merged_with_type(self):
+        result = components.Input(type="email", attributes=[("id", "email"), ("class", "form-input")])
+        self.assertIn('type="email"', result)
+        self.assertIn('id="email"', result)
+        self.assertIn('class="form-input"', result)
+
+
+class PopoverTruncatedTest(unittest.TestCase):
+    """Test PopoverTruncated() component function."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_short_string_no_popover(self):
+        result = components.PopoverTruncated("hi")
+        self.assertEqual(result, "hi")
+
+    def test_long_string_wrapped_in_popover(self):
+        long_text = "a" * 100
+        result = components.PopoverTruncated(long_text)
+        # Should NOT equal the truncated form directly
+        truncated = components.truncate(long_text, 30)
+        self.assertNotEqual(result, truncated)
+        # Should contain popover markers
+        self.assertIn("data-popover-target", result)
+
+    def test_custom_ellipsis_used(self):
+        long_text = "a" * 50
+        result = components.PopoverTruncated(long_text, ellipsis=">>")
+        # Django template escapes >> to &gt;&gt; in the wrapped_content
+        self.assertIn("&gt;&gt;", result)
+
+    def test_popover_if_not_truncated_flag(self):
+        short_text = "hi"
+        result = components.PopoverTruncated(
+            short_text, popover_content="full content", popover_if_not_truncated=True
+        )
+        # Should be wrapped in popover even though short
+        self.assertNotEqual(result, "hi")
+        self.assertIn("data-popover-target", result)
+
+    def test_popover_content_override(self):
+        result = components.PopoverTruncated("short", popover_content="custom popover")
+        # With popover_if_not_truncated=False (default), short text returns as-is
+        self.assertEqual(result, "short")
+
+    def test_popover_content_override_with_flag(self):
+        result = components.PopoverTruncated(
+            "short", popover_content="custom popover", popover_if_not_truncated=True
+        )
+        self.assertIn("custom popover", result)
+
+    def test_endpart_visible_in_output(self):
+        long_text = "a" * 50
+        result = components.PopoverTruncated(long_text, endpart="...")
+        self.assertIn("...", result)
+
+    def test_returns_safetext(self):
+        result = components.PopoverTruncated("a" * 100)
+        self.assertIsInstance(result, SafeText)
+
+    def test_default_length(self):
+        text = "a" * 31
+        result = components.PopoverTruncated(text)
+        # 31 chars exceeds default length of 30, so should be truncated
+        self.assertIn("data-popover-target", result)
+
+    def test_length_zero(self):
+        result = components.PopoverTruncated("hello", length=0)
+        # Even empty length triggers popover for any content
+        self.assertIn("data-popover-target", result)
+
+
+class EnableCacheTest(unittest.TestCase):
+    """Test enable_cache() function."""
+
+    def test_wraps_with_lru_cache(self):
+        components.enable_cache()
+        # Should have cache_info method
+        self.assertTrue(hasattr(components._render_cached, "cache_info"))
+
+    def test_cache_has_correct_maxsize(self):
+        components.enable_cache()
+        params = components._render_cached.cache_parameters()
+        self.assertEqual(params["maxsize"], 4096)
+
+
+class ModelDependentComponentsTest(unittest.TestCase):
+    """Test components that depend on Django models."""
+
+    @staticmethod
+    def _create_platform(name="Steam", icon="steam"):
+        return Platform.objects.create(name=name, icon=icon)
+
+    @staticmethod
+    def _create_game(platform, name="Test Game"):
+        return Game.objects.create(name=name, platform=platform)
+
+    @staticmethod
+    def _create_purchase(games, platform=None, price=19.99):
+        purchase = Purchase.objects.create(
+            platform=platform or (games[0].platform if games else None),
+            date_purchased="2025-01-01",
+            price=price,
+            price_currency="USD",
+            converted_price=price,
+            converted_currency="USD",
+        )
+        purchase.games.set(games)
+        return purchase
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        Game.objects.all().delete()
+        Purchase.objects.all().delete()
+        Session.objects.all().delete()
+        Platform.objects.all().delete()
+
+    def test_name_with_icon_linkify_with_game(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform)
+        result = components.NameWithIcon(game_id=game.pk, linkify=True)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("<a ", result)
+        self.assertIn("Test Game", result)
+        self.assertIn("/tracker/game/", result)
+
+    def test_name_with_icon_no_linkify(self):
+        platform = self._create_platform(name="GOG", icon="gog")
+        game = self._create_game(platform)
+        result = components.NameWithIcon(name="Test Game", game_id=game.pk, linkify=False)
+        self.assertIsInstance(result, SafeText)
+        self.assertNotIn("<a ", result)
+        self.assertIn("Test Game", result)
+
+    def test_name_with_icon_emulated_flag(self):
+        platform = self._create_platform(icon="steam")
+        game = self._create_game(platform)
+        session = Session.objects.create(
+            game=game,
+            timestamp_start="2025-01-01 00:00:00+00:00",
+            emulated=True,
+        )
+        result = components.NameWithIcon(session_id=session.pk, linkify=True)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("<a ", result)
+
+    def test_name_with_icon_no_platform(self):
+        result = components.NameWithIcon(name="Standalone", platform="", linkify=False)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Standalone", result)
+
+    def test_name_with_icon_session_fetches_game(self):
+        platform = self._create_platform(icon="egs")
+        game = self._create_game(platform, name="Epic Game")
+        session = Session.objects.create(
+            game=game,
+            timestamp_start="2025-01-01 00:00:00+00:00",
+        )
+        result = components.NameWithIcon(session_id=session.pk, linkify=True)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Epic Game", result)
+
+    def test_purchase_price_renders_currency(self):
+        platform = self._create_platform()
+        game = self._create_game(platform)
+        purchase = self._create_purchase([game], price=29.99)
+        result = components.PurchasePrice(purchase)
+        self.assertIsInstance(result, SafeText)
+        # floatformat rounds to 1 decimal: 29.99 -> 30.0
+        self.assertIn("30.0", result)
+        self.assertIn("USD", result)
+        self.assertIn("data-popover-target", result)
+
+    def test_linked_purchase_single_game(self):
+        platform = self._create_platform(icon="steam")
+        game = self._create_game(platform, name="Single Game")
+        purchase = self._create_purchase([game], price=14.99)
+        result = components.LinkedPurchase(purchase)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Single Game", result)
+        self.assertIn("<a ", result)
+        self.assertIn("/tracker/purchase/", result)
+
+    def test_linked_purchase_multiple_games(self):
+        platform = self._create_platform(icon="steam")
+        game1 = self._create_game(platform, name="Game One")
+        game2 = self._create_game(platform, name="Game Two")
+        purchase = self._create_purchase([game1, game2], price=24.99)
+        result = components.LinkedPurchase(purchase)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("2 games", result)
+        self.assertIn("<a ", result)
+        self.assertIn("/tracker/purchase/", result)
+
+    def test_linked_purchase_with_name(self):
+        platform = self._create_platform(icon="steam")
+        game1 = self._create_game(platform, name="Game A")
+        game2 = self._create_game(platform, name="Game B")
+        purchase = self._create_purchase(
+            [game1, game2], price=24.99,
+        )
+        purchase.name = "Bundle"
+        purchase.save()
+        result = components.LinkedPurchase(purchase)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Bundle", result)
+
+    def test_linked_purchase_renders_game_names_in_popover(self):
+        platform = self._create_platform(icon="steam")
+        game1 = self._create_game(platform, name="Alpha")
+        game2 = self._create_game(platform, name="Beta")
+        purchase = self._create_purchase([game1, game2], price=19.99)
+        result = components.LinkedPurchase(purchase)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Alpha", result)
+        self.assertIn("Beta", result)
+
+
+class PurchaseTruncatedTest(unittest.TestCase):
+    """Test PopoverTruncated with endpart edge cases."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_endpart_shorter_than_length(self):
+        text = "a" * 50
+        result = components.PopoverTruncated(text, length=10, endpart="x")
+        # endpart=x takes 1 char, so content gets truncated at 9 chars
+        self.assertIn("data-popover-target", result)
+        self.assertIn("x", result)
+
+    def test_no_truncation_no_ellipsis(self):
+        result = components.PopoverTruncated("short text")
+        self.assertEqual(result, "short text")
+
+    def test_custom_length(self):
+        text = "hello world"
+        result = components.PopoverTruncated(text, length=6)
+        self.assertIn("data-popover-target", result)
+
+
+class NameWithIconPlatformTest(unittest.TestCase):
+    """Test NameWithIcon platform icon rendering."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.platform = Platform.objects.create(name="Nintendo", icon="nintendo")
+        cls.game = Game.objects.create(name="Zelda", platform=cls.platform)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        Game.objects.all().delete()
+        Platform.objects.all().delete()
+
+    def test_name_with_icon_shows_platform_icon(self):
+        # NameWithIcon looks up platform from DB when linkify=True with game_id
+        result = components.NameWithIcon(
+            name="Zelda", game_id=self.game.pk, linkify=True
+        )
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Zelda", result)
+
+    def test_name_with_icon_no_game_id_no_platform(self):
+        result = components.NameWithIcon(name="Unknown Game", linkify=False)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Unknown Game", result)
 
 
 if __name__ == "__main__":

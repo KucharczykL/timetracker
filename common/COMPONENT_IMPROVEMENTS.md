@@ -39,3 +39,5 @@ Zero test coverage for the entire component system.
 
 **Fix**: Add unit tests for each component function — basic rendering, edge cases,
 and cache hit/miss verification.
+
+**Done**: 96 unit tests covering all component functions (`Component`, `randomid`, `Popover`, `PopoverTruncated`, `A`, `Button`, `Div`, `Icon`, `Form`, `Input`, `NameWithIcon`, `LinkedPurchase`, `PurchasePrice`, `_render_cached`, `enable_cache`). Includes template rendering, deterministic ID generation, LRU cache behavior, HTML output validation, edge cases, error handling, and model-dependent integration tests.
