@@ -346,5 +346,59 @@ class TemplatetagRandomidTest(unittest.TestCase):
         self.assertTrue(all(c in "abcdef0123456789" for c in result))
 
 
+class ComponentReturnTypeTest(unittest.TestCase):
+    """Test that component functions return SafeText and render correctly."""
+
+    def setUp(self):
+        components.enable_cache()
+        components._render_cached.cache_clear()
+
+    def tearDown(self):
+        components._render_cached = components._render_cached_impl
+
+    def test_div_returns_safe_text(self):
+        result = components.Div([("class", "x")], "hello")
+        self.assertIsInstance(result, SafeText)
+
+    def test_div_deterministic(self):
+        r1 = components.Div([("class", "x")], "hello")
+        r2 = components.Div([("class", "x")], "hello")
+        self.assertEqual(r1, r2)
+        self.assertIn('<div class="x">hello</div>', r1)
+
+    def test_div_no_args(self):
+        result = components.Div(children="test")
+        self.assertIsInstance(result, SafeText)
+        self.assertIn('<div>test</div>', result)
+
+    def test_a_returns_safe_text(self):
+        result = components.A([], "link")
+        self.assertIsInstance(result, SafeText)
+
+    def test_a_literal_href(self):
+        result = components.A([], "x", url="/literal/path")
+        self.assertIn('href="/literal/path"', result)
+
+    def test_button_returns_safe_text(self):
+        result = components.Button([], "click")
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("<button", result)
+
+    def test_button_default_colors(self):
+        result = components.Button([], "click")
+        self.assertIn("text-white bg-brand", result)
+
+    def test_name_with_icon_no_link(self):
+        result = components.NameWithIcon(name="Game", platform="Steam", linkify=False)
+        self.assertIsInstance(result, SafeText)
+        self.assertIn("Game", result)
+        self.assertNotIn("<a ", result)
+
+    def test_name_with_icon_no_trailing_comma(self):
+        result = components.NameWithIcon(name="Test", platform="Steam", linkify=False)
+        self.assertIsInstance(result, SafeText)
+        self.assertNotIsInstance(result, tuple)
+
+
 if __name__ == "__main__":
     unittest.main()

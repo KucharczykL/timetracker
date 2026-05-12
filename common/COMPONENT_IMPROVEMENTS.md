@@ -15,11 +15,8 @@
 - `games/templatetags/randomid.py` uses the same hash-based approach
 - Fixes: caching (Popover output now cacheable), page consistency, thread safety
 
-### 1. Inconsistent return types
-`Div()`/`A()`/`Button()` return `str`, but `LinkedPurchase()`/`NameWithIcon()` return `SafeText`.
-Forces callers to remember `mark_safe()` wrapping.
-
-**Fix**: Standardize — all component functions should return the same type.
+### 1. Inconsistent return types (completed)
+All component functions now return `SafeText` and are annotated accordingly. Redundant `mark_safe()` wrappers removed from `LinkedPurchase()` and `NameWithIcon()`.
 
 ### 2. Fragile A() URL resolution
 Tries `reverse(url)` first, then falls back to literal string. Uses `type(url) is str`

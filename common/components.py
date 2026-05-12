@@ -40,7 +40,7 @@ def Component(
     children: list[HTMLTag] | HTMLTag = [],
     template: str = "",
     tag_name: str = "",
-) -> HTMLTag:
+) -> SafeText:
     if not tag_name and not template:
         raise ValueError("One of template or tag_name is required.")
     if isinstance(children, str):
@@ -130,7 +130,7 @@ def A(
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
     url: str | Callable[..., Any] = "",
-):
+) -> SafeText:
     """
     Returns the HTML tag "a".
     "url" can either be:
@@ -161,7 +161,7 @@ def Button(
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
-):
+) -> SafeText:
     return Component(
         template="cotton/button.html",
         attributes=attributes
@@ -178,7 +178,7 @@ def Button(
 def Div(
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
-):
+) -> SafeText:
     return Component(tag_name="div", attributes=attributes, children=children)
 
 
@@ -186,7 +186,7 @@ def Input(
     type: str = "text",
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
-):
+) -> SafeText:
     return Component(
         tag_name="input", attributes=attributes + [("type", type)], children=children
     )
@@ -197,7 +197,7 @@ def Form(
     method="get",
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
-):
+) -> SafeText:
     return Component(
         tag_name="form",
         attributes=attributes + [("action", action), ("method", method)],
@@ -208,7 +208,7 @@ def Form(
 def Icon(
     name: str,
     attributes: list[HTMLAttribute] = [],
-):
+) -> SafeText:
     try:
         result = Component(template=f"cotton/icon/{name}.html", attributes=attributes)
     except TemplateDoesNotExist:
@@ -254,7 +254,7 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
             ),
         ],
     )
-    return mark_safe(A(url=link, children=[a_content]))
+    return A(url=link, children=[a_content])
 
 
 def NameWithIcon(
@@ -297,17 +297,17 @@ def NameWithIcon(
         ],
     )
 
-    return mark_safe(
+    return (
         A(
             url=link,
             children=[content],
         )
         if create_link
-        else content,
+        else content
     )
 
 
-def PurchasePrice(purchase) -> str:
+def PurchasePrice(purchase) -> SafeText:
     return Popover(
         popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
