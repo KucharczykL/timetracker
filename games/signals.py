@@ -17,6 +17,29 @@ from games.models import Game, GameStatusChange, Purchase, Session
 logger = logging.getLogger("games")
 
 
+@receiver(pre_save, sender=Purchase)
+def store_purchase_price_snapshot(sender, instance, **kwargs):
+    """Store old price values before save so we can detect changes."""
+    if instance.pk is not None:
+        try:
+            old_instance = sender.objects.get(pk=instance.pk)
+            instance._old_price = old_instance.price
+            instance._old_currency = old_instance.price_currency
+        except sender.DoesNotExist:
+            pass
+
+
+@receiver(post_save, sender=Purchase)
+def mark_needs_price_update(sender, instance, created, **kwargs):
+    """Mark purchase for price update if price or currency changed."""
+    if not created and hasattr(instance, "_old_price"):
+        if (
+            instance.price != instance._old_price
+            or instance.price_currency != instance._old_currency
+        ):
+            sender.objects.filter(pk=instance.pk).update(needs_price_update=True)
+
+
 @receiver(m2m_changed, sender=Purchase.games.through)
 def update_num_purchases(sender, instance, action, reverse, **kwargs):
     if not reverse and action.startswith("post_"):

@@ -179,6 +179,7 @@ class Purchase(models.Model):
     price_currency = models.CharField(max_length=3, default="USD")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, blank=True, default="")
+    needs_price_update = models.BooleanField(default=True, db_index=True)
     price_per_game = GeneratedField(
         expression=Coalesce(F("converted_price"), F("price"), 0) / F("num_purchases"),
         output_field=models.FloatField(),
@@ -240,12 +241,6 @@ class Purchase(models.Model):
     def is_game(self):
         return self.type == self.GAME
 
-    def price_or_currency_differ_from(self, purchase_to_compare):
-        return (
-            self.price != purchase_to_compare.price
-            or self.price_currency != purchase_to_compare.price_currency
-        )
-
     def refund(self):
         self.date_refunded = timezone.now()
         self.save()
@@ -255,19 +250,6 @@ class Purchase(models.Model):
             raise ValidationError(
                 f"{self.get_type_display()} must have a related purchase."
             )
-        if self.pk is not None:
-            # Retrieve the existing instance from the database
-            existing_purchase = Purchase.objects.get(pk=self.pk)
-            # If price has changed, reset converted fields
-            if existing_purchase.price_or_currency_differ_from(self):
-                from games.tasks import currency_to
-
-                exchange_rate = get_or_create_rate(
-                    self.price_currency, currency_to, self.date_purchased.year
-                )
-                if exchange_rate:
-                    self.converted_price = floatformat(self.price * exchange_rate, 0)
-                    self.converted_currency = currency_to
         super().save(*args, **kwargs)
 
 
