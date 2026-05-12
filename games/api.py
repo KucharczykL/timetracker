@@ -4,7 +4,7 @@ from typing import List
 from django.contrib import messages
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
-from ninja import Field, ModelSchema, NinjaAPI, Router, Schema
+from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
 
 from games.models import Game, PlayEvent, Session
 
@@ -56,7 +56,7 @@ def partial_update_game(request, game_id: int, payload: GameStatusUpdate):
     setattr(game, "status", payload.status)
     game.save()
     messages.success(request, "Status updated")
-    return 204, None
+    return Status(204, None)
 
 
 @playevent_router.get("/", response=List[PlayEventOut])
@@ -90,7 +90,7 @@ def partial_update_playevent(request, playevent_id: int, payload: UpdatePlayEven
 def delete_playevent(request, playevent_id: int):
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
     playevent.delete()
-    return 204, None
+    return Status(204, None)
 
 
 api.add_router("/playevent", playevent_router)
@@ -109,7 +109,7 @@ def partial_update_session_device(request, session_id: int, payload: SessionDevi
     session.device_id = payload.device_id
     session.save()
     messages.success(request, "Device updated")
-    return 204, None
+    return Status(204, None)
 
 
 api.add_router("/session", session_router)
