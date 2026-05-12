@@ -614,7 +614,7 @@ class EnableCacheTest(unittest.TestCase):
         self.assertEqual(params["maxsize"], 4096)
 
 
-class ModelDependentComponentsTest(unittest.TestCase):
+class ModelDependentComponentsTest(django.test.TestCase):
     """Test components that depend on Django models."""
 
     @staticmethod
@@ -775,7 +775,7 @@ class PurchaseTruncatedTest(unittest.TestCase):
         self.assertIn("data-popover-target", result)
 
 
-class NameWithIconPlatformTest(unittest.TestCase):
+class NameWithIconPlatformTest(django.test.TestCase):
     """Test NameWithIcon platform icon rendering."""
 
     @classmethod

@@ -22,11 +22,13 @@ class FormatDurationTest(TestCase):
         g = Game(name="The Test Game")
         g.save()
         p = Purchase(
-            game=g, date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO)
+            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO)
         )
         p.save()
+        p.games.add(g)
+        p.save()
         s = Session(
-            purchase=p,
+            game=g,
             timestamp_start=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 17, 38, tzinfo=ZONEINFO),
         )
