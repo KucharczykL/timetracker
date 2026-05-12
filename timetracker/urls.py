@@ -18,16 +18,13 @@ from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
-from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import RedirectView
-from graphene_django.views import GraphQLView
 
 from games.api import api
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/tracker")),
     path("api/", api.urls),
-    path("graphql", csrf_exempt(GraphQLView.as_view(graphiql=True))),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("tracker/", include("games.urls")),

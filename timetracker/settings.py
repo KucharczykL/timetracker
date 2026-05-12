@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "template_partials",
-    "graphene_django",
     "django_htmx",
     "django_cotton",
     "django_q",
@@ -53,8 +52,6 @@ Q_CLUSTER = {
     "retry": 120,
     "orm": "default",
 }
-
-GRAPHENE = {"SCHEMA": "games.schema.schema"}
 
 if DEBUG:
     INSTALLED_APPS.append("django_extensions")
