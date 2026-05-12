@@ -4,7 +4,7 @@ from datetime import timedelta
 import requests
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.generated import GeneratedField
 from django.db.models.functions import Coalesce
@@ -66,7 +66,8 @@ class Game(models.Model):
         return self.name
 
     def finished(self):
-        return self.status == self.Status.FINISHED
+        return (self.status == self.Status.FINISHED or
+                self.playevents.filter(ended__isnull=False).exists())
 
     def abandoned(self):
         return self.status == self.Status.ABANDONED
@@ -119,6 +120,19 @@ class PurchaseQueryset(models.QuerySet):
 
     def games_only(self):
         return self.filter(type=Purchase.GAME)
+
+    def finished(self):
+        return self.filter(
+            Q(games__status="f") | Q(games__playevents__ended__isnull=False)
+        ).distinct()
+
+    def abandoned(self):
+        return self.filter(games__status="a").distinct()
+
+    def dropped(self):
+        return self.filter(
+            Q(games__status="a") | Q(date_refunded__isnull=False)
+        ).distinct()
 
 
 class Purchase(models.Model):

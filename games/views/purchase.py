@@ -190,8 +190,9 @@ def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    purchase.date_dropped = timezone.now()
-    purchase.save()
+    for game in purchase.games.all():
+        game.status = Game.Status.ABANDONED
+        game.save()
     return redirect("games:list_purchases")
 
 
@@ -233,8 +234,9 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    purchase.date_finished = timezone.now()
-    purchase.save()
+    for game in purchase.games.all():
+        game.status = Game.Status.FINISHED
+        game.save()
     return redirect("games:list_purchases")
 
 

@@ -2,9 +2,9 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg, Count, ExpressionWrapper, F, Prefetch, Q, Sum, fields
+from django.db.models import Avg, Count, ExpressionWrapper, F, Max, OuterRef, Prefetch, Q, Subquery, Sum, fields
 from django.db.models.functions import TruncDate, TruncMonth
-from django.db.models.manager import BaseManager
+
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -90,26 +90,34 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     this_year_purchases = Purchase.objects.all()
     this_year_purchases_with_currency = this_year_purchases.select_related("games")
-    this_year_purchases_without_refunded = this_year_purchases_with_currency.filter(
+    this_year_purchases_without_refunded = Purchase.objects.filter(
         date_refunded=None
     )
-    this_year_purchases_refunded = this_year_purchases_with_currency.refunded()
+    this_year_purchases_refunded = Purchase.objects.refunded()
 
     this_year_purchases_unfinished_dropped_nondropped = (
-        this_year_purchases_without_refunded.filter(date_finished__isnull=True)
+        this_year_purchases_without_refunded.filter(
+            ~Q(games__status="f")
+            & ~Q(games__playevents__ended__isnull=False)
+        )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )  # do not count battle passes etc.
 
     this_year_purchases_unfinished = (
         this_year_purchases_unfinished_dropped_nondropped.filter(
-            date_dropped__isnull=True
+            ~Q(games__status="r")
+            & ~Q(games__status="a")
         )
     )
     this_year_purchases_dropped = (
-        this_year_purchases_unfinished_dropped_nondropped.filter(
-            date_dropped__isnull=False
+        this_year_purchases.filter(
+            ~Q(games__status="f")
+            & ~Q(games__playevents__ended__isnull=False)
         )
+        .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
+        .filter(infinite=False)
+        .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )
 
     this_year_purchases_without_refunded_count = (
@@ -124,13 +132,28 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         * 100
     )
 
-    purchases_finished_this_year: BaseManager[Purchase] = Purchase.objects.finished()
-    purchases_finished_this_year_released_this_year = (
-        purchases_finished_this_year.all().order_by("date_finished")
+    _finished_purchases_qs = Purchase.objects.finished()
+    _finished_with_date = _finished_purchases_qs.annotate(
+        date_finished=Subquery(
+            Purchase.objects.filter(pk=OuterRef("pk"))
+            .annotate(max_ended=Max("games__playevents__ended"))
+            .values("max_ended")[:1]
+        )
+    )
+    purchases_finished_this_year = _finished_with_date
+    purchases_finished_this_year_released_this_year = _finished_with_date.order_by(
+        "-date_finished"
     )
     purchased_this_year_finished_this_year = (
-        this_year_purchases_without_refunded.all()
-    ).order_by("date_finished")
+        this_year_purchases_without_refunded.filter(pk__in=_finished_purchases_qs.values("pk"))
+        .annotate(
+            date_finished=Subquery(
+                Purchase.objects.filter(pk=OuterRef("pk"))
+                .annotate(max_ended=Max("games__playevents__ended"))
+                .values("max_ended")[:1]
+            )
+        )
+    ).order_by("-date_finished")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
         total_spent=Sum(F("converted_price"))
@@ -139,7 +162,9 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     games_with_playtime = Game.objects.filter(
         sessions__in=this_year_sessions
-    ).distinct()
+    ).distinct().annotate(
+        total_playtime=Sum(F("sessions__duration_total"))
+    ).filter(total_playtime__gt=timedelta(0))
     month_playtimes = (
         this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
         .values("month")
@@ -166,7 +191,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     )
 
     backlog_decrease_count = (
-        Purchase.objects.all().intersection(purchases_finished_this_year).count()
+        purchases_finished_this_year.count()
     )
 
     first_play_date = "N/A"
@@ -310,25 +335,30 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     # not infinite
     # only Game and DLC
     this_year_purchases_unfinished_dropped_nondropped = (
-        this_year_purchases_without_refunded.exclude(
-            games__in=Game.objects.filter(status="f")
+        this_year_purchases_without_refunded.filter(
+            ~Q(games__status="f")
+            & ~Q(games__playevents__ended__year=year)
         )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )
 
-    # not finished
+    # unfinished = not finished AND not dropped
     this_year_purchases_unfinished = (
-        this_year_purchases_unfinished_dropped_nondropped.exclude(
-            games__status__in="ura"
+        this_year_purchases_unfinished_dropped_nondropped.filter(
+            ~Q(games__status="r")
+            & ~Q(games__status="a")
         )
     )
-    # abandoned
-    # retired
+    # dropped = abandoned OR retired OR refunded (OR logic for transition)
     this_year_purchases_dropped = (
-        this_year_purchases_unfinished_dropped_nondropped.exclude(
-            games__in=Game.objects.filter(status="ar")
+        this_year_purchases.filter(
+            ~Q(games__status="f")
+            & ~Q(games__playevents__ended__year=year)
         )
+        .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
+        .filter(infinite=False)
+        .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )
 
     this_year_purchases_without_refunded_count = (
@@ -343,7 +373,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         * 100
     )
 
-    purchases_finished_this_year = Purchase.objects.filter(
+    purchases_finished_this_year = Purchase.objects.finished().filter(
         games__playevents__ended__year=year
     ).annotate(game_name=F("games__name"), date_finished=F("games__playevents__ended"))
     purchases_finished_this_year_released_this_year = (
