@@ -67,7 +67,7 @@ uv.lock: pyproject.toml
 	uv sync
 
 test: uv.lock
-	uv run pytest
+	uv run --with pytest-django pytest
 
 date:
 	uv run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'

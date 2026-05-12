@@ -229,7 +229,7 @@ def Icon(
 
 
 def LinkedPurchase(purchase: Purchase) -> SafeText:
-    link = reverse("view_purchase", args=[int(purchase.id)])
+    link = reverse("games:view_purchase", args=[int(purchase.id)])
     link_content = ""
     popover_content = ""
     game_count = purchase.games.count()
@@ -321,12 +321,12 @@ def _resolve_name_with_icon(
         final_emulated = session.emulated
         if linkify:
             create_link = True
-            link = reverse("view_game", args=[int(game.pk)])
+            link = reverse("games:view_game", args=[int(game.pk)])
     elif game is not None:
         platform = game.platform
         if linkify:
             create_link = True
-            link = reverse("view_game", args=[int(game.pk)])
+            link = reverse("games:view_game", args=[int(game.pk)])
 
     _name = name or (game.name if game else "")
 

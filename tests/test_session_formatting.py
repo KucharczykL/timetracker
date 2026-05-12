@@ -1,13 +1,8 @@
-import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import django
-from django.test import TestCase
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
-django.setup()
 from django.conf import settings
+from django.test import TestCase
 
 from games.models import Game, Purchase, Session
 

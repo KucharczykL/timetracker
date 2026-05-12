@@ -42,7 +42,8 @@ dev = [
     "isort>=5.13.2,<6",
     "pre-commit>=3.7.1,<4",
     "django-debug-toolbar>=4.4.2,<5",
-    "ruff"
+    "ruff",
+    "pytest-django>=4.12.0",
 ]
 
 [tool.uv]
@@ -55,4 +56,8 @@ module-root = ""
 requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
 [tool.isort]
-profile = "black"
+ profile = "black"
+
+ [tool.pytest.ini_options]
+ DJANGO_SETTINGS_MODULE = "timetracker.settings"
+ python_files = ["test_*.py"]

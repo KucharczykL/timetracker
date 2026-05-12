@@ -1,14 +1,9 @@
 import json
-import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import django
 from django.conf import settings
 from django.test import TestCase, Client
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
-django.setup()
 
 from games.models import Device, Game, Platform, Purchase, Session
 from django.contrib.auth.models import User

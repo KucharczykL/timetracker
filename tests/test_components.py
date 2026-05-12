@@ -4,11 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import django
 
-import os
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
-django.setup()
-
 from django.template import TemplateDoesNotExist
 from django.utils.safestring import SafeText
 
@@ -638,14 +633,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
         purchase.games.set(games)
         return purchase
 
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-        Game.objects.all().delete()
-        Purchase.objects.all().delete()
-        Session.objects.all().delete()
-        Platform.objects.all().delete()
-
     def test_name_with_icon_linkify_with_game(self):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform)
@@ -783,12 +770,6 @@ class NameWithIconPlatformTest(django.test.TestCase):
         super().setUpClass()
         cls.platform = Platform.objects.create(name="Nintendo", icon="nintendo")
         cls.game = Game.objects.create(name="Zelda", platform=cls.platform)
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-        Game.objects.all().delete()
-        Platform.objects.all().delete()
 
     def test_name_with_icon_shows_platform_icon(self):
         result = components.NameWithIcon(
