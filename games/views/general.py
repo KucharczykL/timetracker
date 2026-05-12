@@ -196,6 +196,8 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     first_play_date = "N/A"
     last_play_date = "N/A"
+    first_play_game = None
+    last_play_game = None
     if this_year_sessions:
         first_session = this_year_sessions.earliest()
         first_play_game = first_session.game
