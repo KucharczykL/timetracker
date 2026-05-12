@@ -104,7 +104,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             ],
             "rows": [
                 [
-                    NameWithIcon(game_id=game.pk),
+                    NameWithIcon(game=game),
                     PopoverTruncated(
                         game.sort_name
                         if game.sort_name is not None and game.name != game.sort_name
@@ -308,9 +308,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "columns": ["Game", "Date", "Duration", "Actions"],
         "rows": [
             [
-                NameWithIcon(
-                    session_id=session.pk,
-                ),
+                NameWithIcon(session=session),
                 f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
                 session.duration_formatted_with_mark,
                 render_to_string(

@@ -1,5 +1,6 @@
 import unittest
 from functools import lru_cache
+from unittest.mock import MagicMock, patch
 
 import django
 
@@ -405,13 +406,13 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
-        result = components.NameWithIcon(name="Game", platform="Steam", linkify=False)
+        result = components.NameWithIcon(name="Game", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertIn("Game", result)
         self.assertNotIn("<a ", result)
 
     def test_name_with_icon_no_trailing_comma(self):
-        result = components.NameWithIcon(name="Test", platform="Steam", linkify=False)
+        result = components.NameWithIcon(name="Test", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertNotIsInstance(result, tuple)
 
@@ -648,7 +649,7 @@ class ModelDependentComponentsTest(unittest.TestCase):
     def test_name_with_icon_linkify_with_game(self):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform)
-        result = components.NameWithIcon(game_id=game.pk, linkify=True)
+        result = components.NameWithIcon(game=game, linkify=True)
         self.assertIsInstance(result, SafeText)
         self.assertIn("<a ", result)
         self.assertIn("Test Game", result)
@@ -657,7 +658,7 @@ class ModelDependentComponentsTest(unittest.TestCase):
     def test_name_with_icon_no_linkify(self):
         platform = self._create_platform(name="GOG", icon="gog")
         game = self._create_game(platform)
-        result = components.NameWithIcon(name="Test Game", game_id=game.pk, linkify=False)
+        result = components.NameWithIcon(name="Test Game", game=game, linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertNotIn("<a ", result)
         self.assertIn("Test Game", result)
@@ -670,12 +671,13 @@ class ModelDependentComponentsTest(unittest.TestCase):
             timestamp_start="2025-01-01 00:00:00+00:00",
             emulated=True,
         )
-        result = components.NameWithIcon(session_id=session.pk, linkify=True)
+        result = components.NameWithIcon(session=session, linkify=True)
         self.assertIsInstance(result, SafeText)
         self.assertIn("<a ", result)
+        self.assertIn("Emulated", result)
 
     def test_name_with_icon_no_platform(self):
-        result = components.NameWithIcon(name="Standalone", platform="", linkify=False)
+        result = components.NameWithIcon(name="Standalone", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertIn("Standalone", result)
 
@@ -686,7 +688,7 @@ class ModelDependentComponentsTest(unittest.TestCase):
             game=game,
             timestamp_start="2025-01-01 00:00:00+00:00",
         )
-        result = components.NameWithIcon(session_id=session.pk, linkify=True)
+        result = components.NameWithIcon(session=session, linkify=True)
         self.assertIsInstance(result, SafeText)
         self.assertIn("Epic Game", result)
 
@@ -789,9 +791,8 @@ class NameWithIconPlatformTest(unittest.TestCase):
         Platform.objects.all().delete()
 
     def test_name_with_icon_shows_platform_icon(self):
-        # NameWithIcon looks up platform from DB when linkify=True with game_id
         result = components.NameWithIcon(
-            name="Zelda", game_id=self.game.pk, linkify=True
+            name="Zelda", game=self.game, linkify=True
         )
         self.assertIsInstance(result, SafeText)
         self.assertIn("Zelda", result)
@@ -800,6 +801,109 @@ class NameWithIconPlatformTest(unittest.TestCase):
         result = components.NameWithIcon(name="Unknown Game", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertIn("Unknown Game", result)
+
+
+class ResolveNameWithIconTest(unittest.TestCase):
+    """Test _resolve_name_with_icon helper function."""
+
+    def setUp(self):
+        from unittest.mock import MagicMock
+
+        self.mock_platform = MagicMock()
+        self.mock_platform.name = "Steam"
+        self.mock_platform.icon = "steam"
+        self.mock_platform.pk = 1
+
+        self.mock_game = MagicMock()
+        self.mock_game.name = "Test Game"
+        self.mock_game.pk = 1
+        self.mock_game.platform = self.mock_platform
+
+        self.mock_session = MagicMock()
+        self.mock_session.game = self.mock_game
+        self.mock_session.emulated = False
+        self.mock_session.pk = 1
+
+    def test_session_provides_game_and_emulated(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", self.mock_game, self.mock_session, True
+        )
+        self.assertEqual(name, "Test Game")
+        self.assertIs(platform, self.mock_platform)
+        self.assertFalse(emulated)
+
+    def test_session_overrides_game_parameter(self):
+        override_game = MagicMock()
+        override_game.name = "Override"
+        override_game.platform = self.mock_platform
+        override_game.pk = 99
+        with patch("common.components.reverse", return_value="/game/99"):
+            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+                "", override_game, self.mock_session, True
+            )
+        self.assertEqual(name, "Test Game")
+        self.assertIsNot(name, "Override")
+
+    def test_game_only_provides_platform(self):
+        with patch("common.components.reverse", return_value="/game/1"):
+            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+                "", self.mock_game, None, True
+            )
+        self.assertEqual(name, "Test Game")
+        self.assertIs(platform, self.mock_platform)
+        self.assertTrue(create_link)
+        self.assertEqual(link, "/game/1")
+
+    def test_custom_name_overrides_game_name(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "Custom", self.mock_game, None, False
+        )
+        self.assertEqual(name, "Custom")
+
+    def test_empty_name_falls_back_to_game_name(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", self.mock_game, None, False
+        )
+        self.assertEqual(name, "Test Game")
+
+    def test_no_game_no_session_returns_empty_name(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", None, None, False
+        )
+        self.assertEqual(name, "")
+        self.assertIsNone(platform)
+        self.assertFalse(create_link)
+
+    def test_linkify_false_no_link_created(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", self.mock_game, None, False
+        )
+        self.assertFalse(create_link)
+        self.assertEqual(link, "")
+
+    def test_linkify_true_creates_link(self):
+        with patch("common.components.reverse", return_value="/game/42"):
+            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+                "", self.mock_game, None, True
+            )
+        self.assertTrue(create_link)
+        self.assertEqual(link, "/game/42")
+
+    def test_session_emulated_flag_preserved(self):
+        emulated_session = MagicMock()
+        emulated_session.game = self.mock_game
+        emulated_session.emulated = True
+        emulated_session.pk = 1
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", self.mock_game, emulated_session, False
+        )
+        self.assertTrue(emulated)
+
+    def test_game_emulated_default_false(self):
+        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
+            "", self.mock_game, None, False
+        )
+        self.assertFalse(emulated)
 
 
 if __name__ == "__main__":

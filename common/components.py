@@ -271,30 +271,15 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
 
 def NameWithIcon(
     name: str = "",
-    platform: str = "",
-    game_id: int = 0,
-    session_id: int = 0,
-    purchase_id: int = 0,
+    game: Game | None = None,
+    session: Session | None = None,
     linkify: bool = True,
     emulated: bool = False,
 ) -> SafeText:
-    create_link = False
-    link = ""
-    platform = None
-    if (game_id != 0 or session_id != 0 or purchase_id != 0) and linkify:
-        create_link = True
-        if session_id:
-            session = Session.objects.get(pk=session_id)
-            emulated = session.emulated
-            game_id = session.game.pk
-        if purchase_id:
-            purchase = Purchase.objects.get(pk=purchase_id)
-            game_id = purchase.games.first().pk
-        if game_id:
-            game = Game.objects.get(pk=game_id)
-        name = name or game.name
-        platform = game.platform
-        link = reverse("view_game", args=[int(game_id)])
+    _name, platform, final_emulated, create_link, link = _resolve_name_with_icon(
+        name, game, session, linkify
+    )
+
     content = Div(
         [("class", "inline-flex gap-2 items-center")],
         [
@@ -304,8 +289,8 @@ def NameWithIcon(
             )
             if platform
             else "",
-            Icon("emulated", [("title", "Emulated")]) if emulated else "",
-            PopoverTruncated(name),
+            Icon("emulated", [("title", "Emulated")]) if final_emulated else "",
+            PopoverTruncated(_name),
         ],
     )
 
@@ -317,6 +302,35 @@ def NameWithIcon(
         if create_link
         else content
     )
+
+
+def _resolve_name_with_icon(
+    name: str,
+    game: Game | None,
+    session: Session | None,
+    linkify: bool,
+) -> tuple[str, Any, bool, bool, str]:
+    create_link = False
+    link = ""
+    platform = None
+    final_emulated = False
+
+    if session is not None:
+        game = session.game
+        platform = game.platform
+        final_emulated = session.emulated
+        if linkify:
+            create_link = True
+            link = reverse("view_game", args=[int(game.pk)])
+    elif game is not None:
+        platform = game.platform
+        if linkify:
+            create_link = True
+            link = reverse("view_game", args=[int(game.pk)])
+
+    _name = name or (game.name if game else "")
+
+    return _name, platform, final_emulated, create_link, link
 
 
 def PurchasePrice(purchase) -> SafeText:

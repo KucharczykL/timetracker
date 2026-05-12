@@ -32,7 +32,10 @@ All functions with mutable defaults (`attributes` and `children`) changed from `
 
 What was fixed: `attributes: list[HTMLAttribute] = []` and `children: list[HTMLTag] | HTMLTag = []` are a classic Python gotcha — the default is shared across all callers and could silently corrupt state if ever mutated in place. Changed 8 functions (`Component`, `Popover`, `A`, `Button`, `Div`, `Input`, `Form`, `Icon`) to use the `None` sentinel pattern, preventing future bugs and eliminating linter warnings.
 
-## Incomplete
+### NameWithIcon dead code and untestable design
+The `NameWithIcon()` function had a `platform` parameter that was immediately overwritten by `platform = None` and never used (dead code). The function mixed data lookup (database queries via IDs) with rendering, making it untestable.
+
+**Fix**: Refactored `NameWithIcon()` to follow the `LinkedPurchase` pattern — accepts model objects (`Game`, `Session`) instead of IDs. Extracted `_resolve_name_with_icon()` helper for testable computation logic (name resolution, platform extraction, link creation). Fixed bug where `platform` was not extracted when `session` parameter was passed. Removed dead `platform` parameter from the public API. Updated all 3 production call sites (already using model objects). Added 10 unit tests for `_resolve_name_with_icon()` covering session override, custom names, linkify behavior, platform resolution, and edge cases. Updated 6 integration tests to use model-based parameters.
 
 ### No tests
 Zero test coverage for the entire component system.

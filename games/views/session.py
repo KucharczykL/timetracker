@@ -131,7 +131,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                     "hx_select": f"#session-row-{session.pk}",
                     "hx_swap": "outerHTML",
                     "cell_data": [
-                        NameWithIcon(session_id=session.pk),
+                        NameWithIcon(session=session),
                         f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
                         session.duration_formatted_with_mark,
                         render_to_string(
