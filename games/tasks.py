@@ -14,14 +14,14 @@ currency_to = currency_to.upper()
 
 
 def _get_exchange_rate(currency_from, currency_to, year):
-    logger.info(
+    logger.debug(
         f"[convert_prices]: Looking for exchange rate in database: {currency_from}->{currency_to}"
     )
-    exchange_rate = ExchangeRate.objects.filter(
+    rate = ExchangeRate.objects.filter(
         currency_from=currency_from, currency_to=currency_to, year=year
     ).first()
-    if not exchange_rate:
-        logger.info(
+    if not rate:
+        logger.debug(
             f"[convert_prices]: Getting exchange rate from {currency_from} to {currency_to} for {year}..."
         )
         try:
@@ -40,16 +40,16 @@ def _get_exchange_rate(currency_from, currency_to, year):
                     year=year,
                     rate=floatformat(rate, 2),
                 )
-                exchange_rate = exchange_rate.rate
+                rate = exchange_rate.rate
             else:
                 logger.info("[convert_prices]: Could not get an exchange rate.")
         except requests.RequestException as e:
             logger.info(
                 f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
             )
-    elif exchange_rate:
-        exchange_rate = exchange_rate.rate
-    return exchange_rate
+    elif rate:
+        rate = rate.rate
+    return rate
 
 
 def _save_converted_price(purchase, converted_price, needs_update):
@@ -78,11 +78,11 @@ def convert_prices():
             continue
         year = purchase.date_purchased.year
         currency_from = purchase.price_currency.upper()
-        exchange_rate = _get_exchange_rate(currency_from, currency_to, year)
-        if exchange_rate:
+        rate = _get_exchange_rate(currency_from, currency_to, year)
+        if rate:
             _save_converted_price(
                 purchase,
-                floatformat(purchase.price * exchange_rate, 0),
+                floatformat(purchase.price * rate, 0),
                 needs_update,
             )
 

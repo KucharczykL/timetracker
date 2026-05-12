@@ -1,6 +1,6 @@
 from datetime import date
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from games.models import Game, Platform, Purchase
 from games.tasks import convert_prices
@@ -29,14 +29,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         purchase.games.add(self.game)
         self.assertTrue(purchase.needs_price_update)
 
-        with override_settings(
-            CACHES={
-                "default": {
-                    "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
-                }
-            }
-        ):
-            convert_prices()
+        convert_prices()
 
         purchase.refresh_from_db()
         self.assertFalse(purchase.needs_price_update)
