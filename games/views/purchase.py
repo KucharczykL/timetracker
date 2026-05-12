@@ -212,10 +212,9 @@ def refund_purchase_confirmation(
 def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
 
-    if request.POST.get("set_abandoned"):
-        for game in purchase.games.all():
-            game.status = Game.Status.ABANDONED
-            game.save()
+    for game in purchase.games.all():
+        game.status = Game.Status.ABANDONED
+        game.save()
 
     purchase.refund()
 

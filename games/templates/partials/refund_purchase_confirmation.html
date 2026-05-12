@@ -7,12 +7,9 @@
                 </p>
             <form class="" hx-post="{% url 'games:refund_purchase' purchase_id %}" hx-target="#purchase-row-{{ purchase_id }}" hx-swap="outerHTML">
                 {% csrf_token %}
-                <div class="mt-5 text-center">
-                    <label class="flex flex-row items-center justify-center align-baseline gap-5">
-                        <input type="checkbox" name="set_abandoned" class="form-checkbox h-5 w-5 text-blue-600">
-                        <span class="text-gray-700 dark:text-gray-500 underline decoration-dotted" title="Set the status of all games associated with this purchase to 'Abandoned'">Set status to 'Abandoned'</span>
-                    </label>
-                </div>
+                <p class="dark:text-white text-center mt-3 text-sm">
+                    Games will be marked as abandoned.
+                </p>
                 <div class="items-center mt-5">
                     <c-button color="blue" size="lg" type="submit" class="w-full">Refund</c-button>
                     <c-button color="gray" size="base" class="mt-0 w-full" onclick="this.closest('#refund-confirmation-modal').remove()">Cancel</c-button>
