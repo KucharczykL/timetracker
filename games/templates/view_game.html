@@ -127,7 +127,7 @@
                         Edit
                     </button>
                 </a>
-                <a href="{% url 'games:delete_game' game.id %}">
+                <a href="#" hx-get="{% url 'games:delete_game_confirmation' game.id %}" hx-target="#global-modal-container">
                     <button type="button"
                             class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-e-lg hover:bg-red-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer">
                         Delete

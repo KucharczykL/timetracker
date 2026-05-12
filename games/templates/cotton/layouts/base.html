@@ -46,7 +46,7 @@
              alt="loading indicator" />
         <div class="flex flex-col min-h-screen">
             {% include "navbar.html" %}
-            <div class="flex flex-1 flex-col pt-8 pb-16">{{ slot }}</div>
+            <div id="main-container" class="flex flex-1 flex-col pt-8 pb-16">{{ slot }}</div>
             {% load version %}
             <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{% version %} ({% version_date %})</span>
         </div>
@@ -106,7 +106,8 @@
                 }
             });
         </script>
-   <div id="global-modal-container"></div>
+    // hx-swap-oob makes sure the modal gets removed upon any HTMX response
+   <div id="global-modal-container" hx-swap-oob="true"></div>
 
     <div x-data="toastStore()"
          role="region"

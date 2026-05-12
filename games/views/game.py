@@ -166,6 +166,24 @@ def add_game(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def delete_game_confirmation(request: HttpRequest, game_id: int) -> HttpResponse:
+    game = get_object_or_404(Game, id=game_id)
+    session_count = game.sessions.count()
+    purchase_count = game.purchases.count()
+    playevent_count = game.playevents.count()
+    return render(
+        request,
+        "partials/delete_game_confirmation.html",
+        {
+            "game": game,
+            "session_count": session_count,
+            "purchase_count": purchase_count,
+            "playevent_count": playevent_count,
+        },
+    )
+
+
+@login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
     game.delete()

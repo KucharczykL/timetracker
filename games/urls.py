@@ -23,6 +23,7 @@ urlpatterns = [
     path("game/add", game.add_game, name="add_game"),
     path("game/<int:game_id>/edit", game.edit_game, name="edit_game"),
     path("game/<int:game_id>/view", game.view_game, name="view_game"),
+    path("game/<int:game_id>/delete/confirm", game.delete_game_confirmation, name="delete_game_confirmation"),
     path("game/<int:game_id>/delete", game.delete_game, name="delete_game"),
     path("game/list", game.list_games, name="list_games"),
     path("platform/add", platform.add_platform, name="add_platform"),
