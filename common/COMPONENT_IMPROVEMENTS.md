@@ -21,27 +21,21 @@ All component functions now return `SafeText` and are annotated accordingly. Red
 ### Fragile A() URL resolution
 Replaced single `url` parameter with explicit `url_name` (URL pattern name resolved via `reverse()`) and `href` (literal path). Removed dead `Callable` type hint. `reverse()` now raises `NoReverseMatch` instead of silently falling back to literal text. Added mutual exclusion check — providing both parameters raises `ValueError`. Updated all 10 call sites across 6 view files and internal callers (`LinkedPurchase()`, `NameWithIcon()`).
 
-## Incomplete
-
 ### Toast XSS vulnerability
-Custom string escaping for Alpine.js interpolation:
-```python
-safe_message = message.replace("\\", "\\\\").replace("`", "\\`")
-```
-Doesn't protect against all injection vectors (e.g., `})` could close the
-Alpine expression early).
+The vulnerable `Toast()` component (which used unsafe string escaping for
+Alpine.js interpolation) had no callers and was deleted entirely. Toast display
+is handled by the existing event-driven pipeline: middleware → `HX-Trigger`
+headers → `show-toast` CustomEvent → Alpine store.
 
-**Fix**: Use proper HTML escaping + JSON serialization for safe template interpolation.
+### Default mutable arguments
+All functions with mutable defaults (`attributes` and `children`) changed from `= []` to `| None = None` with `or []` conversion in the body.
+
+What was fixed: `attributes: list[HTMLAttribute] = []` and `children: list[HTMLTag] | HTMLTag = []` are a classic Python gotcha — the default is shared across all callers and could silently corrupt state if ever mutated in place. Changed 8 functions (`Component`, `Popover`, `A`, `Button`, `Div`, `Input`, `Form`, `Icon`) to use the `None` sentinel pattern, preventing future bugs and eliminating linter warnings.
+
+## Incomplete
 
 ### No tests
 Zero test coverage for the entire component system.
 
 **Fix**: Add unit tests for each component function — basic rendering, edge cases,
 and cache hit/miss verification.
-
-### Default mutable arguments
-`attributes: list[HTMLAttribute] = []` is a classic Python gotcha (though harmless
-here since the list is only read, never mutated in place).
-
-**Fix**: Use `attributes: list[HTMLAttribute] | None = None` and convert to `[]`
-inside the function body.

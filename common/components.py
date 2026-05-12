@@ -36,11 +36,13 @@ def enable_cache():
 
 
 def Component(
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
     template: str = "",
     tag_name: str = "",
 ) -> SafeText:
+    attributes = attributes or []
+    children = children or []
     if not tag_name and not template:
         raise ValueError("One of template or tag_name is required.")
     if isinstance(children, str):
@@ -75,9 +77,11 @@ def Popover(
     popover_content: str,
     wrapped_content: str = "",
     wrapped_classes: str = "",
-    children: list[HTMLTag] = [],
-    attributes: list[HTMLAttribute] = [],
+    children: list[HTMLTag] | None = None,
+    attributes: list[HTMLAttribute] | None = None,
 ) -> str:
+    attributes = attributes or []
+    children = children or []
     if not wrapped_content and not children:
         raise ValueError("One of wrapped_content or children is required.")
     id = randomid(content=f"{wrapped_content}:{popover_content}:{wrapped_classes}")
@@ -127,8 +131,8 @@ def PopoverTruncated(
 
 
 def A(
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
     url_name: str | None = None,
     href: str | None = None,
 ) -> SafeText:
@@ -139,6 +143,8 @@ def A(
         - url_name: URL pattern name, resolved via reverse()
         - href: Literal path string passed through as-is
     """
+    attributes = attributes or []
+    children = children or []
     if url_name is not None and href is not None:
         raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
 
@@ -153,12 +159,14 @@ def A(
 
 
 def Button(
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
 ) -> SafeText:
+    attributes = attributes or []
+    children = children or []
     return Component(
         template="cotton/button.html",
         attributes=attributes
@@ -173,17 +181,21 @@ def Button(
 
 
 def Div(
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
 ) -> SafeText:
+    attributes = attributes or []
+    children = children or []
     return Component(tag_name="div", attributes=attributes, children=children)
 
 
 def Input(
     type: str = "text",
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
 ) -> SafeText:
+    attributes = attributes or []
+    children = children or []
     return Component(
         tag_name="input", attributes=attributes + [("type", type)], children=children
     )
@@ -192,9 +204,11 @@ def Input(
 def Form(
     action="",
     method="get",
-    attributes: list[HTMLAttribute] = [],
-    children: list[HTMLTag] | HTMLTag = [],
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
 ) -> SafeText:
+    attributes = attributes or []
+    children = children or []
     return Component(
         tag_name="form",
         attributes=attributes + [("action", action), ("method", method)],
@@ -204,8 +218,9 @@ def Form(
 
 def Icon(
     name: str,
-    attributes: list[HTMLAttribute] = [],
+    attributes: list[HTMLAttribute] | None = None,
 ) -> SafeText:
+    attributes = attributes or []
     try:
         result = Component(template=f"cotton/icon/{name}.html", attributes=attributes)
     except TemplateDoesNotExist:
@@ -312,24 +327,4 @@ def PurchasePrice(purchase) -> SafeText:
     )
 
 
-def Toast(
-    message: str = "",
-    type: str = "info",
-    attributes: list = [],
-):
-    valid_types = ["success", "error", "info"]
-    if type not in valid_types:
-        type = "info"
 
-    safe_message = message.replace("\\", "\\\\").replace("`", "\\`")
-    safe_type = type.replace("\\", "\\\\").replace("`", "\\`")
-    return Component(
-        tag_name="div",
-        attributes=[
-            ("class", "hidden"),
-            ("x-data", "toastStore"),
-            ("x-init", f"addToast(`{safe_message}`, `{safe_type}`)"),
-        ]
-        + attributes,
-        children=[message],
-    )
