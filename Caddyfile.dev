@@ -1,0 +1,15 @@
+{
+	auto_https off
+}
+
+:8000 {
+	handle_path /static/* {
+		root * static
+		file_server browse
+	}
+	handle /robots.txt {
+		root * games/static
+		file_server browse
+	}
+	reverse_proxy :8001
+}

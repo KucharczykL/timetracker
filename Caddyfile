@@ -1,14 +1,15 @@
-{ 
-    auto_https off
-    admin off
+{
+	auto_https off
 }
 
 :8000 {
-    handle_path /static/* {
-        root * /usr/share/caddy
-        file_server
-    }
-    handle {
-        reverse_proxy backend:8001
-    }
+	handle_path /static/* {
+		root * /home/timetracker/app/static
+		file_server
+	}
+	handle /robots.txt {
+		root * /home/timetracker/app/games/static
+		file_server
+	}
+	reverse_proxy localhost:8001
 }

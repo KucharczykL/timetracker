@@ -41,9 +41,10 @@ caddy:
 
 dev-prod: migrate collectstatic
 	@npx concurrently \
-	--names "Django,Django-Q" \
-	"PROD=1 uv run python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker"
-	"uv run manage.py qcluster"
+		--names "Caddy,Django,Django-Q" \
+		"caddy run --config Caddyfile.dev" \
+		"PROD=1 uv run python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker" \
+		"PROD=1 uv run manage.py qcluster"
 
 dumpgames:
 	uv run python manage.py dumpdata --format yaml games --output tracker_fixture.yaml

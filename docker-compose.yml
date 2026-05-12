@@ -1,30 +1,21 @@
 ---
 services:
-  backend:
-    image: registry.kucharczyk.xyz/timetracker
+  timetracker:
+    image: ${REGISTRY_URL:-registry.kucharczyk.xyz}/timetracker:1.7.0
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: timetracker
     environment:
-      - TZ=Europe/Prague
-      - CSRF_TRUSTED_ORIGINS="https://tracker.kucharczyk.xyz"
-    user: "1000"
+      - TZ=${TZ:-Europe/Prague}
+      - CSRF_TRUSTED_ORIGINS=https://tracker.kucharczyk.xyz
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-100}
+      - DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
+    ports:
+      - "${TIMETRACKER_EXTERNAL_PORT:-8000}:8000"
     volumes:
-      - "static-files:/var/www/django/static"
-      - "$PWD/db.sqlite3:/home/timetracker/app/db.sqlite3"
+      - "./data:/home/timetracker/app/data"
+      - "${DOCKER_STORAGE_PATH:-/tmp}/timetracker/backups:/home/timetracker/app/games/fixtures/backups"
     restart: unless-stopped
 
-  frontend:
-    image: caddy
-    volumes:
-      - "static-files:/usr/share/caddy:ro"
-      - "$PWD/Caddyfile:/etc/caddy/Caddyfile"
-    ports:
-      - "8000:8000"
-    depends_on:
-      - backend
-
-volumes:
-  static-files:
-    
-    

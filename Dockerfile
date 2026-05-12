@@ -22,20 +22,34 @@ ENV PROD=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/home/timetracker/app/.venv/bin:$PATH"
 
-RUN useradd -m --uid 1000 timetracker \
-    && mkdir -p /var/www/django/static \
-    && chown timetracker:timetracker /var/www/django/static
-    
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    libcap2-bin \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m --uid 1000 timetracker \
+    && mkdir -p /var/log/supervisor /etc/supervisor/conf.d /home/timetracker/data \
+    && chown timetracker:timetracker /var/log/supervisor /home/timetracker/data
+
+ARG CADDY_VERSION=2.9.1
+RUN curl -sL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" \
+    -o /tmp/caddy.tar.gz && \
+    tar -xzf /tmp/caddy.tar.gz -C /tmp && \
+    mv /tmp/caddy /usr/local/bin/caddy && \
+    rm /tmp/caddy.tar.gz && \
+    chmod +x /usr/local/bin/caddy
+
 WORKDIR /home/timetracker/app
 
 COPY --from=builder --chown=timetracker:timetracker /home/timetracker/app /home/timetracker/app
 
+COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile
+COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supervisor.conf
 COPY --chown=timetracker:timetracker entrypoint.sh /
 RUN chmod +x /entrypoint.sh
-
-USER timetracker
 
 ENV VERSION_NUMBER=1.6.1
 
 EXPOSE 8000
-CMD [ "/entrypoint.sh" ]
+ENTRYPOINT ["/entrypoint.sh"]

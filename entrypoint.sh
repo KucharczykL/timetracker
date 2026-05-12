@@ -1,23 +1,23 @@
 #!/bin/bash
-# Apply database migrations
 set -euo pipefail
-echo "Apply database migrations"
-python manage.py migrate
 
-echo "Collect static files"
+PUID=${PUID:-1000}
+PGID=${PGID:-100}
+
+USERHOME=$(grep timetracker /etc/passwd | cut -d ":" -f6)
+usermod -d "/root" timetracker
+groupmod -o -g "$PGID" timetracker
+usermod -o -u "$PUID" timetracker
+usermod -d "${USERHOME}" timetracker
+
+mkdir -p /home/timetracker/app/data /var/log/supervisor
+chmod 755 /home/timetracker/app
+chmod 755 /home/timetracker/app/.venv
+
+chown "$PUID:$PGID" /home/timetracker/app/data
+chown "$PUID:$PGID" /var/log/supervisor
+
+python manage.py migrate
 python manage.py collectstatic --clear --no-input
 
-_term() {
-  echo "Caught SIGTERM signal!"
-  kill -SIGTERM "$gunicorn_pid"
-  kill -SIGTERM "$django_q_pid"
-}
-trap _term SIGTERM
-
-echo "Starting Django-Q cluster"
-python manage.py qcluster & django_q_pid=$!
-
-echo "Starting app"
-python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker --access-logfile - --error-logfile - & gunicorn_pid=$!
-
-wait "$gunicorn_pid" "$django_q_pid"
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisor.conf

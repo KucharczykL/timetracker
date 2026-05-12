@@ -9,7 +9,6 @@ static
 .drone.yml
 .editorconfig
 .gitignore
-Caddyfile
 CHANGELOG.md
 db.sqlite3
 docker-compose*
