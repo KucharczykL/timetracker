@@ -18,14 +18,22 @@ HTMLAttribute = tuple[str, str | int | bool]
 HTMLTag = str
 
 
-def _render_cached(template: str, context_json: str) -> str:
+def _render_cached_impl(template: str, context_json: str) -> str:
     context = json.loads(context_json)
     context["slot"] = mark_safe(context["slot"])
     return render_to_string(template, context)
 
 
 if not settings.DEBUG:
-    _render_cached = lru_cache(maxsize=4096)(_render_cached)
+    _render_cached = lru_cache(maxsize=4096)(_render_cached_impl)
+else:
+    _render_cached = _render_cached_impl
+
+
+def enable_cache():
+    """Wrap _render_cached with LRU cache (for testing in DEBUG mode)."""
+    global _render_cached
+    _render_cached = lru_cache(maxsize=4096)(_render_cached_impl)
 
 
 def Component(
