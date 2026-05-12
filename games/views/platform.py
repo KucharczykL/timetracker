@@ -37,7 +37,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add platform"), url="add_platform"),
+            "header_action": A([], Button([], "Add platform"), url_name="add_platform"),
             "columns": [
                 "Name",
                 "Icon",

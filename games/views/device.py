@@ -36,7 +36,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add device"), url="add_device"),
+            "header_action": A([], Button([], "Add device"), url_name="add_device"),
             "columns": [
                 "Name",
                 "Type",

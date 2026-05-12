@@ -100,7 +100,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             else None
         ),
         "data": {
-            "header_action": A([], Button([], "Add purchase"), url="add_purchase"),
+            "header_action": A([], Button([], "Add purchase"), url_name="add_purchase"),
             "columns": [
                 "Name",
                 "Type",

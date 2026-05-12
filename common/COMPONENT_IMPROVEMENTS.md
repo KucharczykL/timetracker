@@ -15,17 +15,15 @@
 - `games/templatetags/randomid.py` uses the same hash-based approach
 - Fixes: caching (Popover output now cacheable), page consistency, thread safety
 
-### 1. Inconsistent return types (completed)
+### Inconsistent return types
 All component functions now return `SafeText` and are annotated accordingly. Redundant `mark_safe()` wrappers removed from `LinkedPurchase()` and `NameWithIcon()`.
 
-### 2. Fragile A() URL resolution
-Tries `reverse(url)` first, then falls back to literal string. Uses `type(url) is str`
-instead of `isinstance()`. Intentional but error-prone — a string matching a URL name
-will be reversed, while one that doesn't pass through as-is.
+### Fragile A() URL resolution
+Replaced single `url` parameter with explicit `url_name` (URL pattern name resolved via `reverse()`) and `href` (literal path). Removed dead `Callable` type hint. `reverse()` now raises `NoReverseMatch` instead of silently falling back to literal text. Added mutual exclusion check — providing both parameters raises `ValueError`. Updated all 10 call sites across 6 view files and internal callers (`LinkedPurchase()`, `NameWithIcon()`).
 
-**Fix**: Add explicit parameter like `url_name="view_game"` vs `href="/literal/path"`.
+## Incomplete
 
-### 3. Toast XSS vulnerability
+### Toast XSS vulnerability
 Custom string escaping for Alpine.js interpolation:
 ```python
 safe_message = message.replace("\\", "\\\\").replace("`", "\\`")
@@ -35,13 +33,13 @@ Alpine expression early).
 
 **Fix**: Use proper HTML escaping + JSON serialization for safe template interpolation.
 
-### 4. No tests
+### No tests
 Zero test coverage for the entire component system.
 
 **Fix**: Add unit tests for each component function — basic rendering, edge cases,
 and cache hit/miss verification.
 
-### 5. Default mutable arguments
+### Default mutable arguments
 `attributes: list[HTMLAttribute] = []` is a classic Python gotcha (though harmless
 here since the list is only read, never mutated in place).
 

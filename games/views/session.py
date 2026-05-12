@@ -81,7 +81,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                     Div(
                         children=[
                             A(
-                                url="add_session",
+                                url_name="add_session",
                                 children=Button(
                                     icon=True,
                                     size="xs",
@@ -89,7 +89,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                 ),
                             ),
                             A(
-                                url=reverse(
+                                href=reverse(
                                     "list_sessions_start_session_from_session",
                                     args=[last_session.pk],
                                 ),

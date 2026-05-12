@@ -89,7 +89,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                             )
                         ]
                     ),
-                    A([], Button([], "Add game"), url="add_game"),
+                    A([], Button([], "Add game"), url_name="add_game"),
                 ],
                 attributes=[("class", "flex justify-between")],
             ),
@@ -274,7 +274,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         "header_action": Div(
             children=[
                 A(
-                    url="add_session",
+                    url_name="add_session",
                     children=Button(
                         icon=True,
                         size="xs",
@@ -282,7 +282,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     ),
                 ),
                 A(
-                    url=reverse(
+                    href=reverse(
                         "list_sessions_start_session_from_session",
                         args=[last_session.pk],
                     ),

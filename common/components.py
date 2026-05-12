@@ -1,13 +1,13 @@
 import hashlib
 import json
 from functools import lru_cache
-from typing import Any, Callable
+from typing import Any
 
 from django.conf import settings
 from django.template import TemplateDoesNotExist
 from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
-from django.urls import NoReverseMatch, reverse
+from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.utils import truncate
@@ -129,27 +129,24 @@ def PopoverTruncated(
 def A(
     attributes: list[HTMLAttribute] = [],
     children: list[HTMLTag] | HTMLTag = [],
-    url: str | Callable[..., Any] = "",
+    url_name: str | None = None,
+    href: str | None = None,
 ) -> SafeText:
     """
-    Returns the HTML tag "a".
-    "url" can either be:
-        - URL (string)
-        - path name passed to reverse() (string)
-        - function
+    Returns an anchor <a> tag.
+
+    Accepts one of two mutually-exclusive URL specifications:
+        - url_name: URL pattern name, resolved via reverse()
+        - href: Literal path string passed through as-is
     """
+    if url_name is not None and href is not None:
+        raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
+
     additional_attributes = []
-    if url:
-        if type(url) is str:
-            try:
-                url_result = reverse(url)
-            except NoReverseMatch:
-                url_result = url
-        elif callable(url):
-            url_result = url()
-        else:
-            raise TypeError("'url' is neither str nor function.")
-        additional_attributes = [("href", url_result)]
+    if url_name is not None:
+        additional_attributes = [("href", reverse(url_name))]
+    elif href is not None:
+        additional_attributes = [("href", href)]
     return Component(
         tag_name="a", attributes=attributes + additional_attributes, children=children
     )
@@ -254,7 +251,7 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
             ),
         ],
     )
-    return A(url=link, children=[a_content])
+    return A(href=link, children=[a_content])
 
 
 def NameWithIcon(
@@ -299,7 +296,7 @@ def NameWithIcon(
 
     return (
         A(
-            url=link,
+            href=link,
             children=[content],
         )
         if create_link

@@ -376,8 +376,23 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertIsInstance(result, SafeText)
 
     def test_a_literal_href(self):
-        result = components.A([], "x", url="/literal/path")
+        result = components.A([], "x", href="/literal/path")
         self.assertIn('href="/literal/path"', result)
+
+    def test_a_url_name_reversed(self):
+        from unittest.mock import patch
+        with patch("common.components.reverse", return_value="/resolved/url"):
+            result = components.A([], "link", url_name="some_name")
+            self.assertIn('href="/resolved/url"', result)
+
+    def test_a_no_url_or_href(self):
+        result = components.A([], "link")
+        self.assertIn('<a>link</a>', result)
+        self.assertNotIn('href=', result)
+
+    def test_a_both_url_name_and_href_raises(self):
+        with self.assertRaises(ValueError):
+            components.A(href="/path", url_name="some_name")
 
     def test_button_returns_safe_text(self):
         result = components.Button([], "click")

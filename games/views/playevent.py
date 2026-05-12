@@ -78,7 +78,7 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-        "header_action": A([], Button([], "Add play event"), url="add_playevent"),
+         "header_action": A([], Button([], "Add play event"), url_name="add_playevent"),
         "columns": list(filtered_column_list),
         "rows": filtered_row_list,
     }
