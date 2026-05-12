@@ -49,7 +49,7 @@ COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supe
 COPY --chown=timetracker:timetracker entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 
-ENV VERSION_NUMBER=1.6.1
+ENV VERSION_NUMBER=1.7.0
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]

@@ -1,7 +1,44 @@
-## Unreleased
+## 1.7.0 / 2026-05-12
+
+### New
+* Add toast notification system with HTMX middleware integration
+* Add component system (Cotton-based): button, modal, table_row, search_field, gamelink
+* Add needs_price_update field to Purchase model for reliable price change detection
+* Add confirmation dialog before deleting a game
+* Add game status information documentation (STATUSES.md)
+* Allow directly updating device in session list via inline selector
+* Migrate from Poetry to uv for Python dependency management
+* Scope URLs to the games namespace
+* Start session template shared between add and edit views
 
 ### Improved
-* Add a prompt to set game to Abandoned upon refund
+* Major style overhaul: CSS variables, improved dark mode, Flowbite 4.x upgrade
+* Improve game status evaluation and add abandon prompt on refund
+* Robustify Docker container and fix default database location
+* Make component rendering deterministic for improved caching
+* Component caching: deterministic randomid generation
+* Component test suite with 1000+ lines of tests
+* Make tests more robust with django-pytest
+* Update NameWithIcon component: testable, fixed platform extraction bug
+* Pin Caddy version and improve make dev-prod
+* Add .env.example documenting environment variables
+* Unify A() component with explicit url_name vs href parameters
+
+### Fixed
+* Fix refund confirmation not working
+* Fix stats view missing first and last game values
+* Fix A() component silent fallback on URL typos
+* Fix secondary submit buttons not working
+* Fix button not passing attributes
+* Fix default mutable arguments in component functions
+* Fix extra submit button when adding purchase
+* Fix pointer cursor on search field button
+
+### Removed
+* Remove GraphQL API
+
+### Dependencies
+* Update django-ninja to 1.6.2
 
 ## 1.6.1 / 2026-01-30 11:48+01:00
 
@@ -161,7 +198,7 @@
 * Use the same form when editing a session as when adding a session
 * Change recent session view to current year instead of last 30 days
 * Add a hacky way not to reload a page when starting or ending a session (https://git.kucharczyk.xyz/lukas/timetracker/issues/52)
-* Improve session list (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
+* Improve session listing (https://git.kucharczyk.xyz/lukas/timetracker/issues/53)
 
 ### Fixes
 
