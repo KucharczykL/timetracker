@@ -2,27 +2,34 @@
   fields:
     name: Steam
     group: PC
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Xbox Gamepass
     group: PC
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Epic Games Store
     group: PC
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Playstation 5
     group: Playstation
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Playstation 4
     group: Playstation
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Nintendo Switch
     group: Nintendo
+    created_at: 2024-01-01T00:00:00Z
 - model: games.Platform
   fields:
     name: Nintendo 3DS
     group: Nintendo
+    created_at: 2024-01-01T00:00:00Z

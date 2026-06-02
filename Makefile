@@ -1,15 +1,14 @@
 all: css migrate
 
-initialize: npm css migrate sethookdir loadplatforms
+initialize: npm css migrate loadplatforms
 
-HTMLFILES := $(shell find games/templates -type f)
 PYTHON_VERSION = 3.12
 
 npm:
-	npm install
+	pnpm install
 
 css: common/input.css
-	npx @tailwindcss/cli -i ./common/input.css -o  ./games/static/base.css
+	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
 makemigrations:
 	uv run python manage.py makemigrations
@@ -18,22 +17,17 @@ migrate: makemigrations
 	uv run python manage.py migrate
 
 init:
-	uv install $(PYTHON_VERSION)
+	uv python install $(PYTHON_VERSION)
 	uv sync
-	npm install
-	$(MAKE) sethookdir
+	pnpm install
 	$(MAKE) loadplatforms
 
-sethookdir:
-	git config core.hooksPath .githooks
-	chmod +x .githooks/*
-
 dev:
-	@npx concurrently \
+	@pnpm concurrently \
 		--names "Django,Tailwind" \
 		--prefix-colors "blue,green" \
 		"uv run python -Wa manage.py runserver" \
-		"npx @tailwindcss/cli -i ./common/input.css -o ./games/static/base.css --watch"
+		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch"
 
 
 caddy:

@@ -4,6 +4,7 @@ __pycache__
 .venv/
 node_modules
 package-lock.json
+pnpm-lock.yaml
 db.sqlite3
 data/
 /static/
