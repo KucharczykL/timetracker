@@ -4,12 +4,12 @@ A simple game catalogue and play session tracker.
 
 # Development
 
-The project uses `pyenv` to manage installed Python versions.
-If you have `pyenv` installed, you can simply run:
+The project uses `uv` to manage Python versions and dependencies.
+Simply run:
 
 ```
 make init
 ```
 
-This will make sure the correct Python version is installed, and it will install all dependencies using `poetry`.
+This installs the correct Python version, syncs all dependencies, and installs npm packages.
 Afterwards, you can start the development server using `make dev`.
