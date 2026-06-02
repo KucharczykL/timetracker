@@ -966,7 +966,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started", "Ended"],
                 "rows": [["Game1", "2025-01-01", "2025-03-01"]],
@@ -990,7 +990,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify empty rows list renders empty <tbody>."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started"],
                 "rows": [],
@@ -1008,7 +1008,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify multiple rows all render."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started"],
                 "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
@@ -1028,7 +1028,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify dict-style rows with row_id and cell_data render correctly."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Name", "Date"],
                 "rows": [
@@ -1055,7 +1055,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify empty rows list renders empty <tbody>."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started"],
                 "rows": [],
@@ -1073,7 +1073,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify multiple rows all render."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started"],
                 "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
@@ -1093,7 +1093,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         from django.template.loader import render_to_string
         from django.utils.safestring import mark_safe
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Game", "Started"],
                 "rows": [["Game1", "2025-01-01"]],
@@ -1110,7 +1110,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify dict-style rows with row_id and cell_data render correctly."""
         from django.template.loader import render_to_string
         result = render_to_string(
-            "cotton/simple_table.html",
+            "simple_table.html",
             {
                 "columns": ["Name", "Date"],
                 "rows": [
