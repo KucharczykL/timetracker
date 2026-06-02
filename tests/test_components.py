@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import django
 
 from django.template import TemplateDoesNotExist
-from django.utils.safestring import SafeText
+from django.utils.safestring import SafeText, mark_safe
 
 from common import components
 from games.models import Platform, Game, Purchase, Session
@@ -426,12 +426,32 @@ class ComponentEdgeCasesTest(unittest.TestCase):
 
     def test_multiple_children_joined_with_newlines(self):
         result = components.Component(
-            tag_name="div", children=["<span>a</span>", "<span>b</span>"]
+            tag_name="div", children=["hello", "world"]
         )
-        self.assertIn("<span>a</span>", result)
-        self.assertIn("<span>b</span>", result)
+        self.assertIn("hello\nworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
+
+    def test_raw_html_children_are_escaped(self):
+        result = components.Component(
+            tag_name="div", children=["<script>alert('xss')</script>"]
+        )
+        self.assertNotIn("<script>", result)
+        self.assertIn("&lt;script&gt;", result)
+
+    def test_mark_safe_children_pass_through(self):
+        result = components.Component(
+            tag_name="div", children=[mark_safe("<span>safe</span>")]
+        )
+        self.assertIn("<span>safe</span>", result)
+
+    def test_attribute_values_are_escaped(self):
+        result = components.Component(
+            tag_name="div",
+            attributes=[("data-x", 'foo"bar')],
+        )
+        self.assertIn("&quot;", result)
+        self.assertNotIn('"foo"bar"', result)
 
     def test_attributes_serialized_correctly(self):
         result = components.Component(

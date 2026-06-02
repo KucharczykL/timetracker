@@ -8,6 +8,7 @@ from django.template import TemplateDoesNotExist
 from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.utils import truncate
@@ -47,13 +48,11 @@ def Component(
         raise ValueError("One of template or tag_name is required.")
     if isinstance(children, str):
         children = [children]
-    childrenBlob = "\n".join(children)
+    childrenBlob = "\n".join(conditional_escape(child) for child in children)
     if len(attributes) == 0:
         attributesBlob = ""
     else:
-        attributesList = [f'{name}="{value}"' for name, value in attributes]
-        # make attribute list into a string
-        # and insert space between tag and attribute list
+        attributesList = [f'{name}="{conditional_escape(str(value))}"' for name, value in attributes]
         attributesBlob = f" {' '.join(attributesList)}"
     tag: str = ""
     if tag_name != "":
