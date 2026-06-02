@@ -4,10 +4,9 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.components import A, Button, Icon
+from common.components import A, Button, ButtonGroup, Icon
 from common.time import dateformat, local_strftime
 from games.forms import DeviceForm
 from games.models import Device
@@ -48,22 +47,19 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                     device.name,
                     device.get_type_display(),
                     local_strftime(device.created_at, dateformat),
-                    render_to_string(
-                        "cotton/button_group.html",
-                        {
-                            "buttons": [
-                                {
-                                    "href": reverse("games:edit_device", args=[device.pk]),
-                                    "slot": Icon("edit"),
-                                    "color": "gray",
-                                },
-                                {
-                                    "href": reverse("games:delete_device", args=[device.pk]),
-                                    "slot": Icon("delete"),
-                                    "color": "red",
-                                },
-                            ]
-                        },
+                    ButtonGroup(
+                        [
+                            {
+                                "href": reverse("games:edit_device", args=[device.pk]),
+                                "slot": Icon("edit"),
+                                "color": "gray",
+                            },
+                            {
+                                "href": reverse("games:delete_device", args=[device.pk]),
+                                "slot": Icon("delete"),
+                                "color": "red",
+                            },
+                        ]
                     ),
                 ]
                 for device in devices

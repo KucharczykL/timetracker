@@ -1,14 +1,3 @@
 <c-vars color="blue" size="base" type="button" />
-<button
-        {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
-        {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
-        {% if hx_swap %}hx-swap="{{ hx_swap }}"{% endif %}
-        {% if type %}type="{{ type }}"{% endif %}
-        {% if title %}title="{{ title }}"{% endif %}
-        {% if onclick %}onclick="{{ onclick }}"{% endif %}
-        {% if data_target %}data-target="{{ data_target }}"{% endif %}
-        {% if data_type %}data-type="{{ data_type }}"{% endif %}
-        {% if name %}name="{{ name }}"{% endif %}
-        class="{% if class %}{{ class }} {%else%}{%endif%}{% if color == "blue" %}text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium {% elif color == "red" %} bg-red-700 dark:bg-red-600 dark:focus:ring-red-900 dark:hover:bg-red-700 focus:ring-red-300 hover:bg-red-800 text-white {% elif color == "gray" %} bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:focus:ring-gray-700 dark:hover:bg-gray-700 dark:hover:text-white dark:text-gray-400 focus:ring-gray-100 hover:bg-gray-100 hover:text-blue-700 text-gray-900 border {% elif color == "green" %} bg-green-700 dark:bg-green-600 dark:focus:ring-green-800 dark:hover:bg-green-700 focus:ring-green-300 hover:bg-green-800 text-white {% endif %} leading-5 focus:outline-hidden focus:ring-4 font-medium mb-2 me-2 rounded-base {% if size == "xs" %} px-3 py-2 text-xs shadow-xs {% elif size == "sm" %} px-3 py-2 text-sm {% elif size == "base" %} px-5 py-2.5 text-sm {% elif size == "lg" %} px-5 py-3 text-base {% elif size == "xl" %} px-6 py-3.5 text-base {% endif %} {% if icon %} inline-flex text-center items-center gap-2 {% else %} {% endif %} ">
-    {{ slot }}
-</button>
+{% load button_tag %}
+{% python_button color=color size=size icon=icon type=type class_=class hx_get=hx_get hx_target=hx_target hx_swap=hx_swap title=title onclick=onclick data_target=data_target data_type=data_type name=name slot=slot %}

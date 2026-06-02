@@ -1,36 +1,32 @@
-<div id="delete-game-confirmation-modal" class="fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto h-full w-full flex items-center justify-center">
-    <div class="relative mx-auto p-5 border-accent border w-full max-w-md shadow-lg/50 rounded-md bg-white dark:bg-gray-900">
-        <div class="">
-            <h1 class="text-2xl leading-6 font-medium dark:text-white text-center">Delete Game</h1>
-            <p class="dark:text-white text-center mt-5">
-                Are you sure you want to delete <strong>{{ game.name }}</strong>?
-            </p>
-            <form class=""
-                hx-post="{% url 'games:delete_game' game.id %}"
-                hx-replace-url="true"
-                hx-target="#main-container"
-                hx-select="#main-container"
-                hx-swap="outerHTML"
-                hw-swap-oob="#global-modal-container"
-                >
-                {% csrf_token %}
-                <p class="dark:text-white text-center mt-3 text-sm text-gray-600 dark:text-gray-400">
-                    This will permanently delete this game and all associated data:
-                </p>
-                <ul class="dark:text-white text-center mt-1 text-sm text-gray-600 dark:text-gray-400 list-disc list-inside">
-                    {% if session_count %}<li>{{ session_count }} session(s)</li>{% endif %}
-                    {% if purchase_count %}<li>{{ purchase_count }} purchase(s)</li>{% endif %}
-                    {% if playevent_count %}<li>{{ playevent_count }} play event(s)</li>{% endif %}
-                    {% if not session_count and not purchase_count and not playevent_count %}<li>No associated data</li>{% endif %}
-                </ul>
-                <p class="dark:text-white text-center mt-3 text-sm font-medium text-red-600 dark:text-red-400">
-                    This action cannot be undone.
-                </p>
-                <div class="items-center mt-5">
-                    <c-button color="red" size="lg" type="submit" class="w-full">Delete</c-button>
-                    <c-button color="gray" size="base" class="mt-0 w-full" onclick="this.closest('#delete-game-confirmation-modal').remove()">Cancel</c-button>
-                </div>
-            </form>
+{% load modal_tag %}
+{% python_modal "delete-game-confirmation-modal" %}
+    <h1 class="text-2xl leading-6 font-medium dark:text-white text-center">Delete Game</h1>
+    <p class="dark:text-white text-center mt-5">
+        Are you sure you want to delete <strong>{{ game.name }}</strong>?
+    </p>
+    <form class=""
+        hx-post="{% url 'games:delete_game' game.id %}"
+        hx-replace-url="true"
+        hx-target="#main-container"
+        hx-select="#main-container"
+        hx-swap="outerHTML"
+        >
+        {% csrf_token %}
+        <p class="dark:text-white text-center mt-3 text-sm text-gray-600 dark:text-gray-400">
+            This will permanently delete this game and all associated data:
+        </p>
+        <ul class="dark:text-white text-center mt-1 text-sm text-gray-600 dark:text-gray-400 list-disc list-inside">
+            {% if session_count %}<li>{{ session_count }} session(s)</li>{% endif %}
+            {% if purchase_count %}<li>{{ purchase_count }} purchase(s)</li>{% endif %}
+            {% if playevent_count %}<li>{{ playevent_count }} play event(s)</li>{% endif %}
+            {% if not session_count and not purchase_count and not playevent_count %}<li>No associated data</li>{% endif %}
+        </ul>
+        <p class="dark:text-white text-center mt-3 text-sm font-medium text-red-600 dark:text-red-400">
+            This action cannot be undone.
+        </p>
+        <div class="items-center mt-5">
+            <c-button color="red" size="lg" type="submit" class="w-full">Delete</c-button>
+            <c-button color="gray" size="base" class="mt-0 w-full" onclick="this.closest('#delete-game-confirmation-modal').remove()">Cancel</c-button>
         </div>
-    </div>
-</div>
+    </form>
+{% endpython_modal %}

@@ -275,44 +275,40 @@ class PopoverCacheIntegrationTest(unittest.TestCase):
     def tearDown(self):
         components._render_cached = components._render_cached_impl
 
-    def _get_popover_context(self, popover_content, wrapped_content="", wrapped_classes=""):
-        """Build the context JSON that _render_cached would receive for a Popover."""
+    def _get_popover_context(self, popover_content, wrapped_content="", wrapped_classes="", slot=""):
+        """Build the context JSON matching the new cotton/popover.html shim."""
         import json
         content = f"{wrapped_content}:{popover_content}:{wrapped_classes}"
         id = components.randomid(content=content)
         context = {
             "id": id,
-            "wrapped_content": wrapped_content,
             "popover_content": popover_content,
+            "wrapped_content": wrapped_content,
             "wrapped_classes": wrapped_classes,
-            "slot": "",
+            "slot": slot,
         }
         return json.dumps(context, sort_keys=True)
 
-    def test_popover_first_call_no_cache_hit(self):
-        components.Popover("test_content", wrapped_content="test_content")
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 0)
-
-    def test_popover_second_call_cache_hit(self):
-        components.Popover("test_content", wrapped_content="test_content")
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 0)
-        components.Popover("test_content", wrapped_content="test_content")
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 1)
-
-    def test_popover_different_content_different_entry(self):
-        components.Popover("content_a", wrapped_content="content_a")
-        components.Popover("content_b", wrapped_content="content_b")
+    def test_popover_shim_template_is_cached(self):
+        ctx_a = self._get_popover_context(popover_content="a", wrapped_content="a")
+        ctx_b = self._get_popover_context(popover_content="b", wrapped_content="b")
+        components._render_cached("cotton/popover.html", ctx_a)
+        components._render_cached("cotton/popover.html", ctx_b)
         info = components._render_cached.cache_info()
         self.assertEqual(info.currsize, 2)
 
-    def test_popover_repeated_call_increments_hits(self):
+    def test_popover_shim_repeated_call_uses_cache(self):
+        ctx = self._get_popover_context(popover_content="x", wrapped_content="x")
         for _ in range(5):
-            components.Popover("repeated_test", wrapped_content="repeated_test")
+            components._render_cached("cotton/popover.html", ctx)
         info = components._render_cached.cache_info()
         self.assertEqual(info.hits, 4)
+
+    def test_popover_shim_no_cache_hit_on_first_call(self):
+        ctx = self._get_popover_context(popover_content="y", wrapped_content="y")
+        components._render_cached("cotton/popover.html", ctx)
+        info = components._render_cached.cache_info()
+        self.assertEqual(info.hits, 0)
 
 
 class TemplatetagRandomidTest(unittest.TestCase):
@@ -410,6 +406,55 @@ class ComponentReturnTypeTest(unittest.TestCase):
         result = components.NameWithIcon(name="Test", linkify=False)
         self.assertIsInstance(result, SafeText)
         self.assertNotIsInstance(result, tuple)
+
+
+class ComponentOutputIsNotEscapedTest(unittest.TestCase):
+    """Smoke test: every component that generates HTML must not double-escape."""
+
+    def test_component_output_starts_with_tag(self):
+        for label, html in [
+            ("A", components.A(href="/foo", children=["link"])),
+            ("Button", components.Button([], "click")),
+            ("Div", components.Div([], ["hello"])),
+            ("Form", components.Form(children=["x"])),
+            ("Input", components.Input()),
+            ("ButtonGroup", components.ButtonGroup([])),
+            ("ButtonGroup with buttons", components.ButtonGroup(
+                [{"href": "/", "slot": components.Icon("edit")}]
+            )),
+            ("SearchField", components.SearchField()),
+            ("PriceConverted", components.PriceConverted(["27 CZK"])),
+            ("H1", components.H1(["Title"])),
+            ("H1 with badge", components.H1(["Title"], badge="3")),
+        ]:
+            with self.subTest(component=label):
+                self.assertTrue(
+                    str(html).startswith("<"),
+                    f"{label} output should start with '<', got: {str(html)[:80]}",
+                )
+
+    def test_button_with_icon_children_not_escaped(self):
+        result = components.Button(
+            icon=True, size="xs",
+            children=[components.Icon("play"), "LOG"],
+        )
+        self.assertTrue(str(result).startswith("<button"))
+
+    def test_popover_with_button_children_not_escaped(self):
+        result = components.Popover(
+            popover_content="test tooltip",
+            children=[
+                components.Button(
+                    icon=True, color="gray", size="xs",
+                    children=[components.Icon("play"), "test"],
+                ),
+            ],
+        )
+        self.assertTrue(str(result).startswith("<span data-popover-target"))
+
+    def test_name_with_icon_output_not_escaped(self):
+        result = components.NameWithIcon(name="Test", linkify=False)
+        self.assertTrue(str(result).startswith("<div"))
 
 
 class ComponentEdgeCasesTest(unittest.TestCase):

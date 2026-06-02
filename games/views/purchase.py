@@ -9,12 +9,11 @@ from django.http import (
     HttpResponseRedirect,
 )
 from django.shortcuts import get_object_or_404, redirect, render
-from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from common.components import A, Button, Icon, LinkedPurchase, PurchasePrice
+from common.components import A, Button, ButtonGroup, Icon, LinkedPurchase, PurchasePrice, TableRow
 from common.time import dateformat
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
@@ -23,36 +22,33 @@ from games.views.general import use_custom_redirect
 
 def _render_purchase_buttons(purchase_id, is_refunded):
     """Return button group HTML for a purchase row."""
-    return render_to_string(
-        "cotton/button_group.html",
-        {
-            "buttons": [
-                {
-                    "href": "#",
-                    "hx_get": reverse(
-                        "games:refund_purchase_confirmation",
-                        args=[purchase_id],
-                    ),
-                    "hx_target": "#global-modal-container",
-                    "slot": Icon("refund"),
-                    "title": "Mark as refunded",
-                }
-                if not is_refunded
-                else {},
-                {
-                    "href": reverse("games:edit_purchase", args=[purchase_id]),
-                    "slot": Icon("edit"),
-                    "title": "Edit",
-                    "color": "gray",
-                },
-                {
-                    "href": reverse("games:delete_purchase", args=[purchase_id]),
-                    "slot": Icon("delete"),
-                    "title": "Delete",
-                    "color": "red",
-                },
-            ]
-        },
+    return ButtonGroup(
+        [
+            {
+                "href": "#",
+                "hx_get": reverse(
+                    "games:refund_purchase_confirmation",
+                    args=[purchase_id],
+                ),
+                "hx_target": "#global-modal-container",
+                "slot": Icon("refund"),
+                "title": "Mark as refunded",
+            }
+            if not is_refunded
+            else {},
+            {
+                "href": reverse("games:edit_purchase", args=[purchase_id]),
+                "slot": Icon("edit"),
+                "title": "Edit",
+                "color": "gray",
+            },
+            {
+                "href": reverse("games:delete_purchase", args=[purchase_id]),
+                "slot": Icon("delete"),
+                "title": "Delete",
+                "color": "red",
+            },
+        ]
     )
 
 
@@ -220,10 +216,7 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
     messages.success(request, "Purchase refunded")
     row_data = _render_purchase_row(purchase)
-    row_html = render_to_string(
-        "cotton/table_row.html",
-        {"data": row_data},
-    )
+    row_html = str(TableRow(data=row_data))
     modal_close = (
         '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
     )

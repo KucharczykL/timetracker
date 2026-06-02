@@ -1,11 +1,9 @@
-{% load param_utils %}
+{% load param_utils table_header_tag table_row_tag %}
 <div class="shadow-md" hx-boost="false">
     <div class="relative overflow-x-auto sm:rounded-t-lg">
         <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
             {% if header_action %}
-                <c-table-header>
-                {{ header_action }}
-                </c-table-header>
+                {% python_table_header slot=header_action %}
             {% endif %}
             <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 max-sm:[&_th:not(:first-child):not(:last-child)]:hidden">
                 <tr>
@@ -13,7 +11,7 @@
                 </tr>
             </thead>
             <tbody class="dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden">
-                {% for row in rows %}<c-table-row :data=row />{% endfor %}
+                {% for row in rows %}{% python_table_row data=row %}{% endfor %}
             </tbody>
         </table>
     </div>

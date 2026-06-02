@@ -1,10 +1,2 @@
-<span class="truncate-container">
-    <a class="underline decoration-slate-500 sm:decoration-2"
-       href="{% url 'games:view_game' game_id %}">
-        {% if slot %}
-            {{ slot }}
-        {% else %}
-            {{ name }}
-        {% endif %}
-    </a>
-</span>
+{% load gamelink_tag %}
+{% python_gamelink game_id=game_id name=name slot=slot %}

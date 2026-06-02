@@ -8,10 +8,9 @@ from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
-from django.template.loader import render_to_string
 from django.urls import reverse
 
-from common.components import A, Button, Icon
+from common.components import A, Button, ButtonGroup, Icon
 from common.time import dateformat, format_duration, local_strftime
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
@@ -53,22 +52,19 @@ def create_playevent_tabledata(
             playevent.days_to_finish if playevent.days_to_finish else "-",
             playevent.note,
             local_strftime(playevent.created_at, dateformat),
-            render_to_string(
-                "cotton/button_group.html",
-                {
-                    "buttons": [
-                        {
-                            "href": reverse("games:edit_playevent", args=[playevent.pk]),
-                            "slot": Icon("edit"),
-                            "color": "gray",
-                        },
-                        {
-                            "href": reverse("games:delete_playevent", args=[playevent.pk]),
-                            "slot": Icon("delete"),
-                            "color": "red",
-                        },
-                    ]
-                },
+            ButtonGroup(
+                [
+                    {
+                        "href": reverse("games:edit_playevent", args=[playevent.pk]),
+                        "slot": Icon("edit"),
+                        "color": "gray",
+                    },
+                    {
+                        "href": reverse("games:delete_playevent", args=[playevent.pk]),
+                        "slot": Icon("delete"),
+                        "color": "red",
+                    },
+                ]
             ),
         ]
         for playevent in playevents

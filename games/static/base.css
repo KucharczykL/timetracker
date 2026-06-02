@@ -817,9 +817,6 @@
   .inset-y-0 {
     inset-block: calc(var(--spacing) * 0);
   }
-  .inset-y-3 {
-    inset-block: calc(var(--spacing) * 3);
-  }
   .start-0 {
     inset-inline-start: calc(var(--spacing) * 0);
   }
@@ -1556,9 +1553,6 @@
   .w-5 {
     width: calc(var(--spacing) * 5);
   }
-  .w-6 {
-    width: calc(var(--spacing) * 6);
-  }
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
@@ -1573,9 +1567,6 @@
   }
   .w-72 {
     width: calc(var(--spacing) * 72);
-  }
-  .w-80 {
-    width: calc(var(--spacing) * 80);
   }
   .w-auto {
     width: auto;
@@ -1606,9 +1597,6 @@
   }
   .max-w-xl {
     max-width: var(--container-xl);
-  }
-  .max-w-xs {
-    max-width: var(--container-xs);
   }
   .datatable-input {
     .datatable-wrapper .datatable-search & {
@@ -1859,9 +1847,6 @@
   .rounded-xl {
     border-radius: var(--radius-xl);
   }
-  .rounded-xs {
-    border-radius: var(--radius-xs);
-  }
   .rounded-s-base {
     border-start-start-radius: var(--radius-base);
     border-end-start-radius: var(--radius-base);
@@ -2099,9 +2084,6 @@
   .bg-green-500 {
     background-color: var(--color-green-500);
   }
-  .bg-green-600 {
-    background-color: var(--color-green-600);
-  }
   .bg-green-700 {
     background-color: var(--color-green-700);
   }
@@ -2283,9 +2265,6 @@
   .ps-9 {
     padding-inline-start: calc(var(--spacing) * 9);
   }
-  .ps-10 {
-    padding-inline-start: calc(var(--spacing) * 10);
-  }
   .pt-2 {
     padding-top: calc(var(--spacing) * 2);
   }
@@ -2316,9 +2295,6 @@
     .dark .apexcharts-canvas &:not(.apexcharts-inactive-legend):hover {
       color: heading !important;
     }
-  }
-  .pb-4 {
-    padding-bottom: calc(var(--spacing) * 4);
   }
   .pb-16 {
     padding-bottom: calc(var(--spacing) * 16);
@@ -2888,13 +2864,6 @@
       }
     }
   }
-  .hover\:bg-green-700 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-green-700);
-      }
-    }
-  }
   .hover\:bg-green-800 {
     &:hover {
       @media (hover: hover) {
@@ -3019,11 +2988,6 @@
       z-index: 10;
     }
   }
-  .focus\:border-blue-500 {
-    &:focus {
-      border-color: var(--color-blue-500);
-    }
-  }
   .focus\:border-brand {
     &:focus {
       border-color: var(--color-brand);
@@ -3049,11 +3013,6 @@
   .focus\:ring-blue-300 {
     &:focus {
       --tw-ring-color: var(--color-blue-300);
-    }
-  }
-  .focus\:ring-blue-500 {
-    &:focus {
-      --tw-ring-color: var(--color-blue-500);
     }
   }
   .focus\:ring-blue-700 {
@@ -3086,11 +3045,6 @@
       --tw-ring-color: var(--color-green-300);
     }
   }
-  .focus\:ring-green-500 {
-    &:focus {
-      --tw-ring-color: var(--color-green-500);
-    }
-  }
   .focus\:ring-green-700 {
     &:focus {
       --tw-ring-color: var(--color-green-700);
@@ -3104,17 +3058,6 @@
   .focus\:ring-red-300 {
     &:focus {
       --tw-ring-color: var(--color-red-300);
-    }
-  }
-  .focus\:ring-offset-2 {
-    &:focus {
-      --tw-ring-offset-width: 2px;
-      --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-    }
-  }
-  .focus\:ring-offset-blue-200 {
-    &:focus {
-      --tw-ring-offset-color: var(--color-blue-200);
     }
   }
   .focus\:outline-hidden {
@@ -3141,11 +3084,6 @@
   .sm\:max-w-\(--breakpoint-sm\) {
     @media (width >= 40rem) {
       max-width: var(--breakpoint-sm);
-    }
-  }
-  .sm\:max-w-md {
-    @media (width >= 40rem) {
-      max-width: var(--container-md);
     }
   }
   .sm\:max-w-xl {
@@ -3301,11 +3239,6 @@
   .lg\:max-w-3xl {
     @media (width >= 64rem) {
       max-width: var(--container-3xl);
-    }
-  }
-  .lg\:max-w-lg {
-    @media (width >= 64rem) {
-      max-width: var(--container-lg);
     }
   }
   .xl\:max-w-\(--breakpoint-xl\) {
@@ -3582,13 +3515,6 @@
       color: var(--color-white);
     }
   }
-  .dark\:placeholder-gray-400 {
-    &:is(.dark *) {
-      &::placeholder {
-        color: var(--color-gray-400);
-      }
-    }
-  }
   .dark\:odd\:bg-gray-900 {
     &:is(.dark *) {
       &:nth-child(odd) {
@@ -3735,13 +3661,6 @@
         @media (hover: hover) {
           color: var(--color-white);
         }
-      }
-    }
-  }
-  .dark\:focus\:border-blue-500 {
-    &:is(.dark *) {
-      &:focus {
-        border-color: var(--color-blue-500);
       }
     }
   }

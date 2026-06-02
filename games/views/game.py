@@ -11,9 +11,10 @@ from django.urls import reverse
 from common.components import (
     A,
     Button,
+    ButtonGroup,
     Div,
-    Form,
     Icon,
+    SearchField,
     LinkedPurchase,
     NameWithIcon,
     Popover,
@@ -78,17 +79,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         "data": {
             "header_action": Div(
                 children=[
-                    Form(
-                        children=[
-                            render_to_string(
-                                "cotton/search_field.html",
-                                {
-                                    "id": "search_string",
-                                    "search_string": search_string,
-                                },
-                            )
-                        ]
-                    ),
+                    SearchField(search_string=search_string),
                     A([], Button([], "Add game"), url_name="games:add_game"),
                 ],
                 attributes=[("class", "flex justify-between")],
@@ -121,22 +112,19 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     ),
                     game.wikidata,
                     local_strftime(game.created_at, dateformat),
-                    render_to_string(
-                        "cotton/button_group.html",
-                        {
-                            "buttons": [
-                                {
-                                    "href": reverse("games:edit_game", args=[game.pk]),
-                                    "slot": Icon("edit"),
-                                    "color": "gray",
-                                },
-                                {
-                                    "href": reverse("games:delete_game", args=[game.pk]),
-                                    "slot": Icon("delete"),
-                                    "color": "red",
-                                },
-                            ]
-                        },
+                    ButtonGroup(
+                        [
+                            {
+                                "href": reverse("games:edit_game", args=[game.pk]),
+                                "slot": Icon("edit"),
+                                "color": "gray",
+                            },
+                            {
+                                "href": reverse("games:delete_game", args=[game.pk]),
+                                "slot": Icon("delete"),
+                                "color": "red",
+                            },
+                        ]
                     ),
                 ]
                 for game in games
@@ -255,22 +243,19 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 purchase.get_type_display(),
                 purchase.date_purchased.strftime(dateformat),
                 PurchasePrice(purchase),
-                render_to_string(
-                    "cotton/button_group.html",
-                    {
-                        "buttons": [
-                            {
-                                "href": reverse("games:edit_purchase", args=[purchase.pk]),
-                                "slot": Icon("edit"),
-                                "color": "gray",
-                            },
-                            {
-                                "href": reverse("games:delete_purchase", args=[purchase.pk]),
-                                "slot": Icon("delete"),
-                                "color": "red",
-                            },
-                        ]
-                    },
+                ButtonGroup(
+                    [
+                        {
+                            "href": reverse("games:edit_purchase", args=[purchase.pk]),
+                            "slot": Icon("edit"),
+                            "color": "gray",
+                        },
+                        {
+                            "href": reverse("games:delete_purchase", args=[purchase.pk]),
+                            "slot": Icon("delete"),
+                            "color": "red",
+                        },
+                    ]
                 ),
             ]
             for purchase in purchases
@@ -328,38 +313,30 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
             [
                 NameWithIcon(session=session),
                 f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                session.duration_formatted_with_mark,
-                render_to_string(
-                    "cotton/button_group.html",
-                    {
-                        "buttons": [
-                            {
-                                "href": reverse(
-                                    "games:list_sessions_end_session", args=[session.pk]
-                                ),
-                                "slot": Icon("end"),
-                                "title": "Finish session now",
-                                "color": "green",
-                                "hover": "green",
-                            }
-                            if session.timestamp_end is None
-                            # this only works without leaving an empty
-                            # a element and wrong rounding of button edges
-                            # because we check if button.href is not None
-                            # in the button group component
-                            else {},
-                            {
-                                "href": reverse("games:edit_session", args=[session.pk]),
-                                "slot": Icon("edit"),
-                                "color": "gray",
-                            },
-                            {
-                                "href": reverse("games:delete_session", args=[session.pk]),
-                                "slot": Icon("delete"),
-                                "color": "red",
-                            },
-                        ]
-                    },
+                session.duration_formatted_with_mark(),
+                ButtonGroup(
+                    [
+                        {
+                            "href": reverse(
+                                "games:list_sessions_end_session", args=[session.pk]
+                            ),
+                            "slot": Icon("end"),
+                            "title": "Finish session now",
+                            "color": "green",
+                        }
+                        if session.timestamp_end is None
+                        else {},
+                        {
+                            "href": reverse("games:edit_session", args=[session.pk]),
+                            "slot": Icon("edit"),
+                            "color": "gray",
+                        },
+                        {
+                            "href": reverse("games:delete_session", args=[session.pk]),
+                            "slot": Icon("delete"),
+                            "color": "red",
+                        },
+                    ]
                 ),
             ]
             for session in sessions

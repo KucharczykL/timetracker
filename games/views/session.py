@@ -12,9 +12,10 @@ from django.utils import timezone
 from common.components import (
     A,
     Button,
+    ButtonGroup,
     Div,
-    Form,
     Icon,
+    SearchField,
     NameWithIcon,
     Popover,
 )
@@ -67,17 +68,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         "data": {
             "header_action": Div(
                 children=[
-                    Form(
-                        children=[
-                            render_to_string(
-                                "cotton/search_field.html",
-                                {
-                                    "id": "search_string",
-                                    "search_string": search_string,
-                                },
-                            )
-                        ]
-                    ),
+                    SearchField(search_string=search_string),
                     Div(
                         children=[
                             A(
@@ -133,7 +124,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                     "cell_data": [
                         NameWithIcon(session=session),
                         f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                        session.duration_formatted_with_mark,
+                        session.duration_formatted_with_mark(),
                         render_to_string(
                             "partials/sessiondevice_selector.html",
                             {
@@ -144,43 +135,32 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             request=request,
                         ),
                         session.created_at.strftime(dateformat),
-                        render_to_string(
-                            "cotton/button_group.html",
-                            {
-                                "buttons": [
-                                    {
-                                        "href": reverse(
-                                            "games:list_sessions_end_session", args=[session.pk]
-                                        ),
-                                        "slot": Icon("end"),
-                                        "title": "Finish session now",
-                                        "color": "green",
-                                        "hover": "green",
-                                    }
-                                    if session.timestamp_end is None
-                                    # this only works without leaving an empty
-                                    # a element and wrong rounding of button edges
-                                    # because we check if button.href is not None
-                                    # in the button group component
-                                    else {},
-                                    {
-                                        "href": reverse("games:edit_session", args=[session.pk]),
-                                        "slot": Icon("edit"),
-                                        "title": "Edit",
-                                        # "color": "gray",
-                                        "hover": "green",
-                                    },
-                                    {
-                                        "href": reverse(
-                                            "games:delete_session", args=[session.pk]
-                                        ),
-                                        "slot": Icon("delete"),
-                                        "title": "Delete",
-                                        "color": "red",
-                                        "hover": "red",
-                                    },
-                                ]
-                            },
+                        ButtonGroup(
+                            [
+                                {
+                                    "href": reverse(
+                                        "games:list_sessions_end_session", args=[session.pk]
+                                    ),
+                                    "slot": Icon("end"),
+                                    "title": "Finish session now",
+                                    "color": "green",
+                                }
+                                if session.timestamp_end is None
+                                else {},
+                                {
+                                    "href": reverse("games:edit_session", args=[session.pk]),
+                                    "slot": Icon("edit"),
+                                    "title": "Edit",
+                                },
+                                {
+                                    "href": reverse(
+                                        "games:delete_session", args=[session.pk]
+                                    ),
+                                    "slot": Icon("delete"),
+                                    "title": "Delete",
+                                    "color": "red",
+                                },
+                            ]
                         ),
                     ],
                 }

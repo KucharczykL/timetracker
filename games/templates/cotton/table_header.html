@@ -1,3 +1,2 @@
-<caption class="p-2 text-lg font-semibold rtl:text-left text-right text-gray-900 bg-white dark:text-white dark:bg-gray-900">
-    {{ slot }}
-</caption>
+{% load table_header_tag %}
+{% python_table_header slot=slot %}
