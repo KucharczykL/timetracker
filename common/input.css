@@ -231,3 +231,49 @@ textarea:disabled {
     @apply fixed z-50 flex flex-col items-end bottom-0 right-0 p-4;
   }
 }
+
+/* SelectableFilter widget styling */
+.sf-container {
+  @apply border border-default-medium rounded-base bg-neutral-secondary-medium;
+}
+.sf-selected {
+  @apply flex flex-wrap gap-1 p-2 min-h-[2rem];
+}
+.sf-tag {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded bg-brand/15 text-heading;
+}
+.sf-tag.sf-excluded {
+  @apply bg-red-500/15 text-red-600 line-through decoration-red-400;
+}
+.sf-remove {
+  @apply ml-1 text-body hover:text-heading font-bold cursor-pointer;
+}
+.sf-modifier-tag {
+  @apply inline-flex items-center px-2 py-0.5 text-sm rounded bg-amber-500/15 text-amber-600 cursor-pointer;
+}
+.sf-search {
+  @apply block w-full border-0 border-t border-default-medium bg-transparent text-sm text-heading p-2;
+  &:focus {
+    @apply ring-0 outline-hidden;
+  }
+}
+.sf-options {
+  @apply max-h-40 overflow-y-auto p-1 text-body;
+}
+.sf-option {
+  @apply flex items-center justify-between px-2 py-1 rounded text-sm hover:bg-neutral-secondary-strong cursor-pointer;
+}
+.sf-option-label {
+  @apply truncate;
+}
+.sf-option-buttons {
+  @apply flex gap-1 ml-2 shrink-0;
+}
+.sf-btn-include,
+.sf-btn-exclude {
+  @apply w-5 h-5 flex items-center justify-center text-xs font-bold rounded border border-default-medium hover:bg-brand hover:text-white hover:border-brand;
+}
+.sf-modifier-option {
+  @apply px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer;
+}
+

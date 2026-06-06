@@ -1,10 +1,20 @@
 """Stash-style filter bars and the SelectableFilter widget."""
 
+from typing import NamedTuple
+
 from django.db import models
 from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
+
+
+class FilterChoice(NamedTuple):
+    """Parsed state of a SelectableFilter widget from a filter JSON blob."""
+
+    selected: list[str]
+    excluded: list[str]
+    modifier: str
 
 
 _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
@@ -38,18 +48,52 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
-def _filter_get_choice(existing: dict, field: str) -> tuple[list[str], list[str], str]:
+def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     raw = existing.get(field, {})
     if not isinstance(raw, dict):
-        return [], [], ""
-    val = raw.get("value", [])
-    excl = raw.get("excludes", [])
-    mod = raw.get("modifier", "")
-    if isinstance(val, str):
-        val = [val]
-    if isinstance(excl, str):
-        excl = [excl]
-    return [str(v) for v in (val or [])], [str(v) for v in (excl or [])], mod or ""
+        return FilterChoice([], [], "")
+    value = raw.get("value", [])
+    excluded = raw.get("excludes", [])
+    modifier = raw.get("modifier", "")
+    if isinstance(value, str):
+        value = [value]
+    if isinstance(excluded, str):
+        excluded = [excluded]
+    return FilterChoice(
+        selected=[str(v) for v in (value or [])],
+        excluded=[str(v) for v in (excluded or [])],
+        modifier=modifier or "",
+    )
+
+
+def _parse_range(existing: dict, key: str) -> tuple[str, str]:
+    """Extract (value, value2) from a filter criterion, defaulting to ("", "")."""
+    field = existing.get(key, {})
+    if not isinstance(field, dict):
+        return "", ""
+    return str(field.get("value", "")), str(field.get("value2", ""))
+
+
+def _parse_bool(existing: dict, key: str) -> bool:
+    """Extract a boolean value from a filter criterion."""
+    field = existing.get(key, {})
+    if not isinstance(field, dict):
+        return False
+    return bool(field.get("value", False))
+
+
+def _get_filter_options(model_class, order_by="name") -> list[tuple[str, str]]:
+    """Return (value, label) pairs for a SelectableFilter from model rows.
+
+    Uses values_list for efficiency (only fetches needed columns),
+    but unpacks each row into readable local variables.
+    """
+    options: list[tuple[str, str]] = []
+    for object_id, object_name in model_class.objects.order_by(order_by).values_list(
+        "id", order_by
+    ):
+        options.append((str(object_id), object_name))
+    return options
 
 
 def _filter_mins_to_hrs(val) -> str:
@@ -118,50 +162,217 @@ def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
     )
 
 
-def _filter_range_inputs(cls, min_id, max_id, min_v, max_v, dmin, dmax, step="1"):
-    """Twin <input type=range> slider (used by the game filter bar)."""
-    mv = min_v or str(dmin)
-    xv = max_v or str(dmax)
+# SVG icons for the mode toggle (shared across all RangeSliders)
+_RANGE_ICON_SVG = (
+    '<svg width="16" height="10" viewBox="0 0 16 10">'
+    '<line x1="3" y1="5" x2="13" y2="5" stroke="currentColor" stroke-width="1.5"/>'
+    '<circle cx="3" cy="5" r="3" fill="currentColor"/>'
+    '<circle cx="13" cy="5" r="3" fill="currentColor"/>'
+    "</svg>"
+)
+
+_POINT_ICON_SVG = (
+    '<svg width="16" height="10" viewBox="0 0 16 10">'
+    '<circle cx="8" cy="5" r="3" fill="currentColor"/>'
+    "</svg>"
+)
+
+_RANGE_SLIDER_INPUT_CLASS = (
+    "w-24 rounded-base border border-default-medium bg-neutral-secondary-medium "
+    "text-sm text-heading p-1.5 focus:ring-brand focus:border-brand"
+)
+
+
+def RangeSlider(
+    *,
+    label: str,
+    input_name_prefix: str,
+    min_value: str = "",
+    max_value: str = "",
+    range_min: int,
+    range_max: int,
+    step: str = "1",
+    min_placeholder: str = "",
+    max_placeholder: str = "",
+) -> SafeText:
+    """A labelled range slider with number inputs and range/point mode toggle.
+
+    Renders a label row (label, two number inputs, toggle button) and a slider
+    row (track with one or two custom draggable handles). Defaults to range mode
+    (two handles). If min_value and max_value are both set and equal, starts in
+    point mode (single handle). The toggle switches between modes.
+    """
+    min_input_id = f"{input_name_prefix}-min"
+    max_input_id = f"{input_name_prefix}-max"
+    point_mode = bool(min_value and max_value and min_value == max_value)
+    initial_mode = "point" if point_mode else "range"
+
     return Component(
         tag_name="div",
-        attributes=[("class", f"range-slider {cls} relative h-6 mt-1 mb-2")],
+        attributes=[("class", "range-slider-block mb-4")],
         children=[
-            mark_safe(
-                f'<input type="range" class="range-min absolute w-full pointer-events-none '
-                f"appearance-none bg-transparent h-2 "
-                f"[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 "
-                f"[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full "
-                f"[&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:cursor-pointer "
-                f'[&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-10" '
-                f'data-target="{min_id}" data-peer="{max_id}" '
-                f'min="{dmin}" max="{dmax}" value="{mv}" step="{step}">'
-                f'<input type="range" class="range-max absolute w-full pointer-events-none '
-                f"appearance-none bg-transparent h-2 "
-                f"[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 "
-                f"[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full "
-                f"[&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:cursor-pointer "
-                f'[&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20" '
-                f'data-target="{max_id}" data-peer="{min_id}" '
-                f'min="{dmin}" max="{dmax}" value="{xv}" step="{step}">'
+            # ── Label row ──
+            Component(
+                tag_name="div",
+                attributes=[("class", "flex items-center gap-2 mb-1")],
+                children=[
+                    Component(
+                        tag_name="label",
+                        attributes=[
+                            ("class", _FILTER_LABEL_CLASS),
+                            ("for", min_input_id),
+                        ],
+                        children=[label],
+                    ),
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "number"),
+                            ("name", min_input_id),
+                            ("id", min_input_id),
+                            ("value", min_value),
+                            ("placeholder", min_placeholder),
+                            (
+                                "class",
+                                f"{_RANGE_SLIDER_INPUT_CLASS}"
+                                + (" hidden" if point_mode else ""),
+                            ),
+                        ],
+                    ),
+                    Component(
+                        tag_name="span",
+                        attributes=[
+                            (
+                                "class",
+                                "range-dash text-body text-sm"
+                                + (" hidden" if point_mode else ""),
+                            ),
+                        ],
+                        children=["–"],
+                    ),
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "number"),
+                            ("name", max_input_id),
+                            ("id", max_input_id),
+                            ("value", max_value),
+                            ("placeholder", max_placeholder),
+                            ("class", _RANGE_SLIDER_INPUT_CLASS),
+                        ],
+                    ),
+                    Component(
+                        tag_name="button",
+                        attributes=[
+                            ("type", "button"),
+                            (
+                                "class",
+                                "range-mode-toggle p-1 text-body hover:text-heading "
+                                "rounded cursor-pointer shrink-0",
+                            ),
+                            (
+                                "title",
+                                "Toggle between range and single value",
+                            ),
+                            (
+                                "aria-label",
+                                "Toggle between range and single value",
+                            ),
+                        ],
+                        children=[
+                            Component(
+                                tag_name="span",
+                                attributes=[
+                                    (
+                                        "class",
+                                        "range-mode-icon-range"
+                                        + (" hidden" if point_mode else ""),
+                                    ),
+                                ],
+                                children=[mark_safe(_RANGE_ICON_SVG)],
+                            ),
+                            Component(
+                                tag_name="span",
+                                attributes=[
+                                    (
+                                        "class",
+                                        "range-mode-icon-point"
+                                        + ("" if point_mode else " hidden"),
+                                    ),
+                                ],
+                                children=[mark_safe(_POINT_ICON_SVG)],
+                            ),
+                        ],
+                    ),
+                ],
             ),
-        ],
-    )
-
-
-def _filter_range_handles(cls, min_id, max_id, lo, hi, step="1"):
-    """Handle-based slider (used by the session & purchase filter bars)."""
-    return Component(
-        tag_name="div",
-        attributes=[
-            ("class", f"range-slider {cls} relative h-10 mt-1 mb-2 select-none"),
-            ("data-min", str(lo)),
-            ("data-max", str(hi)),
-            ("data-step", str(step)),
-        ],
-        children=[
-            mark_safe(
-                '<div class="absolute top-1/2 -translate-y-1/2 w-full h-2 rounded-full bg-neutral-secondary-medium border border-default-medium"></div><div class="range-track-fill absolute top-1/2 -translate-y-1/2 h-2 bg-brand rounded-full" style="left:0;width:100%"></div>'
-                + f'<div class="range-handle-min absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-brand rounded-full border-2 border-white shadow cursor-pointer hover:scale-110 transition-transform" data-target="{min_id}" style="left:0"></div><div class="range-handle-max absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-brand rounded-full border-2 border-white shadow cursor-pointer hover:scale-110 transition-transform" data-target="{max_id}" style="left:100%"></div>'
+            # ── Slider row ──
+            Component(
+                tag_name="div",
+                attributes=[
+                    ("class", "range-slider relative h-10 select-none mt-1"),
+                    ("data-mode", initial_mode),
+                    ("data-min", str(range_min)),
+                    ("data-max", str(range_max)),
+                    ("data-step", str(step)),
+                ],
+                children=[
+                    Component(
+                        tag_name="div",
+                        attributes=[
+                            (
+                                "class",
+                                "absolute top-1/2 -translate-y-1/2 w-full h-2 "
+                                "rounded-full bg-neutral-quaternary",
+                            ),
+                        ],
+                    ),
+                    Component(
+                        tag_name="div",
+                        attributes=[
+                            (
+                                "class",
+                                "range-track-fill absolute top-1/2 -translate-y-1/2 "
+                                "h-2 bg-brand rounded-full",
+                            ),
+                            ("style", "left:0;width:100%"),
+                        ],
+                    ),
+                    # Min handle (hidden in point mode via JS)
+                    Component(
+                        tag_name="div",
+                        attributes=[
+                            (
+                                "class",
+                                "range-handle range-handle-min absolute top-1/2 "
+                                "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
+                                "border-2 border-white shadow cursor-pointer "
+                                "hover:scale-110 transition-transform",
+                            ),
+                            ("data-target", min_input_id),
+                            (
+                                "style",
+                                "left:0"
+                                + (";display:none" if point_mode else ""),
+                            ),
+                        ],
+                    ),
+                    # Max handle
+                    Component(
+                        tag_name="div",
+                        attributes=[
+                            (
+                                "class",
+                                "range-handle range-handle-max absolute top-1/2 "
+                                "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
+                                "border-2 border-white shadow cursor-pointer "
+                                "hover:scale-110 transition-transform",
+                            ),
+                            ("data-target", max_input_id),
+                            ("style", "left:100%"),
+                        ],
+                    ),
+                ],
             ),
         ],
     )
@@ -371,50 +582,38 @@ def FilterBar(
     if status_options is None:
         status_options = [(s.value, s.label) for s in Game.Status]
     if platform_options is None:
-        platform_options = list(
-            Platform.objects.order_by("name").values_list("id", "name")
-        )
+        platform_options = _get_filter_options(Platform)
 
     existing = _filter_parse(filter_json)
-    status_sel, status_excl, status_mod = _filter_get_choice(existing, "status")
-    plat_sel, plat_excl, plat_mod = _filter_get_choice(existing, "platform")
-    plat_opts_str = [(str(k), v) for k, v in platform_options]
+    status_choice = _filter_get_choice(existing, "status")
+    platform_choice = _filter_get_choice(existing, "platform")
+    platform_options_str = [(str(pk), name) for pk, name in platform_options]
 
-    year_rel = existing.get("year_released", {})
-    year_min = str(year_rel.get("value", "")) if isinstance(year_rel, dict) else ""
-    year_max = str(year_rel.get("value2", "")) if isinstance(year_rel, dict) else ""
-    mastered_val = (
-        existing.get("mastered", {}).get("value", False)
-        if isinstance(existing.get("mastered"), dict)
-        else False
-    )
+    year_min, year_max = _parse_range(existing, "year_released")
+    mastered_value = _parse_bool(existing, "mastered")
     playtime = existing.get("playtime_minutes", {})
-    playtime_min = (
-        _filter_mins_to_hrs(playtime.get("value", ""))
-        if isinstance(playtime, dict)
-        else ""
-    )
-    playtime_max = (
-        _filter_mins_to_hrs(playtime.get("value2", ""))
-        if isinstance(playtime, dict)
-        else ""
-    )
+    if isinstance(playtime, dict):
+        playtime_min = _filter_mins_to_hrs(playtime.get("value", ""))
+        playtime_max = _filter_mins_to_hrs(playtime.get("value2", ""))
+    else:
+        playtime_min = ""
+        playtime_max = ""
 
     try:
-        year_agg = Game.objects.aggregate(
-            yr_min=models.Min("year_released"), yr_max=models.Max("year_released")
+        year_aggregate = Game.objects.aggregate(
+            year_min=models.Min("year_released"), year_max=models.Max("year_released")
         )
     except Exception:
-        year_agg = {}
+        year_aggregate = {}
     try:
-        pt_agg = Game.objects.aggregate(pt_max=models.Max("playtime"))
+        playtime_aggregate = Game.objects.aggregate(playtime_max=models.Max("playtime"))
     except Exception:
-        pt_agg = {}
-    yr_data_min = max(int(year_agg.get("yr_min") or 1970), 1970)
-    yr_data_max = min(int(year_agg.get("yr_max") or 2030), 2030)
-    pt_data_max = (
-        int((pt_agg.get("pt_max") or 0).total_seconds() / 3600)
-        if pt_agg.get("pt_max")
+        playtime_aggregate = {}
+    year_range_min = max(int(year_aggregate.get("year_min") or 1970), 1970)
+    year_range_max = min(int(year_aggregate.get("year_max") or 2030), 2030)
+    playtime_range_max = (
+        int((playtime_aggregate.get("playtime_max") or 0).total_seconds() / 3600)
+        if playtime_aggregate.get("playtime_max")
         else 200
     )
 
@@ -428,9 +627,9 @@ def FilterBar(
                     SelectableFilter(
                         "status",
                         status_options,
-                        status_sel,
-                        status_excl,
-                        status_mod,
+                        status_choice.selected,
+                        status_choice.excluded,
+                        status_choice.modifier,
                         nullable=not Game._meta.get_field("status").has_default(),
                     ),
                 ),
@@ -438,59 +637,153 @@ def FilterBar(
                     "Platform",
                     SelectableFilter(
                         "platform",
-                        plat_opts_str,
-                        plat_sel,
-                        plat_excl,
-                        plat_mod,
+                        platform_options_str,
+                        platform_choice.selected,
+                        platform_choice.excluded,
+                        platform_choice.modifier,
                         nullable=Game._meta.get_field("platform").null,
                     ),
                 ),
-                _filter_number("Year Min", "filter-year-min", year_min, "e.g. 2020"),
-                _filter_number("Year Max", "filter-year-max", year_max, "e.g. 2024"),
             ],
         ),
-        _filter_range_inputs(
-            "year-range",
-            "filter-year-min",
-            "filter-year-max",
-            year_min,
-            year_max,
-            yr_data_min,
-            yr_data_max,
+        RangeSlider(
+            label="Year",
+            input_name_prefix="filter-year",
+            min_value=year_min,
+            max_value=year_max,
+            range_min=year_range_min,
+            range_max=year_range_max,
+            min_placeholder="e.g. 2020",
+            max_placeholder="e.g. 2024",
         ),
         Component(
             tag_name="div",
-            attributes=[("class", _FILTER_GRID_CLASS)],
+            attributes=[("class", "flex items-end gap-4 mb-4")],
             children=[
-                _filter_number(
-                    "Playtime Min (hrs)", "filter-playtime-min", playtime_min, "e.g. 1"
-                ),
-                _filter_number(
-                    "Playtime Max (hrs)",
-                    "filter-playtime-max",
-                    playtime_max,
-                    "e.g. 100",
-                ),
-                Component(
-                    tag_name="div",
-                    attributes=[("class", "flex items-end pb-1")],
-                    children=[
-                        _filter_checkbox("filter-mastered", "Mastered", mastered_val)
-                    ],
-                ),
+                _filter_checkbox("filter-mastered", "Mastered", mastered_value),
             ],
         ),
-        _filter_range_inputs(
-            "playtime-range",
-            "filter-playtime-min",
-            "filter-playtime-max",
-            playtime_min or "0",
-            playtime_max or str(pt_data_max),
-            0,
-            pt_data_max,
+        RangeSlider(
+            label="Playtime",
+            input_name_prefix="filter-playtime",
+            min_value=playtime_min,
+            max_value=playtime_max,
+            range_min=0,
+            range_max=playtime_range_max,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 100",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+
+
+def _selectable_filter_tag(
+    value: str, label: str, *, excluded: bool = False
+) -> SafeText:
+    """A selected (\u2713) or excluded (\u2717) value pill in the SelectableFilter."""
+    checkmark = "\u2717" if excluded else "\u2713"
+    css = "sf-tag sf-excluded" if excluded else "sf-tag"
+    return Component(
+        tag_name="span",
+        attributes=[
+            ("class", css),
+            ("data-value", value),
+            ("data-type", "exclude" if excluded else "include"),
+        ],
+        children=[
+            Component(
+                tag_name="span",
+                attributes=[("class", "sf-tag-text")],
+                children=[f"{checkmark} {label}"],
+            ),
+            Component(
+                tag_name="button",
+                attributes=[
+                    ("type", "button"),
+                    ("class", "sf-remove"),
+                    ("aria-label", "Remove"),
+                ],
+                children=["\u00d7"],
+            ),
+        ],
+    )
+
+
+def _selectable_filter_modifier_tag(modifier: str, label: str) -> SafeText:
+    """An active modifier pill ((Any) / (None)) in the SelectableFilter."""
+    return Component(
+        tag_name="span",
+        attributes=[
+            ("class", "sf-modifier-tag active"),
+            ("data-modifier", modifier),
+        ],
+        children=[label],
+    )
+
+
+def _selectable_filter_modifier_option(modifier: str, label: str) -> SafeText:
+    """A modifier choice in the SelectableFilter dropdown list."""
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("class", "sf-option sf-modifier-option"),
+            ("data-modifier", modifier),
+            ("data-label", label),
+        ],
+        children=[
+            Component(
+                tag_name="span",
+                attributes=[("class", "sf-option-label")],
+                children=[label],
+            ),
+        ],
+    )
+
+
+def _selectable_filter_option(value: str, label: str) -> SafeText:
+    """An option row with include (+) and exclude (\u2212) buttons."""
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("class", "sf-option"),
+            ("data-value", value),
+            ("data-label", label),
+        ],
+        children=[
+            Component(
+                tag_name="span",
+                attributes=[("class", "sf-option-label")],
+                children=[label],
+            ),
+            Component(
+                tag_name="span",
+                attributes=[("class", "sf-option-buttons")],
+                children=[
+                    Component(
+                        tag_name="button",
+                        attributes=[
+                            ("type", "button"),
+                            ("class", "sf-btn-include"),
+                            ("data-action", "include"),
+                            ("title", "Include"),
+                        ],
+                        children=["+"],
+                    ),
+                    Component(
+                        tag_name="button",
+                        attributes=[
+                            ("type", "button"),
+                            ("class", "sf-btn-exclude"),
+                            ("data-action", "exclude"),
+                            ("title", "Exclude"),
+                        ],
+                        children=["\u2212"],
+                    ),
+                ],
+            ),
+        ],
+    )
 
 
 def SelectableFilter(
@@ -505,87 +798,70 @@ def SelectableFilter(
     selected = selected or []
     excluded = excluded or []
 
-    active_mod_html = ""
-    inactive_mod_html = ""
-    mod_opts = [("NOT_NULL", "(Any)")]
+    modifier_options = [("NOT_NULL", "(Any)")]
     if nullable:
-        mod_opts.append(("IS_NULL", "(None)"))
-    for mod_val, mod_label in mod_opts:
-        if modifier == mod_val:
-            active_mod_html = (
-                f'<span class="sf-modifier-tag active" data-modifier="{mod_val}">'
-                f"{mod_label}</span> "
+        modifier_options.append(("IS_NULL", "(None)"))
+
+    active_modifier_tag = ""
+    inactive_modifier_options: list[SafeText] = []
+    for modifier_value, modifier_label in modifier_options:
+        if modifier == modifier_value:
+            active_modifier_tag = _selectable_filter_modifier_tag(
+                modifier_value, modifier_label
             )
         else:
-            inactive_mod_html += (
-                f'<div class="sf-option sf-modifier-option" data-modifier="{mod_val}" '
-                f'data-label="{mod_label}">'
-                f'<span class="sf-option-label">{mod_label}</span></div>'
+            inactive_modifier_options.append(
+                _selectable_filter_modifier_option(modifier_value, modifier_label)
             )
 
-    selected_html = ""
-    for val in selected:
-        label = _find_label(options, val)
-        selected_html += (
-            f'<span class="sf-tag" data-value="{escape(val)}" data-type="include">'
-            f'<span class="sf-tag-text text-body">\u2713 {escape(label)}</span>'
-            f'<button type="button" class="sf-remove">\u00d7</button></span> '
+    selected_tags: list[SafeText] = []
+    for value in selected:
+        selected_tags.append(
+            _selectable_filter_tag(value, _find_label(options, value), excluded=False)
         )
-    for val in excluded:
-        label = _find_label(options, val)
-        selected_html += (
-            f'<span class="sf-tag sf-excluded" data-value="{escape(val)}" data-type="exclude">'
-            f'<span class="sf-tag-text text-body">\u2717 {escape(label)}</span>'
-            f'<button type="button" class="sf-remove">\u00d7</button></span> '
+    for value in excluded:
+        selected_tags.append(
+            _selectable_filter_tag(value, _find_label(options, value), excluded=True)
         )
 
-    options_html = ""
-    for val, label in options:
-        options_html += (
-            f'<div class="sf-option" data-value="{escape(val)}" data-label="{escape(label)}">'
-            f'<span class="sf-option-label">{escape(label)}</span>'
-            f'<span class="sf-option-buttons">'
-            f'<button type="button" class="sf-btn-include" data-action="include" title="Include">+</button>'
-            f'<button type="button" class="sf-btn-exclude" data-action="exclude" title="Exclude">\u2212</button>'
-            f"</span></div>"
-        )
+    option_rows: list[SafeText] = []
+    for value, label in options:
+        option_rows.append(_selectable_filter_option(value, label))
+
+    selected_area_children: list[SafeText] = []
+    if active_modifier_tag:
+        selected_area_children.append(active_modifier_tag)
+    selected_area_children.extend(selected_tags)
+
+    options_area_children: list[SafeText] = []
+    options_area_children.extend(inactive_modifier_options)
+    options_area_children.extend(option_rows)
 
     return Component(
         tag_name="div",
         attributes=[
-            (
-                "class",
-                "sf-container border border-default-medium rounded-base bg-neutral-secondary-medium",
-            ),
+            ("class", "sf-container"),
             ("data-selectable-filter", field_name),
             *([("data-modifier", modifier)] if modifier else []),
         ],
         children=[
             Component(
                 tag_name="div",
-                attributes=[
-                    ("class", "sf-selected flex flex-wrap gap-1 p-2 min-h-[28px]"),
-                ],
-                children=[mark_safe(active_mod_html + selected_html)],
+                attributes=[("class", "sf-selected")],
+                children=selected_area_children,
             ),
             Component(
                 tag_name="input",
                 attributes=[
                     ("type", "text"),
-                    (
-                        "class",
-                        "sf-search block w-full border-0 border-t border-default-medium "
-                        "bg-transparent text-sm text-heading p-2 focus:ring-0 focus:outline-hidden",
-                    ),
+                    ("class", "sf-search"),
                     ("placeholder", "Search\u2026"),
                 ],
             ),
             Component(
                 tag_name="div",
-                attributes=[
-                    ("class", "sf-options max-h-40 overflow-y-auto p-1 text-body"),
-                ],
-                children=[mark_safe(inactive_mod_html + options_html)],
+                attributes=[("class", "sf-options")],
+                children=options_area_children,
             ),
         ],
     )
@@ -604,37 +880,29 @@ def SessionFilterBar(
     """Collapsible filter bar for the Session list."""
     from games.models import Device, Game, Session
 
-    game_opts = [
-        (str(k), v) for k, v in Game.objects.order_by("name").values_list("id", "name")
-    ]
-    dev_opts = [
-        (str(k), v)
-        for k, v in Device.objects.order_by("name").values_list("id", "name")
-    ]
+    game_options = _get_filter_options(Game)
+    device_options = _get_filter_options(Device)
     existing = _filter_parse(filter_json)
-    gs, ge, gm = _filter_get_choice(existing, "game")
-    ds, de, dm = _filter_get_choice(existing, "device")
+    game_choice = _filter_get_choice(existing, "game")
+    device_choice = _filter_get_choice(existing, "device")
 
-    dur = existing.get("duration_minutes", {})
-    dmin = _filter_mins_to_hrs(dur.get("value", "")) if isinstance(dur, dict) else ""
-    dmax = _filter_mins_to_hrs(dur.get("value2", "")) if isinstance(dur, dict) else ""
-    em = (
-        existing.get("emulated", {}).get("value", False)
-        if isinstance(existing.get("emulated"), dict)
-        else False
-    )
-    ac = (
-        existing.get("is_active", {}).get("value", False)
-        if isinstance(existing.get("is_active"), dict)
-        else False
-    )
+    duration_min, duration_max = _parse_range(existing, "duration_minutes")
+    duration_min = _filter_mins_to_hrs(duration_min)
+    duration_max = _filter_mins_to_hrs(duration_max)
+    emulated_value = _parse_bool(existing, "emulated")
+    is_active_value = _parse_bool(existing, "is_active")
     try:
-        a = Session.objects.aggregate(m=models.Max("duration_total"))
-        ddm = max(
-            int((a.get("m") or 0).total_seconds() / 3600) if a.get("m") else 200, 1
+        duration_aggregate = Session.objects.aggregate(
+            duration_max=models.Max("duration_total")
+        )
+        duration_range_max = max(
+            int((duration_aggregate.get("duration_max") or 0).total_seconds() / 3600)
+            if duration_aggregate.get("duration_max")
+            else 200,
+            1,
         )
     except Exception:
-        ddm = 200
+        duration_range_max = 200
 
     fields = [
         Component(
@@ -645,10 +913,10 @@ def SessionFilterBar(
                     "Game",
                     SelectableFilter(
                         "game",
-                        game_opts,
-                        gs,
-                        ge,
-                        gm,
+                        game_options,
+                        game_choice.selected,
+                        game_choice.excluded,
+                        game_choice.modifier,
                         nullable=not Game._meta.get_field("name").has_default(),
                     ),
                 ),
@@ -656,30 +924,31 @@ def SessionFilterBar(
                     "Device",
                     SelectableFilter(
                         "device",
-                        dev_opts,
-                        ds,
-                        de,
-                        dm,
+                        device_options,
+                        device_choice.selected,
+                        device_choice.excluded,
+                        device_choice.modifier,
                         nullable=Session._meta.get_field("device").null,
                     ),
                 ),
-                _filter_number(
-                    "Duration Min (hrs)", "filter-playtime-min", dmin, "e.g. 0.5"
-                ),
-                _filter_number(
-                    "Duration Max (hrs)", "filter-playtime-max", dmax, "e.g. 10"
-                ),
             ],
         ),
-        _filter_range_handles(
-            "dur-range", "filter-playtime-min", "filter-playtime-max", 0, ddm
+        RangeSlider(
+            label="Duration",
+            input_name_prefix="filter-playtime",
+            min_value=duration_min,
+            max_value=duration_max,
+            range_min=0,
+            range_max=duration_range_max,
+            min_placeholder="e.g. 0.5",
+            max_placeholder="e.g. 10",
         ),
         Component(
             tag_name="div",
             attributes=[("class", "flex gap-4 mb-4")],
             children=[
-                _filter_checkbox("filter-emulated", "Emulated", em),
-                _filter_checkbox("filter-active", "Active", ac),
+                _filter_checkbox("filter-emulated", "Emulated", emulated_value),
+                _filter_checkbox("filter-active", "Active", is_active_value),
             ],
         ),
     ]
@@ -692,33 +961,25 @@ def PurchaseFilterBar(
     """Collapsible filter bar for the Purchase list."""
     from games.models import Game, Platform, Purchase
 
-    game_opts = [
-        (str(k), v) for k, v in Game.objects.order_by("name").values_list("id", "name")
-    ]
-    plat_opts = [
-        (str(k), v)
-        for k, v in Platform.objects.order_by("name").values_list("id", "name")
-    ]
-    type_opts = [(t[0], t[1]) for t in Purchase.TYPES]
-    own_opts = [(t[0], t[1]) for t in Purchase.OWNERSHIP_TYPES]
+    game_options = _get_filter_options(Game)
+    platform_options = _get_filter_options(Platform)
+    type_options = [(value, label) for value, label in Purchase.TYPES]
+    ownership_options = [(value, label) for value, label in Purchase.OWNERSHIP_TYPES]
     existing = _filter_parse(filter_json)
-    gs, ge, gm = _filter_get_choice(existing, "games")
-    ps, pe, pm = _filter_get_choice(existing, "platform")
-    ts, te, tm = _filter_get_choice(existing, "type")
-    os_, oe, om = _filter_get_choice(existing, "ownership_type")
-    price = existing.get("price", {})
-    pmin = str(price.get("value", "")) if isinstance(price, dict) else ""
-    pmax = str(price.get("value2", "")) if isinstance(price, dict) else ""
-    rf = (
-        existing.get("is_refunded", {}).get("value", False)
-        if isinstance(existing.get("is_refunded"), dict)
-        else False
-    )
+    game_choice = _filter_get_choice(existing, "games")
+    platform_choice = _filter_get_choice(existing, "platform")
+    type_choice = _filter_get_choice(existing, "type")
+    ownership_choice = _filter_get_choice(existing, "ownership_type")
+    price_min, price_max = _parse_range(existing, "price")
+    is_refunded_value = _parse_bool(existing, "is_refunded")
     try:
-        a = Purchase.objects.aggregate(lo=models.Min("price"), hi=models.Max("price"))
-        plo, phi = int(a.get("lo") or 0), max(int(a.get("hi") or 100), 1)
+        price_aggregate = Purchase.objects.aggregate(
+            price_min=models.Min("price"), price_max=models.Max("price")
+        )
+        price_range_min = int(price_aggregate.get("price_min") or 0)
+        price_range_max = max(int(price_aggregate.get("price_max") or 100), 1)
     except Exception:
-        plo, phi = 0, 100
+        price_range_min, price_range_max = 0, 100
 
     fields = [
         Component(
@@ -727,16 +988,23 @@ def PurchaseFilterBar(
             children=[
                 _filter_field(
                     "Game",
-                    SelectableFilter("games", game_opts, gs, ge, gm, nullable=False),
+                    SelectableFilter(
+                        "games",
+                        game_options,
+                        game_choice.selected,
+                        game_choice.excluded,
+                        game_choice.modifier,
+                        nullable=False,
+                    ),
                 ),
                 _filter_field(
                     "Platform",
                     SelectableFilter(
                         "platform",
-                        plat_opts,
-                        ps,
-                        pe,
-                        pm,
+                        platform_options,
+                        platform_choice.selected,
+                        platform_choice.excluded,
+                        platform_choice.modifier,
                         nullable=Purchase._meta.get_field("platform").null,
                     ),
                 ),
@@ -744,10 +1012,10 @@ def PurchaseFilterBar(
                     "Type",
                     SelectableFilter(
                         "type",
-                        type_opts,
-                        ts,
-                        te,
-                        tm,
+                        type_options,
+                        type_choice.selected,
+                        type_choice.excluded,
+                        type_choice.modifier,
                         nullable=not Purchase._meta.get_field("type").has_default(),
                     ),
                 ),
@@ -755,10 +1023,10 @@ def PurchaseFilterBar(
                     "Ownership",
                     SelectableFilter(
                         "ownership_type",
-                        own_opts,
-                        os_,
-                        oe,
-                        om,
+                        ownership_options,
+                        ownership_choice.selected,
+                        ownership_choice.excluded,
+                        ownership_choice.modifier,
                         nullable=not Purchase._meta.get_field(
                             "ownership_type"
                         ).has_default(),
@@ -768,15 +1036,20 @@ def PurchaseFilterBar(
         ),
         Component(
             tag_name="div",
-            attributes=[("class", _FILTER_GRID_CLASS)],
+            attributes=[("class", "flex items-end gap-4 mb-4")],
             children=[
-                _filter_number("Price Min", "filter-price-min", pmin, "0.00"),
-                _filter_number("Price Max", "filter-price-max", pmax, "100.00"),
-                _filter_checkbox("filter-refunded", "Refunded", rf),
+                _filter_checkbox("filter-refunded", "Refunded", is_refunded_value),
             ],
         ),
-        _filter_range_handles(
-            "price-range", "filter-price-min", "filter-price-max", plo, phi
+        RangeSlider(
+            label="Price",
+            input_name_prefix="filter-price",
+            min_value=price_min,
+            max_value=price_max,
+            range_min=price_range_min,
+            range_max=price_range_max,
+            min_placeholder="0.00",
+            max_placeholder="100.00",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)

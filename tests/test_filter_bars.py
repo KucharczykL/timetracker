@@ -1,10 +1,11 @@
 """Characterization tests locking the rendered output of the three filter bars.
 
 The FilterBar family (FilterBar / SessionFilterBar / PurchaseFilterBar) is the
-target of an upcoming dedup + module split. These tests pin the structural
-contract — form/input ids, the hidden ``filter`` field, preset wiring, the
-filter_json round-trip, and no double-escaping — so that refactor stays
-behaviour-preserving. The renderers were previously untested.
+target of a dedup + module split + RangeSlider component extraction. These tests
+pin the structural contract — form/input ids, the hidden ``filter`` field,
+preset wiring, the filter_json round-trip, no double-escaping, and the
+Flowbite-styled native range slider unification — so that refactor stays
+behaviour-preserving.
 """
 
 import json
@@ -41,6 +42,24 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn(save_url, html)  # preset save URL wired in
         self.assertNoEscapedTags(html)
 
+    def _assert_range_slider(self, html):
+        """Every filter bar must use the RangeSlider component with custom
+        draggable <div> handles, a track fill, and mode-toggle button."""
+        self.assertIn("range-slider-block", html)
+        self.assertIn('data-mode="range"', html)
+        self.assertIn("range-mode-toggle", html)
+        self.assertIn("range-mode-icon-range", html)
+        self.assertIn("range-mode-icon-point", html)
+        self.assertIn("range-track-fill", html)
+        self.assertIn("range-handle-min", html)
+        self.assertIn("range-handle-max", html)
+        # No native range inputs
+        self.assertNotIn(
+            '<input type="range"',
+            html,
+            "native <input type=range> found — should use custom div handles",
+        )
+
     def test_game_filter_bar(self):
         html = str(
             FilterBar(
@@ -50,6 +69,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/games/list", "/presets/games/save")
+        self._assert_range_slider(html)
 
     def test_session_filter_bar(self):
         html = str(
@@ -60,6 +80,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/sessions/list", "/presets/sessions/save")
+        self._assert_range_slider(html)
 
     def test_purchase_filter_bar(self):
         html = str(
@@ -70,6 +91,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/purchases/list", "/presets/purchases/save")
+        self._assert_range_slider(html)
 
     def test_game_filter_bar_roundtrips_selected_status(self):
         """A status in filter_json renders as a selected tag in the widget."""

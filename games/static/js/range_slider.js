@@ -1,5 +1,12 @@
 /**
- * Dual-handle range slider — pure JS with draggable handles.
+ * Range slider — custom draggable handles (no native <input type=range>).
+ *
+ * Supports two modes on each slider, toggled via the .range-mode-toggle button:
+ *   range (default) — two handles, min ≤ max constraint
+ *   point           — single handle, sets both number inputs to the same value
+ *
+ * Handles track-fill positioning and sync between handles and the connected
+ * number inputs (linked via data-target attributes).
  */
 (function () {
   "use strict";
@@ -10,63 +17,109 @@
       if (slider._rsInit) return;
       slider._rsInit = true;
 
+      var mode = slider.getAttribute("data-mode") || "range";
+      var trackFill = slider.querySelector(".range-track-fill");
       var minHandle = slider.querySelector(".range-handle-min");
       var maxHandle = slider.querySelector(".range-handle-max");
-      var track = slider.querySelector(".range-track-fill");
       if (!minHandle || !maxHandle) return;
 
-      var minTarget = document.getElementById(minHandle.getAttribute("data-target"));
-      var maxTarget = document.getElementById(maxHandle.getAttribute("data-target"));
-      var dMin = parseInt(slider.getAttribute("data-min"), 10);
-      var dMax = parseInt(slider.getAttribute("data-max"), 10);
+      var minTarget = document.getElementById(
+        minHandle.getAttribute("data-target")
+      );
+      var maxTarget = document.getElementById(
+        maxHandle.getAttribute("data-target")
+      );
+      var dataMin = parseInt(slider.getAttribute("data-min"), 10);
+      var dataMax = parseInt(slider.getAttribute("data-max"), 10);
       var step = parseInt(slider.getAttribute("data-step"), 10) || 1;
 
-      function valueToPercent(v) { return ((v - dMin) / (dMax - dMin)) * 100; }
-      function percentToValue(p) {
-        var raw = dMin + (p / 100) * (dMax - dMin);
+      // ── Helpers ──
+
+      function valueToPercent(value) {
+        return ((value - dataMin) / (dataMax - dataMin)) * 100;
+      }
+      function percentToValue(percent) {
+        var raw = dataMin + (percent / 100) * (dataMax - dataMin);
         return Math.round(raw / step) * step;
       }
-      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+      function clamp(value, lo, hi) {
+        return Math.max(lo, Math.min(hi, value));
+      }
 
-      function getTargetVal(el) { return parseInt(el ? el.value : minTarget.value, 10) || dMin; }
-      function setTargetVal(el, v) { if (el) el.value = v; }
+      function getTargetValue(target) {
+        return parseInt(target ? target.value : 0, 10) || dataMin;
+      }
+      function setTargetValue(target, value) {
+        if (target) target.value = value;
+      }
 
-      function update() {
-        var minV = getTargetVal(minTarget);
-        var maxV = getTargetVal(maxTarget);
-        minV = clamp(minV, dMin, dMax);
-        maxV = clamp(maxV, dMin, dMax);
-        if (minV > maxV) minV = maxV;
-        if (maxV < minV) maxV = minV;
-        setTargetVal(minTarget, minV);
-        setTargetVal(maxTarget, maxV);
-        var minP = valueToPercent(minV);
-        var maxP = valueToPercent(maxV);
-        minHandle.style.left = minP + "%";
-        maxHandle.style.left = maxP + "%";
-        if (track) {
-          track.style.left = minP + "%";
-          track.style.width = (maxP - minP) + "%";
+      // ── Track fill positioning ──
+
+      function updateTrackFill() {
+        if (!trackFill) return;
+        var minValue = getTargetValue(minTarget);
+        var maxValue = getTargetValue(maxTarget);
+        if (mode === "point") {
+          trackFill.style.left = "0%";
+          trackFill.style.width = valueToPercent(maxValue) + "%";
+        } else {
+          var leftPct = valueToPercent(minValue);
+          var widthPct = valueToPercent(maxValue) - leftPct;
+          trackFill.style.left = leftPct + "%";
+          trackFill.style.width = widthPct + "%";
         }
       }
+
+      function updateHandles() {
+        minHandle.style.left = valueToPercent(getTargetValue(minTarget)) + "%";
+        maxHandle.style.left = valueToPercent(getTargetValue(maxTarget)) + "%";
+        updateTrackFill();
+      }
+
+      // ── Dragging ──
 
       function makeDraggable(handle, isMin) {
         handle.addEventListener("mousedown", function (e) {
           e.preventDefault();
           var rect = slider.getBoundingClientRect();
+
           function onMove(ev) {
             var pct = ((ev.clientX - rect.left) / rect.width) * 100;
-            var v = percentToValue(clamp(pct, 0, 100));
-            if (isMin) {
-              minTarget.value = clamp(v, dMin, getTargetVal(maxTarget));
+            var value = percentToValue(clamp(pct, 0, 100));
+
+            if (mode === "point") {
+              setTargetValue(minTarget, value);
+              setTargetValue(maxTarget, value);
+              if (minTarget)
+                minTarget.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
+              if (maxTarget)
+                maxTarget.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
+            } else if (isMin) {
+              setTargetValue(
+                minTarget,
+                clamp(value, dataMin, getTargetValue(maxTarget))
+              );
+              if (minTarget)
+                minTarget.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
             } else {
-              maxTarget.value = clamp(v, getTargetVal(minTarget), dMax);
+              setTargetValue(
+                maxTarget,
+                clamp(value, getTargetValue(minTarget), dataMax)
+              );
+              if (maxTarget)
+                maxTarget.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
             }
-            update();
-            // Trigger input event on the target so any listeners fire
-            var tgt = isMin ? minTarget : maxTarget;
-            if (tgt) tgt.dispatchEvent(new Event("input", { bubbles: true }));
+            updateHandles();
           }
+
           function onUp() {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
@@ -80,17 +133,64 @@
       makeDraggable(minHandle, true);
       makeDraggable(maxHandle, false);
 
-      // Sync from inputs to slider
-      function fromInputs() { update(); }
-      if (minTarget) minTarget.addEventListener("input", fromInputs);
-      if (maxTarget) maxTarget.addEventListener("input", fromInputs);
+      // ── Sync from number inputs back to handles ──
 
-      update();
+      function syncFromInputs() {
+        if (mode === "point") {
+          var value =
+            getTargetValue(minTarget) || getTargetValue(maxTarget);
+          setTargetValue(minTarget, value);
+          setTargetValue(maxTarget, value);
+        }
+        updateHandles();
+      }
+      if (minTarget)
+        minTarget.addEventListener("input", syncFromInputs);
+      if (maxTarget)
+        maxTarget.addEventListener("input", syncFromInputs);
+
+      // ── Mode toggle ──
+
+      var block = slider.closest(".range-slider-block");
+      var toggleButton =
+        block && block.querySelector(".range-mode-toggle");
+      if (toggleButton) {
+        toggleButton.addEventListener("click", function () {
+          var newMode = mode === "range" ? "point" : "range";
+          slider.setAttribute("data-mode", newMode);
+
+          // Swap toggle icons
+          var iconRange = toggleButton.querySelector(
+            ".range-mode-icon-range"
+          );
+          var iconPoint = toggleButton.querySelector(
+            ".range-mode-icon-point"
+          );
+          if (iconRange) iconRange.classList.toggle("hidden");
+          if (iconPoint) iconPoint.classList.toggle("hidden");
+
+          var dashSpan = block && block.querySelector(".range-dash");
+          if (newMode === "point") {
+            minHandle.style.display = "none";
+            setTargetValue(minTarget, getTargetValue(maxTarget));
+            if (minTarget) minTarget.classList.add("hidden");
+            if (dashSpan) dashSpan.classList.add("hidden");
+          } else {
+            minHandle.style.display = "";
+            if (minTarget) minTarget.classList.remove("hidden");
+            if (dashSpan) dashSpan.classList.remove("hidden");
+          }
+          mode = newMode;
+          updateHandles();
+        });
+      }
+
+      // ── Initial position ──
+      updateHandles();
     });
   }
 
   document.addEventListener("DOMContentLoaded", initAll);
   document.addEventListener("htmx:afterSwap", initAll);
-  // Expose for manual re-init (filter bar toggle)
   window.initRangeSliders = initAll;
 })();

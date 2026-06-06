@@ -46,9 +46,6 @@
    * Returns a plain object ready for JSON.stringify.
    */
   function buildFilterJSON(form) {
-    // Read all SelectableFilter widgets first
-    readSelectableFilters(form);
-
     var filter = {};
     var yearMin = numberValue(form, "filter-year-min");
     var yearMax = numberValue(form, "filter-year-max");
@@ -132,14 +129,7 @@
     }
 
     if (yearMin !== "" && yearMax !== "") {
-      // Skip if both equal the data range extremes (no real filter)
-      var yrMinNum = parseInt(yearMin, 10);
-      var yrMaxNum = parseInt(yearMax, 10);
-      if (yrMinNum === yrMaxNum) {
-        // don't add filter
-      } else {
-        filter.year_released = criterion(yearMin, yearMax, "BETWEEN");
-      }
+      filter.year_released = criterion(yearMin, yearMax, "BETWEEN");
     } else if (yearMin !== "") {
       filter.year_released = criterion(yearMin, null, "GREATER_THAN");
     } else if (yearMax !== "") {
@@ -371,8 +361,6 @@
       }
     });
   }
-  injectSearchInputs();
-
   document.addEventListener("DOMContentLoaded", function () {
     injectSearchInputs();
     loadPresets();
