@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, TypedDict
 
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -20,6 +19,7 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
+from common.utils import paginate
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
 
@@ -125,18 +125,8 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
-    playevents = PlayEvent.objects.order_by("-created_at")
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(playevents, limit)
-        page_obj = paginator.get_page(page_number)
-        playevents = page_obj.object_list
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
+    playevents, page_obj, elided_page_range = paginate(
+        request, PlayEvent.objects.order_by("-created_at")
     )
     data = create_playevent_tabledata(playevents, request=request)
     content = paginated_table_content(

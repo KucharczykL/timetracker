@@ -1,5 +1,4 @@
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -14,6 +13,7 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
+from common.utils import paginate
 from games.forms import PlatformForm
 from games.models import Platform
 from games.views.general import use_custom_redirect
@@ -21,18 +21,8 @@ from games.views.general import use_custom_redirect
 
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
-    platforms = Platform.objects.order_by("name")
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(platforms, limit)
-        page_obj = paginator.get_page(page_number)
-        platforms = page_obj.object_list
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
+    platforms, page_obj, elided_page_range = paginate(
+        request, Platform.objects.order_by("name")
     )
 
     data = {

@@ -1,6 +1,5 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -35,6 +34,7 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import dateformat
+from common.utils import paginate
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
@@ -95,18 +95,8 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
-    purchases = Purchase.objects.order_by("-date_purchased", "-created_at")
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(purchases, limit)
-        page_obj = paginator.get_page(page_number)
-        purchases = page_obj.object_list
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
+    purchases, page_obj, elided_page_range = paginate(
+        request, Purchase.objects.order_by("-date_purchased", "-created_at")
     )
 
     data = {

@@ -5,9 +5,32 @@ from functools import reduce, wraps
 from typing import Any, Callable, Generator, Literal, TypeVar
 from urllib.parse import urlencode
 
+from django.core.paginator import Page, Paginator
 from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import redirect
+
+
+def paginate(request: HttpRequest, queryset, per_page: int = 10):
+    """Standard list-view pagination.
+
+    Reads ``page`` and ``limit`` from the query string (``limit=0`` disables
+    pagination) and returns ``(object_list, page_obj, elided_page_range)`` ready
+    to hand to ``paginated_table_content``.
+    """
+    page_number = request.GET.get("page", 1)
+    limit = int(request.GET.get("limit", per_page))
+    object_list = queryset
+    page_obj: Page | None = None
+    if limit != 0:
+        page_obj = Paginator(queryset, limit).get_page(page_number)
+        object_list = page_obj.object_list
+    elided_page_range = (
+        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
+        if page_obj
+        else None
+    )
+    return object_list, page_obj, elided_page_range
 
 
 def safe_division(numerator: int | float, denominator: int | float) -> int | float:

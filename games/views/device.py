@@ -1,5 +1,4 @@
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -14,24 +13,15 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
+from common.utils import paginate
 from games.forms import DeviceForm
 from games.models import Device
 
 
 @login_required
 def list_devices(request: HttpRequest) -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
-    devices = Device.objects.order_by("-created_at")
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(devices, limit)
-        page_obj = paginator.get_page(page_number)
-        devices = page_obj.object_list
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
+    devices, page_obj, elided_page_range = paginate(
+        request, Device.objects.order_by("-created_at")
     )
 
     data = {

@@ -1,5 +1,4 @@
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -16,6 +15,7 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
+from common.utils import paginate
 from games.forms import GameStatusChangeForm
 from games.models import GameStatusChange
 
@@ -36,8 +36,8 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
     statuschange = get_object_or_404(GameStatusChange, id=statuschange_id)
     form = GameStatusChangeForm(request.POST or None, instance=statuschange)
     if form.is_valid():
-        form.save()
-        return redirect("games:list_platforms")
+        saved = form.save()
+        return redirect("games:view_game", game_id=saved.game.id)
     return render_page(
         request, AddForm(form, request=request), title="Edit status change"
     )
@@ -45,18 +45,8 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
 
 @login_required
 def list_statuschanges(request: HttpRequest) -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
-    statuschanges = GameStatusChange.objects.select_related("game").all()
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(statuschanges, limit)
-        page_obj = paginator.get_page(page_number)
-        statuschanges = page_obj.object_list
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
+    statuschanges, page_obj, elided_page_range = paginate(
+        request, GameStatusChange.objects.select_related("game").all()
     )
 
     data = {

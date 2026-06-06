@@ -109,7 +109,8 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     this_year_purchases_unfinished_dropped_nondropped = (
         this_year_purchases_without_refunded.filter(
-            ~Q(games__status="f") & ~Q(games__playevents__ended__isnull=False)
+            ~Q(games__status=Game.Status.FINISHED)
+            & ~Q(games__playevents__ended__isnull=False)
         )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
@@ -117,14 +118,16 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     this_year_purchases_unfinished = (
         this_year_purchases_unfinished_dropped_nondropped.filter(
-            ~Q(games__status="r") & ~Q(games__status="a")
+            ~Q(games__status=Game.Status.RETIRED)
+            & ~Q(games__status=Game.Status.ABANDONED)
         )
     )
     this_year_purchases_dropped = (
         this_year_purchases.filter(
-            ~Q(games__status="f") & ~Q(games__playevents__ended__isnull=False)
+            ~Q(games__status=Game.Status.FINISHED)
+            & ~Q(games__playevents__ended__isnull=False)
         )
-        .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
+        .filter(Q(games__status=Game.Status.ABANDONED) | Q(date_refunded__isnull=False))
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )
@@ -338,7 +341,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     # only Game and DLC
     this_year_purchases_unfinished_dropped_nondropped = (
         this_year_purchases_without_refunded.filter(
-            ~Q(games__status="f") & ~Q(games__playevents__ended__year=year)
+            ~Q(games__status=Game.Status.FINISHED)
+            & ~Q(games__playevents__ended__year=year)
         )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
@@ -347,15 +351,17 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     # unfinished = not finished AND not dropped
     this_year_purchases_unfinished = (
         this_year_purchases_unfinished_dropped_nondropped.filter(
-            ~Q(games__status="r") & ~Q(games__status="a")
+            ~Q(games__status=Game.Status.RETIRED)
+            & ~Q(games__status=Game.Status.ABANDONED)
         )
     )
     # dropped = abandoned OR retired OR refunded (OR logic for transition)
     this_year_purchases_dropped = (
         this_year_purchases.filter(
-            ~Q(games__status="f") & ~Q(games__playevents__ended__year=year)
+            ~Q(games__status=Game.Status.FINISHED)
+            & ~Q(games__playevents__ended__year=year)
         )
-        .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
+        .filter(Q(games__status=Game.Status.ABANDONED) | Q(date_refunded__isnull=False))
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
     )
@@ -432,7 +438,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
 
     backlog_decrease_count = (
         Purchase.objects.filter(date_purchased__year__lt=year)
-        .filter(games__status="f")
+        .filter(games__status=Game.Status.FINISHED)
         .filter(games__playevents__ended__year=year)
         .count()
     )

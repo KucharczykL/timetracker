@@ -41,7 +41,7 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import build_dynamic_filter, safe_division, truncate
+from common.utils import build_dynamic_filter, paginate, safe_division, truncate
 from games.forms import GameForm
 from games.models import Game
 from games.views.general import use_custom_redirect
@@ -50,10 +50,7 @@ from games.views.playevent import create_playevent_tabledata
 
 @login_required
 def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
     games = Game.objects.order_by("-created_at")
-    page_obj = None
     search_string = request.GET.get("search_string", search_string)
     if search_string != "":
         filters = [
@@ -74,16 +71,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                 search_status = Game.Status[search_string.upper()]
                 filters.append(Q(status=search_status))
         games = games.filter(build_dynamic_filter(filters, "|"))
-    if int(limit) != 0:
-        paginator = Paginator(games, limit)
-        page_obj = paginator.get_page(page_number)
-        games = page_obj.object_list
-
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
-    )
+    games, page_obj, elided_page_range = paginate(request, games)
 
     data = {
         "header_action": Div(

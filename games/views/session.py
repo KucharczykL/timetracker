@@ -1,7 +1,6 @@
 from typing import Any
 
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -32,15 +31,13 @@ from common.time import (
     local_strftime,
     timeformat,
 )
-from common.utils import truncate
+from common.utils import paginate, truncate
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 
 
 @login_required
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    page_number = request.GET.get("page", 1)
-    limit = request.GET.get("limit", 10)
     sessions = Session.objects.order_by("-timestamp_start", "created_at")
     device_list = Device.objects.order_by("name")
     search_string = request.GET.get("search_string", search_string)
@@ -56,17 +53,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         last_session = sessions.latest()
     except Session.DoesNotExist:
         last_session = None
-    page_obj = None
-    if int(limit) != 0:
-        paginator = Paginator(sessions, limit)
-        page_obj = paginator.get_page(page_number)
-        sessions = page_obj.object_list
-
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if page_obj
-        else None
-    )
+    sessions, page_obj, elided_page_range = paginate(request, sessions)
 
     data = {
         "header_action": Div(
