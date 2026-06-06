@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
-from django.utils.safestring import SafeText
+from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
     A,
@@ -95,9 +95,16 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases, page_obj, elided_page_range = paginate(
-        request, Purchase.objects.order_by("-date_purchased", "-created_at")
-    )
+    purchases = Purchase.objects.order_by("-date_purchased", "-created_at")
+
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        from games.filters import parse_purchase_filter
+        pf = parse_purchase_filter(filter_json)
+        if pf is not None:
+            purchases = purchases.filter(pf.to_q())
+
+    purchases, page_obj, elided_page_range = paginate(request, purchases)
 
     data = {
         "header_action": A(
@@ -121,7 +128,19 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage purchases")
+    from common.components import PurchaseFilterBar, ModuleScript
+    filter_bar = PurchaseFilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets"),
+        preset_save_url=reverse("games:save_preset"),
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage purchases",
+        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+    )
 
 
 def _purchase_additional_row() -> SafeText:

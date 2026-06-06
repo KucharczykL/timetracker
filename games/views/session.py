@@ -40,15 +40,25 @@ from games.models import Device, Game, Session
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
     sessions = Session.objects.order_by("-timestamp_start", "created_at")
     device_list = Device.objects.order_by("name")
-    search_string = request.GET.get("search_string", search_string)
-    if search_string != "":
-        sessions = sessions.filter(
-            Q(game__name__icontains=search_string)
-            | Q(game__name__icontains=search_string)
-            | Q(game__platform__name__icontains=search_string)
-            | Q(device__name__icontains=search_string)
-            | Q(device__type__icontains=search_string)
-        )
+
+    # ── Structured filter (JSON) ──
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        from games.filters import parse_session_filter
+        session_filter = parse_session_filter(filter_json)
+        if session_filter is not None:
+            sessions = sessions.filter(session_filter.to_q())
+    else:
+        # ── Legacy free-text search ──
+        search_string = request.GET.get("search_string", search_string)
+        if search_string != "":
+            sessions = sessions.filter(
+                Q(game__name__icontains=search_string)
+                | Q(game__name__icontains=search_string)
+                | Q(game__platform__name__icontains=search_string)
+                | Q(device__name__icontains=search_string)
+                | Q(device__type__icontains=search_string)
+            )
     try:
         last_session = sessions.latest()
     except Session.DoesNotExist:
@@ -157,7 +167,20 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage sessions")
+    from common.components import SessionFilterBar
+    filter_json = request.GET.get("filter", "")
+    filter_bar = SessionFilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets"),
+        preset_save_url=reverse("games:save_preset"),
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage sessions",
+        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+    )
 
 
 @login_required

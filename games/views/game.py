@@ -18,6 +18,7 @@ from common.components import (
     Component,
     CsrfInput,
     Div,
+    FilterBar,
     GameStatus,
     GameStatusSelector,
     H1,
@@ -42,6 +43,7 @@ from common.time import (
     timeformat,
 )
 from common.utils import build_dynamic_filter, paginate, safe_division, truncate
+from games.filters import parse_game_filter
 from games.forms import GameForm
 from games.models import Game
 from games.views.general import use_custom_redirect
@@ -51,26 +53,35 @@ from games.views.playevent import create_playevent_tabledata
 @login_required
 def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
     games = Game.objects.order_by("-created_at")
-    search_string = request.GET.get("search_string", search_string)
-    if search_string != "":
-        filters = [
-            Q(name__icontains=search_string),
-            Q(sort_name__icontains=search_string),
-            Q(platform__name__icontains=search_string),
-        ]
-        try:
-            year_value = int(search_string)
-        except ValueError:
-            year_value = None
-        if year_value:
-            filters.append(Q(year_released=year_value))
-        search_string_parts = search_string.split()
-        # only search for status if it exactly matches and is the only word
-        if len(search_string_parts) == 1:
-            if search_string.title() in Game.Status.labels:
-                search_status = Game.Status[search_string.upper()]
-                filters.append(Q(status=search_status))
-        games = games.filter(build_dynamic_filter(filters, "|"))
+
+    # ── Structured filter (Stash-style JSON) ──
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        game_filter = parse_game_filter(filter_json)
+        if game_filter is not None:
+            games = games.filter(game_filter.to_q())
+    else:
+        # ── Legacy free-text search ──
+        search_string = request.GET.get("search_string", search_string)
+        if search_string != "":
+            filters = [
+                Q(name__icontains=search_string),
+                Q(sort_name__icontains=search_string),
+                Q(platform__name__icontains=search_string),
+            ]
+            try:
+                year_value = int(search_string)
+            except ValueError:
+                year_value = None
+            if year_value:
+                filters.append(Q(year_released=year_value))
+            search_string_parts = search_string.split()
+            if len(search_string_parts) == 1:
+                if search_string.title() in Game.Status.labels:
+                    search_status = Game.Status[search_string.upper()]
+                    filters.append(Q(status=search_status))
+            games = games.filter(build_dynamic_filter(filters, "|"))
+
     games, page_obj, elided_page_range = paginate(request, games)
 
     data = {
@@ -126,7 +137,19 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage games")
+    # Prepend the filter bar above the table
+    filter_bar = FilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets"),
+        preset_save_url=reverse("games:save_preset"),
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage games",
+        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+    )
 
 
 @login_required

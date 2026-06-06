@@ -2,6 +2,7 @@ from django.urls import path
 
 from games.views import (
     device,
+    filter_presets,
     game,
     general,
     platform,
@@ -160,9 +161,18 @@ urlpatterns = [
         name="list_statuschanges",
     ),
     path("stats/", general.stats_alltime, name="stats_alltime"),
+    path("stats/<int:year>", general.stats, name="stats_by_year"),
+    # Filter presets
+    path("filter/presets/list", filter_presets.list_presets, name="list_presets"),
+    path("filter/presets/save", filter_presets.save_preset, name="save_preset"),
     path(
-        "stats/<int:year>",
-        general.stats,
-        name="stats_by_year",
+        "filter/presets/<int:preset_id>/delete",
+        filter_presets.delete_preset,
+        name="delete_preset",
+    ),
+    path(
+        "filter/presets/<int:preset_id>/load",
+        filter_presets.load_preset,
+        name="load_preset",
     ),
 ]

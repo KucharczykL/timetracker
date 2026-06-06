@@ -478,3 +478,33 @@ class GameStatusChange(models.Model):
 
     class Meta:
         ordering = ["-timestamp"]
+
+
+class FilterPreset(models.Model):
+    """Saved filter configuration, following Stash's SavedFilter pattern.
+
+    Separates find_filter (sort/pagination), object_filter (criteria JSON),
+    and ui_options (presentation state) so they can evolve independently.
+    """
+
+    class Meta:
+        ordering = ["name"]
+
+    MODE_CHOICES = [
+        ("games", "Games"),
+        ("sessions", "Sessions"),
+        ("purchases", "Purchases"),
+        ("playevents", "Play Events"),
+    ]
+
+    name = models.CharField(max_length=255)
+    mode = models.CharField(max_length=50, choices=MODE_CHOICES, default="games")
+    find_filter = models.JSONField(default=dict, blank=True)
+    object_filter = models.JSONField(default=dict, blank=True)
+    ui_options = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_mode_display()})"

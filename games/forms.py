@@ -43,7 +43,7 @@ class SessionForm(forms.ModelForm):
         ),
         label="Manual duration",
     )
-    device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"))
+    device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"), required=False)
 
     mark_as_played = forms.BooleanField(
         required=False,
@@ -104,6 +104,7 @@ class PurchaseForm(forms.ModelForm):
                 "hx-swap": "outerHTML",
             }
         )
+        self.fields["platform"].queryset = Platform.objects.order_by("name")
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
