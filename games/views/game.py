@@ -148,7 +148,9 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         request,
         content,
         title="Manage games",
-        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("selectable_filter.js")
+        + ModuleScript("filter_bar.js"),
     )
 
 
@@ -540,159 +542,34 @@ def _game_section(
     )
 
 
-@login_required
-def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = Game.objects.get(id=game_id)
-    purchases = game.purchases.order_by("date_purchased")
-
+def _game_overview_metrics(game: Game) -> dict[str, Any]:
+    """Request-free header metrics: total session count, play range, and the
+    per-session average (excluding manually-logged sessions)."""
     sessions = game.sessions
     session_count = sessions.count()
-    session_count_without_manual = game.sessions.without_manual().count()
+    session_count_without_manual = sessions.without_manual().count()
 
     if sessions.exists():
-        playrange_start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
-        latest_session = sessions.latest()
-        playrange_end = local_strftime(latest_session.timestamp_start, "%b %Y")
-
-        playrange = (
-            playrange_start
-            if playrange_start == playrange_end
-            else f"{playrange_start} — {playrange_end}"
-        )
+        start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
+        end = local_strftime(sessions.latest().timestamp_start, "%b %Y")
+        playrange = start if start == end else f"{start} — {end}"
     else:
         playrange = "N/A"
-        latest_session = None
 
     total_hours_without_manual = float(
         format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
     )
-
-    purchase_data: dict[str, Any] = {
-        "columns": ["Name", "Type", "Date", "Price", "Actions"],
-        "rows": [
-            [
-                LinkedPurchase(purchase),
-                purchase.get_type_display(),
-                purchase.date_purchased.strftime(dateformat),
-                PurchasePrice(purchase),
-                ButtonGroup(
-                    [
-                        {
-                            "href": reverse("games:edit_purchase", args=[purchase.pk]),
-                            "slot": Icon("edit"),
-                            "color": "gray",
-                        },
-                        {
-                            "href": reverse(
-                                "games:delete_purchase", args=[purchase.pk]
-                            ),
-                            "slot": Icon("delete"),
-                            "color": "red",
-                        },
-                    ]
-                ),
-            ]
-            for purchase in purchases
-        ],
-    }
-
-    sessions_all = game.sessions.order_by("-timestamp_start")
-
-    last_session = None
-    if sessions_all.exists():
-        last_session = sessions_all.latest()
-    session_count = sessions_all.count()
-    session_paginator = Paginator(sessions_all, 5)
-    page_number = request.GET.get("page", 1)
-    session_page_obj = session_paginator.get_page(page_number)
-    sessions = session_page_obj.object_list
-
-    session_data: dict[str, Any] = {
-        "header_action": Div(
-            children=[
-                A(
-                    url_name="games:add_session",
-                    children=Button(
-                        icon=True,
-                        size="xs",
-                        children=[Icon("play"), "LOG"],
-                    ),
-                ),
-                A(
-                    href=reverse(
-                        "games:list_sessions_start_session_from_session",
-                        args=[last_session.pk],
-                    ),
-                    children=Popover(
-                        popover_content=last_session.game.name,
-                        children=[
-                            Button(
-                                icon=True,
-                                color="gray",
-                                size="xs",
-                                children=[
-                                    Icon("play"),
-                                    truncate(f"{last_session.game.name}"),
-                                ],
-                            )
-                        ],
-                    ),
-                )
-                if last_session
-                else "",
-            ],
-        ),
-        "columns": ["Game", "Date", "Duration", "Actions"],
-        "rows": [
-            [
-                NameWithIcon(session=session),
-                f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                session.duration_formatted_with_mark(),
-                ButtonGroup(
-                    [
-                        {
-                            "href": reverse(
-                                "games:list_sessions_end_session", args=[session.pk]
-                            ),
-                            "slot": Icon("end"),
-                            "title": "Finish session now",
-                            "color": "green",
-                        }
-                        if session.timestamp_end is None
-                        else {},
-                        {
-                            "href": reverse("games:edit_session", args=[session.pk]),
-                            "slot": Icon("edit"),
-                            "color": "gray",
-                        },
-                        {
-                            "href": reverse("games:delete_session", args=[session.pk]),
-                            "slot": Icon("delete"),
-                            "color": "red",
-                        },
-                    ]
-                ),
-            ]
-            for session in sessions
-        ],
-    }
-
-    playevents = game.playevents.all()
-    playevent_count = playevents.count()
-    playevent_data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
-
-    statuschanges = game.status_changes.all()
-    statuschange_count = statuschanges.count()
-
-    purchase_count = game.purchases.count()
-    status_selector_html = GameStatusSelector(
-        game, Game.Status.choices, get_token(request)
-    )
     session_average_without_manual = round(
-        safe_division(total_hours_without_manual, int(session_count_without_manual)),
-        1,
+        safe_division(total_hours_without_manual, int(session_count_without_manual)), 1
     )
+    return {
+        "session_count": session_count,
+        "playrange": playrange,
+        "session_average_without_manual": session_average_without_manual,
+    }
 
+
+def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> SafeText:
     grey_value_class = "text-black dark:text-slate-300"
     title_span = Component(
         tag_name="span",
@@ -718,8 +595,6 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
             else []
         ),
     )
-    title_row = Div([("class", "flex gap-5 mb-3")], [title_span])
-
     stats_row = Div(
         [("class", "flex gap-4 dark:text-slate-400 mb-3")],
         [
@@ -730,23 +605,25 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                 game.playtime_formatted(),
             ),
             _stat_popover(
-                "popover-sessions", "Number of sessions", "sessions", session_count
+                "popover-sessions",
+                "Number of sessions",
+                "sessions",
+                metrics["session_count"],
             ),
             _stat_popover(
                 "popover-average",
                 "Average playtime per session",
                 "average",
-                session_average_without_manual,
+                metrics["session_average_without_manual"],
             ),
             _stat_popover(
                 "popover-playrange",
                 "Earliest and latest dates played",
                 "playrange",
-                playrange,
+                metrics["playrange"],
             ),
         ],
     )
-
     metadata = Div(
         [("class", "flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4")],
         [
@@ -758,7 +635,11 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
                     children=[str(game.original_year_released)],
                 ),
             ),
-            _meta_row("Status", status_selector_html, "👑" if game.mastered else ""),
+            _meta_row(
+                "Status",
+                GameStatusSelector(game, Game.Status.choices, get_token(request)),
+                "👑" if game.mastered else "",
+            ),
             _played_row(game, request),
             _meta_row(
                 "Platform",
@@ -770,36 +651,144 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
             ),
         ],
     )
-
-    game_info = Div(
+    return Div(
         [("id", "game-info"), ("class", "mb-10")],
-        [title_row, stats_row, metadata, _game_action_buttons(game)],
+        [
+            Div([("class", "flex gap-5 mb-3")], [title_span]),
+            stats_row,
+            metadata,
+            _game_action_buttons(game),
+        ],
     )
 
-    session_elided_page_range = (
-        session_page_obj.paginator.get_elided_page_range(
-            page_number, on_each_side=1, on_ends=1
-        )
-        if session_page_obj and session_count > 5
+
+def _purchases_section(game: Game) -> SafeText:
+    purchases = game.purchases.order_by("date_purchased")
+    rows = [
+        [
+            LinkedPurchase(purchase),
+            purchase.get_type_display(),
+            purchase.date_purchased.strftime(dateformat),
+            PurchasePrice(purchase),
+            ButtonGroup(
+                [
+                    {
+                        "href": reverse("games:edit_purchase", args=[purchase.pk]),
+                        "slot": Icon("edit"),
+                        "color": "gray",
+                    },
+                    {
+                        "href": reverse("games:delete_purchase", args=[purchase.pk]),
+                        "slot": Icon("delete"),
+                        "color": "red",
+                    },
+                ]
+            ),
+        ]
+        for purchase in purchases
+    ]
+    table = SimpleTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
+    return _game_section("Purchases", purchases.count(), table, "No purchases yet.")
+
+
+def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
+    sessions_all = game.sessions.order_by("-timestamp_start")
+    session_count = sessions_all.count()
+    last_session = sessions_all.latest() if sessions_all.exists() else None
+
+    page_number = request.GET.get("page", 1)
+    page_obj = Paginator(sessions_all, 5).get_page(page_number)
+    elided_page_range = (
+        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
+        if session_count > 5
         else None
     )
 
-    purchases_table = SimpleTable(
-        columns=purchase_data["columns"], rows=purchase_data["rows"]
+    header_action = Div(
+        children=[
+            A(
+                url_name="games:add_session",
+                children=Button(icon=True, size="xs", children=[Icon("play"), "LOG"]),
+            ),
+            A(
+                href=reverse(
+                    "games:list_sessions_start_session_from_session",
+                    args=[last_session.pk],
+                ),
+                children=Popover(
+                    popover_content=last_session.game.name,
+                    children=[
+                        Button(
+                            icon=True,
+                            color="gray",
+                            size="xs",
+                            children=[
+                                Icon("play"),
+                                truncate(f"{last_session.game.name}"),
+                            ],
+                        )
+                    ],
+                ),
+            )
+            if last_session
+            else "",
+        ],
     )
-    sessions_table = SimpleTable(
-        columns=session_data["columns"],
-        rows=session_data["rows"],
-        header_action=session_data["header_action"],
-        page_obj=session_page_obj,
-        elided_page_range=session_elided_page_range,
+    rows = [
+        [
+            NameWithIcon(session=session),
+            f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+            session.duration_formatted_with_mark(),
+            ButtonGroup(
+                [
+                    {
+                        "href": reverse(
+                            "games:list_sessions_end_session", args=[session.pk]
+                        ),
+                        "slot": Icon("end"),
+                        "title": "Finish session now",
+                        "color": "green",
+                    }
+                    if session.timestamp_end is None
+                    else {},
+                    {
+                        "href": reverse("games:edit_session", args=[session.pk]),
+                        "slot": Icon("edit"),
+                        "color": "gray",
+                    },
+                    {
+                        "href": reverse("games:delete_session", args=[session.pk]),
+                        "slot": Icon("delete"),
+                        "color": "red",
+                    },
+                ]
+            ),
+        ]
+        for session in page_obj.object_list
+    ]
+    table = SimpleTable(
+        columns=["Game", "Date", "Duration", "Actions"],
+        rows=rows,
+        header_action=header_action,
+        page_obj=page_obj,
+        elided_page_range=elided_page_range,
         request=request,
     )
-    playevents_table = SimpleTable(
-        columns=playevent_data["columns"], rows=playevent_data["rows"]
+    return _game_section("Sessions", session_count, table, "No sessions yet.")
+
+
+def _playevents_section(game: Game) -> SafeText:
+    playevents = game.playevents.all()
+    data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
+    table = SimpleTable(columns=data["columns"], rows=data["rows"])
+    return _game_section(
+        "Play Events", playevents.count(), table, "No play events yet."
     )
 
-    history = Div(
+
+def _history_section(game: Game) -> SafeText:
+    statuschanges = game.status_changes.all()
+    return Div(
         [
             ("class", "mb-6"),
             ("id", "history-container"),
@@ -809,36 +798,36 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
             ("hx-swap", "outerHTML"),
         ],
         [
-            H1(children=["History"], badge=statuschange_count),
+            H1(children=["History"], badge=statuschanges.count()),
             _game_history(statuschanges),
         ],
     )
 
+
+_GET_SESSION_COUNT_SCRIPT = mark_safe(
+    "<script>\n"
+    "            function getSessionCount() {\n"
+    "                return document.getElementById('session-count')"
+    '.textContent.match("[0-9]+");\n'
+    "            }\n"
+    "    </script>"
+)
+
+
+@login_required
+def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
+    game = Game.objects.get(id=game_id)
     content = Div(
         [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
         [
-            game_info,
-            _game_section(
-                "Purchases", purchase_count, purchases_table, "No purchases yet."
-            ),
-            _game_section(
-                "Sessions", session_count, sessions_table, "No sessions yet."
-            ),
-            _game_section(
-                "Play Events", playevent_count, playevents_table, "No play events yet."
-            ),
-            history,
-            mark_safe(
-                "<script>\n"
-                "            function getSessionCount() {\n"
-                "                return document.getElementById('session-count')"
-                '.textContent.match("[0-9]+");\n'
-                "            }\n"
-                "    </script>"
-            ),
+            _game_header(game, request, _game_overview_metrics(game)),
+            _purchases_section(game),
+            _sessions_section(game, request),
+            _playevents_section(game),
+            _history_section(game),
+            _GET_SESSION_COUNT_SCRIPT,
         ],
     )
-
     request.session["return_path"] = request.path
     return render_page(
         request,

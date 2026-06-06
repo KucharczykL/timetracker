@@ -176,7 +176,9 @@ def compute_stats(year: int | None = None) -> StatsData:
         unique_days_percent = int(unique_days / 365 * 100)
 
     # ── Spending ─────────────────────────────────────────────────────────────
-    total_spent = without_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
+    total_spent = (
+        without_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
+    )
     without_refunded_count = without_refunded.count()
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
@@ -185,7 +187,10 @@ def compute_stats(year: int | None = None) -> StatsData:
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
         .filter(only_games_and_dlc)
-        .filter(~Q(games__status=Game.Status.RETIRED) & ~Q(games__status=Game.Status.ABANDONED))
+        .filter(
+            ~Q(games__status=Game.Status.RETIRED)
+            & ~Q(games__status=Game.Status.ABANDONED)
+        )
     )
     dropped = (
         purchases.filter(not_finished_q)
@@ -270,9 +275,7 @@ def compute_stats(year: int | None = None) -> StatsData:
     data: StatsData = {
         "year": year_label,
         "title": f"{year_label} Stats",
-        "total_hours": format_duration(
-            sessions.total_duration_unformatted(), "%2.0H"
-        ),
+        "total_hours": format_duration(sessions.total_duration_unformatted(), "%2.0H"),
         "total_sessions": sessions.count(),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,

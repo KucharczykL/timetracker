@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from django.db.models import Q
+
 from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
@@ -32,11 +34,11 @@ from common.criteria import (
 class FindFilter:
     """Sorting and pagination, separate from filtering criteria (Stash-style)."""
 
-    q: str | None = None         # free-text search
+    q: str | None = None  # free-text search
     page: int = 1
     per_page: int = 25
-    sort: str | None = None      # e.g. "-created_at"
-    direction: str = "desc"      # asc / desc
+    sort: str | None = None  # e.g. "-created_at"
+    direction: str = "desc"  # asc / desc
 
 
 # ── GameFilter ─────────────────────────────────────────────────────────────
@@ -55,19 +57,17 @@ class GameFilter(OperatorFilter):
     year_released: IntCriterion | None = None
     original_year_released: IntCriterion | None = None
     wikidata: StringCriterion | None = None
-    platform: ChoiceCriterion | None = None       # selectable filter widget
-    status: ChoiceCriterion | None = None          # selectable filter widget
+    platform: ChoiceCriterion | None = None  # selectable filter widget
+    status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
-    playtime_minutes: IntCriterion | None = None    # converted to timedelta on to_q()
-    created_at: StringCriterion | None = None       # date string
-    updated_at: StringCriterion | None = None       # date string
+    playtime_minutes: IntCriterion | None = None  # converted to timedelta on to_q()
+    created_at: StringCriterion | None = None  # date string
+    updated_at: StringCriterion | None = None  # date string
 
     # Free-text search (combines name + sort_name + platform name)
     search: StringCriterion | None = None
 
-    def to_q(self) -> "Q":  # type: ignore[no-any-unimported]
-        from django.db.models import Q
-
+    def to_q(self) -> Q:
         q = Q()
 
         # ── individual criteria ──
@@ -118,7 +118,7 @@ class GameFilter(OperatorFilter):
         return q
 
     @staticmethod
-    def _playtime_to_q(c: IntCriterion) -> "Q":  # type: ignore[no-any-unimported]
+    def _playtime_to_q(c: IntCriterion) -> Q:
         """Convert minutes-based criterion to a DurationField Q object.
 
         Django stores DurationField as microseconds in SQLite, so we convert
@@ -127,16 +127,25 @@ class GameFilter(OperatorFilter):
         from datetime import timedelta
 
         from common.criteria import Modifier
-        from django.db.models import Q
 
         m = c.modifier
         field = "playtime"
         td_val = timedelta(minutes=c.value)
 
         if m == Modifier.EQUALS:
-            return Q(**{f"{field}__gte": td_val, f"{field}__lt": timedelta(minutes=c.value + 1)})
+            return Q(
+                **{
+                    f"{field}__gte": td_val,
+                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                }
+            )
         if m == Modifier.NOT_EQUALS:
-            return ~Q(**{f"{field}__gte": td_val, f"{field}__lt": timedelta(minutes=c.value + 1)})
+            return ~Q(
+                **{
+                    f"{field}__gte": td_val,
+                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                }
+            )
         if m == Modifier.GREATER_THAN:
             return Q(**{f"{field}__gt": td_val})
         if m == Modifier.LESS_THAN:
@@ -167,15 +176,15 @@ class SessionFilter(OperatorFilter):
     OR: SessionFilter | None = None
     NOT: SessionFilter | None = None
 
-    game: MultiCriterion | None = None               # filters on game_id
-    device: MultiCriterion | None = None              # filters on device_id
+    game: MultiCriterion | None = None  # filters on game_id
+    device: MultiCriterion | None = None  # filters on device_id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
-    duration_minutes: IntCriterion | None = None      # on duration_total
-    is_active: BoolCriterion | None = None            # timestamp_end IS NULL
-    timestamp_start: StringCriterion | None = None    # date string
-    timestamp_end: StringCriterion | None = None      # date string
-    is_manual: BoolCriterion | None = None            # duration_manual > 0
+    duration_minutes: IntCriterion | None = None  # on duration_total
+    is_active: BoolCriterion | None = None  # timestamp_end IS NULL
+    timestamp_start: StringCriterion | None = None  # date string
+    timestamp_end: StringCriterion | None = None  # date string
+    is_manual: BoolCriterion | None = None  # duration_manual > 0
     created_at: StringCriterion | None = None
 
     # Free-text search
@@ -184,10 +193,8 @@ class SessionFilter(OperatorFilter):
     # Cross-entity: sessions for games matching these criteria
     game_filter: GameFilter | None = None
 
-    def to_q(self) -> "Q":  # type: ignore[no-any-unimported]
+    def to_q(self) -> Q:
         from datetime import timedelta
-
-        from django.db.models import Q
 
         q = Q()
 
@@ -205,9 +212,19 @@ class SessionFilter(OperatorFilter):
             field = "duration_total"
             m = c.modifier
             if m == Modifier.EQUALS:
-                q &= Q(**{f"{field}__gte": td_val, f"{field}__lt": timedelta(minutes=c.value + 1)})
+                q &= Q(
+                    **{
+                        f"{field}__gte": td_val,
+                        f"{field}__lt": timedelta(minutes=c.value + 1),
+                    }
+                )
             elif m == Modifier.NOT_EQUALS:
-                q &= ~Q(**{f"{field}__gte": td_val, f"{field}__lt": timedelta(minutes=c.value + 1)})
+                q &= ~Q(
+                    **{
+                        f"{field}__gte": td_val,
+                        f"{field}__lt": timedelta(minutes=c.value + 1),
+                    }
+                )
             elif m == Modifier.GREATER_THAN:
                 q &= Q(**{f"{field}__gt": td_val})
             elif m == Modifier.LESS_THAN:
@@ -256,6 +273,7 @@ class SessionFilter(OperatorFilter):
         # Cross-entity filter: sessions for games matching GameFilter
         if self.game_filter is not None:
             from games.models import Game
+
             game_q = self.game_filter.to_q()
             matching_ids = Game.objects.filter(game_q).values_list("id", flat=True)
             q &= Q(game_id__in=matching_ids)
@@ -285,17 +303,17 @@ class PurchaseFilter(OperatorFilter):
     NOT: PurchaseFilter | None = None
 
     name: StringCriterion | None = None
-    platform: ChoiceCriterion | None = None             # platform_id
-    games: ChoiceCriterion | None = None                # games (M2M IDs)
-    date_purchased: StringCriterion | None = None       # date string
-    date_refunded: StringCriterion | None = None        # date string
-    is_refunded: BoolCriterion | None = None            # date_refunded IS NOT NULL
-    price: FloatCriterion | None = None                 # on price field
+    platform: ChoiceCriterion | None = None  # platform_id
+    games: ChoiceCriterion | None = None  # games (M2M IDs)
+    date_purchased: StringCriterion | None = None  # date string
+    date_refunded: StringCriterion | None = None  # date string
+    is_refunded: BoolCriterion | None = None  # date_refunded IS NOT NULL
+    price: FloatCriterion | None = None  # on price field
     converted_price: FloatCriterion | None = None
     price_currency: StringCriterion | None = None
     num_purchases: IntCriterion | None = None
-    ownership_type: ChoiceCriterion | None = None       # ph/di/du/re/bo/tr/de/pi
-    type: ChoiceCriterion | None = None                 # game/dlc/season_pass/battle_pass
+    ownership_type: ChoiceCriterion | None = None  # ph/di/du/re/bo/tr/de/pi
+    type: ChoiceCriterion | None = None  # game/dlc/season_pass/battle_pass
     created_at: StringCriterion | None = None
     updated_at: StringCriterion | None = None
 
@@ -305,9 +323,7 @@ class PurchaseFilter(OperatorFilter):
     # Cross-entity: purchases for games matching these criteria
     game_filter: GameFilter | None = None
 
-    def to_q(self) -> "Q":  # type: ignore[no-any-unimported]
-        from django.db.models import Q
-
+    def to_q(self) -> Q:
         q = Q()
 
         if self.name is not None:
@@ -353,6 +369,7 @@ class PurchaseFilter(OperatorFilter):
         # Cross-entity filter
         if self.game_filter is not None:
             from games.models import Game
+
             game_q = self.game_filter.to_q()
             matching_ids = Game.objects.filter(game_q).values_list("id", flat=True)
             q &= Q(games__id__in=matching_ids)

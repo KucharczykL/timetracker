@@ -5,55 +5,66 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0005_game_mastered_game_status'),
+        ("games", "0005_game_mastered_game_status"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='game',
-            name='sort_name',
-            field=models.CharField(blank=True, default='', max_length=255),
+            model_name="game",
+            name="sort_name",
+            field=models.CharField(blank=True, default="", max_length=255),
         ),
         migrations.AlterField(
-            model_name='game',
-            name='wikidata',
-            field=models.CharField(blank=True, default='', max_length=50),
+            model_name="game",
+            name="wikidata",
+            field=models.CharField(blank=True, default="", max_length=50),
         ),
         migrations.AlterField(
-            model_name='platform',
-            name='group',
-            field=models.CharField(blank=True, default='', max_length=255),
+            model_name="platform",
+            name="group",
+            field=models.CharField(blank=True, default="", max_length=255),
         ),
         migrations.AlterField(
-            model_name='purchase',
-            name='converted_currency',
-            field=models.CharField(blank=True, default='', max_length=3),
+            model_name="purchase",
+            name="converted_currency",
+            field=models.CharField(blank=True, default="", max_length=3),
         ),
         migrations.AlterField(
-            model_name='purchase',
-            name='games',
-            field=models.ManyToManyField(related_name='purchases', to='games.game'),
+            model_name="purchase",
+            name="games",
+            field=models.ManyToManyField(related_name="purchases", to="games.game"),
         ),
         migrations.AlterField(
-            model_name='purchase',
-            name='name',
-            field=models.CharField(blank=True, default='', max_length=255),
+            model_name="purchase",
+            name="name",
+            field=models.CharField(blank=True, default="", max_length=255),
         ),
         migrations.AlterField(
-            model_name='purchase',
-            name='related_purchase',
-            field=models.ForeignKey(default=None, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='related_purchases', to='games.purchase'),
+            model_name="purchase",
+            name="related_purchase",
+            field=models.ForeignKey(
+                default=None,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="related_purchases",
+                to="games.purchase",
+            ),
         ),
         migrations.AlterField(
-            model_name='session',
-            name='game',
-            field=models.ForeignKey(default=None, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='sessions', to='games.game'),
+            model_name="session",
+            name="game",
+            field=models.ForeignKey(
+                default=None,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="sessions",
+                to="games.game",
+            ),
         ),
         migrations.AlterField(
-            model_name='session',
-            name='note',
-            field=models.TextField(blank=True, default=''),
+            model_name="session",
+            name="note",
+            field=models.TextField(blank=True, default=""),
         ),
     ]

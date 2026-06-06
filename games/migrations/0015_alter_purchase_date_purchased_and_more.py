@@ -5,35 +5,39 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0014_session_duration_total'),
+        ("games", "0014_session_duration_total"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='purchase',
-            name='date_purchased',
-            field=models.DateField(verbose_name='Purchased'),
+            model_name="purchase",
+            name="date_purchased",
+            field=models.DateField(verbose_name="Purchased"),
         ),
         migrations.AlterField(
-            model_name='purchase',
-            name='date_refunded',
-            field=models.DateField(blank=True, null=True, verbose_name='Refunded'),
+            model_name="purchase",
+            name="date_refunded",
+            field=models.DateField(blank=True, null=True, verbose_name="Refunded"),
         ),
         migrations.AlterField(
-            model_name='session',
-            name='duration_manual',
-            field=models.DurationField(blank=True, default=datetime.timedelta(0), null=True, verbose_name='Manual duration'),
+            model_name="session",
+            name="duration_manual",
+            field=models.DurationField(
+                blank=True,
+                default=datetime.timedelta(0),
+                null=True,
+                verbose_name="Manual duration",
+            ),
         ),
         migrations.AlterField(
-            model_name='session',
-            name='timestamp_end',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='End'),
+            model_name="session",
+            name="timestamp_end",
+            field=models.DateTimeField(blank=True, null=True, verbose_name="End"),
         ),
         migrations.AlterField(
-            model_name='session',
-            name='timestamp_start',
-            field=models.DateTimeField(verbose_name='Start'),
+            model_name="session",
+            name="timestamp_start",
+            field=models.DateTimeField(verbose_name="Start"),
         ),
     ]

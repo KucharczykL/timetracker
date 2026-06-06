@@ -104,7 +104,9 @@ class SessionDeviceUpdate(Schema):
 
 
 @session_router.patch("/{session_id}/device", response={204: None})
-def partial_update_session_device(request, session_id: int, payload: SessionDeviceUpdate):
+def partial_update_session_device(
+    request, session_id: int, payload: SessionDeviceUpdate
+):
     session = get_object_or_404(Session, id=session_id)
     session.device_id = payload.device_id
     session.save()
@@ -113,4 +115,3 @@ def partial_update_session_device(request, session_id: int, payload: SessionDevi
 
 
 api.add_router("/session", session_router)
-

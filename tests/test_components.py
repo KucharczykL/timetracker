@@ -36,9 +36,7 @@ class ComponentCacheTest(unittest.TestCase):
         self.assertGreaterEqual(info.hits, 1)  # served from cache
 
     def test_cache_is_bounded(self):
-        self.assertEqual(
-            components._render_element.cache_parameters()["maxsize"], 4096
-        )
+        self.assertEqual(components._render_element.cache_parameters()["maxsize"], 4096)
 
     def test_safe_and_unsafe_children_do_not_collide(self):
         """A SafeText "<b>" and a plain "<b>" are equal as strings but must
@@ -207,7 +205,9 @@ class ComponentReturnTypeTest(unittest.TestCase):
     def test_a_url_name_reversed(self):
         from unittest.mock import patch
 
-        with patch("common.components.reverse", return_value="/resolved/url"):
+        with patch(
+            "common.components.primitives.reverse", return_value="/resolved/url"
+        ):
             result = components.A([], "link", url_name="some_name")
             self.assertIn('href="/resolved/url"', result)
 
@@ -666,7 +666,7 @@ class ResolveNameWithIconTest(unittest.TestCase):
         override_game.name = "Override"
         override_game.platform = self.mock_platform
         override_game.pk = 99
-        with patch("common.components.reverse", return_value="/game/99"):
+        with patch("common.components.domain.reverse", return_value="/game/99"):
             name, platform, emulated, create_link, link = (
                 components._resolve_name_with_icon(
                     "", override_game, self.mock_session, True
@@ -676,7 +676,7 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertIsNot(name, "Override")
 
     def test_game_only_provides_platform(self):
-        with patch("common.components.reverse", return_value="/game/1"):
+        with patch("common.components.domain.reverse", return_value="/game/1"):
             name, platform, emulated, create_link, link = (
                 components._resolve_name_with_icon("", self.mock_game, None, True)
             )
@@ -713,7 +713,7 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertEqual(link, "")
 
     def test_linkify_true_creates_link(self):
-        with patch("common.components.reverse", return_value="/game/42"):
+        with patch("common.components.domain.reverse", return_value="/game/42"):
             name, platform, emulated, create_link, link = (
                 components._resolve_name_with_icon("", self.mock_game, None, True)
             )

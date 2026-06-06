@@ -10,11 +10,10 @@ from common.criteria import (
     ChoiceCriterion,
     IntCriterion,
     Modifier,
-    MultiCriterion,
     StringCriterion,
 )
-from common.components import FilterBar, SelectableFilter
-from games.filters import GameFilter, parse_game_filter
+from common.components import FilterBar
+from games.filters import GameFilter
 
 
 class TestStringCriterion:
@@ -30,7 +29,9 @@ class TestStringCriterion:
 class TestIntCriterion:
     def test_between(self):
         c = IntCriterion(value=2020, value2=2024, modifier=Modifier.BETWEEN)
-        assert c.to_q("year_released") == Q(year_released__gte=2020, year_released__lte=2024)
+        assert c.to_q("year_released") == Q(
+            year_released__gte=2020, year_released__lte=2024
+        )
 
 
 class TestBoolCriterion:
@@ -67,7 +68,9 @@ class TestChoiceCriterion:
         assert q == Q(status__in=["f"]) & ~Q(status__in=["a"])
 
     def test_include_two_and_exclude_one(self):
-        c = ChoiceCriterion(value=["f", "p"], excludes=["a"], modifier=Modifier.INCLUDES)
+        c = ChoiceCriterion(
+            value=["f", "p"], excludes=["a"], modifier=Modifier.INCLUDES
+        )
         q = c.to_q("status")
         assert q == Q(status__in=["f", "p"]) & ~Q(status__in=["a"])
 
@@ -105,6 +108,7 @@ class TestChoiceCriterionAgainstDB:
     def _seed_games(self):
         """Create test games with different statuses."""
         from games.models import Game, Platform
+
         platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
         statuses = ["u", "p", "f", "r", "a"]
         for i, s in enumerate(statuses):
@@ -115,11 +119,15 @@ class TestChoiceCriterionAgainstDB:
 
     def _count(self, c: ChoiceCriterion) -> int:
         from games.models import Game
+
         return Game.objects.filter(c.to_q("status")).count()
 
     def _statuses(self, c: ChoiceCriterion) -> set[str]:
         from games.models import Game
-        return set(Game.objects.filter(c.to_q("status")).values_list("status", flat=True))
+
+        return set(
+            Game.objects.filter(c.to_q("status")).values_list("status", flat=True)
+        )
 
     @pytest.mark.django_db
     def test_include_finished_includes_only_finished(self):
@@ -138,7 +146,9 @@ class TestChoiceCriterionAgainstDB:
     def test_include_and_exclude(self):
         """Include Finished but exclude Abandoned."""
         self._seed_games()
-        c = ChoiceCriterion(value=["f", "a"], excludes=["a"], modifier=Modifier.INCLUDES)
+        c = ChoiceCriterion(
+            value=["f", "a"], excludes=["a"], modifier=Modifier.INCLUDES
+        )
         # Include f and a, but exclude a → only f
         assert self._statuses(c) == {"f"}
 
@@ -198,7 +208,10 @@ class TestGameFilterFromJson:
         assert gf.platform.value == ["1", "3"]
 
     def test_round_trip(self):
-        data = {"status": {"value": ["f"], "modifier": "INCLUDES"}, "mastered": {"value": True, "modifier": "EQUALS"}}
+        data = {
+            "status": {"value": ["f"], "modifier": "INCLUDES"},
+            "mastered": {"value": True, "modifier": "EQUALS"},
+        }
         gf = GameFilter.from_json(data)
         json_out = gf.to_json()
         gf2 = GameFilter.from_json(json_out)
@@ -236,7 +249,9 @@ class TestFilterBarRendering:
         html = str(
             FilterBar(
                 platform_options=[],
-                filter_json=json.dumps({"mastered": {"value": True, "modifier": "EQUALS"}}),
+                filter_json=json.dumps(
+                    {"mastered": {"value": True, "modifier": "EQUALS"}}
+                ),
             )
         )
         assert 'checked="true"' in html
@@ -245,7 +260,9 @@ class TestFilterBarRendering:
         html = str(
             FilterBar(
                 platform_options=[],
-                filter_json=json.dumps({"status": {"value": ["f"], "modifier": "INCLUDES"}}),
+                filter_json=json.dumps(
+                    {"status": {"value": ["f"], "modifier": "INCLUDES"}}
+                ),
             )
         )
         assert 'data-value="f"' in html

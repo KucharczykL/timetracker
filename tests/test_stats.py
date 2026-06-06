@@ -47,14 +47,20 @@ class ComputeStatsTest(TestCase):
 
         # Game A in 2023: 1h + 1.5h on the same day = 2.5h
         Session.objects.create(
-            game=self.game_a, timestamp_start=dt(2023, 6, 10, 10), timestamp_end=dt(2023, 6, 10, 11)
+            game=self.game_a,
+            timestamp_start=dt(2023, 6, 10, 10),
+            timestamp_end=dt(2023, 6, 10, 11),
         )
         Session.objects.create(
-            game=self.game_a, timestamp_start=dt(2023, 6, 10, 14), timestamp_end=dt(2023, 6, 10, 15, 30)
+            game=self.game_a,
+            timestamp_start=dt(2023, 6, 10, 14),
+            timestamp_end=dt(2023, 6, 10, 15, 30),
         )
         # Game B in 2023: 1h tracked + 2h manual (no end) = 3h total
         Session.objects.create(
-            game=self.game_b, timestamp_start=dt(2023, 7, 1, 20), timestamp_end=dt(2023, 7, 1, 21)
+            game=self.game_b,
+            timestamp_start=dt(2023, 7, 1, 20),
+            timestamp_end=dt(2023, 7, 1, 21),
         )
         Session.objects.create(
             game=self.game_b,
@@ -63,7 +69,9 @@ class ComputeStatsTest(TestCase):
         )
         # Game A in 2022 (only counts toward all-time): 2h
         Session.objects.create(
-            game=self.game_a, timestamp_start=dt(2022, 5, 1, 10), timestamp_end=dt(2022, 5, 1, 12)
+            game=self.game_a,
+            timestamp_start=dt(2022, 5, 1, 10),
+            timestamp_end=dt(2022, 5, 1, 12),
         )
 
     # ── shared metrics (characterization) ──

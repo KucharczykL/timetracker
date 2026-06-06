@@ -66,8 +66,10 @@ class Game(models.Model):
         return self.name
 
     def finished(self):
-        return (self.status == self.Status.FINISHED or
-                self.playevents.filter(ended__isnull=False).exists())
+        return (
+            self.status == self.Status.FINISHED
+            or self.playevents.filter(ended__isnull=False).exists()
+        )
 
     def abandoned(self):
         return self.status == self.Status.ABANDONED

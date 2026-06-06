@@ -187,7 +187,7 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeT
     logo = static("icons/schedule.png")
     return mark_safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
     <div class="max-w-(--breakpoint-xl) flex flex-wrap items-center justify-between mx-auto p-4">
-        <a href="{reverse('games:index')}"
+        <a href="{reverse("games:index")}"
            class="flex items-center space-x-3 rtl:space-x-reverse">
             <img src="{logo}" height="48" width="48" alt="Timetracker Logo" class="mr-4" />
             <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">Timetracker</span>
@@ -229,11 +229,11 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeT
                     </button>
                     <div id="dropdownNavbarNew" class="z-10 hidden font-normal bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700 dark:divide-gray-600">
                         <ul class="py-2 text-sm text-gray-700 dark:text-gray-400" aria-labelledby="dropdownLargeButton">
-                            <li><a href="{reverse('games:add_device')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Device</a></li>
-                            <li><a href="{reverse('games:add_game')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Game</a></li>
-                            <li><a href="{reverse('games:add_platform')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platform</a></li>
-                            <li><a href="{reverse('games:add_purchase')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchase</a></li>
-                            <li><a href="{reverse('games:add_session')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Session</a></li>
+                            <li><a href="{reverse("games:add_device")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Device</a></li>
+                            <li><a href="{reverse("games:add_game")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Game</a></li>
+                            <li><a href="{reverse("games:add_platform")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platform</a></li>
+                            <li><a href="{reverse("games:add_purchase")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchase</a></li>
+                            <li><a href="{reverse("games:add_session")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Session</a></li>
                         </ul>
                     </div>
                 </li>
@@ -247,20 +247,20 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeT
                     </button>
                     <div id="dropdownNavbarManage" class="z-10 hidden font-normal bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700 dark:divide-gray-600">
                         <ul class="py-2 text-sm text-gray-700 dark:text-gray-400" aria-labelledby="dropdownLargeButton">
-                            <li><a href="{reverse('games:list_devices')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Devices</a></li>
-                            <li><a href="{reverse('games:list_games')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Games</a></li>
-                            <li><a href="{reverse('games:list_platforms')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platforms</a></li>
-                            <li><a href="{reverse('games:list_playevents')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Play events</a></li>
-                            <li><a href="{reverse('games:list_purchases')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchases</a></li>
-                            <li><a href="{reverse('games:list_sessions')}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Sessions</a></li>
+                            <li><a href="{reverse("games:list_devices")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Devices</a></li>
+                            <li><a href="{reverse("games:list_games")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Games</a></li>
+                            <li><a href="{reverse("games:list_platforms")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platforms</a></li>
+                            <li><a href="{reverse("games:list_playevents")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Play events</a></li>
+                            <li><a href="{reverse("games:list_purchases")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchases</a></li>
+                            <li><a href="{reverse("games:list_sessions")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Sessions</a></li>
                         </ul>
                     </div>
                 </li>
                 <li>
-                    <a href="{reverse('games:stats_by_year', args=[current_year])}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Stats</a>
+                    <a href="{reverse("games:stats_by_year", args=[current_year])}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Stats</a>
                 </li>
                 <li>
-                    <a href="{reverse('logout')}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Log out</a>
+                    <a href="{reverse("logout")}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Log out</a>
                 </li>
             </ul>
         </div>
@@ -327,7 +327,7 @@ def Page(
         "        </div>\n"
         f"        {scripts}\n"
         f"        {_main_script(mastered)}\n"
-        '        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n'
+        "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
         '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'
         f"        {_TOAST_CONTAINER}\n"
         f'        <script src="{static("js/toast.js")}"></script>\n'

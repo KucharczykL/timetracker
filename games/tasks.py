@@ -60,7 +60,9 @@ def _save_converted_price(purchase, converted_price, needs_update):
     purchase.converted_currency = currency_to
     if needs_update:
         purchase.needs_price_update = False
-    purchase.save(update_fields=["converted_price", "converted_currency", "needs_price_update"])
+    purchase.save(
+        update_fields=["converted_price", "converted_currency", "needs_price_update"]
+    )
 
 
 def convert_prices():

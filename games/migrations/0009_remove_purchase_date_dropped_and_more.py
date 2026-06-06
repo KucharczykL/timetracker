@@ -4,18 +4,17 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0008_game_original_year_released_gamestatuschange_and_more'),
+        ("games", "0008_game_original_year_released_gamestatuschange_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='purchase',
-            name='date_dropped',
+            model_name="purchase",
+            name="date_dropped",
         ),
         migrations.RemoveField(
-            model_name='purchase',
-            name='date_finished',
+            model_name="purchase",
+            name="date_finished",
         ),
     ]

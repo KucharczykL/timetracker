@@ -18,9 +18,7 @@ class MiddlewareIntegrationTest(TestCase):
 
     @staticmethod
     def _create_user():
-        return User.objects.create_user(
-            username="testuser", password="testpass123"
-        )
+        return User.objects.create_user(username="testuser", password="testpass123")
 
     def setUp(self):
         self.client = Client()
@@ -97,10 +95,10 @@ class MiddlewareIntegrationTest(TestCase):
         self.assertEqual(data["show-toast"]["message"], "Purchase refunded")
         # Verify the row HTML contains the updated row id
         body = response.content.decode()
-        self.assertIn(f'purchase-row-{purchase.id}', body)
+        self.assertIn(f"purchase-row-{purchase.id}", body)
         # Verify OoO modal close element
-        self.assertIn('hx-swap-oob', body)
-        self.assertIn('refund-confirmation-modal', body)
+        self.assertIn("hx-swap-oob", body)
+        self.assertIn("refund-confirmation-modal", body)
         # Verify the purchase is actually refunded
         purchase.refresh_from_db()
         self.assertIsNotNone(purchase.date_refunded)

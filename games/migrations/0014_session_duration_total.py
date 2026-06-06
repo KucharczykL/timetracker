@@ -5,15 +5,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0013_game_playtime'),
+        ("games", "0013_game_playtime"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='session',
-            name='duration_total',
-            field=models.GeneratedField(db_persist=True, expression=django.db.models.expressions.CombinedExpression(models.F('duration_calculated'), '+', models.F('duration_manual')), output_field=models.DurationField()),
+            model_name="session",
+            name="duration_total",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=django.db.models.expressions.CombinedExpression(
+                    models.F("duration_calculated"), "+", models.F("duration_manual")
+                ),
+                output_field=models.DurationField(),
+            ),
         ),
     ]

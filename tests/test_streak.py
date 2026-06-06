@@ -5,7 +5,6 @@ from common.time import daterange, streak_bruteforce
 
 
 class StreakTest(unittest.TestCase):
-
     def test_daterange_exclusive(self):
         d = daterange(date(2024, 8, 1), date(2024, 8, 3))
         self.assertEqual(
@@ -24,13 +23,15 @@ class StreakTest(unittest.TestCase):
         self.assertEqual(streak_bruteforce([date(2024, 8, 1)])["days"], 1)
 
     def test_2day_streak(self):
-        self.assertEqual(streak_bruteforce([date(2024, 8, 1), date(2024, 8, 2)])["days"], 2)
+        self.assertEqual(
+            streak_bruteforce([date(2024, 8, 1), date(2024, 8, 2)])["days"], 2
+        )
 
     def test_31day_streak(self):
         self.assertEqual(
-            streak_bruteforce(daterange(date(2024, 8, 1), date(2024, 8, 31), end_inclusive=True))[
-                "days"
-            ],
+            streak_bruteforce(
+                daterange(date(2024, 8, 1), date(2024, 8, 31), end_inclusive=True)
+            )["days"],
             31,
         )
 

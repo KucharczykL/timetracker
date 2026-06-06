@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0015_alter_purchase_date_purchased_and_more'),
+        ("games", "0015_alter_purchase_date_purchased_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='purchase',
-            name='needs_price_update',
+            model_name="purchase",
+            name="needs_price_update",
             field=models.BooleanField(db_index=True, default=True),
         ),
         migrations.RunSQL(

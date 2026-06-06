@@ -16,9 +16,7 @@ class FormatDurationTest(TestCase):
     def test_duration_format(self):
         g = Game(name="The Test Game")
         g.save()
-        p = Purchase(
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO)
-        )
+        p = Purchase(date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO))
         p.save()
         p.games.add(g)
         p.save()

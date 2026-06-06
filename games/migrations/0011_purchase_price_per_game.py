@@ -6,15 +6,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0010_remove_purchase_price_per_game'),
+        ("games", "0010_remove_purchase_price_per_game"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='purchase',
-            name='price_per_game',
-            field=models.GeneratedField(db_persist=True, expression=django.db.models.expressions.CombinedExpression(django.db.models.functions.comparison.Coalesce(models.F('converted_price'), models.F('price'), 0), '/', models.F('num_purchases')), output_field=models.FloatField()),
+            model_name="purchase",
+            name="price_per_game",
+            field=models.GeneratedField(
+                db_persist=True,
+                expression=django.db.models.expressions.CombinedExpression(
+                    django.db.models.functions.comparison.Coalesce(
+                        models.F("converted_price"), models.F("price"), 0
+                    ),
+                    "/",
+                    models.F("num_purchases"),
+                ),
+                output_field=models.FloatField(),
+            ),
         ),
     ]

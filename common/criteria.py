@@ -38,19 +38,27 @@ class Modifier(str, Enum):
     @classmethod
     def for_strings(cls) -> list[Self]:
         return [
-            cls.EQUALS, cls.NOT_EQUALS,
-            cls.INCLUDES, cls.EXCLUDES,
-            cls.MATCHES_REGEX, cls.NOT_MATCHES_REGEX,
-            cls.IS_NULL, cls.NOT_NULL,
+            cls.EQUALS,
+            cls.NOT_EQUALS,
+            cls.INCLUDES,
+            cls.EXCLUDES,
+            cls.MATCHES_REGEX,
+            cls.NOT_MATCHES_REGEX,
+            cls.IS_NULL,
+            cls.NOT_NULL,
         ]
 
     @classmethod
     def for_numbers(cls) -> list[Self]:
         return [
-            cls.EQUALS, cls.NOT_EQUALS,
-            cls.GREATER_THAN, cls.LESS_THAN,
-            cls.BETWEEN, cls.NOT_BETWEEN,
-            cls.IS_NULL, cls.NOT_NULL,
+            cls.EQUALS,
+            cls.NOT_EQUALS,
+            cls.GREATER_THAN,
+            cls.LESS_THAN,
+            cls.BETWEEN,
+            cls.NOT_BETWEEN,
+            cls.IS_NULL,
+            cls.NOT_NULL,
         ]
 
     @classmethod
@@ -60,9 +68,11 @@ class Modifier(str, Enum):
     @classmethod
     def for_multi(cls) -> list[Self]:
         return [
-            cls.INCLUDES, cls.EXCLUDES,
+            cls.INCLUDES,
+            cls.EXCLUDES,
             cls.INCLUDES_ALL,
-            cls.IS_NULL, cls.NOT_NULL,
+            cls.IS_NULL,
+            cls.NOT_NULL,
         ]
 
 
@@ -152,8 +162,12 @@ class IntCriterion(_Criterion):
         if m == Modifier.BETWEEN:
             if self.value2 is None:
                 raise ValueError("BETWEEN requires value2")
-            return Q(**{f"{field_name}__gte": min(self.value, self.value2),
-                         f"{field_name}__lte": max(self.value, self.value2)})
+            return Q(
+                **{
+                    f"{field_name}__gte": min(self.value, self.value2),
+                    f"{field_name}__lte": max(self.value, self.value2),
+                }
+            )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
                 raise ValueError("NOT_BETWEEN requires value2")
@@ -185,8 +199,12 @@ class FloatCriterion(_Criterion):
         if m == Modifier.BETWEEN:
             if self.value2 is None:
                 raise ValueError("BETWEEN requires value2")
-            return Q(**{f"{field_name}__gte": min(self.value, self.value2),
-                         f"{field_name}__lte": max(self.value, self.value2)})
+            return Q(
+                **{
+                    f"{field_name}__gte": min(self.value, self.value2),
+                    f"{field_name}__lte": max(self.value, self.value2),
+                }
+            )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
                 raise ValueError("NOT_BETWEEN requires value2")
@@ -218,12 +236,15 @@ class DateCriterion(_Criterion):
         if m == Modifier.BETWEEN:
             if self.value2 is None:
                 raise ValueError("BETWEEN requires value2")
-            return Q(**{f"{field_name}__gte": self.value,
-                         f"{field_name}__lte": self.value2})
+            return Q(
+                **{f"{field_name}__gte": self.value, f"{field_name}__lte": self.value2}
+            )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
                 raise ValueError("NOT_BETWEEN requires value2")
-            return Q(**{f"{field_name}__lt": self.value}) | Q(**{f"{field_name}__gt": self.value2})
+            return Q(**{f"{field_name}__lt": self.value}) | Q(
+                **{f"{field_name}__gt": self.value2}
+            )
         if m == Modifier.IS_NULL:
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
@@ -248,6 +269,7 @@ class BoolCriterion(_Criterion):
 @dataclass
 class MultiCriterion(_Criterion):
     """Filter on a many-to-many or ForeignKey relationship by ID list."""
+
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
     modifier: Modifier = Modifier.INCLUDES
@@ -407,9 +429,13 @@ class OperatorFilter:
                 f_type = f_type.split("|")[0].strip()
             if isinstance(f_type, str) and f_type in criterion_types:
                 criterion_cls = criterion_types[f_type]
-                kwargs[f.name] = criterion_cls.from_json(raw) if isinstance(raw, dict) else None
+                kwargs[f.name] = (
+                    criterion_cls.from_json(raw) if isinstance(raw, dict) else None
+                )
             elif isinstance(f_type, type) and issubclass(f_type, _Criterion):
-                kwargs[f.name] = f_type.from_json(raw) if isinstance(raw, dict) else None
+                kwargs[f.name] = (
+                    f_type.from_json(raw) if isinstance(raw, dict) else None
+                )
         return cls(**kwargs)
 
     def to_json(self) -> dict[str, Any]:

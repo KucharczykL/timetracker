@@ -43,7 +43,9 @@ class SessionForm(forms.ModelForm):
         ),
         label="Manual duration",
     )
-    device = forms.ModelChoiceField(queryset=Device.objects.order_by("name"), required=False)
+    device = forms.ModelChoiceField(
+        queryset=Device.objects.order_by("name"), required=False
+    )
 
     mark_as_played = forms.BooleanField(
         required=False,

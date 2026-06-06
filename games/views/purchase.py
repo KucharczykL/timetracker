@@ -100,6 +100,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     filter_json = request.GET.get("filter", "")
     if filter_json:
         from games.filters import parse_purchase_filter
+
         pf = parse_purchase_filter(filter_json)
         if pf is not None:
             purchases = purchases.filter(pf.to_q())
@@ -129,6 +130,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         request=request,
     )
     from common.components import PurchaseFilterBar, ModuleScript
+
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
         preset_list_url=reverse("games:list_presets"),
@@ -139,7 +141,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         request,
         content,
         title="Manage purchases",
-        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("selectable_filter.js")
+        + ModuleScript("filter_bar.js"),
     )
 
 

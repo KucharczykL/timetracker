@@ -1,9 +1,7 @@
 import functools
 from pathlib import Path
 
-_ICON_DIR = (
-    Path(__file__).resolve().parent.parent / "games" / "templates" / "icons"
-)
+_ICON_DIR = Path(__file__).resolve().parent.parent / "games" / "templates" / "icons"
 
 
 @functools.lru_cache(maxsize=1)

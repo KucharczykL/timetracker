@@ -45,6 +45,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     filter_json = request.GET.get("filter", "")
     if filter_json:
         from games.filters import parse_session_filter
+
         session_filter = parse_session_filter(filter_json)
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())
@@ -168,6 +169,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         request=request,
     )
     from common.components import SessionFilterBar
+
     filter_json = request.GET.get("filter", "")
     filter_bar = SessionFilterBar(
         filter_json=filter_json,
@@ -179,7 +181,9 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         request,
         content,
         title="Manage sessions",
-        scripts=ModuleScript("range_slider.js") + ModuleScript("selectable_filter.js") + ModuleScript("filter_bar.js"),
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("selectable_filter.js")
+        + ModuleScript("filter_bar.js"),
     )
 
 

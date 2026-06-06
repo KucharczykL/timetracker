@@ -4,26 +4,45 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0016_add_needs_price_update'),
+        ("games", "0016_add_needs_price_update"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='FilterPreset',
+            name="FilterPreset",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=255)),
-                ('mode', models.CharField(choices=[('games', 'Games'), ('sessions', 'Sessions'), ('purchases', 'Purchases'), ('playevents', 'Play Events')], default='games', max_length=50)),
-                ('find_filter', models.JSONField(blank=True, default=dict)),
-                ('object_filter', models.JSONField(blank=True, default=dict)),
-                ('ui_options', models.JSONField(blank=True, default=dict)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "mode",
+                    models.CharField(
+                        choices=[
+                            ("games", "Games"),
+                            ("sessions", "Sessions"),
+                            ("purchases", "Purchases"),
+                            ("playevents", "Play Events"),
+                        ],
+                        default="games",
+                        max_length=50,
+                    ),
+                ),
+                ("find_filter", models.JSONField(blank=True, default=dict)),
+                ("object_filter", models.JSONField(blank=True, default=dict)),
+                ("ui_options", models.JSONField(blank=True, default=dict)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'ordering': ['name'],
+                "ordering": ["name"],
             },
         ),
     ]
