@@ -15,8 +15,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
 | Create superuser | `make createsuperuser` |
-| Format Python | `uv run ruff format` |
-| Lint Python | `uv run ruff check` |
+| Format Python | `make format` (or `uv run ruff format`) |
+| Lint Python | `make lint` (or `uv run ruff check`) |
+| Auto-fix lint | `make lint-fix` (`ruff check --fix`) |
+| Lint + format check + tests | `make check` (CI-style aggregate) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 
 ## Architecture
