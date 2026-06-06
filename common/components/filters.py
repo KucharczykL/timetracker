@@ -7,6 +7,7 @@ from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
+from common.components.primitives import Label, Span
 
 
 class FilterChoice(NamedTuple):
@@ -115,8 +116,7 @@ def _filter_field(label: str, widget) -> SafeText:
         tag_name="div",
         attributes=[("class", "flex flex-col gap-1")],
         children=[
-            Component(
-                tag_name="label",
+            Label(
                 attributes=[("class", _FILTER_LABEL_CLASS)],
                 children=[label],
             ),
@@ -143,8 +143,7 @@ def _filter_number(label, name, value="", placeholder="") -> SafeText:
 
 
 def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
-    return Component(
-        tag_name="label",
+    return Label(
         attributes=[("class", "flex items-center gap-2 text-sm text-heading")],
         children=[
             Component(
@@ -216,8 +215,7 @@ def RangeSlider(
                 tag_name="div",
                 attributes=[("class", "flex items-center gap-2 mb-1")],
                 children=[
-                    Component(
-                        tag_name="label",
+                    Label(
                         attributes=[
                             ("class", _FILTER_LABEL_CLASS),
                             ("for", min_input_id),
@@ -239,8 +237,7 @@ def RangeSlider(
                             ),
                         ],
                     ),
-                    Component(
-                        tag_name="span",
+                    Span(
                         attributes=[
                             (
                                 "class",
@@ -280,8 +277,7 @@ def RangeSlider(
                             ),
                         ],
                         children=[
-                            Component(
-                                tag_name="span",
+                            Span(
                                 attributes=[
                                     (
                                         "class",
@@ -291,8 +287,7 @@ def RangeSlider(
                                 ],
                                 children=[mark_safe(_RANGE_ICON_SVG)],
                             ),
-                            Component(
-                                tag_name="span",
+                            Span(
                                 attributes=[
                                     (
                                         "class",
@@ -444,8 +439,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                 ],
                 children=["Clear"],
             ),
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[
                     ("class", "flex gap-2 items-center"),
                     ("id", "save-preset-area"),
@@ -510,8 +504,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                     ("data-preset-list-url", preset_list_url),
                 ],
                 children=[
-                    Component(
-                        tag_name="span",
+                    Span(
                         attributes=[("class", "text-sm text-body")],
                         children=["Loading presets..."],
                     ),
@@ -684,16 +677,14 @@ def _selectable_filter_tag(
     """A selected (\u2713) or excluded (\u2717) value pill in the SelectableFilter."""
     checkmark = "\u2717" if excluded else "\u2713"
     css = "sf-tag sf-excluded" if excluded else "sf-tag"
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[
             ("class", css),
             ("data-value", value),
             ("data-type", "exclude" if excluded else "include"),
         ],
         children=[
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "sf-tag-text")],
                 children=[f"{checkmark} {label}"],
             ),
@@ -712,8 +703,7 @@ def _selectable_filter_tag(
 
 def _selectable_filter_modifier_tag(modifier: str, label: str) -> SafeText:
     """An active modifier pill ((Any) / (None)) in the SelectableFilter."""
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[
             ("class", "sf-modifier-tag active"),
             ("data-modifier", modifier),
@@ -732,8 +722,7 @@ def _selectable_filter_modifier_option(modifier: str, label: str) -> SafeText:
             ("data-label", label),
         ],
         children=[
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "sf-option-label")],
                 children=[label],
             ),
@@ -751,13 +740,11 @@ def _selectable_filter_option(value: str, label: str) -> SafeText:
             ("data-label", label),
         ],
         children=[
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "sf-option-label")],
                 children=[label],
             ),
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "sf-option-buttons")],
                 children=[
                     Component(

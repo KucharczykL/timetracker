@@ -65,6 +65,10 @@ class Game(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def search_label(self) -> str:
+        return f"{self.sort_name} ({self.platform}, {self.year_released})"
+
     def finished(self):
         return (
             self.status == self.Status.FINISHED
@@ -290,7 +294,7 @@ class Session(models.Model):
         default=None,
         related_name="sessions",
     )
-    timestamp_start = models.DateTimeField(verbose_name="Start")
+    timestamp_start = models.DateTimeField(verbose_name="Start", db_index=True)
     timestamp_end = models.DateTimeField(blank=True, null=True, verbose_name="End")
     duration_manual = models.DurationField(
         blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"

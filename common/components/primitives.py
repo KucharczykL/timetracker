@@ -42,8 +42,7 @@ def _popover_html(
     """
     display_content = wrapped_content if wrapped_content else slot
 
-    span = Component(
-        tag_name="span",
+    span = Span(
         attributes=[
             ("data-popover-target", id),
             ("class", wrapped_classes),
@@ -77,8 +76,7 @@ def _popover_html(
                 "<!-- for Tailwind CSS to generate decoration-dotted CSS "
                 "from Python component -->"
             ),
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "hidden decoration-dotted")],
             ),
         ],
@@ -353,6 +351,74 @@ def Input(
     )
 
 
+def Span(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="span", attributes=attributes, children=children)
+
+
+def Label(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="label", attributes=attributes, children=children)
+
+
+# Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
+# input.css, written inline so styling stays encapsulated in the component). The
+# JS that builds pills client-side (search_select.js) MUST emit these exact class
+# strings byte-for-byte so Tailwind generates them and server/JS pills match.
+_PILL_CLASS = (
+    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "bg-brand/15 text-heading"
+)
+_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
+
+
+def Pill(
+    label: str,
+    *,
+    value: str = "",
+    removable: bool = False,
+    extra_class: str = "",
+    attributes: list[HTMLAttribute] | None = None,
+) -> SafeText:
+    """A small label pill, optionally removable (× button).
+
+    Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
+    are JS hooks only (no CSS attached). ``value`` (when set) becomes
+    ``data-value``; extra ``attributes`` are appended to the outer span.
+    """
+    attributes = attributes or []
+    pill_class = f"{_PILL_CLASS} {extra_class}".strip()
+    pill_attrs: list[HTMLAttribute] = [("class", pill_class), ("data-pill", "")]
+    if value != "":
+        pill_attrs.append(("data-value", str(value)))
+    pill_attrs.extend(attributes)
+
+    children: list[HTMLTag] = [label]
+    if removable:
+        children.append(
+            Component(
+                tag_name="button",
+                attributes=[
+                    ("type", "button"),
+                    ("data-pill-remove", ""),
+                    ("class", _PILL_REMOVE_CLASS),
+                    ("aria-label", "Remove"),
+                ],
+                children=["×"],
+            )
+        )
+
+    return Component(tag_name="span", attributes=pill_attrs, children=children)
+
+
 def CsrfInput(request) -> SafeText:
     """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag."""
     return mark_safe(
@@ -421,8 +487,7 @@ def SearchField(
         tag_name="form",
         attributes=[("class", "max-w-md")],
         children=[
-            Component(
-                tag_name="label",
+            Label(
                 attributes=[
                     ("for", "search"),
                     ("class", "block mb-2.5 text-sm font-medium text-heading sr-only"),
@@ -491,8 +556,7 @@ def H1(
 
     if badge:
         heading_class = "flex items-center " + heading_class
-        badge_html = Component(
-            tag_name="span",
+        badge_html = Span(
             attributes=[
                 (
                     "class",

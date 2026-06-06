@@ -13,6 +13,7 @@ from common.components.primitives import (
     Icon,
     Popover,
     PopoverTruncated,
+    Span,
 )
 from games.models import Game, Purchase, Session
 
@@ -29,8 +30,7 @@ def GameLink(
     display = children if children else [name]
     link = reverse("games:view_game", args=[game_id])
 
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[("class", "truncate-container")],
         children=[
             Component(
@@ -70,14 +70,12 @@ def GameStatus(
         outer_class += f" {class_}"
     dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS["u"])
 
-    dot = Component(
-        tag_name="span",
+    dot = Span(
         attributes=[("class", f"rounded-xl w-3 h-3 {dot_color}")],
         children=["\xa0"],
     )
 
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[("class", outer_class)],
         children=[dot] + (children if isinstance(children, list) else [children]),
     )
@@ -88,8 +86,7 @@ def PriceConverted(
 ) -> SafeText:
     """Wrap content in a span that indicates the price was converted."""
     children = children or []
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[
             ("title", "Price is a result of conversion and rounding."),
             ("class", "decoration-dotted underline"),

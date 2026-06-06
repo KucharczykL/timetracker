@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import List
 
 from django.contrib import messages
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
@@ -48,6 +49,27 @@ class PlayEventOut(Schema):
     note: str = ""
     updated_at: datetime
     created_at: datetime
+
+
+class GameOption(Schema):  # mirrors SearchSelectOption
+    value: int
+    label: str
+    data: dict
+
+
+@game_router.get("/search", response=list[GameOption])
+def search_games(request, q: str = "", limit: int = 10):
+    qs = Game.objects.select_related("platform").order_by("sort_name")
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(sort_name__icontains=q))
+    return [
+        {
+            "value": g.id,
+            "label": g.search_label,
+            "data": {"platform": g.platform_id or ""},
+        }
+        for g in qs[:limit]
+    ]
 
 
 @game_router.patch("/{game_id}/status", response={204: None})

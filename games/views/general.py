@@ -10,6 +10,7 @@ from django.db.models import (
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 
 from common.layout import render_page
@@ -21,11 +22,14 @@ from games.views.stats_data import compute_stats
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
     now = timezone_now()
-    this_day, this_month, this_year = now.day, now.month, now.year
+    # Use a contiguous [midnight, next midnight) range in the active timezone
+    # instead of day/month/year extracts: a range filter can use an index on
+    # timestamp_start, whereas the extracts force a per-row datetime function.
+    start_of_today = localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_tomorrow = start_of_today + timedelta(days=1)
     today_played = Session.objects.filter(
-        timestamp_start__day=this_day,
-        timestamp_start__month=this_month,
-        timestamp_start__year=this_year,
+        timestamp_start__gte=start_of_today,
+        timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
     last_7_played = Session.objects.filter(
         timestamp_start__gte=(now - timedelta(days=7))

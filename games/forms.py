@@ -1,8 +1,12 @@
 from django import forms
 from django.db import transaction
-from django.urls import reverse
+from django.db.models import OuterRef, Subquery
 
-from common.utils import safe_getattr
+from common.components import (
+    SearchSelect,
+    SearchSelectOption,
+    searchselect_selected,
+)
 from games.models import (
     Device,
     Game,
@@ -22,18 +26,90 @@ autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj) -> str:
-        return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
+        return obj.search_label
 
 
 class SingleGameChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj) -> str:
-        return f"{obj.sort_name} ({obj.platform}, {obj.year_released})"
+        return obj.search_label
+
+
+def _game_options(values) -> list[SearchSelectOption]:
+    """Resolve game ids (or instances) to SearchSelectOptions via one pk__in query."""
+    return [
+        {
+            "value": g.id,
+            "label": g.search_label,
+            "data": {"platform": g.platform_id or ""},
+        }
+        for g in Game.objects.filter(pk__in=values).select_related("platform")
+    ]
+
+
+class SearchSelectWidget(forms.Widget):
+    """Thin Django adapter that renders a `SearchSelect()` component.
+
+    The only place that knows about Django/forms — the component itself stays
+    reusable outside forms.
+    """
+
+    def __init__(
+        self,
+        *,
+        search_url,
+        multi_select=False,
+        items_visible=5,
+        items_scroll=10,
+        always_visible=False,
+        placeholder="Search…",
+        attrs=None,
+    ):
+        super().__init__(attrs)
+        self.search_url = search_url
+        self.multi_select = multi_select
+        self.items_visible = items_visible
+        self.items_scroll = items_scroll
+        self.always_visible = always_visible
+        self.placeholder = placeholder
+
+    @staticmethod
+    def _values(value) -> list:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            return [v for v in value if v not in (None, "")]
+        return [value] if value not in (None, "") else []
+
+    def render(self, name, value, attrs=None, renderer=None):
+        selected = searchselect_selected(self._values(value), _game_options)
+        return SearchSelect(
+            name=name,
+            selected=selected,
+            options=None,
+            search_url=self.search_url,
+            multi_select=self.multi_select,
+            items_visible=self.items_visible,
+            items_scroll=self.items_scroll,
+            always_visible=self.always_visible,
+            placeholder=self.placeholder,
+            id=(attrs or {}).get("id", ""),
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
+class SearchSelectMultiple(SearchSelectWidget):
+    def value_from_datadict(self, data, files, name):
+        if hasattr(data, "getlist"):
+            return data.getlist(name)
+        return data.get(name)
 
 
 class SessionForm(forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
-        widget=forms.Select(attrs={"autofocus": "autofocus"}),
+        widget=SearchSelectWidget(search_url="/api/games/search"),
     )
 
     duration_manual = forms.DurationField(
@@ -83,38 +159,43 @@ class SessionForm(forms.ModelForm):
         return session
 
 
-class IncludePlatformSelect(forms.SelectMultiple):
-    def create_option(self, name, value, *args, **kwargs):
-        option = super().create_option(name, value, *args, **kwargs)
-        if platform_id := safe_getattr(value, "instance.platform.id"):
-            option["attrs"]["data-platform"] = platform_id
-        return option
+def related_purchase_queryset():
+    """GAME purchases annotated with their first game's name.
+
+    Rendering the ``related_purchase`` ``<select>`` calls ``str()`` on every
+    option, and ``Purchase.__str__`` falls back to ``first_game`` — one extra
+    query per option (700+ on a large library). Annotating the first game's
+    name via a subquery lets the choice field build labels without those
+    per-row queries.
+    """
+    first_game_name = Subquery(
+        Game.objects.filter(purchases=OuterRef("pk")).order_by("id").values("name")[:1]
+    )
+    return Purchase.objects.filter(type=Purchase.GAME).annotate(
+        _first_game_name=first_game_name
+    )
+
+
+class RelatedPurchaseChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj) -> str:
+        # Mirrors Purchase.standardized_name but reads the annotated first-game
+        # name instead of querying first_game per option.
+        name = obj.name or getattr(obj, "_first_game_name", None)
+        return name or obj.standardized_name
 
 
 class PurchaseForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # Automatically update related_purchase <select/>
-        # to only include purchases of the selected game.
-        related_purchase_by_game_url = reverse("games:related_purchase_by_game")
-        self.fields["games"].widget.attrs.update(
-            {
-                "hx-trigger": "load, click",
-                "hx-get": related_purchase_by_game_url,
-                "hx-target": "#id_related_purchase",
-                "hx-swap": "outerHTML",
-            }
-        )
         self.fields["platform"].queryset = Platform.objects.order_by("name")
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
-        widget=IncludePlatformSelect(attrs={"autoselect": "autoselect"}),
+        widget=SearchSelectMultiple(search_url="/api/games/search", multi_select=True),
     )
     platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
-    related_purchase = forms.ModelChoiceField(
-        queryset=Purchase.objects.filter(type=Purchase.GAME),
+    related_purchase = RelatedPurchaseChoiceField(
+        queryset=related_purchase_queryset(),
         required=False,
     )
 

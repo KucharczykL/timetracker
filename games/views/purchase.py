@@ -203,7 +203,9 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Add New Purchase",
-        scripts=ModuleScript("add_purchase.js"),
+        scripts=mark_safe(
+            ModuleScript("search_select.js") + ModuleScript("add_purchase.js")
+        ),
     )
 
 
@@ -219,7 +221,9 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Edit Purchase",
-        scripts=ModuleScript("add_purchase.js"),
+        scripts=mark_safe(
+            ModuleScript("search_select.js") + ModuleScript("add_purchase.js")
+        ),
     )
 
 
@@ -401,8 +405,10 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
     games: list[str] = request.GET.getlist("games")
     if games:
+        from games.forms import related_purchase_queryset
+
         form = PurchaseForm()
-        qs = Purchase.objects.filter(games__in=games, type=Purchase.GAME).order_by(
+        qs = related_purchase_queryset().filter(games__in=games).order_by(
             "games__sort_name"
         )
 

@@ -1,0 +1,182 @@
+"""Search field + dropdown select component (pure Python, domain-agnostic).
+
+Pairs a search box with a dropdown of options. Supports single/multi select;
+in multi-select, chosen items render as removable ``Pill``s, each backed by a
+hidden ``<input>`` so an existing ``ModelMultipleChoiceField`` keeps validating.
+
+This module imports only from ``common.components`` — it has no Django-forms or
+``games`` knowledge. Styling is inline Tailwind utilities; behavioural hooks are
+``data-*`` attributes wired up by ``games/static/js/search_select.js``.
+"""
+
+from collections.abc import Callable, Iterable
+from typing import TypedDict
+
+from django.utils.safestring import SafeText
+
+from common.components.core import Component, HTMLAttribute
+from common.components.primitives import Pill
+
+
+class SearchSelectOption(TypedDict):
+    value: str | int
+    label: str
+    data: dict[str, str]  # becomes data-* attrs on the row / pill
+
+
+# removed border and border-default-medium, see later if it's needed
+_CONTAINER_CLASS = "relative rounded-base bg-neutral-secondary-medium"
+_PILLS_CLASS = "flex flex-wrap gap-1 p-2 empty:hidden"
+_SEARCH_CLASS = (
+    "block w-full border-0 bg-transparent text-sm text-heading p-2 "
+    "focus:ring-0 focus:outline-hidden placeholder:text-body"
+)
+_OPTIONS_CLASS = (
+    "absolute z-10 left-0 right-0 mt-1 overflow-y-auto border border-default-medium "
+    "rounded-base bg-neutral-secondary-medium shadow-lg"
+)
+_OPTION_ROW_CLASS = "px-3 py-2 text-sm text-heading cursor-pointer hover:bg-brand/15"
+_NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
+
+# Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,
+# used to derive the panel's max-height from items_visible.
+_ROW_HEIGHT_REM = 2.25
+
+
+def _normalize_option(option) -> SearchSelectOption:
+    """Coerce a dict option or a ``(value, label)`` tuple into the TypedDict."""
+    if isinstance(option, dict):
+        return {
+            "value": option["value"],
+            "label": option["label"],
+            "data": option.get("data") or {},
+        }
+    value, label = option
+    return {"value": value, "label": label, "data": {}}
+
+
+def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
+    return [(f"data-{key}", str(value)) for key, value in data.items()]
+
+
+def _hidden_input(name: str, value) -> SafeText:
+    return Component(
+        tag_name="input",
+        attributes=[("type", "hidden"), ("name", name), ("value", str(value))],
+    )
+
+
+def _option_row(option: SearchSelectOption) -> SafeText:
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("data-ss-option", ""),
+            ("data-value", str(option["value"])),
+            ("data-label", option["label"]),
+            ("class", _OPTION_ROW_CLASS),
+            *_data_attributes(option["data"]),
+        ],
+        children=[option["label"]],
+    )
+
+
+def SearchSelect(
+    *,
+    name: str,
+    selected: list[SearchSelectOption] | None = None,
+    options: list[SearchSelectOption] | None = None,
+    search_url: str = "",
+    multi_select: bool = False,
+    always_visible: bool = False,
+    items_visible: int = 5,
+    items_scroll: int = 10,
+    placeholder: str = "Search…",
+    id: str = "",
+    sync_url: bool = False,
+) -> SafeText:
+    """Render the search-select widget. See module docstring for the contract."""
+    selected = [_normalize_option(o) for o in (selected or [])]
+    options = [_normalize_option(o) for o in (options or [])]
+
+    # ── Pills + their hidden inputs (the submitted channel) ──
+    pills_children: list[SafeText] = []
+    for option in selected:
+        pills_children.append(
+            Pill(
+                option["label"],
+                value=str(option["value"]),
+                removable=True,
+                attributes=_data_attributes(option["data"]),
+            )
+        )
+        pills_children.append(_hidden_input(name, option["value"]))
+
+    pills = Component(
+        tag_name="div",
+        attributes=[("data-ss-pills", ""), ("class", _PILLS_CLASS)],
+        children=pills_children,
+    )
+
+    # ── Search box (NO name — the query is never submitted) ──
+    search = Component(
+        tag_name="input",
+        attributes=[
+            ("data-ss-search", ""),
+            ("type", "text"),
+            ("placeholder", placeholder),
+            ("autocomplete", "off"),
+            ("class", _SEARCH_CLASS),
+        ],
+    )
+
+    # ── Options panel (pre-rendered only when there is no search_url) ──
+    option_rows = [_option_row(o) for o in options] if not search_url else []
+    no_results = Component(
+        tag_name="div",
+        attributes=[("data-ss-no-results", ""), ("class", _NO_RESULTS_CLASS)],
+        children=["No results"],
+    )
+    options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
+    options_panel = Component(
+        tag_name="div",
+        attributes=[
+            ("data-ss-options", ""),
+            ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
+            ("class", options_class),
+        ],
+        children=[*option_rows, no_results],
+    )
+
+    container_attrs: list[HTMLAttribute] = [
+        ("data-search-select", ""),
+        ("data-name", name),
+        ("data-search-url", search_url),
+        ("data-multi", "true" if multi_select else "false"),
+        ("data-always-visible", "true" if always_visible else "false"),
+        ("data-items-visible", str(items_visible)),
+        ("data-items-scroll", str(items_scroll)),
+        ("data-sync-url", "true" if sync_url else "false"),
+        ("class", _CONTAINER_CLASS),
+    ]
+    if id:
+        container_attrs.append(("id", id))
+
+    return Component(
+        tag_name="div",
+        attributes=container_attrs,
+        children=[pills, search, options_panel],
+    )
+
+
+def searchselect_selected(
+    values: list,
+    resolver: Callable[[list], Iterable[SearchSelectOption]],
+) -> list[SearchSelectOption]:
+    """Resolve ``values`` into ``SearchSelectOption``s via ``resolver``.
+
+    ``resolver(values)`` should resolve ONLY the given ids (a ``pk__in`` query)
+    — never iterating all choices, so it stays cheap.
+    """
+    if not values:
+        return []
+    return [_normalize_option(o) for o in resolver(values)]
