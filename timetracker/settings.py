@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "template_partials",
     "django_htmx",
-    "django_cotton",
     "django_q",
 ]
 

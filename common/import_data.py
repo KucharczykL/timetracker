@@ -20,8 +20,8 @@ def import_data(data: DataList):
             # try exact match first
             try:
                 game_id = Game.objects.get(name__iexact=name)
-            except:
-                pass
+            except (Game.DoesNotExist, Game.MultipleObjectsReturned):
+                game_id = None
             matching_names[name] = game_id
     print(f"Exact matched {len(matching_names)} games.")
 

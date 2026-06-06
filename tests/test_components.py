@@ -1,142 +1,16 @@
 import unittest
-from functools import lru_cache
 from unittest.mock import MagicMock, patch
 
 import django
 
-from django.template import TemplateDoesNotExist
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
 from games.models import Platform, Game, Purchase, Session
 
 
-class RenderCachedImplTest(unittest.TestCase):
-    """Test _render_cached_impl renders templates correctly."""
-
-    def test_basic_render(self):
-        result = components._render_cached_impl(
-            "cotton/icon/play.html",
-            '{"slot": "", "title": "Play"}',
-        )
-        self.assertIn("<svg", result)
-        self.assertIn("</svg>", result)
-
-    def test_slot_marked_safe(self):
-        result = components._render_cached_impl(
-            "cotton/icon/play.html",
-            '{"slot": "<b>bold</b>", "title": "Play"}',
-        )
-        self.assertIsInstance(result, SafeText)
-
-    def test_different_templates_different_output(self):
-        r1 = components._render_cached_impl(
-            "cotton/icon/play.html", '{"slot": "", "title": "Play"}',
-        )
-        r2 = components._render_cached_impl(
-            "cotton/icon/delete.html", '{"slot": "", "title": "Delete"}',
-        )
-        self.assertNotEqual(r1, r2)
-
-    def test_nonexistent_template_raises(self):
-        with self.assertRaises(TemplateDoesNotExist):
-            components._render_cached_impl(
-                "cotton/nonexistent.html", '{"slot": "", "title": "X"}',
-            )
-
-    def test_context_keys_are_sorted(self):
-        """Verify sort_keys=True in Component produces consistent JSON."""
-        from common.components import Component
-        r1 = Component(
-            template="cotton/icon/play.html",
-            attributes=[("title", "Play"), ("b", "2")],
-        )
-        r2 = Component(
-            template="cotton/icon/play.html",
-            attributes=[("b", "2"), ("title", "Play")],
-        )
-        self.assertEqual(r1, r2)
-
-
-class RenderCachedLRUTest(unittest.TestCase):
-    """Test LRU cache behavior of _render_cached when enabled."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
-
-    def test_cache_hits_and_misses(self):
-        # Call through _render_cached (the cached wrapper), not _render_cached_impl
-        components._render_cached(
-            "cotton/icon/play.html", '{"slot": "", "title": "Play"}',
-        )
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 0)
-        self.assertEqual(info.misses, 1)
-
-        components._render_cached(
-            "cotton/icon/play.html", '{"slot": "", "title": "Play"}',
-        )
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 1)
-        self.assertEqual(info.misses, 1)
-
-    def test_cache_clear(self):
-        components._render_cached_impl(
-            "cotton/icon/play.html", '{"slot": "", "title": "Play"}',
-        )
-        components._render_cached.cache_clear()
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.currsize, 0)
-        self.assertEqual(info.hits, 0)
-
-    def test_cache_parameters(self):
-        info = components._render_cached.cache_info()
-        self.assertEqual(components._render_cached.cache_parameters()["maxsize"], 4096)
-
-    def test_different_contexts_different_entries(self):
-        # Call through _render_cached (the cached wrapper), not _render_cached_impl
-        components._render_cached(
-            "cotton/button.html",
-            '{"size": "base", "color": "blue", "icon": false, "class": "hover:cursor-pointer", "slot": ""}',
-        )
-        components._render_cached(
-            "cotton/button.html",
-            '{"size": "base", "color": "red", "icon": false, "class": "hover:cursor-pointer", "slot": ""}',
-        )
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.currsize, 2)
-
-    def test_cache_size_limited(self):
-        """After exceeding maxsize, oldest entries are evicted."""
-        for i in range(5000):
-            components._render_cached_impl(
-                f"cotton/icon/play.html",
-                f'{{"slot": "", "title": "{i}"}}',
-            )
-        info = components._render_cached.cache_info()
-        self.assertLessEqual(info.currsize, 4096)
-
-
 class ComponentIntegrationTest(unittest.TestCase):
     """Test Component() works correctly with caching transparent."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
-
-    def test_template_component(self):
-        result = components.Component(
-            template="cotton/icon/play.html", attributes=[],
-        )
-        self.assertIn("<svg", result)
-        self.assertIn("</svg>", result)
 
     def test_tag_name_component(self):
         result = components.Component(
@@ -146,23 +20,34 @@ class ComponentIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(result, '<div class="test">hello</div>')
 
-    def test_repeated_calls_identical(self):
-        r1 = components.Component(
-            template="cotton/icon/play.html", attributes=[],
-        )
-        r2 = components.Component(
-            template="cotton/icon/play.html", attributes=[],
-        )
-        self.assertEqual(r1, r2)
 
-    def test_different_components_different(self):
-        r1 = components.Component(
-            template="cotton/button.html", attributes=[("hx_get", "/url1")],
+class ComponentCacheTest(unittest.TestCase):
+    """Component rendering is memoized via _render_element."""
+
+    def setUp(self):
+        components._render_element.cache_clear()
+
+    def test_identical_components_hit_cache(self):
+        components.Component(tag_name="div", attributes=[("class", "x")], children="hi")
+        misses = components._render_element.cache_info().misses
+        components.Component(tag_name="div", attributes=[("class", "x")], children="hi")
+        info = components._render_element.cache_info()
+        self.assertEqual(info.misses, misses)  # no new miss
+        self.assertGreaterEqual(info.hits, 1)  # served from cache
+
+    def test_cache_is_bounded(self):
+        self.assertEqual(
+            components._render_element.cache_parameters()["maxsize"], 4096
         )
-        r2 = components.Component(
-            template="cotton/button.html", attributes=[("hx_get", "/url2")],
-        )
-        self.assertNotEqual(r1, r2)
+
+    def test_safe_and_unsafe_children_do_not_collide(self):
+        """A SafeText "<b>" and a plain "<b>" are equal as strings but must
+        render differently — the cache key must keep them distinct."""
+        safe = components.Component(tag_name="span", children=[mark_safe("<b>x</b>")])
+        unsafe = components.Component(tag_name="span", children=["<b>x</b>"])
+        self.assertIn("<b>x</b>", safe)
+        self.assertIn("&lt;b&gt;x&lt;/b&gt;", unsafe)
+        self.assertNotEqual(safe, unsafe)
 
 
 class RandomidDeterministicTest(unittest.TestCase):
@@ -191,7 +76,9 @@ class RandomidDeterministicTest(unittest.TestCase):
 
     def test_output_is_lowercase_alphanum(self):
         result = components.randomid(content="test")
-        self.assertTrue(all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in result))
+        self.assertTrue(
+            all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in result)
+        )
 
     def test_output_length_is_correct(self):
         for length in [5, 10, 15, 20]:
@@ -209,6 +96,7 @@ class RandomidVsOldBehaviorTest(unittest.TestCase):
     def _old_random_id(self, seed="", length=10):
         from random import choices
         from string import ascii_lowercase
+
         return seed + "".join(choices(ascii_lowercase, k=length))
 
     def test_old_random_produces_different_ids(self):
@@ -226,13 +114,6 @@ class RandomidVsOldBehaviorTest(unittest.TestCase):
 
 class PopoverDeterministicTest(unittest.TestCase):
     """Test that Popover() produces deterministic HTML output."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
 
     def test_same_popover_same_id(self):
         r1 = components.Popover("hello", wrapped_content="hello")
@@ -265,75 +146,33 @@ class PopoverDeterministicTest(unittest.TestCase):
         self.assertEqual(r1.encode(), r2.encode())
 
 
-class PopoverCacheIntegrationTest(unittest.TestCase):
-    """Test that Popover() output works correctly with LRU caching."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
-
-    def _get_popover_context(self, popover_content, wrapped_content="", wrapped_classes="", slot=""):
-        """Build the context JSON matching the new cotton/popover.html shim."""
-        import json
-        content = f"{wrapped_content}:{popover_content}:{wrapped_classes}"
-        id = components.randomid(content=content)
-        context = {
-            "id": id,
-            "popover_content": popover_content,
-            "wrapped_content": wrapped_content,
-            "wrapped_classes": wrapped_classes,
-            "slot": slot,
-        }
-        return json.dumps(context, sort_keys=True)
-
-    def test_popover_shim_template_is_cached(self):
-        ctx_a = self._get_popover_context(popover_content="a", wrapped_content="a")
-        ctx_b = self._get_popover_context(popover_content="b", wrapped_content="b")
-        components._render_cached("cotton/popover.html", ctx_a)
-        components._render_cached("cotton/popover.html", ctx_b)
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.currsize, 2)
-
-    def test_popover_shim_repeated_call_uses_cache(self):
-        ctx = self._get_popover_context(popover_content="x", wrapped_content="x")
-        for _ in range(5):
-            components._render_cached("cotton/popover.html", ctx)
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 4)
-
-    def test_popover_shim_no_cache_hit_on_first_call(self):
-        ctx = self._get_popover_context(popover_content="y", wrapped_content="y")
-        components._render_cached("cotton/popover.html", ctx)
-        info = components._render_cached.cache_info()
-        self.assertEqual(info.hits, 0)
-
-
 class TemplatetagRandomidTest(unittest.TestCase):
     """Test games/templatetags/randomid.py produces deterministic IDs."""
 
     def test_same_seed_same_id(self):
         from games.templatetags import randomid
+
         r1 = randomid.randomid(seed="foo")
         r2 = randomid.randomid(seed="foo")
         self.assertEqual(r1, r2)
 
     def test_different_seed_different_id(self):
         from games.templatetags import randomid
+
         r1 = randomid.randomid(seed="foo")
         r2 = randomid.randomid(seed="bar")
         self.assertNotEqual(r1, r2)
 
     def test_output_length_ten(self):
         from games.templatetags import randomid
+
         for seed in ["a", "hello", "test1234"]:
             result = randomid.randomid(seed=seed)
             self.assertEqual(len(result), 10)
 
     def test_empty_seed_returns_hash(self):
         from games.templatetags import randomid
+
         result = randomid.randomid()
         self.assertEqual(len(result), 10)
         self.assertTrue(all(c in "abcdef0123456789" for c in result))
@@ -341,13 +180,6 @@ class TemplatetagRandomidTest(unittest.TestCase):
 
 class ComponentReturnTypeTest(unittest.TestCase):
     """Test that component functions return SafeText and render correctly."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
 
     def test_div_returns_safe_text(self):
         result = components.Div([("class", "x")], "hello")
@@ -362,7 +194,7 @@ class ComponentReturnTypeTest(unittest.TestCase):
     def test_div_no_args(self):
         result = components.Div(children="test")
         self.assertIsInstance(result, SafeText)
-        self.assertIn('<div>test</div>', result)
+        self.assertIn("<div>test</div>", result)
 
     def test_a_returns_safe_text(self):
         result = components.A([], "link")
@@ -374,14 +206,15 @@ class ComponentReturnTypeTest(unittest.TestCase):
 
     def test_a_url_name_reversed(self):
         from unittest.mock import patch
+
         with patch("common.components.reverse", return_value="/resolved/url"):
             result = components.A([], "link", url_name="some_name")
             self.assertIn('href="/resolved/url"', result)
 
     def test_a_no_url_or_href(self):
         result = components.A([], "link")
-        self.assertIn('<a>link</a>', result)
-        self.assertNotIn('href=', result)
+        self.assertIn("<a>link</a>", result)
+        self.assertNotIn("href=", result)
 
     def test_a_both_url_name_and_href_raises(self):
         with self.assertRaises(ValueError):
@@ -416,12 +249,14 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             ("A", components.A(href="/foo", children=["link"])),
             ("Button", components.Button([], "click")),
             ("Div", components.Div([], ["hello"])),
-            ("Form", components.Form(children=["x"])),
             ("Input", components.Input()),
             ("ButtonGroup", components.ButtonGroup([])),
-            ("ButtonGroup with buttons", components.ButtonGroup(
-                [{"href": "/", "slot": components.Icon("edit")}]
-            )),
+            (
+                "ButtonGroup with buttons",
+                components.ButtonGroup(
+                    [{"href": "/", "slot": components.Icon("edit")}]
+                ),
+            ),
             ("SearchField", components.SearchField()),
             ("PriceConverted", components.PriceConverted(["27 CZK"])),
             ("H1", components.H1(["Title"])),
@@ -435,7 +270,8 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_button_with_icon_children_not_escaped(self):
         result = components.Button(
-            icon=True, size="xs",
+            icon=True,
+            size="xs",
             children=[components.Icon("play"), "LOG"],
         )
         self.assertTrue(str(result).startswith("<button"))
@@ -445,7 +281,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             popover_content="test tooltip",
             children=[
                 components.Button(
-                    icon=True, color="gray", size="xs",
+                    icon=True,
+                    color="gray",
+                    size="xs",
                     children=[components.Icon("play"), "test"],
                 ),
             ],
@@ -460,19 +298,17 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 class ComponentEdgeCasesTest(unittest.TestCase):
     """Test Component() edge cases and error handling."""
 
-    def test_no_template_or_tag_name_raises(self):
+    def test_no_tag_name_raises(self):
         with self.assertRaises(ValueError) as ctx:
             components.Component(children="hello")
-        self.assertIn("template or tag_name", str(ctx.exception))
+        self.assertIn("tag_name", str(ctx.exception))
 
     def test_single_string_children_wrapped(self):
         result = components.Component(tag_name="span", children="hello")
         self.assertIn("hello", result)
 
     def test_multiple_children_joined_with_newlines(self):
-        result = components.Component(
-            tag_name="div", children=["hello", "world"]
-        )
+        result = components.Component(tag_name="div", children=["hello", "world"])
         self.assertIn("hello\nworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
@@ -523,13 +359,6 @@ class ComponentEdgeCasesTest(unittest.TestCase):
 class IconTest(unittest.TestCase):
     """Test Icon() component function."""
 
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
-
     def test_valid_icon_renders_svg(self):
         result = components.Icon("play")
         self.assertIsInstance(result, SafeText)
@@ -550,33 +379,12 @@ class IconTest(unittest.TestCase):
         self.assertIsInstance(result, SafeText)
 
 
-class FormInputTest(unittest.TestCase):
-    """Test Form(), Input(), and Div() functions."""
-
-    def test_form_default_method_get(self):
-        result = components.Form()
-        self.assertIn('method="get"', result)
-        self.assertIn('<form', result)
-
-    def test_form_post_method(self):
-        result = components.Form(method="post")
-        self.assertIn('method="post"', result)
-        self.assertIn('<form', result)
-
-    def test_form_action(self):
-        result = components.Form(action="/submit/")
-        self.assertIn('action="/submit/"', result)
-
-    def test_form_children_rendered(self):
-        child = components.Input(type="text", attributes=[("name", "email")])
-        result = components.Form(children=[child])
-        self.assertIn('<input', result)
-        self.assertIn('type="text"', result)
-        self.assertIn('name="email"', result)
+class InputTest(unittest.TestCase):
+    """Test the Input() component."""
 
     def test_input_default_type_text(self):
         result = components.Input()
-        self.assertIn('<input', result)
+        self.assertIn("<input", result)
         self.assertIn('type="text"', result)
 
     def test_input_custom_type(self):
@@ -584,7 +392,9 @@ class FormInputTest(unittest.TestCase):
         self.assertIn('type="submit"', result)
 
     def test_input_attributes_merged_with_type(self):
-        result = components.Input(type="email", attributes=[("id", "email"), ("class", "form-input")])
+        result = components.Input(
+            type="email", attributes=[("id", "email"), ("class", "form-input")]
+        )
         self.assertIn('type="email"', result)
         self.assertIn('id="email"', result)
         self.assertIn('class="form-input"', result)
@@ -592,13 +402,6 @@ class FormInputTest(unittest.TestCase):
 
 class PopoverTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated() component function."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
 
     def test_short_string_no_popover(self):
         result = components.PopoverTruncated("hi")
@@ -658,20 +461,6 @@ class PopoverTruncatedTest(unittest.TestCase):
         result = components.PopoverTruncated("hello", length=0)
         # Even empty length triggers popover for any content
         self.assertIn("data-popover-target", result)
-
-
-class EnableCacheTest(unittest.TestCase):
-    """Test enable_cache() function."""
-
-    def test_wraps_with_lru_cache(self):
-        components.enable_cache()
-        # Should have cache_info method
-        self.assertTrue(hasattr(components._render_cached, "cache_info"))
-
-    def test_cache_has_correct_maxsize(self):
-        components.enable_cache()
-        params = components._render_cached.cache_parameters()
-        self.assertEqual(params["maxsize"], 4096)
 
 
 class ModelDependentComponentsTest(django.test.TestCase):
@@ -781,7 +570,8 @@ class ModelDependentComponentsTest(django.test.TestCase):
         game1 = self._create_game(platform, name="Game A")
         game2 = self._create_game(platform, name="Game B")
         purchase = self._create_purchase(
-            [game1, game2], price=24.99,
+            [game1, game2],
+            price=24.99,
         )
         purchase.name = "Bundle"
         purchase.save()
@@ -802,13 +592,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
 
 class PurchaseTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated with endpart edge cases."""
-
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
 
     def test_endpart_shorter_than_length(self):
         text = "a" * 50
@@ -837,9 +620,7 @@ class NameWithIconPlatformTest(django.test.TestCase):
         cls.game = Game.objects.create(name="Zelda", platform=cls.platform)
 
     def test_name_with_icon_shows_platform_icon(self):
-        result = components.NameWithIcon(
-            name="Zelda", game=self.game, linkify=True
-        )
+        result = components.NameWithIcon(name="Zelda", game=self.game, linkify=True)
         self.assertIsInstance(result, SafeText)
         self.assertIn("Zelda", result)
 
@@ -871,8 +652,10 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.mock_session.pk = 1
 
     def test_session_provides_game_and_emulated(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", self.mock_game, self.mock_session, True
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon(
+                "", self.mock_game, self.mock_session, True
+            )
         )
         self.assertEqual(name, "Test Game")
         self.assertIs(platform, self.mock_platform)
@@ -884,16 +667,18 @@ class ResolveNameWithIconTest(unittest.TestCase):
         override_game.platform = self.mock_platform
         override_game.pk = 99
         with patch("common.components.reverse", return_value="/game/99"):
-            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-                "", override_game, self.mock_session, True
+            name, platform, emulated, create_link, link = (
+                components._resolve_name_with_icon(
+                    "", override_game, self.mock_session, True
+                )
             )
         self.assertEqual(name, "Test Game")
         self.assertIsNot(name, "Override")
 
     def test_game_only_provides_platform(self):
         with patch("common.components.reverse", return_value="/game/1"):
-            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-                "", self.mock_game, None, True
+            name, platform, emulated, create_link, link = (
+                components._resolve_name_with_icon("", self.mock_game, None, True)
             )
         self.assertEqual(name, "Test Game")
         self.assertIs(platform, self.mock_platform)
@@ -901,36 +686,36 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertEqual(link, "/game/1")
 
     def test_custom_name_overrides_game_name(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "Custom", self.mock_game, None, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon("Custom", self.mock_game, None, False)
         )
         self.assertEqual(name, "Custom")
 
     def test_empty_name_falls_back_to_game_name(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", self.mock_game, None, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon("", self.mock_game, None, False)
         )
         self.assertEqual(name, "Test Game")
 
     def test_no_game_no_session_returns_empty_name(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", None, None, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon("", None, None, False)
         )
         self.assertEqual(name, "")
         self.assertIsNone(platform)
         self.assertFalse(create_link)
 
     def test_linkify_false_no_link_created(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", self.mock_game, None, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon("", self.mock_game, None, False)
         )
         self.assertFalse(create_link)
         self.assertEqual(link, "")
 
     def test_linkify_true_creates_link(self):
         with patch("common.components.reverse", return_value="/game/42"):
-            name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-                "", self.mock_game, None, True
+            name, platform, emulated, create_link, link = (
+                components._resolve_name_with_icon("", self.mock_game, None, True)
             )
         self.assertTrue(create_link)
         self.assertEqual(link, "/game/42")
@@ -940,167 +725,75 @@ class ResolveNameWithIconTest(unittest.TestCase):
         emulated_session.game = self.mock_game
         emulated_session.emulated = True
         emulated_session.pk = 1
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", self.mock_game, emulated_session, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon(
+                "", self.mock_game, emulated_session, False
+            )
         )
         self.assertTrue(emulated)
 
     def test_game_emulated_default_false(self):
-        name, platform, emulated, create_link, link = components._resolve_name_with_icon(
-            "", self.mock_game, None, False
+        name, platform, emulated, create_link, link = (
+            components._resolve_name_with_icon("", self.mock_game, None, False)
         )
         self.assertFalse(emulated)
 
 
 class SimpleTableRenderingTest(unittest.TestCase):
-    """Test that c-simple-table renders rows correctly."""
+    """Test that the Python SimpleTable() renders rows correctly."""
 
-    def setUp(self):
-        components.enable_cache()
-        components._render_cached.cache_clear()
-
-    def tearDown(self):
-        components._render_cached = components._render_cached_impl
+    @staticmethod
+    def _tbody(result):
+        return result.split("<tbody")[1].split("</tbody>")[0]
 
     def test_simple_table_renders_list_rows(self):
         """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started", "Ended"],
-                "rows": [["Game1", "2025-01-01", "2025-03-01"]],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
+        result = str(
+            components.SimpleTable(
+                columns=["Game", "Started", "Ended"],
+                rows=[["Game1", "2025-01-01", "2025-03-01"]],
+            )
         )
-        # body rows (not thead)
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        tbody = self._tbody(result)
         self.assertIn("<tr", tbody)
         self.assertIn("Game1", tbody)
         self.assertIn("2025-01-01", tbody)
         self.assertIn("2025-03-01", tbody)
-        # first cell is <th scope="row">
-        self.assertIn("th scope=\"row\"", tbody)
-        # subsequent cells are <td>
+        # first cell is <th scope="row">, subsequent cells are <td>
+        self.assertIn('th scope="row"', tbody)
         self.assertIn("<td", tbody)
 
     def test_simple_table_empty_rows(self):
         """Verify empty rows list renders empty <tbody>."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started"],
-                "rows": [],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
-        )
+        result = str(components.SimpleTable(columns=["Game", "Started"], rows=[]))
         self.assertIn("<tbody", result)
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        tbody = self._tbody(result)
         self.assertNotIn("<tr", tbody)
         self.assertNotIn("<td", tbody)
 
     def test_simple_table_multiple_rows(self):
         """Verify multiple rows all render."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started"],
-                "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
+        result = str(
+            components.SimpleTable(
+                columns=["Game", "Started"],
+                rows=[["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+            )
         )
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        tbody = self._tbody(result)
         self.assertIn("GameA", tbody)
         self.assertIn("GameB", tbody)
-        self.assertIn("<tr", tbody)
-        # two separate <tr> elements
-        self.assertEqual(tbody.count("<tr"), 2)
-
-    def test_simple_table_dict_rows_with_cell_data(self):
-        """Verify dict-style rows with row_id and cell_data render correctly."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Name", "Date"],
-                "rows": [
-                    {
-                        "row_id": "session-row-1",
-                        "hx_trigger": "device-changed",
-                        "cell_data": ["Game1", "2025-01-01"],
-                    }
-                ],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
-        )
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
-        self.assertIn('id="session-row-1"', tbody)
-        self.assertIn("device-changed", tbody)
-        self.assertIn("th scope=\"row\"", tbody)
-        self.assertIn("Game1", tbody)
-        self.assertIn("2025-01-01", tbody)
-        self.assertIn("2025-03-01", result)
-
-    def test_simple_table_empty_rows(self):
-        """Verify empty rows list renders empty <tbody>."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started"],
-                "rows": [],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
-        )
-        self.assertIn("<tbody", result)
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
-        self.assertNotIn("<tr", tbody)
-        self.assertNotIn("<td", tbody)
-
-    def test_simple_table_multiple_rows(self):
-        """Verify multiple rows all render."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started"],
-                "rows": [["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
-        )
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
-        self.assertIn("GameA", tbody)
-        self.assertIn("GameB", tbody)
-        self.assertIn("<tr", tbody)
         self.assertEqual(tbody.count("<tr"), 2)
 
     def test_simple_table_header_action_as_caption(self):
         """Verify header_action renders inside <caption>."""
-        from django.template.loader import render_to_string
         from django.utils.safestring import mark_safe
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Game", "Started"],
-                "rows": [["Game1", "2025-01-01"]],
-                "header_action": mark_safe('<a href="/add">Add</a>'),
-                "page_obj": None,
-                "elided_page_range": None,
-            },
+
+        result = str(
+            components.SimpleTable(
+                columns=["Game", "Started"],
+                rows=[["Game1", "2025-01-01"]],
+                header_action=mark_safe('<a href="/add">Add</a>'),
+            )
         )
         self.assertIn("<caption", result)
         self.assertIn('href="/add"', result)
@@ -1108,27 +801,22 @@ class SimpleTableRenderingTest(unittest.TestCase):
 
     def test_simple_table_dict_rows_with_cell_data(self):
         """Verify dict-style rows with row_id and cell_data render correctly."""
-        from django.template.loader import render_to_string
-        result = render_to_string(
-            "simple_table.html",
-            {
-                "columns": ["Name", "Date"],
-                "rows": [
+        result = str(
+            components.SimpleTable(
+                columns=["Name", "Date"],
+                rows=[
                     {
                         "row_id": "session-row-1",
                         "hx_trigger": "device-changed",
                         "cell_data": ["Game1", "2025-01-01"],
                     }
                 ],
-                "header_action": None,
-                "page_obj": None,
-                "elided_page_range": None,
-            },
+            )
         )
-        tbody = result.split("<tbody")[1].split("</tbody>")[0]
+        tbody = self._tbody(result)
         self.assertIn('id="session-row-1"', tbody)
         self.assertIn("device-changed", tbody)
-        self.assertIn("th scope=\"row\"", tbody)
+        self.assertIn('th scope="row"', tbody)
         self.assertIn("Game1", tbody)
         self.assertIn("2025-01-01", tbody)
 

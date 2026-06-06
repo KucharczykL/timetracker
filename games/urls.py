@@ -1,8 +1,5 @@
 from django.urls import path
 
-app_name = "games"
-
-from games.api import api
 from games.views import (
     device,
     game,
@@ -13,6 +10,8 @@ from games.views import (
     session,
     statuschange,
 )
+
+app_name = "games"
 
 urlpatterns = [
     path("", general.index, name="index"),
@@ -115,13 +114,11 @@ urlpatterns = [
     path(
         "session/add/from-game/<int:session_id>",
         session.new_session_from_existing_session,
-        {"template": "view_game.html#session-info"},
         name="view_game_start_session_from_session",
     ),
     path(
         "session/add/from-list/<int:session_id>",
         session.new_session_from_existing_session,
-        {"template": "list_sessions.html#session-row"},
         name="list_sessions_start_session_from_session",
     ),
     path("session/<int:session_id>/edit", session.edit_session, name="edit_session"),
@@ -133,35 +130,33 @@ urlpatterns = [
     path(
         "session/end/from-game/<int:session_id>",
         session.end_session,
-        {"template": "view_game.html#session-info"},
         name="view_game_end_session",
     ),
     path(
         "session/end/from-list/<int:session_id>",
         session.end_session,
-        {"template": "list_sessions.html#session-row"},
         name="list_sessions_end_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("session/search", session.search_sessions, name="search_sessions"),
     path(
         "statuschange/add",
-        statuschange.AddStatusChangeView.as_view(),
+        statuschange.add_statuschange,
         name="add_statuschange",
     ),
     path(
         "statuschange/edit/<int:statuschange_id>",
-        statuschange.EditStatusChangeView.as_view(),
+        statuschange.edit_statuschange,
         name="edit_statuschange",
     ),
     path(
         "statuschange/delete/<int:pk>",
-        statuschange.GameStatusChangeDeleteView.as_view(),
+        statuschange.delete_statuschange,
         name="delete_statuschange",
     ),
     path(
         "statuschange/list",
-        statuschange.GameStatusChangeListView.as_view(),
+        statuschange.list_statuschanges,
         name="list_statuschanges",
     ),
     path("stats/", general.stats_alltime, name="stats_alltime"),

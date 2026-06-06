@@ -2,17 +2,31 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Avg, Count, ExpressionWrapper, F, Max, OuterRef, Prefetch, Q, Subquery, Sum, fields
+from django.db.models import (
+    Avg,
+    Count,
+    ExpressionWrapper,
+    F,
+    Max,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+    fields,
+)
 from django.db.models.functions import TruncDate, TruncMonth
 
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.timezone import now as timezone_now
 
+from common.layout import render_page
 from common.time import available_stats_year_range, dateformat, format_duration
 from common.utils import safe_division
 from games.models import Game, Platform, Purchase, Session
+from games.views.stats_content import stats_content
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
@@ -90,15 +104,12 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     this_year_purchases = Purchase.objects.all()
     this_year_purchases_with_currency = this_year_purchases.select_related("games")
-    this_year_purchases_without_refunded = Purchase.objects.filter(
-        date_refunded=None
-    )
+    this_year_purchases_without_refunded = Purchase.objects.filter(date_refunded=None)
     this_year_purchases_refunded = Purchase.objects.refunded()
 
     this_year_purchases_unfinished_dropped_nondropped = (
         this_year_purchases_without_refunded.filter(
-            ~Q(games__status="f")
-            & ~Q(games__playevents__ended__isnull=False)
+            ~Q(games__status="f") & ~Q(games__playevents__ended__isnull=False)
         )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
@@ -106,14 +117,12 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
 
     this_year_purchases_unfinished = (
         this_year_purchases_unfinished_dropped_nondropped.filter(
-            ~Q(games__status="r")
-            & ~Q(games__status="a")
+            ~Q(games__status="r") & ~Q(games__status="a")
         )
     )
     this_year_purchases_dropped = (
         this_year_purchases.filter(
-            ~Q(games__status="f")
-            & ~Q(games__playevents__ended__isnull=False)
+            ~Q(games__status="f") & ~Q(games__playevents__ended__isnull=False)
         )
         .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
         .filter(infinite=False)
@@ -144,27 +153,18 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     purchases_finished_this_year_released_this_year = _finished_with_date.order_by(
         "-date_finished"
     )
-    purchased_this_year_finished_this_year = (
-        this_year_purchases_without_refunded.filter(pk__in=_finished_purchases_qs.values("pk"))
-        .annotate(
-            date_finished=Subquery(
-                Purchase.objects.filter(pk=OuterRef("pk"))
-                .annotate(max_ended=Max("games__playevents__ended"))
-                .values("max_ended")[:1]
-            )
-        )
-    ).order_by("-date_finished")
 
     this_year_spendings = this_year_purchases_without_refunded.aggregate(
         total_spent=Sum(F("converted_price"))
     )
     total_spent = this_year_spendings["total_spent"] or 0
 
-    games_with_playtime = Game.objects.filter(
-        sessions__in=this_year_sessions
-    ).distinct().annotate(
-        total_playtime=Sum(F("sessions__duration_total"))
-    ).filter(total_playtime__gt=timedelta(0))
+    games_with_playtime = (
+        Game.objects.filter(sessions__in=this_year_sessions)
+        .distinct()
+        .annotate(total_playtime=Sum(F("sessions__duration_total")))
+        .filter(total_playtime__gt=timedelta(0))
+    )
     month_playtimes = (
         this_year_sessions.annotate(month=TruncMonth("timestamp_start"))
         .values("month")
@@ -190,9 +190,7 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
         .order_by("-playtime")
     )
 
-    backlog_decrease_count = (
-        purchases_finished_this_year.count()
-    )
+    backlog_decrease_count = purchases_finished_this_year.count()
 
     first_play_date = "N/A"
     last_play_date = "N/A"
@@ -277,14 +275,16 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     }
 
     request.session["return_path"] = request.path
-    return render(request, "stats.html", context)
+    return render_page(request, stats_content(context), title=context["title"])
 
 
 @login_required
 def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     selected_year = request.GET.get("year")
     if selected_year:
-        return HttpResponseRedirect(reverse("games:stats_by_year", args=[selected_year]))
+        return HttpResponseRedirect(
+            reverse("games:stats_by_year", args=[selected_year])
+        )
     if year == 0:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
     this_year_sessions = Session.objects.filter(
@@ -338,8 +338,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     # only Game and DLC
     this_year_purchases_unfinished_dropped_nondropped = (
         this_year_purchases_without_refunded.filter(
-            ~Q(games__status="f")
-            & ~Q(games__playevents__ended__year=year)
+            ~Q(games__status="f") & ~Q(games__playevents__ended__year=year)
         )
         .filter(infinite=False)
         .filter(Q(type=Purchase.GAME) | Q(type=Purchase.DLC))
@@ -348,15 +347,13 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     # unfinished = not finished AND not dropped
     this_year_purchases_unfinished = (
         this_year_purchases_unfinished_dropped_nondropped.filter(
-            ~Q(games__status="r")
-            & ~Q(games__status="a")
+            ~Q(games__status="r") & ~Q(games__status="a")
         )
     )
     # dropped = abandoned OR retired OR refunded (OR logic for transition)
     this_year_purchases_dropped = (
         this_year_purchases.filter(
-            ~Q(games__status="f")
-            & ~Q(games__playevents__ended__year=year)
+            ~Q(games__status="f") & ~Q(games__playevents__ended__year=year)
         )
         .filter(Q(games__status="a") | Q(date_refunded__isnull=False))
         .filter(infinite=False)
@@ -375,9 +372,13 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         * 100
     )
 
-    purchases_finished_this_year = Purchase.objects.finished().filter(
-        games__playevents__ended__year=year
-    ).annotate(game_name=F("games__name"), date_finished=F("games__playevents__ended"))
+    purchases_finished_this_year = (
+        Purchase.objects.finished()
+        .filter(games__playevents__ended__year=year)
+        .annotate(
+            game_name=F("games__name"), date_finished=F("games__playevents__ended")
+        )
+    )
     purchases_finished_this_year_released_this_year = (
         purchases_finished_this_year.filter(games__year_released=year).order_by(
             "games__playevents__ended"
@@ -472,7 +473,6 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         "total_playtime_per_platform": total_playtime_per_platform,
         "total_spent": total_spent,
         "total_spent_currency": selected_currency,
-        "all_purchased_this_year": this_year_purchases_without_refunded,
         "spent_per_game": int(
             safe_division(total_spent, this_year_purchases_without_refunded_count)
         ),
@@ -539,7 +539,7 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     }
 
     request.session["return_path"] = request.path
-    return render(request, "stats.html", context)
+    return render_page(request, stats_content(context), title=context["title"])
 
 
 @login_required

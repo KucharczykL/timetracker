@@ -895,17 +895,11 @@
       max-width: 96rem;
     }
   }
-  .m-4 {
-    margin: calc(var(--spacing) * 4);
-  }
   .mx-2 {
     margin-inline: calc(var(--spacing) * 2);
   }
   .mx-auto {
     margin-inline: auto;
-  }
-  .my-4 {
-    margin-block: calc(var(--spacing) * 4);
   }
   .my-6 {
     margin-block: calc(var(--spacing) * 6);
@@ -1573,9 +1567,6 @@
   }
   .w-full {
     width: 100%;
-  }
-  .max-w-\(--breakpoint-lg\) {
-    max-width: var(--breakpoint-lg);
   }
   .max-w-\(--breakpoint-xl\) {
     max-width: var(--breakpoint-xl);
@@ -3776,11 +3767,6 @@
   .\[\&_a\]\:underline-offset-4 {
     & a {
       text-underline-offset: 4px;
-    }
-  }
-  .\[\&_h1\]\:mb-2 {
-    & h1 {
-      margin-bottom: calc(var(--spacing) * 2);
     }
   }
   .\[\&_li\:first-of-type_a\]\:rounded-none {

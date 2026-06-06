@@ -2,7 +2,7 @@ import functools
 from pathlib import Path
 
 _ICON_DIR = (
-    Path(__file__).resolve().parent.parent / "games" / "templates" / "cotton" / "icon"
+    Path(__file__).resolve().parent.parent / "games" / "templates" / "icons"
 )
 
 

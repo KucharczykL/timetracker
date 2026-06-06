@@ -153,9 +153,9 @@ def redirect_to(default_view: str, *default_args):
 
                 next_url = reverse(default_view, args=default_args)
 
-            response = view_func(
-                request, *args, **kwargs
-            )  # Execute the original view logic
+            # Execute the original view logic for its side effects, then
+            # redirect to `next_url` instead of returning its response.
+            view_func(request, *args, **kwargs)
             return redirect(next_url)
 
         return wrapped_view

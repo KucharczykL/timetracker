@@ -1,14 +1,12 @@
 import hashlib
-import json
 from functools import lru_cache
 from typing import Any
 
-from django.conf import settings
-from django.template import TemplateDoesNotExist
+from django.middleware.csrf import get_token
 from django.template.defaultfilters import floatformat
-from django.template.loader import render_to_string
+from django.templatetags.static import static
 from django.urls import reverse
-from django.utils.html import conditional_escape
+from django.utils.html import conditional_escape, escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.icons import get_icon
@@ -34,49 +32,52 @@ _SIZE_CLASSES = {
 }
 
 
-def _render_cached_impl(template: str, context_json: str) -> str:
-    context = json.loads(context_json)
-    context["slot"] = mark_safe(context["slot"])
-    return render_to_string(template, context)
+@lru_cache(maxsize=4096)
+def _render_element(
+    tag_name: str,
+    attrs_key: tuple[tuple[str, str], ...],
+    children_key: tuple[tuple[str, bool], ...],
+) -> str:
+    """Pure, memoized HTML builder behind `Component`.
 
-
-if not settings.DEBUG:
-    _render_cached = lru_cache(maxsize=4096)(_render_cached_impl)
-else:
-    _render_cached = _render_cached_impl
-
-
-def enable_cache():
-    """Wrap _render_cached with LRU cache (for testing in DEBUG mode)."""
-    global _render_cached
-    _render_cached = lru_cache(maxsize=4096)(_render_cached_impl)
+    Inputs are fully hashable and fully determine the output, so identical
+    elements are rendered once. `attrs_key` is (name, stringified value) pairs
+    (attribute values are always escaped). `children_key` is (child, is_safe)
+    pairs: SafeText children pass through, plain strings are escaped. The
+    `is_safe` flag is part of the key on purpose — otherwise a safe ``"<b>"``
+    and an unsafe ``"<b>"`` (equal as strings) would collide and one would
+    render with the wrong escaping.
+    """
+    children_blob = "\n".join(
+        child if is_safe else escape(child) for child, is_safe in children_key
+    )
+    if attrs_key:
+        attributes_blob = " " + " ".join(
+            f'{name}="{escape(value)}"' for name, value in attrs_key
+        )
+    else:
+        attributes_blob = ""
+    return f"<{tag_name}{attributes_blob}>{children_blob}</{tag_name}>"
 
 
 def Component(
     attributes: list[HTMLAttribute] | None = None,
     children: list[HTMLTag] | HTMLTag | None = None,
-    template: str = "",
     tag_name: str = "",
 ) -> SafeText:
+    """Render an HTML element. Attribute values are always escaped; children are
+    escaped unless they are `SafeText` (so nested components pass through),
+    preventing accidental HTML injection. Rendering is memoized via
+    `_render_element`."""
     attributes = attributes or []
     children = children or []
-    if not tag_name and not template:
-        raise ValueError("One of template or tag_name is required.")
+    if not tag_name:
+        raise ValueError("tag_name is required.")
     if isinstance(children, str):
         children = [children]
-    childrenBlob = "\n".join(conditional_escape(child) for child in children)
-    if len(attributes) == 0:
-        attributesBlob = ""
-    else:
-        attributesList = [f'{name}="{conditional_escape(str(value))}"' for name, value in attributes]
-        attributesBlob = f" {' '.join(attributesList)}"
-    tag: str = ""
-    if tag_name != "":
-        tag = f"<{tag_name}{attributesBlob}>{childrenBlob}</{tag_name}>"
-    elif template != "":
-        context = {name: value for name, value in attributes} | {"slot": "\n".join(children)}
-        tag = _render_cached(template, json.dumps(context, sort_keys=True))
-    return mark_safe(tag)
+    attrs_key = tuple((name, str(value)) for name, value in attributes)
+    children_key = tuple((child, isinstance(child, SafeText)) for child in children)
+    return mark_safe(_render_element(tag_name, attrs_key, children_key))
 
 
 def randomid(seed: str = "", content: str = "", length: int = 10) -> str:
@@ -84,7 +85,11 @@ def randomid(seed: str = "", content: str = "", length: int = 10) -> str:
         return seed
     hash_input = f"{seed}:{content}" if seed else content
     content_hash = hashlib.sha1(hash_input.encode()).hexdigest()
-    base = content_hash[:length] if not seed else content_hash[:max(0, length - len(seed))]
+    base = (
+        content_hash[:length]
+        if not seed
+        else content_hash[: max(0, length - len(seed))]
+    )
     return seed + base
 
 
@@ -413,18 +418,61 @@ def Input(
     )
 
 
-def Form(
-    action="",
-    method="get",
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+def CsrfInput(request) -> SafeText:
+    """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag."""
+    return mark_safe(
+        f'<input type="hidden" name="csrfmiddlewaretoken" value="{get_token(request)}">'
+    )
+
+
+def ModuleScript(filename: str) -> SafeText:
+    """A `<script type="module">` tag pointing at a static JS file."""
+    return mark_safe(
+        f'<script type="module" src="{static("js/" + filename)}"></script>'
+    )
+
+
+def AddForm(
+    form,
+    *,
+    request,
+    fields: SafeText | str | None = None,
+    additional_row: SafeText | str = "",
+    submit_class: str = "mt-3",
 ) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(
+    """Page body for the generic add/edit form (Python equivalent of add.html).
+
+    `fields` overrides the default ``form.as_div()`` field markup (used by the
+    session form, which lays out its fields manually). `additional_row` holds
+    extra submit buttons rendered below the main Submit button. `submit_class`
+    is applied to the main Submit button (the session form passes "" to match
+    its original markup).
+    """
+    field_markup = fields if fields is not None else mark_safe(form.as_div())
+    submit_attrs = [("class", submit_class)] if submit_class else []
+
+    inner_form = Component(
         tag_name="form",
-        attributes=attributes + [("action", action), ("method", method)],
-        children=children,
+        attributes=[("method", "post"), ("enctype", "multipart/form-data")],
+        children=[
+            CsrfInput(request),
+            field_markup,
+            Div(children=[Button(submit_attrs, "Submit", type="submit")]),
+            Div(
+                [("class", "submit-button-container")],
+                [additional_row] if additional_row else [],
+            ),
+        ],
+    )
+
+    return Div(
+        [("id", "add-form"), ("class", "max-width-container")],
+        [
+            Div(
+                [("id", "add-form"), ("class", "form-container max-w-xl mx-auto")],
+                [inner_form],
+            )
+        ],
     )
 
 
@@ -604,7 +652,8 @@ def H1(
     return Component(
         tag_name="h1",
         attributes=[("class", heading_class)],
-        children=(children if isinstance(children, list) else [children]) + ([badge_html] if badge_html else []),
+        children=(children if isinstance(children, list) else [children])
+        + ([badge_html] if badge_html else []),
     )
 
 
@@ -634,9 +683,7 @@ def Modal(
                         "shadow-lg/50 rounded-md bg-white dark:bg-gray-900",
                     ),
                 ],
-                children=(
-                    children if isinstance(children, list) else [children]
-                ),
+                children=(children if isinstance(children, list) else [children]),
             ),
         ],
     )
@@ -738,63 +785,147 @@ def TableHeader(
     )
 
 
-def Table(columns: list[str] | None = None, children=None) -> SafeText:
-    """Standalone table with header and body slot.
+def _page_url(request, page) -> str:
+    """Current querystring with `page` replaced (mirrors {% param_replace %})."""
+    if request is None:
+        return f"?page={page}"
+    params = request.GET.copy()
+    params["page"] = page
+    return "?" + params.urlencode()
 
-    Currently unused — superseded by simple_table. Kept for optional future use.
-    """
+
+def _pagination_nav(page_obj, elided_page_range, request) -> str:
+    pages_html = ""
+    for page in elided_page_range:
+        if page != page_obj.number:
+            pages_html += (
+                f'<li><a href="{_page_url(request, page)}" '
+                'class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 '
+                "bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 "
+                "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+                f'dark:hover:text-white">{conditional_escape(page)}</a></li>'
+            )
+        else:
+            pages_html += (
+                '<li><a aria-current="page" '
+                'class="cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight '
+                "text-white border bg-gray-400 border-gray-300 dark:bg-gray-900 dark:border-gray-700 "
+                f'dark:text-gray-200">{conditional_escape(page)}</a></li>'
+            )
+
+    if page_obj.has_previous():
+        prev_html = (
+            f'<a href="{_page_url(request, page_obj.previous_page_number())}" '
+            'class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 '
+            "bg-white border border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700 "
+            "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+            'dark:hover:text-white">Previous</a>'
+        )
+    else:
+        prev_html = (
+            '<a aria-current="page" class="cursor-not-allowed flex items-center justify-center '
+            "px-3 h-8 leading-tight text-gray-300 bg-white border border-gray-300 rounded-s-lg "
+            'dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600">Previous</a>'
+        )
+
+    if page_obj.has_next():
+        next_html = (
+            f'<a href="{_page_url(request, page_obj.next_page_number())}" '
+            'class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 '
+            "bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700 "
+            "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+            'dark:hover:text-white">Next</a>'
+        )
+    else:
+        next_html = (
+            '<a aria-current="page" class="cursor-not-allowed flex items-center justify-center '
+            "px-3 h-8 leading-tight text-gray-300 bg-white border border-gray-300 rounded-e-lg "
+            'dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600">Next</a>'
+        )
+
+    return (
+        '<nav class="flex items-center flex-col md:flex-row md:justify-between px-6 py-4 '
+        'dark:bg-gray-900 sm:rounded-b-lg" aria-label="Table navigation">'
+        '<span class="text-sm text-center font-normal text-gray-500 dark:text-gray-400 mb-4 '
+        'md:mb-0 block w-full md:inline md:w-auto">'
+        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.start_index()}</span>—'
+        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.end_index()}</span> of '
+        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.paginator.count}</span></span>'
+        '<ul class="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8"><li>'
+        f"{prev_html}{pages_html}{next_html}"
+        "</li></ul></nav>"
+    )
+
+
+def SimpleTable(
+    columns: list[str] | None = None,
+    rows: list | None = None,
+    header_action: SafeText | str | None = None,
+    page_obj=None,
+    elided_page_range=None,
+    request=None,
+) -> SafeText:
+    """Paginated table. Python equivalent of the old simple_table.html."""
     columns = columns or []
-    children = children or []
-    return Component(
-        tag_name="div",
-        attributes=[("class", "relative overflow-x-auto shadow-md sm:rounded-lg")],
-        children=[
-            Component(
-                tag_name="table",
-                attributes=[
-                    (
-                        "class",
-                        "w-full text-sm text-left rtl:text-right "
-                        "text-gray-500 dark:text-gray-400",
-                    ),
-                ],
-                children=[
-                    Component(
-                        tag_name="thead",
-                        attributes=[
-                            (
-                                "class",
-                                "text-xs text-gray-700 uppercase bg-gray-50 "
-                                "dark:bg-gray-700 dark:text-gray-400",
-                            ),
-                        ],
-                        children=[
-                            Component(
-                                tag_name="tr",
-                                children=[
-                                    Component(
-                                        tag_name="th",
-                                        attributes=[
-                                            ("scope", "col"),
-                                            ("class", "px-6 py-3"),
-                                        ],
-                                        children=[col],
-                                    )
-                                    for col in columns
-                                ],
-                            ),
-                        ],
-                    ),
-                    Component(
-                        tag_name="tbody",
-                        children=(
-                            children
-                            if isinstance(children, list)
-                            else [children]
-                        ),
-                    ),
-                ],
-            ),
+    rows = rows or []
+
+    header_html = ""
+    if header_action:
+        header_html = str(TableHeader(children=[header_action]))
+
+    columns_html = "".join(
+        f'<th scope="col" class="px-6 py-3">{conditional_escape(col)}</th>'
+        for col in columns
+    )
+    rows_html = "".join(str(TableRow(data=row)) for row in rows)
+
+    pagination_html = ""
+    if page_obj and elided_page_range:
+        pagination_html = _pagination_nav(page_obj, elided_page_range, request)
+
+    return mark_safe(
+        '<div class="shadow-md" hx-boost="false">'
+        '<div class="relative overflow-x-auto sm:rounded-t-lg">'
+        '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">'
+        f"{header_html}"
+        '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 '
+        'dark:text-gray-400 max-sm:[&_th:not(:first-child):not(:last-child)]:hidden">'
+        f"<tr>{columns_html}</tr></thead>"
+        '<tbody class="dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden">'
+        f"{rows_html}</tbody></table></div>"
+        f"{pagination_html}</div>"
+    )
+
+
+def paginated_table_content(
+    data: dict,
+    *,
+    page_obj=None,
+    elided_page_range=None,
+    request=None,
+) -> SafeText:
+    """Standard list-page body: a max-width Div wrapping a SimpleTable.
+
+    `data` is the table dict with keys ``columns``, ``rows`` and
+    ``header_action`` (the same shape every list view already builds).
+    """
+    return Div(
+        [
+            (
+                "class",
+                "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
+                "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm) self-center",
+            )
+        ],
+        [
+            SimpleTable(
+                columns=data["columns"],
+                rows=data["rows"],
+                header_action=data["header_action"],
+                page_obj=page_obj,
+                elided_page_range=elided_page_range,
+                request=request,
+            )
         ],
     )
 
@@ -912,4 +1043,131 @@ def PurchasePrice(purchase) -> SafeText:
     )
 
 
+def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
+    """Alpine.js dropdown to change a game's status."""
+    options_html = "\n".join(
+        f"<template x-if=\"status == '{value}'\">"
+        f"{GameStatus(status=value, children=[label], display='flex')}"
+        f"</template>"
+        for value, label in game_statuses
+    )
+    list_items = "\n".join(
+        f"<li><a href=\"#\" @click.prevent.stop=\"setStatus('{value}', '{label}'); open = false;\" "
+        f'class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 '
+        f'dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" '
+        f":class=\"{{'font-bold': status === '{value}'}}\">"
+        f"{GameStatus(status=value, children=[label], display='flex', class_='text-slate-300')}"
+        f"</a></li>"
+        for value, label in game_statuses
+    )
 
+    return mark_safe(f"""
+<div class="flex gap-2 items-center"
+     x-data="{{
+         status: '{game.status}',
+         status_display: '{game.get_status_display()}',
+         open: false,
+         saving: false,
+         setStatus(newStatus, newStatusDisplay) {{
+             this.status = newStatus;
+             this.status_display = newStatusDisplay;
+             this.saving = true;
+             fetchWithHtmxTriggers(`/api/games/{game.id}/status`, {{
+                 method: 'PATCH',
+                 headers: {{
+                     'Content-Type': 'application/json',
+                     'X-CSRFToken': '{csrf_token}'
+                 }},
+                 body: JSON.stringify({{ status: newStatus }})
+             }})
+             .then(() => {{
+                 document.body.dispatchEvent(new CustomEvent('status-changed'));
+             }})
+             .catch(() => {{
+                 console.error('Failed to update status');
+             }})
+             .finally(() => this.saving = false);
+         }}
+     }}">
+    {_dropdown_button_html(options_html, list_items)}
+</div>
+""")
+
+
+def SessionDeviceSelector(session, session_devices, csrf_token: str) -> SafeText:
+    """Alpine.js dropdown to change a session's device."""
+    device_id = session.device_id or "null"
+    device_name = (session.device.name if session.device else "Unknown").replace(
+        "'", "\\'"
+    )
+
+    list_items = "\n".join(
+        f'<li><a href="#" @click.prevent.stop="setDevice({d.id}, \'{d.name.replace(chr(39), chr(92) + chr(39))}\'); open = false;" '
+        f'class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 '
+        f'dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" '
+        f":class=\"{{'font-bold': deviceId === {d.id}}}\">{d.name}</a></li>"
+        for d in session_devices
+    )
+
+    return mark_safe(f"""
+<div class="flex gap-2 items-center"
+     x-data="{{
+         originalDeviceId: {device_id},
+         originalDeviceName: '{device_name}',
+         deviceId: {device_id},
+         deviceName: '{device_name}',
+         open: false,
+         saving: false,
+         setDevice(newDeviceId, newDeviceName) {{
+               this.deviceId = newDeviceId;
+               this.deviceName = newDeviceName;
+               this.saving = true;
+                fetchWithHtmxTriggers(`/api/session/{session.id}/device`, {{
+                    method: 'PATCH',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{csrf_token}'
+                    }},
+                    body: JSON.stringify({{ device_id: newDeviceId }})
+                }})
+               .then((res) => {{
+                   document.body.dispatchEvent(new CustomEvent('device-changed'));
+               }})
+               .catch(() => {{
+                   this.deviceName = this.originalDeviceName;
+                   this.deviceId = this.originalDeviceId;
+                   console.error('Failed to update device');
+               }})
+               .finally(() => this.saving = false);
+          }}
+     }}">
+    {
+        _dropdown_button_html(
+            '<span x-text="deviceName"></span>' + str(Icon("arrowdown")), list_items
+        )
+    }
+</div>
+""")
+
+
+def _dropdown_button_html(button_content: str, list_items: str) -> str:
+    """Shared dropdown button + list structure for Alpine.js selectors."""
+    return (
+        '<div class="inline-flex rounded-md shadow-2xs" role="group" @click.outside="open = false">'
+        '<button type="button" @click="open = !open" '
+        'class="relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 '
+        "rounded-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
+        "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
+        "dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 "
+        'dark:focus:text-white align-middle hover:cursor-pointer">'
+        f'<span class="flex flex-row gap-4 justify-between items-center">{button_content}</span>'
+        '<div class="absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm '
+        "font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none border "
+        'border-gray-200 dark:border-gray-700" x-show="open" style="display: none;">'
+        '<ul class="[&_li:first-of-type_a]:rounded-none [&_li:last-of-type_a]:rounded-t-none">'
+        f"{list_items}"
+        "</ul>"
+        "</div>"
+        "</button>"
+        "</div>"
+    )

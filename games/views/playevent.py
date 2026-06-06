@@ -7,10 +7,18 @@ from django.core.paginator import Paginator
 from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
-from common.components import A, Button, ButtonGroup, Icon
+from common.components import (
+    A,
+    AddForm,
+    Button,
+    ButtonGroup,
+    Icon,
+    paginated_table_content,
+)
+from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
@@ -74,7 +82,9 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-         "header_action": A([], Button([], "Add play event"), url_name="games:add_playevent"),
+        "header_action": A(
+            [], Button([], "Add play event"), url_name="games:add_playevent"
+        ),
         "columns": list(filtered_column_list),
         "rows": filtered_row_list,
     }
@@ -123,19 +133,19 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         paginator = Paginator(playevents, limit)
         page_obj = paginator.get_page(page_number)
         playevents = page_obj.object_list
-    context: dict[str, Any] = {
-        "title": "Manage play events",
-        "page_obj": page_obj or None,
-        "elided_page_range": (
-            page_obj.paginator.get_elided_page_range(
-                page_number, on_each_side=1, on_ends=1
-            )
-            if page_obj
-            else None
-        ),
-        "data": create_playevent_tabledata(playevents, request=request),
-    }
-    return render(request, "list_playevents.html", context)
+    elided_page_range = (
+        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
+        if page_obj
+        else None
+    )
+    data = create_playevent_tabledata(playevents, request=request)
+    content = paginated_table_content(
+        data,
+        page_obj=page_obj,
+        elided_page_range=elided_page_range,
+        request=request,
+    )
+    return render_page(request, content, title="Manage play events")
 
 
 @login_required
@@ -192,22 +202,21 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             game_id = form.instance.game.id
         return HttpResponseRedirect(reverse("games:view_game", args=[game_id]))
 
-    return render(request, "add.html", {"form": form, "title": "Add new playthrough"})
+    return render_page(
+        request, AddForm(form, request=request), title="Add new playthrough"
+    )
 
 
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
-    context: dict[str, Any] = {}
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
     form = PlayEventForm(request.POST or None, instance=playevent)
     if form.is_valid():
         form.save()
-        return HttpResponseRedirect(reverse("games:view_game", args=[playevent.game.id]))
+        return HttpResponseRedirect(
+            reverse("games:view_game", args=[playevent.game.id])
+        )
 
-    context = {
-        "form": form,
-        "title": "Edit Play Event",
-    }
-    return render(request, "add.html", context)
+    return render_page(request, AddForm(form, request=request), title="Edit Play Event")
 
 
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:

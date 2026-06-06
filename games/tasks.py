@@ -4,9 +4,9 @@ import requests
 from django.db import models
 from django.template.defaultfilters import floatformat
 
-logger = logging.getLogger("games")
-
 from games.models import ExchangeRate, Purchase
+
+logger = logging.getLogger("games")
 
 # fixme: save preferred currency in user model
 currency_to = "CZK"

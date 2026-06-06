@@ -1,5 +1,3 @@
-from typing import Any
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -8,12 +6,34 @@ from django.http import (
     HttpResponse,
     HttpResponseRedirect,
 )
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from common.components import A, Button, ButtonGroup, Icon, LinkedPurchase, PurchasePrice, TableRow
+from django.template.defaultfilters import date as date_filter
+from django.template.defaultfilters import floatformat
+from django.utils.safestring import SafeText
+
+from common.components import (
+    A,
+    AddForm,
+    Button,
+    ButtonGroup,
+    Component,
+    CsrfInput,
+    Div,
+    GameLink,
+    Icon,
+    LinkedPurchase,
+    Modal,
+    ModuleScript,
+    PriceConverted,
+    PurchasePrice,
+    TableRow,
+    paginated_table_content,
+)
+from common.layout import render_page
 from common.time import dateformat
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
@@ -75,7 +95,6 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    context: dict[Any, Any] = {}
     page_number = request.GET.get("page", 1)
     limit = request.GET.get("limit", 10)
     purchases = Purchase.objects.order_by("-date_purchased", "-created_at")
@@ -84,38 +103,61 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         paginator = Paginator(purchases, limit)
         page_obj = paginator.get_page(page_number)
         purchases = page_obj.object_list
+    elided_page_range = (
+        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
+        if page_obj
+        else None
+    )
 
-    context = {
-        "title": "Manage purchases",
-        "page_obj": page_obj or None,
-        "elided_page_range": (
-            page_obj.paginator.get_elided_page_range(
-                page_number, on_each_side=1, on_ends=1
-            )
-            if page_obj
-            else None
+    data = {
+        "header_action": A(
+            [], Button([], "Add purchase"), url_name="games:add_purchase"
         ),
-        "data": {
-            "header_action": A([], Button([], "Add purchase"), url_name="games:add_purchase"),
-            "columns": [
-                "Name",
-                "Type",
-                "Price",
-                "Infinite",
-                "Purchased",
-                "Refunded",
-                "Created",
-                "Actions",
-            ],
-            "rows": [_render_purchase_row(purchase) for purchase in purchases],
-        },
+        "columns": [
+            "Name",
+            "Type",
+            "Price",
+            "Infinite",
+            "Purchased",
+            "Refunded",
+            "Created",
+            "Actions",
+        ],
+        "rows": [_render_purchase_row(purchase) for purchase in purchases],
     }
-    return render(request, "list_purchases.html", context)
+    content = paginated_table_content(
+        data,
+        page_obj=page_obj,
+        elided_page_range=elided_page_range,
+        request=request,
+    )
+    return render_page(request, content, title="Manage purchases")
+
+
+def _purchase_additional_row() -> SafeText:
+    """The 'Submit & Create Session' row shown below the main Submit button."""
+    return Component(
+        tag_name="tr",
+        children=[
+            Component(tag_name="td"),
+            Component(
+                tag_name="td",
+                children=[
+                    Button(
+                        [],
+                        "Submit & Create Session",
+                        color="gray",
+                        type="submit",
+                        name="submit_and_redirect",
+                    )
+                ],
+            ),
+        ],
+    )
 
 
 @login_required
 def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
-    context: dict[str, Any] = {}
     initial = {"date_purchased": timezone.now()}
 
     if request.method == "POST":
@@ -144,26 +186,28 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         else:
             form = PurchaseForm(initial=initial)
 
-    context["form"] = form
-    context["title"] = "Add New Purchase"
-    context["script_name"] = "add_purchase.js"
-    return render(request, "add_purchase.html", context)
+    return render_page(
+        request,
+        AddForm(form, request=request, additional_row=_purchase_additional_row()),
+        title="Add New Purchase",
+        scripts=ModuleScript("add_purchase.js"),
+    )
 
 
 @login_required
 @use_custom_redirect
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    context = {}
     purchase = get_object_or_404(Purchase, id=purchase_id)
     form = PurchaseForm(request.POST or None, instance=purchase)
     if form.is_valid():
         form.save()
         return redirect("games:list_sessions")
-    context["title"] = "Edit Purchase"
-    context["form"] = form
-    context["purchase_id"] = str(purchase_id)
-    context["script_name"] = "add_purchase.js"
-    return render(request, "add_purchase.html", context)
+    return render_page(
+        request,
+        AddForm(form, request=request, additional_row=_purchase_additional_row()),
+        title="Edit Purchase",
+        scripts=ModuleScript("add_purchase.js"),
+    )
 
 
 @login_required
@@ -173,13 +217,67 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("games:list_purchases")
 
 
+def _view_purchase_content(purchase: Purchase) -> SafeText:
+    first_game = purchase.first_game
+    owned = f"Owned on {date_filter(purchase.date_purchased, 'd/m/Y')}"
+    if purchase.date_refunded:
+        owned += f" (refunded {date_filter(purchase.date_refunded, 'd/m/Y')})"
+
+    row_class = "text-slate-500 text-xl"
+    inner = Div(
+        [("class", "flex flex-col gap-5 mb-3")],
+        [
+            Div(
+                [("class", "font-bold font-serif text-slate-500 text-2xl")],
+                [
+                    A(
+                        [],
+                        first_game.name,
+                        href=reverse("games:view_game", args=[first_game.id]),
+                    )
+                ],
+            ),
+            Div([("class", row_class)], [purchase.get_type_display()]),
+            Div([("class", row_class)], [owned]),
+            Div(
+                [("class", row_class)], [PriceConverted([purchase.standardized_price])]
+            ),
+            Div(
+                [("class", row_class)],
+                [
+                    Component(
+                        tag_name="p",
+                        children=[
+                            "Price per game: ",
+                            PriceConverted([floatformat(purchase.price_per_game, 0)]),
+                            f" {purchase.converted_currency}",
+                        ],
+                    )
+                ],
+            ),
+            Div([("class", row_class)], ["Games included in this purchase:"]),
+            Component(
+                tag_name="ul",
+                children=[
+                    Component(tag_name="li", children=[GameLink(game.id, game.name)])
+                    for game in purchase.games.all()
+                ],
+            ),
+        ],
+    )
+    return Div(
+        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [inner],
+    )
+
+
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    return render(
+    return render_page(
         request,
-        "view_purchase.html",
-        {"purchase": purchase, "title": f"Purchase: {purchase.full_name}"},
+        _view_purchase_content(purchase),
+        title=f"Purchase: {purchase.full_name}",
     )
 
 
@@ -192,15 +290,70 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("games:list_purchases")
 
 
+def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> SafeText:
+    form = Component(
+        tag_name="form",
+        attributes=[
+            ("hx-post", reverse("games:refund_purchase", args=[purchase_id])),
+            ("hx-target", f"#purchase-row-{purchase_id}"),
+            ("hx-swap", "outerHTML"),
+        ],
+        children=[
+            CsrfInput(request),
+            Component(
+                tag_name="p",
+                attributes=[("class", "dark:text-white text-center mt-3 text-sm")],
+                children=["Games will be marked as abandoned."],
+            ),
+            Div(
+                [("class", "items-center mt-5")],
+                [
+                    Button(
+                        [("class", "w-full")],
+                        "Refund",
+                        color="blue",
+                        size="lg",
+                        type="submit",
+                    ),
+                    Button(
+                        [("class", "mt-0 w-full")],
+                        "Cancel",
+                        color="gray",
+                        size="base",
+                        onclick="this.closest('#refund-confirmation-modal').remove()",
+                    ),
+                ],
+            ),
+        ],
+    )
+    return Modal(
+        "refund-confirmation-modal",
+        children=[
+            Component(
+                tag_name="h1",
+                attributes=[
+                    (
+                        "class",
+                        "text-2xl leading-6 font-medium dark:text-white text-center",
+                    )
+                ],
+                children=["Confirm Refund"],
+            ),
+            Component(
+                tag_name="p",
+                attributes=[("class", "dark:text-white text-center mt-5")],
+                children=["Are you sure you want to mark this purchase as refunded?"],
+            ),
+            form,
+        ],
+    )
+
+
 @login_required
 def refund_purchase_confirmation(
     request: HttpRequest, purchase_id: int
 ) -> HttpResponse:
-    return render(
-        request,
-        "partials/refund_purchase_confirmation.html",
-        {"purchase_id": purchase_id},
-    )
+    return HttpResponse(_refund_confirmation_modal(purchase_id, request))
 
 
 @login_required
@@ -233,9 +386,7 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
-    games: list[str] = []
-    games = request.GET.getlist("games")
-    context = {}
+    games: list[str] = request.GET.getlist("games")
     if games:
         form = PurchaseForm()
         qs = Purchase.objects.filter(games__in=games, type=Purchase.GAME).order_by(
@@ -246,8 +397,7 @@ def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
         first_option = qs.first()
         if first_option:
             form.fields["related_purchase"].initial = first_option.id
-        context["form"] = form
-        return render(request, "partials/related_purchase_field.html", context)
+        return HttpResponse(str(form["related_purchase"]))
     else:
         # abort swap
         return HttpResponse(status=204)

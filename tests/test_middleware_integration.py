@@ -26,9 +26,9 @@ class MiddlewareIntegrationTest(TestCase):
         self.client = Client()
         self.user = self._create_user()
         self.client.force_login(self.user)
-        pl = Platform(name="Test Platform")
-        pl.save()
-        self.game = Game(name="Test Game", platform=pl)
+        self.platform = Platform(name="Test Platform")
+        self.platform.save()
+        self.game = Game(name="Test Game", platform=self.platform)
         self.game.save()
 
     def test_non_htmx_request_with_message_gets_hx_trigger(self):
@@ -82,7 +82,7 @@ class MiddlewareIntegrationTest(TestCase):
         """
         purchase = Purchase.objects.create(
             date_purchased=datetime(2023, 1, 1),
-            platform=Platform.objects.first() or pl,
+            platform=self.platform,
         )
         purchase.games.set([self.game])
         response = self.client.post(

@@ -20,7 +20,6 @@ dependencies = [
     "django-htmx>=1.18.0,<2",
     "django-template-partials>=24.2,<25",
     "markdown>=3.6,<4",
-    "django-cotton==2.3",
     "django-q2>=1.7.4,<2",
     "croniter>=5.0.1,<6",
     "requests>=2.32.3,<3",
@@ -55,6 +54,15 @@ module-root = ""
 [build-system]
 requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
+[tool.ruff]
+extend-exclude = [
+    # TODO: remove this exclusion once the streak feature is actually
+    # implemented. streak_bruteforce.py is a throwaway exploration script
+    # (it runs django.setup() before importing models, which trips E402);
+    # it's excluded for now rather than contorted to satisfy the linter.
+    "streak_bruteforce.py",
+]
+
 [tool.isort]
  profile = "black"
 

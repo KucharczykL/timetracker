@@ -327,9 +327,6 @@ class Session(models.Model):
     def finish_now(self):
         self.timestamp_end = timezone.now()
 
-    def start_now():
-        self.timestamp_start = timezone.now()
-
     def duration_formatted(self) -> str:
         result = format_duration(self.duration_total, "%02.1H")
         return result

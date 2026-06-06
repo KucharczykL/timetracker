@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
 
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 

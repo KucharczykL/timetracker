@@ -151,18 +151,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-cotton"
-version = "2.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/00/3a/1cc607c2688ac3690775ed918b114de8dd70b6d76a3a328af9dcba1c7c31/django_cotton-2.3.0.tar.gz", hash = "sha256:603bf3a0548c9eb069f4f9d30424bf6ad91a3cebc52c497749a7da4dc4b73426", size = 27450, upload-time = "2025-11-10T07:17:51.45Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/b0/ad797da10f80c58a6c0c1c16502427e23a894c27f0b80ac13a36218c246c/django_cotton-2.3.0-py3-none-any.whl", hash = "sha256:a9cb9669f41e21cc9286128ada4613aaf0e2e9d837cab8da3fdb99cbbe5e78c5", size = 26991, upload-time = "2025-11-10T07:17:50.196Z" },
-]
-
-[[package]]
 name = "django-debug-toolbar"
 version = "4.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -827,7 +815,6 @@ source = { editable = "." }
 dependencies = [
     { name = "croniter" },
     { name = "django" },
-    { name = "django-cotton" },
     { name = "django-htmx" },
     { name = "django-ninja" },
     { name = "django-q2" },
@@ -858,7 +845,6 @@ dev = [
 requires-dist = [
     { name = "croniter", specifier = ">=5.0.1,<6" },
     { name = "django", specifier = ">6.0" },
-    { name = "django-cotton", specifier = "==2.3" },
     { name = "django-htmx", specifier = ">=1.18.0,<2" },
     { name = "django-ninja", specifier = ">=1.6.2" },
     { name = "django-q2", specifier = ">=1.7.4,<2" },
