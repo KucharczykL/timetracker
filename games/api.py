@@ -7,11 +7,13 @@ from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
 
-from games.models import Game, PlayEvent, Session
+from games.models import Device, Game, Platform, PlayEvent, Session
 
 api = NinjaAPI()
 playevent_router = Router()
 game_router = Router()
+device_router = Router()
+platform_router = Router()
 
 NOW_FACTORY = django_timezone_now
 
@@ -115,8 +117,26 @@ def delete_playevent(request, playevent_id: int):
     return Status(204, None)
 
 
+@device_router.get("/search", response=list[GameOption])
+def search_devices(request, q: str = "", limit: int = 10):
+    qs = Device.objects.order_by("name")
+    if q:
+        qs = qs.filter(name__icontains=q)
+    return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
+
+
+@platform_router.get("/search", response=list[GameOption])
+def search_platforms(request, q: str = "", limit: int = 10):
+    qs = Platform.objects.order_by("name")
+    if q:
+        qs = qs.filter(name__icontains=q)
+    return [{"value": p.id, "label": p.name, "data": {}} for p in qs[:limit]]
+
+
 api.add_router("/playevent", playevent_router)
 api.add_router("/games", game_router)
+api.add_router("/devices", device_router)
+api.add_router("/platforms", platform_router)
 
 session_router = Router()
 

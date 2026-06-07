@@ -46,6 +46,20 @@ def _game_options(values) -> list[SearchSelectOption]:
     ]
 
 
+def _device_options(values) -> list[SearchSelectOption]:
+    return [
+        {"value": d.id, "label": d.name, "data": {}}
+        for d in Device.objects.filter(pk__in=values)
+    ]
+
+
+def _platform_options(values) -> list[SearchSelectOption]:
+    return [
+        {"value": p.id, "label": p.name, "data": {}}
+        for p in Platform.objects.filter(pk__in=values)
+    ]
+
+
 class SearchSelectWidget(forms.Widget):
     """Thin Django adapter that renders a `SearchSelect()` component.
 
@@ -57,6 +71,7 @@ class SearchSelectWidget(forms.Widget):
         self,
         *,
         search_url,
+        options_resolver,
         multi_select=False,
         items_visible=5,
         items_scroll=10,
@@ -66,6 +81,7 @@ class SearchSelectWidget(forms.Widget):
     ):
         super().__init__(attrs)
         self.search_url = search_url
+        self.options_resolver = options_resolver
         self.multi_select = multi_select
         self.items_visible = items_visible
         self.items_scroll = items_scroll
@@ -81,7 +97,8 @@ class SearchSelectWidget(forms.Widget):
         return [value] if value not in (None, "") else []
 
     def render(self, name, value, attrs=None, renderer=None):
-        selected = searchselect_selected(self._values(value), _game_options)
+        selected = searchselect_selected(self._values(value), self.options_resolver)
+        autofocus = bool((attrs or {}).get("autofocus"))
         return SearchSelect(
             name=name,
             selected=selected,
@@ -93,6 +110,7 @@ class SearchSelectWidget(forms.Widget):
             always_visible=self.always_visible,
             placeholder=self.placeholder,
             id=(attrs or {}).get("id", ""),
+            autofocus=autofocus,
         )
 
     def value_from_datadict(self, data, files, name):
@@ -109,7 +127,9 @@ class SearchSelectMultiple(SearchSelectWidget):
 class SessionForm(forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
-        widget=SearchSelectWidget(search_url="/api/games/search"),
+        widget=SearchSelectWidget(
+            search_url="/api/games/search", options_resolver=_game_options
+        ),
     )
 
     duration_manual = forms.DurationField(
@@ -120,7 +140,11 @@ class SessionForm(forms.ModelForm):
         label="Manual duration",
     )
     device = forms.ModelChoiceField(
-        queryset=Device.objects.order_by("name"), required=False
+        queryset=Device.objects.order_by("name"),
+        required=False,
+        widget=SearchSelectWidget(
+            search_url="/api/devices/search", options_resolver=_device_options
+        ),
     )
 
     mark_as_played = forms.BooleanField(
@@ -191,9 +215,18 @@ class PurchaseForm(forms.ModelForm):
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
-        widget=SearchSelectMultiple(search_url="/api/games/search", multi_select=True),
+        widget=SearchSelectMultiple(
+            search_url="/api/games/search",
+            options_resolver=_game_options,
+            multi_select=True,
+        ),
     )
-    platform = forms.ModelChoiceField(queryset=Platform.objects.order_by("name"))
+    platform = forms.ModelChoiceField(
+        queryset=Platform.objects.order_by("name"),
+        widget=SearchSelectWidget(
+            search_url="/api/platforms/search", options_resolver=_platform_options
+        ),
+    )
     related_purchase = RelatedPurchaseChoiceField(
         queryset=related_purchase_queryset(),
         required=False,
@@ -270,7 +303,11 @@ class GameModelChoiceField(forms.ModelChoiceField):
 
 class GameForm(forms.ModelForm):
     platform = forms.ModelChoiceField(
-        queryset=Platform.objects.order_by("name"), required=False
+        queryset=Platform.objects.order_by("name"),
+        required=False,
+        widget=SearchSelectWidget(
+            search_url="/api/platforms/search", options_resolver=_platform_options
+        ),
     )
 
     class Meta:
@@ -307,9 +344,13 @@ class DeviceForm(forms.ModelForm):
 
 
 class PlayEventForm(forms.ModelForm):
-    game = GameModelChoiceField(
+    game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
-        widget=forms.Select(attrs={"autofocus": "autofocus"}),
+        widget=SearchSelectWidget(
+            search_url="/api/games/search",
+            options_resolver=_game_options,
+            attrs={"autofocus": "autofocus"},
+        ),
     )
 
     mark_as_finished = forms.BooleanField(

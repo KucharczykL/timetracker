@@ -97,6 +97,7 @@ def SearchSelect(
     placeholder: str = "Search…",
     id: str = "",
     sync_url: bool = False,
+    autofocus: bool = False,
 ) -> SafeText:
     """Render the search-select widget. See module docstring for the contract."""
     selected = [_normalize_option(o) for o in (selected or [])]
@@ -139,16 +140,9 @@ def SearchSelect(
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
     ]
-    if search_value:
-        search_attrs.append(("value", search_value))
+    if autofocus:
+        search_attrs.append(("autofocus", ""))
     search = Component(tag_name="input", attributes=search_attrs)
-
-    # ── Field row: pills + search box combined into one visual field ──
-    field = Component(
-        tag_name="div",
-        attributes=[("data-ss-field", ""), ("class", _FIELD_CLASS)],
-        children=[pills, search],
-    )
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     option_rows = [_option_row(o) for o in options] if not search_url else []
