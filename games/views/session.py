@@ -244,10 +244,6 @@ def _session_fields(form) -> SafeText:
 def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     initial: dict[str, Any] = {"timestamp_start": timezone.now()}
 
-    last = Session.objects.last()
-    if last is not None:
-        initial["game"] = last.game
-
     if request.method == "POST":
         form = SessionForm(request.POST or None, initial=initial)
         if form.is_valid():
