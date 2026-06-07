@@ -149,7 +149,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         content,
         title="Manage games",
         scripts=ModuleScript("range_slider.js")
-        + ModuleScript("selectable_filter.js")
+        + ModuleScript("search_select.js")
         + ModuleScript("filter_bar.js"),
     )
 

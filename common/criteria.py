@@ -299,7 +299,7 @@ class MultiCriterion(_Criterion):
 class ChoiceCriterion(_Criterion):
     """Filter on a choice/enum field with multi-select include/exclude.
 
-    Used by SelectableFilter widgets for status, ownership_type, etc.
+    Used by FilterSelect widgets for status, ownership_type, etc.
     Supports INCLUDES, EXCLUDES, EQUALS, IS_NULL, NOT_NULL modifiers.
     """
 

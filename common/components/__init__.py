@@ -59,7 +59,6 @@ from common.components.domain import (
 from common.components.filters import (
     FilterBar,
     PurchaseFilterBar,
-    SelectableFilter,
     SessionFilterBar,
 )
 
@@ -109,6 +108,5 @@ __all__ = [
     "_resolve_name_with_icon",
     "FilterBar",
     "PurchaseFilterBar",
-    "SelectableFilter",
     "SessionFilterBar",
 ]

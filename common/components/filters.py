@@ -1,4 +1,4 @@
-"""Stash-style filter bars and the SelectableFilter widget."""
+"""Stash-style filter bars, built from FilterSelect widgets."""
 
 from typing import NamedTuple
 
@@ -12,7 +12,7 @@ from common.components.search_select import FilterSelect
 
 
 class FilterChoice(NamedTuple):
-    """Parsed state of a SelectableFilter widget from a filter JSON blob."""
+    """Parsed include/exclude/modifier state of a filter field from filter JSON."""
 
     selected: list[str]
     excluded: list[str]
@@ -82,20 +82,6 @@ def _parse_bool(existing: dict, key: str) -> bool:
     if not isinstance(field, dict):
         return False
     return bool(field.get("value", False))
-
-
-def _get_filter_options(model_class, order_by="name") -> list[tuple[str, str]]:
-    """Return (value, label) pairs for a SelectableFilter from model rows.
-
-    Uses values_list for efficiency (only fetches needed columns),
-    but unpacks each row into readable local variables.
-    """
-    options: list[tuple[str, str]] = []
-    for object_id, object_name in model_class.objects.order_by(order_by).values_list(
-        "id", order_by
-    ):
-        options.append((str(object_id), object_name))
-    return options
 
 
 # ── FilterSelect adapters ────────────────────────────────────────────────────
@@ -740,189 +726,6 @@ def FilterBar(
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
-
-
-def _selectable_filter_tag(
-    value: str, label: str, *, excluded: bool = False
-) -> SafeText:
-    """A selected (\u2713) or excluded (\u2717) value pill in the SelectableFilter."""
-    checkmark = "\u2717" if excluded else "\u2713"
-    css = "sf-tag sf-excluded" if excluded else "sf-tag"
-    return Span(
-        attributes=[
-            ("class", css),
-            ("data-value", value),
-            ("data-type", "exclude" if excluded else "include"),
-        ],
-        children=[
-            Span(
-                attributes=[("class", "sf-tag-text")],
-                children=[f"{checkmark} {label}"],
-            ),
-            Component(
-                tag_name="button",
-                attributes=[
-                    ("type", "button"),
-                    ("class", "sf-remove"),
-                    ("aria-label", "Remove"),
-                ],
-                children=["\u00d7"],
-            ),
-        ],
-    )
-
-
-def _selectable_filter_modifier_tag(modifier: str, label: str) -> SafeText:
-    """An active modifier pill ((Any) / (None)) in the SelectableFilter."""
-    return Span(
-        attributes=[
-            ("class", "sf-modifier-tag active"),
-            ("data-modifier", modifier),
-        ],
-        children=[label],
-    )
-
-
-def _selectable_filter_modifier_option(modifier: str, label: str) -> SafeText:
-    """A modifier choice in the SelectableFilter dropdown list."""
-    return Component(
-        tag_name="div",
-        attributes=[
-            ("class", "sf-option sf-modifier-option"),
-            ("data-modifier", modifier),
-            ("data-label", label),
-        ],
-        children=[
-            Span(
-                attributes=[("class", "sf-option-label")],
-                children=[label],
-            ),
-        ],
-    )
-
-
-def _selectable_filter_option(value: str, label: str) -> SafeText:
-    """An option row with include (+) and exclude (\u2212) buttons."""
-    return Component(
-        tag_name="div",
-        attributes=[
-            ("class", "sf-option"),
-            ("data-value", value),
-            ("data-label", label),
-        ],
-        children=[
-            Span(
-                attributes=[("class", "sf-option-label")],
-                children=[label],
-            ),
-            Span(
-                attributes=[("class", "sf-option-buttons")],
-                children=[
-                    Component(
-                        tag_name="button",
-                        attributes=[
-                            ("type", "button"),
-                            ("class", "sf-btn-include"),
-                            ("data-action", "include"),
-                            ("title", "Include"),
-                        ],
-                        children=["+"],
-                    ),
-                    Component(
-                        tag_name="button",
-                        attributes=[
-                            ("type", "button"),
-                            ("class", "sf-btn-exclude"),
-                            ("data-action", "exclude"),
-                            ("title", "Exclude"),
-                        ],
-                        children=["\u2212"],
-                    ),
-                ],
-            ),
-        ],
-    )
-
-
-def SelectableFilter(
-    field_name: str,
-    options: list[tuple[str, str]],
-    selected: list[str] | None = None,
-    excluded: list[str] | None = None,
-    modifier: str = "",
-    nullable: bool = True,
-) -> "SafeText":
-    """Stash-style selectable filter with search, include/exclude, modifier tags."""
-    selected = selected or []
-    excluded = excluded or []
-
-    modifier_options = [("NOT_NULL", "(Any)")]
-    if nullable:
-        modifier_options.append(("IS_NULL", "(None)"))
-
-    active_modifier_tag = ""
-    inactive_modifier_options: list[SafeText] = []
-    for modifier_value, modifier_label in modifier_options:
-        if modifier == modifier_value:
-            active_modifier_tag = _selectable_filter_modifier_tag(
-                modifier_value, modifier_label
-            )
-        else:
-            inactive_modifier_options.append(
-                _selectable_filter_modifier_option(modifier_value, modifier_label)
-            )
-
-    selected_tags: list[SafeText] = []
-    for value in selected:
-        selected_tags.append(
-            _selectable_filter_tag(value, _find_label(options, value), excluded=False)
-        )
-    for value in excluded:
-        selected_tags.append(
-            _selectable_filter_tag(value, _find_label(options, value), excluded=True)
-        )
-
-    option_rows: list[SafeText] = []
-    for value, label in options:
-        option_rows.append(_selectable_filter_option(value, label))
-
-    selected_area_children: list[SafeText] = []
-    if active_modifier_tag:
-        selected_area_children.append(active_modifier_tag)
-    selected_area_children.extend(selected_tags)
-
-    options_area_children: list[SafeText] = []
-    options_area_children.extend(inactive_modifier_options)
-    options_area_children.extend(option_rows)
-
-    return Component(
-        tag_name="div",
-        attributes=[
-            ("class", "sf-container"),
-            ("data-selectable-filter", field_name),
-            *([("data-modifier", modifier)] if modifier else []),
-        ],
-        children=[
-            Component(
-                tag_name="div",
-                attributes=[("class", "sf-selected")],
-                children=selected_area_children,
-            ),
-            Component(
-                tag_name="input",
-                attributes=[
-                    ("type", "text"),
-                    ("class", "sf-search"),
-                    ("placeholder", "Search\u2026"),
-                ],
-            ),
-            Component(
-                tag_name="div",
-                attributes=[("class", "sf-options")],
-                children=options_area_children,
-            ),
-        ],
-    )
 
 
 def _find_label(options: list[tuple[str, str]], value: str) -> str:

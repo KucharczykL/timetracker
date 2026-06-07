@@ -64,8 +64,8 @@ docs/           — Additional documentation
 - **`core.py`** — `Component(tag_name, attributes, children)`: the fundamental builder. `_render_element()` is `@lru_cache`-memoized (4096 entries, always active). Attribute values are always HTML-escaped; children are escaped unless they are `SafeText`. `randomid()` generates stable hash-based IDs.
 - **`primitives.py`** — Generic HTML: `A()`, `Button()` (with color/size/icon params), `ButtonGroup()`, `Div()`, `Span()`, `Label()`, `Input()`, `Icon()`, `Popover()`, `PopoverTruncated()`, `SearchField()`, `H1()`, `Modal()`, `SimpleTable()`, `TableRow()`, `TableTd()`, `TableHeader()`, `paginated_table_content()`, `AddForm()`, `Pill()`, `CsrfInput()`, `ModuleScript()`
 - **`domain.py`** — Domain-specific: `GameLink()`, `GameStatus()` (colored dot + label), `GameStatusSelector()` (Alpine.js PATCH dropdown), `SessionDeviceSelector()` (Alpine.js PATCH dropdown), `LinkedPurchase()`, `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
-- **`filters.py`** — Filter UI: `FilterBar()`, `SessionFilterBar()`, `PurchaseFilterBar()`, `SelectableFilter()` (clickable include/exclude chips)
-- **`search_select.py`** — `SearchSelect()` + `SearchSelectOption`: search-as-you-type dropdown with removable pill selection, wired by `games/static/js/search_select.js`
+- **`filters.py`** — Filter UI: `FilterBar()`, `SessionFilterBar()`, `PurchaseFilterBar()` (built from `FilterSelect` widgets)
+- **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `games/static/js/search_select.js`
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired structured filtering.
 
@@ -118,8 +118,7 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 - **Tailwind CSS** — utility classes, compiled from `common/input.css` → `games/static/base.css`
 - **Custom JS** in `games/static/js/`:
   - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event)
-  - `selectable_filter.js` — SelectableFilter widget interaction
-  - `search_select.js` — SearchSelect widget (search-as-you-type, pills)
+  - `search_select.js` — SearchSelect/FilterSelect widgets (search-as-you-type, pills, include/exclude filter mode)
   - `utils.js` — shared helpers (e.g., `fetchWithHtmxTriggers`)
 
 ### Deployment

@@ -182,7 +182,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         content,
         title="Manage sessions",
         scripts=ModuleScript("range_slider.js")
-        + ModuleScript("selectable_filter.js")
+        + ModuleScript("search_select.js")
         + ModuleScript("filter_bar.js"),
     )
 
