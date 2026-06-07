@@ -106,6 +106,20 @@ class SearchSelectComponentTest(unittest.TestCase):
         )
         self.assertNotIn('data-ss-option=""', html)
 
+    def test_shell_region_order_pills_search_options(self):
+        # The shared shell assembles the three regions in a fixed order; option
+        # rows precede the trailing no-results node inside the options panel.
+        html = SearchSelect(name="t", options=[("1", "One")])
+        pills = html.index("data-ss-pills")
+        search = html.index("data-ss-search")
+        options = html.index("data-ss-options")
+        option_row = html.index('data-ss-option=""')
+        no_results = html.index("data-ss-no-results")
+        self.assertLess(pills, search)
+        self.assertLess(search, options)
+        self.assertLess(options, option_row)
+        self.assertLess(option_row, no_results)
+
 
 class SearchLabelTest(django.test.TestCase):
     @classmethod
