@@ -55,6 +55,37 @@ _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
 # used to derive the panel's max-height from items_visible.
 _ROW_HEIGHT_REM = 2.25
 
+# ── FilterSelect styling ───────────────────────────────────────────────────
+# Inline class strings (ported verbatim from the retired SelectableFilter CSS)
+# so the filter combobox is fully self-styled — nothing in input.css. The
+# JS-built filter rows/pills in search_select.js mirror these byte-for-byte.
+_FILTER_INCLUDE_PILL_CLASS = (
+    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "bg-brand/15 text-heading"
+)
+_FILTER_EXCLUDE_PILL_CLASS = (
+    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "bg-red-500/15 text-red-600 line-through decoration-red-400"
+)
+_FILTER_MODIFIER_PILL_CLASS = (
+    "inline-flex items-center px-2 py-0.5 text-sm rounded "
+    "bg-amber-500/15 text-amber-600 cursor-pointer"
+)
+_FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
+_FILTER_OPTION_ROW_CLASS = (
+    "flex items-center justify-between px-2 py-1 rounded text-sm "
+    "hover:bg-neutral-secondary-strong cursor-pointer"
+)
+_FILTER_OPTION_LABEL_CLASS = "truncate"
+_FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
+_FILTER_ACTION_BUTTON_CLASS = (
+    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded "
+    "border border-default-medium hover:bg-brand hover:text-white hover:border-brand"
+)
+_FILTER_MODIFIER_ROW_CLASS = (
+    "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer"
+)
+
 
 def _normalize_option(option) -> SearchSelectOption:
     """Coerce a dict option or a ``(value, label)`` tuple into the TypedDict."""
@@ -223,6 +254,208 @@ def SearchSelect(
         search_attributes=search_attrs,
         options_children=option_rows,
         always_visible=always_visible,
+        items_visible=items_visible,
+    )
+
+
+def _filter_remove_button() -> SafeText:
+    return Component(
+        tag_name="button",
+        attributes=[
+            ("type", "button"),
+            ("data-pill-remove", ""),
+            ("class", _FILTER_PILL_REMOVE_CLASS),
+            ("aria-label", "Remove"),
+        ],
+        children=["×"],
+    )
+
+
+def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
+    """An include (✓) or exclude (✗) value pill. ``kind`` is "include"/"exclude"."""
+    symbol = "✓" if kind == "include" else "✗"
+    css = (
+        _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
+    )
+    return Component(
+        tag_name="span",
+        attributes=[
+            ("class", css),
+            ("data-pill", ""),
+            ("data-value", str(option["value"])),
+            ("data-label", option["label"]),
+            ("data-ss-type", kind),
+            *_data_attributes(option["data"]),
+        ],
+        children=[f"{symbol} {option['label']}", _filter_remove_button()],
+    )
+
+
+def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
+    """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
+    return Component(
+        tag_name="span",
+        attributes=[
+            ("class", _FILTER_MODIFIER_PILL_CLASS),
+            ("data-pill", ""),
+            ("data-ss-modifier", modifier_value),
+        ],
+        children=[label, _filter_remove_button()],
+    )
+
+
+def _filter_action_button(action: str, symbol: str, title: str) -> SafeText:
+    return Component(
+        tag_name="button",
+        attributes=[
+            ("type", "button"),
+            ("data-ss-action", action),
+            ("class", _FILTER_ACTION_BUTTON_CLASS),
+            ("title", title),
+        ],
+        children=[symbol],
+    )
+
+
+def _filter_option_row(value: str | int, label: str) -> SafeText:
+    """A value row with include (+) and exclude (−) buttons."""
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("data-ss-option", ""),
+            ("data-value", str(value)),
+            ("data-label", label),
+            ("class", _FILTER_OPTION_ROW_CLASS),
+        ],
+        children=[
+            Component(
+                tag_name="span",
+                attributes=[("class", _FILTER_OPTION_LABEL_CLASS)],
+                children=[label],
+            ),
+            Component(
+                tag_name="span",
+                attributes=[("class", _FILTER_OPTION_BUTTONS_CLASS)],
+                children=[
+                    _filter_action_button("include", "+", "Include"),
+                    _filter_action_button("exclude", "−", "Exclude"),
+                ],
+            ),
+        ],
+    )
+
+
+def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
+    """A pinned pseudo-option row. It carries no ``data-ss-option`` so the text
+    filter never hides it — modifiers stay visible at the top of the panel."""
+    return Component(
+        tag_name="div",
+        attributes=[
+            ("data-ss-modifier-option", modifier_value),
+            ("data-label", label),
+            ("class", _FILTER_MODIFIER_ROW_CLASS),
+        ],
+        children=[label],
+    )
+
+
+def FilterSelect(
+    *,
+    field_name: str,
+    options: list | None = None,
+    included: list | None = None,
+    excluded: list | None = None,
+    modifier: str = "",
+    modifier_options: list[tuple[str, str]] | None = None,
+    search_url: str = "",
+    prefetch: int = 0,
+    items_visible: int = 6,
+    items_scroll: int = 10,
+    placeholder: str = "Search…",
+    id: str = "",
+) -> SafeText:
+    """Include/exclude filter combobox built on the shared ``_combobox_shell``.
+
+    Like ``SearchSelect`` but each value row carries +/− buttons that add an
+    *include* (✓) or *exclude* (✗) pill, plus an optional set of pinned
+    ``modifier_options`` (e.g. ``[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]``)
+    rendered above the value rows. A selected modifier is mutually exclusive with
+    value pills. State is read from the DOM into the filter JSON by
+    ``readSearchSelect`` (filter mode) — nothing is submitted by ``name``.
+
+    ``included``/``excluded`` are resolved options (value + label) so pills show
+    labels even when the value rows come from ``search_url``. ``options``
+    pre-renders the value rows for the complete-set (no ``search_url``) case.
+    """
+    options = [_normalize_option(o) for o in (options or [])]
+    included = [_normalize_option(o) for o in (included or [])]
+    excluded = [_normalize_option(o) for o in (excluded or [])]
+    modifier_options = modifier_options or []
+
+    active_modifier_label = ""
+    for modifier_value, label in modifier_options:
+        if modifier_value == modifier:
+            active_modifier_label = label
+            break
+
+    # ── Pills: a lone modifier pill, or include/exclude value pills ──
+    pills_children: list[SafeText] = []
+    if active_modifier_label:
+        pills_children.append(_filter_modifier_pill(modifier, active_modifier_label))
+    else:
+        for option in included:
+            pills_children.append(_filter_value_pill(option, "include"))
+        for option in excluded:
+            pills_children.append(_filter_value_pill(option, "exclude"))
+
+    pills = Component(
+        tag_name="div",
+        attributes=[("data-ss-pills", ""), ("class", _PILLS_CLASS)],
+        children=pills_children,
+    )
+
+    # ── Search box (NO name — the query is never submitted) ──
+    search_attributes: list[HTMLAttribute] = [
+        ("data-ss-search", ""),
+        ("type", "text"),
+        ("placeholder", placeholder),
+        ("autocomplete", "off"),
+        ("class", _SEARCH_CLASS),
+    ]
+
+    # ── Options: pinned modifier rows, then value rows (pre-rendered only when
+    #    there is no search_url; otherwise the JS fetches them) ──
+    modifier_rows = [_filter_modifier_row(v, label) for v, label in modifier_options]
+    value_rows = (
+        [_filter_option_row(o["value"], o["label"]) for o in options]
+        if not search_url
+        else []
+    )
+
+    container_attributes: list[HTMLAttribute] = [
+        ("data-search-select", ""),
+        ("data-ss-mode", "filter"),
+        ("data-name", field_name),
+        ("data-search-url", search_url),
+        ("data-multi", "true"),
+        ("data-always-visible", "false"),
+        ("data-items-visible", str(items_visible)),
+        ("data-items-scroll", str(items_scroll)),
+        ("data-prefetch", str(prefetch)),
+        ("data-sync-url", "false"),
+        ("class", _CONTAINER_CLASS),
+    ]
+    if modifier:
+        container_attributes.append(("data-modifier", modifier))
+    if id:
+        container_attributes.append(("id", id))
+
+    return _combobox_shell(
+        container_attributes=container_attributes,
+        pills=pills,
+        search_attributes=search_attributes,
+        options_children=[*modifier_rows, *value_rows],
+        always_visible=False,
         items_visible=items_visible,
     )
 
