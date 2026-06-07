@@ -45,10 +45,13 @@
     var multi = container.getAttribute("data-multi") === "true";
     var alwaysVisible = container.getAttribute("data-always-visible") === "true";
     var itemsScroll = parseInt(container.getAttribute("data-items-scroll"), 10) || 10;
+    var prefetch = parseInt(container.getAttribute("data-prefetch"), 10) || 0;
     var syncUrl = container.getAttribute("data-sync-url") === "true";
 
     var noResults = options.querySelector("[data-ss-no-results]");
     var debounceTimer = null;
+    var pendingRequest = null; // in-flight AbortController, so newer queries win
+    var hasPrefetched = false;
 
     function showPanel() {
       options.classList.remove("hidden");
@@ -63,13 +66,12 @@
 
     // ── Render server-fetched rows into the panel ──
     function renderRows(items) {
-      options.querySelectorAll("[data-ss-option]").forEach(function (r) {
-        r.remove();
+      options.querySelectorAll("[data-ss-option]").forEach(function (row) {
+        row.remove();
       });
       items.slice(0, itemsScroll).forEach(function (item) {
         options.insertBefore(buildRow(item), noResults || null);
       });
-      setNoResults(items.length === 0);
       showPanel();
     }
 
@@ -88,38 +90,61 @@
       return row;
     }
 
-    // ── Client-side filter of pre-rendered rows ──
-    function filterRows(q) {
-      var lower = q.toLowerCase();
-      var anyVisible = false;
+    // ── Client-side filter of the currently loaded rows. Returns the number of
+    //    visible rows so the caller decides whether to show the no-results node. ──
+    function filterRows(query) {
+      var lower = query.toLowerCase();
+      var visibleCount = 0;
       options.querySelectorAll("[data-ss-option]").forEach(function (item) {
         var label = (item.getAttribute("data-label") || "").toLowerCase();
         var match = label.indexOf(lower) !== -1;
         item.style.display = match ? "" : "none";
-        if (match) anyVisible = true;
+        if (match) visibleCount += 1;
       });
-      setNoResults(!anyVisible);
-      showPanel();
+      return visibleCount;
     }
 
+    // ── Fetch matching rows from the server. The previous in-flight request is
+    //    aborted so a slower earlier response can never overwrite a newer one. ──
+    function fetchFromServer(query) {
+      if (pendingRequest) pendingRequest.abort();
+      pendingRequest = new AbortController();
+      var url = searchUrl + "?q=" + encodeURIComponent(query);
+      if (prefetch && !query) url += "&limit=" + prefetch;
+      fetch(url, { credentials: "same-origin", signal: pendingRequest.signal })
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (items) {
+          pendingRequest = null;
+          renderRows(items);
+          // Re-apply the live query: the box may hold more text than was sent.
+          setNoResults(filterRows(search.value.trim()) === 0);
+        })
+        .catch(function (error) {
+          if (error && error.name === "AbortError") return; // superseded
+          pendingRequest = null;
+          setNoResults(true);
+        });
+    }
+
+    // Called on every keystroke. With a search_url, filter the loaded window
+    // instantly (zero latency) and debounce a server request for the rest;
+    // no-results stays hidden until the response decides it, to avoid a flash
+    // over an incomplete window. Without a search_url the loaded set is complete,
+    // so the client-side filter is authoritative.
     function runSearch() {
-      var q = search.value.trim();
-      if (searchUrl && q) {
+      var query = search.value.trim();
+      showPanel();
+      if (searchUrl) {
+        filterRows(query);
+        setNoResults(false);
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function () {
-          fetch(searchUrl + "?q=" + encodeURIComponent(q), {
-            credentials: "same-origin",
-          })
-            .then(function (r) {
-              return r.json();
-            })
-            .then(renderRows)
-            .catch(function () {
-              setNoResults(true);
-            });
+          fetchFromServer(query);
         }, DEBOUNCE_MS);
       } else {
-        filterRows(q);
+        setNoResults(filterRows(query) === 0);
       }
     }
 
@@ -133,7 +158,20 @@
         search.value = "";
         container._ssDirty = false;
       }
-      runSearch();
+      showPanel();
+      if (searchUrl) {
+        if (prefetch && !hasPrefetched) {
+          // Seed the window immediately on first open (not debounced).
+          hasPrefetched = true;
+          fetchFromServer("");
+        } else {
+          // Show whatever is already loaded; the server decides no-results.
+          filterRows(search.value.trim());
+          setNoResults(false);
+        }
+      } else {
+        setNoResults(filterRows(search.value.trim()) === 0);
+      }
     });
     search.addEventListener("input", function () {
       if (!multi) container._ssDirty = true;

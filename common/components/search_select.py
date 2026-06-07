@@ -7,6 +7,15 @@ hidden ``<input>`` so an existing ``ModelMultipleChoiceField`` keeps validating.
 This module imports only from ``common.components`` — it has no Django-forms or
 ``games`` knowledge. Styling is inline Tailwind utilities; behavioural hooks are
 ``data-*`` attributes wired up by ``games/static/js/search_select.js``.
+
+Option sourcing follows two axes. *Population*: options are either rendered
+inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
+*Completeness*: without a ``search_url`` the inline set is the whole dataset and
+filtering is purely client-side; with a ``search_url`` the loaded rows are a
+window, so the JS filters the loaded rows instantly on each keystroke while
+issuing a debounced server request for the rest. ``prefetch`` (rows to load on
+first open, ``0`` = none) seeds that window so the panel is populated before the
+user types.
 """
 
 from collections.abc import Callable, Iterable
@@ -138,6 +147,7 @@ def SearchSelect(
     always_visible: bool = False,
     items_visible: int = 5,
     items_scroll: int = 10,
+    prefetch: int = 0,
     placeholder: str = "Search…",
     id: str = "",
     sync_url: bool = False,
@@ -200,6 +210,7 @@ def SearchSelect(
         ("data-always-visible", "true" if always_visible else "false"),
         ("data-items-visible", str(items_visible)),
         ("data-items-scroll", str(items_scroll)),
+        ("data-prefetch", str(prefetch)),
         ("data-sync-url", "true" if sync_url else "false"),
         ("class", _CONTAINER_CLASS),
     ]
