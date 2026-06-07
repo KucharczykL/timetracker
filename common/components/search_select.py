@@ -93,6 +93,7 @@ def SearchSelect(
     placeholder: str = "Search…",
     id: str = "",
     sync_url: bool = False,
+    autofocus: bool = False,
 ) -> SafeText:
     """Render the search-select widget. See module docstring for the contract."""
     selected = [_normalize_option(o) for o in (selected or [])]
@@ -118,16 +119,16 @@ def SearchSelect(
     )
 
     # ── Search box (NO name — the query is never submitted) ──
-    search = Component(
-        tag_name="input",
-        attributes=[
-            ("data-ss-search", ""),
-            ("type", "text"),
-            ("placeholder", placeholder),
-            ("autocomplete", "off"),
-            ("class", _SEARCH_CLASS),
-        ],
-    )
+    search_attrs: list[HTMLAttribute] = [
+        ("data-ss-search", ""),
+        ("type", "text"),
+        ("placeholder", placeholder),
+        ("autocomplete", "off"),
+        ("class", _SEARCH_CLASS),
+    ]
+    if autofocus:
+        search_attrs.append(("autofocus", ""))
+    search = Component(tag_name="input", attributes=search_attrs)
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     option_rows = [_option_row(o) for o in options] if not search_url else []
