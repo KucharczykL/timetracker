@@ -15,6 +15,7 @@ from common.components import (
     Button,
     ButtonGroup,
     Icon,
+    ModuleScript,
     paginated_table_content,
 )
 from common.layout import render_page
@@ -193,7 +194,10 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("games:view_game", args=[game_id]))
 
     return render_page(
-        request, AddForm(form, request=request), title="Add new playthrough"
+        request,
+        AddForm(form, request=request),
+        title="Add new playthrough",
+        scripts=ModuleScript("search_select.js"),
     )
 
 
@@ -206,7 +210,12 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
             reverse("games:view_game", args=[playevent.game.id])
         )
 
-    return render_page(request, AddForm(form, request=request), title="Edit Play Event")
+    return render_page(
+        request,
+        AddForm(form, request=request),
+        title="Edit Play Event",
+        scripts=ModuleScript("search_select.js"),
+    )
 
 
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:

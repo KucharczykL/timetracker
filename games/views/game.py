@@ -180,7 +180,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
-        scripts=ModuleScript("add_game.js"),
+        scripts=ModuleScript("search_select.js") + ModuleScript("add_game.js"),
     )
 
 
@@ -332,7 +332,12 @@ def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
     if form.is_valid():
         form.save()
         return redirect("games:list_sessions")
-    return render_page(request, AddForm(form, request=request), title="Edit Game")
+    return render_page(
+        request,
+        AddForm(form, request=request),
+        title="Edit Game",
+        scripts=ModuleScript("search_select.js"),
+    )
 
 
 # --- view_game content builders -------------------------------------------
