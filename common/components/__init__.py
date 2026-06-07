@@ -40,6 +40,7 @@ from common.components.primitives import (
     paginated_table_content,
 )
 from common.components.search_select import (
+    FilterSelect,
     SearchSelect,
     SearchSelectOption,
     searchselect_selected,
@@ -85,6 +86,7 @@ __all__ = [
     "Popover",
     "PopoverTruncated",
     "SearchField",
+    "FilterSelect",
     "SearchSelect",
     "SearchSelectOption",
     "searchselect_selected",

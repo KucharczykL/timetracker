@@ -7,6 +7,7 @@ import django.test
 from django.utils.safestring import SafeText
 
 from common.components import (
+    FilterSelect,
     Pill,
     SearchSelect,
     searchselect_selected,
@@ -119,6 +120,83 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertLess(search, options)
         self.assertLess(options, option_row)
         self.assertLess(option_row, no_results)
+
+
+class FilterSelectComponentTest(unittest.TestCase):
+    MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
+
+    def test_returns_safetext(self):
+        self.assertIsInstance(FilterSelect(field_name="type"), SafeText)
+
+    def test_is_filter_mode_on_shared_shell(self):
+        html = FilterSelect(field_name="type")
+        # Reuses the SearchSelect shell (data-search-select) but flags filter mode.
+        self.assertIn("data-search-select", html)
+        self.assertIn('data-ss-mode="filter"', html)
+        self.assertIn('data-name="type"', html)
+        # No name is submitted — state is read from the DOM into the filter JSON.
+        self.assertEqual(html.count(' name="type"'), 0)
+
+    def test_value_rows_have_include_exclude_buttons(self):
+        html = FilterSelect(field_name="type", options=[("g", "Game")])
+        self.assertIn('data-ss-action="include"', html)
+        self.assertIn('data-ss-action="exclude"', html)
+        self.assertIn('data-value="g"', html)
+
+    def test_included_renders_check_pill_excluded_renders_cross_pill(self):
+        html = FilterSelect(
+            field_name="platform",
+            options=[("1", "Steam"), ("2", "GOG")],
+            included=[("1", "Steam")],
+            excluded=[("2", "GOG")],
+        )
+        self.assertIn('data-ss-type="include"', html)
+        self.assertIn("✓ Steam", html)
+        self.assertIn('data-ss-type="exclude"', html)
+        self.assertIn("✗ GOG", html)
+        self.assertIn("line-through", html)  # excluded pill styling
+
+    def test_modifier_options_render_pinned_rows(self):
+        html = FilterSelect(field_name="platform", modifier_options=self.MODIFIERS)
+        # Pinned pseudo-options carry data-ss-modifier-option, never data-ss-option,
+        # so the text filter leaves them visible.
+        self.assertIn('data-ss-modifier-option="NOT_NULL"', html)
+        self.assertIn('data-ss-modifier-option="IS_NULL"', html)
+
+    def test_active_modifier_replaces_value_pills(self):
+        html = FilterSelect(
+            field_name="platform",
+            options=[("1", "Steam")],
+            included=[("1", "Steam")],
+            modifier="IS_NULL",
+            modifier_options=self.MODIFIERS,
+        )
+        # The lone modifier pill is shown; include/exclude pills are suppressed.
+        self.assertIn('data-ss-modifier="IS_NULL"', html)
+        self.assertIn("(None)", html)
+        self.assertNotIn('data-ss-type="include"', html)
+        self.assertIn('data-modifier="IS_NULL"', html)  # container carries it too
+
+    def test_search_url_omits_value_rows_but_keeps_modifiers(self):
+        html = FilterSelect(
+            field_name="game",
+            search_url="/api/games/search",
+            prefetch=20,
+            modifier_options=self.MODIFIERS,
+        )
+        self.assertNotIn('data-ss-option=""', html)  # value rows fetched by JS
+        self.assertIn('data-ss-modifier-option="NOT_NULL"', html)  # still pinned
+        self.assertIn('data-prefetch="20"', html)
+
+    def test_search_url_pills_use_resolved_labels(self):
+        # A selected value outside the fetched window still shows its label.
+        html = FilterSelect(
+            field_name="game",
+            search_url="/api/games/search",
+            excluded=[{"value": 4172, "label": "Obscure Game", "data": {}}],
+        )
+        self.assertIn("✗ Obscure Game", html)
+        self.assertIn('data-value="4172"', html)
 
 
 class SearchLabelTest(django.test.TestCase):
