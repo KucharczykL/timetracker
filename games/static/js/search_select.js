@@ -12,8 +12,8 @@
  * pills. Filter widgets have no hidden inputs; readSearchSelect serialises their
  * state into data-included / data-excluded / data-modifier for the filter bar.
  *
- * Mirrors selectable_filter.js: initAll() on DOMContentLoaded + htmx:afterSwap,
- * each widget guarded with el._ssInit.
+ * initAll() runs on DOMContentLoaded + htmx:afterSwap, each widget guarded with
+ * el._ssInit.
  *
  * The pill / option class strings below are kept byte-identical to the Python
  * Pill / SearchSelect / FilterSelect components so Tailwind generates the classes
@@ -496,8 +496,8 @@
 
   // Serialise each widget's current state onto data-* attributes for the caller.
   // Form widgets expose data-values (the submitted hidden-input values); filter
-  // widgets (parallel to readSelectableFilters) expose data-included /
-  // data-excluded / data-modifier for the filter bar to read.
+  // widgets expose data-included / data-excluded / data-modifier for the filter
+  // bar to read.
   window.readSearchSelect = function (form) {
     form.querySelectorAll("[data-search-select]").forEach(function (container) {
       var pills = container.querySelector("[data-ss-pills]");
