@@ -8,6 +8,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
 from common.components.primitives import Label, Span
+from common.components.search_select import FilterSelect
 
 
 class FilterChoice(NamedTuple):
@@ -95,6 +96,84 @@ def _get_filter_options(model_class, order_by="name") -> list[tuple[str, str]]:
     ):
         options.append((str(object_id), object_name))
     return options
+
+
+# ── FilterSelect adapters ────────────────────────────────────────────────────
+# Each list filter is a FilterSelect. Enum fields pre-render their small, fixed
+# option set; model-backed fields fetch from a search endpoint and only resolve
+# the currently-selected ids to labels for their pills.
+
+_FILTER_PREFETCH = 20
+
+
+def _modifier_options(nullable: bool) -> list[tuple[str, str]]:
+    """Pinned (Any)/(None) pseudo-options; (None) only when the field is nullable."""
+    options = [("NOT_NULL", "(Any)")]
+    if nullable:
+        options.append(("IS_NULL", "(None)"))
+    return options
+
+
+def _resolve_game_options(ids):
+    if not ids:
+        return []
+    from games.models import Game
+
+    return [
+        {"value": g.id, "label": g.search_label}
+        for g in Game.objects.filter(pk__in=ids)
+    ]
+
+
+def _resolve_device_options(ids):
+    if not ids:
+        return []
+    from games.models import Device
+
+    return [{"value": d.id, "label": d.name} for d in Device.objects.filter(pk__in=ids)]
+
+
+def _resolve_platform_options(ids):
+    if not ids:
+        return []
+    from games.models import Platform
+
+    return [
+        {"value": p.id, "label": p.name} for p in Platform.objects.filter(pk__in=ids)
+    ]
+
+
+def _enum_filter(
+    field_name: str, options, choice: FilterChoice, *, nullable
+) -> SafeText:
+    """A FilterSelect over a small, fully pre-rendered option set (enum field)."""
+    options_str = [(str(value), label) for value, label in options]
+    included = [(value, _find_label(options_str, value)) for value in choice.selected]
+    excluded = [(value, _find_label(options_str, value)) for value in choice.excluded]
+    return FilterSelect(
+        field_name=field_name,
+        options=options_str,
+        included=included,
+        excluded=excluded,
+        modifier=choice.modifier,
+        modifier_options=_modifier_options(nullable),
+    )
+
+
+def _model_filter(
+    field_name: str, choice: FilterChoice, *, search_url, resolver, nullable
+) -> SafeText:
+    """A FilterSelect backed by a search endpoint; only selected ids are resolved
+    to labels (for the pills) — the option rows are fetched on demand."""
+    return FilterSelect(
+        field_name=field_name,
+        included=list(resolver(choice.selected)),
+        excluded=list(resolver(choice.excluded)),
+        modifier=choice.modifier,
+        modifier_options=_modifier_options(nullable),
+        search_url=search_url,
+        prefetch=_FILTER_PREFETCH,
+    )
 
 
 def _filter_mins_to_hrs(val) -> str:
@@ -347,8 +426,7 @@ def RangeSlider(
                             ("data-target", min_input_id),
                             (
                                 "style",
-                                "left:0"
-                                + (";display:none" if point_mode else ""),
+                                "left:0" + (";display:none" if point_mode else ""),
                             ),
                         ],
                     ),
@@ -565,22 +643,18 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
 def FilterBar(
     filter_json: str = "",
     status_options: list[tuple[str, str]] | None = None,
-    platform_options: list[tuple[int, str]] | None = None,
     preset_list_url: str = "",
     preset_save_url: str = "",
 ) -> SafeText:
     """Collapsible filter bar for the Game list."""
-    from games.models import Game, Platform
+    from games.models import Game
 
     if status_options is None:
         status_options = [(s.value, s.label) for s in Game.Status]
-    if platform_options is None:
-        platform_options = _get_filter_options(Platform)
 
     existing = _filter_parse(filter_json)
     status_choice = _filter_get_choice(existing, "status")
     platform_choice = _filter_get_choice(existing, "platform")
-    platform_options_str = [(str(pk), name) for pk, name in platform_options]
 
     year_min, year_max = _parse_range(existing, "year_released")
     mastered_value = _parse_bool(existing, "mastered")
@@ -617,23 +691,20 @@ def FilterBar(
             children=[
                 _filter_field(
                     "Status",
-                    SelectableFilter(
+                    _enum_filter(
                         "status",
                         status_options,
-                        status_choice.selected,
-                        status_choice.excluded,
-                        status_choice.modifier,
+                        status_choice,
                         nullable=not Game._meta.get_field("status").has_default(),
                     ),
                 ),
                 _filter_field(
                     "Platform",
-                    SelectableFilter(
+                    _model_filter(
                         "platform",
-                        platform_options_str,
-                        platform_choice.selected,
-                        platform_choice.excluded,
-                        platform_choice.modifier,
+                        platform_choice,
+                        search_url="/api/platforms/search",
+                        resolver=_resolve_platform_options,
                         nullable=Game._meta.get_field("platform").null,
                     ),
                 ),
@@ -865,10 +936,8 @@ def SessionFilterBar(
     filter_json="", preset_list_url="", preset_save_url=""
 ) -> SafeText:
     """Collapsible filter bar for the Session list."""
-    from games.models import Device, Game, Session
+    from games.models import Game, Session
 
-    game_options = _get_filter_options(Game)
-    device_options = _get_filter_options(Device)
     existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
@@ -898,23 +967,21 @@ def SessionFilterBar(
             children=[
                 _filter_field(
                     "Game",
-                    SelectableFilter(
+                    _model_filter(
                         "game",
-                        game_options,
-                        game_choice.selected,
-                        game_choice.excluded,
-                        game_choice.modifier,
+                        game_choice,
+                        search_url="/api/games/search",
+                        resolver=_resolve_game_options,
                         nullable=not Game._meta.get_field("name").has_default(),
                     ),
                 ),
                 _filter_field(
                     "Device",
-                    SelectableFilter(
+                    _model_filter(
                         "device",
-                        device_options,
-                        device_choice.selected,
-                        device_choice.excluded,
-                        device_choice.modifier,
+                        device_choice,
+                        search_url="/api/devices/search",
+                        resolver=_resolve_device_options,
                         nullable=Session._meta.get_field("device").null,
                     ),
                 ),
@@ -946,10 +1013,8 @@ def PurchaseFilterBar(
     filter_json="", preset_list_url="", preset_save_url=""
 ) -> SafeText:
     """Collapsible filter bar for the Purchase list."""
-    from games.models import Game, Platform, Purchase
+    from games.models import Purchase
 
-    game_options = _get_filter_options(Game)
-    platform_options = _get_filter_options(Platform)
     type_options = [(value, label) for value, label in Purchase.TYPES]
     ownership_options = [(value, label) for value, label in Purchase.OWNERSHIP_TYPES]
     existing = _filter_parse(filter_json)
@@ -975,45 +1040,39 @@ def PurchaseFilterBar(
             children=[
                 _filter_field(
                     "Game",
-                    SelectableFilter(
+                    _model_filter(
                         "games",
-                        game_options,
-                        game_choice.selected,
-                        game_choice.excluded,
-                        game_choice.modifier,
+                        game_choice,
+                        search_url="/api/games/search",
+                        resolver=_resolve_game_options,
                         nullable=False,
                     ),
                 ),
                 _filter_field(
                     "Platform",
-                    SelectableFilter(
+                    _model_filter(
                         "platform",
-                        platform_options,
-                        platform_choice.selected,
-                        platform_choice.excluded,
-                        platform_choice.modifier,
+                        platform_choice,
+                        search_url="/api/platforms/search",
+                        resolver=_resolve_platform_options,
                         nullable=Purchase._meta.get_field("platform").null,
                     ),
                 ),
                 _filter_field(
                     "Type",
-                    SelectableFilter(
+                    _enum_filter(
                         "type",
                         type_options,
-                        type_choice.selected,
-                        type_choice.excluded,
-                        type_choice.modifier,
+                        type_choice,
                         nullable=not Purchase._meta.get_field("type").has_default(),
                     ),
                 ),
                 _filter_field(
                     "Ownership",
-                    SelectableFilter(
+                    _enum_filter(
                         "ownership_type",
                         ownership_options,
-                        ownership_choice.selected,
-                        ownership_choice.excluded,
-                        ownership_choice.modifier,
+                        ownership_choice,
                         nullable=not Purchase._meta.get_field(
                             "ownership_type"
                         ).has_default(),

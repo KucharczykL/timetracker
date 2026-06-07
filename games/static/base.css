@@ -811,6 +811,9 @@
   .static {
     position: static;
   }
+  .sticky {
+    position: sticky;
+  }
   .inset-0 {
     inset: calc(var(--spacing) * 0);
   }
@@ -1284,6 +1287,9 @@
   }
   .ml-1 {
     margin-left: calc(var(--spacing) * 1);
+  }
+  .ml-2 {
+    margin-left: calc(var(--spacing) * 2);
   }
   .ml-4 {
     margin-left: calc(var(--spacing) * 4);
@@ -2074,6 +2080,12 @@
   .bg-amber-50 {
     background-color: var(--color-amber-50);
   }
+  .bg-amber-500\/15 {
+    background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 15%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-amber-500) 15%, transparent);
+    }
+  }
   .bg-black\/70 {
     background-color: color-mix(in srgb, #000 70%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2178,6 +2190,12 @@
   }
   .bg-red-500 {
     background-color: var(--color-red-500);
+  }
+  .bg-red-500\/15 {
+    background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 15%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-red-500) 15%, transparent);
+    }
   }
   .bg-red-600 {
     background-color: var(--color-red-600);
@@ -2562,6 +2580,9 @@
   .text-amber-500 {
     color: var(--color-amber-500);
   }
+  .text-amber-600 {
+    color: var(--color-amber-600);
+  }
   .text-amber-800 {
     color: var(--color-amber-800);
   }
@@ -2658,11 +2679,17 @@
   .italic {
     font-style: italic;
   }
+  .line-through {
+    text-decoration-line: line-through;
+  }
   .no-underline\! {
     text-decoration-line: none !important;
   }
   .underline {
     text-decoration-line: underline;
+  }
+  .decoration-red-400 {
+    text-decoration-color: var(--color-red-400);
   }
   .decoration-slate-500 {
     text-decoration-color: var(--color-slate-500);
@@ -2913,6 +2940,13 @@
       }
     }
   }
+  .hover\:border-brand {
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--color-brand);
+      }
+    }
+  }
   .hover\:border-default {
     &:hover {
       @media (hover: hover) {
@@ -2931,6 +2965,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-blue-800);
+      }
+    }
+  }
+  .hover\:bg-brand {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-brand);
       }
     }
   }
@@ -2990,6 +3031,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-neutral-secondary-medium);
+      }
+    }
+  }
+  .hover\:bg-neutral-secondary-strong {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-neutral-secondary-strong);
       }
     }
   }
