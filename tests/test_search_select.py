@@ -63,9 +63,10 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertIn('data-search-url="/api/games/search"', html)
         self.assertIn('data-multi="true"', html)
 
-    def test_selected_renders_pills_and_hidden_inputs(self):
+    def test_multi_selected_renders_pills_and_hidden_inputs(self):
         html = SearchSelect(
             name="games",
+            multi_select=True,
             selected=[{"value": 7, "label": "Game A", "data": {"platform": "2"}}],
         )
         self.assertIn("data-pill", html)
@@ -73,6 +74,18 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertIn('data-platform="2"', html)
         # exactly one submitted value (the hidden input) — the search box has no
         # name. The leading space avoids matching the container's data-name.
+        self.assertEqual(html.count(' name="games"'), 1)
+
+    def test_single_selected_has_no_pill_and_value_in_search_box(self):
+        html = SearchSelect(
+            name="games",
+            selected=[{"value": 7, "label": "Game A", "data": {"platform": "2"}}],
+        )
+        # single-select renders no pill — the label lives in the search box
+        self.assertNotIn("data-pill", html)
+        self.assertIn('value="Game A"', html)
+        # the value is still submitted via a lone hidden input
+        self.assertIn('<input type="hidden" name="games" value="7">', html)
         self.assertEqual(html.count(' name="games"'), 1)
 
     def test_search_box_has_no_name(self):

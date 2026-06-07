@@ -1,7 +1,10 @@
 /**
  * SearchSelect widget — a search box paired with a dropdown of options.
- * Single/multi select; chosen items render as removable pills, each backed by a
- * hidden <input> so existing Django form validation keeps working.
+ * Multi-select renders chosen items as removable pills (inline with the search
+ * box), each backed by a hidden <input>. Single-select renders no pill: the
+ * committed label lives inside the search box (which doubles as a combobox —
+ * focus clears it to search, picking an option fills it), with a lone hidden
+ * <input> carrying the value. Both keep hidden inputs so Django validation works.
  *
  * Mirrors selectable_filter.js: initAll() on DOMContentLoaded + htmx:afterSwap,
  * each widget guarded with el._ssInit.
@@ -120,8 +123,44 @@
       }
     }
 
-    search.addEventListener("focus", runSearch);
-    search.addEventListener("input", runSearch);
+    // ── Single-select combobox: the search box shows the committed label;
+    //    focusing clears it to search, blurring restores it (or deselects). ──
+    if (!multi) container._ssLabel = search.value;
+
+    search.addEventListener("focus", function () {
+      if (!multi) {
+        // Hide the committed label so the box becomes a fresh search field.
+        search.value = "";
+        container._ssDirty = false;
+      }
+      runSearch();
+    });
+    search.addEventListener("input", function () {
+      if (!multi) container._ssDirty = true;
+      runSearch();
+    });
+    if (!multi) {
+      search.addEventListener("blur", function () {
+        // Defer so an option click (which fires before blur settles) wins.
+        setTimeout(function () {
+          if (container._ssDirty && search.value.trim() === "") {
+            // User intentionally cleared the box → deselect.
+            pills.innerHTML = "";
+            container._ssLabel = "";
+            emitChange(null);
+          } else {
+            // Focused-and-left, or typed a partial query without picking →
+            // restore the committed label (no-op right after a selection).
+            search.value = container._ssLabel || "";
+          }
+        }, 120);
+      });
+    }
+
+    // Clicking an option must not blur the input before the click selects.
+    options.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+    });
 
     // ── Option click → select ──
     options.addEventListener("click", function (e) {
@@ -152,9 +191,13 @@
           addPill(option);
         }
       } else {
+        // Single-select: no pill — show the label in the search box and keep a
+        // lone hidden input under [data-ss-pills] for submission.
         pills.innerHTML = "";
-        addPill(option);
+        pills.appendChild(buildHidden(option.value));
         search.value = option.label;
+        container._ssLabel = option.label;
+        container._ssDirty = false;
         hidePanel();
       }
       emitChange(option);

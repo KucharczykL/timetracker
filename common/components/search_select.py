@@ -26,9 +26,13 @@ class SearchSelectOption(TypedDict):
 
 # removed border and border-default-medium, see later if it's needed
 _CONTAINER_CLASS = "relative rounded-base bg-neutral-secondary-medium"
-_PILLS_CLASS = "flex flex-wrap gap-1 p-2 empty:hidden"
+# The pills and the search box share one flex-wrap row so the widget reads as a
+# single field; the pills wrapper uses `contents` so its pills/hidden inputs
+# flow as direct participants of that row, inline with the search input.
+_FIELD_CLASS = "flex flex-wrap items-center gap-1 p-2"
+_PILLS_CLASS = "contents"
 _SEARCH_CLASS = (
-    "block w-full border-0 bg-transparent text-sm text-heading p-2 "
+    "flex-1 min-w-[8rem] border-0 bg-transparent text-sm text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body"
 )
 _OPTIONS_CLASS = (
@@ -99,17 +103,27 @@ def SearchSelect(
     options = [_normalize_option(o) for o in (options or [])]
 
     # ── Pills + their hidden inputs (the submitted channel) ──
+    # Multi-select renders a removable Pill per value; single-select renders no
+    # pill — the committed label shows inside the search box instead, with a
+    # lone hidden input carrying the value. Both keep the hidden input(s) inside
+    # `[data-ss-pills]` so the JS reads/writes values uniformly.
     pills_children: list[SafeText] = []
-    for option in selected:
-        pills_children.append(
-            Pill(
-                option["label"],
-                value=str(option["value"]),
-                removable=True,
-                attributes=_data_attributes(option["data"]),
+    search_value = ""
+    if multi_select:
+        for option in selected:
+            pills_children.append(
+                Pill(
+                    option["label"],
+                    value=str(option["value"]),
+                    removable=True,
+                    attributes=_data_attributes(option["data"]),
+                )
             )
-        )
+            pills_children.append(_hidden_input(name, option["value"]))
+    elif selected:
+        option = selected[0]
         pills_children.append(_hidden_input(name, option["value"]))
+        search_value = option["label"]
 
     pills = Component(
         tag_name="div",
@@ -118,15 +132,22 @@ def SearchSelect(
     )
 
     # ── Search box (NO name — the query is never submitted) ──
-    search = Component(
-        tag_name="input",
-        attributes=[
-            ("data-ss-search", ""),
-            ("type", "text"),
-            ("placeholder", placeholder),
-            ("autocomplete", "off"),
-            ("class", _SEARCH_CLASS),
-        ],
+    search_attrs: list[HTMLAttribute] = [
+        ("data-ss-search", ""),
+        ("type", "text"),
+        ("placeholder", placeholder),
+        ("autocomplete", "off"),
+        ("class", _SEARCH_CLASS),
+    ]
+    if search_value:
+        search_attrs.append(("value", search_value))
+    search = Component(tag_name="input", attributes=search_attrs)
+
+    # ── Field row: pills + search box combined into one visual field ──
+    field = Component(
+        tag_name="div",
+        attributes=[("data-ss-field", ""), ("class", _FIELD_CLASS)],
+        children=[pills, search],
     )
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
@@ -164,7 +185,7 @@ def SearchSelect(
     return Component(
         tag_name="div",
         attributes=container_attrs,
-        children=[pills, search, options_panel],
+        children=[field, options_panel],
     )
 
 
