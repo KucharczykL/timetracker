@@ -433,6 +433,92 @@ def ModuleScript(filename: str) -> SafeText:
     )
 
 
+def ExternalScript(url: str) -> SafeText:
+    """A plain `<script src=...>` tag for an external/CDN script."""
+    return mark_safe(f'<script src="{url}"></script>')
+
+
+def YearPicker(
+    year: int | None = None,
+    available_years: tuple[int, ...] = (),
+    url_template: str = "",
+) -> SafeText:
+    """A Flowbite-datepicker year picker.
+
+    `year` is the selected year, or ``None`` for the all-time view (the empty
+    state). `available_years` are the years to enable in the popup grid.
+    `url_template` is a navigation URL containing the literal ``__year__``
+    placeholder, substituted with the chosen year in JS (keeps this component
+    decoupled from the project's URL names).
+
+    The Flowbite-datepicker UMD bundle is *not* loaded here — the view hoists it
+    via ``render_page(scripts=...)``.
+    """
+    label = str(year) if year is not None else "Choose a year"
+    selected = str(year) if year is not None else ""
+    classes = (
+        "bg-brand text-white border-transparent hover:bg-brand-strong"
+        if year is not None
+        else "bg-neutral-secondary-medium text-heading border border-default-medium "
+        "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
+    )
+    years_csv = ",".join(str(y) for y in available_years)
+    return mark_safe(f"""<div class="relative inline-block" x-data="{{ pickerOpen: false }}"
+     @keydown.escape.window="pickerOpen = false">
+    <button type="button"
+            x-on:click="pickerOpen = !pickerOpen; $refs.pickerInput._pickerInstance && ($refs.pickerInput._pickerInstance.active ? $refs.pickerInput._pickerInstance.hide() : $refs.pickerInput._pickerInstance.show())"
+            class="inline-flex items-center rounded-base px-4 py-2 text-sm font-medium {classes}">
+        {label}
+        <svg class="w-4 h-4 ms-2 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 5h12m0 0L9 1m4 4L9 9"/>
+        </svg>
+    </button>
+    <input type="text" x-ref="pickerInput" id="year-picker-input"
+           class="absolute opacity-0 pointer-events-none"
+           style="width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;"
+           data-available-years="{years_csv}"
+           data-selected-year="{selected}"
+           data-url-template="{url_template}">
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {{
+    const pickerEl = document.getElementById('year-picker-input');
+    if (!pickerEl || pickerEl._pickerInstance) return;
+
+    const selectedYear = pickerEl.dataset.selectedYear;
+    const urlTemplate = pickerEl.dataset.urlTemplate;
+    const currentYear = new Date().getFullYear();
+    const availableYears = new Set(pickerEl.dataset.availableYears
+        .split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)));
+
+    const picker = new Datepicker(pickerEl, {{
+        pickLevel: 2,
+        format: 'yyyy',
+        minDate: new Date(1999, 0, 1),
+        maxDate: new Date(currentYear, 11, 31),
+        autohide: false,
+        orientation: 'bottom end',
+        showOnClick: false,
+        showOnFocus: false,
+        beforeShowYear: (date) => ({{ enabled: availableYears.has(date.getFullYear()) }})
+    }});
+    pickerEl._pickerInstance = picker;
+
+    picker.element.addEventListener('changeDate', (e) => {{
+        const year = e.detail.date?.getFullYear();
+        if (year && urlTemplate) {{
+            window.location.href = urlTemplate.replace('__year__', year);
+        }}
+    }});
+
+    if (selectedYear) {{
+        picker.dates = [new Date(parseInt(selectedYear), 0, 1)];
+        picker.update();
+    }}
+}});
+</script>""")
+
+
 def AddForm(
     form,
     *,

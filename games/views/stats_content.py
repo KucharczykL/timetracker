@@ -7,10 +7,11 @@ like the old `{% if key %}` blocks: a missing or empty value hides the section.
 
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
+from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components import Component, Div, GameLink
+from common.components import A, Component, Div, GameLink, YearPicker
 from common.time import durationformat, format_duration
 
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2"
@@ -41,7 +42,7 @@ def _kv(label, value) -> SafeText:
 def _h1(title: str) -> SafeText:
     return Component(
         tag_name="h1",
-        attributes=[("class", "text-5xl text-center my-6")],
+        attributes=[("class", "text-3xl text-heading text-center my-6")],
         children=[title],
     )
 
@@ -75,39 +76,35 @@ def _purchase_name(purchase) -> SafeText:
     return GameLink(first_game.id, name)
 
 
-def _year_dropdown(year, year_range) -> SafeText:
-    options = []
-    for year_item in year_range or []:
-        attrs = [("value", str(year_item))]
-        if year == year_item:
-            attrs.append(("selected", True))
-        options.append(
-            Component(tag_name="option", attributes=attrs, children=[str(year_item)])
-        )
-    select = Component(
-        tag_name="select",
-        attributes=[
-            ("name", "year"),
-            ("id", "yearSelect"),
-            ("onchange", "this.form.submit();"),
-            ("class", "mx-2"),
-        ],
-        children=options,
+def _year_nav(year, year_range, url_template) -> SafeText:
+    # `year` is an int for a specific year, or "Alltime" (from compute_stats)
+    # for the all-time view. Normalize to int-or-None so nothing downstream has
+    # to know about the "Alltime" sentinel.
+    year_int = year if isinstance(year, int) else None
+    is_alltime = year_int is None
+
+    alltime_classes = (
+        "inline-flex items-center rounded-base px-4 py-2 mr-3 text-sm font-medium "
     )
-    label = Component(
-        tag_name="label",
-        attributes=[
-            ("class", "text-5xl text-center inline-block mb-10"),
-            ("for", "yearSelect"),
-        ],
-        children=["Stats for:"],
+    alltime_classes += (
+        "bg-brand text-white hover:bg-brand-strong"
+        if is_alltime
+        else "text-body hover:text-heading underline decoration-dotted"
     )
-    form = Component(
-        tag_name="form",
-        attributes=[("method", "get"), ("class", "text-center")],
-        children=[label, select],
+    alltime_btn = A(
+        url_name="games:stats_alltime",
+        attributes=[("class", alltime_classes)],
+        children=["All-time stats"],
     )
-    return Div([("class", "flex justify-center items-center")], [form])
+    picker = YearPicker(
+        year=year_int,
+        available_years=tuple(year_range or []),
+        url_template=url_template,
+    )
+    return Div(
+        [("class", "flex justify-center items-center mb-12")],
+        [alltime_btn, picker],
+    )
 
 
 def _playtime_table(ctx) -> SafeText:
@@ -260,8 +257,14 @@ def _priced_table(purchases, currency) -> SafeText:
 def stats_content(ctx: dict) -> SafeText:
     year = ctx.get("year")
     currency = ctx.get("total_spent_currency")
+    # Build a navigation URL with an `__year__` placeholder the picker's JS
+    # substitutes. Reverse a sentinel year, then swap it for the placeholder
+    # (anchored on `stats/0` so the match is unambiguous).
+    url_template = reverse("games:stats_by_year", args=[0]).replace(
+        "stats/0", "stats/__year__"
+    )
     sections: list = [
-        _year_dropdown(year, ctx.get("stats_dropdown_year_range")),
+        _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
         _h1("Playtime"),
         _playtime_table(ctx),
     ]

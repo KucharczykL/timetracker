@@ -253,7 +253,8 @@ class RenderedPagesTest(TestCase):
     def test_stats_alltime(self):
         html = self.get("games:stats_alltime").content.decode()
         for marker in [
-            'id="yearSelect"',
+            'id="year-picker-input"',
+            "All-time stats",
             "responsive-table",
             "Playtime",
             "Purchases",

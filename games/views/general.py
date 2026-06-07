@@ -13,11 +13,17 @@ from django.urls import reverse
 from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 
+from common.components import ExternalScript
 from common.layout import render_page
 from common.time import format_duration
 from games.models import Game, Platform, Purchase, Session
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
+
+# Flowbite-datepicker UMD bundle, hoisted into the stats pages for YearPicker.
+_STATS_SCRIPTS = ExternalScript(
+    "https://cdn.jsdelivr.net/npm/flowbite-datepicker@2.0.0/dist/Datepicker.umd.min.js"
+)
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:
@@ -71,7 +77,9 @@ def use_custom_redirect(
 def stats_alltime(request: HttpRequest) -> HttpResponse:
     request.session["return_path"] = request.path
     data = compute_stats(None)
-    return render_page(request, stats_content(data), title=data["title"])
+    return render_page(
+        request, stats_content(data), title=data["title"], scripts=_STATS_SCRIPTS
+    )
 
 
 @login_required
@@ -85,7 +93,9 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
     request.session["return_path"] = request.path
     data = compute_stats(year)
-    return render_page(request, stats_content(data), title=data["title"])
+    return render_page(
+        request, stats_content(data), title=data["title"], scripts=_STATS_SCRIPTS
+    )
 
 
 @login_required

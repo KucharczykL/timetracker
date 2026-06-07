@@ -898,9 +898,6 @@
       max-width: 96rem;
     }
   }
-  .mx-2 {
-    margin-inline: calc(var(--spacing) * 2);
-  }
   .mx-auto {
     margin-inline: auto;
   }
@@ -939,6 +936,9 @@
   }
   .mt-5 {
     margin-top: calc(var(--spacing) * 5);
+  }
+  .mt-6 {
+    margin-top: calc(var(--spacing) * 6);
   }
   .apexcharts-canvas {
     & .apexcharts-tooltip {
@@ -1199,6 +1199,9 @@
       min-width: 4rem;
     }
   }
+  .mr-3 {
+    margin-right: calc(var(--spacing) * 3);
+  }
   .mr-4 {
     margin-right: calc(var(--spacing) * 4);
   }
@@ -1244,6 +1247,9 @@
   }
   .mb-10 {
     margin-bottom: calc(var(--spacing) * 10);
+  }
+  .mb-12 {
+    margin-bottom: calc(var(--spacing) * 12);
   }
   .apexcharts-xaxistooltip {
     .apexcharts-canvas & {
@@ -1577,6 +1583,9 @@
   .w-72 {
     width: calc(var(--spacing) * 72);
   }
+  .w-\[300px\] {
+    width: 300px;
+  }
   .w-auto {
     width: auto;
   }
@@ -1594,6 +1603,9 @@
   }
   .max-w-120 {
     max-width: calc(var(--spacing) * 120);
+  }
+  .max-w-lg {
+    max-width: var(--container-lg);
   }
   .max-w-md {
     max-width: var(--container-md);
@@ -2134,6 +2146,12 @@
   .bg-neutral-primary-soft {
     background-color: var(--color-neutral-primary-soft);
   }
+  .bg-neutral-primary-soft\/30 {
+    background-color: color-mix(in srgb, #fff 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-neutral-primary-soft) 30%, transparent);
+    }
+  }
   .bg-neutral-quaternary {
     background-color: var(--color-neutral-quaternary);
   }
@@ -2160,6 +2178,9 @@
   }
   .bg-red-500 {
     background-color: var(--color-red-500);
+  }
+  .bg-red-600 {
+    background-color: var(--color-red-600);
   }
   .bg-red-700 {
     background-color: var(--color-red-700);
@@ -2346,6 +2367,9 @@
   .pb-16 {
     padding-bottom: calc(var(--spacing) * 16);
   }
+  .pl-3 {
+    padding-left: calc(var(--spacing) * 3);
+  }
   .datatable-empty {
     .datatable-wrapper .datatable-table & {
       text-align: center;
@@ -2383,10 +2407,6 @@
   .text-4xl {
     font-size: var(--text-4xl);
     line-height: var(--tw-leading, var(--text-4xl--line-height));
-  }
-  .text-5xl {
-    font-size: var(--text-5xl);
-    line-height: var(--tw-leading, var(--text-5xl--line-height));
   }
   .text-base {
     font-size: var(--text-base);
@@ -2613,6 +2633,9 @@
   }
   .text-red-800 {
     color: var(--color-red-800);
+  }
+  .text-slate-200 {
+    color: var(--color-slate-200);
   }
   .text-slate-300 {
     color: var(--color-slate-300);
@@ -2860,6 +2883,17 @@
   .even\:bg-gray-50 {
     &:nth-child(even) {
       background-color: var(--color-gray-50);
+    }
+  }
+  .first-of-type\:border-t-0 {
+    &:first-of-type {
+      border-top-style: var(--tw-border-style);
+      border-top-width: 0px;
+    }
+  }
+  .first-of-type\:pt-0 {
+    &:first-of-type {
+      padding-top: calc(var(--spacing) * 0);
     }
   }
   .hover\:scale-110 {
@@ -3207,6 +3241,11 @@
     @media (width >= 40rem) {
       border-bottom-right-radius: var(--radius-lg);
       border-bottom-left-radius: var(--radius-lg);
+    }
+  }
+  .sm\:p-5 {
+    @media (width >= 40rem) {
+      padding: calc(var(--spacing) * 5);
     }
   }
   .sm\:px-4 {
@@ -3924,6 +3963,16 @@
     &:last-of-type button {
       border-start-end-radius: var(--radius-lg);
       border-end-end-radius: var(--radius-lg);
+    }
+  }
+  .\[\&\>div\]\:w-\[calc\(33\.333\%-0\.67rem\)\] {
+    &>div {
+      width: calc(33.333% - 0.67rem);
+    }
+  }
+  .\[\&\>div\]\:w-\[calc\(50\%-0\.5rem\)\] {
+    &>div {
+      width: calc(50% - 0.5rem);
     }
   }
 }

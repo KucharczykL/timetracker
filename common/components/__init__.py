@@ -20,6 +20,7 @@ from common.components.primitives import (
     ButtonGroup,
     CsrfInput,
     Div,
+    ExternalScript,
     H1,
     Icon,
     Input,
@@ -35,6 +36,7 @@ from common.components.primitives import (
     TableHeader,
     TableRow,
     TableTd,
+    YearPicker,
     paginated_table_content,
 )
 from common.components.search_select import (
@@ -73,6 +75,7 @@ __all__ = [
     "ButtonGroup",
     "CsrfInput",
     "Div",
+    "ExternalScript",
     "H1",
     "Icon",
     "Input",
@@ -91,6 +94,7 @@ __all__ = [
     "TableHeader",
     "TableRow",
     "TableTd",
+    "YearPicker",
     "paginated_table_content",
     "GameLink",
     "GameStatus",
