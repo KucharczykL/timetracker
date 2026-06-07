@@ -84,6 +84,50 @@ def _option_row(option: SearchSelectOption) -> SafeText:
     )
 
 
+def _combobox_shell(
+    *,
+    container_attributes: list[HTMLAttribute],
+    pills: SafeText,
+    search_attributes: list[HTMLAttribute],
+    options_children: list[SafeText],
+    always_visible: bool,
+    items_visible: int,
+) -> SafeText:
+    """Assemble the shared, domain-agnostic combobox skeleton.
+
+    Every combobox built on top of this shell has the same three regions in the
+    same order: the ``pills`` region, the search box, and the options panel (which
+    always carries a trailing no-results node). Callers supply the already-built
+    ``pills`` region, the ``search_attributes`` for the text box, the
+    ``options_children`` (value rows plus any pinned pseudo-options), and the
+    ``container_attributes`` that carry the widget's identity and behaviour flags.
+    The shell knows nothing about how individual rows or pills look.
+    """
+    search = Component(tag_name="input", attributes=search_attributes)
+
+    no_results = Component(
+        tag_name="div",
+        attributes=[("data-ss-no-results", ""), ("class", _NO_RESULTS_CLASS)],
+        children=["No results"],
+    )
+    options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
+    options_panel = Component(
+        tag_name="div",
+        attributes=[
+            ("data-ss-options", ""),
+            ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
+            ("class", options_class),
+        ],
+        children=[*options_children, no_results],
+    )
+
+    return Component(
+        tag_name="div",
+        attributes=container_attributes,
+        children=[pills, search, options_panel],
+    )
+
+
 def SearchSelect(
     *,
     name: str,
@@ -144,27 +188,11 @@ def SearchSelect(
         search_attrs.append(("autofocus", ""))
     if search_value:
         search_attrs.append(("value", search_value))
-    search = Component(tag_name="input", attributes=search_attrs)
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     option_rows = [_option_row(o) for o in options] if not search_url else []
-    no_results = Component(
-        tag_name="div",
-        attributes=[("data-ss-no-results", ""), ("class", _NO_RESULTS_CLASS)],
-        children=["No results"],
-    )
-    options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
-    options_panel = Component(
-        tag_name="div",
-        attributes=[
-            ("data-ss-options", ""),
-            ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
-            ("class", options_class),
-        ],
-        children=[*option_rows, no_results],
-    )
 
-    container_attrs: list[HTMLAttribute] = [
+    container_attributes: list[HTMLAttribute] = [
         ("data-search-select", ""),
         ("data-name", name),
         ("data-search-url", search_url),
@@ -176,12 +204,15 @@ def SearchSelect(
         ("class", _CONTAINER_CLASS),
     ]
     if id:
-        container_attrs.append(("id", id))
+        container_attributes.append(("id", id))
 
-    return Component(
-        tag_name="div",
-        attributes=container_attrs,
-        children=[pills, search, options_panel],
+    return _combobox_shell(
+        container_attributes=container_attributes,
+        pills=pills,
+        search_attributes=search_attrs,
+        options_children=option_rows,
+        always_visible=always_visible,
+        items_visible=items_visible,
     )
 
 
