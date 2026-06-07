@@ -142,6 +142,8 @@ def SearchSelect(
     ]
     if autofocus:
         search_attrs.append(("autofocus", ""))
+    if search_value:
+        search_attrs.append(("value", search_value))
     search = Component(tag_name="input", attributes=search_attrs)
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
