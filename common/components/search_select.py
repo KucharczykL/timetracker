@@ -179,7 +179,7 @@ def SearchSelect(
     return Component(
         tag_name="div",
         attributes=container_attrs,
-        children=[field, options_panel],
+        children=[pills, search, options_panel],
     )
 
 
