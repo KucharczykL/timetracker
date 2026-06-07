@@ -15,7 +15,6 @@ from django.test import TestCase
 from common.components import (
     FilterBar,
     PurchaseFilterBar,
-    SelectableFilter,
     SessionFilterBar,
 )
 from games.models import Device, Game, Platform
@@ -94,14 +93,15 @@ class FilterBarRenderingTest(TestCase):
         self._assert_range_slider(html)
 
     def test_game_filter_bar_roundtrips_selected_status(self):
-        """A status in filter_json renders as a selected tag in the widget."""
+        """A status in filter_json renders as an include pill in the widget."""
         filter_json = json.dumps({"status": {"value": ["f"], "modifier": ""}})
         html = str(
             FilterBar(
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
             )
         )
-        self.assertIn("sf-tag", html)
+        self.assertIn('data-ss-mode="filter"', html)
+        self.assertIn('data-ss-type="include"', html)  # rendered as an include pill
         self.assertIn('data-value="f"', html)  # selected status reflected in widget
         self.assertIn("Finished", html)  # ...with its label
         self.assertNoEscapedTags(html)
@@ -110,22 +110,3 @@ class FilterBarRenderingTest(TestCase):
         # for the double-escape bug the dedup fixed.
         self.assertIn("&quot;status&quot;", html)
         self.assertNotIn("&amp;quot;", html)
-
-
-class SelectableFilterTest(TestCase):
-    """The shared widget the deduped FilterBar will be built on."""
-
-    OPTIONS = [("f", "Finished"), ("a", "Abandoned"), ("u", "Unplayed")]
-
-    def test_plain_widget_has_no_tags(self):
-        html = str(SelectableFilter("status", self.OPTIONS))
-        self.assertNotIn("sf-tag", html)
-
-    def test_include_and_exclude_tags(self):
-        html = str(
-            SelectableFilter("status", self.OPTIONS, selected=["f"], excluded=["a"])
-        )
-        self.assertIn('data-type="include"', html)
-        self.assertIn('data-type="exclude"', html)
-        self.assertIn("Finished", html)
-        self.assertIn("Abandoned", html)

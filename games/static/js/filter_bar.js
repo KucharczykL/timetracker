@@ -59,62 +59,34 @@
         filter.search = { value: searchInput.value.trim(), modifier: "INCLUDES" };
     }
 
-    // ── Generic SelectableFilter widgets ──
-    readSelectableFilters(form);
-    var widgets = form.querySelectorAll("[data-selectable-filter]");
-    widgets.forEach(function (w) {
-      var field = w.getAttribute("data-selectable-filter");
-      var inc = parseJSONAttr(w, "data-included");
-      var exc = parseJSONAttr(w, "data-excluded");
-      var mod = w.getAttribute("data-modifier");
-      if (mod === "NOT_NULL" || mod === "IS_NULL") {
-        filter[field] = { modifier: mod };
-      } else if (inc.length > 0 || exc.length > 0) {
-        var isIdField = field === "platform" || field === "game" || field === "device" || field === "games";
+    // ── FilterSelect widgets (data-ss-mode="filter") ──
+    // readSearchSelect serialises each into data-included/data-excluded/data-modifier.
+    readSearchSelect(form);
+    var widgets = form.querySelectorAll('[data-search-select][data-ss-mode="filter"]');
+    widgets.forEach(function (widget) {
+      var field = widget.getAttribute("data-name");
+      var included = parseJSONAttr(widget, "data-included");
+      var excluded = parseJSONAttr(widget, "data-excluded");
+      var modifier = widget.getAttribute("data-modifier");
+      if (modifier === "NOT_NULL" || modifier === "IS_NULL") {
+        filter[field] = { modifier: modifier };
+      } else if (included.length > 0 || excluded.length > 0) {
+        var isIdField =
+          field === "platform" ||
+          field === "game" ||
+          field === "device" ||
+          field === "games";
         filter[field] = {
-          value: isIdField ? inc.map(Number) : inc,
-          excludes: isIdField ? exc.map(Number) : exc,
-          modifier: mod || "INCLUDES",
+          value: isIdField ? included.map(Number) : included,
+          excludes: isIdField ? excluded.map(Number) : excluded,
+          modifier: modifier || "INCLUDES",
         };
       }
     });
 
     // ── Session-specific fields ──
-    var pageIsSessions = !!form.querySelector('[data-selectable-filter="game"]');
-
-    // Game (sessions page)
-    var gameWidget = form.querySelector('[data-selectable-filter="game"]');
-    if (gameWidget) {
-      var gIncluded = parseJSONAttr(gameWidget, "data-included");
-      var gExcluded = parseJSONAttr(gameWidget, "data-excluded");
-      var gMod = gameWidget.getAttribute("data-modifier");
-      if (gMod === "NOT_NULL" || gMod === "IS_NULL") {
-        filter.game = { modifier: gMod };
-      } else if (gIncluded.length > 0 || gExcluded.length > 0) {
-        filter.game = {
-          value: gIncluded.map(Number),
-          excludes: gExcluded.map(Number),
-          modifier: gMod || "INCLUDES",
-        };
-      }
-    }
-
-    // Device (sessions page)
-    var deviceWidget = form.querySelector('[data-selectable-filter="device"]');
-    if (deviceWidget) {
-      var dIncluded = parseJSONAttr(deviceWidget, "data-included");
-      var dExcluded = parseJSONAttr(deviceWidget, "data-excluded");
-      var dMod = deviceWidget.getAttribute("data-modifier");
-      if (dMod === "NOT_NULL" || dMod === "IS_NULL") {
-        filter.device = { modifier: dMod };
-      } else if (dIncluded.length > 0 || dExcluded.length > 0) {
-        filter.device = {
-          value: dIncluded.map(Number),
-          excludes: dExcluded.map(Number),
-          modifier: dMod || "INCLUDES",
-        };
-      }
-    }
+    var pageIsSessions =
+      !!form.querySelector('[data-search-select][data-ss-mode="filter"][data-name="game"]');
 
     // Emulated checkbox (sessions page)
     var emulated = form.querySelector('[name="filter-emulated"]');

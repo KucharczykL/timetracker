@@ -235,20 +235,20 @@ class TestGameFilterToQ:
 
 
 class TestFilterBarRendering:
-    """Tests for FilterBar with SelectableFilter widgets."""
+    """Tests for FilterBar with FilterSelect widgets."""
 
-    def test_status_uses_selectable_filter(self):
-        html = str(FilterBar(platform_options=[]))
-        assert "data-selectable-filter" in html
+    def test_status_uses_filter_select(self):
+        html = str(FilterBar())
+        assert 'data-ss-mode="filter"' in html
+        assert 'data-name="status"' in html
 
     def test_mastered_not_checked_by_default(self):
-        html = str(FilterBar(filter_json="", platform_options=[]))
+        html = str(FilterBar(filter_json=""))
         assert 'checked="true"' not in html
 
     def test_mastered_checked_when_filtered(self):
         html = str(
             FilterBar(
-                platform_options=[],
                 filter_json=json.dumps(
                     {"mastered": {"value": True, "modifier": "EQUALS"}}
                 ),
@@ -259,7 +259,6 @@ class TestFilterBarRendering:
     def test_status_prefilled(self):
         html = str(
             FilterBar(
-                platform_options=[],
                 filter_json=json.dumps(
                     {"status": {"value": ["f"], "modifier": "INCLUDES"}}
                 ),
@@ -269,19 +268,19 @@ class TestFilterBarRendering:
         assert "Finished" in html
 
     def test_no_hx_get(self):
-        html = str(FilterBar(platform_options=[]))
+        html = str(FilterBar())
         assert "hx-get" not in html
 
-    def test_platform_options_rendered(self):
-        html = str(FilterBar(platform_options=[(1, "Steam"), (2, "Switch")]))
-        assert "Steam" in html
-        assert "Switch" in html
+    def test_platform_uses_search_url(self):
+        """Platform is model-backed: rows are fetched, not pre-rendered."""
+        html = str(FilterBar())
+        assert 'data-search-url="/api/platforms/search"' in html
 
     def test_status_has_no_modifiers(self):
         """Non-nullable fields should not show (None) but MUST show (Any)."""
-        html = str(FilterBar(platform_options=[]))
-        status_start = html.find('data-selectable-filter="status"')
-        platform_start = html.find('data-selectable-filter="platform"')
+        html = str(FilterBar())
+        status_start = html.find('data-name="status"')
+        platform_start = html.find('data-name="platform"')
         status_section = html[status_start:platform_start]
         # Must have (Any) — always available
         assert "(Any)" in status_section
@@ -290,8 +289,8 @@ class TestFilterBarRendering:
 
     def test_platform_has_modifiers(self):
         """Nullable ForeignKey fields should show (Any)/(None)."""
-        html = str(FilterBar(platform_options=[(1, "Steam")]))
-        platform_start = html.find('data-selectable-filter="platform"')
+        html = str(FilterBar())
+        platform_start = html.find('data-name="platform"')
         platform_section = html[platform_start:]
         # Should have at least one modifier option
         assert "(Any)" in platform_section or "(None)" in platform_section
