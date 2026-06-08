@@ -63,8 +63,9 @@ _ROW_HEIGHT_REM = 2.25
 
 # ── FilterSelect styling ───────────────────────────────────────────────────
 # Inline class strings (ported verbatim from the retired SelectableFilter CSS)
-# so the filter combobox is fully self-styled — nothing in input.css. The
-# JS-built filter rows/pills in search_select.js mirror these byte-for-byte.
+# so the filter combobox is fully self-styled — nothing in input.css. JS-added
+# rows/pills are cloned from server-rendered <template>s, so these strings live
+# only here — never duplicated in search_select.js.
 _FILTER_INCLUDE_PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
     "bg-brand/15 text-heading"
@@ -220,8 +221,8 @@ def SearchSelect(
     autofocus: bool = False,
 ) -> SafeText:
     """Render the search-select widget. See module docstring for the contract."""
-    selected = [_normalize_option(o) for o in (selected or [])]
-    options = [_normalize_option(o) for o in (options or [])]
+    selected = [_normalize_option(option) for option in (selected or [])]
+    options = [_normalize_option(option) for option in (options or [])]
 
     # ── Pills + their hidden inputs (the submitted channel) ──
     # Multi-select renders a removable Pill per value; single-select renders no
@@ -267,7 +268,7 @@ def SearchSelect(
         search_attrs.append(("value", search_value))
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
-    option_rows = [_option_row(o) for o in options] if not search_url else []
+    option_rows = [_option_row(option) for option in options] if not search_url else []
 
     # ── Templates the JS clones: a row when results are fetched, a pill when
     #    multi-select adds chosen items. ──
@@ -430,9 +431,9 @@ def FilterSelect(
     labels even when the value rows come from ``search_url``. ``options``
     pre-renders the value rows for the complete-set (no ``search_url``) case.
     """
-    options = [_normalize_option(o) for o in (options or [])]
-    included = [_normalize_option(o) for o in (included or [])]
-    excluded = [_normalize_option(o) for o in (excluded or [])]
+    options = [_normalize_option(option) for option in (options or [])]
+    included = [_normalize_option(option) for option in (included or [])]
+    excluded = [_normalize_option(option) for option in (excluded or [])]
     modifier_options = modifier_options or []
 
     active_modifier_label = ""
@@ -468,9 +469,11 @@ def FilterSelect(
 
     # ── Options: pinned modifier rows, then value rows (pre-rendered only when
     #    there is no search_url; otherwise the JS fetches them) ──
-    modifier_rows = [_filter_modifier_row(v, label) for v, label in modifier_options]
+    modifier_rows = [
+        _filter_modifier_row(value, label) for value, label in modifier_options
+    ]
     value_rows = (
-        [_filter_option_row(o["value"], o["label"]) for o in options]
+        [_filter_option_row(option["value"], option["label"]) for option in options]
         if not search_url
         else []
     )
@@ -526,4 +529,4 @@ def searchselect_selected(
     """
     if not values:
         return []
-    return [_normalize_option(o) for o in resolver(values)]
+    return [_normalize_option(option) for option in resolver(values)]

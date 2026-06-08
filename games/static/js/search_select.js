@@ -13,7 +13,7 @@
  * state into data-included / data-excluded / data-modifier for the filter bar.
  *
  * initAll() runs on DOMContentLoaded + htmx:afterSwap, each widget guarded with
- * el._ssInit.
+ * element._ssInit.
  *
  * Dynamically-added rows and pills are cloned from hidden <template> elements
  * the server renders with the same Python components (Pill / SearchSelect /
@@ -27,10 +27,10 @@
   var DEBOUNCE_MS = 500;
 
   function initAll() {
-    document.querySelectorAll("[data-search-select]").forEach(function (el) {
-      if (el._ssInit) return;
-      el._ssInit = true;
-      initWidget(el);
+    document.querySelectorAll("[data-search-select]").forEach(function (element) {
+      if (element._ssInit) return;
+      element._ssInit = true;
+      initWidget(element);
     });
   }
 
@@ -79,8 +79,10 @@
     // ── Clone a server-rendered <template> prototype by name. The server emits
     //    the mode-appropriate prototypes, so the JS never names a class. ──
     function cloneTemplate(name) {
-      var tpl = container.querySelector('template[data-ss-tpl="' + name + '"]');
-      return tpl ? tpl.content.firstElementChild.cloneNode(true) : null;
+      var template = container.querySelector('template[data-ss-tpl="' + name + '"]');
+      return template
+        ? template.content.firstElementChild.cloneNode(true)
+        : null;
     }
 
     function setLabel(node, label) {
@@ -214,24 +216,24 @@
     }
 
     // Clicking an option must not blur the input before the click selects.
-    options.addEventListener("mousedown", function (e) {
-      e.preventDefault();
+    options.addEventListener("mousedown", function (event) {
+      event.preventDefault();
     });
 
     // ── Option click → select (form mode) or include/exclude (filter mode) ──
-    options.addEventListener("click", function (e) {
+    options.addEventListener("click", function (event) {
       if (isFilter) {
         handleFilterOptionClick(e);
         return;
       }
-      var row = e.target.closest("[data-ss-option]");
+      var row = event.target.closest("[data-ss-option]");
       if (!row) return;
       selectOption(optionFromRow(row));
     });
 
     function handleFilterOptionClick(e) {
       // Pinned modifier pseudo-option → set the (mutually exclusive) modifier.
-      var modifierRow = e.target.closest("[data-ss-modifier-option]");
+      var modifierRow = event.target.closest("[data-ss-modifier-option]");
       if (modifierRow) {
         setModifier(
           modifierRow.getAttribute("data-ss-modifier-option"),
@@ -240,7 +242,7 @@
         return;
       }
       // Include / exclude button on a value row.
-      var button = e.target.closest("[data-ss-action]");
+      var button = event.target.closest("[data-ss-action]");
       if (!button) return;
       var row = button.closest("[data-ss-option]");
       if (!row) return;
@@ -343,10 +345,10 @@
     }
 
     // ── Pill × → remove ──
-    pills.addEventListener("click", function (e) {
-      var removeBtn = e.target.closest("[data-pill-remove]");
-      if (!removeBtn) return;
-      var pill = removeBtn.closest("[data-pill]");
+    pills.addEventListener("click", function (event) {
+      var removeButton = event.target.closest("[data-pill-remove]");
+      if (!removeButton) return;
+      var pill = removeButton.closest("[data-pill]");
       if (!pill) return;
       if (isFilter) {
         // Filter pills have no hidden input; a modifier pill also clears the
@@ -404,8 +406,8 @@
     }
 
     // ── Close panel on outside click ──
-    document.addEventListener("click", function (e) {
-      if (!container.contains(e.target)) hidePanel();
+    document.addEventListener("click", function (event) {
+      if (!container.contains(event.target)) hidePanel();
     });
   }
 
