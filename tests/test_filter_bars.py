@@ -93,8 +93,8 @@ class FilterBarRenderingTest(TestCase):
         self._assert_range_slider(html)
 
     def test_purchase_filter_bar_games_has_match_modes(self):
-        """The many-to-many games field surfaces the any/all/none match select;
-        single-valued fields (platform) do not."""
+        """The many-to-many games field surfaces the any/all/only/none match
+        select; single-valued fields (platform) do not."""
         html = str(
             PurchaseFilterBar(
                 filter_json="", preset_list_url="/l", preset_save_url="/s"
@@ -102,6 +102,7 @@ class FilterBarRenderingTest(TestCase):
         )
         self.assertIn("data-search-select-match", html)
         self.assertIn('value="INCLUDES_ALL"', html)
+        self.assertIn('value="INCLUDES_ONLY"', html)
         # Platform is single-valued: no match select before its widget.
         games_start = html.find('data-name="games"')
         platform_start = html.find('data-name="platform"')

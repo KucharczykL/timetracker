@@ -17,6 +17,21 @@ from common.components import FilterBar
 from games.filters import GameFilter
 
 
+class TestModifier:
+    def test_includes_only_in_enum(self):
+        assert Modifier.INCLUDES_ONLY == "INCLUDES_ONLY"
+
+    def test_includes_only_in_for_multi(self):
+        assert Modifier.INCLUDES_ONLY in Modifier.for_multi()
+
+    def test_for_multi_includes_all_four_match_modes(self):
+        modes = Modifier.for_multi()
+        assert Modifier.INCLUDES in modes
+        assert Modifier.INCLUDES_ALL in modes
+        assert Modifier.INCLUDES_ONLY in modes
+        assert Modifier.EXCLUDES in modes
+
+
 class TestStringCriterion:
     def test_equals(self):
         c = StringCriterion(value="zelda", modifier=Modifier.EQUALS)
@@ -101,11 +116,15 @@ class TestChoiceCriterion:
         c = ChoiceCriterion(value=["f"], excludes=["a"], modifier=Modifier.EXCLUDES)
         assert c.to_q("status") == ~Q(status__in=["f"]) & ~Q(status__in=["a"])
 
-    def test_includes_all_requires_filter_builder(self):
-        """INCLUDES_ALL cannot be built by the generic criterion layer — it
-        requires a filter-level Q builder (see PurchaseFilter._games_to_q)."""
-        c = ChoiceCriterion(value=["f", "p"], modifier=Modifier.INCLUDES_ALL)
-        with pytest.raises(AssertionError, match="INCLUDES_ALL requires"):
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY]
+    )
+    def test_m2m_modifiers_require_filter_builder(self, modifier):
+        """INCLUDES_ALL / INCLUDES_ONLY cannot be built by the generic criterion
+        layer — they require a filter-level Q builder (see
+        PurchaseFilter._games_to_q)."""
+        c = ChoiceCriterion(value=["f", "p"], modifier=modifier)
+        with pytest.raises(AssertionError, match="requires a filter-level"):
             c.to_q("status")
 
     def test_not_equals(self):
@@ -138,11 +157,15 @@ class TestMultiCriterion:
         c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.EXCLUDES)
         assert c.to_q("game_id") == ~Q(game_id__in=[1]) & ~Q(game_id__in=[2])
 
-    def test_includes_all_requires_filter_builder(self):
-        """INCLUDES_ALL cannot be built by the generic criterion layer — it
-        requires a filter-level Q builder (see PurchaseFilter._games_to_q)."""
-        c = MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES_ALL)
-        with pytest.raises(AssertionError, match="INCLUDES_ALL requires"):
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY]
+    )
+    def test_m2m_modifiers_require_filter_builder(self, modifier):
+        """INCLUDES_ALL / INCLUDES_ONLY cannot be built by the generic criterion
+        layer — they require a filter-level Q builder (see
+        PurchaseFilter._games_to_q)."""
+        c = MultiCriterion(value=[1, 2], modifier=modifier)
+        with pytest.raises(AssertionError, match="requires a filter-level"):
             c.to_q("games")
 
     def test_is_null(self):
@@ -335,6 +358,93 @@ class TestPurchaseGamesIncludesAllAgainstDB:
         assert pf.games.value == [seeded["a"].id, seeded["b"].id]
         result = set(Purchase.objects.filter(pf.to_q()))
         assert result == {seeded["both"], seeded["all_three"]}
+
+
+class TestPurchaseGamesIncludesOnlyAgainstDB:
+    """INCLUDES_ONLY on the many-to-many ``Purchase.games`` should match only
+    purchases linked to *exactly* the given games — Stash's ``only`` mode,
+    which INCLUDES_ALL does not provide (it includes supersets)."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Game, Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
+        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
+        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
+
+        def make(linked):
+            purchase = Purchase.objects.create(
+                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            )
+            purchase.games.set(linked)
+            return purchase
+
+        return {
+            "a": a,
+            "b": b,
+            "both": make([a, b]),
+            "only_a": make([a]),
+            "all_three": make([a, b, c]),
+        }
+
+    @pytest.mark.django_db
+    def test_includes_only_matches_exact_set(self):
+        """INCLUDES_ONLY [A, B] returns only purchases with exactly A and B."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id, seeded["b"].id],
+                    "modifier": "INCLUDES_ONLY",
+                }
+            }
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["both"]}
+
+    @pytest.mark.django_db
+    def test_includes_only_single_game(self):
+        """INCLUDES_ONLY [A] = exactly game A, no others."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id],
+                    "modifier": "INCLUDES_ONLY",
+                }
+            }
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["only_a"]}
+
+    @pytest.mark.django_db
+    def test_includes_only_contrast_with_includes_all(self):
+        """INCLUDES_ONLY excludes the superset that INCLUDES_ALL would match."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id, seeded["b"].id],
+                    "modifier": "INCLUDES_ONLY",
+                }
+            }
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        # all_three has A, B, C — INCLUDES_ALL would match it, ONLY does not.
+        assert seeded["all_three"] not in result
+        assert seeded["both"] in result
 
 
 class TestGameFilterFromJson:
