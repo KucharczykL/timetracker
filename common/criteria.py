@@ -267,78 +267,89 @@ class BoolCriterion(_Criterion):
 
 
 @dataclass
-class MultiCriterion(_Criterion):
+class _SetCriterion(_Criterion):
+    """Shared base for set-membership criteria (``MultiCriterion`` /
+    ``ChoiceCriterion``).
+
+    ``value`` is the include set and ``excludes`` the exclude set. The common
+    modifiers are implemented once here so the two subclasses cannot drift:
+
+    - ``INCLUDES`` — in ``value`` (when non-empty) AND not in ``excludes`` (when
+      non-empty). Empty lists contribute no constraint, so an exclude-only
+      criterion means "everything except ``excludes``".
+    - ``EQUALS`` — alias of ``INCLUDES``.
+    - ``IS_NULL`` / ``NOT_NULL`` — presence; the lists are ignored.
+
+    Subclasses contribute their own modifiers (e.g. ``INCLUDES_ALL``) by
+    overriding ``_extra_q``.
+    """
+
+    value: list = field(default_factory=list)
+    excludes: list = field(default_factory=list)
+    modifier: Modifier = Modifier.INCLUDES
+
+    def to_q(self, field_name: str) -> Q:
+        modifier = self.modifier
+        if modifier in (Modifier.INCLUDES, Modifier.EQUALS):
+            q = Q()
+            if self.value:
+                q &= Q(**{f"{field_name}__in": self.value})
+            if self.excludes:
+                q &= ~Q(**{f"{field_name}__in": self.excludes})
+            return q
+        if modifier == Modifier.IS_NULL:
+            return Q(**{f"{field_name}__isnull": True})
+        if modifier == Modifier.NOT_NULL:
+            return Q(**{f"{field_name}__isnull": False})
+        extra = self._extra_q(field_name)
+        if extra is not None:
+            return extra
+        raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")
+
+    def _extra_q(self, field_name: str) -> Q | None:
+        """Hook for subclass-specific modifiers; ``None`` means unsupported."""
+        return None
+
+
+@dataclass
+class MultiCriterion(_SetCriterion):
     """Filter on a many-to-many or ForeignKey relationship by ID list."""
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
-    modifier: Modifier = Modifier.INCLUDES
 
-    def to_q(self, field_name: str) -> Q:
-        m = self.modifier
-        if m == Modifier.INCLUDES:
-            q = Q()
-            if self.value:
-                q &= Q(**{f"{field_name}__in": self.value})
-            if self.excludes:
-                q &= ~Q(**{f"{field_name}__in": self.excludes})
-            return q
-        if m == Modifier.EXCLUDES:
+    def _extra_q(self, field_name: str) -> Q | None:
+        if self.modifier == Modifier.EXCLUDES:
             return ~Q(**{f"{field_name}__in": self.value})
-        if m == Modifier.INCLUDES_ALL:
+        if self.modifier == Modifier.INCLUDES_ALL:
             q = Q()
-            for v in self.value:
-                q &= Q(**{field_name: v})
+            for value in self.value:
+                q &= Q(**{field_name: value})
             return q
-        if m == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
-        if m == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for multi field")
+        return None
 
 
 @dataclass
-class ChoiceCriterion(_Criterion):
+class ChoiceCriterion(_SetCriterion):
     """Filter on a choice/enum field with multi-select include/exclude.
 
     Used by FilterSelect widgets for status, ownership_type, etc.
-    Supports INCLUDES, EXCLUDES, EQUALS, IS_NULL, NOT_NULL modifiers.
     """
 
     value: list[str] = field(default_factory=list)
     excludes: list[str] = field(default_factory=list)
-    modifier: Modifier = Modifier.INCLUDES
 
-    def to_q(self, field_name: str) -> Q:
-        m = self.modifier
-        if m == Modifier.INCLUDES:
-            q = Q()
-            if self.value:
-                q &= Q(**{f"{field_name}__in": self.value})
-            if self.excludes:
-                q &= ~Q(**{f"{field_name}__in": self.excludes})
-            return q
-        if m == Modifier.EXCLUDES:
+    def _extra_q(self, field_name: str) -> Q | None:
+        if self.modifier == Modifier.EXCLUDES:
             q = Q()
             if self.value:
                 q &= ~Q(**{f"{field_name}__in": self.value})
             if self.excludes:
                 q &= Q(**{f"{field_name}__in": self.excludes})
             return q
-        if m == Modifier.EQUALS:
-            q = Q()
-            if self.value:
-                q &= Q(**{f"{field_name}__in": self.value})
-            if self.excludes:
-                q &= ~Q(**{f"{field_name}__in": self.excludes})
-            return q
-        if m == Modifier.NOT_EQUALS:
+        if self.modifier == Modifier.NOT_EQUALS:
             return ~Q(**{f"{field_name}__in": self.value})
-        if m == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
-        if m == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for choice field")
+        return None
 
 
 # ── OperatorFilter base ────────────────────────────────────────────────────
