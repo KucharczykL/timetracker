@@ -10,6 +10,7 @@ from common.criteria import (
     ChoiceCriterion,
     IntCriterion,
     Modifier,
+    MultiCriterion,
     StringCriterion,
 )
 from common.components import FilterBar
@@ -96,6 +97,29 @@ class TestChoiceCriterion:
     def test_not_equals(self):
         c = ChoiceCriterion(value=["f"], modifier=Modifier.NOT_EQUALS)
         assert c.to_q("status") == ~Q(status__in=["f"])
+
+
+class TestMultiCriterion:
+    def test_includes(self):
+        c = MultiCriterion(value=[797], modifier=Modifier.INCLUDES)
+        assert c.to_q("game_id") == Q(game_id__in=[797])
+
+    def test_excludes_only_empty_value(self):
+        """Exclude one device with no includes — value=[], excludes=[11].
+
+        Regression: an empty ``value`` must not add ``__in=[]`` (which matches
+        nothing); the criterion should mean "all rows except device 11".
+        """
+        c = MultiCriterion(value=[], excludes=[11], modifier=Modifier.INCLUDES)
+        assert c.to_q("device_id") == ~Q(device_id__in=[11])
+
+    def test_include_and_exclude(self):
+        c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.INCLUDES)
+        assert c.to_q("game_id") == Q(game_id__in=[1]) & ~Q(game_id__in=[2])
+
+    def test_is_null(self):
+        c = MultiCriterion(value=[], modifier=Modifier.IS_NULL)
+        assert c.to_q("device_id") == Q(device_id__isnull=True)
 
 
 class TestChoiceCriterionAgainstDB:
