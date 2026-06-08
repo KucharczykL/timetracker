@@ -318,17 +318,17 @@ class _SetCriterion(_Criterion):
         if modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
             return ~Q(**{f"{field_name}__in": self.value}) if self.value else Q()
         if modifier == Modifier.INCLUDES_ALL:
-            # Logical AND of equalities ("related to every value"). NOTE: for a
-            # *multi-valued* relation this only behaves as "has all" when each
-            # equality lands on its own join — i.e. applied via chained
-            # ``.filter()`` calls or a ``pk__in`` subquery, not a single
-            # ``.filter(Q(rel=a) & Q(rel=b))`` (which would require one related
-            # row to equal both). M2M callers (e.g. PurchaseFilter.games) build
-            # that subquery; see PurchaseFilter._games_to_q.
-            q = Q()
-            for value in self.value:
-                q &= Q(**{field_name: value})
-            return q
+            # INCLUDES_ALL ("related to all of these") is only meaningful for
+            # many-to-many fields.  A naive Q(field=a) & Q(field=b) collapses
+            # to a single join requiring one through-row to equal both values
+            # (impossible), so the generic criterion layer cannot build a
+            # correct Q.  M2M callers must supply their own Q builder at the
+            # filter level — see PurchaseFilter._games_to_q for the subquery
+            # pattern (chained .filter() calls + pk__in).
+            assert False, (
+                "INCLUDES_ALL requires a filter-level Q builder for M2M fields. "
+                "See PurchaseFilter._games_to_q for the chained-subquery pattern."
+            )
         raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")
 
     @classmethod
