@@ -436,11 +436,10 @@
             }
             var value = pill.getAttribute("data-value");
             var label = pill.getAttribute("data-label") || "";
-            var entry = label ? {id: value, label: label} : value;
             if (pill.getAttribute("data-search-select-type") === "exclude") {
-              excluded.push(entry);
+              excluded.push({id: value, label: label});
             } else {
-              included.push(entry);
+              included.push({id: value, label: label});
             }
           });
         }

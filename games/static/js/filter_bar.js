@@ -71,38 +71,13 @@
       if (modifier === "NOT_NULL" || modifier === "IS_NULL") {
         filter[field] = { modifier: modifier };
       } else if (included.length > 0 || excluded.length > 0) {
-        var isIdField =
-          field === "platform" ||
-          field === "game" ||
-          field === "device" ||
-          field === "games";
-        if (isIdField) {
-          // Store {id, label} objects so the filter URL/preset is self-describing
-          // and pills can be rendered without a DB lookup (Stash-style).
-          filter[field] = {
-            value: included.map(function (item) {
-              return typeof item === "object"
-                ? {id: parseInt(item.id, 10), label: item.label || ""}
-                : {id: parseInt(item, 10), label: ""};
-            }),
-            excludes: excluded.map(function (item) {
-              return typeof item === "object"
-                ? {id: parseInt(item.id, 10), label: item.label || ""}
-                : {id: parseInt(item, 10), label: ""};
-            }),
-            modifier: modifier || "INCLUDES",
-          };
-        } else {
-          filter[field] = {
-            value: included.map(function (item) {
-              return typeof item === "object" ? item.id : item;
-            }),
-            excludes: excluded.map(function (item) {
-              return typeof item === "object" ? item.id : item;
-            }),
-            modifier: modifier || "INCLUDES",
-          };
-        }
+        // All filter pills carry {id, label}; store them as-is so the filter
+        // URL and saved presets are self-describing (Stash-style).
+        filter[field] = {
+          value: included.map(function (item) { return {id: item.id, label: item.label}; }),
+          excludes: excluded.map(function (item) { return {id: item.id, label: item.label}; }),
+          modifier: modifier || "INCLUDES",
+        };
       }
     });
 
