@@ -47,9 +47,12 @@ _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 bg-transparent text-sm text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body"
 )
+# top-full anchors the panel to the container's bottom edge: as an absolutely
+# positioned child of the flex field, its static position would otherwise be
+# centered by items-center and overlap the search box.
 _OPTIONS_CLASS = (
-    "absolute z-10 left-0 right-0 mt-1 overflow-y-auto border border-default-medium "
-    "rounded-base bg-neutral-secondary-medium shadow-lg"
+    "absolute z-10 top-full left-0 right-0 mt-1 overflow-y-auto "
+    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
 )
 _OPTION_ROW_CLASS = "px-3 py-2 text-sm text-heading cursor-pointer hover:bg-brand/15"
 _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
