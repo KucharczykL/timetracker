@@ -24,7 +24,7 @@ from typing import TypedDict
 from django.utils.safestring import SafeText
 
 from common.components.core import Component, HTMLAttribute
-from common.components.primitives import Pill
+from common.components.primitives import Div, Input, Pill, Span, Template
 
 
 class SearchSelectOption(TypedDict):
@@ -114,10 +114,7 @@ def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
 
 
 def _hidden_input(name: str, value) -> SafeText:
-    return Component(
-        tag_name="input",
-        attributes=[("type", "hidden"), ("name", name), ("value", str(value))],
-    )
+    return Input(type="hidden", attributes=[("name", name), ("value", str(value))])
 
 
 def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
@@ -127,18 +124,7 @@ def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
     attributes: list[HTMLAttribute] = [("data-search-select-label", "")]
     if extra_class:
         attributes.append(("class", extra_class))
-    return Component(tag_name="span", attributes=attributes, children=[text])
-
-
-def _template(name: str, node: SafeText) -> SafeText:
-    """Wrap a prototype row/pill in an inert ``<template data-search-select-template=name>`` that
-    the JS clones. Rendering the prototype with the real component keeps the JS
-    free of any markup or class strings."""
-    return Component(
-        tag_name="template",
-        attributes=[("data-search-select-template", name)],
-        children=[node],
-    )
+    return Span(attributes=attributes, children=[text])
 
 
 # A placeholder option for rendering template prototypes (JS overwrites it).
@@ -146,8 +132,7 @@ _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
 def _option_row(option: SearchSelectOption) -> SafeText:
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[
             ("data-search-select-option", ""),
             ("data-value", str(option["value"])),
@@ -181,10 +166,9 @@ def _combobox_shell(
     dynamically-added rows/pills). The shell knows nothing about how individual
     rows or pills look.
     """
-    search = Component(tag_name="input", attributes=search_attributes)
+    search = Input(attributes=search_attributes)
 
-    no_results = Component(
-        tag_name="div",
+    no_results = Div(
         attributes=[
             ("data-search-select-no-results", ""),
             ("class", _NO_RESULTS_CLASS),
@@ -192,8 +176,7 @@ def _combobox_shell(
         children=["No results"],
     )
     options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
-    options_panel = Component(
-        tag_name="div",
+    options_panel = Div(
         attributes=[
             ("data-search-select-options", ""),
             ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
@@ -202,8 +185,7 @@ def _combobox_shell(
         children=[*options_children, no_results],
     )
 
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=container_attributes,
         children=[pills, search, options_panel, *(templates or [])],
     )
@@ -253,8 +235,7 @@ def SearchSelect(
         pills_children.append(_hidden_input(name, option["value"]))
         search_value = option["label"]
 
-    pills = Component(
-        tag_name="div",
+    pills = Div(
         attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
         children=pills_children,
     )
@@ -262,7 +243,6 @@ def SearchSelect(
     # ── Search box (NO name — the query is never submitted) ──
     search_attrs: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
-        ("type", "text"),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
@@ -279,10 +259,18 @@ def SearchSelect(
     #    multi-select adds chosen items. ──
     templates: list[SafeText] = []
     if search_url:
-        templates.append(_template("row", _option_row(_BLANK_OPTION)))
+        templates.append(
+            Template(
+                attributes=[("data-search-select-template", "row")],
+                children=[_option_row(_BLANK_OPTION)],
+            )
+        )
     if multi_select:
         templates.append(
-            _template("pill", Pill("", value="", removable=True, label_slot=True))
+            Template(
+                attributes=[("data-search-select-template", "pill")],
+                children=[Pill("", value="", removable=True, label_slot=True)],
+            )
         )
 
     container_attributes: list[HTMLAttribute] = [
@@ -330,8 +318,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
     css = (
         _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
     )
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[
             ("class", css),
             ("data-pill", ""),
@@ -346,8 +333,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
 
 def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
     """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
-    return Component(
-        tag_name="span",
+    return Span(
         attributes=[
             ("class", _FILTER_MODIFIER_PILL_CLASS),
             ("data-pill", ""),
@@ -372,8 +358,7 @@ def _filter_action_button(action: str, symbol: str, title: str) -> SafeText:
 
 def _filter_option_row(value: str | int, label: str) -> SafeText:
     """A value row with include (+) and exclude (−) buttons."""
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[
             ("data-search-select-option", ""),
             ("data-value", str(value)),
@@ -382,8 +367,7 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
         ],
         children=[
             _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", _FILTER_OPTION_BUTTONS_CLASS)],
                 children=[
                     _filter_action_button("include", "+", "Include"),
@@ -397,8 +381,7 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
 def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
     """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
     filter never hides it — modifiers stay visible at the top of the panel."""
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[
             ("data-search-select-modifier-option", modifier_value),
             ("data-label", label),
@@ -457,8 +440,7 @@ def FilterSelect(
         for option in excluded:
             pills_children.append(_filter_value_pill(option, "exclude"))
 
-    pills = Component(
-        tag_name="div",
+    pills = Div(
         attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
         children=pills_children,
     )
@@ -466,7 +448,6 @@ def FilterSelect(
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
-        ("type", "text"),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
@@ -486,13 +467,29 @@ def FilterSelect(
     # ── Templates the JS clones: include/exclude pills (added on click), the
     #    modifier pill (when modifiers exist), and a value row (when fetched). ──
     templates: list[SafeText] = [
-        _template("pill-include", _filter_value_pill(_BLANK_OPTION, "include")),
-        _template("pill-exclude", _filter_value_pill(_BLANK_OPTION, "exclude")),
+        Template(
+            attributes=[("data-search-select-template", "pill-include")],
+            children=[_filter_value_pill(_BLANK_OPTION, "include")],
+        ),
+        Template(
+            attributes=[("data-search-select-template", "pill-exclude")],
+            children=[_filter_value_pill(_BLANK_OPTION, "exclude")],
+        ),
     ]
     if modifier_options:
-        templates.append(_template("pill-modifier", _filter_modifier_pill("", "")))
+        templates.append(
+            Template(
+                attributes=[("data-search-select-template", "pill-modifier")],
+                children=[_filter_modifier_pill("", "")],
+            )
+        )
     if search_url:
-        templates.append(_template("row", _filter_option_row("", "")))
+        templates.append(
+            Template(
+                attributes=[("data-search-select-template", "row")],
+                children=[_filter_option_row("", "")],
+            )
+        )
 
     container_attributes: list[HTMLAttribute] = [
         ("data-search-select", ""),

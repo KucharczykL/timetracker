@@ -36,6 +36,7 @@ from common.components.primitives import (
     TableHeader,
     TableRow,
     TableTd,
+    Template,
     YearPicker,
     paginated_table_content,
 )
@@ -95,6 +96,7 @@ __all__ = [
     "TableHeader",
     "TableRow",
     "TableTd",
+    "Template",
     "YearPicker",
     "paginated_table_content",
     "GameLink",
