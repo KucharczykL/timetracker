@@ -395,7 +395,7 @@ def Pill(
     are JS hooks only (no CSS attached). ``value`` (when set) becomes
     ``data-value``; extra ``attributes`` are appended to the outer span.
 
-    ``label_slot=True`` wraps the label in a ``<span data-ss-label>`` so JS can
+    ``label_slot=True`` wraps the label in a ``<span data-search-select-label>`` so JS can
     fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
     markup single-sourced — see ``search_select.py``).
     """
@@ -407,7 +407,11 @@ def Pill(
     pill_attrs.extend(attributes)
 
     label_child: HTMLTag = (
-        Component(tag_name="span", attributes=[("data-ss-label", "")], children=[label])
+        Component(
+            tag_name="span",
+            attributes=[("data-search-select-label", "")],
+            children=[label],
+        )
         if label_slot
         else label
     )

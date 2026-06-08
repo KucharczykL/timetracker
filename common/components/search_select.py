@@ -121,21 +121,23 @@ def _hidden_input(name: str, value) -> SafeText:
 
 
 def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
-    """A ``<span data-ss-label>`` holding a row/pill's visible label. JS fills this
+    """A ``<span data-search-select-label>`` holding a row/pill's visible label. JS fills this
     one node when cloning the shape from a ``<template>``, so labels are the only
     thing the JS sets — all classes and structure stay server-side."""
-    attributes: list[HTMLAttribute] = [("data-ss-label", "")]
+    attributes: list[HTMLAttribute] = [("data-search-select-label", "")]
     if extra_class:
         attributes.append(("class", extra_class))
     return Component(tag_name="span", attributes=attributes, children=[text])
 
 
 def _template(name: str, node: SafeText) -> SafeText:
-    """Wrap a prototype row/pill in an inert ``<template data-ss-template=name>`` that
+    """Wrap a prototype row/pill in an inert ``<template data-search-select-template=name>`` that
     the JS clones. Rendering the prototype with the real component keeps the JS
     free of any markup or class strings."""
     return Component(
-        tag_name="template", attributes=[("data-ss-template", name)], children=[node]
+        tag_name="template",
+        attributes=[("data-search-select-template", name)],
+        children=[node],
     )
 
 
@@ -147,7 +149,7 @@ def _option_row(option: SearchSelectOption) -> SafeText:
     return Component(
         tag_name="div",
         attributes=[
-            ("data-ss-option", ""),
+            ("data-search-select-option", ""),
             ("data-value", str(option["value"])),
             ("data-label", option["label"]),
             ("class", _OPTION_ROW_CLASS),
@@ -183,14 +185,17 @@ def _combobox_shell(
 
     no_results = Component(
         tag_name="div",
-        attributes=[("data-ss-no-results", ""), ("class", _NO_RESULTS_CLASS)],
+        attributes=[
+            ("data-search-select-no-results", ""),
+            ("class", _NO_RESULTS_CLASS),
+        ],
         children=["No results"],
     )
     options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
     options_panel = Component(
         tag_name="div",
         attributes=[
-            ("data-ss-options", ""),
+            ("data-search-select-options", ""),
             ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
             ("class", options_class),
         ],
@@ -228,7 +233,7 @@ def SearchSelect(
     # Multi-select renders a removable Pill per value; single-select renders no
     # pill — the committed label shows inside the search box instead, with a
     # lone hidden input carrying the value. Both keep the hidden input(s) inside
-    # `[data-ss-pills]` so the JS reads/writes values uniformly.
+    # `[data-search-select-pills]` so the JS reads/writes values uniformly.
     pills_children: list[SafeText] = []
     search_value = ""
     if multi_select:
@@ -250,13 +255,13 @@ def SearchSelect(
 
     pills = Component(
         tag_name="div",
-        attributes=[("data-ss-pills", ""), ("class", _PILLS_CLASS)],
+        attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
         children=pills_children,
     )
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attrs: list[HTMLAttribute] = [
-        ("data-ss-search", ""),
+        ("data-search-select-search", ""),
         ("type", "text"),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
@@ -332,7 +337,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
             ("data-pill", ""),
             ("data-value", str(option["value"])),
             ("data-label", option["label"]),
-            ("data-ss-type", kind),
+            ("data-search-select-type", kind),
             *_data_attributes(option["data"]),
         ],
         children=[f"{symbol} ", _label_slot(option["label"]), _filter_remove_button()],
@@ -346,7 +351,7 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
         attributes=[
             ("class", _FILTER_MODIFIER_PILL_CLASS),
             ("data-pill", ""),
-            ("data-ss-modifier", modifier_value),
+            ("data-search-select-modifier", modifier_value),
         ],
         children=[_label_slot(label), _filter_remove_button()],
     )
@@ -357,7 +362,7 @@ def _filter_action_button(action: str, symbol: str, title: str) -> SafeText:
         tag_name="button",
         attributes=[
             ("type", "button"),
-            ("data-ss-action", action),
+            ("data-search-select-action", action),
             ("class", _FILTER_ACTION_BUTTON_CLASS),
             ("title", title),
         ],
@@ -370,7 +375,7 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
     return Component(
         tag_name="div",
         attributes=[
-            ("data-ss-option", ""),
+            ("data-search-select-option", ""),
             ("data-value", str(value)),
             ("data-label", label),
             ("class", _FILTER_OPTION_ROW_CLASS),
@@ -390,12 +395,12 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
 
 
 def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
-    """A pinned pseudo-option row. It carries no ``data-ss-option`` so the text
+    """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
     filter never hides it — modifiers stay visible at the top of the panel."""
     return Component(
         tag_name="div",
         attributes=[
-            ("data-ss-modifier-option", modifier_value),
+            ("data-search-select-modifier-option", modifier_value),
             ("data-label", label),
             ("class", _FILTER_MODIFIER_ROW_CLASS),
         ],
@@ -454,13 +459,13 @@ def FilterSelect(
 
     pills = Component(
         tag_name="div",
-        attributes=[("data-ss-pills", ""), ("class", _PILLS_CLASS)],
+        attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
         children=pills_children,
     )
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
-        ("data-ss-search", ""),
+        ("data-search-select-search", ""),
         ("type", "text"),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
@@ -491,7 +496,7 @@ def FilterSelect(
 
     container_attributes: list[HTMLAttribute] = [
         ("data-search-select", ""),
-        ("data-ss-mode", "filter"),
+        ("data-search-select-mode", "filter"),
         ("data-name", field_name),
         ("data-search-url", search_url),
         ("data-multi", "true"),
