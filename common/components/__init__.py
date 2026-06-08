@@ -42,6 +42,7 @@ from common.components.primitives import (
 )
 from common.components.search_select import (
     FilterSelect,
+    LabeledOption,
     SearchSelect,
     SearchSelectOption,
     searchselect_selected,
@@ -87,6 +88,7 @@ __all__ = [
     "PopoverTruncated",
     "SearchField",
     "FilterSelect",
+    "LabeledOption",
     "SearchSelect",
     "SearchSelectOption",
     "searchselect_selected",

@@ -33,6 +33,12 @@ class SearchSelectOption(TypedDict):
     data: dict[str, str]  # becomes data-* attrs on the row / pill
 
 
+# A lightweight (value, label) pair used wherever only those two fields are
+# needed — e.g. filter pill lists and modifier pseudo-options. The richer
+# SearchSelectOption adds a ``data`` dict for extra row attributes.
+LabeledOption = tuple[str, str]
+
+
 # The pills and the search box share one flex-wrap row (with padding) so the
 # widget reads as a single clickable field; the pills wrapper uses `contents`
 # so its pills/hidden inputs flow as direct participants of that row, inline
@@ -394,11 +400,11 @@ def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
 def FilterSelect(
     *,
     field_name: str,
-    options: list | None = None,
-    included: list | None = None,
-    excluded: list | None = None,
+    options: list[LabeledOption | SearchSelectOption] | None = None,
+    included: list[LabeledOption | SearchSelectOption] | None = None,
+    excluded: list[LabeledOption | SearchSelectOption] | None = None,
     modifier: str = "",
-    modifier_options: list[tuple[str, str]] | None = None,
+    modifier_options: list[LabeledOption] | None = None,
     search_url: str = "",
     prefetch: int = 0,
     items_visible: int = 6,
