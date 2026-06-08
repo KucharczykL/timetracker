@@ -106,8 +106,8 @@ def _resolve_game_options(ids):
     from games.models import Game
 
     return [
-        {"value": g.id, "label": g.search_label}
-        for g in Game.objects.filter(pk__in=ids)
+        {"value": game.id, "label": game.search_label}
+        for game in Game.objects.filter(pk__in=ids)
     ]
 
 
@@ -116,7 +116,10 @@ def _resolve_device_options(ids):
         return []
     from games.models import Device
 
-    return [{"value": d.id, "label": d.name} for d in Device.objects.filter(pk__in=ids)]
+    return [
+        {"value": device.id, "label": device.name}
+        for device in Device.objects.filter(pk__in=ids)
+    ]
 
 
 def _resolve_platform_options(ids):
@@ -125,7 +128,8 @@ def _resolve_platform_options(ids):
     from games.models import Platform
 
     return [
-        {"value": p.id, "label": p.name} for p in Platform.objects.filter(pk__in=ids)
+        {"value": platform.id, "label": platform.name}
+        for platform in Platform.objects.filter(pk__in=ids)
     ]
 
 
