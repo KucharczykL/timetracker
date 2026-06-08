@@ -65,6 +65,60 @@
       if (noResults) noResults.classList.toggle("hidden", !visible);
     }
 
+    // ── Highlight tracking (filter mode) ──
+    var highlightedRow = null;
+
+    function highlightOption(row) {
+      clearHighlight();
+      if (!row) return;
+      row.style.backgroundColor = "var(--color-brand, rgba(59, 130, 246, 0.15))";
+      row.style.outline = "1px solid var(--color-brand, #3b82f6)";
+      highlightedRow = row;
+      row.scrollIntoView({ block: "nearest" });
+    }
+
+    function clearHighlight() {
+      if (highlightedRow) {
+        highlightedRow.style.backgroundColor = "";
+        highlightedRow.style.outline = "";
+        highlightedRow = null;
+      }
+    }
+
+    function getVisibleOptions() {
+      var all = options.querySelectorAll("[data-search-select-option]");
+      return Array.prototype.filter.call(all, function (row) {
+        return row.style.display !== "none";
+      });
+    }
+
+    function autoHighlight(query) {
+      var visible = getVisibleOptions();
+      if (visible.length === 0) {
+        clearHighlight();
+        return;
+      }
+      var lower = query.toLowerCase();
+      // 1. Starts-with match
+      for (var i = 0; i < visible.length; i++) {
+        var label = (visible[i].getAttribute("data-label") || "").toLowerCase();
+        if (lower && label.startsWith(lower)) {
+          highlightOption(visible[i]);
+          return;
+        }
+      }
+      // 2. Substring match (fuzzy-lite)
+      for (var j = 0; j < visible.length; j++) {
+        var subLabel = (visible[j].getAttribute("data-label") || "").toLowerCase();
+        if (lower && subLabel.indexOf(lower) !== -1) {
+          highlightOption(visible[j]);
+          return;
+        }
+      }
+      // 3. Fallback: first visible option
+      highlightOption(visible[0]);
+    }
+
     // ── Render server-fetched rows into the panel ──
     function renderRows(items) {
       options.querySelectorAll("[data-search-select-option]").forEach(function (row) {
@@ -140,6 +194,7 @@
           renderRows(items);
           // Re-apply the live query: the box may hold more text than was sent.
           setNoResults(filterRows(search.value.trim()) === 0);
+          if (isFilter) autoHighlight(search.value.trim());
         })
         .catch(function (error) {
           if (error && error.name === "AbortError") return; // superseded
@@ -166,6 +221,7 @@
       } else {
         setNoResults(filterRows(query) === 0);
       }
+      if (isFilter) autoHighlight(query);
     }
 
     // ── Single-select combobox: the search box shows the committed label;
@@ -188,12 +244,15 @@
           // Show whatever is already loaded; the server decides no-results.
           filterRows(search.value.trim());
           setNoResults(false);
+          if (isFilter) autoHighlight(search.value.trim());
         }
       } else {
         setNoResults(filterRows(search.value.trim()) === 0);
+        if (isFilter) autoHighlight(search.value.trim());
       }
     });
     search.addEventListener("input", function () {
+      clearHighlight();
       if (!multi) container._searchSelectDirty = true;
       runSearch();
     });
@@ -214,6 +273,45 @@
         }, 120);
       });
     }
+
+    // ── Keyboard navigation (filter mode) ──
+    search.addEventListener("keydown", function (event) {
+      if (!isFilter) return;
+      var key = event.key;
+      if (key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || key === "Escape") {
+        var visible = getVisibleOptions();
+        if (visible.length === 0) {
+          if (key === "Escape") hidePanel();
+          return;
+        }
+
+        if (key === "ArrowDown") {
+          event.preventDefault();
+          showPanel();
+          var idx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+          var next = visible[(idx + 1) % visible.length];
+          highlightOption(next);
+        } else if (key === "ArrowUp") {
+          event.preventDefault();
+          showPanel();
+          var idx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+          var prev = visible[(idx - 1 + visible.length) % visible.length];
+          highlightOption(prev);
+        } else if (key === "Enter") {
+          if (highlightedRow) {
+            event.preventDefault();
+            var option = optionFromRow(highlightedRow);
+            addFilterPill(option, "include");
+            search.value = "";
+            clearHighlight();
+            hidePanel();
+          }
+        } else if (key === "Escape") {
+          clearHighlight();
+          hidePanel();
+        }
+      }
+    });
 
     // Clicking an option must not blur the input before the click selects.
     options.addEventListener("mousedown", function (event) {
@@ -243,10 +341,18 @@
       }
       // Include / exclude button on a value row.
       var button = event.target.closest("[data-search-select-action]");
-      if (!button) return;
-      var row = button.closest("[data-search-select-option]");
-      if (!row) return;
-      addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action"));
+      if (button) {
+        var row = button.closest("[data-search-select-option]");
+        if (!row) return;
+        addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action"));
+        return;
+      }
+      // Click on the option row itself → include.
+      var optionRow = event.target.closest("[data-search-select-option]");
+      if (optionRow) {
+        addFilterPill(optionFromRow(optionRow), "include");
+        return;
+      }
     }
 
     // Add (or re-type) an include/exclude pill for a value. Selecting any value
@@ -258,6 +364,7 @@
       );
       if (existing) existing.remove();
       pills.appendChild(buildFilterValuePill(option, kind));
+      search.value = "";
       emitChange(null);
     }
 
