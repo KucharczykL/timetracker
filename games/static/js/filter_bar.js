@@ -76,11 +76,33 @@
           field === "game" ||
           field === "device" ||
           field === "games";
-        filter[field] = {
-          value: isIdField ? included.map(Number) : included,
-          excludes: isIdField ? excluded.map(Number) : excluded,
-          modifier: modifier || "INCLUDES",
-        };
+        if (isIdField) {
+          // Store {id, label} objects so the filter URL/preset is self-describing
+          // and pills can be rendered without a DB lookup (Stash-style).
+          filter[field] = {
+            value: included.map(function (item) {
+              return typeof item === "object"
+                ? {id: parseInt(item.id, 10), label: item.label || ""}
+                : {id: parseInt(item, 10), label: ""};
+            }),
+            excludes: excluded.map(function (item) {
+              return typeof item === "object"
+                ? {id: parseInt(item.id, 10), label: item.label || ""}
+                : {id: parseInt(item, 10), label: ""};
+            }),
+            modifier: modifier || "INCLUDES",
+          };
+        } else {
+          filter[field] = {
+            value: included.map(function (item) {
+              return typeof item === "object" ? item.id : item;
+            }),
+            excludes: excluded.map(function (item) {
+              return typeof item === "object" ? item.id : item;
+            }),
+            modifier: modifier || "INCLUDES",
+          };
+        }
       }
     });
 

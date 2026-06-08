@@ -12,10 +12,15 @@ from common.components.search_select import FilterSelect
 
 
 class FilterChoice(NamedTuple):
-    """Parsed include/exclude/modifier state of a filter field from filter JSON."""
+    """Parsed include/exclude/modifier state of a filter field from filter JSON.
 
-    selected: list[str]
-    excluded: list[str]
+    ``selected`` and ``excluded`` are lists of ``(value, label)`` pairs.  For
+    model-backed fields the label is embedded in the filter JSON (Stash-style);
+    for enum fields the label is resolved from the fixed option list.
+    """
+
+    selected: list[tuple[str, str]]
+    excluded: list[tuple[str, str]]
     modifier: str
 
 
@@ -50,6 +55,17 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
+def _extract_labeled(items: list) -> list[tuple[str, str]]:
+    """Convert a list of bare values or ``{id, label}`` dicts to ``(value, label)`` pairs."""
+    result = []
+    for item in items:
+        if isinstance(item, dict):
+            result.append((str(item.get("id", "")), str(item.get("label", ""))))
+        else:
+            result.append((str(item), ""))
+    return result
+
+
 def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     raw = existing.get(field, {})
     if not isinstance(raw, dict):
@@ -62,8 +78,8 @@ def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     if isinstance(excluded, str):
         excluded = [excluded]
     return FilterChoice(
-        selected=[str(v) for v in (value or [])],
-        excluded=[str(v) for v in (excluded or [])],
+        selected=_extract_labeled(value or []),
+        excluded=_extract_labeled(excluded or []),
         modifier=modifier or "",
     )
 
@@ -100,46 +116,13 @@ def _modifier_options(nullable: bool) -> list[tuple[str, str]]:
     return options
 
 
-def _resolve_game_options(ids):
-    if not ids:
-        return []
-    from games.models import Game
-
-    return [
-        {"value": game.id, "label": game.search_label}
-        for game in Game.objects.filter(pk__in=ids)
-    ]
-
-
-def _resolve_device_options(ids):
-    if not ids:
-        return []
-    from games.models import Device
-
-    return [
-        {"value": device.id, "label": device.name}
-        for device in Device.objects.filter(pk__in=ids)
-    ]
-
-
-def _resolve_platform_options(ids):
-    if not ids:
-        return []
-    from games.models import Platform
-
-    return [
-        {"value": platform.id, "label": platform.name}
-        for platform in Platform.objects.filter(pk__in=ids)
-    ]
-
-
 def _enum_filter(
     field_name: str, options, choice: FilterChoice, *, nullable
 ) -> SafeText:
     """A FilterSelect over a small, fully pre-rendered option set (enum field)."""
     options_str = [(str(value), label) for value, label in options]
-    included = [(value, _find_label(options_str, value)) for value in choice.selected]
-    excluded = [(value, _find_label(options_str, value)) for value in choice.excluded]
+    included = [(value, _find_label(options_str, value)) for value, _label in choice.selected]
+    excluded = [(value, _find_label(options_str, value)) for value, _label in choice.excluded]
     return FilterSelect(
         field_name=field_name,
         options=options_str,
@@ -151,14 +134,17 @@ def _enum_filter(
 
 
 def _model_filter(
-    field_name: str, choice: FilterChoice, *, search_url, resolver, nullable
+    field_name: str, choice: FilterChoice, *, search_url, nullable
 ) -> SafeText:
-    """A FilterSelect backed by a search endpoint; only selected ids are resolved
-    to labels (for the pills) — the option rows are fetched on demand."""
+    """A FilterSelect backed by a search endpoint.
+
+    Labels are embedded in the filter JSON (Stash-style), so pills render
+    directly from ``choice`` with no DB round-trip.
+    """
     return FilterSelect(
         field_name=field_name,
-        included=list(resolver(choice.selected)),
-        excluded=list(resolver(choice.excluded)),
+        included=[(value, label or value) for value, label in choice.selected],
+        excluded=[(value, label or value) for value, label in choice.excluded],
         modifier=choice.modifier,
         modifier_options=_modifier_options(nullable),
         search_url=search_url,
@@ -694,7 +680,6 @@ def FilterBar(
                         "platform",
                         platform_choice,
                         search_url="/api/platforms/search",
-                        resolver=_resolve_platform_options,
                         nullable=Game._meta.get_field("platform").null,
                     ),
                 ),
@@ -778,7 +763,6 @@ def SessionFilterBar(
                         "game",
                         game_choice,
                         search_url="/api/games/search",
-                        resolver=_resolve_game_options,
                         nullable=not Game._meta.get_field("name").has_default(),
                     ),
                 ),
@@ -788,7 +772,6 @@ def SessionFilterBar(
                         "device",
                         device_choice,
                         search_url="/api/devices/search",
-                        resolver=_resolve_device_options,
                         nullable=Session._meta.get_field("device").null,
                     ),
                 ),
@@ -851,7 +834,6 @@ def PurchaseFilterBar(
                         "games",
                         game_choice,
                         search_url="/api/games/search",
-                        resolver=_resolve_game_options,
                         nullable=False,
                     ),
                 ),
@@ -861,7 +843,6 @@ def PurchaseFilterBar(
                         "platform",
                         platform_choice,
                         search_url="/api/platforms/search",
-                        resolver=_resolve_platform_options,
                         nullable=Purchase._meta.get_field("platform").null,
                     ),
                 ),
