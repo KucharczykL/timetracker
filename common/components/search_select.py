@@ -33,12 +33,15 @@ class SearchSelectOption(TypedDict):
     data: dict[str, str]  # becomes data-* attrs on the row / pill
 
 
-# removed border and border-default-medium, see later if it's needed
-_CONTAINER_CLASS = "relative rounded-base bg-neutral-secondary-medium"
-# The pills and the search box share one flex-wrap row so the widget reads as a
-# single field; the pills wrapper uses `contents` so its pills/hidden inputs
-# flow as direct participants of that row, inline with the search input.
-_FIELD_CLASS = "flex flex-wrap items-center gap-1 p-2"
+# The pills and the search box share one flex-wrap row (with padding) so the
+# widget reads as a single clickable field; the pills wrapper uses `contents`
+# so its pills/hidden inputs flow as direct participants of that row, inline
+# with the search input. The options panel is absolute, so it sits outside the
+# flex flow. (border omitted intentionally — see if it's needed later.)
+_CONTAINER_CLASS = (
+    "relative flex flex-wrap items-center gap-1 p-2 "
+    "rounded-base bg-neutral-secondary-medium"
+)
 _PILLS_CLASS = "contents"
 _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 bg-transparent text-sm text-heading "
@@ -76,11 +79,14 @@ _FILTER_OPTION_ROW_CLASS = (
     "flex items-center justify-between px-2 py-1 rounded text-sm "
     "hover:bg-neutral-secondary-strong cursor-pointer"
 )
-_FILTER_OPTION_LABEL_CLASS = "truncate"
+_FILTER_OPTION_LABEL_CLASS = "truncate text-body"
 _FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
+# text-body keeps the +/− readable on dark backgrounds; hover:border-brand-strong
+# keeps the edge visible against the brand hover fill.
 _FILTER_ACTION_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded "
-    "border border-default-medium hover:bg-brand hover:text-white hover:border-brand"
+    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body "
+    "border border-default-medium "
+    "hover:bg-brand hover:text-white hover:border-brand-strong"
 )
 _FILTER_MODIFIER_ROW_CLASS = (
     "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer"
