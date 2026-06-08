@@ -107,16 +107,16 @@ class SearchSelectComponentTest(unittest.TestCase):
         )
         # No pre-rendered rows in the live panel; the row prototype lives only in
         # the cloneable <template>.
-        panel = html.split("data-ss-tpl")[0]
+        panel = html.split("data-ss-template")[0]
         self.assertNotIn('data-ss-option=""', panel)
-        self.assertIn('data-ss-tpl="row"', html)
+        self.assertIn('data-ss-template="row"', html)
 
     def test_templates_carry_label_slot_for_js_cloning(self):
         # The dynamic shapes the JS clones expose a [data-ss-label] slot so the JS
         # only fills text — classes/structure stay server-side.
         html = SearchSelect(name="t", search_url="/api/games/search", multi_select=True)
-        self.assertIn('data-ss-tpl="row"', html)
-        self.assertIn('data-ss-tpl="pill"', html)
+        self.assertIn('data-ss-template="row"', html)
+        self.assertIn('data-ss-template="pill"', html)
         self.assertIn("data-ss-label", html)
 
     def test_shell_region_order_pills_search_options(self):
@@ -190,7 +190,7 @@ class FilterSelectComponentTest(unittest.TestCase):
         # The lone modifier pill is shown; include/exclude pills are suppressed.
         # (Scope the check to the live pills region — the cloneable pill <template>s
         # legitimately contain data-ss-type.)
-        pills_region = html.split("data-ss-tpl")[0]
+        pills_region = html.split("data-ss-template")[0]
         self.assertIn('data-ss-modifier="IS_NULL"', html)
         self.assertIn("(None)", html)
         self.assertNotIn('data-ss-type="include"', pills_region)
@@ -205,9 +205,9 @@ class FilterSelectComponentTest(unittest.TestCase):
         )
         # No value rows in the live panel (they're fetched); the row prototype
         # lives only in a <template>.
-        panel = html.split("data-ss-tpl")[0]
+        panel = html.split("data-ss-template")[0]
         self.assertNotIn('data-ss-option=""', panel)
-        self.assertIn('data-ss-tpl="row"', html)
+        self.assertIn('data-ss-template="row"', html)
         self.assertIn('data-ss-modifier-option="NOT_NULL"', html)  # still pinned
         self.assertIn('data-prefetch="20"', html)
 
