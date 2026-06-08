@@ -24,7 +24,7 @@
 (function () {
   "use strict";
 
-  var DEBOUNCE_MS = 500;
+  var DEBOUNCE_MS = 100;
 
   function initAll() {
     document.querySelectorAll("[data-search-select]").forEach(function (element) {
