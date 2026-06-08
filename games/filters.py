@@ -389,19 +389,30 @@ class PurchaseFilter(OperatorFilter):
     def _games_to_q(criterion: ChoiceCriterion) -> Q:
         """Build the Q for the many-to-many ``games`` field.
 
-        ``INCLUDES_ALL`` ("related to every selected game") cannot be a single
-        ``.filter(Q(games=a) & Q(games=b))`` — that collapses to one join and
-        would require a single link row to be both games. Instead chain a filter
-        per game so each gets its own join, then match by ``pk``. The orthogonal
-        ``excludes`` channel is applied as a negative, consistent with every
-        other modifier. All other modifiers delegate to the criterion.
+        ``INCLUDES_ALL`` ("related to every selected game") and
+        ``INCLUDES_ONLY`` ("related to exactly these, nothing else") cannot be
+        a single ``.filter(Q(games=a) & Q(games=b))`` — that collapses to one
+        join and would require a single link row to be both games. Instead
+        chain a filter per game so each gets its own join, then match by
+        ``pk``.  ``INCLUDES_ONLY`` additionally excludes purchases that have
+        any game outside the specified set.  The orthogonal ``excludes``
+        channel is applied as a negative, consistent with every other
+        modifier. All other modifiers delegate to the criterion.
         """
-        if criterion.modifier == Modifier.INCLUDES_ALL and criterion.value:
-            from games.models import Purchase
+        if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY) and criterion.value:
+            from games.models import Game, Purchase
 
             subquery = Purchase.objects.all()
             for game_id in criterion.value:
                 subquery = subquery.filter(games=game_id)
+
+            if criterion.modifier == Modifier.INCLUDES_ONLY:
+                extra_ids = Game.objects.exclude(
+                    id__in=criterion.value
+                ).values_list("id", flat=True)
+                if extra_ids:
+                    subquery = subquery.exclude(games__in=extra_ids)
+
             q = Q(pk__in=subquery.values("pk"))
             if criterion.excludes:
                 q &= ~Q(games__in=criterion.excludes)

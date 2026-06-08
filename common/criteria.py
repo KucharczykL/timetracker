@@ -30,6 +30,7 @@ class Modifier(str, Enum):
     INCLUDES = "INCLUDES"
     EXCLUDES = "EXCLUDES"
     INCLUDES_ALL = "INCLUDES_ALL"
+    INCLUDES_ONLY = "INCLUDES_ONLY"
     IS_NULL = "IS_NULL"
     NOT_NULL = "NOT_NULL"
     MATCHES_REGEX = "MATCHES_REGEX"
@@ -71,6 +72,7 @@ class Modifier(str, Enum):
             cls.INCLUDES,
             cls.EXCLUDES,
             cls.INCLUDES_ALL,
+            cls.INCLUDES_ONLY,
             cls.IS_NULL,
             cls.NOT_NULL,
         ]
@@ -317,16 +319,17 @@ class _SetCriterion(_Criterion):
             return Q(**{f"{field_name}__in": self.value}) if self.value else Q()
         if modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
             return ~Q(**{f"{field_name}__in": self.value}) if self.value else Q()
-        if modifier == Modifier.INCLUDES_ALL:
-            # INCLUDES_ALL ("related to all of these") is only meaningful for
-            # many-to-many fields.  A naive Q(field=a) & Q(field=b) collapses
-            # to a single join requiring one through-row to equal both values
-            # (impossible), so the generic criterion layer cannot build a
-            # correct Q.  M2M callers must supply their own Q builder at the
-            # filter level — see PurchaseFilter._games_to_q for the subquery
-            # pattern (chained .filter() calls + pk__in).
+        if modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
+            # INCLUDES_ALL ("related to all of these") and INCLUDES_ONLY
+            # ("related to exactly these, nothing else") are only meaningful
+            # for many-to-many fields.  A naive Q(field=a) & Q(field=b)
+            # collapses to a single join requiring one through-row to equal
+            # both values (impossible), so the generic criterion layer cannot
+            # build a correct Q.  M2M callers must supply their own Q builder
+            # at the filter level — see PurchaseFilter._games_to_q for the
+            # chained-subquery pattern.
             assert False, (
-                "INCLUDES_ALL requires a filter-level Q builder for M2M fields. "
+                f"{modifier} requires a filter-level Q builder for M2M fields. "
                 "See PurchaseFilter._games_to_q for the chained-subquery pattern."
             )
         raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")

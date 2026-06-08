@@ -103,6 +103,7 @@ _PRESENCE_MODIFIERS = frozenset({"NOT_NULL", "IS_NULL"})
 _MATCH_MODES: list[LabeledOption] = [
     ("INCLUDES", "any"),
     ("INCLUDES_ALL", "all"),
+    ("INCLUDES_ONLY", "only"),
     ("EXCLUDES", "none"),
 ]
 

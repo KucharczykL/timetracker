@@ -223,7 +223,12 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn(">Obscure Game</span>", html)
         self.assertIn('data-value="4172"', html)
 
-    MATCH_MODES = [("INCLUDES", "any"), ("INCLUDES_ALL", "all"), ("EXCLUDES", "none")]
+    MATCH_MODES = [
+        ("INCLUDES", "any"),
+        ("INCLUDES_ALL", "all"),
+        ("INCLUDES_ONLY", "only"),
+        ("EXCLUDES", "none"),
+    ]
 
     def test_match_modes_render_native_select(self):
         html = FilterSelect(field_name="games", match_modes=self.MATCH_MODES)
@@ -231,6 +236,8 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn("data-search-select-match", html)
         self.assertIn('value="INCLUDES_ALL"', html)
         self.assertIn(">all</option>", html)
+        self.assertIn('value="INCLUDES_ONLY"', html)
+        self.assertIn(">only</option>", html)
         # The container exposes the active mode (defaults to the first) for the JS.
         self.assertIn('data-match="INCLUDES"', html)
 
