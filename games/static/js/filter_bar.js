@@ -67,16 +67,21 @@
       var field = widget.getAttribute("data-name");
       var included = parseJSONAttr(widget, "data-included");
       var excluded = parseJSONAttr(widget, "data-excluded");
-      var modifier = widget.getAttribute("data-modifier");
-      if (modifier === "NOT_NULL" || modifier === "IS_NULL") {
-        filter[field] = { modifier: modifier };
+      // Two orthogonal axes: a presence modifier (NOT_NULL/IS_NULL) from the
+      // pinned (Any)/(None) pseudo-options clears the value set, while the
+      // match mode (INCLUDES/INCLUDES_ALL/EXCLUDES) governs how the include set
+      // matches. Fields without a match-mode select default to INCLUDES.
+      var presence = widget.getAttribute("data-modifier");
+      var match = widget.getAttribute("data-match") || "INCLUDES";
+      if (presence === "NOT_NULL" || presence === "IS_NULL") {
+        filter[field] = { modifier: presence };
       } else if (included.length > 0 || excluded.length > 0) {
         // All filter pills carry {id, label}; store them as-is so the filter
         // URL and saved presets are self-describing (Stash-style).
         filter[field] = {
           value: included.map(function (item) { return {id: item.id, label: item.label}; }),
           excludes: excluded.map(function (item) { return {id: item.id, label: item.label}; }),
-          modifier: modifier || "INCLUDES",
+          modifier: match,
         };
       }
     });

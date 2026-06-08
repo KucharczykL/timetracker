@@ -208,7 +208,9 @@ class FilterSelectComponentTest(unittest.TestCase):
         panel = html.split("data-search-select-template")[0]
         self.assertNotIn('data-search-select-option=""', panel)
         self.assertIn('data-search-select-template="row"', html)
-        self.assertIn('data-search-select-modifier-option="NOT_NULL"', html)  # still pinned
+        self.assertIn(
+            'data-search-select-modifier-option="NOT_NULL"', html
+        )  # still pinned
         self.assertIn('data-prefetch="20"', html)
 
     def test_search_url_pills_use_resolved_labels(self):
@@ -220,6 +222,29 @@ class FilterSelectComponentTest(unittest.TestCase):
         )
         self.assertIn(">Obscure Game</span>", html)
         self.assertIn('data-value="4172"', html)
+
+    MATCH_MODES = [("INCLUDES", "any"), ("INCLUDES_ALL", "all"), ("EXCLUDES", "none")]
+
+    def test_match_modes_render_native_select(self):
+        html = FilterSelect(field_name="games", match_modes=self.MATCH_MODES)
+        # A native <select> carries the include-set match mode; options are labels.
+        self.assertIn("data-search-select-match", html)
+        self.assertIn('value="INCLUDES_ALL"', html)
+        self.assertIn(">all</option>", html)
+        # The container exposes the active mode (defaults to the first) for the JS.
+        self.assertIn('data-match="INCLUDES"', html)
+
+    def test_active_match_marks_selected_option(self):
+        html = FilterSelect(
+            field_name="games", match="INCLUDES_ALL", match_modes=self.MATCH_MODES
+        )
+        self.assertIn('data-match="INCLUDES_ALL"', html)
+        self.assertIn('value="INCLUDES_ALL" selected=""', html)
+
+    def test_no_match_modes_omits_select(self):
+        html = FilterSelect(field_name="status", options=[("f", "Finished")])
+        self.assertNotIn("data-search-select-match", html)
+        self.assertNotIn("data-match=", html)
 
 
 class SearchLabelTest(django.test.TestCase):

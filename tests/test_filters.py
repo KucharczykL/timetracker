@@ -94,6 +94,18 @@ class TestChoiceCriterion:
         q = c.to_q("status")
         assert q == Q()
 
+    def test_excludes_modifier_keeps_excludes_orthogonal(self):
+        """Harmonized (Stash model): under EXCLUDES the ``excludes`` channel stays
+        an orthogonal AND'd negative — it is *not* swapped into a positive
+        include (the old divergent ChoiceCriterion behaviour)."""
+        c = ChoiceCriterion(value=["f"], excludes=["a"], modifier=Modifier.EXCLUDES)
+        assert c.to_q("status") == ~Q(status__in=["f"]) & ~Q(status__in=["a"])
+
+    def test_includes_all(self):
+        """INCLUDES_ALL ANDs an equality per value (shared with MultiCriterion)."""
+        c = ChoiceCriterion(value=["f", "p"], modifier=Modifier.INCLUDES_ALL)
+        assert c.to_q("status") == Q(status="f") & Q(status="p")
+
     def test_not_equals(self):
         c = ChoiceCriterion(value=["f"], modifier=Modifier.NOT_EQUALS)
         assert c.to_q("status") == ~Q(status__in=["f"])
@@ -117,6 +129,18 @@ class TestMultiCriterion:
         c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.INCLUDES)
         assert c.to_q("game_id") == Q(game_id__in=[1]) & ~Q(game_id__in=[2])
 
+    def test_excludes_modifier_applies_excludes_channel(self):
+        """Harmonized (Stash model): EXCLUDES negates ``value`` AND still applies
+        the orthogonal ``excludes`` channel. Previously MultiCriterion.EXCLUDES
+        dropped the excludes list entirely."""
+        c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.EXCLUDES)
+        assert c.to_q("game_id") == ~Q(game_id__in=[1]) & ~Q(game_id__in=[2])
+
+    def test_includes_all(self):
+        """INCLUDES_ALL requires the row to relate to every value (M2M)."""
+        c = MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES_ALL)
+        assert c.to_q("games") == Q(games=1) & Q(games=2)
+
     def test_is_null(self):
         c = MultiCriterion(value=[], modifier=Modifier.IS_NULL)
         assert c.to_q("device_id") == Q(device_id__isnull=True)
@@ -124,7 +148,10 @@ class TestMultiCriterion:
     def test_from_json_strips_embedded_labels(self):
         """from_json normalises {id, label} dicts to bare ids."""
         c = MultiCriterion.from_json(
-            {"value": [{"id": 797, "label": "Hollow Knight"}], "excludes": [{"id": 11, "label": "Steam Deck"}]}
+            {
+                "value": [{"id": 797, "label": "Hollow Knight"}],
+                "excludes": [{"id": 11, "label": "Steam Deck"}],
+            }
         )
         assert c.value == [797]
         assert c.excludes == [11]
@@ -216,6 +243,96 @@ class TestChoiceCriterionAgainstDB:
         assert self._count(c) == 0
 
 
+class TestPurchaseGamesIncludesAllAgainstDB:
+    """INCLUDES_ALL on the many-to-many ``Purchase.games`` should match only
+    purchases linked to *all* of the given games — Stash's ``includes all``."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Game, Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
+        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
+        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
+
+        def make(linked):
+            purchase = Purchase.objects.create(
+                platform=platform, date_purchased=datetime.date(2024, 1, 1)
+            )
+            purchase.games.set(linked)
+            return purchase
+
+        return {
+            "a": a,
+            "b": b,
+            "both": make([a, b]),
+            "only_a": make([a]),
+            "all_three": make([a, b, c]),
+        }
+
+    @pytest.mark.django_db
+    def test_includes_all_matches_only_supersets(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id, seeded["b"].id],
+                    "modifier": "INCLUDES_ALL",
+                }
+            }
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["both"], seeded["all_three"]}
+
+    @pytest.mark.django_db
+    def test_includes_any_is_broader(self):
+        """Contrast: plain INCLUDES (any) also matches the A-only purchase."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id, seeded["b"].id],
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["both"], seeded["only_a"], seeded["all_three"]}
+
+    @pytest.mark.django_db
+    def test_includes_all_strips_embedded_labels(self):
+        """Stash-style {id, label} value items are normalised to bare ids."""
+        from common.criteria import Modifier
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [
+                        {"id": seeded["a"].id, "label": "A"},
+                        {"id": seeded["b"].id, "label": "B"},
+                    ],
+                    "modifier": "INCLUDES_ALL",
+                }
+            }
+        )
+        assert pf.games is not None
+        assert pf.games.modifier == Modifier.INCLUDES_ALL
+        assert pf.games.value == [seeded["a"].id, seeded["b"].id]
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["both"], seeded["all_three"]}
+
+
 class TestGameFilterFromJson:
     def test_status_choice_criterion(self):
         gf = GameFilter.from_json(
@@ -293,7 +410,12 @@ class TestFilterBarRendering:
         html = str(
             FilterBar(
                 filter_json=json.dumps(
-                    {"status": {"value": [{"id": "f", "label": "Finished"}], "modifier": "INCLUDES"}}
+                    {
+                        "status": {
+                            "value": [{"id": "f", "label": "Finished"}],
+                            "modifier": "INCLUDES",
+                        }
+                    }
                 ),
             )
         )
