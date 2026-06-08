@@ -310,57 +310,32 @@ class _SetCriterion(_Criterion):
         """Hook for subclass-specific modifiers; ``None`` means unsupported."""
         return None
 
+    @classmethod
+    def from_json(cls, data: dict | None) -> Self | None:
+        result = super().from_json(data)
+        if result is None:
+            return None
+        # Labels embedded as {id, label} dicts are display-only; strip to bare ids
+        # so the querying layer stays clean and typed.
+        result.value = [item["id"] if isinstance(item, dict) else item for item in result.value]
+        result.excludes = [item["id"] if isinstance(item, dict) else item for item in result.excludes]
+        return result
+
 
 @dataclass
 class MultiCriterion(_SetCriterion):
-    """Filter on a many-to-many or ForeignKey relationship by ID list.
+    """Filter on a many-to-many or ForeignKey relationship by ID list."""
 
-    Each entry in ``value`` and ``excludes`` may be either a bare integer id or
-    a ``{"id": <int>, "label": <str>}`` dict (Stash-style embedded label). The
-    label is display-only; only the id is used for querying.
-    """
-
-    value: list = field(default_factory=list)
-    excludes: list = field(default_factory=list)
-
-    def _ids(self, items: list) -> list[int]:
-        """Extract integer ids from a mixed list of bare ints or {id, label} dicts."""
-        result = []
-        for item in items:
-            if isinstance(item, dict):
-                result.append(int(item["id"]))
-            else:
-                result.append(int(item))
-        return result
-
-    def to_q(self, field_name: str) -> Q:
-        modifier = self.modifier
-        value_ids = self._ids(self.value)
-        excludes_ids = self._ids(self.excludes)
-        if modifier in (Modifier.INCLUDES, Modifier.EQUALS):
-            q = Q()
-            if value_ids:
-                q &= Q(**{f"{field_name}__in": value_ids})
-            if excludes_ids:
-                q &= ~Q(**{f"{field_name}__in": excludes_ids})
-            return q
-        if modifier == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
-        if modifier == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
-        extra = self._extra_q(field_name)
-        if extra is not None:
-            return extra
-        raise ValueError(f"Unsupported modifier {modifier} for MultiCriterion")
+    value: list[int] = field(default_factory=list)
+    excludes: list[int] = field(default_factory=list)
 
     def _extra_q(self, field_name: str) -> Q | None:
-        value_ids = self._ids(self.value)
         if self.modifier == Modifier.EXCLUDES:
-            return ~Q(**{f"{field_name}__in": value_ids})
+            return ~Q(**{f"{field_name}__in": self.value})
         if self.modifier == Modifier.INCLUDES_ALL:
             q = Q()
-            for id_val in value_ids:
-                q &= Q(**{field_name: id_val})
+            for value in self.value:
+                q &= Q(**{field_name: value})
             return q
         return None
 

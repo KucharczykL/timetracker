@@ -121,6 +121,15 @@ class TestMultiCriterion:
         c = MultiCriterion(value=[], modifier=Modifier.IS_NULL)
         assert c.to_q("device_id") == Q(device_id__isnull=True)
 
+    def test_from_json_strips_embedded_labels(self):
+        """from_json normalises {id, label} dicts to bare ids."""
+        c = MultiCriterion.from_json(
+            {"value": [{"id": 797, "label": "Hollow Knight"}], "excludes": [{"id": 11, "label": "Steam Deck"}]}
+        )
+        assert c.value == [797]
+        assert c.excludes == [11]
+        assert c.to_q("game_id") == Q(game_id__in=[797]) & ~Q(game_id__in=[11])
+
 
 class TestChoiceCriterionAgainstDB:
     """Verify ChoiceCriterion produces correct DB results."""

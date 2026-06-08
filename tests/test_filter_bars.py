@@ -94,7 +94,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_game_filter_bar_roundtrips_selected_status(self):
         """A status in filter_json renders as an include pill in the widget."""
-        filter_json = json.dumps({"status": {"value": ["f"], "modifier": ""}})
+        filter_json = json.dumps({"status": {"value": [{"id": "f", "label": "Finished"}], "modifier": "INCLUDES"}})
         html = str(
             FilterBar(
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
