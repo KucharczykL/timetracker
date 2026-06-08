@@ -3,7 +3,6 @@
 from typing import NamedTuple
 
 from django.db import models
-from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
@@ -32,13 +31,6 @@ class RangeValues(NamedTuple):
 
 
 _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
-
-
-_FILTER_INPUT_CLASS = (
-    "block w-full rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium text-sm text-heading p-2 "
-    "focus:ring-brand focus:border-brand"
-)
 
 
 _FILTER_CHECKBOX_CLASS = (
@@ -71,17 +63,10 @@ def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     raw = existing.get(field, {})
     if not isinstance(raw, dict):
         return FilterChoice([], [], "")
-    value = raw.get("value", [])
-    excluded = raw.get("excludes", [])
-    modifier = raw.get("modifier", "")
-    if isinstance(value, str):
-        value = [value]
-    if isinstance(excluded, str):
-        excluded = [excluded]
     return FilterChoice(
-        selected=_extract_labeled(value or []),
-        excluded=_extract_labeled(excluded or []),
-        modifier=modifier or "",
+        selected=_extract_labeled(raw.get("value") or []),
+        excluded=_extract_labeled(raw.get("excludes") or []),
+        modifier=raw.get("modifier") or "",
     )
 
 
@@ -103,8 +88,8 @@ def _parse_bool(existing: dict, key: str) -> bool:
 
 # ── FilterSelect adapters ────────────────────────────────────────────────────
 # Each list filter is a FilterSelect. Enum fields pre-render their small, fixed
-# option set; model-backed fields fetch from a search endpoint and only resolve
-# the currently-selected ids to labels for their pills.
+# option set; model-backed fields fetch from a search endpoint on demand, with
+# labels embedded in the filter JSON so pills render without a DB round-trip.
 
 _FILTER_PREFETCH = 20
 
@@ -178,23 +163,6 @@ def _filter_field(label: str, widget) -> SafeText:
             ),
             widget,
         ],
-    )
-
-
-def _filter_number(label, name, value="", placeholder="") -> SafeText:
-    return _filter_field(
-        label,
-        Component(
-            tag_name="input",
-            attributes=[
-                ("type", "number"),
-                ("name", escape(name)),
-                ("id", escape(name)),
-                ("value", escape(value)),
-                ("placeholder", escape(placeholder)),
-                ("class", _FILTER_INPUT_CLASS),
-            ],
-        ),
     )
 
 
@@ -806,8 +774,8 @@ def PurchaseFilterBar(
     """Collapsible filter bar for the Purchase list."""
     from games.models import Purchase
 
-    type_options = [(value, label) for value, label in Purchase.TYPES]
-    ownership_options = [(value, label) for value, label in Purchase.OWNERSHIP_TYPES]
+    type_options = Purchase.TYPES
+    ownership_options = Purchase.OWNERSHIP_TYPES
     existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "games")
     platform_choice = _filter_get_choice(existing, "platform")
