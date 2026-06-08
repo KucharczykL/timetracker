@@ -563,3 +563,70 @@ class TestFilterBarRendering:
         platform_section = html[platform_start:]
         # Should have at least one modifier option
         assert "(Any)" in platform_section or "(None)" in platform_section
+
+
+class TestPurchaseNumPurchasesAgainstDB:
+    """num_purchases IntCriterion filters purchases by game count."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Game, Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
+        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
+        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
+
+        single = Purchase.objects.create(
+            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+        )
+        single.games.set([a])
+
+        double = Purchase.objects.create(
+            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+        )
+        double.games.set([a, b])
+
+        triple = Purchase.objects.create(
+            platform=platform, date_purchased=datetime.date(2024, 1, 1)
+        )
+        triple.games.set([a, b, c])
+
+        return {"single": single, "double": double, "triple": triple}
+
+    @pytest.mark.django_db
+    def test_between_two_and_three(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {"num_purchases": {"value": 2, "value2": 3, "modifier": "BETWEEN"}}
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["double"], seeded["triple"]}
+
+    @pytest.mark.django_db
+    def test_greater_than_one(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {"num_purchases": {"value": 1, "modifier": "GREATER_THAN"}}
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["double"], seeded["triple"]}
+
+    @pytest.mark.django_db
+    def test_equals_one(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {"num_purchases": {"value": 1, "modifier": "EQUALS"}}
+        )
+        result = set(Purchase.objects.filter(pf.to_q()))
+        assert result == {seeded["single"]}
