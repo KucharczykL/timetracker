@@ -71,7 +71,7 @@ class SearchSelectComponentTest(unittest.TestCase):
             selected=[{"value": 7, "label": "Game A", "data": {"platform": "2"}}],
         )
         self.assertIn("data-pill", html)
-        self.assertIn('<input type="hidden" name="games" value="7">', html)
+        self.assertIn('<input name="games" value="7" type="hidden">', html)
         self.assertIn('data-platform="2"', html)
         # exactly one submitted value (the hidden input) — the search box has no
         # name. The leading space avoids matching the container's data-name.
@@ -86,7 +86,7 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertNotIn("data-pill", html)
         self.assertIn('value="Game A"', html)
         # the value is still submitted via a lone hidden input
-        self.assertIn('<input type="hidden" name="games" value="7">', html)
+        self.assertIn('<input name="games" value="7" type="hidden">', html)
         self.assertEqual(html.count(' name="games"'), 1)
 
     def test_search_box_has_no_name(self):

@@ -369,6 +369,16 @@ def Label(
     return Component(tag_name="label", attributes=attributes, children=children)
 
 
+def Template(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    """An inert ``<template>`` whose contents are not rendered until cloned by JS."""
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="template", attributes=attributes, children=children)
+
+
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
 # input.css, written inline so styling stays encapsulated in the component). The
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
@@ -407,11 +417,7 @@ def Pill(
     pill_attrs.extend(attributes)
 
     label_child: HTMLTag = (
-        Component(
-            tag_name="span",
-            attributes=[("data-search-select-label", "")],
-            children=[label],
-        )
+        Span(attributes=[("data-search-select-label", "")], children=[label])
         if label_slot
         else label
     )
@@ -430,7 +436,7 @@ def Pill(
             )
         )
 
-    return Component(tag_name="span", attributes=pill_attrs, children=children)
+    return Span(attributes=pill_attrs, children=children)
 
 
 def CsrfInput(request) -> SafeText:
