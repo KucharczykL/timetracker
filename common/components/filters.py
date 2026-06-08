@@ -8,7 +8,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
 from common.components.primitives import Label, Span
-from common.components.search_select import FilterSelect
+from common.components.search_select import FilterSelect, LabeledOption
 
 
 class FilterChoice(NamedTuple):
@@ -19,9 +19,16 @@ class FilterChoice(NamedTuple):
     for enum fields the label is resolved from the fixed option list.
     """
 
-    selected: list[tuple[str, str]]
-    excluded: list[tuple[str, str]]
+    selected: list[LabeledOption]
+    excluded: list[LabeledOption]
     modifier: str
+
+
+class RangeValues(NamedTuple):
+    """A (min, max) string pair parsed from a range filter criterion."""
+
+    min: str
+    max: str
 
 
 _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
@@ -55,7 +62,7 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
-def _extract_labeled(items: list) -> list[tuple[str, str]]:
+def _extract_labeled(items: list) -> list[LabeledOption]:
     """Convert a list of bare values or ``{id, label}`` dicts to ``(value, label)`` pairs."""
     result = []
     for item in items:
@@ -84,12 +91,12 @@ def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     )
 
 
-def _parse_range(existing: dict, key: str) -> tuple[str, str]:
-    """Extract (value, value2) from a filter criterion, defaulting to ("", "")."""
+def _parse_range(existing: dict, key: str) -> RangeValues:
+    """Extract (min, max) from a range filter criterion, defaulting to ("", "")."""
     field = existing.get(key, {})
     if not isinstance(field, dict):
-        return "", ""
-    return str(field.get("value", "")), str(field.get("value2", ""))
+        return RangeValues("", "")
+    return RangeValues(str(field.get("value", "")), str(field.get("value2", "")))
 
 
 def _parse_bool(existing: dict, key: str) -> bool:
@@ -108,7 +115,7 @@ def _parse_bool(existing: dict, key: str) -> bool:
 _FILTER_PREFETCH = 20
 
 
-def _modifier_options(nullable: bool) -> list[tuple[str, str]]:
+def _modifier_options(nullable: bool) -> list[LabeledOption]:
     """Pinned (Any)/(None) pseudo-options; (None) only when the field is nullable."""
     options = [("NOT_NULL", "(Any)")]
     if nullable:
@@ -618,7 +625,7 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
 
 def FilterBar(
     filter_json: str = "",
-    status_options: list[tuple[str, str]] | None = None,
+    status_options: list[LabeledOption] | None = None,
     preset_list_url: str = "",
     preset_save_url: str = "",
 ) -> SafeText:
@@ -717,7 +724,7 @@ def FilterBar(
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
 
 
-def _find_label(options: list[tuple[str, str]], value: str) -> str:
+def _find_label(options: list[LabeledOption], value: str) -> str:
     for v, label in options:
         if str(v) == str(value):
             return label
