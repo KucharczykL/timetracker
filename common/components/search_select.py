@@ -119,6 +119,29 @@ def _hidden_input(name: str, value) -> SafeText:
     )
 
 
+def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
+    """A ``<span data-ss-label>`` holding a row/pill's visible label. JS fills this
+    one node when cloning the shape from a ``<template>``, so labels are the only
+    thing the JS sets — all classes and structure stay server-side."""
+    attributes: list[HTMLAttribute] = [("data-ss-label", "")]
+    if extra_class:
+        attributes.append(("class", extra_class))
+    return Component(tag_name="span", attributes=attributes, children=[text])
+
+
+def _template(name: str, node: SafeText) -> SafeText:
+    """Wrap a prototype row/pill in an inert ``<template data-ss-tpl=name>`` that
+    the JS clones. Rendering the prototype with the real component keeps the JS
+    free of any markup or class strings."""
+    return Component(
+        tag_name="template", attributes=[("data-ss-tpl", name)], children=[node]
+    )
+
+
+# A placeholder option for rendering template prototypes (JS overwrites it).
+_BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
+
+
 def _option_row(option: SearchSelectOption) -> SafeText:
     return Component(
         tag_name="div",
@@ -129,7 +152,7 @@ def _option_row(option: SearchSelectOption) -> SafeText:
             ("class", _OPTION_ROW_CLASS),
             *_data_attributes(option["data"]),
         ],
-        children=[option["label"]],
+        children=[_label_slot(option["label"])],
     )
 
 
@@ -141,6 +164,7 @@ def _combobox_shell(
     options_children: list[SafeText],
     always_visible: bool,
     items_visible: int,
+    templates: list[SafeText] | None = None,
 ) -> SafeText:
     """Assemble the shared, domain-agnostic combobox skeleton.
 
@@ -148,9 +172,11 @@ def _combobox_shell(
     same order: the ``pills`` region, the search box, and the options panel (which
     always carries a trailing no-results node). Callers supply the already-built
     ``pills`` region, the ``search_attributes`` for the text box, the
-    ``options_children`` (value rows plus any pinned pseudo-options), and the
-    ``container_attributes`` that carry the widget's identity and behaviour flags.
-    The shell knows nothing about how individual rows or pills look.
+    ``options_children`` (value rows plus any pinned pseudo-options), the
+    ``container_attributes`` that carry the widget's identity and behaviour flags,
+    and any ``templates`` (inert ``<template>`` prototypes the JS clones for
+    dynamically-added rows/pills). The shell knows nothing about how individual
+    rows or pills look.
     """
     search = Component(tag_name="input", attributes=search_attributes)
 
@@ -173,7 +199,7 @@ def _combobox_shell(
     return Component(
         tag_name="div",
         attributes=container_attributes,
-        children=[pills, search, options_panel],
+        children=[pills, search, options_panel, *(templates or [])],
     )
 
 
@@ -211,6 +237,7 @@ def SearchSelect(
                     option["label"],
                     value=str(option["value"]),
                     removable=True,
+                    label_slot=True,
                     attributes=_data_attributes(option["data"]),
                 )
             )
@@ -242,6 +269,16 @@ def SearchSelect(
     # ── Options panel (pre-rendered only when there is no search_url) ──
     option_rows = [_option_row(o) for o in options] if not search_url else []
 
+    # ── Templates the JS clones: a row when results are fetched, a pill when
+    #    multi-select adds chosen items. ──
+    templates: list[SafeText] = []
+    if search_url:
+        templates.append(_template("row", _option_row(_BLANK_OPTION)))
+    if multi_select:
+        templates.append(
+            _template("pill", Pill("", value="", removable=True, label_slot=True))
+        )
+
     container_attributes: list[HTMLAttribute] = [
         ("data-search-select", ""),
         ("data-name", name),
@@ -264,6 +301,7 @@ def SearchSelect(
         options_children=option_rows,
         always_visible=always_visible,
         items_visible=items_visible,
+        templates=templates,
     )
 
 
@@ -296,7 +334,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
             ("data-ss-type", kind),
             *_data_attributes(option["data"]),
         ],
-        children=[f"{symbol} {option['label']}", _filter_remove_button()],
+        children=[f"{symbol} ", _label_slot(option["label"]), _filter_remove_button()],
     )
 
 
@@ -309,7 +347,7 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
             ("data-pill", ""),
             ("data-ss-modifier", modifier_value),
         ],
-        children=[label, _filter_remove_button()],
+        children=[_label_slot(label), _filter_remove_button()],
     )
 
 
@@ -337,11 +375,7 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
             ("class", _FILTER_OPTION_ROW_CLASS),
         ],
         children=[
-            Component(
-                tag_name="span",
-                attributes=[("class", _FILTER_OPTION_LABEL_CLASS)],
-                children=[label],
-            ),
+            _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
             Component(
                 tag_name="span",
                 attributes=[("class", _FILTER_OPTION_BUTTONS_CLASS)],
@@ -441,6 +475,17 @@ def FilterSelect(
         else []
     )
 
+    # ── Templates the JS clones: include/exclude pills (added on click), the
+    #    modifier pill (when modifiers exist), and a value row (when fetched). ──
+    templates: list[SafeText] = [
+        _template("pill-include", _filter_value_pill(_BLANK_OPTION, "include")),
+        _template("pill-exclude", _filter_value_pill(_BLANK_OPTION, "exclude")),
+    ]
+    if modifier_options:
+        templates.append(_template("pill-modifier", _filter_modifier_pill("", "")))
+    if search_url:
+        templates.append(_template("row", _filter_option_row("", "")))
+
     container_attributes: list[HTMLAttribute] = [
         ("data-search-select", ""),
         ("data-ss-mode", "filter"),
@@ -466,6 +511,7 @@ def FilterSelect(
         options_children=[*modifier_rows, *value_rows],
         always_visible=False,
         items_visible=items_visible,
+        templates=templates,
     )
 
 

@@ -386,6 +386,7 @@ def Pill(
     value: str = "",
     removable: bool = False,
     extra_class: str = "",
+    label_slot: bool = False,
     attributes: list[HTMLAttribute] | None = None,
 ) -> SafeText:
     """A small label pill, optionally removable (× button).
@@ -393,6 +394,10 @@ def Pill(
     Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
     are JS hooks only (no CSS attached). ``value`` (when set) becomes
     ``data-value``; extra ``attributes`` are appended to the outer span.
+
+    ``label_slot=True`` wraps the label in a ``<span data-ss-label>`` so JS can
+    fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
+    markup single-sourced — see ``search_select.py``).
     """
     attributes = attributes or []
     pill_class = f"{_PILL_CLASS} {extra_class}".strip()
@@ -401,7 +406,12 @@ def Pill(
         pill_attrs.append(("data-value", str(value)))
     pill_attrs.extend(attributes)
 
-    children: list[HTMLTag] = [label]
+    label_child: HTMLTag = (
+        Component(tag_name="span", attributes=[("data-ss-label", "")], children=[label])
+        if label_slot
+        else label
+    )
+    children: list[HTMLTag] = [label_child]
     if removable:
         children.append(
             Component(

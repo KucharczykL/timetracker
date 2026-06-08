@@ -15,41 +15,14 @@
  * initAll() runs on DOMContentLoaded + htmx:afterSwap, each widget guarded with
  * el._ssInit.
  *
- * The pill / option class strings below are kept byte-identical to the Python
- * Pill / SearchSelect / FilterSelect components so Tailwind generates the classes
- * and server-rendered and JS-created rows/pills are indistinguishable.
+ * Dynamically-added rows and pills are cloned from hidden <template> elements
+ * the server renders with the same Python components (Pill / SearchSelect /
+ * FilterSelect). The JS only fills in the label slot ([data-ss-label]), value,
+ * and data-* attributes — so all markup and Tailwind class strings live in one
+ * place (the Python components), never duplicated here.
  */
 (function () {
   "use strict";
-
-  var PILL_CLASS =
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded " +
-    "bg-brand/15 text-heading";
-  var PILL_REMOVE_CLASS =
-    "ml-1 text-body hover:text-heading font-bold cursor-pointer";
-  var OPTION_ROW_CLASS =
-    "px-3 py-2 text-sm text-heading cursor-pointer hover:bg-brand/15";
-
-  // Filter-mode class strings — byte-identical to the FilterSelect constants in
-  // common/components/search_select.py.
-  var FILTER_INCLUDE_PILL_CLASS =
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded " +
-    "bg-brand/15 text-heading";
-  var FILTER_EXCLUDE_PILL_CLASS =
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded " +
-    "bg-red-500/15 text-red-600 line-through decoration-red-400";
-  var FILTER_MODIFIER_PILL_CLASS =
-    "inline-flex items-center px-2 py-0.5 text-sm rounded " +
-    "bg-amber-500/15 text-amber-600 cursor-pointer";
-  var FILTER_OPTION_ROW_CLASS =
-    "flex items-center justify-between px-2 py-1 rounded text-sm " +
-    "hover:bg-neutral-secondary-strong cursor-pointer";
-  var FILTER_OPTION_LABEL_CLASS = "truncate text-body";
-  var FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0";
-  var FILTER_ACTION_BUTTON_CLASS =
-    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body " +
-    "border border-brand " +
-    "hover:bg-brand hover:text-white hover:border-brand-strong";
 
   var DEBOUNCE_MS = 500;
 
@@ -103,58 +76,36 @@
       showPanel();
     }
 
+    // ── Clone a server-rendered <template> prototype by name. The server emits
+    //    the mode-appropriate prototypes, so the JS never names a class. ──
+    function cloneTemplate(name) {
+      var tpl = container.querySelector('template[data-ss-tpl="' + name + '"]');
+      return tpl ? tpl.content.firstElementChild.cloneNode(true) : null;
+    }
+
+    function setLabel(node, label) {
+      var slot = node.querySelector("[data-ss-label]");
+      if (slot) slot.textContent = label;
+    }
+
+    function applyData(node, data) {
+      data = data || {};
+      Object.keys(data).forEach(function (key) {
+        node.setAttribute("data-" + key, data[key]);
+      });
+    }
+
+    // Build an option row by cloning the "row" template (the same prototype the
+    // server renders, so fetched and pre-rendered rows are identical).
     function buildRow(option) {
-      if (isFilter) return buildFilterOptionRow(option);
-      var row = document.createElement("div");
-      row.setAttribute("data-ss-option", "");
+      var row = cloneTemplate("row");
+      if (!row) return document.createComment("ss-row");
       row.setAttribute("data-value", option.value);
       row.setAttribute("data-label", option.label);
-      row.className = OPTION_ROW_CLASS;
-      var data = option.data || {};
-      Object.keys(data).forEach(function (key) {
-        row.setAttribute("data-" + key, data[key]);
-      });
-      row.textContent = option.label;
+      applyData(row, option.data);
+      setLabel(row, option.label);
       row._ssOption = option;
       return row;
-    }
-
-    // ── Filter-mode value row: label + include/exclude buttons (mirrors the
-    //    Python _filter_option_row so fetched and server-rendered rows match). ──
-    function buildFilterOptionRow(option) {
-      var row = document.createElement("div");
-      row.setAttribute("data-ss-option", "");
-      row.setAttribute("data-value", option.value);
-      row.setAttribute("data-label", option.label);
-      row.className = FILTER_OPTION_ROW_CLASS;
-      var data = option.data || {};
-      Object.keys(data).forEach(function (key) {
-        row.setAttribute("data-" + key, data[key]);
-      });
-
-      var labelSpan = document.createElement("span");
-      labelSpan.className = FILTER_OPTION_LABEL_CLASS;
-      labelSpan.textContent = option.label;
-
-      var buttons = document.createElement("span");
-      buttons.className = FILTER_OPTION_BUTTONS_CLASS;
-      buttons.appendChild(buildActionButton("include", "+", "Include"));
-      buttons.appendChild(buildActionButton("exclude", "−", "Exclude"));
-
-      row.appendChild(labelSpan);
-      row.appendChild(buttons);
-      row._ssOption = option;
-      return row;
-    }
-
-    function buildActionButton(action, symbol, title) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("data-ss-action", action);
-      button.className = FILTER_ACTION_BUTTON_CLASS;
-      button.title = title;
-      button.textContent = symbol;
-      return button;
     }
 
     // ── Client-side filter of the currently loaded rows. Returns the number of
@@ -309,32 +260,20 @@
     }
 
     function buildFilterValuePill(option, kind) {
-      var pill = document.createElement("span");
-      pill.className =
-        kind === "include" ? FILTER_INCLUDE_PILL_CLASS : FILTER_EXCLUDE_PILL_CLASS;
-      pill.setAttribute("data-pill", "");
+      var pill = cloneTemplate(kind === "include" ? "pill-include" : "pill-exclude");
       pill.setAttribute("data-value", option.value);
       pill.setAttribute("data-label", option.label);
-      pill.setAttribute("data-ss-type", kind);
-      var data = option.data || {};
-      Object.keys(data).forEach(function (key) {
-        pill.setAttribute("data-" + key, data[key]);
-      });
-      var symbol = kind === "include" ? "✓" : "✗";
-      pill.appendChild(document.createTextNode(symbol + " " + option.label));
-      pill.appendChild(buildRemoveButton());
+      applyData(pill, option.data);
+      setLabel(pill, option.label);
       return pill;
     }
 
     // Set the lone modifier pill, clearing all value pills (mutual exclusivity).
     function setModifier(modifierValue, label) {
       pills.innerHTML = "";
-      var pill = document.createElement("span");
-      pill.className = FILTER_MODIFIER_PILL_CLASS;
-      pill.setAttribute("data-pill", "");
+      var pill = cloneTemplate("pill-modifier");
       pill.setAttribute("data-ss-modifier", modifierValue);
-      pill.appendChild(document.createTextNode(label));
-      pill.appendChild(buildRemoveButton());
+      setLabel(pill, label);
       pills.appendChild(pill);
       container.setAttribute("data-modifier", modifierValue);
       hidePanel();
@@ -345,16 +284,6 @@
       var modifierPill = pills.querySelector("[data-ss-modifier]");
       if (modifierPill) modifierPill.remove();
       container.removeAttribute("data-modifier");
-    }
-
-    function buildRemoveButton() {
-      var remove = document.createElement("button");
-      remove.type = "button";
-      remove.setAttribute("data-pill-remove", "");
-      remove.className = PILL_REMOVE_CLASS;
-      remove.setAttribute("aria-label", "Remove");
-      remove.textContent = "×";
-      return remove;
     }
 
     function optionFromRow(row) {
@@ -391,27 +320,17 @@
     }
 
     function addPill(option) {
-      pills.appendChild(buildPill(option));
+      var pill = buildPill(option);
+      if (pill) pills.appendChild(pill);
       pills.appendChild(buildHidden(option.value));
     }
 
     function buildPill(option) {
-      var pill = document.createElement("span");
-      pill.className = PILL_CLASS;
-      pill.setAttribute("data-pill", "");
+      var pill = cloneTemplate("pill");
+      if (!pill) return null;
       pill.setAttribute("data-value", option.value);
-      var data = option.data || {};
-      Object.keys(data).forEach(function (key) {
-        pill.setAttribute("data-" + key, data[key]);
-      });
-      pill.appendChild(document.createTextNode(option.label));
-      var remove = document.createElement("button");
-      remove.type = "button";
-      remove.setAttribute("data-pill-remove", "");
-      remove.className = PILL_REMOVE_CLASS;
-      remove.setAttribute("aria-label", "Remove");
-      remove.textContent = "×";
-      pill.appendChild(remove);
+      applyData(pill, option.data);
+      setLabel(pill, option.label);
       return pill;
     }
 
