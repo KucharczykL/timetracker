@@ -395,13 +395,26 @@ class PurchaseFilter(OperatorFilter):
         join and would require a single link row to be both games. Instead
         chain a filter per game so each gets its own join, then match by
         ``pk``.  ``INCLUDES_ONLY`` additionally excludes purchases that have
-        any game outside the specified set.  The orthogonal ``excludes``
-        channel is applied as a negative, consistent with every other
-        modifier. All other modifiers delegate to the criterion.
-        """
-        if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY) and criterion.value:
-            from games.models import Game, Purchase
+        any game outside the specified set.
 
+        ``INCLUDES`` (plain "any") also uses a subquery instead of a raw
+        ``games__in`` join because a single purchase linked to *n* of the
+        given games would appear *n* times in the result set (M2M join
+        duplicates).
+
+        The orthogonal ``excludes`` channel is applied as a negative,
+        consistent with every other modifier. All other modifiers delegate
+        to the criterion.
+        """
+        # Empty value means no constraint; still apply excludes if any
+        if not criterion.value:
+            if criterion.excludes:
+                return ~Q(games__in=criterion.excludes)
+            return Q()
+
+        from games.models import Game, Purchase
+
+        if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
             subquery = Purchase.objects.all()
             for game_id in criterion.value:
                 subquery = subquery.filter(games=game_id)
@@ -417,6 +430,15 @@ class PurchaseFilter(OperatorFilter):
             if criterion.excludes:
                 q &= ~Q(games__in=criterion.excludes)
             return q
+
+        if criterion.modifier == Modifier.INCLUDES:
+            # Use subquery to avoid duplicate rows from M2M join
+            subquery = Purchase.objects.filter(games__in=criterion.value)
+            q = Q(pk__in=subquery.values("pk"))
+            if criterion.excludes:
+                q &= ~Q(games__in=criterion.excludes)
+            return q
+
         return criterion.to_q("games")
 
 

@@ -335,6 +335,33 @@ class TestPurchaseGamesIncludesAllAgainstDB:
         assert result == {seeded["both"], seeded["only_a"], seeded["all_three"]}
 
     @pytest.mark.django_db
+    def test_includes_any_no_duplicates(self):
+        """INCLUDES [A, B] must not return duplicate rows for a purchase linked
+        to both A and B — the M2M join must not inflate the result.
+
+        Regression: ``games__in`` on a many-to-many field produces one row per
+        matching through-table entry, so a purchase linked to N of the selected
+        games would appear N times.  The fix uses a subquery so each purchase
+        appears at most once.
+        """
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [seeded["a"].id, seeded["b"].id],
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        result = list(Purchase.objects.filter(pf.to_q()))
+        # Must have 3 distinct purchases, not duplicates
+        assert len(result) == 3
+        assert set(result) == {seeded["both"], seeded["only_a"], seeded["all_three"]}
+
+    @pytest.mark.django_db
     def test_includes_all_strips_embedded_labels(self):
         """Stash-style {id, label} value items are normalised to bare ids."""
         from common.criteria import Modifier
