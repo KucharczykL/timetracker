@@ -277,7 +277,9 @@ class MultiCriterion(_Criterion):
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
         if m == Modifier.INCLUDES:
-            q = Q(**{f"{field_name}__in": self.value})
+            q = Q()
+            if self.value:
+                q &= Q(**{f"{field_name}__in": self.value})
             if self.excludes:
                 q &= ~Q(**{f"{field_name}__in": self.excludes})
             return q
