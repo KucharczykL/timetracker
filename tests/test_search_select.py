@@ -52,7 +52,7 @@ class SearchSelectComponentTest(unittest.TestCase):
 
     def test_empty_options_renders_no_results_scaffold(self):
         html = SearchSelect(name="games")
-        self.assertIn("data-ss-no-results", html)
+        self.assertIn("data-search-select-no-results", html)
         self.assertIn("No results", html)
 
     def test_outer_container_carries_config(self):
@@ -91,13 +91,13 @@ class SearchSelectComponentTest(unittest.TestCase):
 
     def test_search_box_has_no_name(self):
         html = SearchSelect(name="games")
-        self.assertIn("data-ss-search", html)
+        self.assertIn("data-search-select-search", html)
         # container exposes data-name, never a submittable name on the search box
         self.assertEqual(html.count(' name="games"'), 0)
 
     def test_tuple_options_are_normalized(self):
         html = SearchSelect(name="t", options=[("1", "One")])
-        self.assertIn('data-ss-option=""', html)
+        self.assertIn('data-search-select-option=""', html)
         self.assertIn('data-value="1"', html)
         self.assertIn("One", html)
 
@@ -107,27 +107,27 @@ class SearchSelectComponentTest(unittest.TestCase):
         )
         # No pre-rendered rows in the live panel; the row prototype lives only in
         # the cloneable <template>.
-        panel = html.split("data-ss-template")[0]
-        self.assertNotIn('data-ss-option=""', panel)
-        self.assertIn('data-ss-template="row"', html)
+        panel = html.split("data-search-select-template")[0]
+        self.assertNotIn('data-search-select-option=""', panel)
+        self.assertIn('data-search-select-template="row"', html)
 
     def test_templates_carry_label_slot_for_js_cloning(self):
-        # The dynamic shapes the JS clones expose a [data-ss-label] slot so the JS
+        # The dynamic shapes the JS clones expose a [data-search-select-label] slot so the JS
         # only fills text — classes/structure stay server-side.
         html = SearchSelect(name="t", search_url="/api/games/search", multi_select=True)
-        self.assertIn('data-ss-template="row"', html)
-        self.assertIn('data-ss-template="pill"', html)
-        self.assertIn("data-ss-label", html)
+        self.assertIn('data-search-select-template="row"', html)
+        self.assertIn('data-search-select-template="pill"', html)
+        self.assertIn("data-search-select-label", html)
 
     def test_shell_region_order_pills_search_options(self):
         # The shared shell assembles the three regions in a fixed order; option
         # rows precede the trailing no-results node inside the options panel.
         html = SearchSelect(name="t", options=[("1", "One")])
-        pills = html.index("data-ss-pills")
-        search = html.index("data-ss-search")
-        options = html.index("data-ss-options")
-        option_row = html.index('data-ss-option=""')
-        no_results = html.index("data-ss-no-results")
+        pills = html.index("data-search-select-pills")
+        search = html.index("data-search-select-search")
+        options = html.index("data-search-select-options")
+        option_row = html.index('data-search-select-option=""')
+        no_results = html.index("data-search-select-no-results")
         self.assertLess(pills, search)
         self.assertLess(search, options)
         self.assertLess(options, option_row)
@@ -144,15 +144,15 @@ class FilterSelectComponentTest(unittest.TestCase):
         html = FilterSelect(field_name="type")
         # Reuses the SearchSelect shell (data-search-select) but flags filter mode.
         self.assertIn("data-search-select", html)
-        self.assertIn('data-ss-mode="filter"', html)
+        self.assertIn('data-search-select-mode="filter"', html)
         self.assertIn('data-name="type"', html)
         # No name is submitted — state is read from the DOM into the filter JSON.
         self.assertEqual(html.count(' name="type"'), 0)
 
     def test_value_rows_have_include_exclude_buttons(self):
         html = FilterSelect(field_name="type", options=[("g", "Game")])
-        self.assertIn('data-ss-action="include"', html)
-        self.assertIn('data-ss-action="exclude"', html)
+        self.assertIn('data-search-select-action="include"', html)
+        self.assertIn('data-search-select-action="exclude"', html)
         self.assertIn('data-value="g"', html)
 
     def test_included_renders_check_pill_excluded_renders_cross_pill(self):
@@ -162,22 +162,22 @@ class FilterSelectComponentTest(unittest.TestCase):
             included=[("1", "Steam")],
             excluded=[("2", "GOG")],
         )
-        # Labels live in a [data-ss-label] slot (so JS can fill clones); the ✓/✗
+        # Labels live in a [data-search-select-label] slot (so JS can fill clones); the ✓/✗
         # symbol is a sibling text node.
-        self.assertIn('data-ss-type="include"', html)
+        self.assertIn('data-search-select-type="include"', html)
         self.assertIn("✓", html)
         self.assertIn(">Steam</span>", html)
-        self.assertIn('data-ss-type="exclude"', html)
+        self.assertIn('data-search-select-type="exclude"', html)
         self.assertIn("✗", html)
         self.assertIn(">GOG</span>", html)
         self.assertIn("line-through", html)  # excluded pill styling
 
     def test_modifier_options_render_pinned_rows(self):
         html = FilterSelect(field_name="platform", modifier_options=self.MODIFIERS)
-        # Pinned pseudo-options carry data-ss-modifier-option, never data-ss-option,
+        # Pinned pseudo-options carry data-search-select-modifier-option, never data-search-select-option,
         # so the text filter leaves them visible.
-        self.assertIn('data-ss-modifier-option="NOT_NULL"', html)
-        self.assertIn('data-ss-modifier-option="IS_NULL"', html)
+        self.assertIn('data-search-select-modifier-option="NOT_NULL"', html)
+        self.assertIn('data-search-select-modifier-option="IS_NULL"', html)
 
     def test_active_modifier_replaces_value_pills(self):
         html = FilterSelect(
@@ -189,11 +189,11 @@ class FilterSelectComponentTest(unittest.TestCase):
         )
         # The lone modifier pill is shown; include/exclude pills are suppressed.
         # (Scope the check to the live pills region — the cloneable pill <template>s
-        # legitimately contain data-ss-type.)
-        pills_region = html.split("data-ss-template")[0]
-        self.assertIn('data-ss-modifier="IS_NULL"', html)
+        # legitimately contain data-search-select-type.)
+        pills_region = html.split("data-search-select-template")[0]
+        self.assertIn('data-search-select-modifier="IS_NULL"', html)
         self.assertIn("(None)", html)
-        self.assertNotIn('data-ss-type="include"', pills_region)
+        self.assertNotIn('data-search-select-type="include"', pills_region)
         self.assertIn('data-modifier="IS_NULL"', html)  # container carries it too
 
     def test_search_url_omits_value_rows_but_keeps_modifiers(self):
@@ -205,10 +205,10 @@ class FilterSelectComponentTest(unittest.TestCase):
         )
         # No value rows in the live panel (they're fetched); the row prototype
         # lives only in a <template>.
-        panel = html.split("data-ss-template")[0]
-        self.assertNotIn('data-ss-option=""', panel)
-        self.assertIn('data-ss-template="row"', html)
-        self.assertIn('data-ss-modifier-option="NOT_NULL"', html)  # still pinned
+        panel = html.split("data-search-select-template")[0]
+        self.assertNotIn('data-search-select-option=""', panel)
+        self.assertIn('data-search-select-template="row"', html)
+        self.assertIn('data-search-select-modifier-option="NOT_NULL"', html)  # still pinned
         self.assertIn('data-prefetch="20"', html)
 
     def test_search_url_pills_use_resolved_labels(self):

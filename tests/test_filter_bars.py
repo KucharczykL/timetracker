@@ -100,8 +100,8 @@ class FilterBarRenderingTest(TestCase):
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
             )
         )
-        self.assertIn('data-ss-mode="filter"', html)
-        self.assertIn('data-ss-type="include"', html)  # rendered as an include pill
+        self.assertIn('data-search-select-mode="filter"', html)
+        self.assertIn('data-search-select-type="include"', html)  # rendered as an include pill
         self.assertIn('data-value="f"', html)  # selected status reflected in widget
         self.assertIn("Finished", html)  # ...with its label
         self.assertNoEscapedTags(html)

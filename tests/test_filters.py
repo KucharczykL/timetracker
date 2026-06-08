@@ -239,7 +239,7 @@ class TestFilterBarRendering:
 
     def test_status_uses_filter_select(self):
         html = str(FilterBar())
-        assert 'data-ss-mode="filter"' in html
+        assert 'data-search-select-mode="filter"' in html
         assert 'data-name="status"' in html
 
     def test_mastered_not_checked_by_default(self):

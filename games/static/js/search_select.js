@@ -6,18 +6,18 @@
  * focus clears it to search, picking an option fills it), with a lone hidden
  * <input> carrying the value. Both keep hidden inputs so Django validation works.
  *
- * Filter mode (data-ss-mode="filter", rendered by FilterSelect): value rows
+ * Filter mode (data-search-select-mode="filter", rendered by FilterSelect): value rows
  * carry +/− buttons that add include (✓) / exclude (✗) pills, plus pinned
  * modifier pseudo-options ((Any)/(None)) that are mutually exclusive with value
  * pills. Filter widgets have no hidden inputs; readSearchSelect serialises their
  * state into data-included / data-excluded / data-modifier for the filter bar.
  *
  * initAll() runs on DOMContentLoaded + htmx:afterSwap, each widget guarded with
- * element._ssInit.
+ * element._searchSelectInit.
  *
  * Dynamically-added rows and pills are cloned from hidden <template> elements
  * the server renders with the same Python components (Pill / SearchSelect /
- * FilterSelect). The JS only fills in the label slot ([data-ss-label]), value,
+ * FilterSelect). The JS only fills in the label slot ([data-search-select-label]), value,
  * and data-* attributes — so all markup and Tailwind class strings live in one
  * place (the Python components), never duplicated here.
  */
@@ -28,28 +28,28 @@
 
   function initAll() {
     document.querySelectorAll("[data-search-select]").forEach(function (element) {
-      if (element._ssInit) return;
-      element._ssInit = true;
+      if (element._searchSelectInit) return;
+      element._searchSelectInit = true;
       initWidget(element);
     });
   }
 
   function initWidget(container) {
-    var search = container.querySelector("[data-ss-search]");
-    var options = container.querySelector("[data-ss-options]");
-    var pills = container.querySelector("[data-ss-pills]");
+    var search = container.querySelector("[data-search-select-search]");
+    var options = container.querySelector("[data-search-select-options]");
+    var pills = container.querySelector("[data-search-select-pills]");
     if (!search || !options || !pills) return;
 
     var name = container.getAttribute("data-name");
     var searchUrl = container.getAttribute("data-search-url");
-    var isFilter = container.getAttribute("data-ss-mode") === "filter";
+    var isFilter = container.getAttribute("data-search-select-mode") === "filter";
     var multi = container.getAttribute("data-multi") === "true";
     var alwaysVisible = container.getAttribute("data-always-visible") === "true";
     var itemsScroll = parseInt(container.getAttribute("data-items-scroll"), 10) || 10;
     var prefetch = parseInt(container.getAttribute("data-prefetch"), 10) || 0;
     var syncUrl = container.getAttribute("data-sync-url") === "true";
 
-    var noResults = options.querySelector("[data-ss-no-results]");
+    var noResults = options.querySelector("[data-search-select-no-results]");
     var debounceTimer = null;
     var pendingRequest = null; // in-flight AbortController, so newer queries win
     var hasPrefetched = false;
@@ -67,7 +67,7 @@
 
     // ── Render server-fetched rows into the panel ──
     function renderRows(items) {
-      options.querySelectorAll("[data-ss-option]").forEach(function (row) {
+      options.querySelectorAll("[data-search-select-option]").forEach(function (row) {
         row.remove();
       });
       items.slice(0, itemsScroll).forEach(function (item) {
@@ -79,14 +79,14 @@
     // ── Clone a server-rendered <template> prototype by name. The server emits
     //    the mode-appropriate prototypes, so the JS never names a class. ──
     function cloneTemplate(name) {
-      var template = container.querySelector('template[data-ss-template="' + name + '"]');
+      var template = container.querySelector('template[data-search-select-template="' + name + '"]');
       return template
         ? template.content.firstElementChild.cloneNode(true)
         : null;
     }
 
     function setLabel(node, label) {
-      var slot = node.querySelector("[data-ss-label]");
+      var slot = node.querySelector("[data-search-select-label]");
       if (slot) slot.textContent = label;
     }
 
@@ -106,7 +106,7 @@
       row.setAttribute("data-label", option.label);
       applyData(row, option.data);
       setLabel(row, option.label);
-      row._ssOption = option;
+      row._searchSelectOption = option;
       return row;
     }
 
@@ -115,7 +115,7 @@
     function filterRows(query) {
       var lower = query.toLowerCase();
       var visibleCount = 0;
-      options.querySelectorAll("[data-ss-option]").forEach(function (item) {
+      options.querySelectorAll("[data-search-select-option]").forEach(function (item) {
         var label = (item.getAttribute("data-label") || "").toLowerCase();
         var match = label.indexOf(lower) !== -1;
         item.style.display = match ? "" : "none";
@@ -170,13 +170,13 @@
 
     // ── Single-select combobox: the search box shows the committed label;
     //    focusing clears it to search, blurring restores it (or deselects). ──
-    if (!multi) container._ssLabel = search.value;
+    if (!multi) container._searchSelectLabel = search.value;
 
     search.addEventListener("focus", function () {
       if (!multi) {
         // Hide the committed label so the box becomes a fresh search field.
         search.value = "";
-        container._ssDirty = false;
+        container._searchSelectDirty = false;
       }
       showPanel();
       if (searchUrl) {
@@ -194,22 +194,22 @@
       }
     });
     search.addEventListener("input", function () {
-      if (!multi) container._ssDirty = true;
+      if (!multi) container._searchSelectDirty = true;
       runSearch();
     });
     if (!multi) {
       search.addEventListener("blur", function () {
         // Defer so an option click (which fires before blur settles) wins.
         setTimeout(function () {
-          if (container._ssDirty && search.value.trim() === "") {
+          if (container._searchSelectDirty && search.value.trim() === "") {
             // User intentionally cleared the box → deselect.
             pills.innerHTML = "";
-            container._ssLabel = "";
+            container._searchSelectLabel = "";
             emitChange(null);
           } else {
             // Focused-and-left, or typed a partial query without picking →
             // restore the committed label (no-op right after a selection).
-            search.value = container._ssLabel || "";
+            search.value = container._searchSelectLabel || "";
           }
         }, 120);
       });
@@ -226,27 +226,27 @@
         handleFilterOptionClick(e);
         return;
       }
-      var row = event.target.closest("[data-ss-option]");
+      var row = event.target.closest("[data-search-select-option]");
       if (!row) return;
       selectOption(optionFromRow(row));
     });
 
     function handleFilterOptionClick(e) {
       // Pinned modifier pseudo-option → set the (mutually exclusive) modifier.
-      var modifierRow = event.target.closest("[data-ss-modifier-option]");
+      var modifierRow = event.target.closest("[data-search-select-modifier-option]");
       if (modifierRow) {
         setModifier(
-          modifierRow.getAttribute("data-ss-modifier-option"),
+          modifierRow.getAttribute("data-search-select-modifier-option"),
           modifierRow.getAttribute("data-label")
         );
         return;
       }
       // Include / exclude button on a value row.
-      var button = event.target.closest("[data-ss-action]");
+      var button = event.target.closest("[data-search-select-action]");
       if (!button) return;
-      var row = button.closest("[data-ss-option]");
+      var row = button.closest("[data-search-select-option]");
       if (!row) return;
-      addFilterPill(optionFromRow(row), button.getAttribute("data-ss-action"));
+      addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action"));
     }
 
     // Add (or re-type) an include/exclude pill for a value. Selecting any value
@@ -274,7 +274,7 @@
     function setModifier(modifierValue, label) {
       pills.innerHTML = "";
       var pill = cloneTemplate("pill-modifier");
-      pill.setAttribute("data-ss-modifier", modifierValue);
+      pill.setAttribute("data-search-select-modifier", modifierValue);
       setLabel(pill, label);
       pills.appendChild(pill);
       container.setAttribute("data-modifier", modifierValue);
@@ -283,13 +283,13 @@
     }
 
     function clearModifier() {
-      var modifierPill = pills.querySelector("[data-ss-modifier]");
+      var modifierPill = pills.querySelector("[data-search-select-modifier]");
       if (modifierPill) modifierPill.remove();
       container.removeAttribute("data-modifier");
     }
 
     function optionFromRow(row) {
-      if (row._ssOption) return row._ssOption;
+      if (row._searchSelectOption) return row._searchSelectOption;
       var data = {};
       Object.keys(row.dataset).forEach(function (key) {
         if (key !== "value" && key !== "label" && key !== "ssOption") {
@@ -310,12 +310,12 @@
         }
       } else {
         // Single-select: no pill — show the label in the search box and keep a
-        // lone hidden input under [data-ss-pills] for submission.
+        // lone hidden input under [data-search-select-pills] for submission.
         pills.innerHTML = "";
         pills.appendChild(buildHidden(option.value));
         search.value = option.label;
-        container._ssLabel = option.label;
-        container._ssDirty = false;
+        container._searchSelectLabel = option.label;
+        container._searchSelectDirty = false;
         hidePanel();
       }
       emitChange(option);
@@ -353,7 +353,7 @@
       if (isFilter) {
         // Filter pills have no hidden input; a modifier pill also clears the
         // container flag.
-        if (pill.hasAttribute("data-ss-modifier")) {
+        if (pill.hasAttribute("data-search-select-modifier")) {
           container.removeAttribute("data-modifier");
         }
         pill.remove();
@@ -422,20 +422,20 @@
   // bar to read.
   window.readSearchSelect = function (form) {
     form.querySelectorAll("[data-search-select]").forEach(function (container) {
-      var pills = container.querySelector("[data-ss-pills]");
-      if (container.getAttribute("data-ss-mode") === "filter") {
+      var pills = container.querySelector("[data-search-select-pills]");
+      if (container.getAttribute("data-search-select-mode") === "filter") {
         var included = [];
         var excluded = [];
         var modifier = "";
         if (pills) {
           pills.querySelectorAll("[data-pill]").forEach(function (pill) {
-            var pillModifier = pill.getAttribute("data-ss-modifier");
+            var pillModifier = pill.getAttribute("data-search-select-modifier");
             if (pillModifier) {
               modifier = pillModifier;
               return;
             }
             var value = pill.getAttribute("data-value");
-            if (pill.getAttribute("data-ss-type") === "exclude") {
+            if (pill.getAttribute("data-search-select-type") === "exclude") {
               excluded.push(value);
             } else {
               included.push(value);

@@ -59,10 +59,10 @@
         filter.search = { value: searchInput.value.trim(), modifier: "INCLUDES" };
     }
 
-    // ── FilterSelect widgets (data-ss-mode="filter") ──
+    // ── FilterSelect widgets (data-search-select-mode="filter") ──
     // readSearchSelect serialises each into data-included/data-excluded/data-modifier.
     readSearchSelect(form);
-    var widgets = form.querySelectorAll('[data-search-select][data-ss-mode="filter"]');
+    var widgets = form.querySelectorAll('[data-search-select][data-search-select-mode="filter"]');
     widgets.forEach(function (widget) {
       var field = widget.getAttribute("data-name");
       var included = parseJSONAttr(widget, "data-included");
@@ -86,7 +86,7 @@
 
     // ── Session-specific fields ──
     var pageIsSessions =
-      !!form.querySelector('[data-search-select][data-ss-mode="filter"][data-name="game"]');
+      !!form.querySelector('[data-search-select][data-search-select-mode="filter"][data-name="game"]');
 
     // Emulated checkbox (sessions page)
     var emulated = form.querySelector('[name="filter-emulated"]');
