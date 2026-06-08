@@ -92,16 +92,64 @@ class FilterBarRenderingTest(TestCase):
         self._assert_shell(html, "/presets/purchases/list", "/presets/purchases/save")
         self._assert_range_slider(html)
 
+    def test_purchase_filter_bar_games_has_match_modes(self):
+        """The many-to-many games field surfaces the any/all/none match select;
+        single-valued fields (platform) do not."""
+        html = str(
+            PurchaseFilterBar(
+                filter_json="", preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        self.assertIn("data-search-select-match", html)
+        self.assertIn('value="INCLUDES_ALL"', html)
+        # Platform is single-valued: no match select before its widget.
+        games_start = html.find('data-name="games"')
+        platform_start = html.find('data-name="platform"')
+        platform_section = html[platform_start:]
+        self.assertNotIn("data-search-select-match", platform_section)
+        self.assertGreater(games_start, 0)
+
+    def test_purchase_filter_bar_roundtrips_includes_all(self):
+        """A stored INCLUDES_ALL modifier pre-selects the match <option> and the
+        included game still renders as a pill."""
+        filter_json = json.dumps(
+            {
+                "games": {
+                    "value": [{"id": "5", "label": "Hollow Knight"}],
+                    "modifier": "INCLUDES_ALL",
+                }
+            }
+        )
+        html = str(
+            PurchaseFilterBar(
+                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        self.assertIn('data-match="INCLUDES_ALL"', html)
+        self.assertIn('value="INCLUDES_ALL" selected=""', html)
+        self.assertIn("Hollow Knight", html)
+        self.assertIn('data-search-select-type="include"', html)
+        self.assertNoEscapedTags(html)
+
     def test_game_filter_bar_roundtrips_selected_status(self):
         """A status in filter_json renders as an include pill in the widget."""
-        filter_json = json.dumps({"status": {"value": [{"id": "f", "label": "Finished"}], "modifier": "INCLUDES"}})
+        filter_json = json.dumps(
+            {
+                "status": {
+                    "value": [{"id": "f", "label": "Finished"}],
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
         html = str(
             FilterBar(
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
             )
         )
         self.assertIn('data-search-select-mode="filter"', html)
-        self.assertIn('data-search-select-type="include"', html)  # rendered as an include pill
+        self.assertIn(
+            'data-search-select-type="include"', html
+        )  # rendered as an include pill
         self.assertIn('data-value="f"', html)  # selected status reflected in widget
         self.assertIn("Finished", html)  # ...with its label
         self.assertNoEscapedTags(html)

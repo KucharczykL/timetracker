@@ -447,6 +447,11 @@
         container.setAttribute("data-excluded", JSON.stringify(excluded));
         if (modifier) container.setAttribute("data-modifier", modifier);
         else container.removeAttribute("data-modifier");
+        // The match-mode <select> (any/all/none) governs how the include set
+        // matches; its value is the criterion modifier. A native control, so its
+        // value is read directly — no pill bookkeeping.
+        var matchSelect = container.querySelector("[data-search-select-match]");
+        if (matchSelect) container.setAttribute("data-match", matchSelect.value);
         return;
       }
       var values = pills

@@ -331,7 +331,7 @@ class PurchaseFilter(OperatorFilter):
         if self.platform is not None:
             q &= self.platform.to_q("platform_id")
         if self.games is not None:
-            q &= self.games.to_q("games")
+            q &= self._games_to_q(self.games)
         if self.date_purchased is not None:
             q &= self.date_purchased.to_q("date_purchased")
         if self.date_refunded is not None:
@@ -384,6 +384,29 @@ class PurchaseFilter(OperatorFilter):
                 q &= ~sub.to_q()
 
         return q
+
+    @staticmethod
+    def _games_to_q(criterion: ChoiceCriterion) -> Q:
+        """Build the Q for the many-to-many ``games`` field.
+
+        ``INCLUDES_ALL`` ("related to every selected game") cannot be a single
+        ``.filter(Q(games=a) & Q(games=b))`` — that collapses to one join and
+        would require a single link row to be both games. Instead chain a filter
+        per game so each gets its own join, then match by ``pk``. The orthogonal
+        ``excludes`` channel is applied as a negative, consistent with every
+        other modifier. All other modifiers delegate to the criterion.
+        """
+        if criterion.modifier == Modifier.INCLUDES_ALL and criterion.value:
+            from games.models import Purchase
+
+            subquery = Purchase.objects.all()
+            for game_id in criterion.value:
+                subquery = subquery.filter(games=game_id)
+            q = Q(pk__in=subquery.values("pk"))
+            if criterion.excludes:
+                q &= ~Q(games__in=criterion.excludes)
+            return q
+        return criterion.to_q("games")
 
 
 # ── Convenience helpers ────────────────────────────────────────────────────

@@ -271,17 +271,26 @@ class _SetCriterion(_Criterion):
     """Shared base for set-membership criteria (``MultiCriterion`` /
     ``ChoiceCriterion``).
 
-    ``value`` is the include set and ``excludes`` the exclude set. The common
-    modifiers are implemented once here so the two subclasses cannot drift:
+    Two orthogonal channels, mirroring Stash's modifier model:
 
-    - ``INCLUDES`` — in ``value`` (when non-empty) AND not in ``excludes`` (when
-      non-empty). Empty lists contribute no constraint, so an exclude-only
-      criterion means "everything except ``excludes``".
-    - ``EQUALS`` — alias of ``INCLUDES``.
-    - ``IS_NULL`` / ``NOT_NULL`` — presence; the lists are ignored.
+    - ``value`` is the *include* set. The ``modifier`` governs how it matches:
 
-    Subclasses contribute their own modifiers (e.g. ``INCLUDES_ALL``) by
-    overriding ``_extra_q``.
+      - ``INCLUDES`` — in ``value`` (match *any*); ``EQUALS`` is an alias.
+      - ``INCLUDES_ALL`` — related to *all* of ``value`` (meaningful for
+        many-to-many fields, e.g. a purchase's games).
+      - ``EXCLUDES`` — in none of ``value`` (match *none*); ``NOT_EQUALS`` is an
+        alias.
+
+    - ``excludes`` is an *always-orthogonal* negative: it contributes
+      ``AND NOT IN (excludes)`` for every (non-presence) modifier, never
+      swapped into the include set. An exclude-only criterion therefore means
+      "everything except ``excludes``".
+
+    Empty lists contribute no constraint. ``IS_NULL`` / ``NOT_NULL`` test
+    presence and ignore both lists.
+
+    The logic lives entirely here so the two subclasses (which differ only in
+    their value type) cannot drift.
     """
 
     value: list = field(default_factory=list)
@@ -290,25 +299,37 @@ class _SetCriterion(_Criterion):
 
     def to_q(self, field_name: str) -> Q:
         modifier = self.modifier
-        if modifier in (Modifier.INCLUDES, Modifier.EQUALS):
-            q = Q()
-            if self.value:
-                q &= Q(**{f"{field_name}__in": self.value})
-            if self.excludes:
-                q &= ~Q(**{f"{field_name}__in": self.excludes})
-            return q
         if modifier == Modifier.IS_NULL:
             return Q(**{f"{field_name}__isnull": True})
         if modifier == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
-        extra = self._extra_q(field_name)
-        if extra is not None:
-            return extra
-        raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")
+        # The modifier governs only the include set; ``excludes`` is an orthogonal
+        # AND'd negative applied for every (non-presence) modifier.
+        q = self._value_q(field_name)
+        if self.excludes:
+            q &= ~Q(**{f"{field_name}__in": self.excludes})
+        return q
 
-    def _extra_q(self, field_name: str) -> Q | None:
-        """Hook for subclass-specific modifiers; ``None`` means unsupported."""
-        return None
+    def _value_q(self, field_name: str) -> Q:
+        """Build the Q for the include (``value``) set, per the modifier."""
+        modifier = self.modifier
+        if modifier in (Modifier.INCLUDES, Modifier.EQUALS):
+            return Q(**{f"{field_name}__in": self.value}) if self.value else Q()
+        if modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
+            return ~Q(**{f"{field_name}__in": self.value}) if self.value else Q()
+        if modifier == Modifier.INCLUDES_ALL:
+            # Logical AND of equalities ("related to every value"). NOTE: for a
+            # *multi-valued* relation this only behaves as "has all" when each
+            # equality lands on its own join — i.e. applied via chained
+            # ``.filter()`` calls or a ``pk__in`` subquery, not a single
+            # ``.filter(Q(rel=a) & Q(rel=b))`` (which would require one related
+            # row to equal both). M2M callers (e.g. PurchaseFilter.games) build
+            # that subquery; see PurchaseFilter._games_to_q.
+            q = Q()
+            for value in self.value:
+                q &= Q(**{field_name: value})
+            return q
+        raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")
 
     @classmethod
     def from_json(cls, data: dict | None) -> Self | None:
@@ -317,50 +338,37 @@ class _SetCriterion(_Criterion):
             return None
         # Labels embedded as {id, label} dicts are display-only; strip to bare ids
         # so the querying layer stays clean and typed.
-        result.value = [item["id"] if isinstance(item, dict) else item for item in result.value]
-        result.excludes = [item["id"] if isinstance(item, dict) else item for item in result.excludes]
+        result.value = [
+            item["id"] if isinstance(item, dict) else item for item in result.value
+        ]
+        result.excludes = [
+            item["id"] if isinstance(item, dict) else item for item in result.excludes
+        ]
         return result
 
 
 @dataclass
 class MultiCriterion(_SetCriterion):
-    """Filter on a many-to-many or ForeignKey relationship by ID list."""
+    """Filter on a many-to-many or ForeignKey relationship by ID list.
+
+    All modifier logic (including ``INCLUDES_ALL`` and ``EXCLUDES``) lives in
+    ``_SetCriterion``; this subclass only refines the value type.
+    """
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
-
-    def _extra_q(self, field_name: str) -> Q | None:
-        if self.modifier == Modifier.EXCLUDES:
-            return ~Q(**{f"{field_name}__in": self.value})
-        if self.modifier == Modifier.INCLUDES_ALL:
-            q = Q()
-            for value in self.value:
-                q &= Q(**{field_name: value})
-            return q
-        return None
 
 
 @dataclass
 class ChoiceCriterion(_SetCriterion):
     """Filter on a choice/enum field with multi-select include/exclude.
 
-    Used by FilterSelect widgets for status, ownership_type, etc.
+    Used by FilterSelect widgets for status, ownership_type, etc. Shares all
+    modifier logic with ``MultiCriterion`` via ``_SetCriterion``.
     """
 
     value: list[str] = field(default_factory=list)
     excludes: list[str] = field(default_factory=list)
-
-    def _extra_q(self, field_name: str) -> Q | None:
-        if self.modifier == Modifier.EXCLUDES:
-            q = Q()
-            if self.value:
-                q &= ~Q(**{f"{field_name}__in": self.value})
-            if self.excludes:
-                q &= Q(**{f"{field_name}__in": self.excludes})
-            return q
-        if self.modifier == Modifier.NOT_EQUALS:
-            return ~Q(**{f"{field_name}__in": self.value})
-        return None
 
 
 # ── OperatorFilter base ────────────────────────────────────────────────────

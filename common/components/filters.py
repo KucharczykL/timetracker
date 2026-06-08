@@ -93,6 +93,19 @@ def _parse_bool(existing: dict, key: str) -> bool:
 
 _FILTER_PREFETCH = 20
 
+# Presence modifiers drive the pinned (Any)/(None) pseudo-options (they clear the
+# value set); every other modifier is a match mode for the include set.
+_PRESENCE_MODIFIERS = frozenset({"NOT_NULL", "IS_NULL"})
+
+# Include-set match modes (Stash's any/all/none axis). Offered only for
+# many-to-many fields, where INCLUDES_ALL ("related to all of these") is
+# meaningful — a single-valued field can never match all of several values.
+_MATCH_MODES: list[LabeledOption] = [
+    ("INCLUDES", "any"),
+    ("INCLUDES_ALL", "all"),
+    ("EXCLUDES", "none"),
+]
+
 
 def _modifier_options(nullable: bool) -> list[LabeledOption]:
     """Pinned (Any)/(None) pseudo-options; (None) only when the field is nullable."""
@@ -102,37 +115,75 @@ def _modifier_options(nullable: bool) -> list[LabeledOption]:
     return options
 
 
+def _split_modifier(
+    modifier: str, match_modes: list[LabeledOption] | None
+) -> tuple[str, str]:
+    """Split a stored modifier into ``(presence_modifier, match_mode)``.
+
+    A criterion stores a single ``modifier``, but the widget surfaces it on two
+    orthogonal controls: the pinned (Any)/(None) presence pseudo-options and the
+    match-mode select. Presence modifiers (NOT_NULL/IS_NULL) route to the former;
+    the rest (INCLUDES/INCLUDES_ALL/EXCLUDES) to the latter. The match mode is
+    irrelevant when the field has no match-mode control, and falls back to the
+    first offered mode otherwise.
+    """
+    default_match = match_modes[0][0] if match_modes else ""
+    if modifier in _PRESENCE_MODIFIERS:
+        return modifier, default_match
+    if modifier and match_modes:
+        return "", modifier
+    return "", default_match
+
+
 def _enum_filter(
     field_name: str, options, choice: FilterChoice, *, nullable
 ) -> SafeText:
-    """A FilterSelect over a small, fully pre-rendered option set (enum field)."""
+    """A FilterSelect over a small, fully pre-rendered option set (enum field).
+
+    Enum fields are single-valued, so no match-mode control (any/all/none is
+    meaningless); only the presence modifier is surfaced.
+    """
     options_str = [(str(value), label) for value, label in options]
-    included = [(value, _find_label(options_str, value)) for value, _label in choice.selected]
-    excluded = [(value, _find_label(options_str, value)) for value, _label in choice.excluded]
+    included = [
+        (value, _find_label(options_str, value)) for value, _label in choice.selected
+    ]
+    excluded = [
+        (value, _find_label(options_str, value)) for value, _label in choice.excluded
+    ]
+    presence, _match = _split_modifier(choice.modifier, None)
     return FilterSelect(
         field_name=field_name,
         options=options_str,
         included=included,
         excluded=excluded,
-        modifier=choice.modifier,
+        modifier=presence,
         modifier_options=_modifier_options(nullable),
     )
 
 
 def _model_filter(
-    field_name: str, choice: FilterChoice, *, search_url, nullable
+    field_name: str,
+    choice: FilterChoice,
+    *,
+    search_url,
+    nullable,
+    match_modes: list[LabeledOption] | None = None,
 ) -> SafeText:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
-    directly from ``choice`` with no DB round-trip.
+    directly from ``choice`` with no DB round-trip. Pass ``match_modes`` for
+    many-to-many fields to surface the any/all/none match-mode select.
     """
+    presence, match = _split_modifier(choice.modifier, match_modes)
     return FilterSelect(
         field_name=field_name,
         included=[(value, label or value) for value, label in choice.selected],
         excluded=[(value, label or value) for value, label in choice.excluded],
-        modifier=choice.modifier,
+        modifier=presence,
         modifier_options=_modifier_options(nullable),
+        match=match,
+        match_modes=match_modes or [],
         search_url=search_url,
         prefetch=_FILTER_PREFETCH,
     )
@@ -804,6 +855,9 @@ def PurchaseFilterBar(
                         game_choice,
                         search_url="/api/games/search",
                         nullable=False,
+                        # games is many-to-many on Purchase: "all" (INCLUDES_ALL)
+                        # means a purchase linked to every selected game.
+                        match_modes=_MATCH_MODES,
                     ),
                 ),
                 _filter_field(
