@@ -223,7 +223,7 @@
     // ── Option click → select (form mode) or include/exclude (filter mode) ──
     options.addEventListener("click", function (event) {
       if (isFilter) {
-        handleFilterOptionClick(e);
+        handleFilterOptionClick(event);
         return;
       }
       var row = event.target.closest("[data-search-select-option]");
@@ -231,7 +231,7 @@
       selectOption(optionFromRow(row));
     });
 
-    function handleFilterOptionClick(e) {
+    function handleFilterOptionClick(event) {
       // Pinned modifier pseudo-option → set the (mutually exclusive) modifier.
       var modifierRow = event.target.closest("[data-search-select-modifier-option]");
       if (modifierRow) {
