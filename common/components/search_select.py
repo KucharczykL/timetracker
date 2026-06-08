@@ -131,11 +131,11 @@ def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
 
 
 def _template(name: str, node: SafeText) -> SafeText:
-    """Wrap a prototype row/pill in an inert ``<template data-ss-tpl=name>`` that
+    """Wrap a prototype row/pill in an inert ``<template data-ss-template=name>`` that
     the JS clones. Rendering the prototype with the real component keeps the JS
     free of any markup or class strings."""
     return Component(
-        tag_name="template", attributes=[("data-ss-tpl", name)], children=[node]
+        tag_name="template", attributes=[("data-ss-template", name)], children=[node]
     )
 
 

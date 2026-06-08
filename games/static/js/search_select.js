@@ -79,7 +79,7 @@
     // ── Clone a server-rendered <template> prototype by name. The server emits
     //    the mode-appropriate prototypes, so the JS never names a class. ──
     function cloneTemplate(name) {
-      var template = container.querySelector('template[data-ss-tpl="' + name + '"]');
+      var template = container.querySelector('template[data-ss-template="' + name + '"]');
       return template
         ? template.content.firstElementChild.cloneNode(true)
         : null;
