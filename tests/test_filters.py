@@ -293,7 +293,7 @@ class TestFilterBarRendering:
         html = str(
             FilterBar(
                 filter_json=json.dumps(
-                    {"status": {"value": ["f"], "modifier": "INCLUDES"}}
+                    {"status": {"value": [{"id": "f", "label": "Finished"}], "modifier": "INCLUDES"}}
                 ),
             )
         )

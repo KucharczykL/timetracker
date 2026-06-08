@@ -62,15 +62,9 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
-def _extract_labeled(items: list) -> list[LabeledOption]:
-    """Convert a list of bare values or ``{id, label}`` dicts to ``(value, label)`` pairs."""
-    result = []
-    for item in items:
-        if isinstance(item, dict):
-            result.append((str(item.get("id", "")), str(item.get("label", ""))))
-        else:
-            result.append((str(item), ""))
-    return result
+def _extract_labeled(items: list[dict]) -> list[LabeledOption]:
+    """Convert a list of ``{id, label}`` dicts to ``(value, label)`` pairs."""
+    return [(str(item["id"]), str(item["label"])) for item in items]
 
 
 def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
