@@ -2940,10 +2940,10 @@
       }
     }
   }
-  .hover\:border-brand {
+  .hover\:border-brand-strong {
     &:hover {
       @media (hover: hover) {
-        border-color: var(--color-brand);
+        border-color: var(--color-brand-strong);
       }
     }
   }

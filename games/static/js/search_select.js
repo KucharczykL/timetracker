@@ -44,11 +44,12 @@
   var FILTER_OPTION_ROW_CLASS =
     "flex items-center justify-between px-2 py-1 rounded text-sm " +
     "hover:bg-neutral-secondary-strong cursor-pointer";
-  var FILTER_OPTION_LABEL_CLASS = "truncate";
+  var FILTER_OPTION_LABEL_CLASS = "truncate text-body";
   var FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0";
   var FILTER_ACTION_BUTTON_CLASS =
-    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded " +
-    "border border-default-medium hover:bg-brand hover:text-white hover:border-brand";
+    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body " +
+    "border border-default-medium " +
+    "hover:bg-brand hover:text-white hover:border-brand-strong";
 
   var DEBOUNCE_MS = 500;
 
