@@ -70,9 +70,11 @@
       // Two orthogonal axes: a presence modifier (NOT_NULL/IS_NULL) from the
       // pinned (Any)/(None) pseudo-options clears the value set, while the
       // match mode (INCLUDES/INCLUDES_ALL/EXCLUDES) governs how the include set
-      // matches. Fields without a match-mode select default to INCLUDES.
+      // matches. Fields without a data-match attribute have no match-mode select
+      // — the full modifier lives in data-modifier (e.g. enum/choice fields).
       var presence = widget.getAttribute("data-modifier");
-      var match = widget.getAttribute("data-match") || "INCLUDES";
+      var matchVal = widget.getAttribute("data-match");
+      var match = matchVal || presence || "INCLUDES";
       if (presence === "NOT_NULL" || presence === "IS_NULL") {
         filter[field] = { modifier: presence };
       } else if (included.length > 0 || excluded.length > 0) {

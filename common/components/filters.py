@@ -128,9 +128,12 @@ def _split_modifier(
     first offered mode otherwise.
     """
     default_match = match_modes[0][0] if match_modes else ""
-    if modifier in _PRESENCE_MODIFIERS:
+    if modifier in _PRESENCE_MODIFIERS or not match_modes:
+        # When there's no match-mode select, the modifier stays whole — it IS
+        # the full criterion modifier (enum/choice fields).  Only split when a
+        # match-mode axis exists to receive the non-presence part.
         return modifier, default_match
-    if modifier and match_modes:
+    if modifier:
         return "", modifier
     return "", default_match
 

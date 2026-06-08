@@ -158,3 +158,27 @@ class FilterBarRenderingTest(TestCase):
         # for the double-escape bug the dedup fixed.
         self.assertIn("&quot;status&quot;", html)
         self.assertNotIn("&amp;quot;", html)
+
+    def test_game_filter_bar_preserves_excludes_modifier(self):
+        """An enum field with an EXCLUDES modifier renders data-modifier correctly
+        so the JS roundtrip preserves the modifier (regression: _split_modifier
+        silently dropped non-presence modifiers when match_modes was None)."""
+        filter_json = json.dumps(
+            {
+                "status": {
+                    "value": [{"id": "f", "label": "Finished"}],
+                    "modifier": "EXCLUDES",
+                }
+            }
+        )
+        html = str(
+            FilterBar(
+                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        # The full modifier is stored on data-modifier when there's no match-mode
+        # select (enum/choice fields).  No data-match attribute is present.
+        self.assertIn('data-modifier="EXCLUDES"', html)
+        self.assertNotIn("data-match=", html)
+        self.assertIn("Finished", html)
+        self.assertNoEscapedTags(html)

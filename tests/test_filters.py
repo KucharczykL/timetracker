@@ -101,10 +101,12 @@ class TestChoiceCriterion:
         c = ChoiceCriterion(value=["f"], excludes=["a"], modifier=Modifier.EXCLUDES)
         assert c.to_q("status") == ~Q(status__in=["f"]) & ~Q(status__in=["a"])
 
-    def test_includes_all(self):
-        """INCLUDES_ALL ANDs an equality per value (shared with MultiCriterion)."""
+    def test_includes_all_requires_filter_builder(self):
+        """INCLUDES_ALL cannot be built by the generic criterion layer — it
+        requires a filter-level Q builder (see PurchaseFilter._games_to_q)."""
         c = ChoiceCriterion(value=["f", "p"], modifier=Modifier.INCLUDES_ALL)
-        assert c.to_q("status") == Q(status="f") & Q(status="p")
+        with pytest.raises(AssertionError, match="INCLUDES_ALL requires"):
+            c.to_q("status")
 
     def test_not_equals(self):
         c = ChoiceCriterion(value=["f"], modifier=Modifier.NOT_EQUALS)
@@ -136,10 +138,12 @@ class TestMultiCriterion:
         c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.EXCLUDES)
         assert c.to_q("game_id") == ~Q(game_id__in=[1]) & ~Q(game_id__in=[2])
 
-    def test_includes_all(self):
-        """INCLUDES_ALL requires the row to relate to every value (M2M)."""
+    def test_includes_all_requires_filter_builder(self):
+        """INCLUDES_ALL cannot be built by the generic criterion layer — it
+        requires a filter-level Q builder (see PurchaseFilter._games_to_q)."""
         c = MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES_ALL)
-        assert c.to_q("games") == Q(games=1) & Q(games=2)
+        with pytest.raises(AssertionError, match="INCLUDES_ALL requires"):
+            c.to_q("games")
 
     def test_is_null(self):
         c = MultiCriterion(value=[], modifier=Modifier.IS_NULL)
