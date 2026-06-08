@@ -847,6 +847,16 @@ def PurchaseFilterBar(
     except Exception:
         price_range_min, price_range_max = 0, 100
 
+    num_min, num_max = _parse_range(existing, "num_purchases")
+    try:
+        num_aggregate = Purchase.objects.aggregate(
+            num_min=models.Min("num_purchases"), num_max=models.Max("num_purchases")
+        )
+        num_range_min = max(int(num_aggregate.get("num_min") or 0), 0)
+        num_range_max = max(int(num_aggregate.get("num_max") or 10), 1)
+    except Exception:
+        num_range_min, num_range_max = 0, 10
+
     fields = [
         Component(
             tag_name="div",
@@ -911,6 +921,17 @@ def PurchaseFilterBar(
             range_max=price_range_max,
             min_placeholder="0.00",
             max_placeholder="100.00",
+        ),
+        RangeSlider(
+            label="Games in purchase",
+            input_name_prefix="filter-num-purchases",
+            min_value=num_min,
+            max_value=num_max,
+            range_min=num_range_min,
+            range_max=num_range_max,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 5",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)

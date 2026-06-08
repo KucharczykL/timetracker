@@ -130,6 +130,17 @@
       }
     }
 
+    // ── Purchase-specific: num_purchases ──
+    var numGamesMin = numberValue(form, "filter-num-purchases-min");
+    var numGamesMax = numberValue(form, "filter-num-purchases-max");
+    if (numGamesMin !== "" && numGamesMax !== "") {
+      filter.num_purchases = criterion(parseInt(numGamesMin, 10), parseInt(numGamesMax, 10), "BETWEEN");
+    } else if (numGamesMin !== "") {
+      filter.num_purchases = criterion(parseInt(numGamesMin, 10), null, "GREATER_THAN");
+    } else if (numGamesMax !== "") {
+      filter.num_purchases = criterion(parseInt(numGamesMax, 10), null, "LESS_THAN");
+    }
+
     if (mastered && mastered.checked) {
       filter.mastered = criterion(true, null, "EQUALS");
     }
