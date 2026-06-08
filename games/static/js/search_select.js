@@ -435,10 +435,12 @@
               return;
             }
             var value = pill.getAttribute("data-value");
+            var label = pill.getAttribute("data-label") || "";
+            var entry = label ? {id: value, label: label} : value;
             if (pill.getAttribute("data-search-select-type") === "exclude") {
-              excluded.push(value);
+              excluded.push(entry);
             } else {
-              included.push(value);
+              included.push(entry);
             }
           });
         }
