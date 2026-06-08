@@ -48,7 +48,7 @@
   var FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0";
   var FILTER_ACTION_BUTTON_CLASS =
     "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body " +
-    "border border-default-medium " +
+    "border border-brand " +
     "hover:bg-brand hover:text-white hover:border-brand-strong";
 
   var DEBOUNCE_MS = 500;
