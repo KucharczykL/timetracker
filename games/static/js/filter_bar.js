@@ -47,11 +47,6 @@
    */
   function buildFilterJSON(form) {
     var filter = {};
-    var yearMin = numberValue(form, "filter-year-min");
-    var yearMax = numberValue(form, "filter-year-max");
-    var playMin = numberValue(form, "filter-playtime-min");
-    var playMax = numberValue(form, "filter-playtime-max");
-    var mastered = form.querySelector('[name="filter-mastered"]');
 
     // ── Search field ──
     var searchInput = form.querySelector('[name="filter-search"]');
@@ -87,62 +82,73 @@
       }
     });
 
-    // ── Session-specific fields ──
-    var pageIsSessions =
-      !!form.querySelector('[data-search-select][data-search-select-mode="filter"][data-name="game"]');
-
-    // Emulated checkbox (sessions page)
-    var emulated = form.querySelector('[name="filter-emulated"]');
-    if (emulated && emulated.checked) {
-      filter.emulated = criterion(true, null, "EQUALS");
-    }
-
-    // Active checkbox (sessions page)
-    var active = form.querySelector('[name="filter-active"]');
-    if (active && active.checked) {
-      filter.is_active = criterion(true, null, "EQUALS");
-    }
-
-    if (yearMin !== "" && yearMax !== "") {
-      filter.year_released = criterion(yearMin, yearMax, "BETWEEN");
-    } else if (yearMin !== "") {
-      filter.year_released = criterion(yearMin, null, "GREATER_THAN");
-    } else if (yearMax !== "") {
-      filter.year_released = criterion(yearMax, null, "LESS_THAN");
-    }
-
-    if (playMin !== "" || playMax !== "") {
-      var pMin = playMin !== "" ? Math.round(playMin * 60) : 0;
-      var pMax = playMax !== "" ? Math.round(playMax * 60) : 0;
-      // Skip if both are 0 — means slider is at default (no real filter)
-      if (pMin === 0 && pMax === 0) {
-        // don't add filter
-      } else {
-        var durKey = pageIsSessions ? "duration_minutes" : "playtime_minutes";
-        if (playMin !== "" && playMax !== "") {
-          filter[durKey] = criterion(pMin, pMax, "BETWEEN");
-        } else if (playMin !== "") {
-          filter[durKey] = criterion(pMin, null, "GREATER_THAN");
-        } else if (playMax !== "") {
-          filter[durKey] = criterion(pMax, null, "LESS_THAN");
-        }
+    // 1. Text Fields
+    var textFields = [
+      { name: "filter-price_currency", key: "price_currency" },
+      { name: "filter-converted_currency", key: "converted_currency" },
+      { name: "filter-name", key: "name" },
+      { name: "filter-group", key: "group" }
+    ];
+    textFields.forEach(function (tf) {
+      var el = form.querySelector('[name="' + tf.name + '"]');
+      if (el && el.value.trim()) {
+        filter[tf.key] = { value: el.value.trim(), modifier: "EQUALS" };
       }
-    }
+    });
 
-    // ── Purchase-specific: num_purchases ──
-    var numGamesMin = numberValue(form, "filter-num-purchases-min");
-    var numGamesMax = numberValue(form, "filter-num-purchases-max");
-    if (numGamesMin !== "" && numGamesMax !== "") {
-      filter.num_purchases = criterion(parseInt(numGamesMin, 10), parseInt(numGamesMax, 10), "BETWEEN");
-    } else if (numGamesMin !== "") {
-      filter.num_purchases = criterion(parseInt(numGamesMin, 10), null, "GREATER_THAN");
-    } else if (numGamesMax !== "") {
-      filter.num_purchases = criterion(parseInt(numGamesMax, 10), null, "LESS_THAN");
-    }
+    // 2. Boolean Fields (Checkboxes)
+    var booleanFields = [
+      { name: "filter-mastered", key: "mastered" },
+      { name: "filter-emulated", key: "emulated" },
+      { name: "filter-active", key: "is_active" },
+      { name: "filter-has-purchases", key: "has_purchases" },
+      { name: "filter-has-playevents", key: "has_playevents" },
+      { name: "filter-refunded", key: "is_refunded" },
+      { name: "filter-infinite", key: "infinite" },
+      { name: "filter-needs-price-update", key: "needs_price_update" }
+    ];
+    booleanFields.forEach(function (bf) {
+      var el = form.querySelector('[name="' + bf.name + '"]');
+      if (el && el.checked) {
+        filter[bf.key] = criterion(true, null, "EQUALS");
+      }
+    });
 
-    if (mastered && mastered.checked) {
-      filter.mastered = criterion(true, null, "EQUALS");
-    }
+    // 3. Range Fields
+    var rangeFields = [
+      { prefix: "filter-year", key: "year_released" },
+      { prefix: "filter-session-count", key: "session_count" },
+      { prefix: "filter-session-average", key: "session_average" },
+      { prefix: "filter-duration-total-minutes", key: "duration_total_minutes" },
+      { prefix: "filter-duration-manual-minutes", key: "duration_manual_minutes" },
+      { prefix: "filter-duration-calculated-minutes", key: "duration_calculated_minutes" },
+      { prefix: "filter-num-purchases", key: "num_purchases" },
+      { prefix: "filter-price", key: "price" },
+      { prefix: "filter-days-to-finish", key: "days_to_finish" },
+      { prefix: "filter-playtime", key: "playtime_minutes", convert: function(v) { return Math.round(v * 60); }, ignoreZeroZero: true }
+    ];
+
+    rangeFields.forEach(function (rf) {
+      var vMin = numberValue(form, rf.prefix + "-min");
+      var vMax = numberValue(form, rf.prefix + "-max");
+      
+      if (rf.convert) {
+        if (vMin !== "") vMin = rf.convert(vMin);
+        if (vMax !== "") vMax = rf.convert(vMax);
+      }
+      
+      if (rf.ignoreZeroZero && vMin === 0 && vMax === 0) {
+        return; // skip if both are 0 means slider at default
+      }
+      
+      if (vMin !== "" && vMax !== "") {
+        filter[rf.key] = criterion(vMin, vMax, "BETWEEN");
+      } else if (vMin !== "") {
+        filter[rf.key] = criterion(vMin, null, "GREATER_THAN");
+      } else if (vMax !== "") {
+        filter[rf.key] = criterion(vMax, null, "LESS_THAN");
+      }
+    });
 
     return filter;
   }
@@ -196,10 +202,19 @@
     if (!url) return;
 
     var mode = "games";
-    if (window.location.pathname.indexOf("session") !== -1) mode = "sessions";
-    else if (window.location.pathname.indexOf("purchase") !== -1) mode = "purchases";
+    var path = window.location.pathname;
+    if (path.indexOf("session") !== -1) mode = "sessions";
+    else if (path.indexOf("purchase") !== -1) mode = "purchases";
+    else if (path.indexOf("device") !== -1) mode = "devices";
+    else if (path.indexOf("platform") !== -1) mode = "platforms";
+    else if (path.indexOf("playevent") !== -1) mode = "playevents";
 
-    fetch(url + "?mode=" + mode, { credentials: "same-origin" })
+    var query = "";
+    if (url.indexOf("mode=") === -1) {
+      query = (url.indexOf("?") !== -1 ? "&" : "?") + "mode=" + mode;
+    }
+
+    fetch(url + query, { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) throw new Error("Failed to load presets");
         return r.text();
@@ -277,8 +292,12 @@
     var body = new URLSearchParams();
     body.append("name", name);
     var mode = "games";
-    if (window.location.pathname.indexOf("session") !== -1) mode = "sessions";
-    else if (window.location.pathname.indexOf("purchase") !== -1) mode = "purchases";
+    var path = window.location.pathname;
+    if (path.indexOf("session") !== -1) mode = "sessions";
+    else if (path.indexOf("purchase") !== -1) mode = "purchases";
+    else if (path.indexOf("device") !== -1) mode = "devices";
+    else if (path.indexOf("platform") !== -1) mode = "platforms";
+    else if (path.indexOf("playevent") !== -1) mode = "playevents";
     body.append("mode", mode);
     body.append("filter", JSON.stringify(filterObj));
 
