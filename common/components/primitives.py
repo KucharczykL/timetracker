@@ -401,6 +401,68 @@ def Label(
     return Component(tag_name="label", attributes=attributes, children=children)
 
 
+def Checkbox(
+    name: str,
+    label: str,
+    checked: bool = False,
+    value: str = "1",
+    attributes: list[HTMLAttribute] | None = None,
+) -> SafeText:
+    """A filter-agnostic Checkbox component."""
+    attributes = attributes or []
+    input_attrs = [
+        ("name", name),
+        ("value", value),
+        (
+            "class",
+            "rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
+        ),
+    ] + attributes
+    if checked:
+        input_attrs.append(("checked", "true"))
+
+    return Label(
+        attributes=[
+            ("class", "flex items-center gap-2 text-sm text-heading cursor-pointer")
+        ],
+        children=[
+            Input(type="checkbox", attributes=input_attrs),
+            label,
+        ],
+    )
+
+
+def Radio(
+    name: str,
+    label: str,
+    checked: bool = False,
+    value: str = "",
+    attributes: list[HTMLAttribute] | None = None,
+) -> SafeText:
+    """A filter-agnostic Radio component."""
+    attributes = attributes or []
+    input_attrs = [
+        ("name", name),
+        ("value", value),
+        (
+            "class",
+            "rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
+        ),
+    ] + attributes
+    if checked:
+        input_attrs.append(("checked", "true"))
+
+    return Label(
+        attributes=[
+            ("class", "flex items-center gap-1.5 text-sm text-heading cursor-pointer")
+        ],
+        children=[
+            Input(type="radio", attributes=input_attrs),
+            label,
+        ],
+    )
+
+
 def Template(
     attributes: list[HTMLAttribute] | None = None,
     children: list[HTMLTag] | HTMLTag | None = None,

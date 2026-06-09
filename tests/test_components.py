@@ -821,5 +821,27 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn("2025-01-01", tbody)
 
 
+from django.test import SimpleTestCase
+from common.components.primitives import Checkbox, Radio
+
+
+class ComponentPrimitivesTest(SimpleTestCase):
+    def test_checkbox_primitive(self):
+        html = Checkbox(name="test-check", label="Accept Terms", checked=True, value="yes")
+        self.assertIn('type="checkbox"', html)
+        self.assertIn('name="test-check"', html)
+        self.assertIn('value="yes"', html)
+        self.assertIn('checked="true"', html)
+        self.assertIn("Accept Terms", html)
+
+    def test_radio_primitive(self):
+        html = Radio(name="test-radio", label="Option A", checked=False, value="A")
+        self.assertIn('type="radio"', html)
+        self.assertIn('name="test-radio"', html)
+        self.assertIn('value="A"', html)
+        self.assertNotIn('checked="true"', html)
+        self.assertIn("Option A", html)
+
+
 if __name__ == "__main__":
     unittest.main()
