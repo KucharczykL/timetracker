@@ -302,7 +302,15 @@
 
     search.addEventListener("input", () => {
       clearHighlight();
-      if (!multi) container._searchSelectDirty = true;
+      if (!multi) {
+        if (!container._searchSelectDirty) {
+          const label = container._searchSelectLabel || "";
+          if (search.value.startsWith(label)) {
+            search.value = search.value.slice(label.length);
+          }
+          container._searchSelectDirty = true;
+        }
+      }
       runSearch();
     });
 
@@ -327,6 +335,14 @@
     // ── Keyboard navigation (both form and filter modes) ──
     search.addEventListener("keydown", (event) => {
       const { key } = event;
+
+      if (!multi && key === "Backspace" && !container._searchSelectDirty) {
+        event.preventDefault();
+        search.value = "";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+
       if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(key)) return;
       const visible = getVisibleOptions();
       if (visible.length === 0) {
@@ -484,6 +500,7 @@
         if (!pills.querySelector(`input[value="${cssEscape(option.value)}"]`)) {
           addPill(option);
         }
+        search.value = "";
       } else {
         // Single-select: no pill — show the label in the search box and keep a
         // lone hidden input under [data-search-select-pills] for submission.
