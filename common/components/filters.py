@@ -753,7 +753,7 @@ def FilterBar(
     original_year_min, original_year_max = _parse_range(
         existing, "original_year_released"
     )
-    mastered_value = _parse_bool(existing, "mastered")
+    mastered_value = _parse_bool_nullable(existing, "mastered")
     playtime = existing.get("playtime_minutes", {})
     if isinstance(playtime, dict):
         playtime_min = _filter_mins_to_hrs(playtime.get("value", ""))
@@ -770,9 +770,9 @@ def FilterBar(
     calc_pt_min, calc_pt_max = _parse_range(existing, "calculated_playtime_minutes")
     price_total_min, price_total_max = _parse_range(existing, "purchase_price_total")
     price_any_min, price_any_max = _parse_range(existing, "purchase_price_any")
-    purchase_refunded_value = _parse_bool(existing, "purchase_refunded")
-    purchase_infinite_value = _parse_bool(existing, "purchase_infinite")
-    session_emulated_value = _parse_bool(existing, "session_emulated")
+    purchase_refunded_value = _parse_bool_nullable(existing, "purchase_refunded")
+    purchase_infinite_value = _parse_bool_nullable(existing, "purchase_infinite")
+    session_emulated_value = _parse_bool_nullable(existing, "session_emulated")
 
     try:
         year_aggregate = Game.objects.aggregate(
@@ -1051,16 +1051,16 @@ def FilterBar(
             ],
         ),
         Div(
-            attributes=[("class", "flex items-end gap-4 mb-4 flex-wrap")],
+            attributes=[("class", "flex items-end gap-6 mb-4 flex-wrap")],
             children=[
-                _filter_checkbox("filter-mastered", "Mastered", mastered_value),
-                _filter_checkbox(
+                _filter_boolean_radio("filter-mastered", "Mastered", mastered_value),
+                _filter_boolean_radio(
                     "filter-purchase-refunded", "Refunded", purchase_refunded_value
                 ),
-                _filter_checkbox(
+                _filter_boolean_radio(
                     "filter-purchase-infinite", "Infinite", purchase_infinite_value
                 ),
-                _filter_checkbox(
+                _filter_boolean_radio(
                     "filter-session-emulated", "Emulated", session_emulated_value
                 ),
             ],
@@ -1089,8 +1089,8 @@ def SessionFilterBar(
     dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_minutes")
     dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_minutes")
     dur_calc_min, dur_calc_max = _parse_range(existing, "duration_calculated_minutes")
-    emulated_value = _parse_bool(existing, "emulated")
-    is_active_value = _parse_bool(existing, "is_active")
+    emulated_value = _parse_bool_nullable(existing, "emulated")
+    is_active_value = _parse_bool_nullable(existing, "is_active")
     try:
         duration_aggregate = Session.objects.aggregate(
             duration_max=models.Max("duration_total")
@@ -1162,10 +1162,10 @@ def SessionFilterBar(
             max_placeholder="e.g. 180",
         ),
         Div(
-            attributes=[("class", "flex gap-4 mb-4")],
+            attributes=[("class", "flex gap-6 mb-4")],
             children=[
-                _filter_checkbox("filter-emulated", "Emulated", emulated_value),
-                _filter_checkbox("filter-active", "Active", is_active_value),
+                _filter_boolean_radio("filter-emulated", "Emulated", emulated_value),
+                _filter_boolean_radio("filter-active", "Active", is_active_value),
             ],
         ),
     ]
@@ -1186,9 +1186,9 @@ def PurchaseFilterBar(
     type_choice = _filter_get_choice(existing, "type")
     ownership_choice = _filter_get_choice(existing, "ownership_type")
     price_min, price_max = _parse_range(existing, "price")
-    is_refunded_value = _parse_bool(existing, "is_refunded")
-    infinite_value = _parse_bool(existing, "infinite")
-    needs_price_update_value = _parse_bool(existing, "needs_price_update")
+    is_refunded_value = _parse_bool_nullable(existing, "is_refunded")
+    infinite_value = _parse_bool_nullable(existing, "infinite")
+    needs_price_update_value = _parse_bool_nullable(existing, "needs_price_update")
     price_currency_value = existing.get("price_currency", {}).get("value", "")
     converted_currency_value = existing.get("converted_currency", {}).get("value", "")
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
@@ -1342,11 +1342,11 @@ def PurchaseFilterBar(
                 Div(
                     attributes=[("class", "flex flex-col items-start gap-4 mb-4")],
                     children=[
-                        _filter_checkbox(
+                        _filter_boolean_radio(
                             "filter-refunded", "Refunded", is_refunded_value
                         ),
-                        _filter_checkbox("filter-infinite", "Infinite", infinite_value),
-                        _filter_checkbox(
+                        _filter_boolean_radio("filter-infinite", "Infinite", infinite_value),
+                        _filter_boolean_radio(
                             "filter-needs-price-update",
                             "Needs Price Update",
                             needs_price_update_value,
