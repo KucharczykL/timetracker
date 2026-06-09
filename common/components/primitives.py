@@ -6,10 +6,9 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
+from common.components.core import Component, HTMLAttribute, HTMLTag, randomid
 from common.icons import get_icon
 from common.utils import truncate
-from common.components.core import Component, HTMLAttribute, HTMLTag, randomid
-
 
 _COLOR_CLASSES = {
     "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium",
@@ -57,8 +56,7 @@ def _popover_html(
         "dark:bg-purple-800"
     )
 
-    div = Component(
-        tag_name="div",
+    div = Div(
         attributes=[
             ("data-popover", ""),
             ("id", id),
@@ -66,12 +64,11 @@ def _popover_html(
             ("class", popover_tooltip_class),
         ],
         children=[
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[("class", "px-3 py-2")],
                 children=[popover_content],
             ),
-            Component(tag_name="div", attributes=[("data-popper-arrow", "")]),
+            Div(attributes=[("data-popper-arrow", "")]),
             mark_safe(  # nosec — intentional HTML comment for Tailwind JIT
                 "<!-- for Tailwind CSS to generate decoration-dotted CSS "
                 "from Python component -->"
@@ -323,8 +320,7 @@ def ButtonGroup(buttons: list[dict] | None = None) -> SafeText:
             )
         )
 
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[("class", "inline-flex rounded-md shadow-xs"), ("role", "group")],
         children=children,
     )
@@ -337,6 +333,42 @@ def Div(
     attributes = attributes or []
     children = children or []
     return Component(tag_name="div", attributes=attributes, children=children)
+
+
+def P(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="p", attributes=attributes, children=children)
+
+
+def Ul(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="ul", attributes=attributes, children=children)
+
+
+def Li(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="li", attributes=attributes, children=children)
+
+
+def Strong(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="strong", attributes=attributes, children=children)
 
 
 def Input(
@@ -600,8 +632,7 @@ def SearchField(
                 ],
                 children=["Search"],
             ),
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[("class", "relative")],
                 children=[
                     mark_safe(
@@ -612,10 +643,9 @@ def SearchField(
                         'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
                         "</svg></div>"
                     ),
-                    Component(
-                        tag_name="input",
+                    Input(
+                        type="search",
                         attributes=[
-                            ("type", "search"),
                             ("id", id),
                             ("name", id),
                             ("value", search_string),
@@ -687,8 +717,7 @@ def Modal(
 ) -> SafeText:
     """Modal overlay with container. Content (form, buttons) goes in children."""
     children = children or []
-    outer = Component(
-        tag_name="div",
+    outer = Div(
         attributes=[
             ("id", modal_id),
             (
@@ -698,8 +727,7 @@ def Modal(
             ),
         ],
         children=[
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[
                     (
                         "class",
@@ -714,13 +742,39 @@ def Modal(
     return mark_safe(str(outer))
 
 
+def Td(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="td", attributes=attributes, children=children)
+
+
+def Tr(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="tr", attributes=attributes, children=children)
+
+
+def Th(
+    attributes: list[HTMLAttribute] | None = None,
+    children: list[HTMLTag] | HTMLTag | None = None,
+) -> SafeText:
+    attributes = attributes or []
+    children = children or []
+    return Component(tag_name="th", attributes=attributes, children=children)
+
+
 def TableTd(
     children: list[HTMLTag] | HTMLTag | None = None,
 ) -> SafeText:
     """Styled table cell."""
     children = children or []
-    return Component(
-        tag_name="td",
+    return Td(
         attributes=[("class", "px-6 py-4 min-w-20-char max-w-20-char")],
         children=children if isinstance(children, list) else [children],
     )
@@ -765,8 +819,7 @@ def TableRow(data: dict | list | None = None) -> SafeText:
     for i, cell in enumerate(cells):
         if i == 0:
             cell_elements.append(
-                Component(
-                    tag_name="th",
+                Th(
                     attributes=[
                         ("scope", "row"),
                         (
@@ -781,7 +834,7 @@ def TableRow(data: dict | list | None = None) -> SafeText:
         else:
             cell_elements.append(TableTd(children=[cell]))
 
-    return Component(tag_name="tr", attributes=tr_attrs, children=cell_elements)
+    return Tr(attributes=tr_attrs, children=cell_elements)
 
 
 def Icon(

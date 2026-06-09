@@ -6,7 +6,7 @@ from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component, HTMLTag
+from common.components.core import HTMLTag
 from common.components.primitives import (
     A,
     Div,
@@ -33,10 +33,9 @@ def GameLink(
     return Span(
         attributes=[("class", "truncate-container")],
         children=[
-            Component(
-                tag_name="a",
+            A(
+                href=link,
                 attributes=[
-                    ("href", link),
                     ("class", "underline decoration-slate-500 sm:decoration-2"),
                 ],
                 children=display if isinstance(display, list) else [display],

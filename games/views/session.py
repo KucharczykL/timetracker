@@ -15,7 +15,6 @@ from common.components import (
     AddForm,
     Button,
     ButtonGroup,
-    Component,
     Div,
     Icon,
     ModuleScript,
@@ -25,6 +24,7 @@ from common.components import (
     SessionDeviceSelector,
     paginated_table_content,
 )
+from common.components.primitives import Span, Td, Tr
 from common.layout import render_page
 from common.time import (
     dateformat,
@@ -208,8 +208,7 @@ def _session_fields(form) -> SafeText:
             this_side = "start" if field.name == "timestamp_start" else "end"
             other_side = "end" if field.name == "timestamp_start" else "start"
             children.append(
-                Component(
-                    tag_name="span",
+                Span(
                     attributes=[
                         (
                             "class",
@@ -292,8 +291,8 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
 def _session_row_fragment(session: Session) -> SafeText:
     """A single session <tr> (the old list_sessions.html#session-row partial),
     returned by the inline end/clone-session HTMX endpoints."""
-    name_link = Component(
-        tag_name="a",
+    name_link = A(
+        href=reverse("games:view_game", args=[session.game.id]),
         attributes=[
             (
                 "class",
@@ -305,12 +304,10 @@ def _session_row_fragment(session: Session) -> SafeText:
                 "group-hover:outline-purple-400 group-hover:outline-4 "
                 "group-hover:decoration-purple-900 group-hover:text-purple-100",
             ),
-            ("href", reverse("games:view_game", args=[session.game.id])),
         ],
         children=[session.game.name],
     )
-    name_td = Component(
-        tag_name="td",
+    name_td = Td(
         attributes=[
             (
                 "class",
@@ -319,15 +316,13 @@ def _session_row_fragment(session: Session) -> SafeText:
             )
         ],
         children=[
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "inline-block relative")],
                 children=[name_link],
             )
         ],
     )
-    start_td = Component(
-        tag_name="td",
+    start_td = Td(
         attributes=[
             ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell")
         ],
@@ -336,10 +331,9 @@ def _session_row_fragment(session: Session) -> SafeText:
 
     if not session.timestamp_end:
         end_url = reverse("games:list_sessions_end_session", args=[session.id])
-        end_inner: SafeText | str = Component(
-            tag_name="a",
+        end_inner: SafeText | str = A(
+            href=end_url,
             attributes=[
-                ("href", end_url),
                 ("hx-get", end_url),
                 ("hx-target", "closest tr"),
                 ("hx-swap", "outerHTML"),
@@ -351,8 +345,7 @@ def _session_row_fragment(session: Session) -> SafeText:
                 ),
             ],
             children=[
-                Component(
-                    tag_name="span",
+                Span(
                     attributes=[("class", "text-yellow-300")],
                     children=["Finish now?"],
                 )
@@ -362,19 +355,17 @@ def _session_row_fragment(session: Session) -> SafeText:
         end_inner = "--"
     else:
         end_inner = date_filter(session.timestamp_end, "d/m/Y H:i")
-    end_td = Component(
-        tag_name="td",
+    end_td = Td(
         attributes=[
             ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell")
         ],
         children=[end_inner],
     )
-    duration_td = Component(
-        tag_name="td",
+    duration_td = Td(
         attributes=[("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono")],
         children=[session.duration_formatted()],
     )
-    return Component(tag_name="tr", children=[name_td, start_td, end_td, duration_td])
+    return Tr(children=[name_td, start_td, end_td, duration_td])
 
 
 def clone_session_by_id(session_id: int) -> Session:
