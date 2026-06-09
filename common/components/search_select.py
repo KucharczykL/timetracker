@@ -71,7 +71,10 @@ _ROW_HEIGHT_REM = 2.25
 # Inline class strings (ported verbatim from the retired SelectableFilter CSS)
 # so the filter combobox is fully self-styled — nothing in input.css. JS-added
 # rows/pills are cloned from server-rendered <template>s, so these strings live
-# only here — never duplicated in search_select.js.
+# only here — never duplicated in search_select.js. The keyboard-highlighted
+# state is expressed via Tailwind `data-[search-select-highlighted]` and
+# `group-data-[search-select-highlighted]` variants on the row/label/button
+# classes below; the JS only toggles the data attribute on the row.
 _FILTER_INCLUDE_PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
     "bg-brand/15 text-heading"
@@ -86,17 +89,28 @@ _FILTER_MODIFIER_PILL_CLASS = (
 )
 _FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
 _FILTER_OPTION_ROW_CLASS = (
-    "flex items-center justify-between px-2 py-1 rounded text-sm "
-    "hover:bg-neutral-secondary-strong cursor-pointer"
+    "group flex items-center justify-between px-2 py-1 rounded text-sm "
+    "hover:bg-neutral-secondary-strong cursor-pointer "
+    "data-[search-select-highlighted]:bg-brand "
+    "data-[search-select-highlighted]:outline data-[search-select-highlighted]:outline-1 "
+    "data-[search-select-highlighted]:outline-brand-strong"
 )
-_FILTER_OPTION_LABEL_CLASS = "truncate text-body"
+_FILTER_OPTION_LABEL_CLASS = (
+    "truncate text-body group-data-[search-select-highlighted]:text-white"
+)
 _FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
 # text-body keeps the +/− readable on dark backgrounds; hover:border-brand-strong
-# keeps the edge visible against the brand hover fill.
+# keeps the edge visible against the brand hover fill. When the row is the
+# keyboard-highlighted one its bg is brand, so the button text/border switch
+# to white and the hover fill shifts to brand-strong for contrast.
 _FILTER_ACTION_BUTTON_CLASS = (
     "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body "
     "border border-brand "
-    "hover:bg-brand hover:text-white hover:border-brand-strong"
+    "hover:bg-brand hover:text-white hover:border-brand-strong "
+    "group-data-[search-select-highlighted]:text-white "
+    "group-data-[search-select-highlighted]:border-white "
+    "group-data-[search-select-highlighted]:hover:bg-brand-strong "
+    "group-data-[search-select-highlighted]:hover:border-white"
 )
 _FILTER_MODIFIER_ROW_CLASS = (
     "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer"

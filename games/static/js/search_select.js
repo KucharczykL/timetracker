@@ -77,16 +77,14 @@
     function highlightOption(row) {
       clearHighlight();
       if (!row) return;
-      row.style.backgroundColor = "var(--color-brand, rgba(59, 130, 246, 0.15))";
-      row.style.outline = "1px solid var(--color-brand, #3b82f6)";
+      row.setAttribute("data-search-select-highlighted", "");
       highlightedRow = row;
       row.scrollIntoView({ block: "nearest" });
     }
 
     function clearHighlight() {
       if (highlightedRow) {
-        highlightedRow.style.backgroundColor = "";
-        highlightedRow.style.outline = "";
+        highlightedRow.removeAttribute("data-search-select-highlighted");
         highlightedRow = null;
       }
     }

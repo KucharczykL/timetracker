@@ -2892,6 +2892,16 @@
       }
     }
   }
+  .group-data-\[search-select-highlighted\]\:border-white {
+    &:is(:where(.group)[data-search-select-highlighted] *) {
+      border-color: var(--color-white);
+    }
+  }
+  .group-data-\[search-select-highlighted\]\:text-white {
+    &:is(:where(.group)[data-search-select-highlighted] *) {
+      color: var(--color-white);
+    }
+  }
   .placeholder\:text-body {
     &::placeholder {
       color: var(--color-body);
@@ -3160,6 +3170,24 @@
       }
     }
   }
+  .group-data-\[search-select-highlighted\]\:hover\:border-white {
+    &:is(:where(.group)[data-search-select-highlighted] *) {
+      &:hover {
+        @media (hover: hover) {
+          border-color: var(--color-white);
+        }
+      }
+    }
+  }
+  .group-data-\[search-select-highlighted\]\:hover\:bg-brand-strong {
+    &:is(:where(.group)[data-search-select-highlighted] *) {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--color-brand-strong);
+        }
+      }
+    }
+  }
   .focus\:z-10 {
     &:focus {
       z-index: 10;
@@ -3257,6 +3285,28 @@
     &:focus {
       --tw-outline-style: none;
       outline-style: none;
+    }
+  }
+  .data-\[search-select-highlighted\]\:bg-brand {
+    &[data-search-select-highlighted] {
+      background-color: var(--color-brand);
+    }
+  }
+  .data-\[search-select-highlighted\]\:outline {
+    &[data-search-select-highlighted] {
+      outline-style: var(--tw-outline-style);
+      outline-width: 1px;
+    }
+  }
+  .data-\[search-select-highlighted\]\:outline-1 {
+    &[data-search-select-highlighted] {
+      outline-style: var(--tw-outline-style);
+      outline-width: 1px;
+    }
+  }
+  .data-\[search-select-highlighted\]\:outline-brand-strong {
+    &[data-search-select-highlighted] {
+      outline-color: var(--color-brand-strong);
     }
   }
   .sm\:table-cell {
