@@ -60,7 +60,10 @@ _OPTIONS_CLASS = (
     "absolute z-10 top-full left-0 right-0 mt-1 overflow-y-auto "
     "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
 )
-_OPTION_ROW_CLASS = "px-3 py-2 text-sm text-heading cursor-pointer hover:bg-brand/15"
+_OPTION_ROW_CLASS = (
+    "px-3 py-2 text-sm text-heading cursor-pointer "
+    "hover:bg-brand/15 data-[search-select-highlighted]:bg-brand/15"
+)
 _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
 
 # Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,
