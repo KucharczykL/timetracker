@@ -664,6 +664,11 @@ def FilterBar(
         playtime_min = ""
         playtime_max = ""
 
+    has_purchases_value = _parse_bool(existing, "has_purchases")
+    has_playevents_value = _parse_bool(existing, "has_playevents")
+    session_count_min, session_count_max = _parse_range(existing, "session_count")
+    session_avg_min, session_avg_max = _parse_range(existing, "session_average")
+
     try:
         year_aggregate = Game.objects.aggregate(
             year_min=models.Min("year_released"), year_max=models.Max("year_released")
@@ -722,6 +727,8 @@ def FilterBar(
             attributes=[("class", "flex items-end gap-4 mb-4")],
             children=[
                 _filter_checkbox("filter-mastered", "Mastered", mastered_value),
+                _filter_checkbox("filter-has-purchases", "Has Purchases", has_purchases_value),
+                _filter_checkbox("filter-has-playevents", "Has Play Events", has_playevents_value),
             ],
         ),
         RangeSlider(
@@ -734,6 +741,28 @@ def FilterBar(
             step="1",
             min_placeholder="e.g. 1",
             max_placeholder="e.g. 100",
+        ),
+        RangeSlider(
+            label="Session Count",
+            input_name_prefix="filter-session-count",
+            min_value=session_count_min,
+            max_value=session_count_max,
+            range_min=0,
+            range_max=100,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 50",
+        ),
+        RangeSlider(
+            label="Average Session Duration (mins)",
+            input_name_prefix="filter-session-average",
+            min_value=session_avg_min,
+            max_value=session_avg_max,
+            range_min=0,
+            range_max=240,
+            step="1",
+            min_placeholder="e.g. 10",
+            max_placeholder="e.g. 120",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
@@ -756,9 +785,9 @@ def SessionFilterBar(
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
 
-    duration_min, duration_max = _parse_range(existing, "duration_minutes")
-    duration_min = _filter_mins_to_hrs(duration_min)
-    duration_max = _filter_mins_to_hrs(duration_max)
+    dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_minutes")
+    dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_minutes")
+    dur_calc_min, dur_calc_max = _parse_range(existing, "duration_calculated_minutes")
     emulated_value = _parse_bool(existing, "emulated")
     is_active_value = _parse_bool(existing, "is_active")
     try:
@@ -800,14 +829,37 @@ def SessionFilterBar(
             ],
         ),
         RangeSlider(
-            label="Duration",
-            input_name_prefix="filter-playtime",
-            min_value=duration_min,
-            max_value=duration_max,
+            label="Total Duration (mins)",
+            input_name_prefix="filter-duration-total-minutes",
+            min_value=dur_tot_min,
+            max_value=dur_tot_max,
             range_min=0,
-            range_max=duration_range_max,
-            min_placeholder="e.g. 0.5",
-            max_placeholder="e.g. 10",
+            range_max=duration_range_max * 60,  # Range sliders use minutes now
+            step="1",
+            min_placeholder="e.g. 30",
+            max_placeholder="e.g. 180",
+        ),
+        RangeSlider(
+            label="Manual Duration (mins)",
+            input_name_prefix="filter-duration-manual-minutes",
+            min_value=dur_man_min,
+            max_value=dur_man_max,
+            range_min=0,
+            range_max=240,
+            step="1",
+            min_placeholder="e.g. 10",
+            max_placeholder="e.g. 120",
+        ),
+        RangeSlider(
+            label="Calculated Duration (mins)",
+            input_name_prefix="filter-duration-calculated-minutes",
+            min_value=dur_calc_min,
+            max_value=dur_calc_max,
+            range_min=0,
+            range_max=duration_range_max * 60,
+            step="1",
+            min_placeholder="e.g. 30",
+            max_placeholder="e.g. 180",
         ),
         Component(
             tag_name="div",
@@ -836,6 +888,11 @@ def PurchaseFilterBar(
     ownership_choice = _filter_get_choice(existing, "ownership_type")
     price_min, price_max = _parse_range(existing, "price")
     is_refunded_value = _parse_bool(existing, "is_refunded")
+    infinite_value = _parse_bool(existing, "infinite")
+    needs_price_update_value = _parse_bool(existing, "needs_price_update")
+    price_currency_value = existing.get("price_currency", {}).get("value", "")
+    converted_currency_value = existing.get("converted_currency", {}).get("value", "")
+
     try:
         price_aggregate = Purchase.objects.aggregate(
             price_min=models.Min("price"), price_max=models.Max("price")
@@ -909,6 +966,40 @@ def PurchaseFilterBar(
             attributes=[("class", "flex items-end gap-4 mb-4")],
             children=[
                 _filter_checkbox("filter-refunded", "Refunded", is_refunded_value),
+                _filter_checkbox("filter-infinite", "Infinite", infinite_value),
+                _filter_checkbox("filter-needs-price-update", "Needs Price Update", needs_price_update_value),
+            ],
+        ),
+        Component(
+            tag_name="div",
+            attributes=[("class", _FILTER_GRID_CLASS)],
+            children=[
+                _filter_field(
+                    "Original Currency",
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "text"),
+                            ("name", "filter-price_currency"),
+                            ("value", price_currency_value),
+                            ("placeholder", "e.g. USD, EUR"),
+                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                        ],
+                    ),
+                ),
+                _filter_field(
+                    "Converted Currency",
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "text"),
+                            ("name", "filter-converted_currency"),
+                            ("value", converted_currency_value),
+                            ("placeholder", "e.g. USD, EUR"),
+                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                        ],
+                    ),
+                ),
             ],
         ),
         RangeSlider(
@@ -931,6 +1022,121 @@ def PurchaseFilterBar(
             step="1",
             min_placeholder="e.g. 1",
             max_placeholder="e.g. 5",
+        ),
+    ]
+    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+
+
+def DeviceFilterBar(
+    filter_json="", preset_list_url="", preset_save_url=""
+) -> SafeText:
+    """Collapsible filter bar for the Device list."""
+    from games.models import Device
+
+    existing = _filter_parse(filter_json)
+    type_options = Device.DEVICE_TYPES
+    type_choice = _filter_get_choice(existing, "type")
+
+    fields = [
+        Component(
+            tag_name="div",
+            attributes=[("class", _FILTER_GRID_CLASS)],
+            children=[
+                _filter_field(
+                    "Device Type",
+                    _enum_filter(
+                        "type",
+                        type_options,
+                        type_choice,
+                        nullable=True,
+                    ),
+                ),
+            ],
+        ),
+    ]
+    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+
+
+def PlatformFilterBar(
+    filter_json="", preset_list_url="", preset_save_url=""
+) -> SafeText:
+    """Collapsible filter bar for the Platform list."""
+    existing = _filter_parse(filter_json)
+
+    name_value = existing.get("name", {}).get("value", "")
+    group_value = existing.get("group", {}).get("value", "")
+
+    fields = [
+        Component(
+            tag_name="div",
+            attributes=[("class", _FILTER_GRID_CLASS)],
+            children=[
+                _filter_field(
+                    "Platform Name",
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "text"),
+                            ("name", "filter-name"),
+                            ("value", name_value),
+                            ("placeholder", "e.g. Nintendo Switch"),
+                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                        ],
+                    ),
+                ),
+                _filter_field(
+                    "Platform Group",
+                    Component(
+                        tag_name="input",
+                        attributes=[
+                            ("type", "text"),
+                            ("name", "filter-group"),
+                            ("value", group_value),
+                            ("placeholder", "e.g. Nintendo"),
+                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                        ],
+                    ),
+                ),
+            ],
+        ),
+    ]
+    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+
+
+def PlayEventFilterBar(
+    filter_json="", preset_list_url="", preset_save_url=""
+) -> SafeText:
+    """Collapsible filter bar for the PlayEvent list."""
+    existing = _filter_parse(filter_json)
+    game_choice = _filter_get_choice(existing, "game")
+    days_min, days_max = _parse_range(existing, "days_to_finish")
+
+    fields = [
+        Component(
+            tag_name="div",
+            attributes=[("class", _FILTER_GRID_CLASS)],
+            children=[
+                _filter_field(
+                    "Game",
+                    _model_filter(
+                        "game",
+                        game_choice,
+                        search_url="/api/games/search",
+                        nullable=False,
+                    ),
+                ),
+            ],
+        ),
+        RangeSlider(
+            label="Days to Finish",
+            input_name_prefix="filter-days-to-finish",
+            min_value=days_min,
+            max_value=days_max,
+            range_min=0,
+            range_max=365,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 30",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)

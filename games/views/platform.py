@@ -2,6 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 from common.components import (
     A,
@@ -10,10 +11,13 @@ from common.components import (
     ButtonGroup,
     Icon,
     paginated_table_content,
+    PlatformFilterBar,
+    ModuleScript,
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
+from games.filters import parse_platform_filter
 from games.forms import PlatformForm
 from games.models import Platform
 from games.views.general import use_custom_redirect
@@ -21,9 +25,15 @@ from games.views.general import use_custom_redirect
 
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
-    platforms, page_obj, elided_page_range = paginate(
-        request, Platform.objects.order_by("name")
-    )
+    platforms = Platform.objects.order_by("name")
+
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        platform_filter = parse_platform_filter(filter_json)
+        if platform_filter is not None:
+            platforms = platforms.filter(platform_filter.to_q())
+
+    platforms, page_obj, elided_page_range = paginate(request, platforms)
 
     data = {
         "header_action": A(
@@ -68,7 +78,20 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage platforms")
+    filter_bar = PlatformFilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets") + "?mode=platforms",
+        preset_save_url=reverse("games:save_preset") + "?mode=platforms",
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage platforms",
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("search_select.js")
+        + ModuleScript("filter_bar.js"),
+    )
 
 
 @login_required

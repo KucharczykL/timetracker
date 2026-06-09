@@ -2,6 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 from common.components import (
     A,
@@ -10,19 +11,28 @@ from common.components import (
     ButtonGroup,
     Icon,
     paginated_table_content,
+    DeviceFilterBar,
+    ModuleScript,
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
+from games.filters import parse_device_filter
 from games.forms import DeviceForm
 from games.models import Device
 
 
 @login_required
 def list_devices(request: HttpRequest) -> HttpResponse:
-    devices, page_obj, elided_page_range = paginate(
-        request, Device.objects.order_by("-created_at")
-    )
+    devices = Device.objects.order_by("-created_at")
+
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        device_filter = parse_device_filter(filter_json)
+        if device_filter is not None:
+            devices = devices.filter(device_filter.to_q())
+
+    devices, page_obj, elided_page_range = paginate(request, devices)
 
     data = {
         "header_action": A([], Button([], "Add device"), url_name="games:add_device"),
@@ -61,7 +71,20 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage devices")
+    filter_bar = DeviceFilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets") + "?mode=devices",
+        preset_save_url=reverse("games:save_preset") + "?mode=devices",
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage devices",
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("search_select.js")
+        + ModuleScript("filter_bar.js"),
+    )
 
 
 @login_required

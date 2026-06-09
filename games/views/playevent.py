@@ -9,6 +9,8 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
+from django.utils.safestring import mark_safe
+
 from common.components import (
     A,
     AddForm,
@@ -17,10 +19,12 @@ from common.components import (
     Icon,
     ModuleScript,
     paginated_table_content,
+    PlayEventFilterBar,
 )
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
 from common.utils import paginate
+from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
 from games.models import Game, PlayEvent, Session
 
@@ -126,9 +130,15 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
-    playevents, page_obj, elided_page_range = paginate(
-        request, PlayEvent.objects.order_by("-created_at")
-    )
+    playevents = PlayEvent.objects.order_by("-created_at")
+
+    filter_json = request.GET.get("filter", "")
+    if filter_json:
+        playevent_filter = parse_playevent_filter(filter_json)
+        if playevent_filter is not None:
+            playevents = playevents.filter(playevent_filter.to_q())
+
+    playevents, page_obj, elided_page_range = paginate(request, playevents)
     data = create_playevent_tabledata(playevents, request=request)
     content = paginated_table_content(
         data,
@@ -136,7 +146,20 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return render_page(request, content, title="Manage play events")
+    filter_bar = PlayEventFilterBar(
+        filter_json=filter_json,
+        preset_list_url=reverse("games:list_presets") + "?mode=playevents",
+        preset_save_url=reverse("games:save_preset") + "?mode=playevents",
+    )
+    content = mark_safe(str(filter_bar) + str(content))
+    return render_page(
+        request,
+        content,
+        title="Manage play events",
+        scripts=ModuleScript("range_slider.js")
+        + ModuleScript("search_select.js")
+        + ModuleScript("filter_bar.js"),
+    )
 
 
 @login_required
