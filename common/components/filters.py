@@ -1163,75 +1163,83 @@ def PurchaseFilterBar(
                         ).has_default(),
                     ),
                 ),
-            ],
-        ),
-        Div(
-            attributes=[("class", "flex items-end gap-4 mb-4")],
-            children=[
-                _filter_checkbox("filter-refunded", "Refunded", is_refunded_value),
-                _filter_checkbox("filter-infinite", "Infinite", infinite_value),
-                _filter_checkbox(
-                    "filter-needs-price-update",
-                    "Needs Price Update",
-                    needs_price_update_value,
-                ),
-            ],
-        ),
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Original Currency",
-                    Input(
-                        attributes=[
-                            ("type", "text"),
-                            ("name", "filter-price_currency"),
-                            ("value", price_currency_value),
-                            ("placeholder", "e.g. USD, EUR"),
-                            (
-                                "class",
-                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                Div(
+                    attributes=[("class", _FILTER_GRID_CLASS)],
+                    children=[
+                        _filter_field(
+                            "Original Currency",
+                            Input(
+                                attributes=[
+                                    ("type", "text"),
+                                    ("name", "filter-price_currency"),
+                                    ("value", price_currency_value),
+                                    ("placeholder", "e.g. USD, EUR"),
+                                    (
+                                        "class",
+                                        "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                                    ),
+                                ],
                             ),
-                        ],
+                        ),
+                        _filter_field(
+                            "Converted Currency",
+                            Input(
+                                attributes=[
+                                    ("type", "text"),
+                                    ("name", "filter-converted_currency"),
+                                    ("value", converted_currency_value),
+                                    ("placeholder", "e.g. USD, EUR"),
+                                    (
+                                        "class",
+                                        "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+                _filter_field(
+                    "Price",
+                    RangeSlider(
+                        label="Price",
+                        input_name_prefix="filter-price",
+                        min_value=price_min,
+                        max_value=price_max,
+                        range_min=price_range_min,
+                        range_max=price_range_max,
+                        min_placeholder="0.00",
+                        max_placeholder="100.00",
                     ),
                 ),
                 _filter_field(
-                    "Converted Currency",
-                    Input(
-                        attributes=[
-                            ("type", "text"),
-                            ("name", "filter-converted_currency"),
-                            ("value", converted_currency_value),
-                            ("placeholder", "e.g. USD, EUR"),
-                            (
-                                "class",
-                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
-                            ),
-                        ],
+                    "Games in purchase",
+                    RangeSlider(
+                        label="Games in purchase",
+                        input_name_prefix="filter-num-purchases",
+                        min_value=num_min,
+                        max_value=num_max,
+                        range_min=num_range_min,
+                        range_max=num_range_max,
+                        step="1",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 5",
                     ),
                 ),
+                Div(
+                    attributes=[("class", "flex flex-col items-start gap-4 mb-4")],
+                    children=[
+                        _filter_checkbox(
+                            "filter-refunded", "Refunded", is_refunded_value
+                        ),
+                        _filter_checkbox("filter-infinite", "Infinite", infinite_value),
+                        _filter_checkbox(
+                            "filter-needs-price-update",
+                            "Needs Price Update",
+                            needs_price_update_value,
+                        ),
+                    ],
+                ),
             ],
-        ),
-        RangeSlider(
-            label="Price",
-            input_name_prefix="filter-price",
-            min_value=price_min,
-            max_value=price_max,
-            range_min=price_range_min,
-            range_max=price_range_max,
-            min_placeholder="0.00",
-            max_placeholder="100.00",
-        ),
-        RangeSlider(
-            label="Games in purchase",
-            input_name_prefix="filter-num-purchases",
-            min_value=num_min,
-            max_value=num_max,
-            range_min=num_range_min,
-            range_max=num_range_max,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 5",
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
