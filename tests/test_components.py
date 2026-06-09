@@ -827,12 +827,21 @@ from common.components.primitives import Checkbox, Radio
 
 class ComponentPrimitivesTest(SimpleTestCase):
     def test_checkbox_primitive(self):
-        html = Checkbox(name="test-check", label="Accept Terms", checked=True, value="yes")
+        html = Checkbox(
+            name="test-check", label="Accept Terms", checked=True, value="yes"
+        )
         self.assertIn('type="checkbox"', html)
         self.assertIn('name="test-check"', html)
         self.assertIn('value="yes"', html)
         self.assertIn('checked="true"', html)
         self.assertIn("Accept Terms", html)
+
+    def test_checkbox_headless(self):
+        html = Checkbox(name="test-headless", label=None, checked=True)
+        self.assertNotIn("<label", html)
+        self.assertIn("<input", html)
+        self.assertIn('type="checkbox"', html)
+        self.assertIn('name="test-headless"', html)
 
     def test_radio_primitive(self):
         html = Radio(name="test-radio", label="Option A", checked=False, value="A")

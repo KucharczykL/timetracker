@@ -403,7 +403,7 @@ def Label(
 
 def Checkbox(
     name: str,
-    label: str,
+    label: str | None = None,
     checked: bool = False,
     value: str = "1",
     attributes: list[HTMLAttribute] | None = None,
@@ -421,20 +421,21 @@ def Checkbox(
     if checked:
         input_attrs.append(("checked", "true"))
 
+    input_el = Input(type="checkbox", attributes=input_attrs)
+    if label is None:
+        return input_el
+
     return Label(
         attributes=[
             ("class", "flex items-center gap-2 text-sm text-heading cursor-pointer")
         ],
-        children=[
-            Input(type="checkbox", attributes=input_attrs),
-            label,
-        ],
+        children=[input_el, label],
     )
 
 
 def Radio(
     name: str,
-    label: str,
+    label: str | None = None,
     checked: bool = False,
     value: str = "",
     attributes: list[HTMLAttribute] | None = None,
@@ -452,14 +453,15 @@ def Radio(
     if checked:
         input_attrs.append(("checked", "true"))
 
+    input_el = Input(type="radio", attributes=input_attrs)
+    if label is None:
+        return input_el
+
     return Label(
         attributes=[
             ("class", "flex items-center gap-1.5 text-sm text-heading cursor-pointer")
         ],
-        children=[
-            Input(type="radio", attributes=input_attrs),
-            label,
-        ],
+        children=[input_el, label],
     )
 
 
