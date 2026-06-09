@@ -114,7 +114,7 @@
       }
     });
 
-    // 2. Boolean Fields (Checkboxes)
+    // 2. Boolean Fields (Radio Button Groups)
     var booleanFields = [
       { name: "filter-mastered", key: "mastered" },
       { name: "filter-emulated", key: "emulated" },
@@ -127,9 +127,10 @@
       { name: "filter-session-emulated", key: "session_emulated" }
     ];
     booleanFields.forEach(function (bf) {
-      var el = form.querySelector('[name="' + bf.name + '"]');
-      if (el && el.checked) {
-        filter[bf.key] = criterion(true, null, "EQUALS");
+      var el = form.querySelector('[name="' + bf.name + '"]:checked');
+      if (el) {
+        var val = el.value === "true";
+        filter[bf.key] = criterion(val, null, "EQUALS");
       }
     });
 
@@ -400,8 +401,36 @@
       }
     });
   }
+
+  /**
+   * Enable deselect-on-click behavior for filter radio buttons.
+   */
+  function setupDeselectableRadios() {
+    document.querySelectorAll('input[type="radio"]').forEach(function (radio) {
+      radio.addEventListener('click', function (e) {
+        if (this.wasChecked) {
+          this.checked = false;
+          this.wasChecked = false;
+          this.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          var name = this.getAttribute('name');
+          if (name) {
+            document.querySelectorAll('input[type="radio"][name="' + name + '"]').forEach(function (r) {
+              r.wasChecked = false;
+            });
+          }
+          this.wasChecked = true;
+        }
+      });
+      if (radio.checked) {
+        radio.wasChecked = true;
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     injectSearchInputs();
+    setupDeselectableRadios();
     loadPresets();
   });
 })();
