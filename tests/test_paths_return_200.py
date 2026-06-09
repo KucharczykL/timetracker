@@ -60,3 +60,16 @@ class PathWorksTest(TestCase):
     def test_list_purchases_returns_200(self):
         response = self.client.get(reverse("games:list_purchases"))
         self.assertEqual(response.status_code, 200)
+
+    def test_platform_groups_api_returns_200(self):
+        # Distinct platform groups are returned as string-valued options.
+        Platform.objects.create(name="Switch", icon="switch", group="Nintendo")
+        response = self.client.get("/api/platforms/groups")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        groups = {item["value"] for item in body}
+        self.assertIn("Nintendo", groups)
+
+        filtered = self.client.get("/api/platforms/groups?q=nin")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual({item["value"] for item in filtered.json()}, {"Nintendo"})

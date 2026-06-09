@@ -431,6 +431,7 @@ def FilterSelect(
     items_scroll: int = 10,
     placeholder: str = "Search…",
     id: str = "",
+    free_text: bool = False,
 ) -> SafeText:
     """Include/exclude filter combobox built on the shared ``_combobox_shell``.
 
@@ -447,6 +448,11 @@ def FilterSelect(
     ``included``/``excluded`` are resolved options (value + label) so pills show
     labels even when the value rows come from ``search_url``. ``options``
     pre-renders the value rows for the complete-set (no ``search_url``) case.
+
+    ``free_text`` turns the widget into a typed-pill input: there is no backing
+    option list, the JS builds an ephemeral option row from whatever the user
+    types so the +/− buttons (and Enter) commit the typed string itself as an
+    include / exclude pill.
     """
     options = [_normalize_option(option) for option in (options or [])]
     included = [_normalize_option(option) for option in (included or [])]
@@ -515,7 +521,7 @@ def FilterSelect(
                 children=[_filter_modifier_pill("", "")],
             )
         )
-    if search_url:
+    if search_url or free_text:
         templates.append(
             Template(
                 attributes=[("data-search-select-template", "row")],
@@ -536,6 +542,8 @@ def FilterSelect(
         ("data-sync-url", "false"),
         ("class", _CONTAINER_CLASS),
     ]
+    if free_text:
+        container_attributes.append(("data-search-select-free-text", "true"))
     if modifier:
         container_attributes.append(("data-modifier", modifier))
     if id:

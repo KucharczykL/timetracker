@@ -49,6 +49,7 @@
     const name = container.getAttribute("data-name");
     const searchUrl = container.getAttribute("data-search-url");
     const isFilter = container.getAttribute("data-search-select-mode") === "filter";
+    const freeText = container.getAttribute("data-search-select-free-text") === "true";
     const multi = container.getAttribute("data-multi") === "true";
     const alwaysVisible = container.getAttribute("data-always-visible") === "true";
     const prefetch = parseInt(container.getAttribute("data-prefetch"), 10) || 0;
@@ -251,6 +252,22 @@
         });
     };
 
+    // In free-text mode the typed text is the value itself: there is no
+    // backing list, so we rebuild a single ephemeral option row reflecting the
+    // current query so the +/− buttons (or Enter) can commit it as a pill.
+    const rebuildFreeTextRow = (query) => {
+      options.querySelectorAll("[data-search-select-option]").forEach(row => row.remove());
+      if (!query) {
+        setNoResults(false);
+        clearHighlight();
+        return;
+      }
+      const row = buildRow({ value: query, label: query, data: {} });
+      options.insertBefore(row, noResults || null);
+      setNoResults(false);
+      highlightOption(row);
+    };
+
     // Called on every keystroke. With a search_url, filter the loaded window
     // instantly (zero latency) and debounce a server request for the rest;
     // no-results stays hidden until the response decides it, to avoid a flash
@@ -258,6 +275,11 @@
     // so the client-side filter is authoritative.
     const runSearch = () => {
       const query = search.value.trim();
+      if (freeText) {
+        rebuildFreeTextRow(query);
+        showPanel();
+        return;
+      }
       if (searchUrl) {
         filterRows(query);
         setNoResults(false);
@@ -282,7 +304,9 @@
         search.value = "";
         container._searchSelectDirty = false;
       }
-      if (searchUrl) {
+      if (freeText) {
+        rebuildFreeTextRow(search.value.trim());
+      } else if (searchUrl) {
         if (prefetch && !hasPrefetched) {
           // Seed the window immediately on first open (not debounced).
           hasPrefetched = true;

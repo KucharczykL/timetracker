@@ -58,16 +58,36 @@ class GameFilter(OperatorFilter):
     original_year_released: IntCriterion | None = None
     wikidata: StringCriterion | None = None
     platform: ChoiceCriterion | None = None  # selectable filter widget
+    platform_group: MultiCriterion | None = None  # platform__group__in
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
     playtime_minutes: IntCriterion | None = None  # converted to timedelta on to_q()
     created_at: StringCriterion | None = None  # date string
     updated_at: StringCriterion | None = None  # date string
 
-    has_purchases: BoolCriterion | None = None
-    has_playevents: BoolCriterion | None = None
     session_count: IntCriterion | None = None
     session_average: IntCriterion | None = None  # average in minutes
+    purchase_count: IntCriterion | None = None  # distinct purchases per game
+    playevent_count: IntCriterion | None = None  # playevents per game
+
+    # Aggregate session durations (minutes), summed across the game's sessions
+    manual_playtime_minutes: IntCriterion | None = None
+    calculated_playtime_minutes: IntCriterion | None = None
+
+    # Cross-entity: any session played on these devices / matching these flags
+    device: MultiCriterion | None = None  # game has session on any of these devices
+    session_emulated: BoolCriterion | None = None  # game has emulated session
+
+    # Cross-entity: matches against the game's purchases
+    purchase_refunded: BoolCriterion | None = None  # game has refunded purchase
+    purchase_infinite: BoolCriterion | None = None  # game has infinite purchase
+    purchase_price_total: FloatCriterion | None = None  # sum of converted prices
+    purchase_price_any: FloatCriterion | None = None  # any single purchase in range
+    purchase_type: ChoiceCriterion | None = None  # game has purchase of type
+    purchase_ownership_type: ChoiceCriterion | None = None  # by ownership
+
+    # Cross-entity: substring match against the game's playevent notes
+    playevent_note: ChoiceCriterion | None = None
 
     # Free-text search (combines name + sort_name + platform name)
     search: StringCriterion | None = None
@@ -105,33 +125,137 @@ class GameFilter(OperatorFilter):
         if self.updated_at is not None:
             q &= self.updated_at.to_q("updated_at")
 
-        if self.has_purchases is not None:
-            from games.models import Purchase
-            purchased_ids = Purchase.objects.values_list("games__id", flat=True).distinct()
-            if self.has_purchases.value:
-                q &= Q(id__in=purchased_ids)
-            else:
-                q &= ~Q(id__in=purchased_ids)
-
-        if self.has_playevents is not None:
-            from games.models import PlayEvent
-            played_ids = PlayEvent.objects.values_list("game_id", flat=True).distinct()
-            if self.has_playevents.value:
-                q &= Q(id__in=played_ids)
-            else:
-                q &= ~Q(id__in=played_ids)
+        if self.platform_group is not None:
+            q &= self.platform_group.to_q("platform__group")
 
         if self.session_count is not None:
-            from games.models import Game
             from django.db.models import Count
-            matching_ids = Game.objects.annotate(s_count=Count("sessions")).filter(self.session_count.to_q("s_count")).values_list("id", flat=True)
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(s_count=Count("sessions", distinct=True))
+                .filter(self.session_count.to_q("s_count"))
+                .values_list("id", flat=True)
+            )
             q &= Q(id__in=matching_ids)
 
         if self.session_average is not None:
-            from games.models import Game
             from django.db.models import Avg
-            matching_ids = Game.objects.annotate(s_avg=Avg("sessions__duration_total")).filter(self._playtime_to_q_for_field(self.session_average, "s_avg")).values_list("id", flat=True)
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(s_avg=Avg("sessions__duration_total"))
+                .filter(self._playtime_to_q_for_field(self.session_average, "s_avg"))
+                .values_list("id", flat=True)
+            )
             q &= Q(id__in=matching_ids)
+
+        if self.purchase_count is not None:
+            from django.db.models import Count
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(p_count=Count("purchases", distinct=True))
+                .filter(self.purchase_count.to_q("p_count"))
+                .values_list("id", flat=True)
+            )
+            q &= Q(id__in=matching_ids)
+
+        if self.playevent_count is not None:
+            from django.db.models import Count
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(pe_count=Count("playevents", distinct=True))
+                .filter(self.playevent_count.to_q("pe_count"))
+                .values_list("id", flat=True)
+            )
+            q &= Q(id__in=matching_ids)
+
+        if self.manual_playtime_minutes is not None:
+            from django.db.models import Sum
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(s_manual=Sum("sessions__duration_manual"))
+                .filter(self._playtime_to_q_for_field(self.manual_playtime_minutes, "s_manual"))
+                .values_list("id", flat=True)
+            )
+            q &= Q(id__in=matching_ids)
+
+        if self.calculated_playtime_minutes is not None:
+            from django.db.models import Sum
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(s_calc=Sum("sessions__duration_calculated"))
+                .filter(self._playtime_to_q_for_field(self.calculated_playtime_minutes, "s_calc"))
+                .values_list("id", flat=True)
+            )
+            q &= Q(id__in=matching_ids)
+
+        if self.device is not None:
+            from games.models import Session
+            session_q = self.device.to_q("device_id")
+            matching_ids = Session.objects.filter(session_q).values_list("game_id", flat=True)
+            q &= Q(id__in=matching_ids)
+
+        if self.session_emulated is not None:
+            from games.models import Session
+            emulated_ids = Session.objects.filter(emulated=self.session_emulated.value).values_list("game_id", flat=True)
+            if self.session_emulated.value:
+                q &= Q(id__in=emulated_ids)
+            else:
+                emulated_true_ids = Session.objects.filter(emulated=True).values_list("game_id", flat=True)
+                q &= ~Q(id__in=emulated_true_ids)
+
+        if self.purchase_refunded is not None:
+            from games.models import Purchase
+            refunded_ids = Purchase.objects.filter(date_refunded__isnull=False).values_list("games__id", flat=True)
+            if self.purchase_refunded.value:
+                q &= Q(id__in=refunded_ids)
+            else:
+                q &= ~Q(id__in=refunded_ids)
+
+        if self.purchase_infinite is not None:
+            from games.models import Purchase
+            infinite_ids = Purchase.objects.filter(infinite=True).values_list("games__id", flat=True)
+            if self.purchase_infinite.value:
+                q &= Q(id__in=infinite_ids)
+            else:
+                q &= ~Q(id__in=infinite_ids)
+
+        if self.purchase_price_total is not None:
+            from django.db.models import Sum
+
+            from games.models import Game
+            matching_ids = (
+                Game.objects.annotate(p_total=Sum("purchases__converted_price"))
+                .filter(self.purchase_price_total.to_q("p_total"))
+                .values_list("id", flat=True)
+            )
+            q &= Q(id__in=matching_ids)
+
+        if self.purchase_price_any is not None:
+            from games.models import Purchase
+            price_q = self.purchase_price_any.to_q("converted_price")
+            matching_ids = Purchase.objects.filter(price_q).values_list("games__id", flat=True)
+            q &= Q(id__in=matching_ids)
+
+        if self.purchase_type is not None:
+            from games.models import Purchase
+            type_q = self.purchase_type.to_q("type")
+            matching_ids = Purchase.objects.filter(type_q).values_list("games__id", flat=True)
+            q &= Q(id__in=matching_ids)
+
+        if self.purchase_ownership_type is not None:
+            from games.models import Purchase
+            ownership_q = self.purchase_ownership_type.to_q("ownership_type")
+            matching_ids = Purchase.objects.filter(ownership_q).values_list("games__id", flat=True)
+            q &= Q(id__in=matching_ids)
+
+        if self.playevent_note is not None:
+            q &= self._playevent_note_to_q(self.playevent_note)
 
         # ── free-text search (OR across multiple fields) ──
         if self.search is not None and self.search.value:
@@ -230,6 +354,32 @@ class GameFilter(OperatorFilter):
         if m == Modifier.NOT_NULL:
             return ~Q(**{f"{field}": timedelta(0)})
         return Q()
+
+    @staticmethod
+    def _playevent_note_to_q(criterion: ChoiceCriterion) -> Q:
+        """Match games by substrings against their playevents' notes.
+
+        Each `value` entry is a substring OR'd into the include side; each
+        `excludes` entry is AND'd as a NOT. Empty lists contribute nothing.
+        """
+        from games.models import PlayEvent
+
+        q = Q()
+        if criterion.value:
+            include_q = Q()
+            negate_include = criterion.modifier == Modifier.EXCLUDES
+            for term in criterion.value:
+                matching_ids = PlayEvent.objects.filter(
+                    note__icontains=term
+                ).values_list("game_id", flat=True)
+                include_q |= Q(id__in=matching_ids)
+            q &= ~include_q if negate_include else include_q
+        for term in criterion.excludes:
+            matching_ids = PlayEvent.objects.filter(
+                note__icontains=term
+            ).values_list("game_id", flat=True)
+            q &= ~Q(id__in=matching_ids)
+        return q
 
 
 # ── SessionFilter ──────────────────────────────────────────────────────────
