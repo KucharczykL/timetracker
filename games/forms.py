@@ -3,6 +3,7 @@ from django.db import transaction
 from django.db.models import OuterRef, Subquery
 
 from common.components import (
+    DEFAULT_PREFETCH,
     SearchSelect,
     SearchSelectOption,
     searchselect_selected,
@@ -75,6 +76,7 @@ class SearchSelectWidget(forms.Widget):
         multi_select=False,
         items_visible=5,
         items_scroll=10,
+        prefetch=DEFAULT_PREFETCH,
         always_visible=False,
         placeholder="Search…",
         attrs=None,
@@ -85,6 +87,7 @@ class SearchSelectWidget(forms.Widget):
         self.multi_select = multi_select
         self.items_visible = items_visible
         self.items_scroll = items_scroll
+        self.prefetch = prefetch
         self.always_visible = always_visible
         self.placeholder = placeholder
 
@@ -107,6 +110,7 @@ class SearchSelectWidget(forms.Widget):
             multi_select=self.multi_select,
             items_visible=self.items_visible,
             items_scroll=self.items_scroll,
+            prefetch=self.prefetch,
             always_visible=self.always_visible,
             placeholder=self.placeholder,
             id=(attrs or {}).get("id", ""),

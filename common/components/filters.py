@@ -7,7 +7,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
 from common.components.primitives import Label, Span
-from common.components.search_select import FilterSelect, LabeledOption
+from common.components.search_select import DEFAULT_PREFETCH, FilterSelect, LabeledOption
 
 
 class FilterChoice(NamedTuple):
@@ -90,8 +90,6 @@ def _parse_bool(existing: dict, key: str) -> bool:
 # Each list filter is a FilterSelect. Enum fields pre-render their small, fixed
 # option set; model-backed fields fetch from a search endpoint on demand, with
 # labels embedded in the filter JSON so pills render without a DB round-trip.
-
-_FILTER_PREFETCH = 20
 
 # Presence modifiers drive the pinned (Any)/(None) pseudo-options. They are
 # mutually exclusive with value pills (selecting one clears the value set).
@@ -189,7 +187,7 @@ def _model_filter(
         modifier=modifier,
         modifier_options=_modifier_options(nullable, m2m_modifiers),
         search_url=search_url,
-        prefetch=_FILTER_PREFETCH,
+        prefetch=DEFAULT_PREFETCH,
     )
 
 

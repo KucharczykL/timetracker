@@ -67,6 +67,11 @@ _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
 # used to derive the panel's max-height from items_visible.
 _ROW_HEIGHT_REM = 2.25
 
+# Default number of rows to fetch on first focus when a search_url is set.
+# Shared by filter and form widgets so the dropdown is populated for keyboard
+# navigation as soon as the user opens it.
+DEFAULT_PREFETCH = 20
+
 # ── FilterSelect styling ───────────────────────────────────────────────────
 # Inline class strings (ported verbatim from the retired SelectableFilter CSS)
 # so the filter combobox is fully self-styled — nothing in input.css. JS-added

@@ -4370,7 +4370,7 @@ form input:disabled, select:disabled, textarea:disabled {
     font-weight: var(--font-weight-medium);
     color: var(--color-heading);
   }
-  input:not([type="checkbox"]) {
+  input:not([type="checkbox"]):not([data-search-select-search]) {
     margin-bottom: calc(var(--spacing) * 3);
     display: block;
     width: 100%;

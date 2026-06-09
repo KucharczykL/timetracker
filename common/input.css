@@ -206,8 +206,8 @@ textarea:disabled {
   label {
     @apply mb-2.5 text-sm font-medium text-heading;
   }
-  input:not([type="checkbox"]) {
-    @apply mb-3 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body; 
+  input:not([type="checkbox"]):not([data-search-select-search]) {
+    @apply mb-3 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body;
   }
   input[type="checkbox"] {
     @apply  w-4 h-4 border border-default-medium rounded-xs bg-neutral-secondary-medium focus:ring-2 focus:ring-brand-soft;

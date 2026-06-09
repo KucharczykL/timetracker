@@ -60,15 +60,29 @@
     var pendingRequest = null; // in-flight AbortController, so newer queries win
     var hasPrefetched = false;
 
+    function hasVisibleContent() {
+      var optionRows = options.querySelectorAll("[data-search-select-option]");
+      for (var i = 0; i < optionRows.length; i++) {
+        if (optionRows[i].style.display !== "none") return true;
+      }
+      if (noResults && !noResults.classList.contains("hidden")) return true;
+      if (options.querySelector("[data-search-select-modifier-option]")) return true;
+      return false;
+    }
+
     function showPanel() {
-      options.classList.remove("hidden");
+      if (alwaysVisible || hasVisibleContent()) {
+        options.classList.remove("hidden");
+      }
     }
     function hidePanel() {
       if (!alwaysVisible) options.classList.add("hidden");
     }
 
     function setNoResults(visible) {
-      if (noResults) noResults.classList.toggle("hidden", !visible);
+      if (!noResults) return;
+      noResults.classList.toggle("hidden", !visible);
+      if (visible) showPanel();
     }
 
     // ── Highlight tracking (filter mode) ──
@@ -198,7 +212,7 @@
           renderRows(items);
           // Re-apply the live query: the box may hold more text than was sent.
           setNoResults(filterRows(search.value.trim()) === 0);
-          if (isFilter) autoHighlight(search.value.trim());
+          autoHighlight(search.value.trim());
         })
         .catch(function (error) {
           if (error && error.name === "AbortError") return; // superseded
@@ -214,7 +228,6 @@
     // so the client-side filter is authoritative.
     function runSearch() {
       var query = search.value.trim();
-      showPanel();
       if (searchUrl) {
         filterRows(query);
         setNoResults(false);
@@ -225,7 +238,8 @@
       } else {
         setNoResults(filterRows(query) === 0);
       }
-      if (isFilter) autoHighlight(query);
+      autoHighlight(query);
+      showPanel();
     }
 
     // ── Single-select combobox: the search box shows the committed label;
@@ -238,7 +252,6 @@
         search.value = "";
         container._searchSelectDirty = false;
       }
-      showPanel();
       if (searchUrl) {
         if (prefetch && !hasPrefetched) {
           // Seed the window immediately on first open (not debounced).
@@ -248,12 +261,13 @@
           // Show whatever is already loaded; the server decides no-results.
           filterRows(search.value.trim());
           setNoResults(false);
-          if (isFilter) autoHighlight(search.value.trim());
+          autoHighlight(search.value.trim());
         }
       } else {
         setNoResults(filterRows(search.value.trim()) === 0);
-        if (isFilter) autoHighlight(search.value.trim());
+        autoHighlight(search.value.trim());
       }
+      showPanel();
     });
     search.addEventListener("input", function () {
       clearHighlight();
@@ -278,42 +292,42 @@
       });
     }
 
-    // ── Keyboard navigation (filter mode) ──
+    // ── Keyboard navigation (both form and filter modes) ──
     search.addEventListener("keydown", function (event) {
-      if (!isFilter) return;
       var key = event.key;
-      if (key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || key === "Escape") {
-        var visible = getVisibleOptions();
-        if (visible.length === 0) {
-          if (key === "Escape") hidePanel();
-          return;
-        }
+      if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== "Escape") return;
+      var visible = getVisibleOptions();
+      if (visible.length === 0) {
+        if (key === "Escape") hidePanel();
+        return;
+      }
 
-        if (key === "ArrowDown") {
+      if (key === "ArrowDown") {
+        event.preventDefault();
+        showPanel();
+        var downIdx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+        highlightOption(visible[(downIdx + 1) % visible.length]);
+      } else if (key === "ArrowUp") {
+        event.preventDefault();
+        showPanel();
+        var upIdx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+        highlightOption(visible[(upIdx - 1 + visible.length) % visible.length]);
+      } else if (key === "Enter") {
+        if (highlightedRow) {
           event.preventDefault();
-          showPanel();
-          var idx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
-          var next = visible[(idx + 1) % visible.length];
-          highlightOption(next);
-        } else if (key === "ArrowUp") {
-          event.preventDefault();
-          showPanel();
-          var idx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
-          var prev = visible[(idx - 1 + visible.length) % visible.length];
-          highlightOption(prev);
-        } else if (key === "Enter") {
-          if (highlightedRow) {
-            event.preventDefault();
-            var option = optionFromRow(highlightedRow);
+          var option = optionFromRow(highlightedRow);
+          if (isFilter) {
             addFilterPill(option, "include");
             search.value = "";
-            clearHighlight();
-            hidePanel();
+          } else {
+            selectOption(option);
           }
-        } else if (key === "Escape") {
           clearHighlight();
           hidePanel();
         }
+      } else if (key === "Escape") {
+        clearHighlight();
+        hidePanel();
       }
     });
 
