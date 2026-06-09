@@ -645,7 +645,7 @@ def FilterBar(
     preset_save_url: str = "",
 ) -> SafeText:
     """Collapsible filter bar for the Game list."""
-    from games.models import Game
+    from games.models import Game, Purchase
 
     if status_options is None:
         status_options = [(s.value, s.label) for s in Game.Status]
@@ -653,8 +653,16 @@ def FilterBar(
     existing = _filter_parse(filter_json)
     status_choice = _filter_get_choice(existing, "status")
     platform_choice = _filter_get_choice(existing, "platform")
+    platform_group_choice = _filter_get_choice(existing, "platform_group")
+    device_choice = _filter_get_choice(existing, "device")
+    purchase_type_choice = _filter_get_choice(existing, "purchase_type")
+    purchase_ownership_choice = _filter_get_choice(existing, "purchase_ownership_type")
+    playevent_note_choice = _filter_get_choice(existing, "playevent_note")
 
     year_min, year_max = _parse_range(existing, "year_released")
+    original_year_min, original_year_max = _parse_range(
+        existing, "original_year_released"
+    )
     mastered_value = _parse_bool(existing, "mastered")
     playtime = existing.get("playtime_minutes", {})
     if isinstance(playtime, dict):
@@ -664,10 +672,17 @@ def FilterBar(
         playtime_min = ""
         playtime_max = ""
 
-    has_purchases_value = _parse_bool(existing, "has_purchases")
-    has_playevents_value = _parse_bool(existing, "has_playevents")
     session_count_min, session_count_max = _parse_range(existing, "session_count")
     session_avg_min, session_avg_max = _parse_range(existing, "session_average")
+    purchase_count_min, purchase_count_max = _parse_range(existing, "purchase_count")
+    playevent_count_min, playevent_count_max = _parse_range(existing, "playevent_count")
+    manual_pt_min, manual_pt_max = _parse_range(existing, "manual_playtime_minutes")
+    calc_pt_min, calc_pt_max = _parse_range(existing, "calculated_playtime_minutes")
+    price_total_min, price_total_max = _parse_range(existing, "purchase_price_total")
+    price_any_min, price_any_max = _parse_range(existing, "purchase_price_any")
+    purchase_refunded_value = _parse_bool(existing, "purchase_refunded")
+    purchase_infinite_value = _parse_bool(existing, "purchase_infinite")
+    session_emulated_value = _parse_bool(existing, "session_emulated")
 
     try:
         year_aggregate = Game.objects.aggregate(
@@ -676,16 +691,38 @@ def FilterBar(
     except Exception:
         year_aggregate = {}
     try:
+        original_year_aggregate = Game.objects.aggregate(
+            year_min=models.Min("original_year_released"),
+            year_max=models.Max("original_year_released"),
+        )
+    except Exception:
+        original_year_aggregate = {}
+    try:
         playtime_aggregate = Game.objects.aggregate(playtime_max=models.Max("playtime"))
     except Exception:
         playtime_aggregate = {}
+    try:
+        price_aggregate = Purchase.objects.aggregate(
+            price_min=models.Min("converted_price"),
+            price_max=models.Max("converted_price"),
+        )
+    except Exception:
+        price_aggregate = {}
     year_range_min = max(int(year_aggregate.get("year_min") or 1970), 1970)
     year_range_max = min(int(year_aggregate.get("year_max") or 2030), 2030)
+    original_year_range_min = max(
+        int(original_year_aggregate.get("year_min") or 1970), 1970
+    )
+    original_year_range_max = min(
+        int(original_year_aggregate.get("year_max") or 2030), 2030
+    )
     playtime_range_max = (
         int((playtime_aggregate.get("playtime_max") or 0).total_seconds() / 3600)
         if playtime_aggregate.get("playtime_max")
         else 200
     )
+    price_range_min = int(price_aggregate.get("price_min") or 0)
+    price_range_max = max(int(price_aggregate.get("price_max") or 100), 1)
 
     fields = [
         Component(
@@ -710,6 +747,54 @@ def FilterBar(
                         nullable=Game._meta.get_field("platform").null,
                     ),
                 ),
+                _filter_field(
+                    "Platform Group",
+                    _model_filter(
+                        "platform_group",
+                        platform_group_choice,
+                        search_url="/api/platforms/groups",
+                        nullable=False,
+                    ),
+                ),
+                _filter_field(
+                    "Device",
+                    _model_filter(
+                        "device",
+                        device_choice,
+                        search_url="/api/devices/search",
+                        nullable=False,
+                    ),
+                ),
+                _filter_field(
+                    "Purchase Type",
+                    _enum_filter(
+                        "purchase_type",
+                        Purchase.TYPES,
+                        purchase_type_choice,
+                        nullable=False,
+                    ),
+                ),
+                _filter_field(
+                    "Purchase Ownership",
+                    _enum_filter(
+                        "purchase_ownership_type",
+                        Purchase.OWNERSHIP_TYPES,
+                        purchase_ownership_choice,
+                        nullable=False,
+                    ),
+                ),
+                _filter_field(
+                    "Playevent Note",
+                    FilterSelect(
+                        field_name="playevent_note",
+                        included=playevent_note_choice.selected,
+                        excluded=playevent_note_choice.excluded,
+                        modifier=_split_modifier(playevent_note_choice.modifier),
+                        modifier_options=_modifier_options(nullable=False),
+                        free_text=True,
+                        placeholder="Type a note substring…",
+                    ),
+                ),
             ],
         ),
         RangeSlider(
@@ -722,17 +807,34 @@ def FilterBar(
             min_placeholder="e.g. 2020",
             max_placeholder="e.g. 2024",
         ),
+        RangeSlider(
+            label="Original Year",
+            input_name_prefix="filter-original-year",
+            min_value=original_year_min,
+            max_value=original_year_max,
+            range_min=original_year_range_min,
+            range_max=original_year_range_max,
+            min_placeholder="e.g. 1985",
+            max_placeholder="e.g. 2010",
+        ),
         Component(
             tag_name="div",
-            attributes=[("class", "flex items-end gap-4 mb-4")],
+            attributes=[("class", "flex items-end gap-4 mb-4 flex-wrap")],
             children=[
                 _filter_checkbox("filter-mastered", "Mastered", mastered_value),
-                _filter_checkbox("filter-has-purchases", "Has Purchases", has_purchases_value),
-                _filter_checkbox("filter-has-playevents", "Has Play Events", has_playevents_value),
+                _filter_checkbox(
+                    "filter-purchase-refunded", "Refunded", purchase_refunded_value
+                ),
+                _filter_checkbox(
+                    "filter-purchase-infinite", "Infinite", purchase_infinite_value
+                ),
+                _filter_checkbox(
+                    "filter-session-emulated", "Emulated", session_emulated_value
+                ),
             ],
         ),
         RangeSlider(
-            label="Playtime",
+            label="Total playtime",
             input_name_prefix="filter-playtime",
             min_value=playtime_min,
             max_value=playtime_max,
@@ -741,6 +843,28 @@ def FilterBar(
             step="1",
             min_placeholder="e.g. 1",
             max_placeholder="e.g. 100",
+        ),
+        RangeSlider(
+            label="Manual Playtime (mins)",
+            input_name_prefix="filter-manual-playtime-minutes",
+            min_value=manual_pt_min,
+            max_value=manual_pt_max,
+            range_min=0,
+            range_max=max(playtime_range_max * 60, 240),
+            step="1",
+            min_placeholder="e.g. 10",
+            max_placeholder="e.g. 120",
+        ),
+        RangeSlider(
+            label="Calculated Playtime (mins)",
+            input_name_prefix="filter-calculated-playtime-minutes",
+            min_value=calc_pt_min,
+            max_value=calc_pt_max,
+            range_min=0,
+            range_max=max(playtime_range_max * 60, 240),
+            step="1",
+            min_placeholder="e.g. 30",
+            max_placeholder="e.g. 180",
         ),
         RangeSlider(
             label="Session Count",
@@ -763,6 +887,48 @@ def FilterBar(
             step="1",
             min_placeholder="e.g. 10",
             max_placeholder="e.g. 120",
+        ),
+        RangeSlider(
+            label="Number of Purchases",
+            input_name_prefix="filter-purchase-count",
+            min_value=purchase_count_min,
+            max_value=purchase_count_max,
+            range_min=0,
+            range_max=20,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 5",
+        ),
+        RangeSlider(
+            label="Number of Play Events",
+            input_name_prefix="filter-playevent-count",
+            min_value=playevent_count_min,
+            max_value=playevent_count_max,
+            range_min=0,
+            range_max=20,
+            step="1",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 5",
+        ),
+        RangeSlider(
+            label="Total Purchase Price",
+            input_name_prefix="filter-purchase-price-total",
+            min_value=price_total_min,
+            max_value=price_total_max,
+            range_min=price_range_min,
+            range_max=price_range_max,
+            min_placeholder="0",
+            max_placeholder=str(price_range_max),
+        ),
+        RangeSlider(
+            label="Any Purchase Price",
+            input_name_prefix="filter-purchase-price-any",
+            min_value=price_any_min,
+            max_value=price_any_max,
+            range_min=price_range_min,
+            range_max=price_range_max,
+            min_placeholder="0",
+            max_placeholder=str(price_range_max),
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
