@@ -133,6 +133,15 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertLess(options, option_row)
         self.assertLess(option_row, no_results)
 
+    def test_prefetch_attribute_and_defaults(self):
+        # Default prefetch is 0 in SearchSelect
+        html_default = SearchSelect(name="t")
+        self.assertIn('data-prefetch="0"', html_default)
+
+        # Custom prefetch is rendered
+        html_custom = SearchSelect(name="t", prefetch=42)
+        self.assertIn('data-prefetch="42"', html_custom)
+
 
 class FilterSelectComponentTest(unittest.TestCase):
     MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
