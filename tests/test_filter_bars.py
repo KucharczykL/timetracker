@@ -186,3 +186,36 @@ class FilterBarRenderingTest(TestCase):
         self.assertNotIn("data-match=", html)
         self.assertIn("Finished", html)
         self.assertNoEscapedTags(html)
+
+    def test_device_filter_bar(self):
+        from common.components import DeviceFilterBar
+        html = str(
+            DeviceFilterBar(
+                filter_json="",
+                preset_list_url="/presets/devices/list",
+                preset_save_url="/presets/devices/save",
+            )
+        )
+        self._assert_shell(html, "/presets/devices/list", "/presets/devices/save")
+
+    def test_platform_filter_bar(self):
+        from common.components import PlatformFilterBar
+        html = str(
+            PlatformFilterBar(
+                filter_json="",
+                preset_list_url="/presets/platforms/list",
+                preset_save_url="/presets/platforms/save",
+            )
+        )
+        self._assert_shell(html, "/presets/platforms/list", "/presets/platforms/save")
+
+    def test_playevent_filter_bar(self):
+        from common.components import PlayEventFilterBar
+        html = str(
+            PlayEventFilterBar(
+                filter_json="",
+                preset_list_url="/presets/playevents/list",
+                preset_save_url="/presets/playevents/save",
+            )
+        )
+        self._assert_shell(html, "/presets/playevents/list", "/presets/playevents/save")
