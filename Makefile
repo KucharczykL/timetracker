@@ -67,6 +67,9 @@ uv.lock: pyproject.toml
 test: uv.lock
 	uv run --with pytest-django pytest
 
+test-e2e: uv.lock
+	uv run pytest e2e/
+
 lint:
 	uv run ruff check
 
