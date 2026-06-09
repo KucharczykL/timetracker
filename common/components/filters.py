@@ -6,7 +6,7 @@ from django.db import models
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
-from common.components.primitives import Div, Input, Label, Span
+from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
@@ -39,6 +39,12 @@ _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
 
 _FILTER_CHECKBOX_CLASS = (
     "rounded border-default-medium bg-neutral-secondary-medium "
+    "text-brand focus:ring-brand"
+)
+
+
+_FILTER_RADIO_CLASS = (
+    "rounded-full border-default-medium bg-neutral-secondary-medium "
     "text-brand focus:ring-brand"
 )
 
@@ -88,6 +94,24 @@ def _parse_bool(existing: dict, key: str) -> bool:
     if not isinstance(field, dict):
         return False
     return bool(field.get("value", False))
+
+
+def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
+    """Extract a nullable boolean value from a filter criterion."""
+    if key not in existing:
+        return None
+    field = existing[key]
+    if not isinstance(field, dict):
+        return None
+    val = field.get("value")
+    if val is None:
+        return None
+    if isinstance(val, str):
+        if val.lower() in ("true", "1", "yes"):
+            return True
+        if val.lower() in ("false", "0", "no"):
+            return False
+    return bool(val)
 
 
 # ── FilterSelect adapters ────────────────────────────────────────────────────
@@ -231,19 +255,26 @@ def _filter_field(label: str, widget, for_widget: str = None) -> SafeText:
 
 
 def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
-    return Label(
-        attributes=[("class", "flex items-center gap-2 text-sm text-heading")],
+    """Thin adapter mapping legacy checkbox filters to the generalized Checkbox primitive."""
+    return Checkbox(name=name, label=label, checked=checked)
+
+
+def _filter_boolean_radio(name: str, label: str, value: bool | None) -> SafeText:
+    """Renders a filter-specific boolean radio button group with 'True' and 'False' options."""
+    return Div(
+        attributes=[("class", "flex flex-col gap-1")],
         children=[
-            Input(
-                attributes=[
-                    ("type", "checkbox"),
-                    ("name", name),
-                    ("value", "1"),
-                    *([("checked", "true")] if checked else []),
-                    ("class", _FILTER_CHECKBOX_CLASS),
+            Span(
+                attributes=[("class", _FILTER_LABEL_CLASS)],
+                children=[label],
+            ),
+            Div(
+                attributes=[("class", "flex items-center gap-4 h-9")],
+                children=[
+                    Radio(name=name, label="True", checked=value is True, value="true"),
+                    Radio(name=name, label="False", checked=value is False, value="false"),
                 ],
             ),
-            label,
         ],
     )
 
