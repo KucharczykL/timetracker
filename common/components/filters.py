@@ -208,13 +208,21 @@ def _filter_mins_to_hrs(val) -> str:
     return str(int(hrs)) if hrs == int(hrs) else f"{hrs:.1f}"
 
 
-def _filter_field(label: str, widget) -> SafeText:
-    """A labelled filter field: <div><label>…</label>{widget}</div>."""
+def _filter_field(label: str, widget, for_widget: str = None) -> SafeText:
+    """A labelled filter field: <div><label>…</label>{widget}</div>.
+    TODO: Use widget.attributes.get("id", "") to get the widget's ID
+    instead of the superfluous "for" argument. This requires refactoring
+    the Component function to be a class intead.
+    Also see RangeSlider's TODO
+    """
     return Div(
         attributes=[("class", "flex flex-col gap-1")],
         children=[
             Label(
-                attributes=[("class", _FILTER_LABEL_CLASS)],
+                attributes=[
+                    ("class", _FILTER_LABEL_CLASS),
+                    ("for", for_widget),
+                ],
                 children=[label],
             ),
             widget,
@@ -292,13 +300,14 @@ def RangeSlider(
             Div(
                 attributes=[("class", "flex items-center gap-2 mb-1")],
                 children=[
-                    Label(
-                        attributes=[
-                            ("class", _FILTER_LABEL_CLASS),
-                            ("for", min_input_id),
-                        ],
-                        children=[label],
-                    ),
+                    # TODO: This should be done outside the RangeSlider component, but the current Component function doesn't allow getting the id
+                    # Label(
+                    #     attributes=[
+                    #         ("class", _FILTER_LABEL_CLASS),
+                    #         ("for", min_input_id),
+                    #     ],
+                    #     children=[label],
+                    # ),
                     Input(
                         attributes=[
                             ("type", "number"),
@@ -781,27 +790,171 @@ def FilterBar(
                         placeholder="Type a note substring…",
                     ),
                 ),
+                _filter_field(
+                    "Year",
+                    RangeSlider(
+                        label="Year",
+                        input_name_prefix="filter-year",
+                        min_value=year_min,
+                        max_value=year_max,
+                        range_min=year_range_min,
+                        range_max=year_range_max,
+                        min_placeholder="e.g. 2020",
+                        max_placeholder="e.g. 2024",
+                    ),
+                ),
+                _filter_field(
+                    "Original Year",
+                    RangeSlider(
+                        label="Original Year",
+                        input_name_prefix="filter-original-year",
+                        min_value=original_year_min,
+                        max_value=original_year_max,
+                        range_min=original_year_range_min,
+                        range_max=original_year_range_max,
+                        min_placeholder="e.g. 1985",
+                        max_placeholder="e.g. 2010",
+                    ),
+                ),
+                _filter_field(
+                    "Total playtime",
+                    RangeSlider(
+                        label="Total playtime",
+                        input_name_prefix="filter-playtime",
+                        min_value=playtime_min,
+                        max_value=playtime_max,
+                        range_min=0,
+                        range_max=playtime_range_max,
+                        step="1",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 100",
+                    ),
+                ),
+                _filter_field(
+                    "Manual Playtime (mins)",
+                    RangeSlider(
+                        label="Manual Playtime (mins)",
+                        input_name_prefix="filter-manual-playtime-minutes",
+                        min_value=manual_pt_min,
+                        max_value=manual_pt_max,
+                        range_min=0,
+                        range_max=max(playtime_range_max * 60, 240),
+                        step="1",
+                        min_placeholder="e.g. 10",
+                        max_placeholder="e.g. 120",
+                    ),
+                ),
+                _filter_field(
+                    "Calculated Playtime (mins)",
+                    RangeSlider(
+                        label="Calculated Playtime (mins)",
+                        input_name_prefix="filter-calculated-playtime-minutes",
+                        min_value=calc_pt_min,
+                        max_value=calc_pt_max,
+                        range_min=0,
+                        range_max=max(playtime_range_max * 60, 240),
+                        step="1",
+                        min_placeholder="e.g. 30",
+                        max_placeholder="e.g. 120",
+                    ),
+                ),
+                _filter_field(
+                    "Calculated Playtime (mins)",
+                    RangeSlider(
+                        label="Calculated Playtime (mins)",
+                        input_name_prefix="filter-calculated-playtime-minutes",
+                        min_value=calc_pt_min,
+                        max_value=calc_pt_max,
+                        range_min=0,
+                        range_max=max(playtime_range_max * 60, 240),
+                        step="1",
+                        min_placeholder="e.g. 30",
+                        max_placeholder="e.g. 180",
+                    ),
+                ),
+                _filter_field(
+                    "Session Count",
+                    RangeSlider(
+                        label="Session Count",
+                        input_name_prefix="filter-session-count",
+                        min_value=session_count_min,
+                        max_value=session_count_max,
+                        range_min=0,
+                        range_max=100,
+                        step="1",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 50",
+                    ),
+                ),
+                _filter_field(
+                    "Average Session Duration (mins)",
+                    RangeSlider(
+                        label="Average Session Duration (mins)",
+                        input_name_prefix="filter-session-average",
+                        min_value=session_avg_min,
+                        max_value=session_avg_max,
+                        range_min=0,
+                        range_max=240,
+                        step="1",
+                        min_placeholder="e.g. 10",
+                        max_placeholder="e.g. 120",
+                    ),
+                ),
+                _filter_field(
+                    "Number of Purchases",
+                    RangeSlider(
+                        label="Number of Purchases",
+                        input_name_prefix="filter-purchase-count",
+                        min_value=purchase_count_min,
+                        max_value=purchase_count_max,
+                        range_min=0,
+                        range_max=20,
+                        step="1",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 5",
+                    ),
+                ),
+                _filter_field(
+                    "Number of Play Events",
+                    RangeSlider(
+                        label="Number of Play Events",
+                        input_name_prefix="filter-playevent-count",
+                        min_value=playevent_count_min,
+                        max_value=playevent_count_max,
+                        range_min=0,
+                        range_max=20,
+                        step="1",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 5",
+                    ),
+                ),
+                _filter_field(
+                    "Total Purchase Price",
+                    RangeSlider(
+                        label="Total Purchase Price",
+                        input_name_prefix="filter-purchase-price-total",
+                        min_value=price_total_min,
+                        max_value=price_total_max,
+                        range_min=price_range_min,
+                        range_max=price_range_max,
+                        min_placeholder="0",
+                        max_placeholder=str(price_range_max),
+                    ),
+                ),
+                _filter_field(
+                    "Any Purchase Price",
+                    RangeSlider(
+                        label="Any Purchase Price",
+                        input_name_prefix="filter-purchase-price-any",
+                        min_value=price_any_min,
+                        max_value=price_any_max,
+                        range_min=price_range_min,
+                        range_max=price_range_max,
+                        min_placeholder="0",
+                        max_placeholder=str(price_range_max),
+                    ),
+                ),
             ],
-        ),
-        RangeSlider(
-            label="Year",
-            input_name_prefix="filter-year",
-            min_value=year_min,
-            max_value=year_max,
-            range_min=year_range_min,
-            range_max=year_range_max,
-            min_placeholder="e.g. 2020",
-            max_placeholder="e.g. 2024",
-        ),
-        RangeSlider(
-            label="Original Year",
-            input_name_prefix="filter-original-year",
-            min_value=original_year_min,
-            max_value=original_year_max,
-            range_min=original_year_range_min,
-            range_max=original_year_range_max,
-            min_placeholder="e.g. 1985",
-            max_placeholder="e.g. 2010",
         ),
         Div(
             attributes=[("class", "flex items-end gap-4 mb-4 flex-wrap")],
@@ -817,103 +970,6 @@ def FilterBar(
                     "filter-session-emulated", "Emulated", session_emulated_value
                 ),
             ],
-        ),
-        RangeSlider(
-            label="Total playtime",
-            input_name_prefix="filter-playtime",
-            min_value=playtime_min,
-            max_value=playtime_max,
-            range_min=0,
-            range_max=playtime_range_max,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 100",
-        ),
-        RangeSlider(
-            label="Manual Playtime (mins)",
-            input_name_prefix="filter-manual-playtime-minutes",
-            min_value=manual_pt_min,
-            max_value=manual_pt_max,
-            range_min=0,
-            range_max=max(playtime_range_max * 60, 240),
-            step="1",
-            min_placeholder="e.g. 10",
-            max_placeholder="e.g. 120",
-        ),
-        RangeSlider(
-            label="Calculated Playtime (mins)",
-            input_name_prefix="filter-calculated-playtime-minutes",
-            min_value=calc_pt_min,
-            max_value=calc_pt_max,
-            range_min=0,
-            range_max=max(playtime_range_max * 60, 240),
-            step="1",
-            min_placeholder="e.g. 30",
-            max_placeholder="e.g. 180",
-        ),
-        RangeSlider(
-            label="Session Count",
-            input_name_prefix="filter-session-count",
-            min_value=session_count_min,
-            max_value=session_count_max,
-            range_min=0,
-            range_max=100,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 50",
-        ),
-        RangeSlider(
-            label="Average Session Duration (mins)",
-            input_name_prefix="filter-session-average",
-            min_value=session_avg_min,
-            max_value=session_avg_max,
-            range_min=0,
-            range_max=240,
-            step="1",
-            min_placeholder="e.g. 10",
-            max_placeholder="e.g. 120",
-        ),
-        RangeSlider(
-            label="Number of Purchases",
-            input_name_prefix="filter-purchase-count",
-            min_value=purchase_count_min,
-            max_value=purchase_count_max,
-            range_min=0,
-            range_max=20,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 5",
-        ),
-        RangeSlider(
-            label="Number of Play Events",
-            input_name_prefix="filter-playevent-count",
-            min_value=playevent_count_min,
-            max_value=playevent_count_max,
-            range_min=0,
-            range_max=20,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 5",
-        ),
-        RangeSlider(
-            label="Total Purchase Price",
-            input_name_prefix="filter-purchase-price-total",
-            min_value=price_total_min,
-            max_value=price_total_max,
-            range_min=price_range_min,
-            range_max=price_range_max,
-            min_placeholder="0",
-            max_placeholder=str(price_range_max),
-        ),
-        RangeSlider(
-            label="Any Purchase Price",
-            input_name_prefix="filter-purchase-price-any",
-            min_value=price_any_min,
-            max_value=price_any_max,
-            range_min=price_range_min,
-            range_max=price_range_max,
-            min_placeholder="0",
-            max_placeholder=str(price_range_max),
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
