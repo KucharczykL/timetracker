@@ -657,3 +657,145 @@ class TestPurchaseNumPurchasesAgainstDB:
         )
         result = set(Purchase.objects.filter(pf.to_q()))
         assert result == {seeded["single"]}
+
+
+@pytest.mark.django_db
+class TestExpandedFiltersAgainstDB:
+    def _setup_entities(self):
+        from games.models import Game, Platform, Device, Session, Purchase, PlayEvent
+        import datetime
+        from datetime import timedelta
+
+        # 1. Platform & Game
+        plat, _ = Platform.objects.get_or_create(name="Retro Console", group="Nintendo", icon="retro")
+        game, _ = Game.objects.get_or_create(name="Super Mario World", defaults={"platform": plat, "status": "f"})
+        game2, _ = Game.objects.get_or_create(name="Zelda", defaults={"platform": plat, "status": "u"})
+
+        # 2. Device & Session
+        dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
+        
+        # Session 1: total 40 minutes (30 calc, 10 manual)
+        s1 = Session.objects.create(
+            game=game,
+            device=dev,
+            timestamp_start=datetime.datetime(2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            timestamp_end=datetime.datetime(2026, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc),
+            duration_manual=timedelta(minutes=10)
+        )
+
+        # 3. Purchase
+        pur = Purchase.objects.create(
+            platform=plat,
+            date_purchased=datetime.date(2026, 1, 1),
+            infinite=True,
+            price=49.99,
+            price_currency="JPY",
+            converted_price=45.00,
+            converted_currency="USD",
+            needs_price_update=False
+        )
+        pur.games.add(game)
+
+        # 4. PlayEvent
+        pe = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2026, 6, 1),
+            ended=datetime.date(2026, 6, 2),
+            note="Completed 100%"
+        )
+
+        return {
+            "plat": plat,
+            "game": game,
+            "game2": game2,
+            "dev": dev,
+            "s1": s1,
+            "pur": pur,
+            "pe": pe
+        }
+
+    def test_device_filter_and_cross_entity(self):
+        from games.filters import DeviceFilter
+        from games.models import Device
+
+        data = self._setup_entities()
+        # Find devices that have sessions on "Super Mario World"
+        df = DeviceFilter.from_json({
+            "session_filter": {
+                "game_filter": {
+                    "name": {"value": "Super Mario World", "modifier": "EQUALS"}
+                }
+            }
+        })
+        results = list(Device.objects.filter(df.to_q()))
+        assert data["dev"] in results
+
+    def test_platform_filter_and_cross_entity(self):
+        from games.filters import PlatformFilter
+        from games.models import Platform
+
+        data = self._setup_entities()
+        # Find platforms with games that are finished
+        pf = PlatformFilter.from_json({
+            "game_filter": {
+                "status": {"value": ["f"], "modifier": "INCLUDES"}
+            }
+        })
+        results = list(Platform.objects.filter(pf.to_q()))
+        assert data["plat"] in results
+
+    def test_session_filter_duration_splits(self):
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        data = self._setup_entities()
+        
+        # Test duration_total_minutes equals 40
+        sf_tot = SessionFilter.from_json({
+            "duration_total_minutes": {"value": 40, "modifier": "EQUALS"}
+        })
+        assert Session.objects.filter(sf_tot.to_q()).count() == 1
+
+        # Test duration_manual_minutes equals 10
+        sf_man = SessionFilter.from_json({
+            "duration_manual_minutes": {"value": 10, "modifier": "EQUALS"}
+        })
+        assert Session.objects.filter(sf_man.to_q()).count() == 1
+
+        # Test duration_calculated_minutes equals 30
+        sf_calc = SessionFilter.from_json({
+            "duration_calculated_minutes": {"value": 30, "modifier": "EQUALS"}
+        })
+        assert Session.objects.filter(sf_calc.to_q()).count() == 1
+
+    def test_purchase_filter_new_fields(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        data = self._setup_entities()
+
+        pf = PurchaseFilter.from_json({
+            "infinite": {"value": True, "modifier": "EQUALS"},
+            "needs_price_update": {"value": False, "modifier": "EQUALS"},
+            "converted_currency": {"value": "USD", "modifier": "EQUALS"}
+        })
+        assert Purchase.objects.filter(pf.to_q()).count() == 1
+
+    def test_game_filter_stats_and_existence(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+
+        # has_purchases = True
+        gf_pur = GameFilter.from_json({
+            "has_purchases": {"value": True, "modifier": "EQUALS"}
+        })
+        assert data["game"] in list(Game.objects.filter(gf_pur.to_q()))
+        assert data["game2"] not in list(Game.objects.filter(gf_pur.to_q()))
+
+        # session_count = 1
+        gf_cnt = GameFilter.from_json({
+            "session_count": {"value": 1, "modifier": "EQUALS"}
+        })
+        assert data["game"] in list(Game.objects.filter(gf_cnt.to_q()))
