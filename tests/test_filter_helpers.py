@@ -2,7 +2,7 @@
 
 from django.test import SimpleTestCase
 
-from common.components.filters import _parse_bool, _parse_range
+from common.components.filters import _parse_bool, _parse_range, _parse_bool_nullable
 
 
 class ParseRangeTest(SimpleTestCase):
@@ -66,3 +66,23 @@ class ParseBoolTest(SimpleTestCase):
 
     def test_missing_value_in_field(self):
         self.assertFalse(_parse_bool({"field": {}}, "field"))
+
+
+class ParseBoolNullableTest(SimpleTestCase):
+    def test_missing_key(self):
+        self.assertIsNone(_parse_bool_nullable({}, "field"))
+
+    def test_null_value(self):
+        self.assertIsNone(_parse_bool_nullable({"field": None}, "field"))
+        self.assertIsNone(_parse_bool_nullable({"field": {}}, "field"))
+
+    def test_boolean_values(self):
+        self.assertTrue(_parse_bool_nullable({"field": {"value": True}}, "field"))
+        self.assertFalse(_parse_bool_nullable({"field": {"value": False}}, "field"))
+
+    def test_string_values(self):
+        self.assertTrue(_parse_bool_nullable({"field": {"value": "true"}}, "field"))
+        self.assertTrue(_parse_bool_nullable({"field": {"value": "1"}}, "field"))
+        self.assertFalse(_parse_bool_nullable({"field": {"value": "false"}}, "field"))
+        self.assertFalse(_parse_bool_nullable({"field": {"value": "0"}}, "field"))
+
