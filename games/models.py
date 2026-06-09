@@ -501,6 +501,8 @@ class FilterPreset(models.Model):
         ("sessions", "Sessions"),
         ("purchases", "Purchases"),
         ("playevents", "Play Events"),
+        ("devices", "Devices"),
+        ("platforms", "Platforms"),
     ]
 
     name = models.CharField(max_length=255)

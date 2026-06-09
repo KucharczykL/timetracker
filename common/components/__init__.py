@@ -63,6 +63,9 @@ from common.components.filters import (
     FilterBar,
     PurchaseFilterBar,
     SessionFilterBar,
+    DeviceFilterBar,
+    PlatformFilterBar,
+    PlayEventFilterBar,
 )
 
 __all__ = [
@@ -115,4 +118,7 @@ __all__ = [
     "FilterBar",
     "PurchaseFilterBar",
     "SessionFilterBar",
+    "DeviceFilterBar",
+    "PlatformFilterBar",
+    "PlayEventFilterBar",
 ]
