@@ -8,6 +8,7 @@ pkgs.mkShell {
     python3
     uv
     ruff
+    pnpm
   ];
 
   shellHook = ''
