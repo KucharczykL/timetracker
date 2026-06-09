@@ -852,5 +852,29 @@ class ComponentPrimitivesTest(SimpleTestCase):
         self.assertIn("Option A", html)
 
 
+class PrimitiveWidgetsTest(SimpleTestCase):
+    def test_mixin_applies_widget_to_boolean_fields_only(self):
+        from django import forms
+        from games.forms import PrimitiveCheckboxWidget, PrimitiveWidgetsMixin
+
+        class DummyForm(PrimitiveWidgetsMixin, forms.Form):
+            agree = forms.BooleanField(required=False)
+            name = forms.CharField(required=False)
+
+        form = DummyForm()
+        self.assertIsInstance(form.fields["agree"].widget, PrimitiveCheckboxWidget)
+        self.assertNotIsInstance(form.fields["name"].widget, PrimitiveCheckboxWidget)
+
+    def test_primitive_checkbox_widget_renders_headless(self):
+        from games.forms import PrimitiveCheckboxWidget
+        widget = PrimitiveCheckboxWidget()
+        html = widget.render(name="agree", value=True)
+        self.assertNotIn("<label", html)
+        self.assertIn("<input", html)
+        self.assertIn('type="checkbox"', html)
+        self.assertIn('name="agree"', html)
+        self.assertIn('checked="true"', html)
+
+
 if __name__ == "__main__":
     unittest.main()

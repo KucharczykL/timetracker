@@ -209,9 +209,6 @@ textarea:disabled {
   input:not([type="checkbox"]):not([data-search-select-search]) {
     @apply mb-3 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body;
   }
-  input[type="checkbox"] {
-    @apply  w-4 h-4 border border-default-medium rounded-xs bg-neutral-secondary-medium focus:ring-2 focus:ring-brand-soft;
-  }
   select {
     @apply w-full px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body;
   }
