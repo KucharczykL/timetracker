@@ -179,7 +179,9 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn('data-search-select-modifier-option="NOT_NULL"', html)
         self.assertIn('data-search-select-modifier-option="IS_NULL"', html)
 
-    def test_active_modifier_replaces_value_pills(self):
+    def test_modifier_pill_coexists_with_value_pills(self):
+        """Modifier and value pills both render server-side; the JS handles
+        mutual exclusivity for presence modifiers (PRESENCE_MODIFIERS)."""
         html = FilterSelect(
             field_name="platform",
             options=[("1", "Steam")],
@@ -187,13 +189,12 @@ class FilterSelectComponentTest(unittest.TestCase):
             modifier="IS_NULL",
             modifier_options=self.MODIFIERS,
         )
-        # The lone modifier pill is shown; include/exclude pills are suppressed.
-        # (Scope the check to the live pills region — the cloneable pill <template>s
-        # legitimately contain data-search-select-type.)
-        pills_region = html.split("data-search-select-template")[0]
+        # Both the modifier pill and the value pill render.
         self.assertIn('data-search-select-modifier="IS_NULL"', html)
         self.assertIn("(None)", html)
-        self.assertNotIn('data-search-select-type="include"', pills_region)
+        self.assertIn(
+            'data-search-select-type="include"', html
+        )  # value pill present
         self.assertIn('data-modifier="IS_NULL"', html)  # container carries it too
 
     def test_search_url_omits_value_rows_but_keeps_modifiers(self):
@@ -223,35 +224,63 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn(">Obscure Game</span>", html)
         self.assertIn('data-value="4172"', html)
 
-    MATCH_MODES = [
-        ("INCLUDES", "any"),
-        ("INCLUDES_ALL", "all"),
-        ("INCLUDES_ONLY", "only"),
-        ("EXCLUDES", "none"),
+    M2M_MODIFIERS = [
+        ("INCLUDES_ALL", "(All)"),
+        ("INCLUDES_ONLY", "(Only)"),
     ]
 
-    def test_match_modes_render_native_select(self):
-        html = FilterSelect(field_name="games", match_modes=self.MATCH_MODES)
-        # A native <select> carries the include-set match mode; options are labels.
-        self.assertIn("data-search-select-match", html)
-        self.assertIn('value="INCLUDES_ALL"', html)
-        self.assertIn(">all</option>", html)
-        self.assertIn('value="INCLUDES_ONLY"', html)
-        self.assertIn(">only</option>", html)
-        # The container exposes the active mode (defaults to the first) for the JS.
-        self.assertIn('data-match="INCLUDES"', html)
-
-    def test_active_match_marks_selected_option(self):
+    def test_m2m_modifiers_render_as_option_rows(self):
+        """M2M modifiers (All)/(Only) render as modifier-option rows in the
+        dropdown, not as a separate <select>."""
         html = FilterSelect(
-            field_name="games", match="INCLUDES_ALL", match_modes=self.MATCH_MODES
+            field_name="games",
+            modifier_options=[
+                ("NOT_NULL", "(Any)"),
+                ("IS_NULL", "(None)"),
+                ("INCLUDES_ALL", "(All)"),
+                ("INCLUDES_ONLY", "(Only)"),
+            ],
         )
-        self.assertIn('data-match="INCLUDES_ALL"', html)
-        self.assertIn('value="INCLUDES_ALL" selected=""', html)
-
-    def test_no_match_modes_omits_select(self):
-        html = FilterSelect(field_name="status", options=[("f", "Finished")])
+        self.assertIn(
+            'data-search-select-modifier-option="INCLUDES_ALL"', html
+        )
+        self.assertIn(
+            'data-search-select-modifier-option="INCLUDES_ONLY"', html
+        )
+        self.assertIn(
+            'data-search-select-modifier-option="NOT_NULL"', html
+        )
+        # No legacy match-mode <select>.
         self.assertNotIn("data-search-select-match", html)
-        self.assertNotIn("data-match=", html)
+
+    def test_active_modifier_renders_pill(self):
+        """When modifier is INCLUDES_ALL, the modifier pill renders with the
+        (All) label alongside any value pills."""
+        html = FilterSelect(
+            field_name="games",
+            modifier="INCLUDES_ALL",
+            modifier_options=[
+                ("NOT_NULL", "(Any)"),
+                ("IS_NULL", "(None)"),
+                ("INCLUDES_ALL", "(All)"),
+                ("INCLUDES_ONLY", "(Only)"),
+            ],
+            included=[{"value": 5, "label": "Hollow Knight", "data": {}}],
+        )
+        self.assertIn('data-modifier="INCLUDES_ALL"', html)
+        self.assertIn("(All)", html)
+        self.assertIn("Hollow Knight", html)
+        self.assertIn('data-search-select-type="include"', html)
+
+    def test_presence_only_modifiers_no_m2m_rows(self):
+        """When modifier_options only has presence entries, no M2M rows appear."""
+        html = FilterSelect(
+            field_name="status",
+            modifier_options=[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")],
+            options=[("f", "Finished")],
+        )
+        self.assertNotIn("INCLUDES_ALL", html)
+        self.assertNotIn("INCLUDES_ONLY", html)
 
 
 class SearchLabelTest(django.test.TestCase):

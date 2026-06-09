@@ -93,50 +93,51 @@ def _parse_bool(existing: dict, key: str) -> bool:
 
 _FILTER_PREFETCH = 20
 
-# Presence modifiers drive the pinned (Any)/(None) pseudo-options (they clear the
-# value set); every other modifier is a match mode for the include set.
+# Presence modifiers drive the pinned (Any)/(None) pseudo-options. They are
+# mutually exclusive with value pills (selecting one clears the value set).
+# Must match JS PRESENCE_MODIFIERS in search_select.js.
 _PRESENCE_MODIFIERS = frozenset({"NOT_NULL", "IS_NULL"})
 
-# Include-set match modes (Stash's any/all/none axis). Offered only for
-# many-to-many fields, where INCLUDES_ALL ("related to all of these") is
-# meaningful — a single-valued field can never match all of several values.
-_MATCH_MODES: list[LabeledOption] = [
-    ("INCLUDES", "any"),
-    ("INCLUDES_ALL", "all"),
-    ("INCLUDES_ONLY", "only"),
-    ("EXCLUDES", "none"),
+# M2M-only modifiers surfaced as additional pseudo-options in the dropdown.
+# "any" (INCLUDES) is the implicit default when neither a presence nor an
+# M2M modifier is set — no dedicated row needed.  "none" (EXCLUDES) is
+# redundant with individual exclude (✗) pills.  Only INCLUDES_ALL and
+# INCLUDES_ONLY can't be expressed through pills alone, so they are the
+# only M2M modifiers with explicit UI.
+_M2M_MODIFIERS: list[LabeledOption] = [
+    ("INCLUDES_ALL", "(All)"),
+    ("INCLUDES_ONLY", "(Only)"),
 ]
 
 
-def _modifier_options(nullable: bool) -> list[LabeledOption]:
-    """Pinned (Any)/(None) pseudo-options; (None) only when the field is nullable."""
-    options = [("NOT_NULL", "(Any)")]
+def _modifier_options(
+    nullable: bool, m2m_modifiers: list[LabeledOption] | None = None
+) -> list[LabeledOption]:
+    """Pinned pseudo-options rendered at the top of the dropdown.
+
+    Always includes ``(Any)`` (NOT_NULL); adds ``(None)`` (IS_NULL) when
+    ``nullable`` is True.  When ``m2m_modifiers`` is given (M2M fields only),
+    appends those rows (e.g. ``(All)`` / ``(Only)``)."""
+    options: list[LabeledOption] = [("NOT_NULL", "(Any)")]
     if nullable:
         options.append(("IS_NULL", "(None)"))
+    if m2m_modifiers:
+        options.extend(m2m_modifiers)
     return options
 
 
-def _split_modifier(
-    modifier: str, match_modes: list[LabeledOption] | None
-) -> tuple[str, str]:
-    """Split a stored modifier into ``(presence_modifier, match_mode)``.
+def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
+    """Return the modifier value to surface as the modifier pill.
 
-    A criterion stores a single ``modifier``, but the widget surfaces it on two
-    orthogonal controls: the pinned (Any)/(None) presence pseudo-options and the
-    match-mode select. Presence modifiers (NOT_NULL/IS_NULL) route to the former;
-    the rest (INCLUDES/INCLUDES_ALL/EXCLUDES) to the latter. The match mode is
-    irrelevant when the field has no match-mode control, and falls back to the
-    first offered mode otherwise.
+    Presence modifiers (NOT_NULL / IS_NULL) are always surfaced.  Non-presence
+    modifiers (INCLUDES / INCLUDES_ALL / INCLUDES_ONLY) only need a pill on M2M
+    fields — otherwise the modifier is just the implicit default.
     """
-    default_match = match_modes[0][0] if match_modes else ""
-    if modifier in _PRESENCE_MODIFIERS or not match_modes:
-        # When there's no match-mode select, the modifier stays whole — it IS
-        # the full criterion modifier (enum/choice fields).  Only split when a
-        # match-mode axis exists to receive the non-presence part.
-        return modifier, default_match
+    if modifier in _PRESENCE_MODIFIERS or not has_m2m:
+        return modifier
     if modifier:
-        return "", modifier
-    return "", default_match
+        return modifier
+    return ""
 
 
 def _enum_filter(
@@ -144,7 +145,7 @@ def _enum_filter(
 ) -> SafeText:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
-    Enum fields are single-valued, so no match-mode control (any/all/none is
+    Enum fields are single-valued, so no M2M modifiers (all/only are
     meaningless); only the presence modifier is surfaced.
     """
     options_str = [(str(value), label) for value, label in options]
@@ -154,13 +155,13 @@ def _enum_filter(
     excluded = [
         (value, _find_label(options_str, value)) for value, _label in choice.excluded
     ]
-    presence, _match = _split_modifier(choice.modifier, None)
+    modifier = _split_modifier(choice.modifier)
     return FilterSelect(
         field_name=field_name,
         options=options_str,
         included=included,
         excluded=excluded,
-        modifier=presence,
+        modifier=modifier,
         modifier_options=_modifier_options(nullable),
     )
 
@@ -171,23 +172,22 @@ def _model_filter(
     *,
     search_url,
     nullable,
-    match_modes: list[LabeledOption] | None = None,
+    m2m_modifiers: list[LabeledOption] | None = None,
 ) -> SafeText:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
-    directly from ``choice`` with no DB round-trip. Pass ``match_modes`` for
-    many-to-many fields to surface the any/all/none match-mode select.
+    directly from ``choice`` with no DB round-trip. Pass ``m2m_modifiers`` for
+    many-to-many fields to surface ``(All)`` / ``(Only)`` pseudo-options in the
+    dropdown alongside the presence options.
     """
-    presence, match = _split_modifier(choice.modifier, match_modes)
+    modifier = _split_modifier(choice.modifier, has_m2m=bool(m2m_modifiers))
     return FilterSelect(
         field_name=field_name,
         included=[(value, label or value) for value, label in choice.selected],
         excluded=[(value, label or value) for value, label in choice.excluded],
-        modifier=presence,
-        modifier_options=_modifier_options(nullable),
-        match=match,
-        match_modes=match_modes or [],
+        modifier=modifier,
+        modifier_options=_modifier_options(nullable, m2m_modifiers),
         search_url=search_url,
         prefetch=_FILTER_PREFETCH,
     )
@@ -869,9 +869,10 @@ def PurchaseFilterBar(
                         game_choice,
                         search_url="/api/games/search",
                         nullable=False,
-                        # games is many-to-many on Purchase: "all" (INCLUDES_ALL)
-                        # means a purchase linked to every selected game.
-                        match_modes=_MATCH_MODES,
+                        # games is many-to-many on Purchase: (All) means
+                        # INCLUDES_ALL ("purchase linked to every selected
+                        # game"); (Only) means INCLUDES_ONLY.
+                        m2m_modifiers=_M2M_MODIFIERS,
                     ),
                 ),
                 _filter_field(
