@@ -8,6 +8,7 @@ from common.components import (
     SearchSelectOption,
     searchselect_selected,
 )
+from common.components.primitives import Checkbox
 from games.models import (
     Device,
     Game,
@@ -23,6 +24,33 @@ custom_datetime_widget = forms.DateTimeInput(
     attrs={"type": "datetime-local"}, format="%Y-%m-%d %H:%M"
 )
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
+
+
+class PrimitiveCheckboxWidget(forms.CheckboxInput):
+    """Adapts Django's CheckboxInput to use our Checkbox component."""
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        checked = self.check_test(value)
+        attributes = [(k, str(v)) for k, v in final_attrs.items() if k not in ("type", "name", "value", "checked")]
+        
+        # Django uses boolean values differently for checkboxes, we omit value if empty
+        return str(Checkbox(
+            name=name,
+            label=None,
+            checked=checked,
+            value=str(value) if value else "1",
+            attributes=attributes
+        ))
+
+
+class PrimitiveWidgetsMixin:
+    """Automatically applies primitive custom widgets to native Django form fields."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            if isinstance(field, forms.BooleanField):
+                field.widget = PrimitiveCheckboxWidget()
+                # Maintain the field's explicit required status (usually False for booleans)
 
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
@@ -128,7 +156,7 @@ class SearchSelectMultiple(SearchSelectWidget):
         return data.get(name)
 
 
-class SessionForm(forms.ModelForm):
+class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=SearchSelectWidget(
@@ -212,7 +240,7 @@ class RelatedPurchaseChoiceField(forms.ModelChoiceField):
         return name or obj.standardized_name
 
 
-class PurchaseForm(forms.ModelForm):
+class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["platform"].queryset = Platform.objects.order_by("name")
@@ -305,7 +333,7 @@ class GameModelChoiceField(forms.ModelChoiceField):
         return obj.sort_name
 
 
-class GameForm(forms.ModelForm):
+class GameForm(PrimitiveWidgetsMixin, forms.ModelForm):
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
         required=False,
@@ -329,7 +357,7 @@ class GameForm(forms.ModelForm):
         widgets = {"name": autofocus_input_widget}
 
 
-class PlatformForm(forms.ModelForm):
+class PlatformForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         model = Platform
         fields = [
@@ -340,14 +368,14 @@ class PlatformForm(forms.ModelForm):
         widgets = {"name": autofocus_input_widget}
 
 
-class DeviceForm(forms.ModelForm):
+class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         model = Device
         fields = ["name", "type"]
         widgets = {"name": autofocus_input_widget}
 
 
-class PlayEventForm(forms.ModelForm):
+class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=SearchSelectWidget(
@@ -382,7 +410,7 @@ class PlayEventForm(forms.ModelForm):
         return session
 
 
-class GameStatusChangeForm(forms.ModelForm):
+class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         model = GameStatusChange
         fields = [
