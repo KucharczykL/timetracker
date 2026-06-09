@@ -787,9 +787,9 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
 
-        # has_purchases = True
+        # purchase_count == 1 (replaces removed has_purchases boolean)
         gf_pur = GameFilter.from_json({
-            "has_purchases": {"value": True, "modifier": "EQUALS"}
+            "purchase_count": {"value": 1, "modifier": "EQUALS"}
         })
         assert data["game"] in list(Game.objects.filter(gf_pur.to_q()))
         assert data["game2"] not in list(Game.objects.filter(gf_pur.to_q()))
@@ -799,3 +799,175 @@ class TestExpandedFiltersAgainstDB:
             "session_count": {"value": 1, "modifier": "EQUALS"}
         })
         assert data["game"] in list(Game.objects.filter(gf_cnt.to_q()))
+
+    def test_game_filter_purchase_count_range(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+
+        # game has 1 purchase, game2 has 0
+        gf = GameFilter.from_json({
+            "purchase_count": {"value": 1, "modifier": "EQUALS"}
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+    def test_game_filter_playevent_count(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        gf = GameFilter.from_json({
+            "playevent_count": {"value": 1, "modifier": "EQUALS"}
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+    def test_game_filter_device(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        gf = GameFilter.from_json({
+            "device": {"value": [data["dev"].id], "modifier": "INCLUDES"}
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+    def test_game_filter_platform_group(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        gf = GameFilter.from_json({
+            "platform_group": {"value": ["Nintendo"], "modifier": "INCLUDES"}
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        # both games are on the same Nintendo platform
+        assert data["game"] in results
+        assert data["game2"] in results
+
+    def test_game_filter_session_emulated(self):
+        from games.filters import GameFilter
+        from games.models import Game, Session
+        import datetime
+        from datetime import timedelta
+
+        data = self._setup_entities()
+        Session.objects.create(
+            game=data["game2"],
+            device=data["dev"],
+            timestamp_start=datetime.datetime(2026, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            timestamp_end=datetime.datetime(2026, 6, 2, 12, 30, 0, tzinfo=datetime.timezone.utc),
+            duration_manual=timedelta(0),
+            emulated=True,
+        )
+        gf = GameFilter.from_json({
+            "session_emulated": {"value": True, "modifier": "EQUALS"}
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        assert data["game2"] in results
+        assert data["game"] not in results
+
+    def test_game_filter_purchase_refunded_and_infinite(self):
+        from games.filters import GameFilter
+        from games.models import Game, Purchase
+        import datetime
+
+        data = self._setup_entities()
+        # data["pur"] is infinite=True, non-refunded.
+        gf_inf = GameFilter.from_json({
+            "purchase_infinite": {"value": True, "modifier": "EQUALS"}
+        })
+        assert data["game"] in set(Game.objects.filter(gf_inf.to_q()))
+        assert data["game2"] not in set(Game.objects.filter(gf_inf.to_q()))
+
+        # Add a refunded purchase for game2.
+        refunded = Purchase.objects.create(
+            platform=data["plat"],
+            date_purchased=datetime.date(2026, 1, 1),
+            date_refunded=datetime.date(2026, 2, 1),
+            price=10.0,
+            price_currency="USD",
+            converted_price=10.0,
+            converted_currency="USD",
+        )
+        refunded.games.add(data["game2"])
+        gf_ref = GameFilter.from_json({
+            "purchase_refunded": {"value": True, "modifier": "EQUALS"}
+        })
+        results = set(Game.objects.filter(gf_ref.to_q()))
+        assert data["game2"] in results
+        assert data["game"] not in results
+
+    def test_game_filter_purchase_type_and_ownership(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        # data["pur"] defaults to type=game, ownership_type=digital
+        gf = GameFilter.from_json({
+            "purchase_type": {"value": ["game"], "modifier": "INCLUDES"}
+        })
+        assert data["game"] in set(Game.objects.filter(gf.to_q()))
+
+        gf = GameFilter.from_json({
+            "purchase_ownership_type": {"value": ["di"], "modifier": "INCLUDES"}
+        })
+        assert data["game"] in set(Game.objects.filter(gf.to_q()))
+
+    def test_game_filter_purchase_price_any_and_total(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        # data["pur"] has converted_price=45.00 linked to data["game"]
+        gf_any = GameFilter.from_json({
+            "purchase_price_any": {"value": 40.0, "value2": 50.0, "modifier": "BETWEEN"}
+        })
+        results = set(Game.objects.filter(gf_any.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+        gf_total = GameFilter.from_json({
+            "purchase_price_total": {"value": 40.0, "value2": 50.0, "modifier": "BETWEEN"}
+        })
+        results = set(Game.objects.filter(gf_total.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+    def test_game_filter_playevent_note_includes(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        # data["pe"] has note="Completed 100%" on data["game"]
+        gf = GameFilter.from_json({
+            "playevent_note": {
+                "value": [{"id": "Completed", "label": "Completed"}],
+                "modifier": "INCLUDES",
+            }
+        })
+        results = set(Game.objects.filter(gf.to_q()))
+        assert data["game"] in results
+        assert data["game2"] not in results
+
+    def test_game_filter_manual_and_calculated_playtime(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        # data["s1"] has 10 minutes manual + 30 minutes calculated
+        gf_manual = GameFilter.from_json({
+            "manual_playtime_minutes": {"value": 10, "modifier": "EQUALS"}
+        })
+        assert data["game"] in set(Game.objects.filter(gf_manual.to_q()))
+
+        gf_calc = GameFilter.from_json({
+            "calculated_playtime_minutes": {"value": 30, "modifier": "EQUALS"}
+        })
+        assert data["game"] in set(Game.objects.filter(gf_calc.to_q()))

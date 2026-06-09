@@ -59,6 +59,12 @@ class GameOption(Schema):  # mirrors SearchSelectOption
     data: dict
 
 
+class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)
+    value: str
+    label: str
+    data: dict
+
+
 @game_router.get("/search", response=list[GameOption])
 def search_games(request, q: str = "", limit: int = 10):
     qs = Game.objects.select_related("platform").order_by("sort_name")
@@ -131,6 +137,15 @@ def search_platforms(request, q: str = "", limit: int = 10):
     if q:
         qs = qs.filter(name__icontains=q)
     return [{"value": p.id, "label": p.name, "data": {}} for p in qs[:limit]]
+
+
+@platform_router.get("/groups", response=list[StringOption])
+def search_platform_groups(request, q: str = "", limit: int = 10):
+    qs = Platform.objects.exclude(group="")
+    if q:
+        qs = qs.filter(group__icontains=q)
+    groups = qs.values_list("group", flat=True).distinct().order_by("group")
+    return [{"value": group, "label": group, "data": {}} for group in groups[:limit]]
 
 
 api.add_router("/playevent", playevent_router)

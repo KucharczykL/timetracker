@@ -101,11 +101,12 @@
       { name: "filter-mastered", key: "mastered" },
       { name: "filter-emulated", key: "emulated" },
       { name: "filter-active", key: "is_active" },
-      { name: "filter-has-purchases", key: "has_purchases" },
-      { name: "filter-has-playevents", key: "has_playevents" },
       { name: "filter-refunded", key: "is_refunded" },
       { name: "filter-infinite", key: "infinite" },
-      { name: "filter-needs-price-update", key: "needs_price_update" }
+      { name: "filter-needs-price-update", key: "needs_price_update" },
+      { name: "filter-purchase-refunded", key: "purchase_refunded" },
+      { name: "filter-purchase-infinite", key: "purchase_infinite" },
+      { name: "filter-session-emulated", key: "session_emulated" }
     ];
     booleanFields.forEach(function (bf) {
       var el = form.querySelector('[name="' + bf.name + '"]');
@@ -117,13 +118,20 @@
     // 3. Range Fields
     var rangeFields = [
       { prefix: "filter-year", key: "year_released" },
+      { prefix: "filter-original-year", key: "original_year_released" },
       { prefix: "filter-session-count", key: "session_count" },
       { prefix: "filter-session-average", key: "session_average" },
+      { prefix: "filter-purchase-count", key: "purchase_count" },
+      { prefix: "filter-playevent-count", key: "playevent_count" },
       { prefix: "filter-duration-total-minutes", key: "duration_total_minutes" },
       { prefix: "filter-duration-manual-minutes", key: "duration_manual_minutes" },
       { prefix: "filter-duration-calculated-minutes", key: "duration_calculated_minutes" },
+      { prefix: "filter-manual-playtime-minutes", key: "manual_playtime_minutes" },
+      { prefix: "filter-calculated-playtime-minutes", key: "calculated_playtime_minutes" },
       { prefix: "filter-num-purchases", key: "num_purchases" },
       { prefix: "filter-price", key: "price" },
+      { prefix: "filter-purchase-price-total", key: "purchase_price_total" },
+      { prefix: "filter-purchase-price-any", key: "purchase_price_any" },
       { prefix: "filter-days-to-finish", key: "days_to_finish" },
       { prefix: "filter-playtime", key: "playtime_minutes", convert: function(v) { return Math.round(v * 60); }, ignoreZeroZero: true }
     ];

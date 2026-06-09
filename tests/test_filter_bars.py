@@ -219,3 +219,41 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/playevents/list", "/presets/playevents/save")
+
+    def test_game_filter_bar_has_new_widgets(self):
+        """The expanded games FilterBar exposes platform_group, device, playevent_note,
+        purchase_type / purchase_ownership_type, plus count and aggregate-playtime
+        range sliders and the new boolean checkboxes."""
+        html = str(
+            FilterBar(
+                filter_json="",
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        # New search-backed selects
+        self.assertIn('data-search-url="/api/devices/search"', html)
+        self.assertIn('data-search-url="/api/platforms/groups"', html)
+        # New enum selects (purchase type / ownership)
+        self.assertIn('data-name="purchase_type"', html)
+        self.assertIn('data-name="purchase_ownership_type"', html)
+        # Free-text widget for playevent notes
+        self.assertIn('data-name="playevent_note"', html)
+        self.assertIn('data-search-select-free-text="true"', html)
+        # New range slider input prefixes
+        self.assertIn('name="filter-purchase-count-min"', html)
+        self.assertIn('name="filter-playevent-count-min"', html)
+        self.assertIn('name="filter-manual-playtime-minutes-min"', html)
+        self.assertIn('name="filter-calculated-playtime-minutes-min"', html)
+        self.assertIn('name="filter-original-year-min"', html)
+        self.assertIn('name="filter-purchase-price-total-min"', html)
+        self.assertIn('name="filter-purchase-price-any-min"', html)
+        # New boolean checkboxes
+        self.assertIn('name="filter-purchase-refunded"', html)
+        self.assertIn('name="filter-purchase-infinite"', html)
+        self.assertIn('name="filter-session-emulated"', html)
+        # Removed boolean checkboxes
+        self.assertNotIn('name="filter-has-purchases"', html)
+        self.assertNotIn('name="filter-has-playevents"', html)
+        # Playtime label renamed
+        self.assertIn("Total playtime", html)
