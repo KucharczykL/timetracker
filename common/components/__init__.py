@@ -4,49 +4,12 @@ Split into core / primitives / domain / filters submodules; this package
 re-exports the public API so ``from common.components import X`` keeps working.
 """
 
-from common.utils import truncate
-
 from common.components.core import (
     Component,
     HTMLAttribute,
     HTMLTag,
     _render_element,
     randomid,
-)
-from common.components.primitives import (
-    A,
-    AddForm,
-    Button,
-    ButtonGroup,
-    CsrfInput,
-    Div,
-    ExternalScript,
-    H1,
-    Icon,
-    Input,
-    Modal,
-    ModuleScript,
-    Pill,
-    Popover,
-    PopoverTruncated,
-    SearchField,
-    SimpleTable,
-    Span,
-    Label,
-    TableHeader,
-    TableRow,
-    TableTd,
-    Template,
-    YearPicker,
-    paginated_table_content,
-)
-from common.components.search_select import (
-    DEFAULT_PREFETCH,
-    FilterSelect,
-    LabeledOption,
-    SearchSelect,
-    SearchSelectOption,
-    searchselect_selected,
 )
 from common.components.domain import (
     GameLink,
@@ -60,13 +23,53 @@ from common.components.domain import (
     _resolve_name_with_icon,
 )
 from common.components.filters import (
-    FilterBar,
-    PurchaseFilterBar,
-    SessionFilterBar,
     DeviceFilterBar,
+    FilterBar,
     PlatformFilterBar,
     PlayEventFilterBar,
+    PurchaseFilterBar,
+    SessionFilterBar,
 )
+from common.components.primitives import (
+    H1,
+    A,
+    AddForm,
+    Button,
+    ButtonGroup,
+    CsrfInput,
+    Div,
+    ExternalScript,
+    Icon,
+    Input,
+    Label,
+    Li,
+    Modal,
+    ModuleScript,
+    Pill,
+    Popover,
+    PopoverTruncated,
+    SearchField,
+    SimpleTable,
+    Span,
+    TableHeader,
+    TableRow,
+    TableTd,
+    Td,
+    Template,
+    Tr,
+    Ul,
+    YearPicker,
+    paginated_table_content,
+)
+from common.components.search_select import (
+    DEFAULT_PREFETCH,
+    FilterSelect,
+    LabeledOption,
+    SearchSelect,
+    SearchSelectOption,
+    searchselect_selected,
+)
+from common.utils import truncate
 
 __all__ = [
     "truncate",

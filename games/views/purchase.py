@@ -6,13 +6,12 @@ from django.http import (
     HttpResponseRedirect,
 )
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
-from django.utils import timezone
-from django.views.decorators.http import require_POST
-
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
+from django.urls import reverse
+from django.utils import timezone
 from django.utils.safestring import SafeText, mark_safe
+from django.views.decorators.http import require_POST
 
 from common.components import (
     A,
@@ -32,6 +31,7 @@ from common.components import (
     TableRow,
     paginated_table_content,
 )
+from common.components.primitives import Li, P, Td, Tr, Ul
 from common.layout import render_page
 from common.time import dateformat
 from common.utils import paginate
@@ -129,7 +129,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import PurchaseFilterBar, ModuleScript
+    from common.components import ModuleScript, PurchaseFilterBar
 
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
@@ -149,12 +149,10 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
 def _purchase_additional_row() -> SafeText:
     """The 'Submit & Create Session' row shown below the main Submit button."""
-    return Component(
-        tag_name="tr",
+    return Tr(
         children=[
-            Component(tag_name="td"),
-            Component(
-                tag_name="td",
+            Td(),
+            Td(
                 children=[
                     Button(
                         [],
@@ -262,8 +260,7 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
             Div(
                 [("class", row_class)],
                 [
-                    Component(
-                        tag_name="p",
+                    P(
                         children=[
                             "Price per game: ",
                             PriceConverted([floatformat(purchase.price_per_game, 0)]),
@@ -273,10 +270,9 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
                 ],
             ),
             Div([("class", row_class)], ["Games included in this purchase:"]),
-            Component(
-                tag_name="ul",
+            Ul(
                 children=[
-                    Component(tag_name="li", children=[GameLink(game.id, game.name)])
+                    Li(children=[GameLink(game.id, game.name)])
                     for game in purchase.games.all()
                 ],
             ),
@@ -317,8 +313,7 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> SafeTe
         ],
         children=[
             CsrfInput(request),
-            Component(
-                tag_name="p",
+            P(
                 attributes=[("class", "dark:text-white text-center mt-3 text-sm")],
                 children=["Games will be marked as abandoned."],
             ),
@@ -356,8 +351,7 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> SafeTe
                 ],
                 children=["Confirm Refund"],
             ),
-            Component(
-                tag_name="p",
+            P(
                 attributes=[("class", "dark:text-white text-center mt-5")],
                 children=["Are you sure you want to mark this purchase as refunded?"],
             ),
@@ -408,8 +402,10 @@ def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
         from games.forms import related_purchase_queryset
 
         form = PurchaseForm()
-        qs = related_purchase_queryset().filter(games__in=games).order_by(
-            "games__sort_name"
+        qs = (
+            related_purchase_queryset()
+            .filter(games__in=games)
+            .order_by("games__sort_name")
         )
 
         form.fields["related_purchase"].queryset = qs

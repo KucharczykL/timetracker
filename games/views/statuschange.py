@@ -13,6 +13,7 @@ from common.components import (
     Div,
     paginated_table_content,
 )
+from common.components.primitives import P
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
@@ -75,8 +76,7 @@ def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText
     inner = Div(
         [],
         [
-            Component(
-                tag_name="p",
+            P(
                 children=["Are you sure you want to delete this status change?"],
             ),
             Button(
