@@ -30,6 +30,24 @@
     return isNaN(val) ? "" : val;
   }
 
+  /** Read a raw <input> value as string, or "" if not found. */
+  function stringValue(form, name) {
+    var el = form.querySelector('[name="' + name + '"]');
+    return el ? el.value : "";
+  }
+
+  /**
+   * Derive a range criterion ({value, value2?, modifier}) from a (min, max)
+   * pair, or null if both bounds are empty. Shared by the numeric-range and
+   * date-range serializers.
+   */
+  function buildRangeCriterion(vMin, vMax) {
+    if (vMin !== "" && vMax !== "") return criterion(vMin, vMax, "BETWEEN");
+    if (vMin !== "") return criterion(vMin, null, "GREATER_THAN");
+    if (vMax !== "") return criterion(vMax, null, "LESS_THAN");
+    return null;
+  }
+
   /** Read all checked checkboxes with a given name, returning an array of ints. */
   function checkedValues(form, name) {
     var els = form.querySelectorAll('[name="' + name + '"]:checked');
@@ -139,23 +157,31 @@
     rangeFields.forEach(function (rf) {
       var vMin = numberValue(form, rf.prefix + "-min");
       var vMax = numberValue(form, rf.prefix + "-max");
-      
+
       if (rf.convert) {
         if (vMin !== "") vMin = rf.convert(vMin);
         if (vMax !== "") vMax = rf.convert(vMax);
       }
-      
+
       if (rf.ignoreZeroZero && vMin === 0 && vMax === 0) {
-        return; // skip if both are 0 means slider at default
+        return; // both 0 means slider at default
       }
-      
-      if (vMin !== "" && vMax !== "") {
-        filter[rf.key] = criterion(vMin, vMax, "BETWEEN");
-      } else if (vMin !== "") {
-        filter[rf.key] = criterion(vMin, null, "GREATER_THAN");
-      } else if (vMax !== "") {
-        filter[rf.key] = criterion(vMax, null, "LESS_THAN");
-      }
+
+      var c = buildRangeCriterion(vMin, vMax);
+      if (c !== null) filter[rf.key] = c;
+    });
+
+    // 4. Date Range Fields — ISO date strings from <input type="date">; no
+    // numeric coercion. Same modifier derivation as numeric ranges.
+    var dateRangeFields = [
+      { prefix: "filter-date-purchased", key: "date_purchased" },
+      { prefix: "filter-date-refunded", key: "date_refunded" },
+    ];
+    dateRangeFields.forEach(function (df) {
+      var vMin = stringValue(form, df.prefix + "-min");
+      var vMax = stringValue(form, df.prefix + "-max");
+      var c = buildRangeCriterion(vMin, vMax);
+      if (c !== null) filter[df.key] = c;
     });
 
     return filter;

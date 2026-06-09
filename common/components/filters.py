@@ -451,6 +451,69 @@ def RangeSlider(
     )
 
 
+_DATE_RANGE_INPUT_CLASS = (
+    "w-full rounded-base border border-default-medium bg-neutral-secondary-medium "
+    "text-sm text-heading p-1.5 focus:ring-brand focus:border-brand"
+)
+
+
+def DateRangeFilter(
+    *,
+    label: str,
+    input_name_prefix: str,
+    min_value: str = "",
+    max_value: str = "",
+    min_placeholder: str = "From",
+    max_placeholder: str = "To",
+) -> SafeText:
+    """A pair of ``<input type="date">`` elements representing a date range.
+
+    Mirrors ``RangeSlider`` in shape (two inputs named ``{prefix}-min`` and
+    ``{prefix}-max``) but without a slider track — the browser's native date
+    picker is the UI. Serialized client-side into a ``DateCriterion`` with
+    ``BETWEEN`` / ``GREATER_THAN`` / ``LESS_THAN`` depending on which bound(s)
+    the user filled.
+    """
+    min_input_id = f"{input_name_prefix}-min"
+    max_input_id = f"{input_name_prefix}-max"
+    return Div(
+        attributes=[("class", "date-range-block mb-4")],
+        children=[
+            Div(
+                attributes=[("class", "flex items-center gap-2")],
+                children=[
+                    Input(
+                        attributes=[
+                            ("type", "date"),
+                            ("name", min_input_id),
+                            ("id", min_input_id),
+                            ("value", min_value),
+                            ("placeholder", min_placeholder),
+                            ("aria-label", f"{label} from"),
+                            ("class", _DATE_RANGE_INPUT_CLASS),
+                        ],
+                    ),
+                    Span(
+                        attributes=[("class", "text-body text-sm")],
+                        children=["–"],
+                    ),
+                    Input(
+                        attributes=[
+                            ("type", "date"),
+                            ("name", max_input_id),
+                            ("id", max_input_id),
+                            ("value", max_value),
+                            ("placeholder", max_placeholder),
+                            ("aria-label", f"{label} to"),
+                            ("class", _DATE_RANGE_INPUT_CLASS),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
 _FILTER_FORM_ID = "filter-bar-form"
 
 
@@ -1097,6 +1160,8 @@ def PurchaseFilterBar(
     needs_price_update_value = _parse_bool(existing, "needs_price_update")
     price_currency_value = existing.get("price_currency", {}).get("value", "")
     converted_currency_value = existing.get("converted_currency", {}).get("value", "")
+    date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
+    date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
 
     try:
         price_aggregate = Purchase.objects.aggregate(
@@ -1197,6 +1262,24 @@ def PurchaseFilterBar(
                             ),
                         ),
                     ],
+                ),
+                _filter_field(
+                    "Purchased",
+                    DateRangeFilter(
+                        label="Purchased",
+                        input_name_prefix="filter-date-purchased",
+                        min_value=date_purchased_min,
+                        max_value=date_purchased_max,
+                    ),
+                ),
+                _filter_field(
+                    "Refunded",
+                    DateRangeFilter(
+                        label="Refunded",
+                        input_name_prefix="filter-date-refunded",
+                        min_value=date_refunded_min,
+                        max_value=date_refunded_max,
+                    ),
                 ),
                 _filter_field(
                     "Price",
