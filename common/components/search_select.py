@@ -101,14 +101,6 @@ _FILTER_ACTION_BUTTON_CLASS = (
 _FILTER_MODIFIER_ROW_CLASS = (
     "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer"
 )
-# The match-mode <select> (any/all/none → INCLUDES/INCLUDES_ALL/EXCLUDES). A
-# native control so its value *is* its state — no class toggling in the JS.
-# shrink-0 keeps it from collapsing as pills wrap; it sits before the pills.
-_FILTER_MATCH_SELECT_CLASS = (
-    "shrink-0 rounded border border-default-medium bg-neutral-secondary-medium "
-    "text-xs text-body px-2 py-0.5 cursor-pointer "
-    "focus:ring-brand focus:border-brand"
-)
 
 
 def _normalize_option(option) -> SearchSelectOption:
@@ -167,7 +159,6 @@ def _combobox_shell(
     always_visible: bool,
     items_visible: int,
     templates: list[SafeText] | None = None,
-    leading: SafeText | None = None,
 ) -> SafeText:
     """Assemble the shared, domain-agnostic combobox skeleton.
 
@@ -178,9 +169,8 @@ def _combobox_shell(
     ``options_children`` (value rows plus any pinned pseudo-options), the
     ``container_attributes`` that carry the widget's identity and behaviour flags,
     and any ``templates`` (inert ``<template>`` prototypes the JS clones for
-    dynamically-added rows/pills). An optional ``leading`` element is placed
-    before the pills (e.g. the filter match-mode select). The shell knows nothing
-    about how individual rows or pills look.
+    dynamically-added rows/pills). The shell knows nothing about how individual
+    rows or pills look.
     """
     search = Input(attributes=search_attributes)
 
@@ -201,10 +191,7 @@ def _combobox_shell(
         children=[*options_children, no_results],
     )
 
-    children: list[SafeText] = []
-    if leading is not None:
-        children.append(leading)
-    children += [pills, search, options_panel, *(templates or [])]
+    children: list[SafeText] = [pills, search, options_panel, *(templates or [])]
     return Div(attributes=container_attributes, children=children)
 
 
@@ -408,35 +395,6 @@ def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
     )
 
 
-def _filter_match_select(match_modes: list[LabeledOption], active: str) -> SafeText:
-    """The include-set match-mode ``<select>`` (e.g. any/all/none).
-
-    Each option's value is a ``Modifier`` name (INCLUDES / INCLUDES_ALL /
-    EXCLUDES) that governs how the include (✓) pills match; the exclude (✗) pills
-    stay an orthogonal negative. ``readSearchSelect`` reads the chosen value into
-    the container's ``data-match`` and ``filter_bar.js`` folds it into the
-    criterion's ``modifier``. Distinct from the pinned (Any)/(None) pseudo-options
-    (presence: NOT_NULL / IS_NULL), which clear the value pills.
-    """
-    option_nodes: list[SafeText] = []
-    for modifier_value, label in match_modes:
-        attributes: list[HTMLAttribute] = [("value", modifier_value)]
-        if modifier_value == active:
-            attributes.append(("selected", ""))
-        option_nodes.append(
-            Component(tag_name="option", attributes=attributes, children=[label])
-        )
-    return Component(
-        tag_name="select",
-        attributes=[
-            ("data-search-select-match", ""),
-            ("aria-label", "Match mode"),
-            ("class", _FILTER_MATCH_SELECT_CLASS),
-        ],
-        children=option_nodes,
-    )
-
-
 def FilterSelect(
     *,
     field_name: str,
@@ -445,8 +403,6 @@ def FilterSelect(
     excluded: list[LabeledOption | SearchSelectOption] | None = None,
     modifier: str = "",
     modifier_options: list[LabeledOption] | None = None,
-    match: str = "",
-    match_modes: list[LabeledOption] | None = None,
     search_url: str = "",
     prefetch: int = 0,
     items_visible: int = 6,
@@ -459,17 +415,12 @@ def FilterSelect(
     Like ``SearchSelect`` but each value row carries +/− buttons that add an
     *include* (✓) or *exclude* (✗) pill, plus an optional set of pinned
     ``modifier_options`` (e.g. ``[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]``)
-    rendered above the value rows. A selected modifier is mutually exclusive with
-    value pills. State is read from the DOM into the filter JSON by
-    ``readSearchSelect`` (filter mode) — nothing is submitted by ``name``.
-
-    When ``match_modes`` is given (e.g.
-    ``[("INCLUDES", "any"), ("INCLUDES_ALL", "all"), ("EXCLUDES", "none")]``) a
-    small ``<select>`` is rendered before the pills, letting the user choose how
-    the include (✓) set matches — Stash's modifier axis. ``match`` is the active
-    one (defaults to the first). It is orthogonal to ``modifier_options`` (which
-    handle presence) and to the exclude (✗) channel. ``INCLUDES_ALL`` is only
-    meaningful for many-to-many fields.
+    rendered above the value rows. Presence modifiers (NOT_NULL / IS_NULL) are
+    mutually exclusive with value pills. Non-presence modifiers (INCLUDES_ALL /
+    INCLUDES_ONLY) coexist with value pills — they govern how the include set
+    matches and are only surfaced for many-to-many fields. State is read from
+    the DOM into the filter JSON by ``readSearchSelect`` (filter mode) — nothing
+    is submitted by ``name``.
 
     ``included``/``excluded`` are resolved options (value + label) so pills show
     labels even when the value rows come from ``search_url``. ``options``
@@ -479,8 +430,6 @@ def FilterSelect(
     included = [_normalize_option(option) for option in (included or [])]
     excluded = [_normalize_option(option) for option in (excluded or [])]
     modifier_options = modifier_options or []
-    match_modes = match_modes or []
-    active_match = match or (match_modes[0][0] if match_modes else "")
 
     active_modifier_label = ""
     for modifier_value, label in modifier_options:
@@ -488,15 +437,18 @@ def FilterSelect(
             active_modifier_label = label
             break
 
-    # ── Pills: a lone modifier pill, or include/exclude value pills ──
+    # ── Pills: modifier pill (if active), then include/exclude value pills ──
+    # Presence modifiers (NOT_NULL / IS_NULL) are mutually exclusive with value
+    # pills — but the stored state guarantees they never coexist, so we render
+    # both channels unconditionally.  Non-presence modifiers (INCLUDES_ALL /
+    # INCLUDES_ONLY) coexist with value pills and render side by side.
     pills_children: list[SafeText] = []
     if active_modifier_label:
         pills_children.append(_filter_modifier_pill(modifier, active_modifier_label))
-    else:
-        for option in included:
-            pills_children.append(_filter_value_pill(option, "include"))
-        for option in excluded:
-            pills_children.append(_filter_value_pill(option, "exclude"))
+    for option in included:
+        pills_children.append(_filter_value_pill(option, "include"))
+    for option in excluded:
+        pills_children.append(_filter_value_pill(option, "exclude"))
 
     pills = Div(
         attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
@@ -564,12 +516,8 @@ def FilterSelect(
     ]
     if modifier:
         container_attributes.append(("data-modifier", modifier))
-    if match_modes:
-        container_attributes.append(("data-match", active_match))
     if id:
         container_attributes.append(("id", id))
-
-    leading = _filter_match_select(match_modes, active_match) if match_modes else None
 
     return _combobox_shell(
         container_attributes=container_attributes,
@@ -579,7 +527,6 @@ def FilterSelect(
         always_visible=False,
         items_visible=items_visible,
         templates=templates,
-        leading=leading,
     )
 
 

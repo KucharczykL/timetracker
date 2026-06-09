@@ -68,22 +68,21 @@
       var included = parseJSONAttr(widget, "data-included");
       var excluded = parseJSONAttr(widget, "data-excluded");
       // Two orthogonal axes: a presence modifier (NOT_NULL/IS_NULL) from the
-      // pinned (Any)/(None) pseudo-options clears the value set, while the
-      // match mode (INCLUDES/INCLUDES_ALL/EXCLUDES) governs how the include set
-      // matches. Fields without a data-match attribute have no match-mode select
-      // — the full modifier lives in data-modifier (e.g. enum/choice fields).
-      var presence = widget.getAttribute("data-modifier");
-      var matchVal = widget.getAttribute("data-match");
-      var match = matchVal || presence || "INCLUDES";
-      if (presence === "NOT_NULL" || presence === "IS_NULL") {
-        filter[field] = { modifier: presence };
+      // pinned (Any)/(None) pseudo-options clears the value set and has no
+      // values; the non-presence modifier (INCLUDES_ALL/INCLUDES_ONLY) governs
+      // how the include set matches.  When neither is set the implicit default
+      // is INCLUDES ("any").  Must match Python _PRESENCE_MODIFIERS.
+      var modifier = widget.getAttribute("data-modifier");
+      var IS_PRESENCE = modifier === "NOT_NULL" || modifier === "IS_NULL";
+      if (IS_PRESENCE) {
+        filter[field] = { modifier: modifier };
       } else if (included.length > 0 || excluded.length > 0) {
         // All filter pills carry {id, label}; store them as-is so the filter
         // URL and saved presets are self-describing (Stash-style).
         filter[field] = {
           value: included.map(function (item) { return {id: item.id, label: item.label}; }),
           excludes: excluded.map(function (item) { return {id: item.id, label: item.label}; }),
-          modifier: match,
+          modifier: modifier || "INCLUDES",
         };
       }
     });

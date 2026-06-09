@@ -92,27 +92,30 @@ class FilterBarRenderingTest(TestCase):
         self._assert_shell(html, "/presets/purchases/list", "/presets/purchases/save")
         self._assert_range_slider(html)
 
-    def test_purchase_filter_bar_games_has_match_modes(self):
-        """The many-to-many games field surfaces the any/all/only/none match
-        select; single-valued fields (platform) do not."""
+    def test_purchase_filter_bar_games_has_m2m_modifiers(self):
+        """The many-to-many games field surfaces (All)/(Only) pseudo-options
+        in the dropdown alongside the presence (Any)/(None) rows. Single-valued
+        fields (platform) do not get M2M modifiers."""
         html = str(
             PurchaseFilterBar(
                 filter_json="", preset_list_url="/l", preset_save_url="/s"
             )
         )
-        self.assertIn("data-search-select-match", html)
-        self.assertIn('value="INCLUDES_ALL"', html)
-        self.assertIn('value="INCLUDES_ONLY"', html)
-        # Platform is single-valued: no match select before its widget.
+        # (All) and (Only) appear as modifier rows in the dropdown.
+        self.assertIn('data-search-select-modifier-option="INCLUDES_ALL"', html)
+        self.assertIn('data-search-select-modifier-option="INCLUDES_ONLY"', html)
+        # No legacy match-mode <select>.
+        self.assertNotIn("data-search-select-match", html)
+        # Platform is single-valued: no M2M modifier options in its section.
         games_start = html.find('data-name="games"')
         platform_start = html.find('data-name="platform"')
         platform_section = html[platform_start:]
-        self.assertNotIn("data-search-select-match", platform_section)
+        self.assertNotIn("INCLUDES_ALL", platform_section)
         self.assertGreater(games_start, 0)
 
     def test_purchase_filter_bar_roundtrips_includes_all(self):
-        """A stored INCLUDES_ALL modifier pre-selects the match <option> and the
-        included game still renders as a pill."""
+        """A stored INCLUDES_ALL modifier renders as the modifier pill and the
+        included game still renders as a value pill."""
         filter_json = json.dumps(
             {
                 "games": {
@@ -126,8 +129,8 @@ class FilterBarRenderingTest(TestCase):
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
             )
         )
-        self.assertIn('data-match="INCLUDES_ALL"', html)
-        self.assertIn('value="INCLUDES_ALL" selected=""', html)
+        self.assertIn('data-modifier="INCLUDES_ALL"', html)
+        self.assertIn("(All)", html)  # modifier pill label
         self.assertIn("Hollow Knight", html)
         self.assertIn('data-search-select-type="include"', html)
         self.assertNoEscapedTags(html)

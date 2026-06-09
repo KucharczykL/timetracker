@@ -26,6 +26,12 @@
 
   var DEBOUNCE_MS = 100;
 
+  // Must match Python common/components/filters.py:_PRESENCE_MODIFIERS.
+  // These modifiers are mutually exclusive with value pills — selecting
+  // one clears all value pills.  Non-presence modifiers (INCLUDES_ALL,
+  // INCLUDES_ONLY) coexist with value pills.
+  var PRESENCE_MODIFIERS = ["NOT_NULL", "IS_NULL"];
+
   function initAll() {
     document.querySelectorAll("[data-search-select]").forEach(function (element) {
       if (element._searchSelectInit) return;
@@ -356,9 +362,17 @@
     }
 
     // Add (or re-type) an include/exclude pill for a value. Selecting any value
-    // clears an active modifier — the two are mutually exclusive.
+    // clears a presence modifier — NOT_NULL / IS_NULL are mutually exclusive
+    // with value pills.  Non-presence modifiers (INCLUDES_ALL / INCLUDES_ONLY)
+    // persist alongside value pills.
     function addFilterPill(option, kind) {
-      clearModifier();
+      var modPill = pills.querySelector("[data-search-select-modifier]");
+      if (modPill) {
+        var modVal = modPill.getAttribute("data-search-select-modifier");
+        if (PRESENCE_MODIFIERS.indexOf(modVal) !== -1) {
+          clearModifier();
+        }
+      }
       var existing = pills.querySelector(
         '[data-pill][data-value="' + cssEscape(option.value) + '"]'
       );
@@ -377,22 +391,34 @@
       return pill;
     }
 
-    // Set the lone modifier pill, clearing all value pills (mutual exclusivity).
+    // Set the modifier pill.  Presence modifiers (NOT_NULL / IS_NULL) clear all
+    // value pills — they are mutually exclusive.  Non-presence modifiers
+    // (INCLUDES_ALL / INCLUDES_ONLY) are prepended before existing value pills.
     function setModifier(modifierValue, label) {
-      pills.innerHTML = "";
+      // Remove any existing modifier pill to avoid duplicates.
+      clearModifierPill();
+      if (PRESENCE_MODIFIERS.indexOf(modifierValue) !== -1) {
+        pills.innerHTML = "";
+      }
       var pill = cloneTemplate("pill-modifier");
       pill.setAttribute("data-search-select-modifier", modifierValue);
       setLabel(pill, label);
-      pills.appendChild(pill);
+      pills.insertBefore(pill, pills.firstChild);
       container.setAttribute("data-modifier", modifierValue);
       hidePanel();
       emitChange(null);
     }
 
-    function clearModifier() {
+    // Remove the modifier pill and its container attribute.  Safe to call when
+    // there is no modifier pill (no-op).  Does not touch value pills.
+    function clearModifierPill() {
       var modifierPill = pills.querySelector("[data-search-select-modifier]");
       if (modifierPill) modifierPill.remove();
       container.removeAttribute("data-modifier");
+    }
+
+    function clearModifier() {
+      clearModifierPill();
     }
 
     function optionFromRow(row) {
@@ -458,12 +484,12 @@
       var pill = removeButton.closest("[data-pill]");
       if (!pill) return;
       if (isFilter) {
-        // Filter pills have no hidden input; a modifier pill also clears the
-        // container flag.
+        // Filter pills have no hidden input.
         if (pill.hasAttribute("data-search-select-modifier")) {
-          container.removeAttribute("data-modifier");
+          clearModifierPill();
+        } else {
+          pill.remove();
         }
-        pill.remove();
         emitChange(null);
         return;
       }
@@ -538,8 +564,8 @@
           pills.querySelectorAll("[data-pill]").forEach(function (pill) {
             var pillModifier = pill.getAttribute("data-search-select-modifier");
             if (pillModifier) {
-              modifier = pillModifier;
-              return;
+              modifier = pillModifier;  // last modifier pill wins
+              return;                    // skip value extraction for this pill
             }
             var value = pill.getAttribute("data-value");
             var label = pill.getAttribute("data-label") || "";
@@ -554,11 +580,6 @@
         container.setAttribute("data-excluded", JSON.stringify(excluded));
         if (modifier) container.setAttribute("data-modifier", modifier);
         else container.removeAttribute("data-modifier");
-        // The match-mode <select> (any/all/none) governs how the include set
-        // matches; its value is the criterion modifier. A native control, so its
-        // value is read directly — no pill bookkeeping.
-        var matchSelect = container.querySelector("[data-search-select-match]");
-        if (matchSelect) container.setAttribute("data-match", matchSelect.value);
         return;
       }
       var values = pills
