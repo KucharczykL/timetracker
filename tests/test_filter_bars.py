@@ -337,3 +337,29 @@ class FilterBarRenderingTest(TestCase):
             'name="filter-date-refunded-max" id="filter-date-refunded-max" value=""',
             html,
         )
+
+    def test_boolean_fields_render_as_radio_groups(self):
+        """Boolean fields must render as radio groups with True/False choices."""
+        from common.components import FilterBar, SessionFilterBar, PurchaseFilterBar
+
+        # 1. Games Filter Bar
+        games_html = str(FilterBar(filter_json=""))
+        self.assertIn('type="radio"', games_html)
+        self.assertIn('name="filter-mastered"', games_html)
+        self.assertIn('value="true"', games_html)
+        self.assertIn('value="false"', games_html)
+
+        # 2. Session Filter Bar
+        session_html = str(SessionFilterBar(filter_json=""))
+        self.assertIn('type="radio"', session_html)
+        self.assertIn('name="filter-emulated"', session_html)
+        self.assertIn('value="true"', session_html)
+        self.assertIn('value="false"', session_html)
+
+        # 3. Purchase Filter Bar
+        purchase_html = str(PurchaseFilterBar(filter_json=""))
+        self.assertIn('type="radio"', purchase_html)
+        self.assertIn('name="filter-refunded"', purchase_html)
+        self.assertIn('value="true"', purchase_html)
+        self.assertIn('value="false"', purchase_html)
+
