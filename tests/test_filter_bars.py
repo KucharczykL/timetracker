@@ -189,6 +189,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_device_filter_bar(self):
         from common.components import DeviceFilterBar
+
         html = str(
             DeviceFilterBar(
                 filter_json="",
@@ -200,6 +201,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_platform_filter_bar(self):
         from common.components import PlatformFilterBar
+
         html = str(
             PlatformFilterBar(
                 filter_json="",
@@ -211,6 +213,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_playevent_filter_bar(self):
         from common.components import PlayEventFilterBar
+
         html = str(
             PlayEventFilterBar(
                 filter_json="",
@@ -257,3 +260,80 @@ class FilterBarRenderingTest(TestCase):
         self.assertNotIn('name="filter-has-playevents"', html)
         # Playtime label renamed
         self.assertIn("Total playtime", html)
+
+    def test_purchase_filter_bar_renders_date_inputs(self):
+        """PurchaseFilterBar surfaces date_purchased and date_refunded as
+        type=date input pairs with -min/-max naming."""
+        html = str(
+            PurchaseFilterBar(
+                filter_json="", preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        for name in (
+            "filter-date-purchased-min",
+            "filter-date-purchased-max",
+            "filter-date-refunded-min",
+            "filter-date-refunded-max",
+        ):
+            self.assertIn(f'name="{name}"', html)
+            self.assertIn(f'id="{name}"', html)
+        # Inputs are native date pickers, not text.
+        self.assertIn('type="date"', html)
+        self.assertNoEscapedTags(html)
+
+    def test_purchase_filter_bar_prepopulates_dates_between(self):
+        """A BETWEEN filter populates both date bounds via _parse_range."""
+        filter_json = json.dumps(
+            {
+                "date_purchased": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
+        html = str(
+            PurchaseFilterBar(
+                filter_json=filter_json,
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        self.assertIn(
+            'name="filter-date-purchased-min" id="filter-date-purchased-min" '
+            'value="2024-01-01"',
+            html,
+        )
+        self.assertIn(
+            'name="filter-date-purchased-max" id="filter-date-purchased-max" '
+            'value="2024-12-31"',
+            html,
+        )
+
+    def test_purchase_filter_bar_prepopulates_dates_single_bound(self):
+        """A single-bound (GREATER_THAN) filter populates min only."""
+        filter_json = json.dumps(
+            {
+                "date_refunded": {
+                    "value": "2024-06-01",
+                    "modifier": "GREATER_THAN",
+                }
+            }
+        )
+        html = str(
+            PurchaseFilterBar(
+                filter_json=filter_json,
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        self.assertIn(
+            'name="filter-date-refunded-min" id="filter-date-refunded-min" '
+            'value="2024-06-01"',
+            html,
+        )
+        # Max input is still present but with empty value.
+        self.assertIn(
+            'name="filter-date-refunded-max" id="filter-date-refunded-max" value=""',
+            html,
+        )

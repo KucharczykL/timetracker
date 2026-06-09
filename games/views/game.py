@@ -35,7 +35,7 @@ from common.components import (
     Ul,
     paginated_table_content,
 )
-from common.components.primitives import Li, Span, Strong
+from common.components.primitives import Li, P, Span, Strong
 from common.icons import get_icon
 from common.layout import render_page
 from common.time import (

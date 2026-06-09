@@ -290,3 +290,152 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
         # The Python builder emits well-formed, balanced markup.
         self.assertEqual(html.count("<div"), html.count("</div>"))
+
+
+class PurchaseListDateFilterTest(TestCase):
+    """End-to-end: GET /tracker/purchase/list?filter=… narrows the rendered
+    list and pre-fills the date inputs from the URL filter.
+
+    Replaces the manual curl smoke that earlier verified the same path.
+    """
+
+    def setUp(self) -> None:
+        import datetime
+
+        self.user = User.objects.create_superuser(
+            username="datetester", email="dt@example.com", password="testpass"
+        )
+        self.client.force_login(self.user)
+        self.platform = Platform.objects.create(name="DateP", icon="datep")
+        # Markers are placed on the Game name because LinkedPurchase renders
+        # the linked game's name (purchase.name doesn't surface in the list row).
+        early_game = Game.objects.create(name="EARLY-MARKER", platform=self.platform)
+        mid_game = Game.objects.create(name="MID-MARKER", platform=self.platform)
+        late_game = Game.objects.create(name="LATE-MARKER", platform=self.platform)
+        self.early = Purchase.objects.create(
+            platform=self.platform, date_purchased=datetime.date(2024, 1, 15)
+        )
+        self.early.games.add(early_game)
+        self.mid = Purchase.objects.create(
+            platform=self.platform,
+            date_purchased=datetime.date(2024, 6, 15),
+            date_refunded=datetime.date(2024, 7, 1),
+        )
+        self.mid.games.add(mid_game)
+        self.late = Purchase.objects.create(
+            platform=self.platform, date_purchased=datetime.date(2025, 1, 15)
+        )
+        self.late.games.add(late_game)
+
+    def _get(self, filter_obj=None, raw_filter=None):
+        import json
+
+        from django.urls import reverse
+
+        url = reverse("games:list_purchases")
+        if raw_filter is not None:
+            return self.client.get(url, {"filter": raw_filter})
+        if filter_obj is not None:
+            return self.client.get(url, {"filter": json.dumps(filter_obj)})
+        return self.client.get(url)
+
+    def test_unfiltered_lists_all_three(self):
+        html = self._get().content.decode()
+        self.assertEqual(html.count("EARLY-MARKER"), 1)
+        self.assertEqual(html.count("MID-MARKER"), 1)
+        self.assertEqual(html.count("LATE-MARKER"), 1)
+
+    def test_date_purchased_between_narrows_and_prepopulates(self):
+        """BETWEEN 2024-01-01..2024-12-31 → only early + mid; both date
+        inputs pre-filled with the filter bounds."""
+        response = self._get(
+            {
+                "date_purchased": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertNotIn("LATE-MARKER", html)
+        # Pre-populated date inputs round-trip the filter bounds.
+        self.assertIn(
+            'name="filter-date-purchased-min" id="filter-date-purchased-min" '
+            'value="2024-01-01"',
+            html,
+        )
+        self.assertIn(
+            'name="filter-date-purchased-max" id="filter-date-purchased-max" '
+            'value="2024-12-31"',
+            html,
+        )
+
+    def test_date_purchased_greater_than_single_bound(self):
+        """GREATER_THAN populates min only, leaves max blank."""
+        response = self._get(
+            {
+                "date_purchased": {
+                    "value": "2024-06-15",
+                    "modifier": "GREATER_THAN",
+                }
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertNotIn("EARLY-MARKER", html)
+        self.assertNotIn("MID-MARKER", html)
+        self.assertIn("LATE-MARKER", html)
+        self.assertIn(
+            'name="filter-date-purchased-min" id="filter-date-purchased-min" '
+            'value="2024-06-15"',
+            html,
+        )
+        self.assertIn(
+            'name="filter-date-purchased-max" id="filter-date-purchased-max" '
+            'value=""',
+            html,
+        )
+
+    def test_date_refunded_not_null(self):
+        response = self._get(
+            {"date_refunded": {"value": "", "modifier": "NOT_NULL"}}
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertNotIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertNotIn("LATE-MARKER", html)
+
+    def test_combined_dates_and_is_refunded(self):
+        """date_purchased BETWEEN 2024 AND date_refunded NOT_NULL → only the
+        mid purchase. Confirms AND-composition through the view layer."""
+        response = self._get(
+            {
+                "date_purchased": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                },
+                "date_refunded": {"value": "", "modifier": "NOT_NULL"},
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertNotIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertNotIn("LATE-MARKER", html)
+
+    def test_malformed_json_filter_falls_back_to_unfiltered(self):
+        """parse_purchase_filter returns None on bad JSON → view ignores
+        the filter and renders the full list (no 500)."""
+        response = self._get(raw_filter="this is not json")
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # All three purchases are present, same as the unfiltered baseline.
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertIn("LATE-MARKER", html)

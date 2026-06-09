@@ -8,6 +8,7 @@ from django.db.models import Q
 from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
+    DateCriterion,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -667,20 +668,30 @@ class TestExpandedFiltersAgainstDB:
         from datetime import timedelta
 
         # 1. Platform & Game
-        plat, _ = Platform.objects.get_or_create(name="Retro Console", group="Nintendo", icon="retro")
-        game, _ = Game.objects.get_or_create(name="Super Mario World", defaults={"platform": plat, "status": "f"})
-        game2, _ = Game.objects.get_or_create(name="Zelda", defaults={"platform": plat, "status": "u"})
+        plat, _ = Platform.objects.get_or_create(
+            name="Retro Console", group="Nintendo", icon="retro"
+        )
+        game, _ = Game.objects.get_or_create(
+            name="Super Mario World", defaults={"platform": plat, "status": "f"}
+        )
+        game2, _ = Game.objects.get_or_create(
+            name="Zelda", defaults={"platform": plat, "status": "u"}
+        )
 
         # 2. Device & Session
         dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
-        
+
         # Session 1: total 40 minutes (30 calc, 10 manual)
         s1 = Session.objects.create(
             game=game,
             device=dev,
-            timestamp_start=datetime.datetime(2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
-            timestamp_end=datetime.datetime(2026, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc),
-            duration_manual=timedelta(minutes=10)
+            timestamp_start=datetime.datetime(
+                2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2026, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc
+            ),
+            duration_manual=timedelta(minutes=10),
         )
 
         # 3. Purchase
@@ -692,7 +703,7 @@ class TestExpandedFiltersAgainstDB:
             price_currency="JPY",
             converted_price=45.00,
             converted_currency="USD",
-            needs_price_update=False
+            needs_price_update=False,
         )
         pur.games.add(game)
 
@@ -701,7 +712,7 @@ class TestExpandedFiltersAgainstDB:
             game=game,
             started=datetime.date(2026, 6, 1),
             ended=datetime.date(2026, 6, 2),
-            note="Completed 100%"
+            note="Completed 100%",
         )
 
         return {
@@ -711,7 +722,7 @@ class TestExpandedFiltersAgainstDB:
             "dev": dev,
             "s1": s1,
             "pur": pur,
-            "pe": pe
+            "pe": pe,
         }
 
     def test_device_filter_and_cross_entity(self):
@@ -720,13 +731,15 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # Find devices that have sessions on "Super Mario World"
-        df = DeviceFilter.from_json({
-            "session_filter": {
-                "game_filter": {
-                    "name": {"value": "Super Mario World", "modifier": "EQUALS"}
+        df = DeviceFilter.from_json(
+            {
+                "session_filter": {
+                    "game_filter": {
+                        "name": {"value": "Super Mario World", "modifier": "EQUALS"}
+                    }
                 }
             }
-        })
+        )
         results = list(Device.objects.filter(df.to_q()))
         assert data["dev"] in results
 
@@ -736,11 +749,9 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # Find platforms with games that are finished
-        pf = PlatformFilter.from_json({
-            "game_filter": {
-                "status": {"value": ["f"], "modifier": "INCLUDES"}
-            }
-        })
+        pf = PlatformFilter.from_json(
+            {"game_filter": {"status": {"value": ["f"], "modifier": "INCLUDES"}}}
+        )
         results = list(Platform.objects.filter(pf.to_q()))
         assert data["plat"] in results
 
@@ -749,23 +760,23 @@ class TestExpandedFiltersAgainstDB:
         from games.models import Session
 
         data = self._setup_entities()
-        
+
         # Test duration_total_minutes equals 40
-        sf_tot = SessionFilter.from_json({
-            "duration_total_minutes": {"value": 40, "modifier": "EQUALS"}
-        })
+        sf_tot = SessionFilter.from_json(
+            {"duration_total_minutes": {"value": 40, "modifier": "EQUALS"}}
+        )
         assert Session.objects.filter(sf_tot.to_q()).count() == 1
 
         # Test duration_manual_minutes equals 10
-        sf_man = SessionFilter.from_json({
-            "duration_manual_minutes": {"value": 10, "modifier": "EQUALS"}
-        })
+        sf_man = SessionFilter.from_json(
+            {"duration_manual_minutes": {"value": 10, "modifier": "EQUALS"}}
+        )
         assert Session.objects.filter(sf_man.to_q()).count() == 1
 
         # Test duration_calculated_minutes equals 30
-        sf_calc = SessionFilter.from_json({
-            "duration_calculated_minutes": {"value": 30, "modifier": "EQUALS"}
-        })
+        sf_calc = SessionFilter.from_json(
+            {"duration_calculated_minutes": {"value": 30, "modifier": "EQUALS"}}
+        )
         assert Session.objects.filter(sf_calc.to_q()).count() == 1
 
     def test_purchase_filter_new_fields(self):
@@ -774,11 +785,13 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
 
-        pf = PurchaseFilter.from_json({
-            "infinite": {"value": True, "modifier": "EQUALS"},
-            "needs_price_update": {"value": False, "modifier": "EQUALS"},
-            "converted_currency": {"value": "USD", "modifier": "EQUALS"}
-        })
+        pf = PurchaseFilter.from_json(
+            {
+                "infinite": {"value": True, "modifier": "EQUALS"},
+                "needs_price_update": {"value": False, "modifier": "EQUALS"},
+                "converted_currency": {"value": "USD", "modifier": "EQUALS"},
+            }
+        )
         assert Purchase.objects.filter(pf.to_q()).count() == 1
 
     def test_game_filter_stats_and_existence(self):
@@ -788,16 +801,16 @@ class TestExpandedFiltersAgainstDB:
         data = self._setup_entities()
 
         # purchase_count == 1 (replaces removed has_purchases boolean)
-        gf_pur = GameFilter.from_json({
-            "purchase_count": {"value": 1, "modifier": "EQUALS"}
-        })
+        gf_pur = GameFilter.from_json(
+            {"purchase_count": {"value": 1, "modifier": "EQUALS"}}
+        )
         assert data["game"] in list(Game.objects.filter(gf_pur.to_q()))
         assert data["game2"] not in list(Game.objects.filter(gf_pur.to_q()))
 
         # session_count = 1
-        gf_cnt = GameFilter.from_json({
-            "session_count": {"value": 1, "modifier": "EQUALS"}
-        })
+        gf_cnt = GameFilter.from_json(
+            {"session_count": {"value": 1, "modifier": "EQUALS"}}
+        )
         assert data["game"] in list(Game.objects.filter(gf_cnt.to_q()))
 
     def test_game_filter_purchase_count_range(self):
@@ -807,9 +820,9 @@ class TestExpandedFiltersAgainstDB:
         data = self._setup_entities()
 
         # game has 1 purchase, game2 has 0
-        gf = GameFilter.from_json({
-            "purchase_count": {"value": 1, "modifier": "EQUALS"}
-        })
+        gf = GameFilter.from_json(
+            {"purchase_count": {"value": 1, "modifier": "EQUALS"}}
+        )
         results = set(Game.objects.filter(gf.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
@@ -819,9 +832,9 @@ class TestExpandedFiltersAgainstDB:
         from games.models import Game
 
         data = self._setup_entities()
-        gf = GameFilter.from_json({
-            "playevent_count": {"value": 1, "modifier": "EQUALS"}
-        })
+        gf = GameFilter.from_json(
+            {"playevent_count": {"value": 1, "modifier": "EQUALS"}}
+        )
         results = set(Game.objects.filter(gf.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
@@ -831,9 +844,9 @@ class TestExpandedFiltersAgainstDB:
         from games.models import Game
 
         data = self._setup_entities()
-        gf = GameFilter.from_json({
-            "device": {"value": [data["dev"].id], "modifier": "INCLUDES"}
-        })
+        gf = GameFilter.from_json(
+            {"device": {"value": [data["dev"].id], "modifier": "INCLUDES"}}
+        )
         results = set(Game.objects.filter(gf.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
@@ -843,9 +856,9 @@ class TestExpandedFiltersAgainstDB:
         from games.models import Game
 
         data = self._setup_entities()
-        gf = GameFilter.from_json({
-            "platform_group": {"value": ["Nintendo"], "modifier": "INCLUDES"}
-        })
+        gf = GameFilter.from_json(
+            {"platform_group": {"value": ["Nintendo"], "modifier": "INCLUDES"}}
+        )
         results = set(Game.objects.filter(gf.to_q()))
         # both games are on the same Nintendo platform
         assert data["game"] in results
@@ -861,14 +874,18 @@ class TestExpandedFiltersAgainstDB:
         Session.objects.create(
             game=data["game2"],
             device=data["dev"],
-            timestamp_start=datetime.datetime(2026, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc),
-            timestamp_end=datetime.datetime(2026, 6, 2, 12, 30, 0, tzinfo=datetime.timezone.utc),
+            timestamp_start=datetime.datetime(
+                2026, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2026, 6, 2, 12, 30, 0, tzinfo=datetime.timezone.utc
+            ),
             duration_manual=timedelta(0),
             emulated=True,
         )
-        gf = GameFilter.from_json({
-            "session_emulated": {"value": True, "modifier": "EQUALS"}
-        })
+        gf = GameFilter.from_json(
+            {"session_emulated": {"value": True, "modifier": "EQUALS"}}
+        )
         results = set(Game.objects.filter(gf.to_q()))
         assert data["game2"] in results
         assert data["game"] not in results
@@ -880,9 +897,9 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # data["pur"] is infinite=True, non-refunded.
-        gf_inf = GameFilter.from_json({
-            "purchase_infinite": {"value": True, "modifier": "EQUALS"}
-        })
+        gf_inf = GameFilter.from_json(
+            {"purchase_infinite": {"value": True, "modifier": "EQUALS"}}
+        )
         assert data["game"] in set(Game.objects.filter(gf_inf.to_q()))
         assert data["game2"] not in set(Game.objects.filter(gf_inf.to_q()))
 
@@ -897,9 +914,9 @@ class TestExpandedFiltersAgainstDB:
             converted_currency="USD",
         )
         refunded.games.add(data["game2"])
-        gf_ref = GameFilter.from_json({
-            "purchase_refunded": {"value": True, "modifier": "EQUALS"}
-        })
+        gf_ref = GameFilter.from_json(
+            {"purchase_refunded": {"value": True, "modifier": "EQUALS"}}
+        )
         results = set(Game.objects.filter(gf_ref.to_q()))
         assert data["game2"] in results
         assert data["game"] not in results
@@ -910,14 +927,14 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # data["pur"] defaults to type=game, ownership_type=digital
-        gf = GameFilter.from_json({
-            "purchase_type": {"value": ["game"], "modifier": "INCLUDES"}
-        })
+        gf = GameFilter.from_json(
+            {"purchase_type": {"value": ["game"], "modifier": "INCLUDES"}}
+        )
         assert data["game"] in set(Game.objects.filter(gf.to_q()))
 
-        gf = GameFilter.from_json({
-            "purchase_ownership_type": {"value": ["di"], "modifier": "INCLUDES"}
-        })
+        gf = GameFilter.from_json(
+            {"purchase_ownership_type": {"value": ["di"], "modifier": "INCLUDES"}}
+        )
         assert data["game"] in set(Game.objects.filter(gf.to_q()))
 
     def test_game_filter_purchase_price_any_and_total(self):
@@ -926,16 +943,28 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # data["pur"] has converted_price=45.00 linked to data["game"]
-        gf_any = GameFilter.from_json({
-            "purchase_price_any": {"value": 40.0, "value2": 50.0, "modifier": "BETWEEN"}
-        })
+        gf_any = GameFilter.from_json(
+            {
+                "purchase_price_any": {
+                    "value": 40.0,
+                    "value2": 50.0,
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
         results = set(Game.objects.filter(gf_any.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
 
-        gf_total = GameFilter.from_json({
-            "purchase_price_total": {"value": 40.0, "value2": 50.0, "modifier": "BETWEEN"}
-        })
+        gf_total = GameFilter.from_json(
+            {
+                "purchase_price_total": {
+                    "value": 40.0,
+                    "value2": 50.0,
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
         results = set(Game.objects.filter(gf_total.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
@@ -946,12 +975,14 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # data["pe"] has note="Completed 100%" on data["game"]
-        gf = GameFilter.from_json({
-            "playevent_note": {
-                "value": [{"id": "Completed", "label": "Completed"}],
-                "modifier": "INCLUDES",
+        gf = GameFilter.from_json(
+            {
+                "playevent_note": {
+                    "value": [{"id": "Completed", "label": "Completed"}],
+                    "modifier": "INCLUDES",
+                }
             }
-        })
+        )
         results = set(Game.objects.filter(gf.to_q()))
         assert data["game"] in results
         assert data["game2"] not in results
@@ -962,12 +993,220 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
         # data["s1"] has 10 minutes manual + 30 minutes calculated
-        gf_manual = GameFilter.from_json({
-            "manual_playtime_minutes": {"value": 10, "modifier": "EQUALS"}
-        })
+        gf_manual = GameFilter.from_json(
+            {"manual_playtime_minutes": {"value": 10, "modifier": "EQUALS"}}
+        )
         assert data["game"] in set(Game.objects.filter(gf_manual.to_q()))
 
-        gf_calc = GameFilter.from_json({
-            "calculated_playtime_minutes": {"value": 30, "modifier": "EQUALS"}
-        })
+        gf_calc = GameFilter.from_json(
+            {"calculated_playtime_minutes": {"value": 30, "modifier": "EQUALS"}}
+        )
         assert data["game"] in set(Game.objects.filter(gf_calc.to_q()))
+
+
+class TestDateCriterion:
+    def test_equals(self):
+        c = DateCriterion(value="2025-06-01", modifier=Modifier.EQUALS)
+        assert c.to_q("date_purchased") == Q(date_purchased="2025-06-01")
+
+    def test_not_equals(self):
+        c = DateCriterion(value="2025-06-01", modifier=Modifier.NOT_EQUALS)
+        assert c.to_q("date_purchased") == ~Q(date_purchased="2025-06-01")
+
+    def test_greater_than(self):
+        c = DateCriterion(value="2025-06-01", modifier=Modifier.GREATER_THAN)
+        assert c.to_q("date_purchased") == Q(date_purchased__gt="2025-06-01")
+
+    def test_less_than(self):
+        c = DateCriterion(value="2025-06-01", modifier=Modifier.LESS_THAN)
+        assert c.to_q("date_purchased") == Q(date_purchased__lt="2025-06-01")
+
+    def test_between(self):
+        c = DateCriterion(
+            value="2025-01-01", value2="2025-12-31", modifier=Modifier.BETWEEN
+        )
+        assert c.to_q("date_purchased") == Q(
+            date_purchased__gte="2025-01-01", date_purchased__lte="2025-12-31"
+        )
+
+    def test_between_missing_value2_raises(self):
+        c = DateCriterion(value="2025-01-01", modifier=Modifier.BETWEEN)
+        with pytest.raises(ValueError, match="BETWEEN requires value2"):
+            c.to_q("date_purchased")
+
+    def test_not_between(self):
+        c = DateCriterion(
+            value="2025-01-01", value2="2025-12-31", modifier=Modifier.NOT_BETWEEN
+        )
+        assert c.to_q("date_purchased") == Q(date_purchased__lt="2025-01-01") | Q(
+            date_purchased__gt="2025-12-31"
+        )
+
+    def test_not_between_missing_value2_raises(self):
+        c = DateCriterion(value="2025-01-01", modifier=Modifier.NOT_BETWEEN)
+        with pytest.raises(ValueError, match="NOT_BETWEEN requires value2"):
+            c.to_q("date_purchased")
+
+    def test_is_null(self):
+        c = DateCriterion(value="", modifier=Modifier.IS_NULL)
+        assert c.to_q("date_refunded") == Q(date_refunded__isnull=True)
+
+    def test_not_null(self):
+        c = DateCriterion(value="", modifier=Modifier.NOT_NULL)
+        assert c.to_q("date_refunded") == Q(date_refunded__isnull=False)
+
+    def test_unsupported_modifier_raises(self):
+        c = DateCriterion(value="2025-06-01", modifier=Modifier.INCLUDES)
+        with pytest.raises(ValueError, match="Unsupported modifier"):
+            c.to_q("date_purchased")
+
+    def test_round_trip_json(self):
+        """Dataclass → dict → dataclass survives unchanged for a full BETWEEN."""
+        original = DateCriterion(
+            value="2025-06-01", value2="2025-12-31", modifier=Modifier.BETWEEN
+        )
+        as_dict = original.to_json()
+        assert as_dict == {
+            "value": "2025-06-01",
+            "value2": "2025-12-31",
+            "modifier": Modifier.BETWEEN,
+        }
+        restored = DateCriterion.from_json(
+            {
+                "value": "2025-06-01",
+                "value2": "2025-12-31",
+                "modifier": "BETWEEN",
+            }
+        )
+        assert restored == original
+
+
+class TestPurchaseFilterDates:
+    """End-to-end: a PurchaseFilter built from JSON narrows the queryset
+    correctly across the two DateCriterion fields and composes with
+    BoolCriterion (is_refunded)."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        early = Purchase.objects.create(
+            platform=platform, date_purchased=datetime.date(2024, 1, 15)
+        )
+        mid = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 6, 15),
+            date_refunded=datetime.date(2024, 7, 1),
+        )
+        late = Purchase.objects.create(
+            platform=platform, date_purchased=datetime.date(2025, 1, 15)
+        )
+        return {"early": early, "mid": mid, "late": late}
+
+    @pytest.mark.django_db
+    def test_date_purchased_between(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "date_purchased": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert results == {seeded["early"], seeded["mid"]}
+
+    @pytest.mark.django_db
+    def test_date_purchased_greater_than(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "date_purchased": {
+                    "value": "2024-06-15",
+                    "modifier": "GREATER_THAN",
+                }
+            }
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert results == {seeded["late"]}
+
+    @pytest.mark.django_db
+    def test_date_refunded_is_null(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {"date_refunded": {"value": "", "modifier": "IS_NULL"}}
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert results == {seeded["early"], seeded["late"]}
+
+    @pytest.mark.django_db
+    def test_date_refunded_not_null(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {"date_refunded": {"value": "", "modifier": "NOT_NULL"}}
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert results == {seeded["mid"]}
+
+    @pytest.mark.django_db
+    def test_purchased_between_and_refunded_not_null(self):
+        """AND-composition: only the mid purchase satisfies both."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        seeded = self._seed()
+        pf = PurchaseFilter.from_json(
+            {
+                "date_purchased": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                },
+                "date_refunded": {"value": "", "modifier": "NOT_NULL"},
+            }
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert results == {seeded["mid"]}
+
+    @pytest.mark.django_db
+    def test_purchase_filter_json_round_trip(self):
+        """PurchaseFilter with both DateCriterion fields and is_refunded
+        survives a json → object → json round-trip — confirms
+        DateCriterion is dispatched correctly by OperatorFilter.from_json
+        via the criterion_types lookup."""
+        from games.filters import PurchaseFilter
+
+        payload = {
+            "date_purchased": {
+                "value": "2024-01-01",
+                "value2": "2024-12-31",
+                "modifier": "BETWEEN",
+            },
+            "date_refunded": {"value": "", "modifier": "NOT_NULL"},
+            "is_refunded": {"value": True, "modifier": "EQUALS"},
+        }
+        pf = PurchaseFilter.from_json(payload)
+        assert isinstance(pf.date_purchased, DateCriterion)
+        assert isinstance(pf.date_refunded, DateCriterion)
+        # round-trip back out
+        out = pf.to_json()
+        assert out["date_purchased"]["value"] == "2024-01-01"
+        assert out["date_purchased"]["value2"] == "2024-12-31"
+        assert out["date_purchased"]["modifier"] == Modifier.BETWEEN
+        assert out["date_refunded"]["modifier"] == Modifier.NOT_NULL
