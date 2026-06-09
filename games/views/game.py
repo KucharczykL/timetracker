@@ -2,15 +2,16 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.middleware.csrf import get_token
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
+    H1,
     A,
     AddForm,
     Button,
@@ -21,9 +22,7 @@ from common.components import (
     FilterBar,
     GameStatus,
     GameStatusSelector,
-    H1,
     Icon,
-    SearchField,
     LinkedPurchase,
     Modal,
     ModuleScript,
@@ -31,9 +30,12 @@ from common.components import (
     Popover,
     PopoverTruncated,
     PurchasePrice,
+    SearchField,
     SimpleTable,
+    Ul,
     paginated_table_content,
 )
+from common.components.primitives import Li, Span, Strong
 from common.icons import get_icon
 from common.layout import render_page
 from common.time import (
@@ -193,19 +195,13 @@ def _delete_game_confirmation_modal(
 ) -> SafeText:
     data_items = []
     if session_count:
-        data_items.append(
-            Component(tag_name="li", children=[f"{session_count} session(s)"])
-        )
+        data_items.append(Li(children=[f"{session_count} session(s)"]))
     if purchase_count:
-        data_items.append(
-            Component(tag_name="li", children=[f"{purchase_count} purchase(s)"])
-        )
+        data_items.append(Li(children=[f"{purchase_count} purchase(s)"]))
     if playevent_count:
-        data_items.append(
-            Component(tag_name="li", children=[f"{playevent_count} play event(s)"])
-        )
+        data_items.append(Li(children=[f"{playevent_count} play event(s)"]))
     if not (session_count or purchase_count or playevent_count):
-        data_items.append(Component(tag_name="li", children=["No associated data"]))
+        data_items.append(Li(children=["No associated data"]))
 
     form = Component(
         tag_name="form",
@@ -218,8 +214,7 @@ def _delete_game_confirmation_modal(
         ],
         children=[
             CsrfInput(request),
-            Component(
-                tag_name="p",
+            P(
                 attributes=[
                     (
                         "class",
@@ -231,8 +226,7 @@ def _delete_game_confirmation_modal(
                     "This will permanently delete this game and all associated data:"
                 ],
             ),
-            Component(
-                tag_name="ul",
+            Ul(
                 attributes=[
                     (
                         "class",
@@ -242,8 +236,7 @@ def _delete_game_confirmation_modal(
                 ],
                 children=data_items,
             ),
-            Component(
-                tag_name="p",
+            P(
                 attributes=[
                     (
                         "class",
@@ -279,8 +272,7 @@ def _delete_game_confirmation_modal(
     return Modal(
         "delete-game-confirmation-modal",
         children=[
-            Component(
-                tag_name="h1",
+            P(
                 attributes=[
                     (
                         "class",
@@ -289,12 +281,11 @@ def _delete_game_confirmation_modal(
                 ],
                 children=["Delete Game"],
             ),
-            Component(
-                tag_name="p",
+            P(
                 attributes=[("class", "dark:text-white text-center mt-5")],
                 children=[
                     "Are you sure you want to delete ",
-                    Component(tag_name="strong", children=[game.name]),
+                    Strong(children=[game.name]),
                     "?",
                 ],
             ),
@@ -427,9 +418,7 @@ def _meta_row(
     label: str, value: SafeText | str, extra: SafeText | str = ""
 ) -> SafeText:
     children: list[SafeText | str] = [
-        Component(
-            tag_name="span", attributes=[("class", "uppercase")], children=[label]
-        ),
+        Span(attributes=[("class", "uppercase")], children=[label]),
         value,
     ]
     if extra:
@@ -452,9 +441,8 @@ def _game_action_buttons(game: Game) -> SafeText:
         "dark:text-white dark:hover:text-white dark:hover:bg-red-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
     )
-    edit_link = Component(
-        tag_name="a",
-        attributes=[("href", reverse("games:edit_game", args=[game.id]))],
+    edit_link = A(
+        href=reverse("games:edit_game", args=[game.id]),
         children=[
             Component(
                 tag_name="button",
@@ -463,10 +451,9 @@ def _game_action_buttons(game: Game) -> SafeText:
             )
         ],
     )
-    delete_link = Component(
-        tag_name="a",
+    delete_link = A(
+        href="#",
         attributes=[
-            ("href", "#"),
             ("hx-get", reverse("games:delete_game_confirmation", args=[game.id])),
             ("hx-target", "#global-modal-container"),
         ],
@@ -499,21 +486,16 @@ def _game_history(statuschanges) -> SafeText:
             status=change.new_status,
             children=[change.get_new_status_display()],
         )
-        edit = Component(
-            tag_name="a",
-            attributes=[("href", reverse("games:edit_statuschange", args=[change.id]))],
+        edit = A(
+            href=reverse("games:edit_statuschange", args=[change.id]),
             children=["Edit"],
         )
-        delete = Component(
-            tag_name="a",
-            attributes=[
-                ("href", reverse("games:delete_statuschange", args=[change.id]))
-            ],
+        delete = A(
+            href=reverse("games:delete_statuschange", args=[change.id]),
             children=["Delete"],
         )
         items.append(
-            Component(
-                tag_name="li",
+            Li(
                 attributes=[("class", "text-slate-500")],
                 children=[
                     f"{prefix} status from ",
@@ -528,8 +510,7 @@ def _game_history(statuschanges) -> SafeText:
                 ],
             )
         )
-    return Component(
-        tag_name="ul",
+    return Ul(
         attributes=[("class", "list-disc list-inside")],
         children=items,
     )
@@ -576,12 +557,10 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
 
 def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> SafeText:
     grey_value_class = "text-black dark:text-slate-300"
-    title_span = Component(
-        tag_name="span",
+    title_span = Span(
         attributes=[("class", "text-balance max-w-120 text-4xl")],
         children=[
-            Component(
-                tag_name="span",
+            Span(
                 attributes=[("class", "font-bold font-serif")],
                 children=[game.name],
             ),
@@ -634,8 +613,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> S
         [
             _meta_row(
                 "Original year",
-                Component(
-                    tag_name="span",
+                Span(
                     attributes=[("class", grey_value_class)],
                     children=[str(game.original_year_released)],
                 ),
@@ -648,8 +626,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> S
             _played_row(game, request),
             _meta_row(
                 "Platform",
-                Component(
-                    tag_name="span",
+                Span(
                     attributes=[("class", grey_value_class)],
                     children=[str(game.platform)],
                 ),

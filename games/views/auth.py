@@ -6,6 +6,7 @@ from django.http import HttpResponse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import Component, CsrfInput, Div, Input
+from common.components.primitives import Td, Tr
 from common.layout import render_page
 
 
@@ -15,12 +16,10 @@ def _login_content(form, request) -> SafeText:
         children=[
             CsrfInput(request),
             mark_safe(str(form.as_table())),
-            Component(
-                tag_name="tr",
+            Tr(
                 children=[
-                    Component(tag_name="td"),
-                    Component(
-                        tag_name="td",
+                    Td(),
+                    Td(
                         children=[
                             Input(type="submit", attributes=[("value", "Login")])
                         ],

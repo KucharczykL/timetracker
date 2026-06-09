@@ -6,8 +6,12 @@ from django.db import models
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
-from common.components.primitives import Label, Span
-from common.components.search_select import DEFAULT_PREFETCH, FilterSelect, LabeledOption
+from common.components.primitives import Div, Input, Label, Span
+from common.components.search_select import (
+    DEFAULT_PREFETCH,
+    FilterSelect,
+    LabeledOption,
+)
 
 
 class FilterChoice(NamedTuple):
@@ -206,8 +210,7 @@ def _filter_mins_to_hrs(val) -> str:
 
 def _filter_field(label: str, widget) -> SafeText:
     """A labelled filter field: <div><label>…</label>{widget}</div>."""
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[("class", "flex flex-col gap-1")],
         children=[
             Label(
@@ -223,8 +226,7 @@ def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
     return Label(
         attributes=[("class", "flex items-center gap-2 text-sm text-heading")],
         children=[
-            Component(
-                tag_name="input",
+            Input(
                 attributes=[
                     ("type", "checkbox"),
                     ("name", name),
@@ -283,13 +285,11 @@ def RangeSlider(
     point_mode = bool(min_value and max_value and min_value == max_value)
     initial_mode = "point" if point_mode else "range"
 
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[("class", "range-slider-block mb-4")],
         children=[
             # ── Label row ──
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[("class", "flex items-center gap-2 mb-1")],
                 children=[
                     Label(
@@ -299,8 +299,7 @@ def RangeSlider(
                         ],
                         children=[label],
                     ),
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "number"),
                             ("name", min_input_id),
@@ -324,8 +323,7 @@ def RangeSlider(
                         ],
                         children=["–"],
                     ),
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "number"),
                             ("name", max_input_id),
@@ -379,8 +377,7 @@ def RangeSlider(
                 ],
             ),
             # ── Slider row ──
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[
                     ("class", "range-slider relative h-10 select-none mt-1"),
                     ("data-mode", initial_mode),
@@ -389,8 +386,7 @@ def RangeSlider(
                     ("data-step", str(step)),
                 ],
                 children=[
-                    Component(
-                        tag_name="div",
+                    Div(
                         attributes=[
                             (
                                 "class",
@@ -399,8 +395,7 @@ def RangeSlider(
                             ),
                         ],
                     ),
-                    Component(
-                        tag_name="div",
+                    Div(
                         attributes=[
                             (
                                 "class",
@@ -411,8 +406,7 @@ def RangeSlider(
                         ],
                     ),
                     # Min handle (hidden in point mode via JS)
-                    Component(
-                        tag_name="div",
+                    Div(
                         attributes=[
                             (
                                 "class",
@@ -429,8 +423,7 @@ def RangeSlider(
                         ],
                     ),
                     # Max handle
-                    Component(
-                        tag_name="div",
+                    Div(
                         attributes=[
                             (
                                 "class",
@@ -480,8 +473,7 @@ def _filter_collapse_button() -> SafeText:
 
 
 def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[("class", "flex gap-3 items-center")],
         children=[
             Component(
@@ -521,8 +513,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                     ("id", "save-preset-area"),
                 ],
                 children=[
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "text"),
                             ("id", "preset-name-input"),
@@ -572,8 +563,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                     ),
                 ],
             ),
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[
                     ("id", "preset-dropdown"),
                     ("class", "relative"),
@@ -594,13 +584,11 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
     """Shared collapsible filter-bar chrome. `fields` is the per-entity body
     (grids, sliders, checkboxes); the shell adds the collapse toggle, the form,
     the hidden filter-json input and the Apply/Clear/preset action row."""
-    return Component(
-        tag_name="div",
+    return Div(
         attributes=[("id", "filter-bar"), ("class", "mb-6")],
         children=[
             _filter_collapse_button(),
-            Component(
-                tag_name="div",
+            Div(
                 attributes=[
                     ("id", "filter-bar-body"),
                     (
@@ -617,8 +605,7 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
                             ("onsubmit", "return applyFilterBar(event)"),
                         ],
                         children=[
-                            Component(
-                                tag_name="input",
+                            Input(
                                 attributes=[
                                     ("type", "hidden"),
                                     ("id", _FILTER_INPUT_ID),
@@ -725,8 +712,7 @@ def FilterBar(
     price_range_max = max(int(price_aggregate.get("price_max") or 100), 1)
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
@@ -817,8 +803,7 @@ def FilterBar(
             min_placeholder="e.g. 1985",
             max_placeholder="e.g. 2010",
         ),
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", "flex items-end gap-4 mb-4 flex-wrap")],
             children=[
                 _filter_checkbox("filter-mastered", "Mastered", mastered_value),
@@ -970,8 +955,7 @@ def SessionFilterBar(
         duration_range_max = 200
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
@@ -1027,8 +1011,7 @@ def SessionFilterBar(
             min_placeholder="e.g. 30",
             max_placeholder="e.g. 180",
         ),
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", "flex gap-4 mb-4")],
             children=[
                 _filter_checkbox("filter-emulated", "Emulated", emulated_value),
@@ -1079,8 +1062,7 @@ def PurchaseFilterBar(
         num_range_min, num_range_max = 0, 10
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
@@ -1127,42 +1109,48 @@ def PurchaseFilterBar(
                 ),
             ],
         ),
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", "flex items-end gap-4 mb-4")],
             children=[
                 _filter_checkbox("filter-refunded", "Refunded", is_refunded_value),
                 _filter_checkbox("filter-infinite", "Infinite", infinite_value),
-                _filter_checkbox("filter-needs-price-update", "Needs Price Update", needs_price_update_value),
+                _filter_checkbox(
+                    "filter-needs-price-update",
+                    "Needs Price Update",
+                    needs_price_update_value,
+                ),
             ],
         ),
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
                     "Original Currency",
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "text"),
                             ("name", "filter-price_currency"),
                             ("value", price_currency_value),
                             ("placeholder", "e.g. USD, EUR"),
-                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                            (
+                                "class",
+                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                            ),
                         ],
                     ),
                 ),
                 _filter_field(
                     "Converted Currency",
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "text"),
                             ("name", "filter-converted_currency"),
                             ("value", converted_currency_value),
                             ("placeholder", "e.g. USD, EUR"),
-                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                            (
+                                "class",
+                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                            ),
                         ],
                     ),
                 ),
@@ -1193,9 +1181,7 @@ def PurchaseFilterBar(
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
 
 
-def DeviceFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+def DeviceFilterBar(filter_json="", preset_list_url="", preset_save_url="") -> SafeText:
     """Collapsible filter bar for the Device list."""
     from games.models import Device
 
@@ -1204,8 +1190,7 @@ def DeviceFilterBar(
     type_choice = _filter_get_choice(existing, "type")
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
@@ -1233,33 +1218,36 @@ def PlatformFilterBar(
     group_value = existing.get("group", {}).get("value", "")
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
                     "Platform Name",
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "text"),
                             ("name", "filter-name"),
                             ("value", name_value),
                             ("placeholder", "e.g. Nintendo Switch"),
-                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                            (
+                                "class",
+                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                            ),
                         ],
                     ),
                 ),
                 _filter_field(
                     "Platform Group",
-                    Component(
-                        tag_name="input",
+                    Input(
                         attributes=[
                             ("type", "text"),
                             ("name", "filter-group"),
                             ("value", group_value),
                             ("placeholder", "e.g. Nintendo"),
-                            ("class", "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body"),
+                            (
+                                "class",
+                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
+                            ),
                         ],
                     ),
                 ),
@@ -1278,8 +1266,7 @@ def PlayEventFilterBar(
     days_min, days_max = _parse_range(existing, "days_to_finish")
 
     fields = [
-        Component(
-            tag_name="div",
+        Div(
             attributes=[("class", _FILTER_GRID_CLASS)],
             children=[
                 _filter_field(
