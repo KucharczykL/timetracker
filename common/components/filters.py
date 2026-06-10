@@ -747,7 +747,8 @@ def FilterBar(
     device_choice = _filter_get_choice(existing, "device")
     purchase_type_choice = _filter_get_choice(existing, "purchase_type")
     purchase_ownership_choice = _filter_get_choice(existing, "purchase_ownership_type")
-    playevent_note_choice = _filter_get_choice(existing, "playevent_note")
+    playevent_note_value = existing.get("playevent_note", {}).get("value", "")
+    playevent_note_modifier = existing.get("playevent_note", {}).get("modifier", "EQUALS")
 
     year_min, year_max = _parse_range(existing, "year_released")
     original_year_min, original_year_max = _parse_range(
@@ -874,14 +875,11 @@ def FilterBar(
                 ),
                 _filter_field(
                     "Playevent Note",
-                    FilterSelect(
-                        field_name="playevent_note",
-                        included=playevent_note_choice.selected,
-                        excluded=playevent_note_choice.excluded,
-                        modifier=_split_modifier(playevent_note_choice.modifier),
-                        modifier_options=_modifier_options(nullable=False),
-                        free_text=True,
-                        placeholder="Type a note substring…",
+                    StringFilter(
+                        input_name_prefix="filter-playevent_note",
+                        value=playevent_note_value,
+                        modifier=playevent_note_modifier,
+                        placeholder="e.g. Completed, Started",
                     ),
                 ),
                 _filter_field(
@@ -1085,6 +1083,8 @@ def SessionFilterBar(
     existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
+    note_value = existing.get("note", {}).get("value", "")
+    note_modifier = existing.get("note", {}).get("modifier", "EQUALS")
 
     dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_minutes")
     dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_minutes")
@@ -1124,6 +1124,15 @@ def SessionFilterBar(
                         device_choice,
                         search_url="/api/devices/search",
                         nullable=Session._meta.get_field("device").null,
+                    ),
+                ),
+                _filter_field(
+                    "Session Note",
+                    StringFilter(
+                        input_name_prefix="filter-note",
+                        value=note_value,
+                        modifier=note_modifier,
+                        placeholder="e.g. Boss fight, speedrun",
                     ),
                 ),
             ],

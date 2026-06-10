@@ -88,7 +88,7 @@ class GameFilter(OperatorFilter):
     purchase_ownership_type: ChoiceCriterion | None = None  # by ownership
 
     # Cross-entity: substring match against the game's playevent notes
-    playevent_note: ChoiceCriterion | None = None
+    playevent_note: StringCriterion | None = None
 
     # Free-text search (combines name + sort_name + platform name)
     search: StringCriterion | None = None
@@ -407,30 +407,13 @@ class GameFilter(OperatorFilter):
         return Q()
 
     @staticmethod
-    def _playevent_note_to_q(criterion: ChoiceCriterion) -> Q:
-        """Match games by substrings against their playevents' notes.
-
-        Each `value` entry is a substring OR'd into the include side; each
-        `excludes` entry is AND'd as a NOT. Empty lists contribute nothing.
-        """
+    def _playevent_note_to_q(criterion: StringCriterion) -> Q:
+        """Match games by substring / regex / null against their playevents' notes."""
         from games.models import PlayEvent
 
-        q = Q()
-        if criterion.value:
-            include_q = Q()
-            negate_include = criterion.modifier == Modifier.EXCLUDES
-            for term in criterion.value:
-                matching_ids = PlayEvent.objects.filter(
-                    note__icontains=term
-                ).values_list("game_id", flat=True)
-                include_q |= Q(id__in=matching_ids)
-            q &= ~include_q if negate_include else include_q
-        for term in criterion.excludes:
-            matching_ids = PlayEvent.objects.filter(note__icontains=term).values_list(
-                "game_id", flat=True
-            )
-            q &= ~Q(id__in=matching_ids)
-        return q
+        event_q = criterion.to_q("note")
+        matching_ids = PlayEvent.objects.filter(event_q).values_list("game_id", flat=True)
+        return Q(id__in=matching_ids)
 
 
 # ── SessionFilter ──────────────────────────────────────────────────────────
