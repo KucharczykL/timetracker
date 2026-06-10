@@ -108,9 +108,17 @@
       { name: "filter-group", key: "group" }
     ];
     textFields.forEach(function (tf) {
-      var el = form.querySelector('[name="' + tf.name + '"]');
-      if (el && el.value.trim()) {
-        filter[tf.key] = { value: el.value.trim(), modifier: "EQUALS" };
+      var modifierEl = form.querySelector('[name="' + tf.name + '-modifier"]:checked');
+      var modifier = modifierEl ? modifierEl.value : "EQUALS";
+      
+      var isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
+      if (isPresence) {
+        filter[tf.key] = { modifier: modifier };
+      } else {
+        var el = form.querySelector('[name="' + tf.name + '"]');
+        if (el && el.value.trim()) {
+          filter[tf.key] = { value: el.value.trim(), modifier: modifier };
+        }
       }
     });
 
@@ -299,6 +307,23 @@
       });
     });
   }
+
+  /** Enable/disable the input text box depending on selected string modifier. */
+  window.toggleStringFilterInput = function (radio) {
+    var container = radio.closest(".flex-col");
+    if (!container) return;
+    var textInput = container.querySelector('input[type="text"]');
+    if (!textInput) return;
+    var val = radio.value;
+    if (val === "IS_NULL" || val === "NOT_NULL") {
+      textInput.disabled = true;
+      textInput.value = "";
+      textInput.classList.add("opacity-50", "cursor-not-allowed");
+    } else {
+      textInput.disabled = false;
+      textInput.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+  };
 
   /** Show the preset name input field and the confirm button. */
   window.showPresetNameInput = function () {
