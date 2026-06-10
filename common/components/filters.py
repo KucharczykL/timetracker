@@ -1471,3 +1471,69 @@ def PlayEventFilterBar(
         ),
     ]
     return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+
+
+def StringFilter(
+    input_name_prefix: str,
+    value: str = "",
+    modifier: str = "EQUALS",
+    placeholder: str = "",
+) -> SafeText:
+    """Renders a string filter with 8 modifier radio options and a text input."""
+    from common.criteria import Modifier
+
+    if modifier not in [m.value for m in Modifier.for_strings()]:
+        modifier = "EQUALS"
+
+    options = [
+        ("EQUALS", "is"),
+        ("NOT_EQUALS", "is not"),
+        ("INCLUDES", "includes"),
+        ("EXCLUDES", "excludes"),
+        ("MATCHES_REGEX", "matches regex"),
+        ("NOT_MATCHES_REGEX", "not matches regex"),
+        ("IS_NULL", "is null"),
+        ("NOT_NULL", "is not null"),
+    ]
+
+    # Grid of Radios using standard Radio primitives
+    radio_buttons = [
+        Radio(
+            name=f"{input_name_prefix}-modifier",
+            label=lbl,
+            checked=(modifier == mod_val),
+            value=mod_val,
+            attributes=[
+                ("data-string-modifier-radio", ""),
+                ("onclick", "toggleStringFilterInput(this)"),
+            ]
+        )
+        for mod_val, lbl in options
+    ]
+
+    input_disabled = modifier in ("IS_NULL", "NOT_NULL")
+
+    input_attrs = [
+        ("type", "text"),
+        ("name", input_name_prefix),
+        ("value", value if not input_disabled else ""),
+        ("placeholder", placeholder),
+        (
+            "class",
+            "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body transition-all "
+            + ("opacity-50 cursor-not-allowed" if input_disabled else ""),
+        ),
+    ]
+    if input_disabled:
+        input_attrs.append(("disabled", "true"))
+
+    return Div(
+        attributes=[("class", "flex flex-col gap-2")],
+        children=[
+            Div(
+                attributes=[("class", "grid grid-cols-2 sm:grid-cols-4 gap-2 py-1")],
+                children=radio_buttons,
+            ),
+            Input(attributes=input_attrs),
+        ],
+    )
