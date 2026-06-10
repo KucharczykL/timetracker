@@ -38,9 +38,33 @@ class TestStringCriterion:
         c = StringCriterion(value="zelda", modifier=Modifier.EQUALS)
         assert c.to_q("name") == Q(name="zelda")
 
+    def test_not_equals(self):
+        c = StringCriterion(value="zelda", modifier=Modifier.NOT_EQUALS)
+        assert c.to_q("name") == ~Q(name="zelda")
+
+    def test_includes(self):
+        c = StringCriterion(value="zelda", modifier=Modifier.INCLUDES)
+        assert c.to_q("name") == Q(name__icontains="zelda")
+
+    def test_excludes(self):
+        c = StringCriterion(value="zelda", modifier=Modifier.EXCLUDES)
+        assert c.to_q("name") == ~Q(name__icontains="zelda")
+
+    def test_matches_regex(self):
+        c = StringCriterion(value="zelda", modifier=Modifier.MATCHES_REGEX)
+        assert c.to_q("name") == Q(name__regex="zelda")
+
+    def test_not_matches_regex(self):
+        c = StringCriterion(value="zelda", modifier=Modifier.NOT_MATCHES_REGEX)
+        assert c.to_q("name") == ~Q(name__regex="zelda")
+
     def test_is_null(self):
         c = StringCriterion(value="", modifier=Modifier.IS_NULL)
         assert c.to_q("name") == Q(name__isnull=True)
+
+    def test_not_null(self):
+        c = StringCriterion(value="", modifier=Modifier.NOT_NULL)
+        assert c.to_q("name") == Q(name__isnull=False)
 
 
 class TestIntCriterion:
