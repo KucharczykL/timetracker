@@ -272,7 +272,9 @@ def _filter_boolean_radio(name: str, label: str, value: bool | None) -> SafeText
                 attributes=[("class", "flex items-center gap-4 h-9")],
                 children=[
                     Radio(name=name, label="True", checked=value is True, value="true"),
-                    Radio(name=name, label="False", checked=value is False, value="false"),
+                    Radio(
+                        name=name, label="False", checked=value is False, value="false"
+                    ),
                 ],
             ),
         ],
@@ -419,7 +421,7 @@ def RangeSlider(
             # ── Slider row ──
             Div(
                 attributes=[
-                    ("class", "range-slider relative h-10 select-none mt-1"),
+                    ("class", "range-slider relative h-10 w-5/6 select-none mt-1"),
                     ("data-mode", initial_mode),
                     ("data-min", str(range_min)),
                     ("data-max", str(range_max)),
@@ -748,7 +750,9 @@ def FilterBar(
     purchase_type_choice = _filter_get_choice(existing, "purchase_type")
     purchase_ownership_choice = _filter_get_choice(existing, "purchase_ownership_type")
     playevent_note_value = existing.get("playevent_note", {}).get("value", "")
-    playevent_note_modifier = existing.get("playevent_note", {}).get("modifier", "EQUALS")
+    playevent_note_modifier = existing.get("playevent_note", {}).get(
+        "modifier", "EQUALS"
+    )
 
     year_min, year_max = _parse_range(existing, "year_released")
     original_year_min, original_year_max = _parse_range(
@@ -1199,9 +1203,13 @@ def PurchaseFilterBar(
     infinite_value = _parse_bool_nullable(existing, "infinite")
     needs_price_update_value = _parse_bool_nullable(existing, "needs_price_update")
     price_currency_value = existing.get("price_currency", {}).get("value", "")
-    price_currency_modifier = existing.get("price_currency", {}).get("modifier", "EQUALS")
+    price_currency_modifier = existing.get("price_currency", {}).get(
+        "modifier", "EQUALS"
+    )
     converted_currency_value = existing.get("converted_currency", {}).get("value", "")
-    converted_currency_modifier = existing.get("converted_currency", {}).get("modifier", "EQUALS")
+    converted_currency_modifier = existing.get("converted_currency", {}).get(
+        "modifier", "EQUALS"
+    )
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
     date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
 
@@ -1344,7 +1352,9 @@ def PurchaseFilterBar(
                         _filter_boolean_radio(
                             "filter-refunded", "Refunded", is_refunded_value
                         ),
-                        _filter_boolean_radio("filter-infinite", "Infinite", infinite_value),
+                        _filter_boolean_radio(
+                            "filter-infinite", "Infinite", infinite_value
+                        ),
                         _filter_boolean_radio(
                             "filter-needs-price-update",
                             "Needs Price Update",
@@ -1495,7 +1505,7 @@ def StringFilter(
             attributes=[
                 ("data-string-modifier-radio", ""),
                 ("onclick", "toggleStringFilterInput(this)"),
-            ]
+            ],
         )
         for mod_val, lbl in options
     ]
@@ -1517,10 +1527,15 @@ def StringFilter(
         input_attrs.append(("disabled", "true"))
 
     return Div(
-        attributes=[("class", "flex flex-col gap-2")],
+        attributes=[("class", "flex flex-col gap-2 @container")],
         children=[
             Div(
-                attributes=[("class", "grid grid-cols-2 sm:grid-cols-4 gap-2 py-1")],
+                attributes=[
+                    (
+                        "class",
+                        "grid grid-cols-2 @md:grid-cols-4 gap-2 py-1",
+                    )
+                ],
                 children=radio_buttons,
             ),
             Input(attributes=input_attrs),
