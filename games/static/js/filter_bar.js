@@ -152,17 +152,17 @@
       { prefix: "filter-session-average", key: "session_average" },
       { prefix: "filter-purchase-count", key: "purchase_count" },
       { prefix: "filter-playevent-count", key: "playevent_count" },
-      { prefix: "filter-duration-total-minutes", key: "duration_total_minutes" },
-      { prefix: "filter-duration-manual-minutes", key: "duration_manual_minutes" },
-      { prefix: "filter-duration-calculated-minutes", key: "duration_calculated_minutes" },
-      { prefix: "filter-manual-playtime-minutes", key: "manual_playtime_minutes" },
-      { prefix: "filter-calculated-playtime-minutes", key: "calculated_playtime_minutes" },
+      { prefix: "filter-duration-total-hours", key: "duration_total_hours" },
+      { prefix: "filter-duration-manual-hours", key: "duration_manual_hours" },
+      { prefix: "filter-duration-calculated-hours", key: "duration_calculated_hours" },
+      { prefix: "filter-manual-playtime-hours", key: "manual_playtime_hours" },
+      { prefix: "filter-calculated-playtime-hours", key: "calculated_playtime_hours" },
       { prefix: "filter-num-purchases", key: "num_purchases" },
       { prefix: "filter-price", key: "price" },
       { prefix: "filter-purchase-price-total", key: "purchase_price_total" },
       { prefix: "filter-purchase-price-any", key: "purchase_price_any" },
       { prefix: "filter-days-to-finish", key: "days_to_finish" },
-      { prefix: "filter-playtime", key: "playtime_minutes", convert: function(v) { return Math.round(v * 60); }, ignoreZeroZero: true }
+      { prefix: "filter-playtime-hours", key: "playtime_hours", ignoreZeroZero: true }
     ];
 
     rangeFields.forEach(function (rf) {

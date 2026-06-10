@@ -759,10 +759,10 @@ def FilterBar(
         existing, "original_year_released"
     )
     mastered_value = _parse_bool_nullable(existing, "mastered")
-    playtime = existing.get("playtime_minutes", {})
+    playtime = existing.get("playtime_hours", {})
     if isinstance(playtime, dict):
-        playtime_min = _filter_mins_to_hrs(playtime.get("value", ""))
-        playtime_max = _filter_mins_to_hrs(playtime.get("value2", ""))
+        playtime_min = playtime.get("value", "")
+        playtime_max = playtime.get("value2", "")
     else:
         playtime_min = ""
         playtime_max = ""
@@ -771,8 +771,8 @@ def FilterBar(
     session_avg_min, session_avg_max = _parse_range(existing, "session_average")
     purchase_count_min, purchase_count_max = _parse_range(existing, "purchase_count")
     playevent_count_min, playevent_count_max = _parse_range(existing, "playevent_count")
-    manual_pt_min, manual_pt_max = _parse_range(existing, "manual_playtime_minutes")
-    calc_pt_min, calc_pt_max = _parse_range(existing, "calculated_playtime_minutes")
+    manual_pt_min, manual_pt_max = _parse_range(existing, "manual_playtime_hours")
+    calc_pt_min, calc_pt_max = _parse_range(existing, "calculated_playtime_hours")
     price_total_min, price_total_max = _parse_range(existing, "purchase_price_total")
     price_any_min, price_any_max = _parse_range(existing, "purchase_price_any")
     purchase_refunded_value = _parse_bool_nullable(existing, "purchase_refunded")
@@ -916,7 +916,7 @@ def FilterBar(
                     "Total playtime",
                     RangeSlider(
                         label="Total playtime",
-                        input_name_prefix="filter-playtime",
+                        input_name_prefix="filter-playtime-hours",
                         min_value=playtime_min,
                         max_value=playtime_max,
                         range_min=0,
@@ -927,45 +927,31 @@ def FilterBar(
                     ),
                 ),
                 _filter_field(
-                    "Manual Playtime (mins)",
+                    "Manual Playtime (hrs)",
                     RangeSlider(
-                        label="Manual Playtime (mins)",
-                        input_name_prefix="filter-manual-playtime-minutes",
+                        label="Manual Playtime (hrs)",
+                        input_name_prefix="filter-manual-playtime-hours",
                         min_value=manual_pt_min,
                         max_value=manual_pt_max,
                         range_min=0,
-                        range_max=max(playtime_range_max * 60, 240),
+                        range_max=max(playtime_range_max, 4),
                         step="1",
-                        min_placeholder="e.g. 10",
-                        max_placeholder="e.g. 120",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 10",
                     ),
                 ),
                 _filter_field(
-                    "Calculated Playtime (mins)",
+                    "Calculated Playtime (hrs)",
                     RangeSlider(
-                        label="Calculated Playtime (mins)",
-                        input_name_prefix="filter-calculated-playtime-minutes",
+                        label="Calculated Playtime (hrs)",
+                        input_name_prefix="filter-calculated-playtime-hours",
                         min_value=calc_pt_min,
                         max_value=calc_pt_max,
                         range_min=0,
-                        range_max=max(playtime_range_max * 60, 240),
+                        range_max=max(playtime_range_max, 4),
                         step="1",
-                        min_placeholder="e.g. 30",
-                        max_placeholder="e.g. 120",
-                    ),
-                ),
-                _filter_field(
-                    "Calculated Playtime (mins)",
-                    RangeSlider(
-                        label="Calculated Playtime (mins)",
-                        input_name_prefix="filter-calculated-playtime-minutes",
-                        min_value=calc_pt_min,
-                        max_value=calc_pt_max,
-                        range_min=0,
-                        range_max=max(playtime_range_max * 60, 240),
-                        step="1",
-                        min_placeholder="e.g. 30",
-                        max_placeholder="e.g. 180",
+                        min_placeholder="e.g. 1",
+                        max_placeholder="e.g. 10",
                     ),
                 ),
                 _filter_field(
@@ -1090,9 +1076,9 @@ def SessionFilterBar(
     note_value = existing.get("note", {}).get("value", "")
     note_modifier = existing.get("note", {}).get("modifier", "EQUALS")
 
-    dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_minutes")
-    dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_minutes")
-    dur_calc_min, dur_calc_max = _parse_range(existing, "duration_calculated_minutes")
+    dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_hours")
+    dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_hours")
+    dur_calc_min, dur_calc_max = _parse_range(existing, "duration_calculated_hours")
     emulated_value = _parse_bool_nullable(existing, "emulated")
     is_active_value = _parse_bool_nullable(existing, "is_active")
     try:
@@ -1142,37 +1128,37 @@ def SessionFilterBar(
             ],
         ),
         RangeSlider(
-            label="Total Duration (mins)",
-            input_name_prefix="filter-duration-total-minutes",
+            label="Total Duration (hrs)",
+            input_name_prefix="filter-duration-total-hours",
             min_value=dur_tot_min,
             max_value=dur_tot_max,
             range_min=0,
-            range_max=duration_range_max * 60,  # Range sliders use minutes now
+            range_max=duration_range_max,
             step="1",
-            min_placeholder="e.g. 30",
-            max_placeholder="e.g. 180",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 10",
         ),
         RangeSlider(
-            label="Manual Duration (mins)",
-            input_name_prefix="filter-duration-manual-minutes",
+            label="Manual Duration (hrs)",
+            input_name_prefix="filter-duration-manual-hours",
             min_value=dur_man_min,
             max_value=dur_man_max,
             range_min=0,
-            range_max=240,
+            range_max=duration_range_max,
             step="1",
-            min_placeholder="e.g. 10",
-            max_placeholder="e.g. 120",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 10",
         ),
         RangeSlider(
-            label="Calculated Duration (mins)",
-            input_name_prefix="filter-duration-calculated-minutes",
+            label="Calculated Duration (hrs)",
+            input_name_prefix="filter-duration-calculated-hours",
             min_value=dur_calc_min,
             max_value=dur_calc_max,
             range_min=0,
-            range_max=duration_range_max * 60,
+            range_max=duration_range_max,
             step="1",
-            min_placeholder="e.g. 30",
-            max_placeholder="e.g. 180",
+            min_placeholder="e.g. 1",
+            max_placeholder="e.g. 10",
         ),
         Div(
             attributes=[("class", "flex gap-6 mb-4")],
