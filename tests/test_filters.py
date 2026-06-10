@@ -560,7 +560,8 @@ class TestFilterBarRendering:
 
     def test_mastered_not_checked_by_default(self):
         html = str(FilterBar(filter_json=""))
-        assert 'checked="true"' not in html
+        assert 'name="filter-mastered" value="true" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"' not in html
+        assert 'name="filter-mastered" value="false" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"' not in html
 
     def test_mastered_checked_when_filtered(self):
         html = str(
@@ -1002,7 +1003,7 @@ class TestExpandedFiltersAgainstDB:
         gf = GameFilter.from_json(
             {
                 "playevent_note": {
-                    "value": [{"id": "Completed", "label": "Completed"}],
+                    "value": "Completed",
                     "modifier": "INCLUDES",
                 }
             }

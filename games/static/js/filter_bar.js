@@ -105,7 +105,9 @@
       { name: "filter-price_currency", key: "price_currency" },
       { name: "filter-converted_currency", key: "converted_currency" },
       { name: "filter-name", key: "name" },
-      { name: "filter-group", key: "group" }
+      { name: "filter-group", key: "group" },
+      { name: "filter-playevent_note", key: "playevent_note" },
+      { name: "filter-note", key: "note" }
     ];
     textFields.forEach(function (tf) {
       var modifierEl = form.querySelector('[name="' + tf.name + '-modifier"]:checked');

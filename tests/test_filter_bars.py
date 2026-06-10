@@ -240,9 +240,9 @@ class FilterBarRenderingTest(TestCase):
         # New enum selects (purchase type / ownership)
         self.assertIn('data-name="purchase_type"', html)
         self.assertIn('data-name="purchase_ownership_type"', html)
-        # Free-text widget for playevent notes
-        self.assertIn('data-name="playevent_note"', html)
-        self.assertIn('data-search-select-free-text="true"', html)
+        # Free-text widget for playevent notes (now StringFilter)
+        self.assertIn('name="filter-playevent_note"', html)
+        self.assertIn('name="filter-playevent_note-modifier"', html)
         # New range slider input prefixes
         self.assertIn('name="filter-purchase-count-min"', html)
         self.assertIn('name="filter-playevent-count-min"', html)
