@@ -316,7 +316,11 @@
     if (!container) return;
     var textInput = container.querySelector('input[type="text"]');
     if (!textInput) return;
-    var val = radio.value;
+    
+    // Find the currently checked radio in the container
+    var checkedRadio = container.querySelector('input[type="radio"]:checked');
+    var val = checkedRadio ? checkedRadio.value : "";
+    
     if (val === "IS_NULL" || val === "NOT_NULL") {
       textInput.disabled = true;
       textInput.value = "";
@@ -455,9 +459,21 @@
     });
   }
 
+  /**
+   * Set up event listeners for string modifier radio buttons.
+   */
+  function setupStringFilters() {
+    document.querySelectorAll('input[data-string-modifier-radio]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        window.toggleStringFilterInput(this);
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     injectSearchInputs();
     setupDeselectableRadios();
+    setupStringFilters();
     loadPresets();
   });
 })();

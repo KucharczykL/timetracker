@@ -126,3 +126,20 @@ def test_string_filter_prefilled_states(live_server, page):
     assert group_input.input_value() == ""
     assert not group_input.is_enabled()
     assert page.locator('input[name="filter-group-modifier"][value="IS_NULL"]').is_checked()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
+def test_string_filter_deselect_re_enables(live_server, page):
+    page.goto(live_server.url + "/test-string-filter-empty/")
+
+    name_input = page.locator('input[name="filter-name"]')
+    is_null_radio = page.locator('input[name="filter-name-modifier"][value="IS_NULL"]')
+    
+    # 1. Click "is null" -> disables input
+    is_null_radio.click()
+    assert not name_input.is_enabled()
+    
+    # 2. Click "is null" again to deselect/uncheck -> should re-enable the text input
+    is_null_radio.click()
+    assert name_input.is_enabled()
