@@ -459,7 +459,7 @@ def Radio(
 
     return Label(
         attributes=[
-            ("class", "flex items-center gap-1.5 text-sm text-heading cursor-pointer")
+            ("class", "flex items-center gap-1 text-sm text-heading cursor-pointer")
         ],
         children=[input_el, label],
     )
