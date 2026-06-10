@@ -1190,7 +1190,9 @@ def PurchaseFilterBar(
     infinite_value = _parse_bool_nullable(existing, "infinite")
     needs_price_update_value = _parse_bool_nullable(existing, "needs_price_update")
     price_currency_value = existing.get("price_currency", {}).get("value", "")
+    price_currency_modifier = existing.get("price_currency", {}).get("modifier", "EQUALS")
     converted_currency_value = existing.get("converted_currency", {}).get("value", "")
+    converted_currency_modifier = existing.get("converted_currency", {}).get("modifier", "EQUALS")
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
     date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
 
@@ -1264,32 +1266,20 @@ def PurchaseFilterBar(
                     children=[
                         _filter_field(
                             "Original Currency",
-                            Input(
-                                attributes=[
-                                    ("type", "text"),
-                                    ("name", "filter-price_currency"),
-                                    ("value", price_currency_value),
-                                    ("placeholder", "e.g. USD, EUR"),
-                                    (
-                                        "class",
-                                        "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
-                                    ),
-                                ],
+                            StringFilter(
+                                input_name_prefix="filter-price_currency",
+                                value=price_currency_value,
+                                modifier=price_currency_modifier,
+                                placeholder="e.g. USD, EUR",
                             ),
                         ),
                         _filter_field(
                             "Converted Currency",
-                            Input(
-                                attributes=[
-                                    ("type", "text"),
-                                    ("name", "filter-converted_currency"),
-                                    ("value", converted_currency_value),
-                                    ("placeholder", "e.g. USD, EUR"),
-                                    (
-                                        "class",
-                                        "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
-                                    ),
-                                ],
+                            StringFilter(
+                                input_name_prefix="filter-converted_currency",
+                                value=converted_currency_value,
+                                modifier=converted_currency_modifier,
+                                placeholder="e.g. USD, EUR",
                             ),
                         ),
                     ],
@@ -1393,7 +1383,9 @@ def PlatformFilterBar(
     existing = _filter_parse(filter_json)
 
     name_value = existing.get("name", {}).get("value", "")
+    name_modifier = existing.get("name", {}).get("modifier", "EQUALS")
     group_value = existing.get("group", {}).get("value", "")
+    group_modifier = existing.get("group", {}).get("modifier", "EQUALS")
 
     fields = [
         Div(
@@ -1401,32 +1393,20 @@ def PlatformFilterBar(
             children=[
                 _filter_field(
                     "Platform Name",
-                    Input(
-                        attributes=[
-                            ("type", "text"),
-                            ("name", "filter-name"),
-                            ("value", name_value),
-                            ("placeholder", "e.g. Nintendo Switch"),
-                            (
-                                "class",
-                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
-                            ),
-                        ],
+                    StringFilter(
+                        input_name_prefix="filter-name",
+                        value=name_value,
+                        modifier=name_modifier,
+                        placeholder="e.g. Nintendo Switch",
                     ),
                 ),
                 _filter_field(
                     "Platform Group",
-                    Input(
-                        attributes=[
-                            ("type", "text"),
-                            ("name", "filter-group"),
-                            ("value", group_value),
-                            ("placeholder", "e.g. Nintendo"),
-                            (
-                                "class",
-                                "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body",
-                            ),
-                        ],
+                    StringFilter(
+                        input_name_prefix="filter-group",
+                        value=group_value,
+                        modifier=group_modifier,
+                        placeholder="e.g. Nintendo",
                     ),
                 ),
             ],
