@@ -22,6 +22,9 @@ init:
 	pnpm install
 	$(MAKE) loadplatforms
 
+server:
+	uv run python -Wa manage.py runserver
+
 dev:
 	@pnpm concurrently \
 		--names "Django,Tailwind" \
