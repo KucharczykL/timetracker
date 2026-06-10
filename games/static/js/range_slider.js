@@ -46,8 +46,10 @@
         return Math.max(lo, Math.min(hi, value));
       }
 
-      function getTargetValue(target) {
-        return parseInt(target ? target.value : 0, 10) || dataMin;
+      function getTargetValue(target, defaultVal) {
+        if (!target || target.value === "") return defaultVal;
+        var parsed = parseInt(target.value, 10);
+        return isNaN(parsed) ? defaultVal : parsed;
       }
       function setTargetValue(target, value) {
         if (target) target.value = value;
@@ -57,22 +59,30 @@
 
       function updateTrackFill() {
         if (!trackFill) return;
-        var minValue = getTargetValue(minTarget);
-        var maxValue = getTargetValue(maxTarget);
+        var minVal = clamp(getTargetValue(minTarget, dataMin), dataMin, dataMax);
+        var maxVal = clamp(getTargetValue(maxTarget, dataMax), dataMin, dataMax);
         if (mode === "point") {
           trackFill.style.left = "0%";
-          trackFill.style.width = valueToPercent(maxValue) + "%";
+          trackFill.style.width = valueToPercent(maxVal) + "%";
         } else {
-          var leftPct = valueToPercent(minValue);
-          var widthPct = valueToPercent(maxValue) - leftPct;
+          var leftPct = valueToPercent(minVal);
+          var rightPct = valueToPercent(maxVal);
+          if (leftPct > rightPct) {
+            var tmp = leftPct;
+            leftPct = rightPct;
+            rightPct = tmp;
+          }
+          var widthPct = rightPct - leftPct;
           trackFill.style.left = leftPct + "%";
           trackFill.style.width = widthPct + "%";
         }
       }
 
       function updateHandles() {
-        minHandle.style.left = valueToPercent(getTargetValue(minTarget)) + "%";
-        maxHandle.style.left = valueToPercent(getTargetValue(maxTarget)) + "%";
+        var minVal = clamp(getTargetValue(minTarget, dataMin), dataMin, dataMax);
+        var maxVal = clamp(getTargetValue(maxTarget, dataMax), dataMin, dataMax);
+        minHandle.style.left = valueToPercent(minVal) + "%";
+        maxHandle.style.left = valueToPercent(maxVal) + "%";
         updateTrackFill();
       }
 
@@ -101,7 +111,7 @@
             } else if (isMin) {
               setTargetValue(
                 minTarget,
-                clamp(value, dataMin, getTargetValue(maxTarget))
+                clamp(value, dataMin, getTargetValue(maxTarget, dataMax))
               );
               if (minTarget)
                 minTarget.dispatchEvent(
@@ -110,7 +120,7 @@
             } else {
               setTargetValue(
                 maxTarget,
-                clamp(value, getTargetValue(minTarget), dataMax)
+                clamp(value, getTargetValue(minTarget, dataMin), dataMax)
               );
               if (maxTarget)
                 maxTarget.dispatchEvent(
@@ -135,19 +145,49 @@
 
       // ── Sync from number inputs back to handles ──
 
-      function syncFromInputs() {
+      function syncFromInputs(e) {
         if (mode === "point") {
-          var value =
-            getTargetValue(minTarget) || getTargetValue(maxTarget);
-          setTargetValue(minTarget, value);
-          setTargetValue(maxTarget, value);
+          var src = (e && e.target) || minTarget || maxTarget;
+          var val = src ? src.value : "";
+          setTargetValue(minTarget, val);
+          setTargetValue(maxTarget, val);
+        } else if (e && e.target) {
+          var minVal = getTargetValue(minTarget, dataMin);
+          var maxVal = getTargetValue(maxTarget, dataMax);
+          if (e.target === minTarget) {
+            if (minVal > maxVal) {
+              setTargetValue(maxTarget, minVal);
+            }
+          } else if (e.target === maxTarget) {
+            if (maxVal < minVal) {
+              setTargetValue(minTarget, maxVal);
+            }
+          }
         }
         updateHandles();
       }
-      if (minTarget)
+
+      function enforceStrictBounds(e) {
+        if (e && e.target) {
+          var val = parseInt(e.target.value, 10);
+          if (!isNaN(val)) {
+            var clamped = clamp(val, dataMin, dataMax);
+            if (clamped !== val) {
+              setTargetValue(e.target, clamped);
+              e.target.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }
+        }
+      }
+
+      if (minTarget) {
         minTarget.addEventListener("input", syncFromInputs);
-      if (maxTarget)
+        minTarget.addEventListener("change", enforceStrictBounds);
+      }
+      if (maxTarget) {
         maxTarget.addEventListener("input", syncFromInputs);
+        maxTarget.addEventListener("change", enforceStrictBounds);
+      }
 
       // ── Mode toggle ──
 
@@ -172,7 +212,7 @@
           var dashSpan = block && block.querySelector(".range-dash");
           if (newMode === "point") {
             minHandle.style.display = "none";
-            setTargetValue(minTarget, getTargetValue(maxTarget));
+            setTargetValue(minTarget, maxTarget ? maxTarget.value : "");
             if (minTarget) minTarget.classList.add("hidden");
             if (dashSpan) dashSpan.classList.add("hidden");
           } else {
