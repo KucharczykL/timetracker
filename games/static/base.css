@@ -1579,6 +1579,9 @@
   .w-5 {
     width: calc(var(--spacing) * 5);
   }
+  .w-5\/6 {
+    width: calc(5 / 6 * 100%);
+  }
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
@@ -3359,11 +3362,6 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
-  .sm\:grid-cols-4 {
-    @media (width >= 40rem) {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
   .sm\:rounded-t-lg {
     @media (width >= 40rem) {
       border-top-left-radius: var(--radius-lg);
@@ -3529,19 +3527,9 @@
       max-width: var(--breakpoint-2xl);
     }
   }
-  .\@sm\:grid-cols-3 {
-    @container (width >= 24rem) {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
   .\@md\:grid-cols-4 {
     @container (width >= 28rem) {
       grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
-  .\@lg\:grid-cols-6 {
-    @container (width >= 32rem) {
-      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
   }
   .rtl\:rotate-180 {

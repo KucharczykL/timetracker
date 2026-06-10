@@ -706,7 +706,7 @@ class TestExpandedFiltersAgainstDB:
         # 2. Device & Session
         dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
 
-        # Session 1: total 40 minutes (30 calc, 10 manual)
+        # Session 1: total 4 hours (3 hours calc, 1 hour manual)
         s1 = Session.objects.create(
             game=game,
             device=dev,
@@ -714,9 +714,9 @@ class TestExpandedFiltersAgainstDB:
                 2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc
             ),
             timestamp_end=datetime.datetime(
-                2026, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc
+                2026, 6, 1, 15, 0, 0, tzinfo=datetime.timezone.utc
             ),
-            duration_manual=timedelta(minutes=10),
+            duration_manual=timedelta(hours=1),
         )
 
         # 3. Purchase
@@ -786,21 +786,21 @@ class TestExpandedFiltersAgainstDB:
 
         data = self._setup_entities()
 
-        # Test duration_total_minutes equals 40
+        # Test duration_total_hours equals 4
         sf_tot = SessionFilter.from_json(
-            {"duration_total_minutes": {"value": 40, "modifier": "EQUALS"}}
+            {"duration_total_hours": {"value": 4, "modifier": "EQUALS"}}
         )
         assert Session.objects.filter(sf_tot.to_q()).count() == 1
 
-        # Test duration_manual_minutes equals 10
+        # Test duration_manual_hours equals 1
         sf_man = SessionFilter.from_json(
-            {"duration_manual_minutes": {"value": 10, "modifier": "EQUALS"}}
+            {"duration_manual_hours": {"value": 1, "modifier": "EQUALS"}}
         )
         assert Session.objects.filter(sf_man.to_q()).count() == 1
 
-        # Test duration_calculated_minutes equals 30
+        # Test duration_calculated_hours equals 3
         sf_calc = SessionFilter.from_json(
-            {"duration_calculated_minutes": {"value": 30, "modifier": "EQUALS"}}
+            {"duration_calculated_hours": {"value": 3, "modifier": "EQUALS"}}
         )
         assert Session.objects.filter(sf_calc.to_q()).count() == 1
 
@@ -1017,14 +1017,14 @@ class TestExpandedFiltersAgainstDB:
         from games.models import Game
 
         data = self._setup_entities()
-        # data["s1"] has 10 minutes manual + 30 minutes calculated
+        # data["s1"] has 1 hour manual + 3 hours calculated
         gf_manual = GameFilter.from_json(
-            {"manual_playtime_minutes": {"value": 10, "modifier": "EQUALS"}}
+            {"manual_playtime_hours": {"value": 1, "modifier": "EQUALS"}}
         )
         assert data["game"] in set(Game.objects.filter(gf_manual.to_q()))
 
         gf_calc = GameFilter.from_json(
-            {"calculated_playtime_minutes": {"value": 30, "modifier": "EQUALS"}}
+            {"calculated_playtime_hours": {"value": 3, "modifier": "EQUALS"}}
         )
         assert data["game"] in set(Game.objects.filter(gf_calc.to_q()))
 

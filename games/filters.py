@@ -62,18 +62,18 @@ class GameFilter(OperatorFilter):
     platform_group: MultiCriterion | None = None  # platform__group__in
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
-    playtime_minutes: IntCriterion | None = None  # converted to timedelta on to_q()
+    playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
     created_at: StringCriterion | None = None  # date string
     updated_at: StringCriterion | None = None  # date string
 
     session_count: IntCriterion | None = None
-    session_average: IntCriterion | None = None  # average in minutes
+    session_average: IntCriterion | None = None  # average in hours
     purchase_count: IntCriterion | None = None  # distinct purchases per game
     playevent_count: IntCriterion | None = None  # playevents per game
 
-    # Aggregate session durations (minutes), summed across the game's sessions
-    manual_playtime_minutes: IntCriterion | None = None
-    calculated_playtime_minutes: IntCriterion | None = None
+    # Aggregate session durations (hours), summed across the game's sessions
+    manual_playtime_hours: IntCriterion | None = None
+    calculated_playtime_hours: IntCriterion | None = None
 
     # Cross-entity: any session played on these devices / matching these flags
     device: MultiCriterion | None = None  # game has session on any of these devices
@@ -119,8 +119,8 @@ class GameFilter(OperatorFilter):
             q &= self.status.to_q("status")
         if self.mastered is not None:
             q &= self.mastered.to_q("mastered")
-        if self.playtime_minutes is not None:
-            q &= self._playtime_to_q(self.playtime_minutes)
+        if self.playtime_hours is not None:
+            q &= self._playtime_to_q(self.playtime_hours)
         if self.created_at is not None:
             q &= self.created_at.to_q("created_at")
         if self.updated_at is not None:
@@ -177,7 +177,7 @@ class GameFilter(OperatorFilter):
             )
             q &= Q(id__in=matching_ids)
 
-        if self.manual_playtime_minutes is not None:
+        if self.manual_playtime_hours is not None:
             from django.db.models import Sum
 
             from games.models import Game
@@ -186,14 +186,14 @@ class GameFilter(OperatorFilter):
                 Game.objects.annotate(s_manual=Sum("sessions__duration_manual"))
                 .filter(
                     self._playtime_to_q_for_field(
-                        self.manual_playtime_minutes, "s_manual"
+                        self.manual_playtime_hours, "s_manual"
                     )
                 )
                 .values_list("id", flat=True)
             )
             q &= Q(id__in=matching_ids)
 
-        if self.calculated_playtime_minutes is not None:
+        if self.calculated_playtime_hours is not None:
             from django.db.models import Sum
 
             from games.models import Game
@@ -202,7 +202,7 @@ class GameFilter(OperatorFilter):
                 Game.objects.annotate(s_calc=Sum("sessions__duration_calculated"))
                 .filter(
                     self._playtime_to_q_for_field(
-                        self.calculated_playtime_minutes, "s_calc"
+                        self.calculated_playtime_hours, "s_calc"
                     )
                 )
                 .values_list("id", flat=True)
@@ -362,30 +362,30 @@ class GameFilter(OperatorFilter):
 
     @staticmethod
     def _playtime_to_q_for_field(c: IntCriterion, field: str) -> Q:
-        """Convert minutes-based criterion to a DurationField Q object.
+        """Convert hours-based criterion to a DurationField Q object.
 
         Django stores DurationField as microseconds in SQLite, so we convert
-        minutes → timedelta(microseconds=X) and use the appropriate lookups.
+        hours → timedelta(microseconds=X) and use the appropriate lookups.
         """
         from datetime import timedelta
 
         from common.criteria import Modifier
 
         m = c.modifier
-        td_val = timedelta(minutes=c.value)
+        td_val = timedelta(hours=c.value)
 
         if m == Modifier.EQUALS:
             return Q(
                 **{
                     f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                    f"{field}__lt": timedelta(hours=c.value + 1),
                 }
             )
         if m == Modifier.NOT_EQUALS:
             return ~Q(
                 **{
                     f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                    f"{field}__lt": timedelta(hours=c.value + 1),
                 }
             )
         if m == Modifier.GREATER_THAN:
@@ -393,12 +393,12 @@ class GameFilter(OperatorFilter):
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field}__lt": td_val})
         if m == Modifier.BETWEEN and c.value2 is not None:
-            lo = timedelta(minutes=min(c.value, c.value2))
-            hi = timedelta(minutes=max(c.value, c.value2))
+            lo = timedelta(hours=min(c.value, c.value2))
+            hi = timedelta(hours=max(c.value, c.value2))
             return Q(**{f"{field}__gte": lo, f"{field}__lte": hi})
         if m == Modifier.NOT_BETWEEN and c.value2 is not None:
-            lo = timedelta(minutes=min(c.value, c.value2))
-            hi = timedelta(minutes=max(c.value, c.value2))
+            lo = timedelta(hours=min(c.value, c.value2))
+            hi = timedelta(hours=max(c.value, c.value2))
             return Q(**{f"{field}__lt": lo}) | Q(**{f"{field}__gt": hi})
         if m == Modifier.IS_NULL:
             return Q(**{f"{field}": timedelta(0)})
@@ -431,10 +431,10 @@ class SessionFilter(OperatorFilter):
     device: MultiCriterion | None = None  # filters on device_id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
-    duration_minutes: IntCriterion | None = None  # on duration_total (legacy alias)
-    duration_total_minutes: IntCriterion | None = None
-    duration_manual_minutes: IntCriterion | None = None
-    duration_calculated_minutes: IntCriterion | None = None
+    duration_hours: IntCriterion | None = None  # on duration_total (legacy alias)
+    duration_total_hours: IntCriterion | None = None
+    duration_manual_hours: IntCriterion | None = None
+    duration_calculated_hours: IntCriterion | None = None
     is_active: BoolCriterion | None = None  # timestamp_end IS NULL
     timestamp_start: StringCriterion | None = None  # date string
     timestamp_end: StringCriterion | None = None  # date string
@@ -454,20 +454,20 @@ class SessionFilter(OperatorFilter):
         from datetime import timedelta
 
         q = Q()
-        td_val = timedelta(minutes=c.value)
+        td_val = timedelta(hours=c.value)
         m = c.modifier
         if m == Modifier.EQUALS:
             q &= Q(
                 **{
                     f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                    f"{field}__lt": timedelta(hours=c.value + 1),
                 }
             )
         elif m == Modifier.NOT_EQUALS:
             q &= ~Q(
                 **{
                     f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(minutes=c.value + 1),
+                    f"{field}__lt": timedelta(hours=c.value + 1),
                 }
             )
         elif m == Modifier.GREATER_THAN:
@@ -475,12 +475,12 @@ class SessionFilter(OperatorFilter):
         elif m == Modifier.LESS_THAN:
             q &= Q(**{f"{field}__lt": td_val})
         elif m == Modifier.BETWEEN and c.value2 is not None:
-            lo = timedelta(minutes=min(c.value, c.value2))
-            hi = timedelta(minutes=max(c.value, c.value2))
+            lo = timedelta(hours=min(c.value, c.value2))
+            hi = timedelta(hours=max(c.value, c.value2))
             q &= Q(**{f"{field}__gte": lo, f"{field}__lte": hi})
         elif m == Modifier.NOT_BETWEEN and c.value2 is not None:
-            lo = timedelta(minutes=min(c.value, c.value2))
-            hi = timedelta(minutes=max(c.value, c.value2))
+            lo = timedelta(hours=min(c.value, c.value2))
+            hi = timedelta(hours=max(c.value, c.value2))
             q &= Q(**{f"{field}__lt": lo}) | Q(**{f"{field}__gt": hi})
         elif m == Modifier.IS_NULL:
             q &= Q(**{f"{field}": timedelta(0)})
@@ -501,15 +501,15 @@ class SessionFilter(OperatorFilter):
             q &= self.emulated.to_q("emulated")
         if self.note is not None:
             q &= self.note.to_q("note")
-        if self.duration_minutes is not None:
-            q &= self._duration_to_q(self.duration_minutes, "duration_total")
-        if self.duration_total_minutes is not None:
-            q &= self._duration_to_q(self.duration_total_minutes, "duration_total")
-        if self.duration_manual_minutes is not None:
-            q &= self._duration_to_q(self.duration_manual_minutes, "duration_manual")
-        if self.duration_calculated_minutes is not None:
+        if self.duration_hours is not None:
+            q &= self._duration_to_q(self.duration_hours, "duration_total")
+        if self.duration_total_hours is not None:
+            q &= self._duration_to_q(self.duration_total_hours, "duration_total")
+        if self.duration_manual_hours is not None:
+            q &= self._duration_to_q(self.duration_manual_hours, "duration_manual")
+        if self.duration_calculated_hours is not None:
             q &= self._duration_to_q(
-                self.duration_calculated_minutes, "duration_calculated"
+                self.duration_calculated_hours, "duration_calculated"
             )
         if self.is_active is not None:
             if self.is_active.value:
