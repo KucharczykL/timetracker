@@ -246,8 +246,8 @@ class FilterBarRenderingTest(TestCase):
         # New range slider input prefixes
         self.assertIn('name="filter-purchase-count-min"', html)
         self.assertIn('name="filter-playevent-count-min"', html)
-        self.assertIn('name="filter-manual-playtime-minutes-min"', html)
-        self.assertIn('name="filter-calculated-playtime-minutes-min"', html)
+        self.assertIn('name="filter-manual-playtime-hours-min"', html)
+        self.assertIn('name="filter-calculated-playtime-hours-min"', html)
         self.assertIn('name="filter-original-year-min"', html)
         self.assertIn('name="filter-purchase-price-total-min"', html)
         self.assertIn('name="filter-purchase-price-any-min"', html)
