@@ -29,6 +29,7 @@ from common.components.filters import (
     PlayEventFilterBar,
     PurchaseFilterBar,
     SessionFilterBar,
+    StringFilter,
 )
 from common.components.primitives import (
     H1,
@@ -128,4 +129,5 @@ __all__ = [
     "DeviceFilterBar",
     "PlatformFilterBar",
     "PlayEventFilterBar",
+    "StringFilter",
 ]
