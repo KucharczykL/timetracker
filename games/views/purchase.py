@@ -143,6 +143,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         title="Manage purchases",
         scripts=ModuleScript("range_slider.js")
         + ModuleScript("search_select.js")
+        + ModuleScript("date_range_picker.js")
         + ModuleScript("filter_bar.js"),
     )
 
