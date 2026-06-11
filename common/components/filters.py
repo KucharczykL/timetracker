@@ -6,6 +6,7 @@ from django.db import models
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import Component
+from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
     DEFAULT_PREFETCH,
@@ -1289,7 +1290,7 @@ def PurchaseFilterBar(
                 ),
                 _filter_field(
                     "Purchased",
-                    DateRangeFilter(
+                    DateRangePicker(
                         label="Purchased",
                         input_name_prefix="filter-date-purchased",
                         min_value=date_purchased_min,
