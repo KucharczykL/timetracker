@@ -554,6 +554,12 @@ def ExternalScript(url: str) -> SafeText:
     return mark_safe(f'<script src="{url}"></script>')
 
 
+def StaticScript(filename: str) -> SafeText:
+    """A plain (classic, non-module) `<script src=...>` tag for a static JS
+    file — for vendored UMD bundles, which break inside module scope."""
+    return mark_safe(f'<script src="{static("js/" + filename)}"></script>')
+
+
 def YearPicker(
     year: int | None = None,
     available_years: tuple[int, ...] = (),

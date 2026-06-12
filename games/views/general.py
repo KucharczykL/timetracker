@@ -13,17 +13,16 @@ from django.urls import reverse
 from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 
-from common.components import ExternalScript
+from common.components import StaticScript
 from common.layout import render_page
 from common.time import format_duration
 from games.models import Game, Platform, Purchase, Session
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 
-# Flowbite-datepicker UMD bundle, hoisted into the stats pages for YearPicker.
-_STATS_SCRIPTS = ExternalScript(
-    "https://cdn.jsdelivr.net/npm/flowbite-datepicker@2.0.0/dist/Datepicker.umd.min.js"
-)
+# Flowbite-datepicker UMD bundle (vendored, v2.0.0), hoisted into the stats
+# pages for YearPicker.
+_STATS_SCRIPTS = StaticScript("datepicker.umd.js")
 
 
 def model_counts(request: HttpRequest) -> dict[str, bool]:

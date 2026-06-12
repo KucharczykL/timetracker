@@ -309,9 +309,12 @@ def Page(
         f'        <script src="{static("js/htmx-redirect-toast.js")}"></script>\n'
         f"        {django_htmx_script(nonce=None)}\n"
         f'        <link rel="stylesheet" href="{static("base.css")}" />\n'
-        '        <script src="https://cdn.jsdelivr.net/npm/flowbite@2.4.1/dist/flowbite.min.js"></script>\n'
-        '        <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js"></script>\n'
-        '        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>\n'
+        # Vendored bundles (flowbite 2.4.1, alpinejs/@alpinejs/mask 3.15.12) —
+        # served locally so pages work offline (and in browser tests). The mask
+        # plugin must load before Alpine core; both stay deferred.
+        f'        <script src="{static("js/flowbite.min.js")}"></script>\n'
+        f'        <script defer src="{static("js/alpine-mask.min.js")}"></script>\n'
+        f'        <script defer src="{static("js/alpine.min.js")}"></script>\n'
         f"        {_THEME_FOUC_SCRIPT}\n"
         "    </head>\n"
     )
