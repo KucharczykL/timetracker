@@ -26,6 +26,31 @@ jobs:
       - name: Build image
         run: docker build -t "timetracker:staging-${SLUG}" .
 
+      - name: Seed database from prod (first deploy of this branch only)
+        run: |
+          if docker volume inspect "timetracker-staging-${SLUG}" >/dev/null 2>&1; then
+            echo "Volume exists, keeping current staging data"
+            exit 0
+          fi
+          docker volume create "timetracker-staging-${SLUG}"
+          # sqlite3.backup() takes a consistent online snapshot (WAL-safe);
+          # prod is only read, never written.
+          docker run --rm \
+            -v /docker/timetracker/data:/prod \
+            -v "timetracker-staging-${SLUG}:/dest" \
+            python:3.14-slim-bookworm sh -c "
+              python -c \"
+          import sqlite3
+          source = sqlite3.connect('file:/prod/db.sqlite3?mode=ro', uri=True)
+          destination = sqlite3.connect('/dest/db.sqlite3')
+          source.backup(destination)
+          games = destination.execute('select count(*) from games_game').fetchone()[0]
+          sessions = destination.execute('select count(*) from games_session').fetchone()[0]
+          print(f'Seeded staging database: {games} games, {sessions} sessions')
+          destination.close()
+          source.close()
+          \" && chown 1000:100 /dest/db.sqlite3"
+
       - name: Deploy staging container
         run: |
           docker rm -f "timetracker-staging-${SLUG}" 2>/dev/null || true
