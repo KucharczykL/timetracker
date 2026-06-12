@@ -4,6 +4,8 @@ on:
   push:
     branches-ignore: [main]
   delete:
+  pull_request:
+    types: [opened]
 
 jobs:
   deploy:
@@ -72,7 +74,9 @@ jobs:
             "timetracker:staging-${SLUG}"
 
       - name: Summary
-        run: echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Deployed to https://${HOST}"
+          echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment staging URL on PR
         env:
@@ -96,6 +100,31 @@ jobs:
             -d "$(jq -n --arg body "$body" '{body: $body}')" \
             "${api}/issues/${pr}/comments" >/dev/null
           echo "Commented staging URL on PR #${pr}"
+
+  comment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+      PR: ${{ github.event.pull_request.number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Comment staging URL on the new PR
+        run: |
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
+          HOST="tracker-${SLUG}.home.arpa"
+          auth="Authorization: token ${GITHUB_TOKEN}"
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+          body="Staging deployment: https://${HOST}"
+          if curl -fsS -H "$auth" "${api}/issues/${PR}/comments" \
+            | jq -e --arg body "$body" 'any(.[]; .body == $body)' >/dev/null; then
+            echo "Staging URL already commented on PR #${PR}"
+            exit 0
+          fi
+          curl -fsS -X POST -H "$auth" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg body "$body" '{body: $body}')" \
+            "${api}/issues/${PR}/comments" >/dev/null
+          echo "Commented staging URL on PR #${PR}"
 
   teardown:
     if: github.event_name == 'delete' && github.event.ref_type == 'branch'
