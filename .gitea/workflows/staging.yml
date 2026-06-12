@@ -1,0 +1,58 @@
+name: Staging deployment
+
+on:
+  push:
+    branches-ignore: [main]
+  delete:
+
+jobs:
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute staging name
+        run: |
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
+          echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
+          echo "HOST=tracker-${SLUG}.home.arpa" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: docker build -t "timetracker:staging-${SLUG}" .
+
+      - name: Deploy staging container
+        run: |
+          docker rm -f "timetracker-staging-${SLUG}" 2>/dev/null || true
+          docker run -d --name "timetracker-staging-${SLUG}" \
+            --network docker-compose-templates_public \
+            -e TZ=Europe/Prague \
+            -e PUID=1000 \
+            -e PGID=100 \
+            -e DATA_DIR=/home/timetracker/app/data \
+            -e "CSRF_TRUSTED_ORIGINS=https://${HOST}" \
+            -v "timetracker-staging-${SLUG}:/home/timetracker/app/data" \
+            -l "caddy=${HOST}" \
+            -l 'caddy.reverse_proxy={{ upstreams 8000 }}' \
+            -l xyz.kucharczyk.staging=timetracker \
+            -l "xyz.kucharczyk.staging.branch=${BRANCH}" \
+            --restart unless-stopped \
+            "timetracker:staging-${SLUG}"
+
+      - name: Summary
+        run: echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"
+
+  teardown:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.ref }}
+    steps:
+      - name: Remove staging container, volume, and image
+        run: |
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
+          docker rm -f "timetracker-staging-${SLUG}" 2>/dev/null || true
+          docker volume rm "timetracker-staging-${SLUG}" 2>/dev/null || true
+          docker rmi "timetracker:staging-${SLUG}" 2>/dev/null || true

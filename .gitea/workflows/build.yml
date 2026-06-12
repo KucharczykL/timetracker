@@ -1,0 +1,48 @@
+name: Django CI/CD
+
+on:
+  push:
+    paths-ignore: [ 'README.md' ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run Migrations
+        run: uv run python manage.py migrate
+
+      - name: Run Tests
+        run: uv run --with pytest-django pytest
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set Version
+        run: echo "VERSION_NUMBER=1.7.0" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            registry.kucharczyk.xyz/timetracker:latest
+            registry.kucharczyk.xyz/timetracker:${{ env.VERSION_NUMBER }}
