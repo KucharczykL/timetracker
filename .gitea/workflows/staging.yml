@@ -44,6 +44,29 @@ jobs:
       - name: Summary
         run: echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Comment staging URL on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          auth="Authorization: token ${GITHUB_TOKEN}"
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+          pr=$(curl -fsS -H "$auth" "${api}/pulls?state=open&limit=50" \
+            | jq -r --arg branch "$BRANCH" '.[] | select(.head.ref == $branch) | .number' | head -n1)
+          if [ -z "$pr" ]; then
+            echo "No open PR for branch '${BRANCH}', skipping comment"
+            exit 0
+          fi
+          body="Staging deployment: https://${HOST}"
+          if curl -fsS -H "$auth" "${api}/issues/${pr}/comments" \
+            | jq -e --arg body "$body" 'any(.[]; .body == $body)' >/dev/null; then
+            echo "Staging URL already commented on PR #${pr}"
+            exit 0
+          fi
+          curl -fsS -X POST -H "$auth" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg body "$body" '{body: $body}')" \
+            "${api}/issues/${pr}/comments" >/dev/null
+          echo "Commented staging URL on PR #${pr}"
+
   teardown:
     if: github.event_name == 'delete' && github.event.ref_type == 'branch'
     runs-on: ubuntu-latest
