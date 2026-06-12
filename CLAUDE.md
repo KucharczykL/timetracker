@@ -35,6 +35,7 @@ games/          — Django app: models, views, templates, forms, signals, tasks,
 common/         — Shared utilities: time formatting, component system, criteria, layout, icons
 timetracker/    — Django project: settings, URL root, ASGI/WSGI
 tests/          — Pytest tests
+e2e/            — Playwright browser tests (run via `make test-e2e`)
 contrib/        — One-off scripts (exchange rate import)
 docs/           — Additional documentation
 ```
@@ -113,13 +114,15 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 ### Frontend stack
 
 - **HTMX** (`games/static/js/htmx.min.js`) — partial page updates
-- **Alpine.js** (CDN) — reactive dropdowns (`GameStatusSelector`, `SessionDeviceSelector`), toast store
-- **Flowbite** (CDN) — navbar collapse, dropdown toggles
+- **Alpine.js** (vendored: `alpine.min.js`, `alpine-mask.min.js`) — reactive dropdowns (`GameStatusSelector`, `SessionDeviceSelector`), toast store
+- **Flowbite** (vendored: `flowbite.min.js`; `datepicker.umd.js` for the stats YearPicker) — navbar collapse, dropdown toggles
 - **Tailwind CSS** — utility classes, compiled from `common/input.css` → `games/static/base.css`
+- All third-party JS is served locally from `games/static/js/` (no CDNs), so pages and browser tests work offline
 - **Custom JS** in `games/static/js/`:
-  - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event)
+  - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event); also defines `window.fetchWithHtmxTriggers`
   - `search_select.js` — SearchSelect/FilterSelect widgets (search-as-you-type, pills, include/exclude filter mode)
-  - `utils.js` — shared helpers (e.g., `fetchWithHtmxTriggers`)
+  - `utils.js` — shared ES-module helpers (`onSwap`, `toISOUTCString`, …)
+- **Widget initialization**: widget JS registers with `onSwap(selector, initializeElement)` from `utils.js` — a port of FastHTML's `proc_htmx` built on `htmx.onLoad`. It runs the initializer once per matching element, on initial page load and inside every htmx-swapped fragment. Never hand-roll `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
 
 ### Deployment
 
@@ -155,7 +158,7 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
 
-**Browser/E2E tests**: `pytest-playwright` is a dev dependency for testing JavaScript behavior in a real browser (combine pytest-django's `live_server` fixture with Playwright's `page` fixture). Browser binaries must be installed once via `uv run playwright install chromium`. Note: pages load Alpine.js and Flowbite from CDNs, so browser tests must not depend on CDN-served scripts when running offline (htmx and all widget JS are served locally from `games/static/js/`).
+**Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium; otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
 
 ## Conventions for AI assistants
 

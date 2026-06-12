@@ -1,4 +1,4 @@
-import { getEl, disableElementsWhenTrue } from "./utils.js";
+import { getEl, disableElementsWhenTrue, onSwap } from "./utils.js";
 
 const RELATED_PURCHASE_URL = "/tracker/purchase/related-purchase-by-game";
 
@@ -38,8 +38,9 @@ function setupElementHandlers() {
   ]);
 }
 
-document.addEventListener("DOMContentLoaded", setupElementHandlers);
-document.addEventListener("htmx:afterSwap", setupElementHandlers);
-getEl("#id_type").addEventListener("change", () => {
+onSwap("#id_type", (typeSelect) => {
   setupElementHandlers();
+  typeSelect.addEventListener("change", () => {
+    setupElementHandlers();
+  });
 });

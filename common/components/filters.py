@@ -559,9 +559,11 @@ def _filter_collapse_button() -> SafeText:
         tag_name="button",
         attributes=[
             ("type", "button"),
+            # Slider handles are positioned in percentages, so initializing
+            # them while the body is hidden is safe — no re-init on reveal.
             (
                 "onclick",
-                "var b=document.getElementById('filter-bar-body');b.classList.toggle('hidden');if(!b.classList.contains('hidden')&&window.initRangeSliders)window.initRangeSliders()",
+                "document.getElementById('filter-bar-body').classList.toggle('hidden')",
             ),
             (
                 "class",

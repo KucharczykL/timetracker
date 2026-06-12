@@ -4,6 +4,8 @@
  * Handles form submission, preset loading/saving, and preset list rendering.
  * No HTMX — plain fetch() and window.location for all interactions.
  */
+import { onSwap } from "./utils.js";
+
 (function () {
   "use strict";
 
@@ -410,27 +412,25 @@
 
   // ── Init on page load ───────────────────────────────────────────────────
 
-  // ── Inject search inputs into filter forms ──
-  function injectSearchInputs() {
-    document.querySelectorAll('[id^="filter-bar-form"]').forEach(function (form) {
-      if (form.querySelector('[name="filter-search"]')) return; // already added
-      var input = document.createElement("input");
-      input.type = "text";
-      input.name = "filter-search";
-      input.placeholder = "Search\u2026";
-      input.className = "block w-full rounded-base border border-default-medium bg-neutral-secondary-medium text-sm text-heading p-2 mb-4 focus:ring-brand focus:border-brand";
-      // Pre-fill from existing filter JSON
-      var hidden = form.querySelector('[name="filter"]');
-      if (hidden && hidden.parentNode) {
-        try {
-          var existing = JSON.parse(hidden.value || "{}");
-          if (existing.search && existing.search.value) {
-            input.value = existing.search.value;
-          }
-        } catch (e) {}
-        hidden.parentNode.insertBefore(input, hidden.nextSibling);
-      }
-    });
+  // ── Inject the search input into a filter form ──
+  function injectSearchInput(form) {
+    if (form.querySelector('[name="filter-search"]')) return; // already added
+    var input = document.createElement("input");
+    input.type = "text";
+    input.name = "filter-search";
+    input.placeholder = "Search\u2026";
+    input.className = "block w-full rounded-base border border-default-medium bg-neutral-secondary-medium text-sm text-heading p-2 mb-4 focus:ring-brand focus:border-brand";
+    // Pre-fill from existing filter JSON
+    var hidden = form.querySelector('[name="filter"]');
+    if (hidden && hidden.parentNode) {
+      try {
+        var existing = JSON.parse(hidden.value || "{}");
+        if (existing.search && existing.search.value) {
+          input.value = existing.search.value;
+        }
+      } catch (e) {}
+      hidden.parentNode.insertBefore(input, hidden.nextSibling);
+    }
   }
 
   /**
@@ -438,24 +438,24 @@
    */
   function setupDeselectableRadios() {
     document.querySelectorAll('input[type="radio"]').forEach(function (radio) {
-      radio.addEventListener('click', function (e) {
-        if (this.wasChecked) {
-          this.checked = false;
-          this.wasChecked = false;
-          this.dispatchEvent(new Event('change', { bubbles: true }));
-        } else {
-          var name = this.getAttribute('name');
-          if (name) {
-            document.querySelectorAll('input[type="radio"][name="' + name + '"]').forEach(function (r) {
-              r.wasChecked = false;
-            });
-          }
-          this.wasChecked = true;
+    radio.addEventListener('click', function (e) {
+      if (this.wasChecked) {
+        this.checked = false;
+        this.wasChecked = false;
+        this.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        var name = this.getAttribute('name');
+        if (name) {
+          document.querySelectorAll('input[type="radio"][name="' + name + '"]').forEach(function (r) {
+            r.wasChecked = false;
+          });
         }
-      });
-      if (radio.checked) {
-        radio.wasChecked = true;
+        this.wasChecked = true;
       }
+    });
+    if (radio.checked) {
+      radio.wasChecked = true;
+    }
     });
   }
 
@@ -464,14 +464,14 @@
    */
   function setupStringFilters() {
     document.querySelectorAll('input[data-string-modifier-radio]').forEach(function (radio) {
-      radio.addEventListener('change', function () {
-        window.toggleStringFilterInput(this);
-      });
+    radio.addEventListener('change', function () {
+      window.toggleStringFilterInput(this);
+    });
     });
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
-    injectSearchInputs();
+  onSwap('[id^="filter-bar-form"]', function (form) {
+    injectSearchInput(form);
     setupDeselectableRadios();
     setupStringFilters();
     loadPresets();
