@@ -155,6 +155,8 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
 
+**Browser/E2E tests**: `pytest-playwright` is a dev dependency for testing JavaScript behavior in a real browser (combine pytest-django's `live_server` fixture with Playwright's `page` fixture). Browser binaries must be installed once via `uv run playwright install chromium`. Note: pages load Alpine.js and Flowbite from CDNs, so browser tests must not depend on CDN-served scripts when running offline (htmx and all widget JS are served locally from `games/static/js/`).
+
 ## Conventions for AI assistants
 
 - **Never write to `GeneratedField`s** (`duration_calculated`, `duration_total`, `price_per_game`, `days_to_finish`). They are computed by the database.
