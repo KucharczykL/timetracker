@@ -186,10 +186,16 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeText:
-    """Top navigation bar."""
+def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> "Node":
+    """Top navigation bar.
+
+    Static chrome, so it's a single ``Safe`` node wrapping its markup rather
+    than a hand-built element tree — trusted HTML belongs in a ``Safe`` node,
+    not a ``mark_safe`` string."""
+    from common.components import Safe
+
     logo = static("icons/schedule.png")
-    return mark_safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
+    return Safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
     <div class="max-w-(--breakpoint-xl) flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="{reverse("games:index")}"
            class="flex items-center space-x-3 rtl:space-x-reverse">
