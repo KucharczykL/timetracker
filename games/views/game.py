@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
+    Fragment,
     H1,
     A,
     AddForm,
@@ -145,14 +146,11 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage games",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 

@@ -276,8 +276,22 @@ def Page(
     scripts: SafeText | str = "",
     mastered: bool = False,
 ) -> SafeText:
-    """Assemble a full HTML document around `content` (the fast_app equivalent)."""
+    """Assemble a full HTML document around `content` (the fast_app equivalent).
+
+    Scripts are collected from `content`'s component tree: every component
+    declares its JS via `Media`, and `collect_media` gathers (deduped) the union
+    for the whole page. The `scripts` argument remains for page-specific glue
+    that isn't owned by a reusable component (e.g. the add-form helpers).
+    """
+    from common.components import ModuleScript, StaticScript, collect_media
     from games.views.general import global_current_year, model_counts
+
+    media = collect_media(content)
+    collected_scripts = "".join(
+        [str(ModuleScript(name)) for name in media.js]
+        + [str(StaticScript(name)) for name in media.js_external]
+    )
+    all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
@@ -328,7 +342,7 @@ def Page(
         f'            <div id="main-container" class="flex flex-1 flex-col pt-8 pb-16">{content}</div>\n'
         f'            <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{version()} ({version_date()})</span>\n'
         "        </div>\n"
-        f"        {scripts}\n"
+        f"        {all_scripts}\n"
         f"        {_main_script(mastered)}\n"
         "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
         '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'

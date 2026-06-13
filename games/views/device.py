@@ -2,9 +2,9 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
-from django.utils.safestring import mark_safe
 
 from common.components import (
+    Fragment,
     A,
     AddForm,
     Button,
@@ -12,7 +12,6 @@ from common.components import (
     Icon,
     paginated_table_content,
     DeviceFilterBar,
-    ModuleScript,
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
@@ -76,14 +75,11 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         preset_list_url=reverse("games:list_presets") + "?mode=devices",
         preset_save_url=reverse("games:save_preset") + "?mode=devices",
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage devices",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 

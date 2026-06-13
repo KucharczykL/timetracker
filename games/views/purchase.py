@@ -14,6 +14,7 @@ from django.utils.safestring import SafeText, mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
+    Fragment,
     A,
     AddForm,
     Button,
@@ -129,22 +130,18 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import ModuleScript, PurchaseFilterBar
+    from common.components import PurchaseFilterBar
 
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage purchases",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("date_range_picker.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 

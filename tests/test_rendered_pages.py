@@ -57,6 +57,22 @@ class RenderedPagesTest(TestCase):
                 marker, html, f"Found double-escaped markup ({marker!r}) in output"
             )
 
+    # --- scripts auto-collected from component media (Phase 4) ---------------
+
+    def test_list_page_auto_loads_widget_scripts(self):
+        """The games list view passes no scripts= argument; the filter bar's
+        components declare their JS and Page() collects it."""
+        html = self.get("games:list_games").content.decode()
+        self.assertIn("js/filter_bar.js", html)
+        self.assertIn("js/search_select.js", html)
+        self.assertIn("js/range_slider.js", html)
+
+    def test_stats_page_auto_loads_datepicker(self):
+        """YearPicker declares the datepicker UMD bundle as media; the stats
+        view no longer hoists it by hand."""
+        html = self.get("games:stats_alltime").content.decode()
+        self.assertIn("js/datepicker.umd.js", html)
+
     # --- layout wrapper ------------------------------------------------------
 
     def test_page_layout_wrapper(self):
@@ -395,15 +411,12 @@ class PurchaseListDateFilterTest(TestCase):
             html,
         )
         self.assertIn(
-            'name="filter-date-purchased-max" id="filter-date-purchased-max" '
-            'value=""',
+            'name="filter-date-purchased-max" id="filter-date-purchased-max" value=""',
             html,
         )
 
     def test_date_refunded_not_null(self):
-        response = self._get(
-            {"date_refunded": {"value": "", "modifier": "NOT_NULL"}}
-        )
+        response = self._get({"date_refunded": {"value": "", "modifier": "NOT_NULL"}})
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertNotIn("EARLY-MARKER", html)

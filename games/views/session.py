@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
+    Fragment,
     A,
     AddForm,
     Button,
@@ -176,14 +177,11 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage sessions",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 
