@@ -75,3 +75,21 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
         self.assertIn('data-value="u"', html)
         self.assertNotIn("x-data", html)  # no Alpine left
         self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)
+
+
+class SessionDeviceSelectorRenderTest(unittest.TestCase):
+    def test_emits_tag_and_options(self):
+        from types import SimpleNamespace
+
+        from common.components import SessionDeviceSelector, render
+
+        session = SimpleNamespace(id=4, device=SimpleNamespace(name="Desktop"))
+        devices = [
+            SimpleNamespace(id=1, name="Desktop"),
+            SimpleNamespace(id=2, name="Deck"),
+        ]
+        html = render(SessionDeviceSelector(session, devices, "tok"))
+        self.assertIn("<session-device-selector", html)
+        self.assertIn('session-id="4"', html)
+        self.assertIn('data-value="2"', html)
+        self.assertNotIn("x-data", html)

@@ -102,3 +102,13 @@ class GameStatusSelectorProps(TypedDict):
 
 
 register_element("game-status-selector", "GameStatusSelector", GameStatusSelectorProps)
+
+
+class SessionDeviceSelectorProps(TypedDict):
+    session_id: int
+    csrf: str
+
+
+register_element(
+    "session-device-selector", "SessionDeviceSelector", SessionDeviceSelectorProps
+)
