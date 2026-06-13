@@ -23,8 +23,11 @@ from typing import TypedDict
 
 from django.utils.safestring import SafeText
 
-from common.components.core import Component, HTMLAttribute
+from common.components.core import Element, HTMLAttribute, Media, Node
 from common.components.primitives import Div, Input, Pill, Span, Template
+
+# Both comboboxes are wired by search_select.js.
+_SEARCH_SELECT_MEDIA = Media(js=("search_select.js",))
 
 
 class SearchSelectOption(TypedDict):
@@ -322,12 +325,12 @@ def SearchSelect(
         always_visible=always_visible,
         items_visible=items_visible,
         templates=templates,
-    )
+    ).with_media(_SEARCH_SELECT_MEDIA)
 
 
-def _filter_remove_button() -> SafeText:
-    return Component(
-        tag_name="button",
+def _filter_remove_button() -> Node:
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             ("data-pill-remove", ""),
@@ -369,9 +372,9 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
     )
 
 
-def _filter_action_button(action: str, symbol: str, title: str) -> SafeText:
-    return Component(
-        tag_name="button",
+def _filter_action_button(action: str, symbol: str, title: str) -> Node:
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             ("data-search-select-action", action),
@@ -557,7 +560,7 @@ def FilterSelect(
         always_visible=False,
         items_visible=items_visible,
         templates=templates,
-    )
+    ).with_media(_SEARCH_SELECT_MEDIA)
 
 
 def searchselect_selected(

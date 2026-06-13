@@ -133,5 +133,53 @@ class MediaCollectionTest(unittest.TestCase):
         self.assertFalse(collect_media("just a string"))
 
 
+class RealComponentMediaTest(unittest.TestCase):
+    """Phase 3: JS-bearing components declare media that bubbles up the tree."""
+
+    def test_search_select_declares_its_script(self):
+        from common.components import SearchSelect
+
+        self.assertEqual(
+            collect_media(SearchSelect(name="games")).js, ("search_select.js",)
+        )
+
+    def test_filter_select_declares_its_script(self):
+        from common.components import FilterSelect
+
+        self.assertIn(
+            "search_select.js", collect_media(FilterSelect(field_name="type")).js
+        )
+
+    def test_date_range_picker_declares_its_script(self):
+        from common.components import DateRangePicker
+
+        media = collect_media(
+            DateRangePicker(label="Played", input_name_prefix="played")
+        )
+        self.assertEqual(media.js, ("date_range_picker.js",))
+
+    def test_range_slider_declares_its_script(self):
+        from common.components.filters import RangeSlider
+
+        media = collect_media(
+            RangeSlider(
+                label="Year", input_name_prefix="year", range_min=2000, range_max=2025
+            )
+        )
+        self.assertEqual(media.js, ("range_slider.js",))
+
+    def test_filter_bar_collects_chrome_and_widget_media(self):
+        """A FilterBar's media merges its own chrome script with the scripts that
+        bubble up from the FilterSelect and RangeSlider widgets it contains —
+        exactly the set the view used to thread by hand. (FilterBar wraps its DB
+        aggregates in try/except, so it builds without a database.)"""
+        from common.components import FilterBar
+
+        media = collect_media(FilterBar())
+        self.assertIn("filter_bar.js", media.js)
+        self.assertIn("search_select.js", media.js)
+        self.assertIn("range_slider.js", media.js)
+
+
 if __name__ == "__main__":
     unittest.main()

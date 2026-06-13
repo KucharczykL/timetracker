@@ -5,7 +5,7 @@ from typing import NamedTuple
 from django.db import models
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component
+from common.components.core import Element, Media
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -51,6 +51,13 @@ _FILTER_RADIO_CLASS = (
 
 
 _FILTER_GRID_CLASS = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4"
+
+
+# range_slider.js wires RangeSlider; filter_bar.js wires the bar chrome
+# (Apply/Clear, presets, search injection). Widget media (search_select.js,
+# date_range_picker.js) bubbles up from the contained FilterSelect / picker.
+_RANGE_SLIDER_MEDIA = Media(js=("range_slider.js",))
+_FILTER_BAR_MEDIA = Media(js=("filter_bar.js",))
 
 
 def _filter_parse(filter_json: str) -> dict:
@@ -376,8 +383,8 @@ def RangeSlider(
                             ("class", _RANGE_SLIDER_INPUT_CLASS),
                         ],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             (
@@ -482,7 +489,7 @@ def RangeSlider(
                 ],
             ),
         ],
-    )
+    ).with_media(_RANGE_SLIDER_MEDIA)
 
 
 _DATE_RANGE_INPUT_CLASS = (
@@ -555,8 +562,8 @@ _FILTER_INPUT_ID = "filter-json-input"
 
 
 def _filter_collapse_button() -> SafeText:
-    return Component(
-        tag_name="button",
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             # Slider handles are positioned in percentages, so initializing
@@ -584,8 +591,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
     return Div(
         attributes=[("class", "flex gap-3 items-center")],
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "submit"),
                     (
@@ -597,8 +604,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                 ],
                 children=["Apply"],
             ),
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "button"),
                     (
@@ -634,8 +641,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                             ),
                         ],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             ("id", "save-preset-btn"),
@@ -651,8 +658,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                         ],
                         children=["Save Preset"],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             ("id", "confirm-save-preset-btn"),
@@ -706,8 +713,8 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
                     ),
                 ],
                 children=[
-                    Component(
-                        tag_name="form",
+                    Element(
+                        "form",
                         attributes=[
                             ("id", _FILTER_FORM_ID),
                             ("onsubmit", "return applyFilterBar(event)"),
@@ -730,7 +737,7 @@ def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeTe
                 ],
             ),
         ],
-    )
+    ).with_media(_FILTER_BAR_MEDIA)
 
 
 def FilterBar(

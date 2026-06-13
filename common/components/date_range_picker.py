@@ -19,9 +19,12 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component, HTMLAttribute
+from common.components.core import Element, HTMLAttribute, Media, Node
 from common.components.primitives import Div, Input, Span
 from common.time import DatePartSpec, date_parts
+
+# Wired by date_range_picker.js.
+_DATE_RANGE_MEDIA = Media(js=("date_range_picker.js",))
 
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
@@ -195,8 +198,8 @@ def DateRangeField(
                 children=["–"],
             ),
             _segment_group(side="max", label=label, iso_value=max_value),
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "button"),
                     ("data-date-range-calendar-toggle", ""),
@@ -214,8 +217,8 @@ def DateRangeField(
 
 
 def _calendar_nav_button(direction: str, arrow: str, label: str) -> SafeText:
-    return Component(
-        tag_name="button",
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             (f"data-date-range-{direction}", ""),
@@ -227,8 +230,8 @@ def _calendar_nav_button(direction: str, arrow: str, label: str) -> SafeText:
 
 
 def _footer_button(action: str, label: str, button_class: str) -> SafeText:
-    return Component(
-        tag_name="button",
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             (f"data-date-range-{action}", ""),
@@ -243,8 +246,8 @@ def DateRangeCalendar(*, input_name_prefix: str) -> SafeText:
     (filled client-side into ``[data-date-range-grid]``), and the
     Cancel / Clear / Select footer. Hidden until the calendar toggle opens it."""
     preset_buttons = [
-        Component(
-            tag_name="button",
+        Element(
+            "button",
             attributes=[
                 ("type", "button"),
                 ("data-date-range-preset", preset_value),
@@ -328,7 +331,7 @@ def DateRangePicker(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
-) -> SafeText:
+) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
 
     Drop-in replacement for ``DateRangeFilter`` — exposes the same hidden
@@ -352,4 +355,4 @@ def DateRangePicker(
             ),
             DateRangeCalendar(input_name_prefix=input_name_prefix),
         ],
-    )
+    ).with_media(_DATE_RANGE_MEDIA)

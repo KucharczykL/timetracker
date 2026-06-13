@@ -110,14 +110,25 @@ class Node:
         """Total media of this node and its subtree."""
         return self.media
 
-    # `__html__` marks the value HTML-safe for Django (conditional_escape).
-    # `__str__` lets f-strings, ``str()`` and ``"".join(str(...))`` render the
-    # node — the bridge that keeps most existing composition working.
-    def __html__(self) -> str:
-        return self._render()
+    def with_media(self, media: Media) -> "Node":
+        """Attach JS dependencies to this node and return it (for fluent use).
 
-    def __str__(self) -> str:
-        return self._render()
+        Lets a function-built node declare its media without becoming a full
+        ``BaseComponent`` subclass: ``return Div(...).with_media(Media(js=...))``.
+        """
+        self.media = self.media + media
+        return self
+
+    # A node's rendered output is always safe HTML by construction (Element
+    # escapes unsafe children; Safe wraps trusted markup; Fragment escapes plain
+    # strings). So both `__html__` (Django's conditional_escape hook) and
+    # `__str__` return a SafeString — this is what keeps ``str(node)`` safe when
+    # fed back into a child list or template, matching the old SafeText shims.
+    def __html__(self) -> SafeText:
+        return mark_safe(self._render())
+
+    def __str__(self) -> SafeText:
+        return mark_safe(self._render())
 
 
 def _child_key(child: object) -> tuple[str, bool]:
