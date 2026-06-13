@@ -8,9 +8,9 @@ from common.components import (
     A,
     AddForm,
     Button,
-    Component,
     CsrfInput,
     Div,
+    Element,
     paginated_table_content,
 )
 from common.components.primitives import P
@@ -89,8 +89,8 @@ def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText
             ),
         ],
     )
-    form = Component(
-        tag_name="form",
+    form = Element(
+        "form",
         attributes=[("method", "post"), ("class", "dark:text-white")],
         children=[CsrfInput(request), inner],
     )

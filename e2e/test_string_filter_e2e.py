@@ -16,9 +16,10 @@ def _bar_page(filter_json: str = "") -> str:
 <html>
 <head>
     <title>String filter E2E</title>
-    <script src="/static/js/range_slider.js" defer></script>
-    <script src="/static/js/search_select.js" defer></script>
-    <script src="/static/js/filter_bar.js" defer></script>
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/range_slider.js" type="module"></script>
+    <script src="/static/js/search_select.js" type="module"></script>
+    <script src="/static/js/filter_bar.js" type="module"></script>
 </head>
 <body>
     {PlatformFilterBar(filter_json=filter_json, preset_list_url="/p/l", preset_save_url="/p/s")}

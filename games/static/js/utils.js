@@ -1,4 +1,29 @@
 /**
+ * @description Runs initializeElement once for each element matching selector,
+ * on initial page load and inside every htmx-swapped fragment (a port of
+ * FastHTML's proc_htmx). htmx fires htmx:load for the initial document and for
+ * each swapped-in element, so a single registration covers both; the WeakSet
+ * guarantees once-per-element initialization, replacing the old
+ * DOMContentLoaded + htmx:afterSwap + per-element guard-flag pattern.
+ * @param {string} selector
+ * @param {function(Element): void} initializeElement
+ */
+function onSwap(selector, initializeElement) {
+  const initialized = new WeakSet();
+  htmx.onLoad((swappedElement) => {
+    const elements = Array.from(htmx.findAll(swappedElement, selector));
+    if (swappedElement.matches && swappedElement.matches(selector)) {
+      elements.unshift(swappedElement);
+    }
+    for (const element of elements) {
+      if (initialized.has(element)) continue;
+      initialized.add(element);
+      initializeElement(element);
+    }
+  });
+}
+
+/**
  * @description Formats Date to a UTC string accepted by the datetime-local input field.
  * @param {Date} date
  * @returns {string}
@@ -202,6 +227,7 @@ function disableElementsWhenTrue(targetSelect, targetValue, elementList) {
 }
 
 export {
+  onSwap,
   toISOUTCString,
   syncSelectInputUntilChanged,
   getEl,

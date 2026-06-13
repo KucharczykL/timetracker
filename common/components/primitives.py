@@ -1,4 +1,11 @@
-"""Generic HTML primitives (no domain knowledge)."""
+"""Generic HTML primitives (no domain knowledge).
+
+Generic leaf elements (``Div``, ``Span``, ``Td`` …) are *not* hand-written one
+per tag: they are generated from a whitelist via :func:`_html_element`, each a
+thin builder over the single :class:`Element` node class. Only elements that add
+classes or behaviour (``Button``, ``Pill``, ``Checkbox`` …) are written out.
+Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
+"""
 
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
@@ -6,7 +13,20 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component, HTMLAttribute, HTMLTag, randomid
+from common.components.core import (
+    Attributes,
+    Child,
+    Children,
+    Element,
+    Fragment,
+    HTMLAttribute,
+    Media,
+    Node,
+    Safe,
+    as_attributes,
+    as_children,
+    randomid,
+)
 from common.icons import get_icon
 from common.utils import truncate
 
@@ -27,18 +47,46 @@ _SIZE_CLASSES = {
 }
 
 
+# ── Generic leaf elements ────────────────────────────────────────────────────
+# A whitelist of plain tags, each turned into a builder over `Element`. The
+# tag name is data, not a separate class/function body. Add a tag = one line.
+
+
+def _html_element(tag_name: str):
+    """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
+
+    def element(
+        attributes: Attributes | None = None,
+        children: Children = None,
+    ) -> Element:
+        return Element(tag_name, attributes, children)
+
+    element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
+    element.__doc__ = f"Builder for the <{tag_name}> element."
+    return element
+
+
+Div = _html_element("div")
+P = _html_element("p")
+Ul = _html_element("ul")
+Li = _html_element("li")
+Strong = _html_element("strong")
+Span = _html_element("span")
+Label = _html_element("label")
+Template = _html_element("template")
+Td = _html_element("td")
+Tr = _html_element("tr")
+Th = _html_element("th")
+
+
 def _popover_html(
     id: str,
-    popover_content: str,
+    popover_content: Child,
     wrapped_content: str = "",
     wrapped_classes: str = "",
-    slot: str = "",
-) -> SafeText:
-    """Generate popover HTML using Component(tag_name=...).
-
-    Single source of truth for popover HTML structure.
-    Used by Popover() and the python_popover template tag bridge.
-    """
+    slot: "Node | str" = "",
+) -> Node:
+    """Generate popover HTML. Single source of truth for popover structure."""
     display_content = wrapped_content if wrapped_content else slot
 
     span = Span(
@@ -69,7 +117,7 @@ def _popover_html(
                 children=[popover_content],
             ),
             Div(attributes=[("data-popper-arrow", "")]),
-            mark_safe(  # nosec — intentional HTML comment for Tailwind JIT
+            Safe(  # nosec — intentional HTML comment for Tailwind JIT
                 "<!-- for Tailwind CSS to generate decoration-dotted CSS "
                 "from Python component -->"
             ),
@@ -79,24 +127,24 @@ def _popover_html(
         ],
     )
 
-    return mark_safe(span + "\n" + div)
+    return Fragment(span, div, separator="\n")
 
 
 def Popover(
-    popover_content: str,
+    popover_content: Child,
     wrapped_content: str = "",
     wrapped_classes: str = "",
-    children: list[HTMLTag] | None = None,
-    attributes: list[HTMLAttribute] | None = None,
+    children: Children = None,
+    attributes: Attributes | None = None,
     id: str = "",
-) -> str:
-    children = children or []
+) -> Node:
+    children = as_children(children)
     if not wrapped_content and not children:
         raise ValueError("One of wrapped_content or children is required.")
     if not id:
         id = randomid(content=f"{wrapped_content}:{popover_content}:{wrapped_classes}")
 
-    slot = mark_safe("\n".join(children))
+    slot = Fragment(*children, separator="\n") if children else ""
     return _popover_html(
         id=id,
         popover_content=popover_content,
@@ -108,12 +156,12 @@ def Popover(
 
 def PopoverTruncated(
     input_string: str,
-    popover_content: str = "",
+    popover_content: Child = "",
     popover_if_not_truncated: bool = False,
     length: int = 30,
     ellipsis: str = "…",
     endpart: str = "",
-) -> str:
+) -> "Node | str":
     """
     Returns `input_string` truncated after `length` of characters
     and displays the untruncated text in a popover HTML element.
@@ -139,11 +187,11 @@ def PopoverTruncated(
 
 
 def A(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    attributes: Attributes | None = None,
+    children: Children = None,
     url_name: str | None = None,
     href: str | None = None,
-) -> SafeText:
+) -> Element:
     """
     Returns an anchor <a> tag.
 
@@ -151,7 +199,7 @@ def A(
         - url_name: URL pattern name, resolved via reverse()
         - href: Literal path string passed through as-is
     """
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     children = children or []
     if url_name is not None and href is not None:
         raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
@@ -161,14 +209,14 @@ def A(
         additional_attributes = [("href", reverse(url_name))]
     elif href is not None:
         additional_attributes = [("href", href)]
-    return Component(
-        tag_name="a", attributes=attributes + additional_attributes, children=children
+    return Element(
+        "a", attributes=attributes + additional_attributes, children=children
     )
 
 
 def Button(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    attributes: Attributes | None = None,
+    children: Children = None,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
@@ -179,8 +227,8 @@ def Button(
     title: str = "",
     onclick: str = "",
     name: str = "",
-) -> SafeText:
-    attributes = attributes or []
+) -> Element:
+    attributes = as_attributes(attributes)
     children = children or []
 
     # Separate custom class from other generic attributes
@@ -224,8 +272,8 @@ def Button(
         button_attrs.append(("name", name))
     button_attrs.extend(other_attrs)
 
-    return Component(
-        tag_name="button",
+    return Element(
+        "button",
         attributes=button_attrs,
         children=children,
     )
@@ -267,7 +315,7 @@ def _button_group_button(
     title: str = "",
     hx_get: str = "",
     hx_target: str = "",
-) -> SafeText:
+) -> Element:
     """Generate a single button-group button (inner <button> inside <a>)."""
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
 
@@ -284,8 +332,8 @@ def _button_group_button(
         )
     )
 
-    button = Component(
-        tag_name="button",
+    button = Element(
+        "button",
         attributes=[
             ("type", "button"),
             ("title", title),
@@ -294,10 +342,10 @@ def _button_group_button(
         children=[slot],
     )
 
-    return Component(tag_name="a", attributes=a_attrs, children=[button])
+    return Element("a", attributes=a_attrs, children=[button])
 
 
-def ButtonGroup(buttons: list[dict] | None = None) -> SafeText:
+def ButtonGroup(buttons: list[dict] | None = None) -> Element:
     """Generate a button group div.
 
     Each button dict accepts: href, slot (required), color, title, hx_get, hx_target.
@@ -305,7 +353,7 @@ def ButtonGroup(buttons: list[dict] | None = None) -> SafeText:
     for conditional buttons (e.g., end-session only when session is active).
     """
     buttons = buttons or []
-    children: list[SafeText] = []
+    children: list[Node] = []
     for btn in buttons:
         if not btn or not btn.get("slot"):
             continue
@@ -326,79 +374,14 @@ def ButtonGroup(buttons: list[dict] | None = None) -> SafeText:
     )
 
 
-def Div(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="div", attributes=attributes, children=children)
-
-
-def P(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="p", attributes=attributes, children=children)
-
-
-def Ul(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="ul", attributes=attributes, children=children)
-
-
-def Li(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="li", attributes=attributes, children=children)
-
-
-def Strong(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="strong", attributes=attributes, children=children)
-
-
 def Input(
     type: str = "text",
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
+    attributes: Attributes | None = None,
+    children: Children = None,
+) -> Element:
+    attributes = as_attributes(attributes)
     children = children or []
-    return Component(
-        tag_name="input", attributes=attributes + [("type", type)], children=children
-    )
-
-
-def Span(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="span", attributes=attributes, children=children)
-
-
-def Label(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="label", attributes=attributes, children=children)
+    return Element("input", attributes=attributes + [("type", type)], children=children)
 
 
 def Checkbox(
@@ -406,10 +389,10 @@ def Checkbox(
     label: str | None = None,
     checked: bool = False,
     value: str = "1",
-    attributes: list[HTMLAttribute] | None = None,
-) -> SafeText:
+    attributes: Attributes | None = None,
+) -> Node:
     """A filter-agnostic Checkbox component."""
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     input_attrs = [
         ("name", name),
         ("value", value),
@@ -438,10 +421,10 @@ def Radio(
     label: str | None = None,
     checked: bool = False,
     value: str = "",
-    attributes: list[HTMLAttribute] | None = None,
-) -> SafeText:
+    attributes: Attributes | None = None,
+) -> Node:
     """A filter-agnostic Radio component."""
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     input_attrs = [
         ("name", name),
         ("value", value),
@@ -465,16 +448,6 @@ def Radio(
     )
 
 
-def Template(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    """An inert ``<template>`` whose contents are not rendered until cloned by JS."""
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="template", attributes=attributes, children=children)
-
-
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
 # input.css, written inline so styling stays encapsulated in the component). The
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
@@ -493,8 +466,8 @@ def Pill(
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
-    attributes: list[HTMLAttribute] | None = None,
-) -> SafeText:
+    attributes: Attributes | None = None,
+) -> Node:
     """A small label pill, optionally removable (× button).
 
     Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
@@ -505,23 +478,23 @@ def Pill(
     fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
     markup single-sourced — see ``search_select.py``).
     """
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     pill_class = f"{_PILL_CLASS} {extra_class}".strip()
     pill_attrs: list[HTMLAttribute] = [("class", pill_class), ("data-pill", "")]
     if value != "":
         pill_attrs.append(("data-value", str(value)))
     pill_attrs.extend(attributes)
 
-    label_child: HTMLTag = (
+    label_child: "Node | str" = (
         Span(attributes=[("data-search-select-label", "")], children=[label])
         if label_slot
         else label
     )
-    children: list[HTMLTag] = [label_child]
+    children: list["Node | str"] = [label_child]
     if removable:
         children.append(
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "button"),
                     ("data-pill-remove", ""),
@@ -535,9 +508,12 @@ def Pill(
     return Span(attributes=pill_attrs, children=children)
 
 
-def CsrfInput(request) -> SafeText:
-    """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag."""
-    return mark_safe(
+def CsrfInput(request) -> Node:
+    """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag.
+
+    Returns a ``Safe`` node (not a safe string): it is always used as a tree
+    child, and only nodes render unescaped now."""
+    return Safe(
         f'<input type="hidden" name="csrfmiddlewaretoken" value="{get_token(request)}">'
     )
 
@@ -554,11 +530,22 @@ def ExternalScript(url: str) -> SafeText:
     return mark_safe(f'<script src="{url}"></script>')
 
 
+def StaticScript(filename: str) -> SafeText:
+    """A plain (classic, non-module) `<script src=...>` tag for a static JS
+    file — for vendored UMD bundles, which break inside module scope."""
+    return mark_safe(f'<script src="{static("js/" + filename)}"></script>')
+
+
+# Media for the Flowbite-datepicker year picker (vendored UMD bundle). Declared
+# on the YearPicker node so Page() loads it wherever a YearPicker appears.
+_YEAR_PICKER_MEDIA = Media(js_external=("datepicker.umd.js",))
+
+
 def YearPicker(
     year: int | None = None,
     available_years: tuple[int, ...] = (),
     url_template: str = "",
-) -> SafeText:
+) -> Node:
     """A Flowbite-datepicker year picker.
 
     `year` is the selected year, or ``None`` for the all-time view (the empty
@@ -567,8 +554,8 @@ def YearPicker(
     placeholder, substituted with the chosen year in JS (keeps this component
     decoupled from the project's URL names).
 
-    The Flowbite-datepicker UMD bundle is *not* loaded here — the view hoists it
-    via ``render_page(scripts=...)``.
+    The Flowbite-datepicker UMD bundle is declared as ``media`` on the returned
+    node, so ``Page()`` loads it automatically.
     """
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
@@ -579,7 +566,8 @@ def YearPicker(
         "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
     )
     years_csv = ",".join(str(y) for y in available_years)
-    return mark_safe(f"""<div class="relative inline-block" x-data="{{ pickerOpen: false }}"
+    return Safe(
+        f"""<div class="relative inline-block" x-data="{{ pickerOpen: false }}"
      @keydown.escape.window="pickerOpen = false">
     <button type="button"
             x-on:click="pickerOpen = !pickerOpen; $refs.pickerInput._pickerInstance && ($refs.pickerInput._pickerInstance.active ? $refs.pickerInput._pickerInstance.hide() : $refs.pickerInput._pickerInstance.show())"
@@ -632,17 +620,19 @@ document.addEventListener('DOMContentLoaded', () => {{
         picker.update();
     }}
 }});
-</script>""")
+</script>""",
+        media=_YEAR_PICKER_MEDIA,
+    )
 
 
 def AddForm(
     form,
     *,
     request,
-    fields: SafeText | str | None = None,
-    additional_row: SafeText | str = "",
+    fields: Node | SafeText | str | None = None,
+    additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
-) -> SafeText:
+) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).
 
     `fields` overrides the default ``form.as_div()`` field markup (used by the
@@ -651,11 +641,11 @@ def AddForm(
     is applied to the main Submit button (the session form passes "" to match
     its original markup).
     """
-    field_markup = fields if fields is not None else mark_safe(form.as_div())
+    field_markup = fields if fields is not None else Safe(form.as_div())
     submit_attrs = [("class", submit_class)] if submit_class else []
 
-    inner_form = Component(
-        tag_name="form",
+    inner_form = Element(
+        "form",
         attributes=[("method", "post"), ("enctype", "multipart/form-data")],
         children=[
             CsrfInput(request),
@@ -683,10 +673,10 @@ def SearchField(
     search_string: str = "",
     id: str = "search_string",
     placeholder: str = "Search",
-) -> SafeText:
+) -> Element:
     """Generate a search form with icon, input field, and submit button."""
-    return Component(
-        tag_name="form",
+    return Element(
+        "form",
         attributes=[("class", "max-w-md")],
         children=[
             Label(
@@ -699,7 +689,7 @@ def SearchField(
             Div(
                 attributes=[("class", "relative")],
                 children=[
-                    mark_safe(
+                    Safe(
                         '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
                         '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
                         'fill="none" viewBox="0 0 24 24">'
@@ -724,8 +714,8 @@ def SearchField(
                             ("required", ""),
                         ],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "submit"),
                             (
@@ -746,13 +736,13 @@ def SearchField(
 
 
 def H1(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     badge: str = "",
-) -> SafeText:
+) -> Element:
     """Heading with optional badge count."""
     children = children or []
     heading_class = "mb-4 text-3xl font-extrabold leading-none tracking-tight text-gray-900 dark:text-white"
-    badge_html = ""
+    badge_html: Node | str = ""
 
     if badge:
         heading_class = "flex items-center " + heading_class
@@ -767,21 +757,20 @@ def H1(
             children=[badge],
         )
 
-    return Component(
-        tag_name="h1",
+    return Element(
+        "h1",
         attributes=[("class", heading_class)],
-        children=(children if isinstance(children, list) else [children])
-        + ([badge_html] if badge_html else []),
+        children=as_children(children) + ([badge_html] if badge_html else []),
     )
 
 
 def Modal(
     modal_id: str,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+    children: Children = None,
+) -> Node:
     """Modal overlay with container. Content (form, buttons) goes in children."""
     children = children or []
-    outer = Div(
+    return Div(
         attributes=[
             ("id", modal_id),
             (
@@ -799,52 +788,24 @@ def Modal(
                         "shadow-lg/50 rounded-md bg-white dark:bg-gray-900",
                     ),
                 ],
-                children=(children if isinstance(children, list) else [children]),
+                children=as_children(children),
             ),
         ],
     )
-    return mark_safe(str(outer))
-
-
-def Td(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="td", attributes=attributes, children=children)
-
-
-def Tr(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="tr", attributes=attributes, children=children)
-
-
-def Th(
-    attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
-    attributes = attributes or []
-    children = children or []
-    return Component(tag_name="th", attributes=attributes, children=children)
 
 
 def TableTd(
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+    children: Children = None,
+) -> Element:
     """Styled table cell."""
     children = children or []
     return Td(
         attributes=[("class", "px-6 py-4 min-w-20-char max-w-20-char")],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 
-def TableRow(data: dict | list | None = None) -> SafeText:
+def TableRow(data: dict | list | None = None) -> Element:
     """Generate a <tr> from a row data dict or list.
 
     Dict form: {"row_id": "...", "cell_data": [...], "hx_trigger": ..., ...}
@@ -879,7 +840,7 @@ def TableRow(data: dict | list | None = None) -> SafeText:
         if data.get("hx_swap"):
             tr_attrs.append(("hx-swap", data["hx_swap"]))
 
-    cell_elements: list[SafeText] = []
+    cell_elements: list[Node] = []
     for i, cell in enumerate(cells):
         if i == 0:
             cell_elements.append(
@@ -903,18 +864,18 @@ def TableRow(data: dict | list | None = None) -> SafeText:
 
 def Icon(
     name: str,
-    attributes: list[HTMLAttribute] | None = None,
-) -> SafeText:
-    return mark_safe(get_icon(name))
+    attributes: Attributes | None = None,
+) -> Node:
+    return Safe(get_icon(name))
 
 
 def TableHeader(
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+    children: Children = None,
+) -> Element:
     """Table caption."""
     children = children or []
-    return Component(
-        tag_name="caption",
+    return Element(
+        "caption",
         attributes=[
             (
                 "class",
@@ -922,7 +883,7 @@ def TableHeader(
                 "text-gray-900 bg-white dark:text-white dark:bg-gray-900",
             ),
         ],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 
@@ -1001,11 +962,11 @@ def _pagination_nav(page_obj, elided_page_range, request) -> str:
 def SimpleTable(
     columns: list[str] | None = None,
     rows: list | None = None,
-    header_action: SafeText | str | None = None,
+    header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
     request=None,
-) -> SafeText:
+) -> Node:
     """Paginated table. Python equivalent of the old simple_table.html."""
     columns = columns or []
     rows = rows or []
@@ -1024,7 +985,7 @@ def SimpleTable(
     if page_obj and elided_page_range:
         pagination_html = _pagination_nav(page_obj, elided_page_range, request)
 
-    return mark_safe(
+    return Safe(
         '<div class="shadow-md" hx-boost="false">'
         '<div class="relative overflow-x-auto sm:rounded-t-lg">'
         '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">'
@@ -1044,7 +1005,7 @@ def paginated_table_content(
     page_obj=None,
     elided_page_range=None,
     request=None,
-) -> SafeText:
+) -> Node:
     """Standard list-page body: a max-width Div wrapping a SimpleTable.
 
     `data` is the table dict with keys ``columns``, ``rows`` and

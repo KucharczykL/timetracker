@@ -8,6 +8,7 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 """
 
 import json
+from typing import TYPE_CHECKING
 
 from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
@@ -18,6 +19,9 @@ from django.utils.safestring import SafeText, mark_safe
 from django_htmx.jinja import django_htmx_script
 
 from games.templatetags.version import version, version_date
+
+if TYPE_CHECKING:
+    from common.components import Node
 
 # Static head script that sets the dark/light class before paint (avoids FOUC).
 _THEME_FOUC_SCRIPT = """<script>
@@ -182,10 +186,16 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeText:
-    """Top navigation bar."""
+def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> "Node":
+    """Top navigation bar.
+
+    Static chrome, so it's a single ``Safe`` node wrapping its markup rather
+    than a hand-built element tree — trusted HTML belongs in a ``Safe`` node,
+    not a ``mark_safe`` string."""
+    from common.components import Safe
+
     logo = static("icons/schedule.png")
-    return mark_safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
+    return Safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
     <div class="max-w-(--breakpoint-xl) flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="{reverse("games:index")}"
            class="flex items-center space-x-3 rtl:space-x-reverse">
@@ -269,15 +279,29 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeT
 
 
 def Page(
-    content: SafeText | str,
+    content: "Node | SafeText | str",
     *,
     request: HttpRequest,
     title: str = "",
-    scripts: SafeText | str = "",
+    scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
 ) -> SafeText:
-    """Assemble a full HTML document around `content` (the fast_app equivalent)."""
+    """Assemble a full HTML document around `content` (the fast_app equivalent).
+
+    Scripts are collected from `content`'s component tree: every component
+    declares its JS via `Media`, and `collect_media` gathers (deduped) the union
+    for the whole page. The `scripts` argument remains for page-specific glue
+    that isn't owned by a reusable component (e.g. the add-form helpers).
+    """
+    from common.components import ModuleScript, StaticScript, collect_media
     from games.views.general import global_current_year, model_counts
+
+    media = collect_media(content)
+    collected_scripts = "".join(
+        [str(ModuleScript(name)) for name in media.js]
+        + [str(StaticScript(name)) for name in media.js_external]
+    )
+    all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
@@ -309,9 +333,12 @@ def Page(
         f'        <script src="{static("js/htmx-redirect-toast.js")}"></script>\n'
         f"        {django_htmx_script(nonce=None)}\n"
         f'        <link rel="stylesheet" href="{static("base.css")}" />\n'
-        '        <script src="https://cdn.jsdelivr.net/npm/flowbite@2.4.1/dist/flowbite.min.js"></script>\n'
-        '        <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js"></script>\n'
-        '        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>\n'
+        # Vendored bundles (flowbite 2.4.1, alpinejs/@alpinejs/mask 3.15.12) —
+        # served locally so pages work offline (and in browser tests). The mask
+        # plugin must load before Alpine core; both stay deferred.
+        f'        <script src="{static("js/flowbite.min.js")}"></script>\n'
+        f'        <script defer src="{static("js/alpine-mask.min.js")}"></script>\n'
+        f'        <script defer src="{static("js/alpine.min.js")}"></script>\n'
         f"        {_THEME_FOUC_SCRIPT}\n"
         "    </head>\n"
     )
@@ -325,7 +352,7 @@ def Page(
         f'            <div id="main-container" class="flex flex-1 flex-col pt-8 pb-16">{content}</div>\n'
         f'            <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{version()} ({version_date()})</span>\n'
         "        </div>\n"
-        f"        {scripts}\n"
+        f"        {all_scripts}\n"
         f"        {_main_script(mastered)}\n"
         "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
         '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'
@@ -339,10 +366,10 @@ def Page(
 
 def render_page(
     request: HttpRequest,
-    content: SafeText | str,
+    content: "Node | SafeText | str",
     *,
     title: str = "",
-    scripts: SafeText | str = "",
+    scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
     status: int = 200,
 ) -> HttpResponse:

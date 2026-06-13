@@ -4,9 +4,8 @@ from typing import Any
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import HTMLTag
+from common.components.core import Children, Node, Safe, as_children
 from common.components.primitives import (
     A,
     Div,
@@ -21,13 +20,12 @@ from games.models import Game, Purchase, Session
 def GameLink(
     game_id: int,
     name: str = "",
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+    children: Children = None,
+) -> Node:
     """Link to a game's detail page. Uses children (slot) if provided, otherwise name."""
     from django.urls import reverse
 
-    children = children or []
-    display = children if children else [name]
+    display = as_children(children) or [name]
     link = reverse("games:view_game", args=[game_id])
 
     return Span(
@@ -38,7 +36,7 @@ def GameLink(
                 attributes=[
                     ("class", "underline decoration-slate-500 sm:decoration-2"),
                 ],
-                children=display if isinstance(display, list) else [display],
+                children=display,
             ),
         ],
     )
@@ -54,11 +52,11 @@ _STATUS_COLORS = {
 
 
 def GameStatus(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     status: str = "u",
     display: str = "",
     class_: str = "",
-) -> SafeText:
+) -> Node:
     """Colored status dot with label. Status codes: u/p/f/a/r."""
     children = children or []
     outer_class = (
@@ -76,13 +74,13 @@ def GameStatus(
 
     return Span(
         attributes=[("class", outer_class)],
-        children=[dot] + (children if isinstance(children, list) else [children]),
+        children=[dot] + as_children(children),
     )
 
 
 def PriceConverted(
-    children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+    children: Children = None,
+) -> Node:
     """Wrap content in a span that indicates the price was converted."""
     children = children or []
     return Span(
@@ -90,11 +88,11 @@ def PriceConverted(
             ("title", "Price is a result of conversion and rounding."),
             ("class", "decoration-dotted underline"),
         ],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 
-def LinkedPurchase(purchase: Purchase) -> SafeText:
+def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[int(purchase.id)])
     link_content = ""
     popover_content = ""
@@ -131,7 +129,7 @@ def LinkedPurchase(purchase: Purchase) -> SafeText:
             ),
             PopoverTruncated(
                 input_string=link_content,
-                popover_content=mark_safe(popover_content),
+                popover_content=Safe(popover_content),
                 popover_if_not_truncated=popover_if_not_truncated,
             ),
         ],
@@ -145,7 +143,7 @@ def NameWithIcon(
     session: Session | None = None,
     linkify: bool = True,
     emulated: bool = False,
-) -> SafeText:
+) -> Node:
     _name, platform, final_emulated, create_link, link = _resolve_name_with_icon(
         name, game, session, linkify
     )
@@ -203,7 +201,7 @@ def _resolve_name_with_icon(
     return _name, platform, final_emulated, create_link, link
 
 
-def PurchasePrice(purchase) -> SafeText:
+def PurchasePrice(purchase) -> Node:
     return Popover(
         popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
@@ -211,7 +209,7 @@ def PurchasePrice(purchase) -> SafeText:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
+def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     """Alpine.js dropdown to change a game's status."""
     options_html = "\n".join(
         f"<template x-if=\"status == '{value}'\">"
@@ -229,7 +227,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
         for value, label in game_statuses
     )
 
-    return mark_safe(f"""
+    return Safe(f"""
 <div class="flex gap-2 items-center"
      x-data="{{
          status: '{game.status}',
@@ -262,7 +260,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
 """)
 
 
-def SessionDeviceSelector(session, session_devices, csrf_token: str) -> SafeText:
+def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     """Alpine.js dropdown to change a session's device."""
     device_id = session.device_id or "null"
     device_name = (session.device.name if session.device else "Unknown").replace(
@@ -277,7 +275,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> SafeText
         for d in session_devices
     )
 
-    return mark_safe(f"""
+    return Safe(f"""
 <div class="flex gap-2 items-center"
      x-data="{{
          originalDeviceId: {device_id},

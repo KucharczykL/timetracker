@@ -14,18 +14,20 @@ from django.utils.safestring import SafeText, mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
+    Fragment,
     A,
     AddForm,
     Button,
     ButtonGroup,
-    Component,
     CsrfInput,
     Div,
+    Element,
     GameLink,
     Icon,
     LinkedPurchase,
     Modal,
     ModuleScript,
+    Node,
     PriceConverted,
     PurchasePrice,
     TableRow,
@@ -129,22 +131,18 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import ModuleScript, PurchaseFilterBar
+    from common.components import PurchaseFilterBar
 
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage purchases",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("date_range_picker.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 
@@ -304,9 +302,9 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("games:list_purchases")
 
 
-def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> SafeText:
-    form = Component(
-        tag_name="form",
+def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
+    form = Element(
+        "form",
         attributes=[
             ("hx-post", reverse("games:refund_purchase", args=[purchase_id])),
             ("hx-target", f"#purchase-row-{purchase_id}"),
@@ -342,8 +340,8 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> SafeTe
     return Modal(
         "refund-confirmation-modal",
         children=[
-            Component(
-                tag_name="h1",
+            Element(
+                "h1",
                 attributes=[
                     (
                         "class",

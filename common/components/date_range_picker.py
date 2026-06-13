@@ -17,11 +17,13 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 ``games/static/js/date_range_picker.js``.
 """
 
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component, HTMLAttribute
+from common.components.core import Element, HTMLAttribute, Media, Node, Safe
 from common.components.primitives import Div, Input, Span
 from common.time import DatePartSpec, date_parts
+
+# Wired by date_range_picker.js.
+_DATE_RANGE_MEDIA = Media(js=("date_range_picker.js",))
 
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
@@ -101,7 +103,7 @@ def _iso_part_values(iso_value: str, parts: list[DatePartSpec]) -> dict[str, str
 
 def _segment_input(
     *, part: DatePartSpec, side: str, label: str, value: str
-) -> SafeText:
+) -> Node:
     side_label = "from" if side == "min" else "to"
     return Input(
         attributes=[
@@ -122,11 +124,11 @@ def _segment_input(
     )
 
 
-def _segment_group(*, side: str, label: str, iso_value: str) -> SafeText:
+def _segment_group(*, side: str, label: str, iso_value: str) -> Node:
     """One date's worth of segments (``DD - MM - YYYY``) for a range side."""
     parts = date_parts()
     initial_values = _iso_part_values(iso_value, parts)
-    children: list[SafeText] = []
+    children: list[Node] = []
     for index, part in enumerate(parts):
         if index > 0:
             children.append(
@@ -158,7 +160,7 @@ def DateRangeField(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
-) -> SafeText:
+) -> Node:
     """The visible half of the DateRangePicker: a single-input-looking
     container holding two segmented dates, a calendar toggle, and the two
     hidden ISO inputs (``{prefix}-min`` / ``{prefix}-max``) that carry the
@@ -195,8 +197,8 @@ def DateRangeField(
                 children=["–"],
             ),
             _segment_group(side="max", label=label, iso_value=max_value),
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "button"),
                     ("data-date-range-calendar-toggle", ""),
@@ -207,15 +209,15 @@ def DateRangeField(
                         "cursor-pointer shrink-0",
                     ),
                 ],
-                children=[mark_safe(_CALENDAR_ICON_SVG)],
+                children=[Safe(_CALENDAR_ICON_SVG)],
             ),
         ],
     )
 
 
-def _calendar_nav_button(direction: str, arrow: str, label: str) -> SafeText:
-    return Component(
-        tag_name="button",
+def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             (f"data-date-range-{direction}", ""),
@@ -226,9 +228,9 @@ def _calendar_nav_button(direction: str, arrow: str, label: str) -> SafeText:
     )
 
 
-def _footer_button(action: str, label: str, button_class: str) -> SafeText:
-    return Component(
-        tag_name="button",
+def _footer_button(action: str, label: str, button_class: str) -> Node:
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
             (f"data-date-range-{action}", ""),
@@ -238,13 +240,13 @@ def _footer_button(action: str, label: str, button_class: str) -> SafeText:
     )
 
 
-def DateRangeCalendar(*, input_name_prefix: str) -> SafeText:
+def DateRangeCalendar(*, input_name_prefix: str) -> Node:
     """The popup half of the DateRangePicker: preset column, month grid
     (filled client-side into ``[data-date-range-grid]``), and the
     Cancel / Clear / Select footer. Hidden until the calendar toggle opens it."""
     preset_buttons = [
-        Component(
-            tag_name="button",
+        Element(
+            "button",
             attributes=[
                 ("type", "button"),
                 ("data-date-range-preset", preset_value),
@@ -328,7 +330,7 @@ def DateRangePicker(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
-) -> SafeText:
+) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
 
     Drop-in replacement for ``DateRangeFilter`` — exposes the same hidden
@@ -352,4 +354,4 @@ def DateRangePicker(
             ),
             DateRangeCalendar(input_name_prefix=input_name_prefix),
         ],
-    )
+    ).with_media(_DATE_RANGE_MEDIA)

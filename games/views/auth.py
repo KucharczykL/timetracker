@@ -3,19 +3,18 @@ registration/login.html)."""
 
 from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components import Component, CsrfInput, Div, Input
+from common.components import CsrfInput, Div, Element, Input, Node, Safe
 from common.components.primitives import Td, Tr
 from common.layout import render_page
 
 
-def _login_content(form, request) -> SafeText:
-    table = Component(
-        tag_name="table",
+def _login_content(form, request) -> Node:
+    table = Element(
+        "table",
         children=[
             CsrfInput(request),
-            mark_safe(str(form.as_table())),
+            Safe(str(form.as_table())),
             Tr(
                 children=[
                     Td(),
@@ -31,13 +30,13 @@ def _login_content(form, request) -> SafeText:
     return Div(
         [("class", "flex items-center flex-col")],
         [
-            Component(
-                tag_name="h2",
+            Element(
+                "h2",
                 attributes=[("class", "text-3xl text-white mb-8")],
                 children=["Please log in to continue"],
             ),
-            Component(
-                tag_name="form",
+            Element(
+                "form",
                 attributes=[("method", "post")],
                 children=[table],
             ),

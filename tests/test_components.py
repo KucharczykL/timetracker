@@ -2,21 +2,29 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import django
-
+from django.test import SimpleTestCase
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
 from games.models import Platform, Game, Purchase, Session
 
+# Component builders return lazy ``Node`` objects; these tests assert on rendered
+# HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
+# (``Node.__str__`` returns a ``SafeText``). Non-node helpers (``randomid``,
+# ``_resolve_name_with_icon``, ``_render_element``) are called
+# directly.
+
 
 class ComponentIntegrationTest(unittest.TestCase):
-    """Test Component() works correctly with caching transparent."""
+    """Test Element() renders correctly with caching transparent."""
 
     def test_tag_name_component(self):
-        result = components.Component(
-            tag_name="div",
-            attributes=[("class", "test")],
-            children="hello",
+        result = str(
+            components.Element(
+                tag_name="div",
+                attributes=[("class", "test")],
+                children="hello",
+            )
         )
         self.assertEqual(result, '<div class="test">hello</div>')
 
@@ -28,9 +36,17 @@ class ComponentCacheTest(unittest.TestCase):
         components._render_element.cache_clear()
 
     def test_identical_components_hit_cache(self):
-        components.Component(tag_name="div", attributes=[("class", "x")], children="hi")
+        str(
+            components.Element(
+                tag_name="div", attributes=[("class", "x")], children="hi"
+            )
+        )
         misses = components._render_element.cache_info().misses
-        components.Component(tag_name="div", attributes=[("class", "x")], children="hi")
+        str(
+            components.Element(
+                tag_name="div", attributes=[("class", "x")], children="hi"
+            )
+        )
         info = components._render_element.cache_info()
         self.assertEqual(info.misses, misses)  # no new miss
         self.assertGreaterEqual(info.hits, 1)  # served from cache
@@ -39,10 +55,12 @@ class ComponentCacheTest(unittest.TestCase):
         self.assertEqual(components._render_element.cache_parameters()["maxsize"], 4096)
 
     def test_safe_and_unsafe_children_do_not_collide(self):
-        """A SafeText "<b>" and a plain "<b>" are equal as strings but must
-        render differently — the cache key must keep them distinct."""
-        safe = components.Component(tag_name="span", children=[mark_safe("<b>x</b>")])
-        unsafe = components.Component(tag_name="span", children=["<b>x</b>"])
+        """A Safe-node ``<b>`` and a plain-string ``<b>`` render differently —
+        the cache key must keep them distinct."""
+        safe = str(
+            components.Element(tag_name="span", children=[components.Safe("<b>x</b>")])
+        )
+        unsafe = str(components.Element(tag_name="span", children=["<b>x</b>"]))
         self.assertIn("<b>x</b>", safe)
         self.assertIn("&lt;b&gt;x&lt;/b&gt;", unsafe)
         self.assertNotEqual(safe, unsafe)
@@ -114,33 +132,37 @@ class PopoverDeterministicTest(unittest.TestCase):
     """Test that Popover() produces deterministic HTML output."""
 
     def test_same_popover_same_id(self):
-        r1 = components.Popover("hello", wrapped_content="hello")
-        r2 = components.Popover("hello", wrapped_content="hello")
+        r1 = str(components.Popover("hello", wrapped_content="hello"))
+        r2 = str(components.Popover("hello", wrapped_content="hello"))
         self.assertEqual(r1, r2)
 
     def test_different_content_different_id(self):
-        r1 = components.Popover("content_a", wrapped_content="content_a")
-        r2 = components.Popover("content_b", wrapped_content="content_b")
+        r1 = str(components.Popover("content_a", wrapped_content="content_a"))
+        r2 = str(components.Popover("content_b", wrapped_content="content_b"))
         self.assertNotEqual(r1, r2)
 
     def test_wrapped_classes_affect_id(self):
-        r1 = components.Popover("c", wrapped_content="c", wrapped_classes="class_x")
-        r2 = components.Popover("c", wrapped_content="c", wrapped_classes="class_y")
+        r1 = str(
+            components.Popover("c", wrapped_content="c", wrapped_classes="class_x")
+        )
+        r2 = str(
+            components.Popover("c", wrapped_content="c", wrapped_classes="class_y")
+        )
         self.assertNotEqual(r1, r2)
 
     def test_wrapped_content_affects_id(self):
-        r1 = components.Popover("popover", wrapped_content="wrapped_a")
-        r2 = components.Popover("popover", wrapped_content="wrapped_b")
+        r1 = str(components.Popover("popover", wrapped_content="wrapped_a"))
+        r2 = str(components.Popover("popover", wrapped_content="wrapped_b"))
         self.assertNotEqual(r1, r2)
 
     def test_popover_content_affects_id(self):
-        r1 = components.Popover("popover_a", wrapped_content="wrapped")
-        r2 = components.Popover("popover_b", wrapped_content="wrapped")
+        r1 = str(components.Popover("popover_a", wrapped_content="wrapped"))
+        r2 = str(components.Popover("popover_b", wrapped_content="wrapped"))
         self.assertNotEqual(r1, r2)
 
     def test_full_html_deterministic(self):
-        r1 = components.Popover("hello world", wrapped_content="hello world")
-        r2 = components.Popover("hello world", wrapped_content="hello world")
+        r1 = str(components.Popover("hello world", wrapped_content="hello world"))
+        r2 = str(components.Popover("hello world", wrapped_content="hello world"))
         self.assertEqual(r1.encode(), r2.encode())
 
 
@@ -180,26 +202,26 @@ class ComponentReturnTypeTest(unittest.TestCase):
     """Test that component functions return SafeText and render correctly."""
 
     def test_div_returns_safe_text(self):
-        result = components.Div([("class", "x")], "hello")
+        result = str(components.Div([("class", "x")], "hello"))
         self.assertIsInstance(result, SafeText)
 
     def test_div_deterministic(self):
-        r1 = components.Div([("class", "x")], "hello")
-        r2 = components.Div([("class", "x")], "hello")
+        r1 = str(components.Div([("class", "x")], "hello"))
+        r2 = str(components.Div([("class", "x")], "hello"))
         self.assertEqual(r1, r2)
         self.assertIn('<div class="x">hello</div>', r1)
 
     def test_div_no_args(self):
-        result = components.Div(children="test")
+        result = str(components.Div(children="test"))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<div>test</div>", result)
 
     def test_a_returns_safe_text(self):
-        result = components.A([], "link")
+        result = str(components.A([], "link"))
         self.assertIsInstance(result, SafeText)
 
     def test_a_literal_href(self):
-        result = components.A([], "x", href="/literal/path")
+        result = str(components.A([], "x", href="/literal/path"))
         self.assertIn('href="/literal/path"', result)
 
     def test_a_url_name_reversed(self):
@@ -208,35 +230,35 @@ class ComponentReturnTypeTest(unittest.TestCase):
         with patch(
             "common.components.primitives.reverse", return_value="/resolved/url"
         ):
-            result = components.A([], "link", url_name="some_name")
+            result = str(components.A([], "link", url_name="some_name"))
             self.assertIn('href="/resolved/url"', result)
 
     def test_a_no_url_or_href(self):
-        result = components.A([], "link")
+        result = str(components.A([], "link"))
         self.assertIn("<a>link</a>", result)
         self.assertNotIn("href=", result)
 
     def test_a_both_url_name_and_href_raises(self):
         with self.assertRaises(ValueError):
-            components.A(href="/path", url_name="some_name")
+            str(components.A(href="/path", url_name="some_name"))
 
     def test_button_returns_safe_text(self):
-        result = components.Button([], "click")
+        result = str(components.Button([], "click"))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<button", result)
 
     def test_button_default_colors(self):
-        result = components.Button([], "click")
+        result = str(components.Button([], "click"))
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
-        result = components.NameWithIcon(name="Game", linkify=False)
+        result = str(components.NameWithIcon(name="Game", linkify=False))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Game", result)
         self.assertNotIn("<a ", result)
 
     def test_name_with_icon_no_trailing_comma(self):
-        result = components.NameWithIcon(name="Test", linkify=False)
+        result = str(components.NameWithIcon(name="Test", linkify=False))
         self.assertIsInstance(result, SafeText)
         self.assertNotIsInstance(result, tuple)
 
@@ -246,21 +268,23 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_component_output_starts_with_tag(self):
         for label, html in [
-            ("A", components.A(href="/foo", children=["link"])),
-            ("Button", components.Button([], "click")),
-            ("Div", components.Div([], ["hello"])),
-            ("Input", components.Input()),
-            ("ButtonGroup", components.ButtonGroup([])),
+            ("A", str(components.A(href="/foo", children=["link"]))),
+            ("Button", str(components.Button([], "click"))),
+            ("Div", str(components.Div([], ["hello"]))),
+            ("Input", str(components.Input())),
+            ("ButtonGroup", str(components.ButtonGroup([]))),
             (
                 "ButtonGroup with buttons",
-                components.ButtonGroup(
-                    [{"href": "/", "slot": components.Icon("edit")}]
+                str(
+                    components.ButtonGroup(
+                        [{"href": "/", "slot": components.Icon("edit")}]
+                    )
                 ),
             ),
-            ("SearchField", components.SearchField()),
-            ("PriceConverted", components.PriceConverted(["27 CZK"])),
-            ("H1", components.H1(["Title"])),
-            ("H1 with badge", components.H1(["Title"], badge="3")),
+            ("SearchField", str(components.SearchField())),
+            ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
+            ("H1", str(components.H1(["Title"]))),
+            ("H1 with badge", str(components.H1(["Title"], badge="3"))),
         ]:
             with self.subTest(component=label):
                 self.assertTrue(
@@ -269,90 +293,112 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
                 )
 
     def test_button_with_icon_children_not_escaped(self):
-        result = components.Button(
-            icon=True,
-            size="xs",
-            children=[components.Icon("play"), "LOG"],
+        result = str(
+            components.Button(
+                icon=True,
+                size="xs",
+                children=[components.Icon("play"), "LOG"],
+            )
         )
         self.assertTrue(str(result).startswith("<button"))
 
     def test_popover_with_button_children_not_escaped(self):
-        result = components.Popover(
-            popover_content="test tooltip",
-            children=[
-                components.Button(
-                    icon=True,
-                    color="gray",
-                    size="xs",
-                    children=[components.Icon("play"), "test"],
-                ),
-            ],
+        result = str(
+            components.Popover(
+                popover_content="test tooltip",
+                children=[
+                    components.Button(
+                        icon=True,
+                        color="gray",
+                        size="xs",
+                        children=[components.Icon("play"), "test"],
+                    ),
+                ],
+            )
         )
         self.assertTrue(str(result).startswith("<span data-popover-target"))
 
     def test_name_with_icon_output_not_escaped(self):
-        result = components.NameWithIcon(name="Test", linkify=False)
+        result = str(components.NameWithIcon(name="Test", linkify=False))
         self.assertTrue(str(result).startswith("<div"))
 
 
 class ComponentEdgeCasesTest(unittest.TestCase):
-    """Test Component() edge cases and error handling."""
+    """Test Element() edge cases and error handling."""
 
     def test_no_tag_name_raises(self):
         with self.assertRaises(ValueError) as ctx:
-            components.Component(children="hello")
+            str(components.Element("", children="hello"))
         self.assertIn("tag_name", str(ctx.exception))
 
     def test_single_string_children_wrapped(self):
-        result = components.Component(tag_name="span", children="hello")
+        result = str(components.Element(tag_name="span", children="hello"))
         self.assertIn("hello", result)
 
     def test_multiple_children_joined_with_newlines(self):
-        result = components.Component(tag_name="div", children=["hello", "world"])
+        result = str(components.Element(tag_name="div", children=["hello", "world"]))
         self.assertIn("hello\nworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
 
     def test_raw_html_children_are_escaped(self):
-        result = components.Component(
-            tag_name="div", children=["<script>alert('xss')</script>"]
+        result = str(
+            components.Element(
+                tag_name="div", children=["<script>alert('xss')</script>"]
+            )
         )
         self.assertNotIn("<script>", result)
         self.assertIn("&lt;script&gt;", result)
 
-    def test_mark_safe_children_pass_through(self):
-        result = components.Component(
-            tag_name="div", children=[mark_safe("<span>safe</span>")]
+    def test_safe_node_children_pass_through(self):
+        result = str(
+            components.Element(
+                tag_name="div", children=[components.Safe("<span>safe</span>")]
+            )
         )
         self.assertIn("<span>safe</span>", result)
 
+    def test_mark_safe_string_children_are_escaped(self):
+        # Trusted markup must be a Safe node; a mark_safe string is still a
+        # string, so it is escaped like any other text child.
+        result = str(
+            components.Element(
+                tag_name="div", children=[mark_safe("<span>safe</span>")]
+            )
+        )
+        self.assertIn("&lt;span&gt;safe&lt;/span&gt;", result)
+
     def test_attribute_values_are_escaped(self):
-        result = components.Component(
-            tag_name="div",
-            attributes=[("data-x", 'foo"bar')],
+        result = str(
+            components.Element(
+                tag_name="div",
+                attributes=[("data-x", 'foo"bar')],
+            )
         )
         self.assertIn("&quot;", result)
         self.assertNotIn('"foo"bar"', result)
 
     def test_attributes_serialized_correctly(self):
-        result = components.Component(
-            tag_name="div", attributes=[("class", "foo"), ("id", "bar")]
+        result = str(
+            components.Element(
+                tag_name="div", attributes=[("class", "foo"), ("id", "bar")]
+            )
         )
         self.assertIn('class="foo"', result)
         self.assertIn('id="bar"', result)
 
     def test_empty_attributes_no_extra_space(self):
-        result = components.Component(tag_name="span", children="x")
+        result = str(components.Element(tag_name="span", children="x"))
         self.assertEqual(result, "<span>x</span>")
         self.assertNotIn(" <span", result)
 
     def test_non_string_children_not_supported(self):
         """Component only accepts str for children, not integers."""
-        result = components.Component(tag_name="span", children=str(42))
+        result = str(components.Element(tag_name="span", children=str(42)))
         self.assertIn("42", result)
 
     def test_returns_safetext(self):
-        result = components.Component(tag_name="div", children="test")
+        result = str(components.Element(tag_name="div", children="test"))
         self.assertIsInstance(result, SafeText)
 
 
@@ -360,22 +406,22 @@ class IconTest(unittest.TestCase):
     """Test Icon() component function."""
 
     def test_valid_icon_renders_svg(self):
-        result = components.Icon("play")
+        result = str(components.Icon("play"))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<svg", result)
         self.assertIn("</svg>", result)
 
     def test_unavailable_icon_falls_back(self):
-        result = components.Icon("zzz_nonexistent_platform")
+        result = str(components.Icon("zzz_nonexistent_platform"))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<svg", result)
 
     def test_icon_passes_attributes_to_template(self):
-        result = components.Icon("play", attributes=[("title", "Play")])
+        result = str(components.Icon("play", attributes=[("title", "Play")]))
         self.assertIsInstance(result, SafeText)
 
     def test_returns_safetext(self):
-        result = components.Icon("delete")
+        result = str(components.Icon("delete"))
         self.assertIsInstance(result, SafeText)
 
 
@@ -383,17 +429,19 @@ class InputTest(unittest.TestCase):
     """Test the Input() component."""
 
     def test_input_default_type_text(self):
-        result = components.Input()
+        result = str(components.Input())
         self.assertIn("<input", result)
         self.assertIn('type="text"', result)
 
     def test_input_custom_type(self):
-        result = components.Input(type="submit")
+        result = str(components.Input(type="submit"))
         self.assertIn('type="submit"', result)
 
     def test_input_attributes_merged_with_type(self):
-        result = components.Input(
-            type="email", attributes=[("id", "email"), ("class", "form-input")]
+        result = str(
+            components.Input(
+                type="email", attributes=[("id", "email"), ("class", "form-input")]
+            )
         )
         self.assertIn('type="email"', result)
         self.assertIn('id="email"', result)
@@ -404,12 +452,12 @@ class PopoverTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated() component function."""
 
     def test_short_string_no_popover(self):
-        result = components.PopoverTruncated("hi")
+        result = str(components.PopoverTruncated("hi"))
         self.assertEqual(result, "hi")
 
     def test_long_string_wrapped_in_popover(self):
         long_text = "a" * 100
-        result = components.PopoverTruncated(long_text)
+        result = str(components.PopoverTruncated(long_text))
         # Should NOT equal the truncated form directly
         truncated = components.truncate(long_text, 30)
         self.assertNotEqual(result, truncated)
@@ -418,47 +466,55 @@ class PopoverTruncatedTest(unittest.TestCase):
 
     def test_custom_ellipsis_used(self):
         long_text = "a" * 50
-        result = components.PopoverTruncated(long_text, ellipsis=">>")
+        result = str(components.PopoverTruncated(long_text, ellipsis=">>"))
         # Django template escapes >> to &gt;&gt; in the wrapped_content
         self.assertIn("&gt;&gt;", result)
 
     def test_popover_if_not_truncated_flag(self):
         short_text = "hi"
-        result = components.PopoverTruncated(
-            short_text, popover_content="full content", popover_if_not_truncated=True
+        result = str(
+            components.PopoverTruncated(
+                short_text,
+                popover_content="full content",
+                popover_if_not_truncated=True,
+            )
         )
         # Should be wrapped in popover even though short
         self.assertNotEqual(result, "hi")
         self.assertIn("data-popover-target", result)
 
     def test_popover_content_override(self):
-        result = components.PopoverTruncated("short", popover_content="custom popover")
+        result = str(
+            components.PopoverTruncated("short", popover_content="custom popover")
+        )
         # With popover_if_not_truncated=False (default), short text returns as-is
         self.assertEqual(result, "short")
 
     def test_popover_content_override_with_flag(self):
-        result = components.PopoverTruncated(
-            "short", popover_content="custom popover", popover_if_not_truncated=True
+        result = str(
+            components.PopoverTruncated(
+                "short", popover_content="custom popover", popover_if_not_truncated=True
+            )
         )
         self.assertIn("custom popover", result)
 
     def test_endpart_visible_in_output(self):
         long_text = "a" * 50
-        result = components.PopoverTruncated(long_text, endpart="...")
+        result = str(components.PopoverTruncated(long_text, endpart="..."))
         self.assertIn("...", result)
 
     def test_returns_safetext(self):
-        result = components.PopoverTruncated("a" * 100)
+        result = str(components.PopoverTruncated("a" * 100))
         self.assertIsInstance(result, SafeText)
 
     def test_default_length(self):
         text = "a" * 31
-        result = components.PopoverTruncated(text)
+        result = str(components.PopoverTruncated(text))
         # 31 chars exceeds default length of 30, so should be truncated
         self.assertIn("data-popover-target", result)
 
     def test_length_zero(self):
-        result = components.PopoverTruncated("hello", length=0)
+        result = str(components.PopoverTruncated("hello", length=0))
         # Even empty length triggers popover for any content
         self.assertIn("data-popover-target", result)
 
@@ -490,7 +546,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
     def test_name_with_icon_linkify_with_game(self):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform)
-        result = components.NameWithIcon(game=game, linkify=True)
+        result = str(components.NameWithIcon(game=game, linkify=True))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<a ", result)
         self.assertIn("Test Game", result)
@@ -499,7 +555,9 @@ class ModelDependentComponentsTest(django.test.TestCase):
     def test_name_with_icon_no_linkify(self):
         platform = self._create_platform(name="GOG", icon="gog")
         game = self._create_game(platform)
-        result = components.NameWithIcon(name="Test Game", game=game, linkify=False)
+        result = str(
+            components.NameWithIcon(name="Test Game", game=game, linkify=False)
+        )
         self.assertIsInstance(result, SafeText)
         self.assertNotIn("<a ", result)
         self.assertIn("Test Game", result)
@@ -512,13 +570,13 @@ class ModelDependentComponentsTest(django.test.TestCase):
             timestamp_start="2025-01-01 00:00:00+00:00",
             emulated=True,
         )
-        result = components.NameWithIcon(session=session, linkify=True)
+        result = str(components.NameWithIcon(session=session, linkify=True))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<a ", result)
         self.assertIn("Emulated", result)
 
     def test_name_with_icon_no_platform(self):
-        result = components.NameWithIcon(name="Standalone", linkify=False)
+        result = str(components.NameWithIcon(name="Standalone", linkify=False))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Standalone", result)
 
@@ -529,7 +587,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
             game=game,
             timestamp_start="2025-01-01 00:00:00+00:00",
         )
-        result = components.NameWithIcon(session=session, linkify=True)
+        result = str(components.NameWithIcon(session=session, linkify=True))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Epic Game", result)
 
@@ -537,7 +595,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         platform = self._create_platform()
         game = self._create_game(platform)
         purchase = self._create_purchase([game], price=29.99)
-        result = components.PurchasePrice(purchase)
+        result = str(components.PurchasePrice(purchase))
         self.assertIsInstance(result, SafeText)
         # floatformat rounds to 1 decimal: 29.99 -> 30.0
         self.assertIn("30.0", result)
@@ -548,7 +606,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         platform = self._create_platform(icon="steam")
         game = self._create_game(platform, name="Single Game")
         purchase = self._create_purchase([game], price=14.99)
-        result = components.LinkedPurchase(purchase)
+        result = str(components.LinkedPurchase(purchase))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Single Game", result)
         self.assertIn("<a ", result)
@@ -559,7 +617,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         game1 = self._create_game(platform, name="Game One")
         game2 = self._create_game(platform, name="Game Two")
         purchase = self._create_purchase([game1, game2], price=24.99)
-        result = components.LinkedPurchase(purchase)
+        result = str(components.LinkedPurchase(purchase))
         self.assertIsInstance(result, SafeText)
         self.assertIn("2 games", result)
         self.assertIn("<a ", result)
@@ -575,7 +633,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         )
         purchase.name = "Bundle"
         purchase.save()
-        result = components.LinkedPurchase(purchase)
+        result = str(components.LinkedPurchase(purchase))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Bundle", result)
 
@@ -584,7 +642,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         game1 = self._create_game(platform, name="Alpha")
         game2 = self._create_game(platform, name="Beta")
         purchase = self._create_purchase([game1, game2], price=19.99)
-        result = components.LinkedPurchase(purchase)
+        result = str(components.LinkedPurchase(purchase))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Alpha", result)
         self.assertIn("Beta", result)
@@ -595,18 +653,18 @@ class PurchaseTruncatedTest(unittest.TestCase):
 
     def test_endpart_shorter_than_length(self):
         text = "a" * 50
-        result = components.PopoverTruncated(text, length=10, endpart="x")
+        result = str(components.PopoverTruncated(text, length=10, endpart="x"))
         # endpart=x takes 1 char, so content gets truncated at 9 chars
         self.assertIn("data-popover-target", result)
         self.assertIn("x", result)
 
     def test_no_truncation_no_ellipsis(self):
-        result = components.PopoverTruncated("short text")
+        result = str(components.PopoverTruncated("short text"))
         self.assertEqual(result, "short text")
 
     def test_custom_length(self):
         text = "hello world"
-        result = components.PopoverTruncated(text, length=6)
+        result = str(components.PopoverTruncated(text, length=6))
         self.assertIn("data-popover-target", result)
 
 
@@ -620,12 +678,14 @@ class NameWithIconPlatformTest(django.test.TestCase):
         cls.game = Game.objects.create(name="Zelda", platform=cls.platform)
 
     def test_name_with_icon_shows_platform_icon(self):
-        result = components.NameWithIcon(name="Zelda", game=self.game, linkify=True)
+        result = str(
+            components.NameWithIcon(name="Zelda", game=self.game, linkify=True)
+        )
         self.assertIsInstance(result, SafeText)
         self.assertIn("Zelda", result)
 
     def test_name_with_icon_no_game_id_no_platform(self):
-        result = components.NameWithIcon(name="Unknown Game", linkify=False)
+        result = str(components.NameWithIcon(name="Unknown Game", linkify=False))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Unknown Game", result)
 
@@ -749,9 +809,11 @@ class SimpleTableRenderingTest(unittest.TestCase):
     def test_simple_table_renders_list_rows(self):
         """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
         result = str(
-            components.SimpleTable(
-                columns=["Game", "Started", "Ended"],
-                rows=[["Game1", "2025-01-01", "2025-03-01"]],
+            str(
+                components.SimpleTable(
+                    columns=["Game", "Started", "Ended"],
+                    rows=[["Game1", "2025-01-01", "2025-03-01"]],
+                )
             )
         )
         tbody = self._tbody(result)
@@ -774,9 +836,11 @@ class SimpleTableRenderingTest(unittest.TestCase):
     def test_simple_table_multiple_rows(self):
         """Verify multiple rows all render."""
         result = str(
-            components.SimpleTable(
-                columns=["Game", "Started"],
-                rows=[["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+            str(
+                components.SimpleTable(
+                    columns=["Game", "Started"],
+                    rows=[["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+                )
             )
         )
         tbody = self._tbody(result)
@@ -786,13 +850,13 @@ class SimpleTableRenderingTest(unittest.TestCase):
 
     def test_simple_table_header_action_as_caption(self):
         """Verify header_action renders inside <caption>."""
-        from django.utils.safestring import mark_safe
-
         result = str(
-            components.SimpleTable(
-                columns=["Game", "Started"],
-                rows=[["Game1", "2025-01-01"]],
-                header_action=mark_safe('<a href="/add">Add</a>'),
+            str(
+                components.SimpleTable(
+                    columns=["Game", "Started"],
+                    rows=[["Game1", "2025-01-01"]],
+                    header_action=components.Safe('<a href="/add">Add</a>'),
+                )
             )
         )
         self.assertIn("<caption", result)
@@ -802,15 +866,17 @@ class SimpleTableRenderingTest(unittest.TestCase):
     def test_simple_table_dict_rows_with_cell_data(self):
         """Verify dict-style rows with row_id and cell_data render correctly."""
         result = str(
-            components.SimpleTable(
-                columns=["Name", "Date"],
-                rows=[
-                    {
-                        "row_id": "session-row-1",
-                        "hx_trigger": "device-changed",
-                        "cell_data": ["Game1", "2025-01-01"],
-                    }
-                ],
+            str(
+                components.SimpleTable(
+                    columns=["Name", "Date"],
+                    rows=[
+                        {
+                            "row_id": "session-row-1",
+                            "hx_trigger": "device-changed",
+                            "cell_data": ["Game1", "2025-01-01"],
+                        }
+                    ],
+                )
             )
         )
         tbody = self._tbody(result)
@@ -821,14 +887,12 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn("2025-01-01", tbody)
 
 
-from django.test import SimpleTestCase
-from common.components.primitives import Checkbox, Radio
-
-
 class ComponentPrimitivesTest(SimpleTestCase):
     def test_checkbox_primitive(self):
-        html = Checkbox(
-            name="test-check", label="Accept Terms", checked=True, value="yes"
+        html = str(
+            components.Checkbox(
+                name="test-check", label="Accept Terms", checked=True, value="yes"
+            )
         )
         self.assertIn('type="checkbox"', html)
         self.assertIn('name="test-check"', html)
@@ -837,14 +901,18 @@ class ComponentPrimitivesTest(SimpleTestCase):
         self.assertIn("Accept Terms", html)
 
     def test_checkbox_headless(self):
-        html = Checkbox(name="test-headless", label=None, checked=True)
+        html = str(components.Checkbox(name="test-headless", label=None, checked=True))
         self.assertNotIn("<label", html)
         self.assertIn("<input", html)
         self.assertIn('type="checkbox"', html)
         self.assertIn('name="test-headless"', html)
 
     def test_radio_primitive(self):
-        html = Radio(name="test-radio", label="Option A", checked=False, value="A")
+        html = str(
+            components.Radio(
+                name="test-radio", label="Option A", checked=False, value="A"
+            )
+        )
         self.assertIn('type="radio"', html)
         self.assertIn('name="test-radio"', html)
         self.assertIn('value="A"', html)
@@ -867,6 +935,7 @@ class PrimitiveWidgetsTest(SimpleTestCase):
 
     def test_primitive_checkbox_widget_renders_headless(self):
         from games.forms import PrimitiveCheckboxWidget
+
         widget = PrimitiveCheckboxWidget()
         html = widget.render(name="agree", value=True)
         self.assertNotIn("<label", html)

@@ -11,14 +11,15 @@ from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
+    Fragment,
     H1,
     A,
     AddForm,
     Button,
     ButtonGroup,
-    Component,
     CsrfInput,
     Div,
+    Element,
     FilterBar,
     GameStatus,
     GameStatusSelector,
@@ -27,9 +28,11 @@ from common.components import (
     Modal,
     ModuleScript,
     NameWithIcon,
+    Node,
     Popover,
     PopoverTruncated,
     PurchasePrice,
+    Safe,
     SearchField,
     SimpleTable,
     Ul,
@@ -145,14 +148,11 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage games",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 
@@ -203,8 +203,8 @@ def _delete_game_confirmation_modal(
     if not (session_count or purchase_count or playevent_count):
         data_items.append(Li(children=["No associated data"]))
 
-    form = Component(
-        tag_name="form",
+    form = Element(
+        "form",
         attributes=[
             ("hx-post", reverse("games:delete_game", args=[game.id])),
             ("hx-replace-url", "true"),
@@ -388,7 +388,7 @@ _PLAYED_ROW_TEMPLATE = """<div class="flex gap-2 items-center" x-data="{ open: f
 </div>"""
 
 
-def _played_row(game: Game, request: HttpRequest) -> SafeText:
+def _played_row(game: Game, request: HttpRequest) -> Node:
     """The 'Played N times' control with its Alpine.js dropdown."""
     replacements = {
         "@@PLAYED_COUNT@@": str(game.playevents.count()),
@@ -402,7 +402,7 @@ def _played_row(game: Game, request: HttpRequest) -> SafeText:
     html = _PLAYED_ROW_TEMPLATE
     for token, value in replacements.items():
         html = html.replace(token, value)
-    return mark_safe(html)
+    return Safe(html)
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:
@@ -410,14 +410,12 @@ def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> Sa
         popover_content=tooltip,
         wrapped_classes="flex gap-2 items-center",
         id=popover_id,
-        children=[mark_safe(_STAT_SVGS[svg_key]), str(value)],
+        children=[Safe(_STAT_SVGS[svg_key]), str(value)],
     )
 
 
-def _meta_row(
-    label: str, value: SafeText | str, extra: SafeText | str = ""
-) -> SafeText:
-    children: list[SafeText | str] = [
+def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
+    children: list[Node | str] = [
         Span(attributes=[("class", "uppercase")], children=[label]),
         value,
     ]
@@ -444,8 +442,8 @@ def _game_action_buttons(game: Game) -> SafeText:
     edit_link = A(
         href=reverse("games:edit_game", args=[game.id]),
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[("type", "button"), ("class", edit_class)],
                 children=["Edit"],
             )
@@ -458,8 +456,8 @@ def _game_action_buttons(game: Game) -> SafeText:
             ("hx-target", "#global-modal-container"),
         ],
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[("type", "button"), ("class", delete_class)],
                 children=["Delete"],
             )
@@ -567,7 +565,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> S
         ]
         + (
             [
-                mark_safe("&nbsp;"),
+                Safe("&nbsp;"),
                 Popover(
                     popover_content="Original release year",
                     wrapped_classes="text-slate-500 text-2xl",

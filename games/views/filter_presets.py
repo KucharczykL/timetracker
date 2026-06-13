@@ -8,7 +8,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
-from django.utils.safestring import mark_safe
 
 from games.models import FilterPreset
 
@@ -40,7 +39,7 @@ def list_presets(request: HttpRequest) -> HttpResponse:
     if not items:
         items = ['<li class="px-4 py-2 text-sm text-body italic">No saved presets</li>']
 
-    return HttpResponse(mark_safe(f'<ul class="py-1">{"".join(items)}</ul>'))
+    return HttpResponse(f'<ul class="py-1">{"".join(items)}</ul>')
 
 
 @login_required

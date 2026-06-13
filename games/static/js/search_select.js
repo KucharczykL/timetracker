@@ -12,8 +12,8 @@
  * pills. Filter widgets have no hidden inputs; readSearchSelect serialises their
  * state into data-included / data-excluded / data-modifier for the filter bar.
  *
- * initAll() runs on DOMContentLoaded + htmx:afterSwap, each widget guarded with
- * element._searchSelectInit.
+ * Widgets are initialized via onSwap() (utils.js), which covers the initial
+ * page load and every htmx-swapped fragment, once per widget.
  *
  * Dynamically-added rows and pills are cloned from hidden <template> elements
  * the server renders with the same Python components (Pill / SearchSelect /
@@ -21,6 +21,8 @@
  * and data-* attributes — so all markup and Tailwind class strings live in one
  * place (the Python components), never duplicated here.
  */
+import { onSwap } from "./utils.js";
+
 (() => {
   "use strict";
 
@@ -31,14 +33,6 @@
   // one clears all value pills.  Non-presence modifiers (INCLUDES_ALL,
   // INCLUDES_ONLY) coexist with value pills.
   const PRESENCE_MODIFIERS = ["NOT_NULL", "IS_NULL"];
-
-  const initAll = () => {
-    document.querySelectorAll("[data-search-select]").forEach(element => {
-      if (element._searchSelectInit) return;
-      element._searchSelectInit = true;
-      initWidget(element);
-    });
-  };
 
   const initWidget = (container) => {
     const search = container.querySelector("[data-search-select-search]");
@@ -666,6 +660,5 @@
     });
   };
 
-  document.addEventListener("DOMContentLoaded", initAll);
-  document.addEventListener("htmx:afterSwap", initAll);
+  onSwap("[data-search-select]", initWidget);
 })();

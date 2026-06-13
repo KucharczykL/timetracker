@@ -35,6 +35,7 @@ games/          — Django app: models, views, templates, forms, signals, tasks,
 common/         — Shared utilities: time formatting, component system, criteria, layout, icons
 timetracker/    — Django project: settings, URL root, ASGI/WSGI
 tests/          — Pytest tests
+e2e/            — Playwright browser tests (run via `make test-e2e`)
 contrib/        — One-off scripts (exchange rate import)
 docs/           — Additional documentation
 ```
@@ -57,12 +58,12 @@ docs/           — Additional documentation
 
 ### Key patterns
 
-**Layout system** (`common/layout.py`): Views call `render_page(request, content, title=...)` instead of Django's `render()`. This assembles a full HTML document via `Page()` — analogous to FastHTML's `fast_app()`. `Page()` handles the `<head>`, navbar, toast container, JS includes, and FOUC-prevention script. The navbar shows today's playtime and last-7-days playtime from the `model_counts` context processor.
+**Layout system** (`common/layout.py`): Views call `render_page(request, content, title=...)` instead of Django's `render()`. This assembles a full HTML document via `Page()` — analogous to FastHTML's `fast_app()`. `Page()` handles the `<head>`, navbar, toast container, FOUC-prevention script, and **JS includes**: it calls `collect_media(content)` to gather every component's declared `Media` and emits the `<script>` tags automatically — so views do **not** pass `scripts=` for component-owned JS. The `scripts=` argument remains only for page-specific glue not owned by a reusable component (e.g. the add-form helper `add_*.js`). The navbar shows today's/last-7-days playtime from the `model_counts` context processor.
 
-**Component system** (`common/components/`): Pure-Python HTML builders, split into four submodules re-exported via `common/components/__init__.py`:
+**Component system** (`common/components/`): a FastHTML-style **lazy node tree**. Components are `Node` objects that render to HTML only when asked (`str(node)` / `Page()`), so `Page()` can walk a finished tree and collect each component's JS. Split into submodules re-exported via `common/components/__init__.py`:
 
-- **`core.py`** — `Component(tag_name, attributes, children)`: the fundamental builder. `_render_element()` is `@lru_cache`-memoized (4096 entries, always active). Attribute values are always HTML-escaped; children are escaped unless they are `SafeText`. `randomid()` generates stable hash-based IDs.
-- **`primitives.py`** — Generic HTML: `A()`, `Button()` (with color/size/icon params), `ButtonGroup()`, `Div()`, `Span()`, `Label()`, `Input()`, `Icon()`, `Popover()`, `PopoverTruncated()`, `SearchField()`, `H1()`, `Modal()`, `SimpleTable()`, `TableRow()`, `TableTd()`, `TableHeader()`, `paginated_table_content()`, `AddForm()`, `Pill()`, `CsrfInput()`, `ModuleScript()`
+- **`core.py`** — the node layer. `Node` (base; `__html__`/`__str__` return a `SafeString`), `Element` (the single class for *any* HTML element), `Safe` (wraps pre-rendered/trusted HTML), `Fragment` (ordered children, no wrapper tag — use instead of `str(a)+str(b)`), `BaseComponent` (base for higher-level components: implement `render()`, declare `media`), and `Media` (declarative JS deps with order-preserving dedup merge; `collect_media()` sums them over a tree, `node.with_media(...)` attaches them). `_render_element()` is `@lru_cache`-memoized (4096). Attribute values are always escaped. **Children: every string child is escaped — `SafeText`/`mark_safe` included; only `Node` children (so `Safe`) render unescaped.** Trusted pre-rendered HTML must be wrapped in `Safe(...)`, never passed as a safe string. `randomid()` generates stable hash-based IDs.
+- **`primitives.py`** — Generic HTML. Plain leaf builders (`Div`, `Span`, `P`, `Ul`, `Li`, `Strong`, `Label`, `Template`, `Td`, `Tr`, `Th`) are **generated from a whitelist** via the `_html_element(tag)` factory over `Element` — not hand-written per tag. Builders that add classes/behaviour are written out: `A()`, `Button()`, `ButtonGroup()`, `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`, `PopoverTruncated()`, `SearchField()`, `H1()`, `Modal()`, `SimpleTable()`, `TableRow()`, `TableTd()`, `TableHeader()`, `paginated_table_content()`, `AddForm()`, `YearPicker()` (declares datepicker media), `CsrfInput()`/`ModuleScript()`/`StaticScript()` (script-tag string helpers used by `Page()`).
 - **`domain.py`** — Domain-specific: `GameLink()`, `GameStatus()` (colored dot + label), `GameStatusSelector()` (Alpine.js PATCH dropdown), `SessionDeviceSelector()` (Alpine.js PATCH dropdown), `LinkedPurchase()`, `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — Filter UI: `FilterBar()`, `SessionFilterBar()`, `PurchaseFilterBar()` (built from `FilterSelect` widgets)
 - **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `games/static/js/search_select.js`
@@ -113,13 +114,15 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 ### Frontend stack
 
 - **HTMX** (`games/static/js/htmx.min.js`) — partial page updates
-- **Alpine.js** (CDN) — reactive dropdowns (`GameStatusSelector`, `SessionDeviceSelector`), toast store
-- **Flowbite** (CDN) — navbar collapse, dropdown toggles
+- **Alpine.js** (vendored: `alpine.min.js`, `alpine-mask.min.js`) — reactive dropdowns (`GameStatusSelector`, `SessionDeviceSelector`), toast store
+- **Flowbite** (vendored: `flowbite.min.js`; `datepicker.umd.js` for the stats YearPicker) — navbar collapse, dropdown toggles
 - **Tailwind CSS** — utility classes, compiled from `common/input.css` → `games/static/base.css`
+- All third-party JS is served locally from `games/static/js/` (no CDNs), so pages and browser tests work offline
 - **Custom JS** in `games/static/js/`:
-  - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event)
+  - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event); also defines `window.fetchWithHtmxTriggers`
   - `search_select.js` — SearchSelect/FilterSelect widgets (search-as-you-type, pills, include/exclude filter mode)
-  - `utils.js` — shared helpers (e.g., `fetchWithHtmxTriggers`)
+  - `utils.js` — shared ES-module helpers (`onSwap`, `toISOUTCString`, …)
+- **Widget initialization**: widget JS registers with `onSwap(selector, initializeElement)` from `utils.js` — a port of FastHTML's `proc_htmx` built on `htmx.onLoad`. It runs the initializer once per matching element, on initial page load and inside every htmx-swapped fragment. Never hand-roll `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
 
 ### Deployment
 
@@ -155,13 +158,16 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
 
+**Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium; otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
+
 ## Conventions for AI assistants
 
 - **Never write to `GeneratedField`s** (`duration_calculated`, `duration_total`, `price_per_game`, `days_to_finish`). They are computed by the database.
 - **Name variables with complete words** — readable, unabbreviated identifiers in both Python and JavaScript (e.g. `template` not `tpl`, `event` not `e`, `element` not `el`, `removeButton` not `removeBtn`, `option`/`value` not single letters in loops). This applies to new code and to code you touch.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses. Import from `common.layout`.
 - **Build UI with Python components** from `common.components`, not raw HTML strings or Django templates. `SafeText` children pass through unescaped; plain strings are auto-escaped.
-- **Prefer the named element primitives over raw `Component(tag_name=…)`** — use `Div()`, `Span()`, `Input()`, `Label()`, `Template()`, etc. from `common.components` instead of `Component(tag_name="div")`. Reach for `Component` directly only when no primitive fits (e.g. a bare, custom-styled `<button>` where the opinionated `Button()` would inject unwanted classes). Add a new primitive rather than repeating an inline `Component` for a standard tag.
+- **Components are nodes; use the named builders** — build with `Div()`, `Span()`, `Element("tag", ...)`, etc., which return `Node` objects. For a tag with no builder, add it to the whitelist in `primitives.py` (one line) or use `Element("tag", attrs, children)`. Use `Fragment(a, b, ...)` to group siblings (never `str(a)+str(b)`, which flattens the tree and drops media). Wrap trusted pre-rendered HTML in `Safe(html)` (the `mark_safe` analogue).
+- **JS-bearing components declare `Media`, they don't rely on the view** — give a component `class Media: js = (...)` (a `BaseComponent`) or `return node.with_media(Media(js=...))`. `Page()` collects and emits it. Never re-add `scripts=ModuleScript(...)` threading in a view for a component that can declare its own dependency.
 - **Filter views** accept `?filter=<JSON>` (structured) and fall back to `?search_string=` (free-text). New filter criteria go in `games/filters.py`; new criterion types go in `common/criteria.py`.
 - **Signals handle side-effects** — do not manually recalculate `Game.playtime` or `Purchase.num_purchases`; the signals in `games/signals.py` do this on save/delete.
 - **Button colors**: `blue` (primary action), `red` (destructive), `gray` (secondary), `green` (positive). Icon buttons use `icon=True`.

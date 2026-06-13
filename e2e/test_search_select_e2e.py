@@ -4,34 +4,42 @@ from django.http import HttpResponse
 from django.test import override_settings
 from common.components import SearchSelect
 
+
 def e2e_test_view(request):
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>SearchSelect E2E Test</title>
-        <script src="/static/js/search_select.js" defer></script>
+        <!-- search_select.js is an ES module and initializes via onSwap(),
+             which rides on htmx.onLoad — so htmx must be present. -->
+        <script src="/static/js/htmx.min.js"></script>
+        <script type="module" src="/static/js/search_select.js"></script>
     </head>
     <body>
         <div style="padding: 50px;">
-            {SearchSelect(
-                name="games",
-                selected=[{"value": "7", "label": "Game A", "data": {}}],
-                options=[
-                    {"value": "7", "label": "Game A", "data": {}},
-                    {"value": "8", "label": "Game B", "data": {}},
-                ],
-                multi_select=False
-            )}
+            {
+        SearchSelect(
+            name="games",
+            selected=[{"value": "7", "label": "Game A", "data": {}}],
+            options=[
+                {"value": "7", "label": "Game A", "data": {}},
+                {"value": "8", "label": "Game B", "data": {}},
+            ],
+            multi_select=False,
+        )
+    }
         </div>
     </body>
     </html>
     """
     return HttpResponse(html)
 
+
 urlpatterns = [
     path("test-search-select/", e2e_test_view),
 ]
+
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
@@ -52,9 +60,9 @@ def test_search_select_backspace_clears_single_select(live_server, page):
     }""")
 
     search_input = page.locator("input[data-search-select-search]")
-    
+
     assert search_input.input_value() == "Game A"
-    
+
     hidden_input = page.locator('input[name="games"]')
     assert hidden_input.first.get_attribute("value") == "7"
 
@@ -85,7 +93,7 @@ def test_search_select_typing_replaces_single_select(live_server, page):
     page.goto(live_server.url + "/test-search-select/")
 
     search_input = page.locator("input[data-search-select-search]")
-    
+
     search_input.focus()
     assert search_input.input_value() == ""
 

@@ -3,9 +3,8 @@
 from typing import NamedTuple
 
 from django.db import models
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Component
+from common.components.core import BaseComponent, Element, Media, Node, Safe
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -51,6 +50,13 @@ _FILTER_RADIO_CLASS = (
 
 
 _FILTER_GRID_CLASS = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4"
+
+
+# range_slider.js wires RangeSlider; filter_bar.js wires the bar chrome
+# (Apply/Clear, presets, search injection). Widget media (search_select.js,
+# date_range_picker.js) bubbles up from the contained FilterSelect / picker.
+_RANGE_SLIDER_MEDIA = Media(js=("range_slider.js",))
+_FILTER_BAR_MEDIA = Media(js=("filter_bar.js",))
 
 
 def _filter_parse(filter_json: str) -> dict:
@@ -169,7 +175,7 @@ def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
 
 def _enum_filter(
     field_name: str, options, choice: FilterChoice, *, nullable
-) -> SafeText:
+) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
     Enum fields are single-valued, so no M2M modifiers (all/only are
@@ -200,7 +206,7 @@ def _model_filter(
     search_url,
     nullable,
     m2m_modifiers: list[LabeledOption] | None = None,
-) -> SafeText:
+) -> Node:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
@@ -233,34 +239,43 @@ def _filter_mins_to_hrs(val) -> str:
     return str(int(hrs)) if hrs == int(hrs) else f"{hrs:.1f}"
 
 
-def _filter_field(label: str, widget, for_widget: str = None) -> SafeText:
-    """A labelled filter field: <div><label>…</label>{widget}</div>.
-    TODO: Use widget.attributes.get("id", "") to get the widget's ID
-    instead of the superfluous "for" argument. This requires refactoring
-    the Component function to be a class intead.
-    Also see RangeSlider's TODO
+def _widget_id(widget) -> str:
+    """Best-effort id of a widget node, for the field label's ``for`` target.
+
+    Widgets are nodes carrying ``.attributes``, so the id is now reachable
+    directly (the old free ``Component`` string couldn't expose it).
     """
+    for name, value in getattr(widget, "attributes", []):
+        if name == "id":
+            return str(value)
+    return ""
+
+
+def _filter_field(label: str, widget) -> Node:
+    """A labelled filter field: ``<div><label>…</label>{widget}</div>``.
+
+    The label's ``for`` points at the widget's own id when it has one;
+    composite widgets without a single root id simply omit ``for``.
+    """
+    label_attributes = [("class", _FILTER_LABEL_CLASS)]
+    widget_id = _widget_id(widget)
+    if widget_id:
+        label_attributes.append(("for", widget_id))
     return Div(
         attributes=[("class", "flex flex-col gap-1")],
         children=[
-            Label(
-                attributes=[
-                    ("class", _FILTER_LABEL_CLASS),
-                    ("for", for_widget),
-                ],
-                children=[label],
-            ),
+            Label(attributes=label_attributes, children=[label]),
             widget,
         ],
     )
 
 
-def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
+def _filter_checkbox(name: str, label: str, checked: bool) -> Node:
     """Thin adapter mapping legacy checkbox filters to the generalized Checkbox primitive."""
     return Checkbox(name=name, label=label, checked=checked)
 
 
-def _filter_boolean_radio(name: str, label: str, value: bool | None) -> SafeText:
+def _filter_boolean_radio(name: str, label: str, value: bool | None) -> Node:
     """Renders a filter-specific boolean radio button group with 'True' and 'False' options."""
     return Div(
         attributes=[("class", "flex flex-col gap-1")],
@@ -314,7 +329,7 @@ def RangeSlider(
     step: str = "1",
     min_placeholder: str = "",
     max_placeholder: str = "",
-) -> SafeText:
+) -> Node:
     """A labelled range slider with number inputs and range/point mode toggle.
 
     Renders a label row (label, two number inputs, toggle button) and a slider
@@ -334,14 +349,9 @@ def RangeSlider(
             Div(
                 attributes=[("class", "flex items-center gap-2 mb-1")],
                 children=[
-                    # TODO: This should be done outside the RangeSlider component, but the current Component function doesn't allow getting the id
-                    # Label(
-                    #     attributes=[
-                    #         ("class", _FILTER_LABEL_CLASS),
-                    #         ("for", min_input_id),
-                    #     ],
-                    #     children=[label],
-                    # ),
+                    # The field label is rendered by the _filter_field wrapper.
+                    # This composite widget has no single labelable root, so the
+                    # label carries no `for` (the two inputs are named below).
                     Input(
                         attributes=[
                             ("type", "number"),
@@ -376,8 +386,8 @@ def RangeSlider(
                             ("class", _RANGE_SLIDER_INPUT_CLASS),
                         ],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             (
@@ -403,7 +413,7 @@ def RangeSlider(
                                         + (" hidden" if point_mode else ""),
                                     ),
                                 ],
-                                children=[mark_safe(_RANGE_ICON_SVG)],
+                                children=[Safe(_RANGE_ICON_SVG)],
                             ),
                             Span(
                                 attributes=[
@@ -413,7 +423,7 @@ def RangeSlider(
                                         + ("" if point_mode else " hidden"),
                                     ),
                                 ],
-                                children=[mark_safe(_POINT_ICON_SVG)],
+                                children=[Safe(_POINT_ICON_SVG)],
                             ),
                         ],
                     ),
@@ -482,7 +492,7 @@ def RangeSlider(
                 ],
             ),
         ],
-    )
+    ).with_media(_RANGE_SLIDER_MEDIA)
 
 
 _DATE_RANGE_INPUT_CLASS = (
@@ -499,7 +509,7 @@ def DateRangeFilter(
     max_value: str = "",
     min_placeholder: str = "From",
     max_placeholder: str = "To",
-) -> SafeText:
+) -> Node:
     """A pair of ``<input type="date">`` elements representing a date range.
 
     Mirrors ``RangeSlider`` in shape (two inputs named ``{prefix}-min`` and
@@ -554,14 +564,16 @@ _FILTER_FORM_ID = "filter-bar-form"
 _FILTER_INPUT_ID = "filter-json-input"
 
 
-def _filter_collapse_button() -> SafeText:
-    return Component(
-        tag_name="button",
+def _filter_collapse_button() -> Node:
+    return Element(
+        "button",
         attributes=[
             ("type", "button"),
+            # Slider handles are positioned in percentages, so initializing
+            # them while the body is hidden is safe — no re-init on reveal.
             (
                 "onclick",
-                "var b=document.getElementById('filter-bar-body');b.classList.toggle('hidden');if(!b.classList.contains('hidden')&&window.initRangeSliders)window.initRangeSliders()",
+                "document.getElementById('filter-bar-body').classList.toggle('hidden')",
             ),
             (
                 "class",
@@ -570,7 +582,7 @@ def _filter_collapse_button() -> SafeText:
             ),
         ],
         children=[
-            mark_safe(
+            Safe(
                 '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>'
             ),
             "Filters",
@@ -578,12 +590,12 @@ def _filter_collapse_button() -> SafeText:
     )
 
 
-def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
+def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
     return Div(
         attributes=[("class", "flex gap-3 items-center")],
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "submit"),
                     (
@@ -595,8 +607,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                 ],
                 children=["Apply"],
             ),
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[
                     ("type", "button"),
                     (
@@ -632,8 +644,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                             ),
                         ],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             ("id", "save-preset-btn"),
@@ -649,8 +661,8 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
                         ],
                         children=["Save Preset"],
                     ),
-                    Component(
-                        tag_name="button",
+                    Element(
+                        "button",
                         attributes=[
                             ("type", "button"),
                             ("id", "confirm-save-preset-btn"),
@@ -686,64 +698,104 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
     )
 
 
-def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeText:
-    """Shared collapsible filter-bar chrome. `fields` is the per-entity body
-    (grids, sliders, checkboxes); the shell adds the collapse toggle, the form,
-    the hidden filter-json input and the Apply/Clear/preset action row."""
-    return Div(
-        attributes=[("id", "filter-bar"), ("class", "mb-6")],
-        children=[
-            _filter_collapse_button(),
-            Div(
-                attributes=[
-                    ("id", "filter-bar-body"),
-                    (
-                        "class",
-                        "hidden border border-default-medium rounded-base p-4 "
-                        "bg-neutral-secondary-medium/50",
-                    ),
-                ],
-                children=[
-                    Component(
-                        tag_name="form",
-                        attributes=[
-                            ("id", _FILTER_FORM_ID),
-                            ("onsubmit", "return applyFilterBar(event)"),
-                        ],
-                        children=[
-                            Input(
-                                attributes=[
-                                    ("type", "hidden"),
-                                    ("id", _FILTER_INPUT_ID),
-                                    ("name", "filter"),
-                                    # NB: Component escapes attribute values, so the
-                                    # raw JSON is passed through (no double-escape).
-                                    ("value", filter_json),
-                                ],
-                            ),
-                            *fields,
-                            _filter_action_row(preset_list_url, preset_save_url),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
+class _FilterBarBase(BaseComponent):
+    """Shared collapsible filter-bar chrome.
+
+    Subclasses implement ``build_fields()`` returning the per-entity body
+    (grids, sliders, checkboxes); this base wraps it in the collapse toggle,
+    the form, the hidden filter-json input and the Apply/Clear/preset action
+    row. ``filter_bar.js`` (declared as this component's ``media``) wires the
+    chrome; widget media (search_select.js, range_slider.js,
+    date_range_picker.js) bubbles up from the contained widgets via the node
+    tree, so the view never threads ``scripts=`` by hand.
+    """
+
+    media = _FILTER_BAR_MEDIA
+
+    def __init__(
+        self,
+        filter_json: str = "",
+        preset_list_url: str = "",
+        preset_save_url: str = "",
+    ) -> None:
+        self.filter_json = filter_json
+        self.preset_list_url = preset_list_url
+        self.preset_save_url = preset_save_url
+        self.existing = _filter_parse(filter_json)
+
+    def build_fields(self) -> list:
+        """Return the per-entity filter body. Implemented by each subclass."""
+        raise NotImplementedError
+
+    def render(self) -> Node:
+        return Div(
+            attributes=[("id", "filter-bar"), ("class", "mb-6")],
+            children=[
+                _filter_collapse_button(),
+                Div(
+                    attributes=[
+                        ("id", "filter-bar-body"),
+                        (
+                            "class",
+                            "hidden border border-default-medium rounded-base p-4 "
+                            "bg-neutral-secondary-medium/50",
+                        ),
+                    ],
+                    children=[
+                        Element(
+                            "form",
+                            attributes=[
+                                ("id", _FILTER_FORM_ID),
+                                ("onsubmit", "return applyFilterBar(event)"),
+                            ],
+                            children=[
+                                Input(
+                                    attributes=[
+                                        ("type", "hidden"),
+                                        ("id", _FILTER_INPUT_ID),
+                                        ("name", "filter"),
+                                        # NB: attribute values are escaped, so the
+                                        # raw JSON passes through (no double-escape).
+                                        ("value", self.filter_json),
+                                    ],
+                                ),
+                                *self.build_fields(),
+                                _filter_action_row(
+                                    self.preset_list_url, self.preset_save_url
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
 
 
-def FilterBar(
-    filter_json: str = "",
-    status_options: list[LabeledOption] | None = None,
-    preset_list_url: str = "",
-    preset_save_url: str = "",
-) -> SafeText:
+class FilterBar(_FilterBarBase):
     """Collapsible filter bar for the Game list."""
+
+    def __init__(
+        self,
+        filter_json: str = "",
+        status_options: list[LabeledOption] | None = None,
+        preset_list_url: str = "",
+        preset_save_url: str = "",
+    ) -> None:
+        super().__init__(filter_json, preset_list_url, preset_save_url)
+        self.status_options = status_options
+
+    def build_fields(self) -> list:
+        return _game_fields(self.existing, self.status_options)
+
+
+def _game_fields(
+    existing: dict, status_options: list[LabeledOption] | None = None
+) -> list:
     from games.models import Game, Purchase
 
     if status_options is None:
         status_options = [(s.value, s.label) for s in Game.Status]
 
-    existing = _filter_parse(filter_json)
     status_choice = _filter_get_choice(existing, "status")
     platform_choice = _filter_get_choice(existing, "platform")
     platform_group_choice = _filter_get_choice(existing, "platform_group")
@@ -1055,7 +1107,7 @@ def FilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
 def _find_label(options: list[LabeledOption], value: str) -> str:
@@ -1065,13 +1117,16 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
     return value
 
 
-def SessionFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class SessionFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Session list."""
+
+    def build_fields(self) -> list:
+        return _session_fields(self.existing)
+
+
+def _session_fields(existing: dict) -> list:
     from games.models import Game, Session
 
-    existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
     note_value = existing.get("note", {}).get("value", "")
@@ -1169,18 +1224,21 @@ def SessionFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PurchaseFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PurchaseFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Purchase list."""
+
+    def build_fields(self) -> list:
+        return _purchase_fields(self.existing)
+
+
+def _purchase_fields(existing: dict) -> list:
     from games.models import Purchase
 
     type_options = Purchase.TYPES
     ownership_options = Purchase.OWNERSHIP_TYPES
-    existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "games")
     platform_choice = _filter_get_choice(existing, "platform")
     type_choice = _filter_get_choice(existing, "type")
@@ -1352,14 +1410,19 @@ def PurchaseFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def DeviceFilterBar(filter_json="", preset_list_url="", preset_save_url="") -> SafeText:
+class DeviceFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Device list."""
+
+    def build_fields(self) -> list:
+        return _device_fields(self.existing)
+
+
+def _device_fields(existing: dict) -> list:
     from games.models import Device
 
-    existing = _filter_parse(filter_json)
     type_options = Device.DEVICE_TYPES
     type_choice = _filter_get_choice(existing, "type")
 
@@ -1379,15 +1442,17 @@ def DeviceFilterBar(filter_json="", preset_list_url="", preset_save_url="") -> S
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PlatformFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PlatformFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Platform list."""
-    existing = _filter_parse(filter_json)
 
+    def build_fields(self) -> list:
+        return _platform_fields(self.existing)
+
+
+def _platform_fields(existing: dict) -> list:
     name_value = existing.get("name", {}).get("value", "")
     name_modifier = existing.get("name", {}).get("modifier", "EQUALS")
     group_value = existing.get("group", {}).get("value", "")
@@ -1418,14 +1483,17 @@ def PlatformFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PlayEventFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PlayEventFilterBar(_FilterBarBase):
     """Collapsible filter bar for the PlayEvent list."""
-    existing = _filter_parse(filter_json)
+
+    def build_fields(self) -> list:
+        return _playevent_fields(self.existing)
+
+
+def _playevent_fields(existing: dict) -> list:
     game_choice = _filter_get_choice(existing, "game")
     days_min, days_max = _parse_range(existing, "days_to_finish")
 
@@ -1456,7 +1524,7 @@ def PlayEventFilterBar(
             max_placeholder="e.g. 30",
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
 def StringFilter(
@@ -1464,7 +1532,7 @@ def StringFilter(
     value: str = "",
     modifier: str = "EQUALS",
     placeholder: str = "",
-) -> SafeText:
+) -> Node:
     """Renders a string filter with 8 modifier radio options and a text input."""
     from common.criteria import Modifier
 

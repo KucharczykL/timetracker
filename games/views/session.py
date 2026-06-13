@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
+    Fragment,
     A,
     AddForm,
     Button,
@@ -19,7 +20,9 @@ from common.components import (
     Icon,
     ModuleScript,
     NameWithIcon,
+    Node,
     Popover,
+    Safe,
     SearchField,
     SessionDeviceSelector,
     paginated_table_content,
@@ -176,14 +179,11 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = mark_safe(str(filter_bar) + str(content))
+    content = Fragment(filter_bar, content)
     return render_page(
         request,
         content,
         title="Manage sessions",
-        scripts=ModuleScript("range_slider.js")
-        + ModuleScript("search_select.js")
-        + ModuleScript("filter_bar.js"),
     )
 
 
@@ -192,17 +192,17 @@ def search_sessions(request: HttpRequest) -> HttpResponse:
     return list_sessions(request, search_string=request.GET.get("search_string", ""))
 
 
-def _session_fields(form) -> SafeText:
+def _session_fields(form) -> Fragment:
     """Manual per-field layout for the session form.
 
     Mirrors the old add_session.html: each field gets its label and widget,
     and the timestamp fields gain a row of now/toggle/copy helper buttons.
     """
-    rows: list[SafeText] = []
+    rows: list[Node] = []
     for field in form:
-        children: list[SafeText | str] = [
-            mark_safe(str(field.label_tag())),
-            mark_safe(str(field)),
+        children: list[Node | str] = [
+            Safe(str(field.label_tag())),
+            Safe(str(field)),
         ]
         if field.name in ("timestamp_start", "timestamp_end"):
             this_side = "start" if field.name == "timestamp_start" else "end"
@@ -236,7 +236,7 @@ def _session_fields(form) -> SafeText:
                 )
             )
         rows.append(Div(children=children))
-    return mark_safe("\n".join(rows))
+    return Fragment(*rows, separator="\n")
 
 
 @login_required

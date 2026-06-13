@@ -9,9 +9,18 @@ from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.html import conditional_escape
-from django.utils.safestring import SafeText, mark_safe
-
-from common.components import A, Component, Div, GameLink, YearPicker
+from common.components import (
+    A,
+    Div,
+    Element,
+    GameLink,
+    Node,
+    Safe,
+    Td,
+    Th,
+    Tr,
+    YearPicker,
+)
 from common.time import durationformat, format_duration
 
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2"
@@ -19,41 +28,40 @@ _CELL_MONO = f"{_CELL} font-mono"
 _NAME_TH = f"{_CELL} purchase-name truncate max-w-20char"
 
 
-def _td(children, cls: str = _CELL_MONO) -> SafeText:
+def _td(children, cls: str = _CELL_MONO) -> Node:
     if not isinstance(children, list):
         children = [children]
-    children = [c if isinstance(c, (str, SafeText)) else str(c) for c in children]
-    return Component(tag_name="td", attributes=[("class", cls)], children=children)
+    return Td(attributes=[("class", cls)], children=children)
 
 
-def _th(text: str, cls: str = _CELL) -> SafeText:
-    return Component(tag_name="th", attributes=[("class", cls)], children=[text])
+def _th(text: str, cls: str = _CELL) -> Node:
+    return Th(attributes=[("class", cls)], children=[text])
 
 
-def _tr(cells: list) -> SafeText:
-    return Component(tag_name="tr", children=cells)
+def _tr(cells: list) -> Node:
+    return Tr(children=cells)
 
 
-def _kv(label, value) -> SafeText:
+def _kv(label, value) -> Node:
     """A label/value row: plain label cell + mono value cell."""
     return _tr([_td(label, _CELL), _td(value)])
 
 
-def _h1(title: str) -> SafeText:
-    return Component(
-        tag_name="h1",
+def _h1(title: str) -> Node:
+    return Element(
+        "h1",
         attributes=[("class", "text-3xl text-heading text-center my-6")],
         children=[title],
     )
 
 
-def _table(rows: list, thead: SafeText | None = None) -> SafeText:
+def _table(rows: list, thead: Node | None = None) -> Node:
     children = []
     if thead is not None:
         children.append(thead)
-    children.append(Component(tag_name="tbody", children=rows))
-    return Component(
-        tag_name="table",
+    children.append(Element("tbody", children=rows))
+    return Element(
+        "table",
         attributes=[("class", "responsive-table")],
         children=children,
     )
@@ -63,7 +71,7 @@ def _dur(value) -> str:
     return format_duration(value, durationformat)
 
 
-def _purchase_name(purchase) -> SafeText:
+def _purchase_name(purchase) -> Node:
     """Mirror of the `purchase-name` partial in the old template."""
     game_name = getattr(purchase, "game_name", None)
     first_game = purchase.first_game
@@ -71,12 +79,12 @@ def _purchase_name(purchase) -> SafeText:
         name = game_name or purchase.name
         link = GameLink(first_game.id, name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
-        return mark_safe(str(link) + conditional_escape(suffix))
+        return Safe(str(link) + conditional_escape(suffix))
     name = game_name or first_game.name
     return GameLink(first_game.id, name)
 
 
-def _year_nav(year, year_range, url_template) -> SafeText:
+def _year_nav(year, year_range, url_template) -> Node:
     # `year` is an int for a specific year, or "Alltime" (from compute_stats)
     # for the all-time view. Normalize to int-or-None so nothing downstream has
     # to know about the "Alltime" sentinel.
@@ -107,7 +115,7 @@ def _year_nav(year, year_range, url_template) -> SafeText:
     )
 
 
-def _playtime_table(ctx) -> SafeText:
+def _playtime_table(ctx) -> Node:
     year = ctx.get("year")
     rows = [
         _kv("Hours", ctx.get("total_hours")),
@@ -186,7 +194,7 @@ def _playtime_table(ctx) -> SafeText:
     return _table(rows)
 
 
-def _purchases_table(ctx) -> SafeText:
+def _purchases_table(ctx) -> Node:
     rows = [
         _kv("Total", ctx.get("all_purchased_this_year_count")),
         _kv(
@@ -213,18 +221,18 @@ def _purchases_table(ctx) -> SafeText:
     return _table(rows)
 
 
-def _two_col_table(header: str, items, name_key, value_fn) -> SafeText:
-    thead = Component(
-        tag_name="thead",
+def _two_col_table(header: str, items, name_key, value_fn) -> Node:
+    thead = Element(
+        "thead",
         children=[_tr([_th(header), _th("Playtime")])],
     )
     rows = [_tr([_td(name_key(item)), _td(value_fn(item))]) for item in items]
     return _table(rows, thead)
 
 
-def _finished_table(purchases) -> SafeText:
-    thead = Component(
-        tag_name="thead",
+def _finished_table(purchases) -> Node:
+    thead = Element(
+        "thead",
         children=[_tr([_th("Name", _NAME_TH), _th("Date")])],
     )
     rows = [
@@ -234,9 +242,9 @@ def _finished_table(purchases) -> SafeText:
     return _table(rows, thead)
 
 
-def _priced_table(purchases, currency) -> SafeText:
-    thead = Component(
-        tag_name="thead",
+def _priced_table(purchases, currency) -> Node:
+    thead = Element(
+        "thead",
         children=[
             _tr([_th("Name", _NAME_TH), _th(f"Price ({currency})"), _th("Date")])
         ],
@@ -254,7 +262,7 @@ def _priced_table(purchases, currency) -> SafeText:
     return _table(rows, thead)
 
 
-def stats_content(ctx: dict) -> SafeText:
+def stats_content(ctx: dict) -> Node:
     year = ctx.get("year")
     currency = ctx.get("total_spent_currency")
     # Build a navigation URL with an `__year__` placeholder the picker's JS
