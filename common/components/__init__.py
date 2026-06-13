@@ -5,11 +5,19 @@ re-exports the public API so ``from common.components import X`` keeps working.
 """
 
 from common.components.core import (
+    BaseComponent,
     Component,
+    Element,
+    Fragment,
     HTMLAttribute,
     HTMLTag,
+    Media,
+    Node,
+    Safe,
     _render_element,
+    collect_media,
     randomid,
+    render,
 )
 from common.components.date_range_picker import (
     DateRangeCalendar,
@@ -82,7 +90,15 @@ from common.utils import truncate
 
 __all__ = [
     "truncate",
+    "BaseComponent",
     "Component",
+    "Element",
+    "Fragment",
+    "Media",
+    "Node",
+    "Safe",
+    "collect_media",
+    "render",
     "HTMLAttribute",
     "HTMLTag",
     "_render_element",
