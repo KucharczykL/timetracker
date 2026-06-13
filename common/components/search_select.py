@@ -22,7 +22,7 @@ from collections.abc import Callable, Iterable
 from typing import TypedDict
 
 
-from common.components.core import Element, HTMLAttribute, Media, Node
+from common.components.core import Attributes, Element, HTMLAttribute, Media, Node
 from common.components.primitives import Div, Input, Pill, Span, Template
 
 # Both comboboxes are wired by search_select.js.
@@ -176,9 +176,9 @@ def _option_row(option: SearchSelectOption) -> Node:
 
 def _combobox_shell(
     *,
-    container_attributes: list[HTMLAttribute],
+    container_attributes: Attributes,
     pills: Node,
-    search_attributes: list[HTMLAttribute],
+    search_attributes: Attributes,
     options_children: list[Node],
     always_visible: bool,
     items_visible: int,

@@ -14,6 +14,7 @@ from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
+    Attributes,
     Children,
     Element,
     Fragment,
@@ -21,6 +22,7 @@ from common.components.core import (
     Media,
     Node,
     Safe,
+    as_attributes,
     as_children,
     randomid,
 )
@@ -53,7 +55,7 @@ def _html_element(tag_name: str):
     """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
 
     def element(
-        attributes: list[HTMLAttribute] | None = None,
+        attributes: Attributes | None = None,
         children: Children = None,
     ) -> Element:
         return Element(tag_name, attributes, children)
@@ -132,7 +134,7 @@ def Popover(
     wrapped_content: str = "",
     wrapped_classes: str = "",
     children: Children = None,
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
     id: str = "",
 ) -> Node:
     children = children or []
@@ -184,7 +186,7 @@ def PopoverTruncated(
 
 
 def A(
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
     children: Children = None,
     url_name: str | None = None,
     href: str | None = None,
@@ -196,7 +198,7 @@ def A(
         - url_name: URL pattern name, resolved via reverse()
         - href: Literal path string passed through as-is
     """
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     children = children or []
     if url_name is not None and href is not None:
         raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
@@ -212,7 +214,7 @@ def A(
 
 
 def Button(
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
     children: Children = None,
     size: str = "base",
     icon: bool = False,
@@ -225,7 +227,7 @@ def Button(
     onclick: str = "",
     name: str = "",
 ) -> Element:
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     children = children or []
 
     # Separate custom class from other generic attributes
@@ -373,10 +375,10 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
 
 def Input(
     type: str = "text",
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
     children: Children = None,
 ) -> Element:
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     children = children or []
     return Element("input", attributes=attributes + [("type", type)], children=children)
 
@@ -386,10 +388,10 @@ def Checkbox(
     label: str | None = None,
     checked: bool = False,
     value: str = "1",
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
 ) -> Node:
     """A filter-agnostic Checkbox component."""
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     input_attrs = [
         ("name", name),
         ("value", value),
@@ -418,10 +420,10 @@ def Radio(
     label: str | None = None,
     checked: bool = False,
     value: str = "",
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
 ) -> Node:
     """A filter-agnostic Radio component."""
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     input_attrs = [
         ("name", name),
         ("value", value),
@@ -463,7 +465,7 @@ def Pill(
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
 ) -> Node:
     """A small label pill, optionally removable (× button).
 
@@ -475,7 +477,7 @@ def Pill(
     fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
     markup single-sourced — see ``search_select.py``).
     """
-    attributes = attributes or []
+    attributes = as_attributes(attributes)
     pill_class = f"{_PILL_CLASS} {extra_class}".strip()
     pill_attrs: list[HTMLAttribute] = [("class", pill_class), ("data-pill", "")]
     if value != "":
@@ -858,7 +860,7 @@ def TableRow(data: dict | list | None = None) -> Element:
 
 def Icon(
     name: str,
-    attributes: list[HTMLAttribute] | None = None,
+    attributes: Attributes | None = None,
 ) -> Node:
     return Safe(get_icon(name))
 

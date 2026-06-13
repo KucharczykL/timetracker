@@ -24,6 +24,13 @@ from django.utils.safestring import SafeText, mark_safe
 HTMLAttribute = tuple[str, str | int | bool]
 
 
+# Type for a builder's ``attributes`` parameter. Covariant ``Sequence`` so a
+# caller's ``list[tuple[str, str]]`` is accepted (a plain ``list[HTMLAttribute]``
+# would be invariant and reject it). Locals that get ``.append()``-ed should
+# stay a concrete ``list[HTMLAttribute]``.
+Attributes = Sequence[HTMLAttribute]
+
+
 HTMLTag = str
 
 
@@ -152,6 +159,16 @@ def as_children(children: "Children | Node") -> list[Child]:
     return list(children)
 
 
+def as_attributes(attributes: "Attributes | None") -> list[HTMLAttribute]:
+    """Normalise an ``attributes`` argument to a mutable ``list[HTMLAttribute]``.
+
+    Builders take a covariant ``Attributes`` (so callers can pass a
+    ``list[tuple[str, str]]``) but often append to or concatenate the value;
+    this turns it into a concrete list they can mutate.
+    """
+    return list(attributes) if attributes else []
+
+
 def _child_key(child: object) -> tuple[str, bool]:
     """Normalise a child to a ``(text, is_safe)`` pair.
 
@@ -201,7 +218,7 @@ class Element(Node):
     def __init__(
         self,
         tag_name: str,
-        attributes: list[HTMLAttribute] | None = None,
+        attributes: Attributes | None = None,
         children: "Children | Node" = None,
     ) -> None:
         if not tag_name:
