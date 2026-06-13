@@ -68,8 +68,21 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     return result
 
 
-def _html_element(tag_name: str):
-    """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
+def custom_element_builder(tag_name: str):
+    """Create a tag builder for a custom element with auto-attached Media.
+
+    The module path follows the convention ``ts/elements/<tag>.ts`` →
+    ``dist/elements/<tag>.js``.
+    """
+    return _html_element(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
+
+
+def _html_element(tag_name: str, media: Media | None = None):
+    """Build a generic element builder for ``tag_name`` (the whitelist factory).
+
+    If ``media`` is provided, every node created by the builder will carry it
+    (used for custom elements whose compiled JS must be loaded automatically).
+    """
 
     def element(
         attributes: Attributes | None = None,
@@ -77,7 +90,8 @@ def _html_element(tag_name: str):
         **attrs: object,
     ) -> Element:
         merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
-        return Element(tag_name, merged, children)
+        node = Element(tag_name, merged, children)
+        return node.with_media(media) if media else node
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
     element.__doc__ = f"Builder for the <{tag_name}> element."
@@ -245,8 +259,9 @@ def Button(
     title: str = "",
     onclick: str = "",
     name: str = "",
+    **attrs: object,
 ) -> Element:
-    attributes = as_attributes(attributes)
+    attributes = as_attributes(attributes) + _attrs_from_kwargs(attrs)
     children = children or []
 
     # Separate custom class from other generic attributes

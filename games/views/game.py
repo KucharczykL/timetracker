@@ -354,7 +354,7 @@ _PLAYED_MENU = (
 def _played_row(game: Game, request: HttpRequest) -> Node:
     """'Played N times' control as a custom element (ts/elements/play-event-row.ts)."""
     from common.components import Element, custom_element
-    from common.components.custom_elements import PlayEventRowProps
+    from common.components.custom_elements import PlayEventRowProps, _PlayEventRow
 
     played = game.playevents.count()
 
@@ -397,19 +397,13 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     group = Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
         count_button, toggle_group
     ]
-    return custom_element(
-        "play-event-row",
-        PlayEventRowProps(
-            game_id=game.id,
-            csrf=get_token(request),
-            api_create_url=reverse("api-1.0.0:create_playevent"),
-        ),
-        children=[
-            Div(class_="flex gap-2 items-center")[
-                Span(class_="uppercase")["Played"], group
-            ]
-        ],
-    )
+    return _PlayEventRow(
+        game_id=game.id,
+        csrf=get_token(request),
+        api_create_url=reverse("api-1.0.0:create_playevent"),
+    )[Div(class_="flex gap-2 items-center")[
+        Span(class_="uppercase")["Played"], group
+    ]]
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:

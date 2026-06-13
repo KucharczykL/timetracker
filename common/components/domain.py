@@ -228,9 +228,8 @@ _SELECTOR_OPTION_CLASS = (
 
 def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     """Light-DOM custom element; behavior in ts/elements/game-status-selector.ts."""
-    from common.components import custom_element
     from common.components.core import Element
-    from common.components.custom_elements import GameStatusSelectorProps
+    from common.components.custom_elements import _GameStatusSelector, GameStatusSelectorProps
     from common.components.primitives import Li, Ul
 
     options = [
@@ -266,18 +265,15 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     dropdown = Div(
         data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
     )[toggle, menu]
-    return custom_element(
-        "game-status-selector",
-        GameStatusSelectorProps(game_id=game.id, status=game.status, csrf=csrf_token),
-        children=[Div(class_="flex gap-2 items-center")[dropdown]],
-    )
+    return _GameStatusSelector(game_id=game.id, status=game.status, csrf=csrf_token)[
+        Div(class_="flex gap-2 items-center")[dropdown]
+    ]
 
 
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     """Light-DOM custom element; behavior in ts/elements/session-device-selector.ts."""
-    from common.components import custom_element
     from common.components.core import Element
-    from common.components.custom_elements import SessionDeviceSelectorProps
+    from common.components.custom_elements import _SessionDeviceSelector, SessionDeviceSelectorProps
     from common.components.primitives import Li, Ul
 
     current_name = session.device.name if session.device else "Unknown"
@@ -307,8 +303,6 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     dropdown = Div(
         data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
     )[toggle, menu]
-    return custom_element(
-        "session-device-selector",
-        SessionDeviceSelectorProps(session_id=session.id, csrf=csrf_token),
-        children=[Div(class_="flex gap-2 items-center")[dropdown]],
-    )
+    return _SessionDeviceSelector(session_id=session.id, csrf=csrf_token)[
+        Div(class_="flex gap-2 items-center")[dropdown]
+    ]

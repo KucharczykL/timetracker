@@ -139,7 +139,7 @@ class RenderedPagesTest(TestCase):
 
     def test_add_session_form_has_timestamp_helpers(self):
         html = self.get("games:add_session").content.decode()
-        self.assertIn("add_session.js", html)
+        self.assertIn("session-timestamp-buttons", html)
         for marker in [
             "Set to now",
             "Toggle text",

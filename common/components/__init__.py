@@ -18,7 +18,7 @@ from common.components.core import (
     randomid,
     render,
 )
-from common.components.custom_elements import custom_element, register_element
+from common.components.custom_elements import SessionTimestampButtons, register_element
 from common.components.date_range_picker import (
     DateRangeCalendar,
     DateRangeField,
@@ -77,6 +77,7 @@ from common.components.primitives import (
     Tr,
     Ul,
     YearPicker,
+    custom_element_builder,
     paginated_table_content,
 )
 from common.components.search_select import (
@@ -92,8 +93,9 @@ from common.utils import truncate
 __all__ = [
     "truncate",
     "BaseComponent",
-    "custom_element",
     "register_element",
+    "SessionTimestampButtons",
+    "custom_element_builder",
     "Element",
     "Fragment",
     "Media",
