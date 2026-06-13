@@ -52,14 +52,31 @@ _SIZE_CLASSES = {
 # tag name is data, not a separate class/function body. Add a tag = one line.
 
 
+def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
+    """Translate htpy-style attribute kwargs to (name, value) pairs.
+
+    ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
+    ``hx-get`` (inner underscores to hyphens); ``True`` -> bare attribute;
+    ``False`` / ``None`` -> omitted."""
+    result: list[HTMLAttribute] = []
+    for key, value in attrs.items():
+        if value is None or value is False:
+            continue
+        name = key.rstrip("_").replace("_", "-")
+        result.append((name, name if value is True else value))  # type: ignore[arg-type]
+    return result
+
+
 def _html_element(tag_name: str):
     """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
 
     def element(
         attributes: Attributes | None = None,
         children: Children = None,
+        **attrs: object,
     ) -> Element:
-        return Element(tag_name, attributes, children)
+        merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
+        return Element(tag_name, merged, children)
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
     element.__doc__ = f"Builder for the <{tag_name}> element."

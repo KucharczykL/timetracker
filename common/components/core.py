@@ -235,6 +235,16 @@ class Element(Node):
             children = [children]
         self.children = children
 
+    def __getitem__(self, children: "Children | Node") -> "Element":
+        """htpy-style children: ``Div(class_="x")[child1, child2]``.
+
+        Returns an Element with the same tag/attributes/media and these
+        children, so the tree stays walkable (Media still bubbles)."""
+        items = children if isinstance(children, tuple) else (children,)
+        clone = Element(self.tag_name, self.attributes, list(items))
+        clone.media = self.media
+        return clone
+
     def collect_media(self) -> Media:
         media = self.media
         for child in self.children:

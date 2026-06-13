@@ -174,5 +174,48 @@ class RealComponentMediaTest(unittest.TestCase):
         self.assertIn("range_slider.js", media.js)
 
 
+class HtpyStyleSugarTest(unittest.TestCase):
+    def test_getitem_sets_children(self):
+        from common.components import Div, Span
+
+        self.assertEqual(
+            render(Div(class_="card")[Span()["hi"]]),
+            '<div class="card"><span>hi</span></div>',
+        )
+
+    def test_getitem_multiple_children(self):
+        from common.components import Div
+
+        self.assertEqual(render(Div()["a", "b"]), "<div>a\nb</div>")
+
+    def test_kwargs_class_underscore_becomes_class(self):
+        from common.components import Div
+
+        self.assertIn('class="x"', render(Div(class_="x")))
+
+    def test_kwargs_inner_underscore_becomes_hyphen(self):
+        from common.components import Div
+
+        self.assertIn('hx-get="/y"', render(Div(hx_get="/y")))
+
+    def test_kwargs_true_renders_bare_attr(self):
+        from common.components import Div
+
+        self.assertIn('hidden="hidden"', render(Div(hidden=True)))
+
+    def test_kwargs_false_and_none_omitted(self):
+        from common.components import Div
+
+        html = render(Div(hidden=False, title=None))
+        self.assertNotIn("hidden", html)
+        self.assertNotIn("title", html)
+
+    def test_getitem_preserves_media(self):
+        from common.components import Div, Media, collect_media
+
+        node = Div(class_="x").with_media(Media(js=("a.js",)))["child"]
+        self.assertEqual(collect_media(node).js, ("a.js",))
+
+
 if __name__ == "__main__":
     unittest.main()
