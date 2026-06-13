@@ -168,7 +168,7 @@ class RenderedPagesTest(TestCase):
             "Platform",
             'id="history-container"',
             "status-changed from:body",
-            "createPlayEvent",  # the played-row Alpine dropdown script
+            "<play-event-row",  # the played-row custom element
             'hx-target="#global-modal-container"',  # delete trigger
             "Purchases",
             "Sessions",
@@ -178,6 +178,14 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<div"), html.count("</div>"))
+
+    def test_view_game_uses_play_event_row_element(self):
+        game = Game.objects.create(name="Played Game", platform=self.platform)
+        html = self.get("games:view_game", game.id).content.decode()
+        self.assertIn("<play-event-row", html)
+        self.assertIn('game-id="', html)
+        self.assertNotIn("@@", html)  # token-replace hack gone
+        self.assertNotIn("createPlayEvent", html)  # the old Alpine fn is gone
 
     def test_view_game_empty_sections(self):
         """A game with no sessions/purchases/etc shows the empty messages."""

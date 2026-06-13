@@ -61,3 +61,24 @@ def test_session_device_selector_patches(authenticated_page: Page, live_server):
         host.locator(f'[data-option][data-value="{deck.id}"]').click()
     session.refresh_from_db()
     assert session.device_id == deck.id
+
+
+@pytest.mark.django_db
+def test_play_event_row_increments(authenticated_page: Page, live_server):
+    from games.models import Game, Platform
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    game = Game.objects.create(name="Test Game", platform=platform)
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:view_game', args=[game.id])}")
+
+    host = page.locator("play-event-row").first
+    expect(host).to_be_attached()
+    host.locator("[data-toggle]").click()
+    with page.expect_response(
+        lambda r: "playevent" in r.url.lower() and r.request.method == "POST"
+    ):
+        host.locator("[data-add-play]").click()
+    expect(host.locator("[data-count]")).to_have_text("1")
+    assert game.playevents.count() == 1

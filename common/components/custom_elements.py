@@ -112,3 +112,12 @@ class SessionDeviceSelectorProps(TypedDict):
 register_element(
     "session-device-selector", "SessionDeviceSelector", SessionDeviceSelectorProps
 )
+
+
+class PlayEventRowProps(TypedDict):
+    game_id: int
+    csrf: str
+    api_create_url: str
+
+
+register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
