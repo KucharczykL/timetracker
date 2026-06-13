@@ -29,10 +29,18 @@ class ElementRenderTest(unittest.TestCase):
             render(Element("span", children=["<b>"])), "<span>&lt;b&gt;</span>"
         )
 
-    def test_safe_children_pass_through(self):
+    def test_safe_node_child_passes_through(self):
+        self.assertEqual(
+            render(Element("span", children=[Safe("<b>x</b>")])),
+            "<span><b>x</b></span>",
+        )
+
+    def test_safetext_child_is_escaped(self):
+        # A string child is always escaped — even a mark_safe/SafeText one.
+        # Trusted markup must be a Safe node, not a safe string.
         self.assertEqual(
             render(Element("span", children=[mark_safe("<b>x</b>")])),
-            "<span><b>x</b></span>",
+            "<span>&lt;b&gt;x&lt;/b&gt;</span>",
         )
 
     def test_node_children_render_safely(self):

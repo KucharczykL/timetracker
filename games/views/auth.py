@@ -3,9 +3,8 @@ registration/login.html)."""
 
 from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
-from django.utils.safestring import mark_safe
 
-from common.components import CsrfInput, Div, Element, Input, Node
+from common.components import CsrfInput, Div, Element, Input, Node, Safe
 from common.components.primitives import Td, Tr
 from common.layout import render_page
 
@@ -15,7 +14,7 @@ def _login_content(form, request) -> Node:
         "table",
         children=[
             CsrfInput(request),
-            mark_safe(str(form.as_table())),
+            Safe(str(form.as_table())),
             Tr(
                 children=[
                     Td(),

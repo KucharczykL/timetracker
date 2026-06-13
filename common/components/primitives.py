@@ -15,6 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
     Attributes,
+    Child,
     Children,
     Element,
     Fragment,
@@ -80,7 +81,7 @@ Th = _html_element("th")
 
 def _popover_html(
     id: str,
-    popover_content: str,
+    popover_content: Child,
     wrapped_content: str = "",
     wrapped_classes: str = "",
     slot: "Node | str" = "",
@@ -130,14 +131,14 @@ def _popover_html(
 
 
 def Popover(
-    popover_content: str,
+    popover_content: Child,
     wrapped_content: str = "",
     wrapped_classes: str = "",
     children: Children = None,
     attributes: Attributes | None = None,
     id: str = "",
 ) -> Node:
-    children = children or []
+    children = as_children(children)
     if not wrapped_content and not children:
         raise ValueError("One of wrapped_content or children is required.")
     if not id:
@@ -155,7 +156,7 @@ def Popover(
 
 def PopoverTruncated(
     input_string: str,
-    popover_content: str = "",
+    popover_content: Child = "",
     popover_if_not_truncated: bool = False,
     length: int = 30,
     ellipsis: str = "…",
@@ -507,9 +508,12 @@ def Pill(
     return Span(attributes=pill_attrs, children=children)
 
 
-def CsrfInput(request) -> SafeText:
-    """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag."""
-    return mark_safe(
+def CsrfInput(request) -> Node:
+    """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag.
+
+    Returns a ``Safe`` node (not a safe string): it is always used as a tree
+    child, and only nodes render unescaped now."""
+    return Safe(
         f'<input type="hidden" name="csrfmiddlewaretoken" value="{get_token(request)}">'
     )
 
@@ -958,7 +962,7 @@ def _pagination_nav(page_obj, elided_page_range, request) -> str:
 def SimpleTable(
     columns: list[str] | None = None,
     rows: list | None = None,
-    header_action: SafeText | str | None = None,
+    header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
     request=None,

@@ -22,6 +22,7 @@ from common.components import (
     NameWithIcon,
     Node,
     Popover,
+    Safe,
     SearchField,
     SessionDeviceSelector,
     paginated_table_content,
@@ -199,9 +200,9 @@ def _session_fields(form) -> Fragment:
     """
     rows: list[Node] = []
     for field in form:
-        children: list[SafeText | str] = [
-            mark_safe(str(field.label_tag())),
-            mark_safe(str(field)),
+        children: list[Node | str] = [
+            Safe(str(field.label_tag())),
+            Safe(str(field)),
         ]
         if field.name in ("timestamp_start", "timestamp_end"):
             this_side = "start" if field.name == "timestamp_start" else "end"

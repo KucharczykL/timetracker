@@ -55,10 +55,10 @@ class ComponentCacheTest(unittest.TestCase):
         self.assertEqual(components._render_element.cache_parameters()["maxsize"], 4096)
 
     def test_safe_and_unsafe_children_do_not_collide(self):
-        """A SafeText "<b>" and a plain "<b>" are equal as strings but must
-        render differently — the cache key must keep them distinct."""
+        """A Safe-node ``<b>`` and a plain-string ``<b>`` render differently —
+        the cache key must keep them distinct."""
         safe = str(
-            components.Element(tag_name="span", children=[mark_safe("<b>x</b>")])
+            components.Element(tag_name="span", children=[components.Safe("<b>x</b>")])
         )
         unsafe = str(components.Element(tag_name="span", children=["<b>x</b>"]))
         self.assertIn("<b>x</b>", safe)
@@ -350,13 +350,23 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertNotIn("<script>", result)
         self.assertIn("&lt;script&gt;", result)
 
-    def test_mark_safe_children_pass_through(self):
+    def test_safe_node_children_pass_through(self):
+        result = str(
+            components.Element(
+                tag_name="div", children=[components.Safe("<span>safe</span>")]
+            )
+        )
+        self.assertIn("<span>safe</span>", result)
+
+    def test_mark_safe_string_children_are_escaped(self):
+        # Trusted markup must be a Safe node; a mark_safe string is still a
+        # string, so it is escaped like any other text child.
         result = str(
             components.Element(
                 tag_name="div", children=[mark_safe("<span>safe</span>")]
             )
         )
-        self.assertIn("<span>safe</span>", result)
+        self.assertIn("&lt;span&gt;safe&lt;/span&gt;", result)
 
     def test_attribute_values_are_escaped(self):
         result = str(
@@ -840,14 +850,12 @@ class SimpleTableRenderingTest(unittest.TestCase):
 
     def test_simple_table_header_action_as_caption(self):
         """Verify header_action renders inside <caption>."""
-        from django.utils.safestring import mark_safe
-
         result = str(
             str(
                 components.SimpleTable(
                     columns=["Game", "Started"],
                     rows=[["Game1", "2025-01-01"]],
-                    header_action=mark_safe('<a href="/add">Add</a>'),
+                    header_action=components.Safe('<a href="/add">Add</a>'),
                 )
             )
         )

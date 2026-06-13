@@ -28,9 +28,11 @@ from common.components import (
     Modal,
     ModuleScript,
     NameWithIcon,
+    Node,
     Popover,
     PopoverTruncated,
     PurchasePrice,
+    Safe,
     SearchField,
     SimpleTable,
     Ul,
@@ -386,7 +388,7 @@ _PLAYED_ROW_TEMPLATE = """<div class="flex gap-2 items-center" x-data="{ open: f
 </div>"""
 
 
-def _played_row(game: Game, request: HttpRequest) -> SafeText:
+def _played_row(game: Game, request: HttpRequest) -> Node:
     """The 'Played N times' control with its Alpine.js dropdown."""
     replacements = {
         "@@PLAYED_COUNT@@": str(game.playevents.count()),
@@ -400,7 +402,7 @@ def _played_row(game: Game, request: HttpRequest) -> SafeText:
     html = _PLAYED_ROW_TEMPLATE
     for token, value in replacements.items():
         html = html.replace(token, value)
-    return mark_safe(html)
+    return Safe(html)
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:
@@ -408,14 +410,12 @@ def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> Sa
         popover_content=tooltip,
         wrapped_classes="flex gap-2 items-center",
         id=popover_id,
-        children=[mark_safe(_STAT_SVGS[svg_key]), str(value)],
+        children=[Safe(_STAT_SVGS[svg_key]), str(value)],
     )
 
 
-def _meta_row(
-    label: str, value: SafeText | str, extra: SafeText | str = ""
-) -> SafeText:
-    children: list[SafeText | str] = [
+def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
+    children: list[Node | str] = [
         Span(attributes=[("class", "uppercase")], children=[label]),
         value,
     ]
@@ -565,7 +565,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> S
         ]
         + (
             [
-                mark_safe("&nbsp;"),
+                Safe("&nbsp;"),
                 Popover(
                     popover_content="Original release year",
                     wrapped_classes="text-slate-500 text-2xl",

@@ -134,18 +134,20 @@ class Node:
         return mark_safe(self._render())
 
 
-# A renderable child is a node or a string (plain strings are escaped, SafeText
-# and nodes pass through). ``Children`` is the type for a builder's ``children``
+# A renderable child is a node or a string. Strings are ALWAYS escaped (a string
+# is untrusted text — ``SafeText``/``mark_safe`` is escaped too); trusted
+# pre-rendered HTML must be a ``Safe`` node. ``Children`` is the type for a
+# builder's ``children``
 # parameter: a sequence of child nodes/strings, a bare string, or nothing. The
 # sequence is a covariant ``Sequence`` so ``list[Element]`` / ``list[Node]`` are
 # accepted (a plain ``list[str]`` would be invariant and reject them). A single
 # bare ``Node`` is accepted only by ``Element`` itself (which wraps it); the
 # higher-level builders take ``Children``.
 Child = Node | str
-Children = Sequence[Child] | str | None
+Children = Sequence[Child] | Node | str | None
 
 
-def as_children(children: "Children | Node") -> list[Child]:
+def as_children(children: Children) -> list[Child]:
     """Normalise a builder's ``children`` argument to a flat list.
 
     Accepts ``None`` (→ empty), a single node/string (→ one-element list), or a
@@ -172,16 +174,18 @@ def as_attributes(attributes: "Attributes | None") -> list[HTMLAttribute]:
 def _child_key(child: object) -> tuple[str, bool]:
     """Normalise a child to a ``(text, is_safe)`` pair.
 
-    Nodes render to safe HTML; ``SafeText`` (and anything exposing ``__html__``)
-    is already safe; plain strings are escaped. ``is_safe`` is part of the
-    render cache key so a safe ``"<b>"`` and an unsafe ``"<b>"`` never collide.
+    Only :class:`Node` children render unescaped — that includes :class:`Safe`,
+    the one sanctioned way to put trusted pre-rendered HTML into the tree. Every
+    *string* child is escaped, ``SafeText``/``mark_safe`` included: a string is
+    always treated as untrusted text, so trusted markup must be wrapped in
+    ``Safe(...)`` rather than smuggled in as a safe string. ``is_safe`` is part
+    of the render cache key so a safe ``"<b>"`` and an unsafe ``"<b>"`` never
+    collide.
     """
     if isinstance(child, Node):
         return (child._render(), True)
     if isinstance(child, str):
-        return (child, isinstance(child, SafeText))
-    if hasattr(child, "__html__"):
-        return (child.__html__(), True)
+        return (child, False)
     return (str(child), False)
 
 

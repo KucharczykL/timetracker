@@ -9,9 +9,18 @@ from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.html import conditional_escape
-from django.utils.safestring import mark_safe
-
-from common.components import A, Div, Element, GameLink, Node, Td, Th, Tr, YearPicker
+from common.components import (
+    A,
+    Div,
+    Element,
+    GameLink,
+    Node,
+    Safe,
+    Td,
+    Th,
+    Tr,
+    YearPicker,
+)
 from common.time import durationformat, format_duration
 
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2"
@@ -70,7 +79,7 @@ def _purchase_name(purchase) -> Node:
         name = game_name or purchase.name
         link = GameLink(first_game.id, name)
         suffix = f" ({first_game.name} {purchase.get_type_display()})"
-        return mark_safe(str(link) + conditional_escape(suffix))
+        return Safe(str(link) + conditional_escape(suffix))
     name = game_name or first_game.name
     return GameLink(first_game.id, name)
 

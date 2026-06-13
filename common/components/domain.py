@@ -4,9 +4,8 @@ from typing import Any
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Children, Node, as_children
+from common.components.core import Children, Node, Safe, as_children
 from common.components.primitives import (
     A,
     Div,
@@ -130,7 +129,7 @@ def LinkedPurchase(purchase: Purchase) -> Node:
             ),
             PopoverTruncated(
                 input_string=link_content,
-                popover_content=mark_safe(popover_content),
+                popover_content=Safe(popover_content),
                 popover_if_not_truncated=popover_if_not_truncated,
             ),
         ],
@@ -210,7 +209,7 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
+def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     """Alpine.js dropdown to change a game's status."""
     options_html = "\n".join(
         f"<template x-if=\"status == '{value}'\">"
@@ -228,7 +227,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
         for value, label in game_statuses
     )
 
-    return mark_safe(f"""
+    return Safe(f"""
 <div class="flex gap-2 items-center"
      x-data="{{
          status: '{game.status}',
@@ -261,7 +260,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> SafeText:
 """)
 
 
-def SessionDeviceSelector(session, session_devices, csrf_token: str) -> SafeText:
+def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     """Alpine.js dropdown to change a session's device."""
     device_id = session.device_id or "null"
     device_name = (session.device.name if session.device else "Unknown").replace(
@@ -276,7 +275,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> SafeText
         for d in session_devices
     )
 
-    return mark_safe(f"""
+    return Safe(f"""
 <div class="flex gap-2 items-center"
      x-data="{{
          originalDeviceId: {device_id},
