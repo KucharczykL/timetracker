@@ -38,9 +38,7 @@ def prefilled_bar_view(request):
                 "value": "Switch",
                 "modifier": "INCLUDES",
             },
-            "group": {
-                "modifier": "IS_NULL"
-            }
+            "group": {"modifier": "IS_NULL"},
         }
     )
     return HttpResponse(_bar_page(filter_json=filter_json))
@@ -63,19 +61,21 @@ def _filter_from_url(url: str) -> dict:
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
 def test_string_filter_defaults_and_toggles(live_server, page):
     page.goto(live_server.url + "/test-string-filter-empty/")
-    
+
     # 1. Verify text inputs are active by default and modifier "is" (EQUALS) is checked
     name_input = page.locator('input[name="filter-name"]')
     assert name_input.is_enabled()
-    
+
     is_radio = page.locator('input[name="filter-name-modifier"][value="EQUALS"]')
     assert is_radio.is_checked()
 
     # 2. Enter values, click "includes" (INCLUDES), and submit
     name_input.fill("PlayStation")
-    includes_radio = page.locator('input[name="filter-name-modifier"][value="INCLUDES"]')
+    includes_radio = page.locator(
+        'input[name="filter-name-modifier"][value="INCLUDES"]'
+    )
     includes_radio.click()
-    
+
     with page.expect_navigation():
         page.evaluate(
             "document.getElementById('filter-bar-form')"
@@ -92,15 +92,15 @@ def test_string_filter_null_states(live_server, page):
 
     name_input = page.locator('input[name="filter-name"]')
     name_input.fill("Xbox")
-    
+
     # Click "is null"
     is_null_radio = page.locator('input[name="filter-name-modifier"][value="IS_NULL"]')
     is_null_radio.click()
-    
+
     # Verification of interactive disabling
     assert not name_input.is_enabled()
     assert name_input.input_value() == ""
-    
+
     with page.expect_navigation():
         page.evaluate(
             "document.getElementById('filter-bar-form')"
@@ -114,19 +114,23 @@ def test_string_filter_null_states(live_server, page):
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
 def test_string_filter_prefilled_states(live_server, page):
     page.goto(live_server.url + "/test-string-filter-prefilled/")
-    
+
     name_input = page.locator('input[name="filter-name"]')
     group_input = page.locator('input[name="filter-group"]')
-    
+
     # Verifies name matches "Switch" and "includes" is checked
     assert name_input.input_value() == "Switch"
     assert name_input.is_enabled()
-    assert page.locator('input[name="filter-name-modifier"][value="INCLUDES"]').is_checked()
-    
+    assert page.locator(
+        'input[name="filter-name-modifier"][value="INCLUDES"]'
+    ).is_checked()
+
     # Verifies group is empty, disabled, and "is null" is checked
     assert group_input.input_value() == ""
     assert not group_input.is_enabled()
-    assert page.locator('input[name="filter-group-modifier"][value="IS_NULL"]').is_checked()
+    assert page.locator(
+        'input[name="filter-group-modifier"][value="IS_NULL"]'
+    ).is_checked()
 
 
 @pytest.mark.django_db
@@ -136,11 +140,11 @@ def test_string_filter_deselect_re_enables(live_server, page):
 
     name_input = page.locator('input[name="filter-name"]')
     is_null_radio = page.locator('input[name="filter-name-modifier"][value="IS_NULL"]')
-    
+
     # 1. Click "is null" -> disables input
     is_null_radio.click()
     assert not name_input.is_enabled()
-    
+
     # 2. Click "is null" again to deselect/uncheck -> should re-enable the text input
     is_null_radio.click()
     assert name_input.is_enabled()

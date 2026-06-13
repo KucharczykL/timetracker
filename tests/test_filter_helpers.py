@@ -85,4 +85,3 @@ class ParseBoolNullableTest(SimpleTestCase):
         self.assertTrue(_parse_bool_nullable({"field": {"value": "1"}}, "field"))
         self.assertFalse(_parse_bool_nullable({"field": {"value": "false"}}, "field"))
         self.assertFalse(_parse_bool_nullable({"field": {"value": "0"}}, "field"))
-

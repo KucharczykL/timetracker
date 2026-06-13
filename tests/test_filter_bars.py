@@ -362,4 +362,3 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('name="filter-refunded"', purchase_html)
         self.assertIn('value="true"', purchase_html)
         self.assertIn('value="false"', purchase_html)
-

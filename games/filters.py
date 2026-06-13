@@ -412,7 +412,9 @@ class GameFilter(OperatorFilter):
         from games.models import PlayEvent
 
         event_q = criterion.to_q("note")
-        matching_ids = PlayEvent.objects.filter(event_q).values_list("game_id", flat=True)
+        matching_ids = PlayEvent.objects.filter(event_q).values_list(
+            "game_id", flat=True
+        )
         return Q(id__in=matching_ids)
 
 
