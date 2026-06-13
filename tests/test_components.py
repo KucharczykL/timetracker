@@ -11,16 +11,16 @@ from games.models import Platform, Game, Purchase, Session
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
 # HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
 # (``Node.__str__`` returns a ``SafeText``). Non-node helpers (``randomid``,
-# ``_resolve_name_with_icon``, the legacy string ``Component()``) are called
+# ``_resolve_name_with_icon``, ``_render_element``) are called
 # directly.
 
 
 class ComponentIntegrationTest(unittest.TestCase):
-    """Test Component() works correctly with caching transparent."""
+    """Test Element() renders correctly with caching transparent."""
 
     def test_tag_name_component(self):
         result = str(
-            components.Component(
+            components.Element(
                 tag_name="div",
                 attributes=[("class", "test")],
                 children="hello",
@@ -37,13 +37,13 @@ class ComponentCacheTest(unittest.TestCase):
 
     def test_identical_components_hit_cache(self):
         str(
-            components.Component(
+            components.Element(
                 tag_name="div", attributes=[("class", "x")], children="hi"
             )
         )
         misses = components._render_element.cache_info().misses
         str(
-            components.Component(
+            components.Element(
                 tag_name="div", attributes=[("class", "x")], children="hi"
             )
         )
@@ -58,9 +58,9 @@ class ComponentCacheTest(unittest.TestCase):
         """A SafeText "<b>" and a plain "<b>" are equal as strings but must
         render differently — the cache key must keep them distinct."""
         safe = str(
-            components.Component(tag_name="span", children=[mark_safe("<b>x</b>")])
+            components.Element(tag_name="span", children=[mark_safe("<b>x</b>")])
         )
-        unsafe = str(components.Component(tag_name="span", children=["<b>x</b>"]))
+        unsafe = str(components.Element(tag_name="span", children=["<b>x</b>"]))
         self.assertIn("<b>x</b>", safe)
         self.assertIn("&lt;b&gt;x&lt;/b&gt;", unsafe)
         self.assertNotEqual(safe, unsafe)
@@ -324,26 +324,26 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
 
 class ComponentEdgeCasesTest(unittest.TestCase):
-    """Test Component() edge cases and error handling."""
+    """Test Element() edge cases and error handling."""
 
     def test_no_tag_name_raises(self):
         with self.assertRaises(ValueError) as ctx:
-            str(components.Component(children="hello"))
+            str(components.Element("", children="hello"))
         self.assertIn("tag_name", str(ctx.exception))
 
     def test_single_string_children_wrapped(self):
-        result = str(components.Component(tag_name="span", children="hello"))
+        result = str(components.Element(tag_name="span", children="hello"))
         self.assertIn("hello", result)
 
     def test_multiple_children_joined_with_newlines(self):
-        result = str(components.Component(tag_name="div", children=["hello", "world"]))
+        result = str(components.Element(tag_name="div", children=["hello", "world"]))
         self.assertIn("hello\nworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
 
     def test_raw_html_children_are_escaped(self):
         result = str(
-            components.Component(
+            components.Element(
                 tag_name="div", children=["<script>alert('xss')</script>"]
             )
         )
@@ -352,7 +352,7 @@ class ComponentEdgeCasesTest(unittest.TestCase):
 
     def test_mark_safe_children_pass_through(self):
         result = str(
-            components.Component(
+            components.Element(
                 tag_name="div", children=[mark_safe("<span>safe</span>")]
             )
         )
@@ -360,7 +360,7 @@ class ComponentEdgeCasesTest(unittest.TestCase):
 
     def test_attribute_values_are_escaped(self):
         result = str(
-            components.Component(
+            components.Element(
                 tag_name="div",
                 attributes=[("data-x", 'foo"bar')],
             )
@@ -370,7 +370,7 @@ class ComponentEdgeCasesTest(unittest.TestCase):
 
     def test_attributes_serialized_correctly(self):
         result = str(
-            components.Component(
+            components.Element(
                 tag_name="div", attributes=[("class", "foo"), ("id", "bar")]
             )
         )
@@ -378,17 +378,17 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertIn('id="bar"', result)
 
     def test_empty_attributes_no_extra_space(self):
-        result = str(components.Component(tag_name="span", children="x"))
+        result = str(components.Element(tag_name="span", children="x"))
         self.assertEqual(result, "<span>x</span>")
         self.assertNotIn(" <span", result)
 
     def test_non_string_children_not_supported(self):
         """Component only accepts str for children, not integers."""
-        result = str(components.Component(tag_name="span", children=str(42)))
+        result = str(components.Element(tag_name="span", children=str(42)))
         self.assertIn("42", result)
 
     def test_returns_safetext(self):
-        result = str(components.Component(tag_name="div", children="test"))
+        result = str(components.Element(tag_name="div", children="test"))
         self.assertIsInstance(result, SafeText)
 
 

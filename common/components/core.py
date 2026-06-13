@@ -11,11 +11,6 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 (``str(node)`` / ``node.__html__()`` / :func:`render`). This is what lets
 ``Page()`` walk a finished tree and collect every component's declared JS
 (:class:`Media`) instead of each view threading ``scripts=`` by hand.
-
-Backwards compatibility: the legacy ``Component(tag_name=...)`` function still
-returns a ``SafeText`` string, so existing string-based call sites keep working
-during the migration. Its child handling is Node-aware, so a tree mixing old
-(string-returning) and new (node-returning) components renders correctly.
 """
 
 import hashlib
@@ -286,20 +281,6 @@ def collect_media(node: "Node | str") -> Media:
     if isinstance(node, Node):
         return node.collect_media()
     return Media()
-
-
-def Component(
-    attributes: list[HTMLAttribute] | None = None,
-    children: "list[HTMLTag] | HTMLTag | None" = None,
-    tag_name: str = "",
-) -> SafeText:
-    """Legacy element builder: returns a ``SafeText`` string.
-
-    Kept for backwards compatibility while call sites migrate to :class:`Element`
-    and the generated tag builders. Child handling is Node-aware, so a tree that
-    mixes string-returning and node-returning components still renders correctly.
-    """
-    return render(Element(tag_name, attributes, children))
 
 
 def randomid(seed: str = "", content: str = "", length: int = 10) -> str:

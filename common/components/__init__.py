@@ -6,7 +6,6 @@ re-exports the public API so ``from common.components import X`` keeps working.
 
 from common.components.core import (
     BaseComponent,
-    Component,
     Element,
     Fragment,
     HTMLAttribute,
@@ -92,7 +91,6 @@ from common.utils import truncate
 __all__ = [
     "truncate",
     "BaseComponent",
-    "Component",
     "Element",
     "Fragment",
     "Media",

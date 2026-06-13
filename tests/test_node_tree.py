@@ -1,17 +1,14 @@
 """Phase 1: the lazy node layer (Node/Element/Safe/Fragment/BaseComponent/Media).
 
-These cover the new machinery directly and assert byte-for-byte parity between
-``Element`` and the legacy ``Component()`` shim, so the migration of call sites
-in later phases can rely on identical output.
+These cover the new machinery directly: rendering, escaping, media bubbling.
 """
 
 import unittest
 
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import mark_safe
 
 from common.components import (
     BaseComponent,
-    Component,
     Element,
     Fragment,
     Media,
@@ -23,12 +20,8 @@ from common.components import (
 
 
 class ElementRenderTest(unittest.TestCase):
-    def test_matches_legacy_component(self):
+    def test_renders_tag_attrs_children(self):
         element = Element("div", [("class", "test")], "hello")
-        legacy = Component(
-            tag_name="div", attributes=[("class", "test")], children="hello"
-        )
-        self.assertEqual(render(element), legacy)
         self.assertEqual(render(element), '<div class="test">hello</div>')
 
     def test_plain_string_children_escaped(self):
@@ -47,14 +40,6 @@ class ElementRenderTest(unittest.TestCase):
         self.assertEqual(
             render(Element("span", children=[inner])), "<span><b>x</b></span>"
         )
-
-    def test_legacy_component_renders_node_children(self):
-        # The compatibility bridge: a string-returning legacy Component must
-        # render nested Node children as HTML, not escape them.
-        inner = Element("b", children=["x"])
-        result = Component(tag_name="span", children=[inner])
-        self.assertEqual(result, "<span><b>x</b></span>")
-        self.assertIsInstance(result, SafeText)
 
 
 class SafeAndFragmentTest(unittest.TestCase):

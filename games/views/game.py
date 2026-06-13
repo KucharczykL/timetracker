@@ -17,9 +17,9 @@ from common.components import (
     AddForm,
     Button,
     ButtonGroup,
-    Component,
     CsrfInput,
     Div,
+    Element,
     FilterBar,
     GameStatus,
     GameStatusSelector,
@@ -201,8 +201,8 @@ def _delete_game_confirmation_modal(
     if not (session_count or purchase_count or playevent_count):
         data_items.append(Li(children=["No associated data"]))
 
-    form = Component(
-        tag_name="form",
+    form = Element(
+        "form",
         attributes=[
             ("hx-post", reverse("games:delete_game", args=[game.id])),
             ("hx-replace-url", "true"),
@@ -442,8 +442,8 @@ def _game_action_buttons(game: Game) -> SafeText:
     edit_link = A(
         href=reverse("games:edit_game", args=[game.id]),
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[("type", "button"), ("class", edit_class)],
                 children=["Edit"],
             )
@@ -456,8 +456,8 @@ def _game_action_buttons(game: Game) -> SafeText:
             ("hx-target", "#global-modal-container"),
         ],
         children=[
-            Component(
-                tag_name="button",
+            Element(
+                "button",
                 attributes=[("type", "button"), ("class", delete_class)],
                 children=["Delete"],
             )
