@@ -236,7 +236,7 @@ def _session_fields(form) -> SafeText:
                 )
             )
         rows.append(Div(children=children))
-    return mark_safe("\n".join(rows))
+    return mark_safe("\n".join(str(row) for row in rows))
 
 
 @login_required

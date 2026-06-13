@@ -5,8 +5,34 @@ import django
 
 from django.utils.safestring import SafeText, mark_safe
 
-from common import components
+from common import components as _components
+from common.components.core import Node
 from games.models import Platform, Game, Purchase, Session
+
+
+class _RenderingComponents:
+    """Test accessor that renders lazy component nodes to safe HTML strings.
+
+    Component builders now return ``Node`` objects (the lazy tree). These tests
+    assert on rendered HTML, so we render any node a capitalized builder returns
+    to a ``SafeText`` string. Internals (``_render_element``) and the legacy
+    string-returning ``Component()`` are untouched (non-node results pass
+    through), so cache/escaping tests keep working unchanged.
+    """
+
+    def __getattr__(self, name):
+        attr = getattr(_components, name)
+        if not (callable(attr) and name[:1].isupper()):
+            return attr
+
+        def rendered(*args, **kwargs):
+            result = attr(*args, **kwargs)
+            return str(result) if isinstance(result, Node) else result
+
+        return rendered
+
+
+components = _RenderingComponents()
 
 
 class ComponentIntegrationTest(unittest.TestCase):
@@ -822,7 +848,16 @@ class SimpleTableRenderingTest(unittest.TestCase):
 
 
 from django.test import SimpleTestCase
-from common.components.primitives import Checkbox, Radio
+from common.components.primitives import Checkbox as _Checkbox, Radio as _Radio
+
+
+# Checkbox/Radio are lazy nodes; render to safe HTML for the assertions below.
+def Checkbox(*args, **kwargs):
+    return str(_Checkbox(*args, **kwargs))
+
+
+def Radio(*args, **kwargs):
+    return str(_Radio(*args, **kwargs))
 
 
 class ComponentPrimitivesTest(SimpleTestCase):
@@ -867,6 +902,7 @@ class PrimitiveWidgetsTest(SimpleTestCase):
 
     def test_primitive_checkbox_widget_renders_headless(self):
         from games.forms import PrimitiveCheckboxWidget
+
         widget = PrimitiveCheckboxWidget()
         html = widget.render(name="agree", value=True)
         self.assertNotIn("<label", html)

@@ -7,12 +7,28 @@ import django.test
 from django.utils.safestring import SafeText
 
 from common.components import (
-    FilterSelect,
-    Pill,
-    SearchSelect,
     searchselect_selected,
 )
+from common.components import FilterSelect as _FilterSelect
+from common.components import Pill as _Pill
+from common.components import SearchSelect as _SearchSelect
 from games.models import Game, Platform
+
+
+# These components are now lazy nodes; the tests below assert on rendered HTML.
+# Render at the call site so existing string assertions (assertIn / .count /
+# .index / .split) keep working, and ``isinstance(..., SafeText)`` confirms the
+# rendered output is safe markup.
+def SearchSelect(*args, **kwargs):
+    return str(_SearchSelect(*args, **kwargs))
+
+
+def FilterSelect(*args, **kwargs):
+    return str(_FilterSelect(*args, **kwargs))
+
+
+def Pill(*args, **kwargs):
+    return str(_Pill(*args, **kwargs))
 
 
 class PillTest(unittest.TestCase):
@@ -201,9 +217,7 @@ class FilterSelectComponentTest(unittest.TestCase):
         # Both the modifier pill and the value pill render.
         self.assertIn('data-search-select-modifier="IS_NULL"', html)
         self.assertIn("(None)", html)
-        self.assertIn(
-            'data-search-select-type="include"', html
-        )  # value pill present
+        self.assertIn('data-search-select-type="include"', html)  # value pill present
         self.assertIn('data-modifier="IS_NULL"', html)  # container carries it too
 
     def test_search_url_omits_value_rows_but_keeps_modifiers(self):
@@ -250,15 +264,9 @@ class FilterSelectComponentTest(unittest.TestCase):
                 ("INCLUDES_ONLY", "(Only)"),
             ],
         )
-        self.assertIn(
-            'data-search-select-modifier-option="INCLUDES_ALL"', html
-        )
-        self.assertIn(
-            'data-search-select-modifier-option="INCLUDES_ONLY"', html
-        )
-        self.assertIn(
-            'data-search-select-modifier-option="NOT_NULL"', html
-        )
+        self.assertIn('data-search-select-modifier-option="INCLUDES_ALL"', html)
+        self.assertIn('data-search-select-modifier-option="INCLUDES_ONLY"', html)
+        self.assertIn('data-search-select-modifier-option="NOT_NULL"', html)
         # No legacy match-mode <select>.
         self.assertNotIn("data-search-select-match", html)
 

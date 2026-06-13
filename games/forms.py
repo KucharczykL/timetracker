@@ -6,6 +6,7 @@ from common.components import (
     DEFAULT_PREFETCH,
     SearchSelect,
     SearchSelectOption,
+    render,
     searchselect_selected,
 )
 from common.components.primitives import Checkbox
@@ -28,23 +29,32 @@ autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 class PrimitiveCheckboxWidget(forms.CheckboxInput):
     """Adapts Django's CheckboxInput to use our Checkbox component."""
+
     def render(self, name, value, attrs=None, renderer=None):
         final_attrs = self.build_attrs(self.attrs, attrs)
         checked = self.check_test(value)
-        attributes = [(k, str(v)) for k, v in final_attrs.items() if k not in ("type", "name", "value", "checked")]
-        
+        attributes = [
+            (k, str(v))
+            for k, v in final_attrs.items()
+            if k not in ("type", "name", "value", "checked")
+        ]
+
         # Django uses boolean values differently for checkboxes, we omit value if empty
-        return str(Checkbox(
-            name=name,
-            label=None,
-            checked=checked,
-            value=str(value) if value else "1",
-            attributes=attributes
-        ))
+        # render() returns a safe string (Django widgets must not be autoescaped).
+        return render(
+            Checkbox(
+                name=name,
+                label=None,
+                checked=checked,
+                value=str(value) if value else "1",
+                attributes=attributes,
+            )
+        )
 
 
 class PrimitiveWidgetsMixin:
     """Automatically applies primitive custom widgets to native Django form fields."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
@@ -130,19 +140,22 @@ class SearchSelectWidget(forms.Widget):
     def render(self, name, value, attrs=None, renderer=None):
         selected = searchselect_selected(self._values(value), self.options_resolver)
         autofocus = bool((attrs or {}).get("autofocus"))
-        return SearchSelect(
-            name=name,
-            selected=selected,
-            options=None,
-            search_url=self.search_url,
-            multi_select=self.multi_select,
-            items_visible=self.items_visible,
-            items_scroll=self.items_scroll,
-            prefetch=self.prefetch,
-            always_visible=self.always_visible,
-            placeholder=self.placeholder,
-            id=(attrs or {}).get("id", ""),
-            autofocus=autofocus,
+        # Django widgets must return a safe string; the component is a node.
+        return render(
+            SearchSelect(
+                name=name,
+                selected=selected,
+                options=None,
+                search_url=self.search_url,
+                multi_select=self.multi_select,
+                items_visible=self.items_visible,
+                items_scroll=self.items_scroll,
+                prefetch=self.prefetch,
+                always_visible=self.always_visible,
+                placeholder=self.placeholder,
+                id=(attrs or {}).get("id", ""),
+                autofocus=autofocus,
+            )
         )
 
     def value_from_datadict(self, data, files, name):
