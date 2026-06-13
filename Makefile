@@ -25,12 +25,22 @@ init:
 server:
 	uv run python -Wa manage.py runserver
 
+gen-element-types:
+	uv run python manage.py gen_element_types
+
+ts: gen-element-types
+	pnpm exec tsc
+
+ts-check: gen-element-types
+	pnpm exec tsc --noEmit
+
 dev:
 	@pnpm concurrently \
-		--names "Django,Tailwind" \
-		--prefix-colors "blue,green" \
+		--names "Django,Tailwind,TS" \
+		--prefix-colors "blue,green,magenta" \
 		"uv run python -Wa manage.py runserver" \
-		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch"
+		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
+		"pnpm exec tsc --watch"
 
 
 caddy:
@@ -85,7 +95,7 @@ format:
 format-check:
 	uv run ruff format --check
 
-check: lint format-check test
+check: lint format-check ts-check test
 
 date:
 	uv run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'

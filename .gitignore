@@ -13,3 +13,7 @@ dist/
 .python-version
 .direnv
 .hermes/
+
+# TypeScript: compiled output and codegen are build-only
+/games/static/js/dist/
+/ts/generated/
