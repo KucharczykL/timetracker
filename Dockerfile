@@ -15,6 +15,23 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Codegen the TypeScript prop contracts (needs Django); tsc compiles them in
+# the assets stage below.
+RUN uv run python manage.py gen_element_types
+
+
+# Front-end assets: Tailwind CSS + the TypeScript custom elements. Built here so
+# the compiled output ships in the image (dist/ is build-only, not committed).
+FROM node:22-bookworm-slim AS assets
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY . .
+COPY --from=builder /home/timetracker/app/ts/generated ./ts/generated
+RUN pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css \
+    && pnpm exec tsc
+
 
 FROM python:3.14-slim-bookworm
 
@@ -43,6 +60,10 @@ RUN curl -sL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VE
 WORKDIR /home/timetracker/app
 
 COPY --from=builder --chown=timetracker:timetracker /home/timetracker/app /home/timetracker/app
+
+# Built front-end assets from the Node stage (Tailwind CSS + compiled TS).
+COPY --from=assets --chown=timetracker:timetracker /app/games/static/base.css /home/timetracker/app/games/static/base.css
+COPY --from=assets --chown=timetracker:timetracker /app/games/static/js/dist /home/timetracker/app/games/static/js/dist
 
 COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile
 COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supervisor.conf
