@@ -8,7 +8,7 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import SafeText
 
 from common.components import (
     Fragment,
@@ -791,7 +791,7 @@ def _history_section(game: Game) -> SafeText:
     )
 
 
-_GET_SESSION_COUNT_SCRIPT = mark_safe(
+_GET_SESSION_COUNT_SCRIPT = Safe(
     "<script>\n"
     "            function getSessionCount() {\n"
     "                return document.getElementById('session-count')"
