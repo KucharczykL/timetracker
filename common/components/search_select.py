@@ -21,7 +21,6 @@ user types.
 from collections.abc import Callable, Iterable
 from typing import TypedDict
 
-from django.utils.safestring import SafeText
 
 from common.components.core import Element, HTMLAttribute, Media, Node
 from common.components.primitives import Div, Input, Pill, Span, Template
@@ -144,11 +143,11 @@ def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
     return [(f"data-{key}", str(value)) for key, value in data.items()]
 
 
-def _hidden_input(name: str, value) -> SafeText:
+def _hidden_input(name: str, value) -> Node:
     return Input(type="hidden", attributes=[("name", name), ("value", str(value))])
 
 
-def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
+def _label_slot(text: str, *, extra_class: str = "") -> Node:
     """A ``<span data-search-select-label>`` holding a row/pill's visible label. JS fills this
     one node when cloning the shape from a ``<template>``, so labels are the only
     thing the JS sets — all classes and structure stay server-side."""
@@ -162,7 +161,7 @@ def _label_slot(text: str, *, extra_class: str = "") -> SafeText:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
-def _option_row(option: SearchSelectOption) -> SafeText:
+def _option_row(option: SearchSelectOption) -> Node:
     return Div(
         attributes=[
             ("data-search-select-option", ""),
@@ -178,13 +177,13 @@ def _option_row(option: SearchSelectOption) -> SafeText:
 def _combobox_shell(
     *,
     container_attributes: list[HTMLAttribute],
-    pills: SafeText,
+    pills: Node,
     search_attributes: list[HTMLAttribute],
-    options_children: list[SafeText],
+    options_children: list[Node],
     always_visible: bool,
     items_visible: int,
-    templates: list[SafeText] | None = None,
-) -> SafeText:
+    templates: list[Node] | None = None,
+) -> Node:
     """Assemble the shared, domain-agnostic combobox skeleton.
 
     Every combobox built on top of this shell has the same three regions in the
@@ -216,7 +215,7 @@ def _combobox_shell(
         children=[*options_children, no_results],
     )
 
-    children: list[SafeText] = [pills, search, options_panel, *(templates or [])]
+    children: list[Node] = [pills, search, options_panel, *(templates or [])]
     return Div(attributes=container_attributes, children=children)
 
 
@@ -235,7 +234,7 @@ def SearchSelect(
     id: str = "",
     sync_url: bool = False,
     autofocus: bool = False,
-) -> SafeText:
+) -> Node:
     """Render the search-select widget. See module docstring for the contract."""
     selected = [_normalize_option(option) for option in (selected or [])]
     options = [_normalize_option(option) for option in (options or [])]
@@ -245,7 +244,7 @@ def SearchSelect(
     # pill — the committed label shows inside the search box instead, with a
     # lone hidden input carrying the value. Both keep the hidden input(s) inside
     # `[data-search-select-pills]` so the JS reads/writes values uniformly.
-    pills_children: list[SafeText] = []
+    pills_children: list[Node] = []
     search_value = ""
     if multi_select:
         for option in selected:
@@ -286,7 +285,7 @@ def SearchSelect(
 
     # ── Templates the JS clones: a row when results are fetched, a pill when
     #    multi-select adds chosen items. ──
-    templates: list[SafeText] = []
+    templates: list[Node] = []
     if search_url:
         templates.append(
             Template(
@@ -341,7 +340,7 @@ def _filter_remove_button() -> Node:
     )
 
 
-def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
+def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
     """An include (✓) or exclude (✗) value pill. ``kind`` is "include"/"exclude"."""
     symbol = "✓" if kind == "include" else "✗"
     css = (
@@ -360,7 +359,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> SafeText:
     )
 
 
-def _filter_modifier_pill(modifier_value: str, label: str) -> SafeText:
+def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
     return Span(
         attributes=[
@@ -385,7 +384,7 @@ def _filter_action_button(action: str, symbol: str, title: str) -> Node:
     )
 
 
-def _filter_option_row(value: str | int, label: str) -> SafeText:
+def _filter_option_row(value: str | int, label: str) -> Node:
     """A value row with include (+) and exclude (−) buttons."""
     return Div(
         attributes=[
@@ -407,7 +406,7 @@ def _filter_option_row(value: str | int, label: str) -> SafeText:
     )
 
 
-def _filter_modifier_row(modifier_value: str, label: str) -> SafeText:
+def _filter_modifier_row(modifier_value: str, label: str) -> Node:
     """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
     filter never hides it — modifiers stay visible at the top of the panel."""
     return Div(
@@ -435,7 +434,7 @@ def FilterSelect(
     placeholder: str = "Search…",
     id: str = "",
     free_text: bool = False,
-) -> SafeText:
+) -> Node:
     """Include/exclude filter combobox built on the shared ``_combobox_shell``.
 
     Like ``SearchSelect`` but each value row carries +/− buttons that add an
@@ -473,7 +472,7 @@ def FilterSelect(
     # pills — but the stored state guarantees they never coexist, so we render
     # both channels unconditionally.  Non-presence modifiers (INCLUDES_ALL /
     # INCLUDES_ONLY) coexist with value pills and render side by side.
-    pills_children: list[SafeText] = []
+    pills_children: list[Node] = []
     if active_modifier_label:
         pills_children.append(_filter_modifier_pill(modifier, active_modifier_label))
     for option in included:
@@ -507,7 +506,7 @@ def FilterSelect(
 
     # ── Templates the JS clones: include/exclude pills (added on click), the
     #    modifier pill (when modifiers exist), and a value row (when fetched). ──
-    templates: list[SafeText] = [
+    templates: list[Node] = [
         Template(
             attributes=[("data-search-select-template", "pill-include")],
             children=[_filter_value_pill(_BLANK_OPTION, "include")],

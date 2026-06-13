@@ -20,6 +20,7 @@ from common.components import (
     Icon,
     ModuleScript,
     NameWithIcon,
+    Node,
     Popover,
     SearchField,
     SessionDeviceSelector,
@@ -190,13 +191,13 @@ def search_sessions(request: HttpRequest) -> HttpResponse:
     return list_sessions(request, search_string=request.GET.get("search_string", ""))
 
 
-def _session_fields(form) -> SafeText:
+def _session_fields(form) -> Fragment:
     """Manual per-field layout for the session form.
 
     Mirrors the old add_session.html: each field gets its label and widget,
     and the timestamp fields gain a row of now/toggle/copy helper buttons.
     """
-    rows: list[SafeText] = []
+    rows: list[Node] = []
     for field in form:
         children: list[SafeText | str] = [
             mark_safe(str(field.label_tag())),
@@ -234,7 +235,7 @@ def _session_fields(form) -> SafeText:
                 )
             )
         rows.append(Div(children=children))
-    return mark_safe("\n".join(str(row) for row in rows))
+    return Fragment(*rows, separator="\n")
 
 
 @login_required

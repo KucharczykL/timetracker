@@ -3,9 +3,8 @@
 from typing import NamedTuple
 
 from django.db import models
-from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import BaseComponent, Element, Media, Node
+from common.components.core import BaseComponent, Element, Media, Node, Safe
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -176,7 +175,7 @@ def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
 
 def _enum_filter(
     field_name: str, options, choice: FilterChoice, *, nullable
-) -> SafeText:
+) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
     Enum fields are single-valued, so no M2M modifiers (all/only are
@@ -207,7 +206,7 @@ def _model_filter(
     search_url,
     nullable,
     m2m_modifiers: list[LabeledOption] | None = None,
-) -> SafeText:
+) -> Node:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
@@ -240,34 +239,43 @@ def _filter_mins_to_hrs(val) -> str:
     return str(int(hrs)) if hrs == int(hrs) else f"{hrs:.1f}"
 
 
-def _filter_field(label: str, widget, for_widget: str = None) -> SafeText:
-    """A labelled filter field: <div><label>…</label>{widget}</div>.
-    TODO: Use widget.attributes.get("id", "") to get the widget's ID
-    instead of the superfluous "for" argument. This requires refactoring
-    the Component function to be a class intead.
-    Also see RangeSlider's TODO
+def _widget_id(widget) -> str:
+    """Best-effort id of a widget node, for the field label's ``for`` target.
+
+    Widgets are nodes carrying ``.attributes``, so the id is now reachable
+    directly (the old free ``Component`` string couldn't expose it).
     """
+    for name, value in getattr(widget, "attributes", []):
+        if name == "id":
+            return str(value)
+    return ""
+
+
+def _filter_field(label: str, widget) -> Node:
+    """A labelled filter field: ``<div><label>…</label>{widget}</div>``.
+
+    The label's ``for`` points at the widget's own id when it has one;
+    composite widgets without a single root id simply omit ``for``.
+    """
+    label_attributes = [("class", _FILTER_LABEL_CLASS)]
+    widget_id = _widget_id(widget)
+    if widget_id:
+        label_attributes.append(("for", widget_id))
     return Div(
         attributes=[("class", "flex flex-col gap-1")],
         children=[
-            Label(
-                attributes=[
-                    ("class", _FILTER_LABEL_CLASS),
-                    ("for", for_widget),
-                ],
-                children=[label],
-            ),
+            Label(attributes=label_attributes, children=[label]),
             widget,
         ],
     )
 
 
-def _filter_checkbox(name: str, label: str, checked: bool) -> SafeText:
+def _filter_checkbox(name: str, label: str, checked: bool) -> Node:
     """Thin adapter mapping legacy checkbox filters to the generalized Checkbox primitive."""
     return Checkbox(name=name, label=label, checked=checked)
 
 
-def _filter_boolean_radio(name: str, label: str, value: bool | None) -> SafeText:
+def _filter_boolean_radio(name: str, label: str, value: bool | None) -> Node:
     """Renders a filter-specific boolean radio button group with 'True' and 'False' options."""
     return Div(
         attributes=[("class", "flex flex-col gap-1")],
@@ -321,7 +329,7 @@ def RangeSlider(
     step: str = "1",
     min_placeholder: str = "",
     max_placeholder: str = "",
-) -> SafeText:
+) -> Node:
     """A labelled range slider with number inputs and range/point mode toggle.
 
     Renders a label row (label, two number inputs, toggle button) and a slider
@@ -341,14 +349,9 @@ def RangeSlider(
             Div(
                 attributes=[("class", "flex items-center gap-2 mb-1")],
                 children=[
-                    # TODO: This should be done outside the RangeSlider component, but the current Component function doesn't allow getting the id
-                    # Label(
-                    #     attributes=[
-                    #         ("class", _FILTER_LABEL_CLASS),
-                    #         ("for", min_input_id),
-                    #     ],
-                    #     children=[label],
-                    # ),
+                    # The field label is rendered by the _filter_field wrapper.
+                    # This composite widget has no single labelable root, so the
+                    # label carries no `for` (the two inputs are named below).
                     Input(
                         attributes=[
                             ("type", "number"),
@@ -410,7 +413,7 @@ def RangeSlider(
                                         + (" hidden" if point_mode else ""),
                                     ),
                                 ],
-                                children=[mark_safe(_RANGE_ICON_SVG)],
+                                children=[Safe(_RANGE_ICON_SVG)],
                             ),
                             Span(
                                 attributes=[
@@ -420,7 +423,7 @@ def RangeSlider(
                                         + ("" if point_mode else " hidden"),
                                     ),
                                 ],
-                                children=[mark_safe(_POINT_ICON_SVG)],
+                                children=[Safe(_POINT_ICON_SVG)],
                             ),
                         ],
                     ),
@@ -506,7 +509,7 @@ def DateRangeFilter(
     max_value: str = "",
     min_placeholder: str = "From",
     max_placeholder: str = "To",
-) -> SafeText:
+) -> Node:
     """A pair of ``<input type="date">`` elements representing a date range.
 
     Mirrors ``RangeSlider`` in shape (two inputs named ``{prefix}-min`` and
@@ -561,7 +564,7 @@ _FILTER_FORM_ID = "filter-bar-form"
 _FILTER_INPUT_ID = "filter-json-input"
 
 
-def _filter_collapse_button() -> SafeText:
+def _filter_collapse_button() -> Node:
     return Element(
         "button",
         attributes=[
@@ -579,7 +582,7 @@ def _filter_collapse_button() -> SafeText:
             ),
         ],
         children=[
-            mark_safe(
+            Safe(
                 '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>'
             ),
             "Filters",
@@ -587,7 +590,7 @@ def _filter_collapse_button() -> SafeText:
     )
 
 
-def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
+def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
     return Div(
         attributes=[("class", "flex gap-3 items-center")],
         children=[
@@ -1529,7 +1532,7 @@ def StringFilter(
     value: str = "",
     modifier: str = "EQUALS",
     placeholder: str = "",
-) -> SafeText:
+) -> Node:
     """Renders a string filter with 8 modifier radio options and a text input."""
     from common.criteria import Modifier
 

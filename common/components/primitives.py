@@ -622,8 +622,8 @@ def AddForm(
     form,
     *,
     request,
-    fields: SafeText | str | None = None,
-    additional_row: SafeText | str = "",
+    fields: Node | SafeText | str | None = None,
+    additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
 ) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).

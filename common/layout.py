@@ -8,6 +8,7 @@ it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 """
 
 import json
+from typing import TYPE_CHECKING
 
 from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
@@ -18,6 +19,9 @@ from django.utils.safestring import SafeText, mark_safe
 from django_htmx.jinja import django_htmx_script
 
 from games.templatetags.version import version, version_date
+
+if TYPE_CHECKING:
+    from common.components import Node
 
 # Static head script that sets the dark/light class before paint (avoids FOUC).
 _THEME_FOUC_SCRIPT = """<script>
@@ -269,11 +273,11 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> SafeT
 
 
 def Page(
-    content: SafeText | str,
+    content: "Node | SafeText | str",
     *,
     request: HttpRequest,
     title: str = "",
-    scripts: SafeText | str = "",
+    scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
 ) -> SafeText:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
@@ -356,10 +360,10 @@ def Page(
 
 def render_page(
     request: HttpRequest,
-    content: SafeText | str,
+    content: "Node | SafeText | str",
     *,
     title: str = "",
-    scripts: SafeText | str = "",
+    scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
     status: int = 200,
 ) -> HttpResponse:

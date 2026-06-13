@@ -6,7 +6,7 @@ from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import HTMLTag
+from common.components.core import HTMLTag, Node
 from common.components.primitives import (
     A,
     Div,
@@ -22,7 +22,7 @@ def GameLink(
     game_id: int,
     name: str = "",
     children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+) -> Node:
     """Link to a game's detail page. Uses children (slot) if provided, otherwise name."""
     from django.urls import reverse
 
@@ -58,7 +58,7 @@ def GameStatus(
     status: str = "u",
     display: str = "",
     class_: str = "",
-) -> SafeText:
+) -> Node:
     """Colored status dot with label. Status codes: u/p/f/a/r."""
     children = children or []
     outer_class = (
@@ -82,7 +82,7 @@ def GameStatus(
 
 def PriceConverted(
     children: list[HTMLTag] | HTMLTag | None = None,
-) -> SafeText:
+) -> Node:
     """Wrap content in a span that indicates the price was converted."""
     children = children or []
     return Span(
@@ -94,7 +94,7 @@ def PriceConverted(
     )
 
 
-def LinkedPurchase(purchase: Purchase) -> SafeText:
+def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[int(purchase.id)])
     link_content = ""
     popover_content = ""
@@ -145,7 +145,7 @@ def NameWithIcon(
     session: Session | None = None,
     linkify: bool = True,
     emulated: bool = False,
-) -> SafeText:
+) -> Node:
     _name, platform, final_emulated, create_link, link = _resolve_name_with_icon(
         name, game, session, linkify
     )
@@ -203,7 +203,7 @@ def _resolve_name_with_icon(
     return _name, platform, final_emulated, create_link, link
 
 
-def PurchasePrice(purchase) -> SafeText:
+def PurchasePrice(purchase) -> Node:
     return Popover(
         popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
