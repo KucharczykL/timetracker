@@ -248,7 +248,9 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     toggle = Element(
         "button",
         [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
-        [current_label, Icon("arrowdown")],
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            current_label, Icon("arrowdown")
+        ],
     )
     menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
     dropdown = Div(
@@ -286,7 +288,9 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     toggle = Element(
         "button",
         [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
-        [Span(data_label="")[current_name], Icon("arrowdown")],
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            Span(data_label="")[current_name], Icon("arrowdown")
+        ],
     )
     menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
     dropdown = Div(
