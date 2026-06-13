@@ -25,6 +25,7 @@ from common.components.core import (
     Safe,
     as_attributes,
     as_children,
+    collect_media,
     randomid,
 )
 from common.icons import get_icon
@@ -988,15 +989,26 @@ def SimpleTable(
     columns = columns or []
     rows = rows or []
 
+    # Rows/header are stringified into the table markup, so their components'
+    # declared Media would be lost; collect it from the nodes first and attach
+    # it to the returned node so Page() still emits each cell component's JS
+    # (e.g. a <game-status-selector> in a cell).
+    media = Media()
+
     header_html = ""
     if header_action:
-        header_html = str(TableHeader(children=[header_action]))
+        header_node = TableHeader(children=[header_action])
+        header_html = str(header_node)
+        media = media + collect_media(header_node)
 
     columns_html = "".join(
         f'<th scope="col" class="px-6 py-3">{conditional_escape(col)}</th>'
         for col in columns
     )
-    rows_html = "".join(str(TableRow(data=row)) for row in rows)
+    row_nodes = [TableRow(data=row) for row in rows]
+    rows_html = "".join(str(node) for node in row_nodes)
+    for node in row_nodes:
+        media = media + collect_media(node)
 
     pagination_html = ""
     if page_obj and elided_page_range:
@@ -1012,7 +1024,8 @@ def SimpleTable(
         f"<tr>{columns_html}</tr></thead>"
         '<tbody class="dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden">'
         f"{rows_html}</tbody></table></div>"
-        f"{pagination_html}</div>"
+        f"{pagination_html}</div>",
+        media=media,
     )
 
 

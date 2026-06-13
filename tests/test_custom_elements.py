@@ -56,3 +56,22 @@ class RegistryTest(unittest.TestCase):
         register_element("x-reg-test", "XRegTest", SampleProps)
         self.assertEqual(len(ELEMENT_REGISTRY), before + 1)
         self.assertEqual(ELEMENT_REGISTRY[-1].tag, "x-reg-test")
+
+
+class GameStatusSelectorRenderTest(unittest.TestCase):
+    def test_emits_tag_props_and_media(self):
+        from types import SimpleNamespace
+
+        from common.components import GameStatusSelector, collect_media, render
+
+        game = SimpleNamespace(id=7, status="f", get_status_display=lambda: "Finished")
+        node = GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
+        html = render(node)
+        self.assertIn("<game-status-selector", html)
+        self.assertIn('game-id="7"', html)
+        self.assertIn('status="f"', html)
+        self.assertIn('csrf="tok"', html)
+        self.assertIn("data-option", html)
+        self.assertIn('data-value="u"', html)
+        self.assertNotIn("x-data", html)  # no Alpine left
+        self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)

@@ -209,55 +209,56 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
-    """Alpine.js dropdown to change a game's status."""
-    options_html = "\n".join(
-        f"<template x-if=\"status == '{value}'\">"
-        f"{GameStatus(status=value, children=[label], display='flex')}"
-        f"</template>"
-        for value, label in game_statuses
-    )
-    list_items = "\n".join(
-        f"<li><a href=\"#\" @click.prevent.stop=\"setStatus('{value}', '{label}'); open = false;\" "
-        f'class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 '
-        f'dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" '
-        f":class=\"{{'font-bold': status === '{value}'}}\">"
-        f"{GameStatus(status=value, children=[label], display='flex', class_='text-slate-300')}"
-        f"</a></li>"
-        for value, label in game_statuses
-    )
+_SELECTOR_MENU_CLASS = (
+    "absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm "
+    "font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none "
+    "border border-gray-200 dark:border-gray-700"
+)
+_SELECTOR_TOGGLE_CLASS = (
+    "relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 "
+    "rounded-lg hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 "
+    "dark:hover:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
+)
 
-    return Safe(f"""
-<div class="flex gap-2 items-center"
-     x-data="{{
-         status: '{game.status}',
-         status_display: '{game.get_status_display()}',
-         open: false,
-         saving: false,
-         setStatus(newStatus, newStatusDisplay) {{
-             this.status = newStatus;
-             this.status_display = newStatusDisplay;
-             this.saving = true;
-             fetchWithHtmxTriggers(`/api/games/{game.id}/status`, {{
-                 method: 'PATCH',
-                 headers: {{
-                     'Content-Type': 'application/json',
-                     'X-CSRFToken': '{csrf_token}'
-                 }},
-                 body: JSON.stringify({{ status: newStatus }})
-             }})
-             .then(() => {{
-                 document.body.dispatchEvent(new CustomEvent('status-changed'));
-             }})
-             .catch(() => {{
-                 console.error('Failed to update status');
-             }})
-             .finally(() => this.saving = false);
-         }}
-     }}">
-    {_dropdown_button_html(options_html, list_items)}
-</div>
-""")
+
+def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
+    """Light-DOM custom element; behavior in ts/elements/game-status-selector.ts."""
+    from common.components import custom_element
+    from common.components.core import Element
+    from common.components.custom_elements import GameStatusSelectorProps
+    from common.components.primitives import Li, Ul
+
+    options = [
+        Li()[
+            Element(
+                "button",
+                [("type", "button"), ("data-option", ""), ("data-value", str(value))],
+                GameStatus(status=value, children=[label], display="flex"),
+            )
+        ]
+        for value, label in game_statuses
+    ]
+    current_label = Span(data_label="")[
+        GameStatus(
+            status=game.status,
+            children=[game.get_status_display()],
+            display="flex",
+        )
+    ]
+    toggle = Element(
+        "button",
+        [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
+        [current_label, Icon("arrowdown")],
+    )
+    menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
+    dropdown = Div(
+        data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
+    )[toggle, menu]
+    return custom_element(
+        "game-status-selector",
+        GameStatusSelectorProps(game_id=game.id, status=game.status, csrf=csrf_token),
+        children=[Div(class_="flex gap-2 items-center")[dropdown]],
+    )
 
 
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
