@@ -5,7 +5,7 @@ from typing import NamedTuple
 from django.db import models
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import Element, Media
+from common.components.core import BaseComponent, Element, Media, Node
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -695,64 +695,104 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> SafeText:
     )
 
 
-def _filter_bar(fields, filter_json, preset_list_url, preset_save_url) -> SafeText:
-    """Shared collapsible filter-bar chrome. `fields` is the per-entity body
-    (grids, sliders, checkboxes); the shell adds the collapse toggle, the form,
-    the hidden filter-json input and the Apply/Clear/preset action row."""
-    return Div(
-        attributes=[("id", "filter-bar"), ("class", "mb-6")],
-        children=[
-            _filter_collapse_button(),
-            Div(
-                attributes=[
-                    ("id", "filter-bar-body"),
-                    (
-                        "class",
-                        "hidden border border-default-medium rounded-base p-4 "
-                        "bg-neutral-secondary-medium/50",
-                    ),
-                ],
-                children=[
-                    Element(
-                        "form",
-                        attributes=[
-                            ("id", _FILTER_FORM_ID),
-                            ("onsubmit", "return applyFilterBar(event)"),
-                        ],
-                        children=[
-                            Input(
-                                attributes=[
-                                    ("type", "hidden"),
-                                    ("id", _FILTER_INPUT_ID),
-                                    ("name", "filter"),
-                                    # NB: Component escapes attribute values, so the
-                                    # raw JSON is passed through (no double-escape).
-                                    ("value", filter_json),
-                                ],
-                            ),
-                            *fields,
-                            _filter_action_row(preset_list_url, preset_save_url),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    ).with_media(_FILTER_BAR_MEDIA)
+class _FilterBarBase(BaseComponent):
+    """Shared collapsible filter-bar chrome.
+
+    Subclasses implement ``build_fields()`` returning the per-entity body
+    (grids, sliders, checkboxes); this base wraps it in the collapse toggle,
+    the form, the hidden filter-json input and the Apply/Clear/preset action
+    row. ``filter_bar.js`` (declared as this component's ``media``) wires the
+    chrome; widget media (search_select.js, range_slider.js,
+    date_range_picker.js) bubbles up from the contained widgets via the node
+    tree, so the view never threads ``scripts=`` by hand.
+    """
+
+    media = _FILTER_BAR_MEDIA
+
+    def __init__(
+        self,
+        filter_json: str = "",
+        preset_list_url: str = "",
+        preset_save_url: str = "",
+    ) -> None:
+        self.filter_json = filter_json
+        self.preset_list_url = preset_list_url
+        self.preset_save_url = preset_save_url
+        self.existing = _filter_parse(filter_json)
+
+    def build_fields(self) -> list:
+        """Return the per-entity filter body. Implemented by each subclass."""
+        raise NotImplementedError
+
+    def render(self) -> Node:
+        return Div(
+            attributes=[("id", "filter-bar"), ("class", "mb-6")],
+            children=[
+                _filter_collapse_button(),
+                Div(
+                    attributes=[
+                        ("id", "filter-bar-body"),
+                        (
+                            "class",
+                            "hidden border border-default-medium rounded-base p-4 "
+                            "bg-neutral-secondary-medium/50",
+                        ),
+                    ],
+                    children=[
+                        Element(
+                            "form",
+                            attributes=[
+                                ("id", _FILTER_FORM_ID),
+                                ("onsubmit", "return applyFilterBar(event)"),
+                            ],
+                            children=[
+                                Input(
+                                    attributes=[
+                                        ("type", "hidden"),
+                                        ("id", _FILTER_INPUT_ID),
+                                        ("name", "filter"),
+                                        # NB: attribute values are escaped, so the
+                                        # raw JSON passes through (no double-escape).
+                                        ("value", self.filter_json),
+                                    ],
+                                ),
+                                *self.build_fields(),
+                                _filter_action_row(
+                                    self.preset_list_url, self.preset_save_url
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
 
 
-def FilterBar(
-    filter_json: str = "",
-    status_options: list[LabeledOption] | None = None,
-    preset_list_url: str = "",
-    preset_save_url: str = "",
-) -> SafeText:
+class FilterBar(_FilterBarBase):
     """Collapsible filter bar for the Game list."""
+
+    def __init__(
+        self,
+        filter_json: str = "",
+        status_options: list[LabeledOption] | None = None,
+        preset_list_url: str = "",
+        preset_save_url: str = "",
+    ) -> None:
+        super().__init__(filter_json, preset_list_url, preset_save_url)
+        self.status_options = status_options
+
+    def build_fields(self) -> list:
+        return _game_fields(self.existing, self.status_options)
+
+
+def _game_fields(
+    existing: dict, status_options: list[LabeledOption] | None = None
+) -> list:
     from games.models import Game, Purchase
 
     if status_options is None:
         status_options = [(s.value, s.label) for s in Game.Status]
 
-    existing = _filter_parse(filter_json)
     status_choice = _filter_get_choice(existing, "status")
     platform_choice = _filter_get_choice(existing, "platform")
     platform_group_choice = _filter_get_choice(existing, "platform_group")
@@ -1064,7 +1104,7 @@ def FilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
 def _find_label(options: list[LabeledOption], value: str) -> str:
@@ -1074,13 +1114,16 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
     return value
 
 
-def SessionFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class SessionFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Session list."""
+
+    def build_fields(self) -> list:
+        return _session_fields(self.existing)
+
+
+def _session_fields(existing: dict) -> list:
     from games.models import Game, Session
 
-    existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
     note_value = existing.get("note", {}).get("value", "")
@@ -1178,18 +1221,21 @@ def SessionFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PurchaseFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PurchaseFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Purchase list."""
+
+    def build_fields(self) -> list:
+        return _purchase_fields(self.existing)
+
+
+def _purchase_fields(existing: dict) -> list:
     from games.models import Purchase
 
     type_options = Purchase.TYPES
     ownership_options = Purchase.OWNERSHIP_TYPES
-    existing = _filter_parse(filter_json)
     game_choice = _filter_get_choice(existing, "games")
     platform_choice = _filter_get_choice(existing, "platform")
     type_choice = _filter_get_choice(existing, "type")
@@ -1361,14 +1407,19 @@ def PurchaseFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def DeviceFilterBar(filter_json="", preset_list_url="", preset_save_url="") -> SafeText:
+class DeviceFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Device list."""
+
+    def build_fields(self) -> list:
+        return _device_fields(self.existing)
+
+
+def _device_fields(existing: dict) -> list:
     from games.models import Device
 
-    existing = _filter_parse(filter_json)
     type_options = Device.DEVICE_TYPES
     type_choice = _filter_get_choice(existing, "type")
 
@@ -1388,15 +1439,17 @@ def DeviceFilterBar(filter_json="", preset_list_url="", preset_save_url="") -> S
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PlatformFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PlatformFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Platform list."""
-    existing = _filter_parse(filter_json)
 
+    def build_fields(self) -> list:
+        return _platform_fields(self.existing)
+
+
+def _platform_fields(existing: dict) -> list:
     name_value = existing.get("name", {}).get("value", "")
     name_modifier = existing.get("name", {}).get("modifier", "EQUALS")
     group_value = existing.get("group", {}).get("value", "")
@@ -1427,14 +1480,17 @@ def PlatformFilterBar(
             ],
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
-def PlayEventFilterBar(
-    filter_json="", preset_list_url="", preset_save_url=""
-) -> SafeText:
+class PlayEventFilterBar(_FilterBarBase):
     """Collapsible filter bar for the PlayEvent list."""
-    existing = _filter_parse(filter_json)
+
+    def build_fields(self) -> list:
+        return _playevent_fields(self.existing)
+
+
+def _playevent_fields(existing: dict) -> list:
     game_choice = _filter_get_choice(existing, "game")
     days_min, days_max = _parse_range(existing, "days_to_finish")
 
@@ -1465,7 +1521,7 @@ def PlayEventFilterBar(
             max_placeholder="e.g. 30",
         ),
     ]
-    return _filter_bar(fields, filter_json, preset_list_url, preset_save_url)
+    return fields
 
 
 def StringFilter(
