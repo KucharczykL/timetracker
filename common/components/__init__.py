@@ -18,6 +18,7 @@ from common.components.core import (
     randomid,
     render,
 )
+from common.components.custom_elements import custom_element, register_element
 from common.components.date_range_picker import (
     DateRangeCalendar,
     DateRangeField,
@@ -91,6 +92,8 @@ from common.utils import truncate
 __all__ = [
     "truncate",
     "BaseComponent",
+    "custom_element",
+    "register_element",
     "Element",
     "Fragment",
     "Media",
