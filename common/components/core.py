@@ -14,6 +14,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 """
 
 import hashlib
+from collections.abc import Sequence
 from functools import lru_cache
 
 from django.utils.html import escape
@@ -126,6 +127,31 @@ class Node:
         return mark_safe(self._render())
 
 
+# A renderable child is a node or a string (plain strings are escaped, SafeText
+# and nodes pass through). ``Children`` is the type for a builder's ``children``
+# parameter: a sequence of child nodes/strings, a bare string, or nothing. The
+# sequence is a covariant ``Sequence`` so ``list[Element]`` / ``list[Node]`` are
+# accepted (a plain ``list[str]`` would be invariant and reject them). A single
+# bare ``Node`` is accepted only by ``Element`` itself (which wraps it); the
+# higher-level builders take ``Children``.
+Child = Node | str
+Children = Sequence[Child] | str | None
+
+
+def as_children(children: "Children | Node") -> list[Child]:
+    """Normalise a builder's ``children`` argument to a flat list.
+
+    Accepts ``None`` (→ empty), a single node/string (→ one-element list), or a
+    sequence of them. Lets builders drop the ``children if isinstance(children,
+    list) else [children]`` dance and get a properly typed ``list[Child]``.
+    """
+    if children is None:
+        return []
+    if isinstance(children, (str, Node)):
+        return [children]
+    return list(children)
+
+
 def _child_key(child: object) -> tuple[str, bool]:
     """Normalise a child to a ``(text, is_safe)`` pair.
 
@@ -176,7 +202,7 @@ class Element(Node):
         self,
         tag_name: str,
         attributes: list[HTMLAttribute] | None = None,
-        children: "list | Node | str | None" = None,
+        children: "Children | Node" = None,
     ) -> None:
         if not tag_name:
             raise ValueError("tag_name is required.")

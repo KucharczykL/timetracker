@@ -14,13 +14,14 @@ from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
+    Children,
     Element,
     Fragment,
     HTMLAttribute,
-    HTMLTag,
     Media,
     Node,
     Safe,
+    as_children,
     randomid,
 )
 from common.icons import get_icon
@@ -53,7 +54,7 @@ def _html_element(tag_name: str):
 
     def element(
         attributes: list[HTMLAttribute] | None = None,
-        children: "list[HTMLTag] | HTMLTag | Node | None" = None,
+        children: Children = None,
     ) -> Element:
         return Element(tag_name, attributes, children)
 
@@ -113,7 +114,7 @@ def _popover_html(
                 children=[popover_content],
             ),
             Div(attributes=[("data-popper-arrow", "")]),
-            mark_safe(  # nosec — intentional HTML comment for Tailwind JIT
+            Safe(  # nosec — intentional HTML comment for Tailwind JIT
                 "<!-- for Tailwind CSS to generate decoration-dotted CSS "
                 "from Python component -->"
             ),
@@ -130,7 +131,7 @@ def Popover(
     popover_content: str,
     wrapped_content: str = "",
     wrapped_classes: str = "",
-    children: list[HTMLTag] | None = None,
+    children: Children = None,
     attributes: list[HTMLAttribute] | None = None,
     id: str = "",
 ) -> Node:
@@ -184,7 +185,7 @@ def PopoverTruncated(
 
 def A(
     attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     url_name: str | None = None,
     href: str | None = None,
 ) -> Element:
@@ -212,7 +213,7 @@ def A(
 
 def Button(
     attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
@@ -373,7 +374,7 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
 def Input(
     type: str = "text",
     attributes: list[HTMLAttribute] | None = None,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Element:
     attributes = attributes or []
     children = children or []
@@ -481,12 +482,12 @@ def Pill(
         pill_attrs.append(("data-value", str(value)))
     pill_attrs.extend(attributes)
 
-    label_child: HTMLTag = (
+    label_child: "Node | str" = (
         Span(attributes=[("data-search-select-label", "")], children=[label])
         if label_slot
         else label
     )
-    children: list[HTMLTag] = [label_child]
+    children: list["Node | str"] = [label_child]
     if removable:
         children.append(
             Element(
@@ -634,7 +635,7 @@ def AddForm(
     is applied to the main Submit button (the session form passes "" to match
     its original markup).
     """
-    field_markup = fields if fields is not None else mark_safe(form.as_div())
+    field_markup = fields if fields is not None else Safe(form.as_div())
     submit_attrs = [("class", submit_class)] if submit_class else []
 
     inner_form = Element(
@@ -682,7 +683,7 @@ def SearchField(
             Div(
                 attributes=[("class", "relative")],
                 children=[
-                    mark_safe(
+                    Safe(
                         '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
                         '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
                         'fill="none" viewBox="0 0 24 24">'
@@ -729,7 +730,7 @@ def SearchField(
 
 
 def H1(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     badge: str = "",
 ) -> Element:
     """Heading with optional badge count."""
@@ -753,14 +754,13 @@ def H1(
     return Element(
         "h1",
         attributes=[("class", heading_class)],
-        children=(children if isinstance(children, list) else [children])
-        + ([badge_html] if badge_html else []),
+        children=as_children(children) + ([badge_html] if badge_html else []),
     )
 
 
 def Modal(
     modal_id: str,
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Node:
     """Modal overlay with container. Content (form, buttons) goes in children."""
     children = children or []
@@ -782,20 +782,20 @@ def Modal(
                         "shadow-lg/50 rounded-md bg-white dark:bg-gray-900",
                     ),
                 ],
-                children=(children if isinstance(children, list) else [children]),
+                children=as_children(children),
             ),
         ],
     )
 
 
 def TableTd(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Element:
     """Styled table cell."""
     children = children or []
     return Td(
         attributes=[("class", "px-6 py-4 min-w-20-char max-w-20-char")],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 
@@ -864,7 +864,7 @@ def Icon(
 
 
 def TableHeader(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Element:
     """Table caption."""
     children = children or []
@@ -877,7 +877,7 @@ def TableHeader(
                 "text-gray-900 bg-white dark:text-white dark:bg-gray-900",
             ),
         ],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 

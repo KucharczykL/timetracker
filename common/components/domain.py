@@ -6,7 +6,7 @@ from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.safestring import SafeText, mark_safe
 
-from common.components.core import HTMLTag, Node
+from common.components.core import Children, Node, as_children
 from common.components.primitives import (
     A,
     Div,
@@ -21,13 +21,12 @@ from games.models import Game, Purchase, Session
 def GameLink(
     game_id: int,
     name: str = "",
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Node:
     """Link to a game's detail page. Uses children (slot) if provided, otherwise name."""
     from django.urls import reverse
 
-    children = children or []
-    display = children if children else [name]
+    display = as_children(children) or [name]
     link = reverse("games:view_game", args=[game_id])
 
     return Span(
@@ -38,7 +37,7 @@ def GameLink(
                 attributes=[
                     ("class", "underline decoration-slate-500 sm:decoration-2"),
                 ],
-                children=display if isinstance(display, list) else [display],
+                children=display,
             ),
         ],
     )
@@ -54,7 +53,7 @@ _STATUS_COLORS = {
 
 
 def GameStatus(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
     status: str = "u",
     display: str = "",
     class_: str = "",
@@ -76,12 +75,12 @@ def GameStatus(
 
     return Span(
         attributes=[("class", outer_class)],
-        children=[dot] + (children if isinstance(children, list) else [children]),
+        children=[dot] + as_children(children),
     )
 
 
 def PriceConverted(
-    children: list[HTMLTag] | HTMLTag | None = None,
+    children: Children = None,
 ) -> Node:
     """Wrap content in a span that indicates the price was converted."""
     children = children or []
@@ -90,7 +89,7 @@ def PriceConverted(
             ("title", "Price is a result of conversion and rounding."),
             ("class", "decoration-dotted underline"),
         ],
-        children=children if isinstance(children, list) else [children],
+        children=as_children(children),
     )
 
 
