@@ -393,8 +393,10 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     # Menu is a SIBLING of the toggle (not nested inside it): a <button> may not
     # contain another <button>, and that invalid nesting makes the HTML parser
     # close ancestors early, ejecting later page sections from their container.
-    toggle_group = Div(class_="relative")[toggle, menu]
-    group = Div(class_="inline-flex rounded-md shadow-2xs")[count_button, toggle_group]
+    toggle_group = Div(class_="relative inline-flex")[toggle, menu]
+    group = Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
+        count_button, toggle_group
+    ]
     return custom_element(
         "play-event-row",
         PlayEventRowProps(

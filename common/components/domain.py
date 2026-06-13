@@ -219,6 +219,11 @@ _SELECTOR_TOGGLE_CLASS = (
     "rounded-lg hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 "
     "dark:hover:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
 )
+_SELECTOR_OPTION_CLASS = (
+    "block w-full text-left px-4 py-2 rounded-sm cursor-pointer "
+    "hover:bg-gray-700 hover:text-white dark:hover:bg-gray-700 "
+    "dark:hover:text-white border-0"
+)
 
 
 def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
@@ -232,7 +237,12 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
         Li()[
             Element(
                 "button",
-                [("type", "button"), ("data-option", ""), ("data-value", str(value))],
+                [
+                    ("type", "button"),
+                    ("data-option", ""),
+                    ("data-value", str(value)),
+                    ("class", _SELECTOR_OPTION_CLASS),
+                ],
                 GameStatus(status=value, children=[label], display="flex"),
             )
         ]
@@ -279,6 +289,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
                     ("type", "button"),
                     ("data-option", ""),
                     ("data-value", str(device.id)),
+                    ("class", _SELECTOR_OPTION_CLASS),
                 ],
                 children=[device.name],
             )
