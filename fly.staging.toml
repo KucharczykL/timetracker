@@ -1,0 +1,29 @@
+# Shared Fly.io configuration for ephemeral, per-branch GitHub staging deploys.
+#
+# The app name is NOT set here on purpose; each branch supplies its own via
+# `flyctl deploy --app timetracker-staging-<slug>`. These instances run with a
+# fresh database seeded from sample fixtures (never production data) and their
+# own SECRET_KEY, so they are safe to expose on a public *.fly.dev hostname.
+
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PROD = "1"
+  TZ = "Europe/Prague"
+  DATA_DIR = "/home/timetracker/app/data"
+  LOAD_SAMPLE_DATA = "true"
+  CREATE_DEFAULT_SUPERUSER = "true"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

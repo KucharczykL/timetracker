@@ -19,6 +19,9 @@ jobs:
           SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
           echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
           echo "HOST=tracker-${SLUG}.home.arpa" >> "$GITHUB_ENV"
+          # Per-staging secret so each instance has its own key, decoupling it
+          # from prod even though the database is seeded from a prod snapshot.
+          echo "STAGING_SECRET_KEY=staging-${SLUG}-$(head -c16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" >> "$GITHUB_ENV"
 
       - name: Build image
         run: docker build -t "timetracker:staging-${SLUG}" .
@@ -32,6 +35,8 @@ jobs:
             -e PUID=1000 \
             -e PGID=100 \
             -e DATA_DIR=/home/timetracker/app/data \
+            -e STAGING=true \
+            -e "SECRET_KEY=${STAGING_SECRET_KEY}" \
             -e "CSRF_TRUSTED_ORIGINS=https://${HOST}" \
             -v "timetracker-staging-${SLUG}:/home/timetracker/app/data" \
             -l "caddy=${HOST}" \
