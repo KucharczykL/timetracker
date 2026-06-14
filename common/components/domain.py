@@ -209,131 +209,100 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
-    """Alpine.js dropdown to change a game's status."""
-    options_html = "\n".join(
-        f"<template x-if=\"status == '{value}'\">"
-        f"{GameStatus(status=value, children=[label], display='flex')}"
-        f"</template>"
-        for value, label in game_statuses
-    )
-    list_items = "\n".join(
-        f"<li><a href=\"#\" @click.prevent.stop=\"setStatus('{value}', '{label}'); open = false;\" "
-        f'class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 '
-        f'dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" '
-        f":class=\"{{'font-bold': status === '{value}'}}\">"
-        f"{GameStatus(status=value, children=[label], display='flex', class_='text-slate-300')}"
-        f"</a></li>"
-        for value, label in game_statuses
-    )
+_SELECTOR_MENU_CLASS = (
+    "absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm "
+    "font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none "
+    "border border-gray-200 dark:border-gray-700"
+)
+_SELECTOR_TOGGLE_CLASS = (
+    "relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 "
+    "rounded-lg hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 "
+    "dark:hover:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
+)
+_SELECTOR_OPTION_CLASS = (
+    "block w-full text-left px-4 py-2 rounded-sm cursor-pointer "
+    "hover:bg-gray-700 hover:text-white dark:hover:bg-gray-700 "
+    "dark:hover:text-white border-0"
+)
 
-    return Safe(f"""
-<div class="flex gap-2 items-center"
-     x-data="{{
-         status: '{game.status}',
-         status_display: '{game.get_status_display()}',
-         open: false,
-         saving: false,
-         setStatus(newStatus, newStatusDisplay) {{
-             this.status = newStatus;
-             this.status_display = newStatusDisplay;
-             this.saving = true;
-             fetchWithHtmxTriggers(`/api/games/{game.id}/status`, {{
-                 method: 'PATCH',
-                 headers: {{
-                     'Content-Type': 'application/json',
-                     'X-CSRFToken': '{csrf_token}'
-                 }},
-                 body: JSON.stringify({{ status: newStatus }})
-             }})
-             .then(() => {{
-                 document.body.dispatchEvent(new CustomEvent('status-changed'));
-             }})
-             .catch(() => {{
-                 console.error('Failed to update status');
-             }})
-             .finally(() => this.saving = false);
-         }}
-     }}">
-    {_dropdown_button_html(options_html, list_items)}
-</div>
-""")
+
+def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
+    """Light-DOM custom element; behavior in ts/elements/game-status-selector.ts."""
+    from common.components.core import Element
+    from common.components.custom_elements import _GameStatusSelector, GameStatusSelectorProps
+    from common.components.primitives import Li, Ul
+
+    options = [
+        Li()[
+            Element(
+                "button",
+                [
+                    ("type", "button"),
+                    ("data-option", ""),
+                    ("data-value", str(value)),
+                    ("class", _SELECTOR_OPTION_CLASS),
+                ],
+                GameStatus(status=value, children=[label], display="flex"),
+            )
+        ]
+        for value, label in game_statuses
+    ]
+    current_label = Span(data_label="")[
+        GameStatus(
+            status=game.status,
+            children=[game.get_status_display()],
+            display="flex",
+        )
+    ]
+    toggle = Element(
+        "button",
+        [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            current_label, Icon("arrowdown")
+        ],
+    )
+    menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
+    dropdown = Div(
+        data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
+    )[toggle, menu]
+    return _GameStatusSelector(game_id=game.id, status=game.status, csrf=csrf_token)[
+        Div(class_="flex gap-2 items-center")[dropdown]
+    ]
 
 
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
-    """Alpine.js dropdown to change a session's device."""
-    device_id = session.device_id or "null"
-    device_name = (session.device.name if session.device else "Unknown").replace(
-        "'", "\\'"
+    """Light-DOM custom element; behavior in ts/elements/session-device-selector.ts."""
+    from common.components.core import Element
+    from common.components.custom_elements import _SessionDeviceSelector, SessionDeviceSelectorProps
+    from common.components.primitives import Li, Ul
+
+    current_name = session.device.name if session.device else "Unknown"
+    options = [
+        Li()[
+            Element(
+                "button",
+                [
+                    ("type", "button"),
+                    ("data-option", ""),
+                    ("data-value", str(device.id)),
+                    ("class", _SELECTOR_OPTION_CLASS),
+                ],
+                children=[device.name],
+            )
+        ]
+        for device in session_devices
+    ]
+    toggle = Element(
+        "button",
+        [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            Span(data_label="")[current_name], Icon("arrowdown")
+        ],
     )
-
-    list_items = "\n".join(
-        f'<li><a href="#" @click.prevent.stop="setDevice({d.id}, \'{d.name.replace(chr(39), chr(92) + chr(39))}\'); open = false;" '
-        f'class="block px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 '
-        f'dark:focus:ring-blue-500 dark:focus:text-white rounded-sm no-underline! border-0!" '
-        f":class=\"{{'font-bold': deviceId === {d.id}}}\">{d.name}</a></li>"
-        for d in session_devices
-    )
-
-    return Safe(f"""
-<div class="flex gap-2 items-center"
-     x-data="{{
-         originalDeviceId: {device_id},
-         originalDeviceName: '{device_name}',
-         deviceId: {device_id},
-         deviceName: '{device_name}',
-         open: false,
-         saving: false,
-         setDevice(newDeviceId, newDeviceName) {{
-               this.deviceId = newDeviceId;
-               this.deviceName = newDeviceName;
-               this.saving = true;
-                fetchWithHtmxTriggers(`/api/session/{session.id}/device`, {{
-                    method: 'PATCH',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{csrf_token}'
-                    }},
-                    body: JSON.stringify({{ device_id: newDeviceId }})
-                }})
-               .then((res) => {{
-                   document.body.dispatchEvent(new CustomEvent('device-changed'));
-               }})
-               .catch(() => {{
-                   this.deviceName = this.originalDeviceName;
-                   this.deviceId = this.originalDeviceId;
-                   console.error('Failed to update device');
-               }})
-               .finally(() => this.saving = false);
-          }}
-     }}">
-    {
-        _dropdown_button_html(
-            '<span x-text="deviceName"></span>' + str(Icon("arrowdown")), list_items
-        )
-    }
-</div>
-""")
-
-
-def _dropdown_button_html(button_content: str, list_items: str) -> str:
-    """Shared dropdown button + list structure for Alpine.js selectors."""
-    return (
-        '<div class="inline-flex rounded-md shadow-2xs" role="group" @click.outside="open = false">'
-        '<button type="button" @click="open = !open" '
-        'class="relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 '
-        "rounded-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
-        "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-        "dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 "
-        'dark:focus:text-white align-middle hover:cursor-pointer">'
-        f'<span class="flex flex-row gap-4 justify-between items-center">{button_content}</span>'
-        '<div class="absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm '
-        "font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none border "
-        'border-gray-200 dark:border-gray-700" x-show="open" style="display: none;">'
-        '<ul class="[&_li:first-of-type_a]:rounded-none [&_li:last-of-type_a]:rounded-t-none">'
-        f"{list_items}"
-        "</ul>"
-        "</div>"
-        "</button>"
-        "</div>"
-    )
+    menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
+    dropdown = Div(
+        data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
+    )[toggle, menu]
+    return _SessionDeviceSelector(session_id=session.id, csrf=csrf_token)[
+        Div(class_="flex gap-2 items-center")[dropdown]
+    ]

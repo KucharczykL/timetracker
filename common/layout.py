@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.html import conditional_escape
@@ -186,7 +187,7 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> "Node":
+def Navbar(*, today_played: str, last_7_played: str, current_year: int, csrf_token: str) -> "Node":
     """Top navigation bar.
 
     Static chrome, so it's a single ``Safe`` node wrapping its markup rather
@@ -270,7 +271,10 @@ def Navbar(*, today_played: str, last_7_played: str, current_year: int) -> "Node
                     <a href="{reverse("games:stats_by_year", args=[current_year])}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Stats</a>
                 </li>
                 <li>
-                    <a href="{reverse("logout")}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Log out</a>
+                    <form method="post" action="{reverse("logout")}">
+                        <input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">
+                        <button type="submit" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Log out</button>
+                    </form>
                 </li>
             </ul>
         </div>
@@ -309,6 +313,7 @@ def Page(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
         current_year=year,
+        csrf_token=get_token(request),
     )
 
     messages = [

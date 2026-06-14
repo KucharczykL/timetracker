@@ -9,7 +9,6 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
-from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
@@ -25,6 +24,7 @@ from common.components.core import (
     Safe,
     as_attributes,
     as_children,
+    collect_media,
     randomid,
 )
 from common.icons import get_icon
@@ -52,20 +52,53 @@ _SIZE_CLASSES = {
 # tag name is data, not a separate class/function body. Add a tag = one line.
 
 
-def _html_element(tag_name: str):
-    """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
+def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
+    """Translate htpy-style attribute kwargs to (name, value) pairs.
+
+    ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
+    ``hx-get`` (inner underscores to hyphens); ``True`` -> bare attribute;
+    ``False`` / ``None`` -> omitted."""
+    result: list[HTMLAttribute] = []
+    for key, value in attrs.items():
+        if value is None or value is False:
+            continue
+        name = key.rstrip("_").replace("_", "-")
+        result.append((name, name if value is True else value))  # type: ignore[arg-type]
+    return result
+
+
+def custom_element_builder(tag_name: str):
+    """Create a tag builder for a custom element with auto-attached Media.
+
+    The module path follows the convention ``ts/elements/<tag>.ts`` →
+    ``dist/elements/<tag>.js``.
+    """
+    return _html_element(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
+
+
+def _html_element(tag_name: str, media: Media | None = None):
+    """Build a generic element builder for ``tag_name`` (the whitelist factory).
+
+    If ``media`` is provided, every node created by the builder will carry it
+    (used for custom elements whose compiled JS must be loaded automatically).
+    """
 
     def element(
         attributes: Attributes | None = None,
         children: Children = None,
+        **attrs: object,
     ) -> Element:
-        return Element(tag_name, attributes, children)
+        merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
+        node = Element(tag_name, merged, children)
+        return node.with_media(media) if media else node
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
     element.__doc__ = f"Builder for the <{tag_name}> element."
     return element
 
 
+A = _html_element("a")
+Button = _html_element("button")
 Div = _html_element("div")
 P = _html_element("p")
 Ul = _html_element("ul")
@@ -186,35 +219,7 @@ def PopoverTruncated(
             return input_string
 
 
-def A(
-    attributes: Attributes | None = None,
-    children: Children = None,
-    url_name: str | None = None,
-    href: str | None = None,
-) -> Element:
-    """
-    Returns an anchor <a> tag.
-
-    Accepts one of two mutually-exclusive URL specifications:
-        - url_name: URL pattern name, resolved via reverse()
-        - href: Literal path string passed through as-is
-    """
-    attributes = as_attributes(attributes)
-    children = children or []
-    if url_name is not None and href is not None:
-        raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
-
-    additional_attributes = []
-    if url_name is not None:
-        additional_attributes = [("href", reverse(url_name))]
-    elif href is not None:
-        additional_attributes = [("href", href)]
-    return Element(
-        "a", attributes=attributes + additional_attributes, children=children
-    )
-
-
-def Button(
+def StyledButton(
     attributes: Attributes | None = None,
     children: Children = None,
     size: str = "base",
@@ -227,8 +232,9 @@ def Button(
     title: str = "",
     onclick: str = "",
     name: str = "",
+    **attrs: object,
 ) -> Element:
-    attributes = as_attributes(attributes)
+    attributes = as_attributes(attributes) + _attrs_from_kwargs(attrs)
     children = children or []
 
     # Separate custom class from other generic attributes
@@ -650,7 +656,7 @@ def AddForm(
         children=[
             CsrfInput(request),
             field_markup,
-            Div(children=[Button(submit_attrs, "Submit", type="submit")]),
+            Div(children=[StyledButton(submit_attrs, "Submit", type="submit")]),
             Div(
                 [("class", "submit-button-container")],
                 [additional_row] if additional_row else [],
@@ -971,15 +977,26 @@ def SimpleTable(
     columns = columns or []
     rows = rows or []
 
+    # Rows/header are stringified into the table markup, so their components'
+    # declared Media would be lost; collect it from the nodes first and attach
+    # it to the returned node so Page() still emits each cell component's JS
+    # (e.g. a <game-status-selector> in a cell).
+    media = Media()
+
     header_html = ""
     if header_action:
-        header_html = str(TableHeader(children=[header_action]))
+        header_node = TableHeader(children=[header_action])
+        header_html = str(header_node)
+        media = media + collect_media(header_node)
 
     columns_html = "".join(
         f'<th scope="col" class="px-6 py-3">{conditional_escape(col)}</th>'
         for col in columns
     )
-    rows_html = "".join(str(TableRow(data=row)) for row in rows)
+    row_nodes = [TableRow(data=row) for row in rows]
+    rows_html = "".join(str(node) for node in row_nodes)
+    for node in row_nodes:
+        media = media + collect_media(node)
 
     pagination_html = ""
     if page_obj and elided_page_range:
@@ -995,7 +1012,8 @@ def SimpleTable(
         f"<tr>{columns_html}</tr></thead>"
         '<tbody class="dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden">'
         f"{rows_html}</tbody></table></div>"
-        f"{pagination_html}</div>"
+        f"{pagination_html}</div>",
+        media=media,
     )
 
 

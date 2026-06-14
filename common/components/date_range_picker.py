@@ -17,7 +17,6 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 ``games/static/js/date_range_picker.js``.
 """
 
-
 from common.components.core import Element, HTMLAttribute, Media, Node, Safe
 from common.components.primitives import Div, Input, Span
 from common.time import DatePartSpec, date_parts
@@ -101,9 +100,7 @@ def _iso_part_values(iso_value: str, parts: list[DatePartSpec]) -> dict[str, str
     return values
 
 
-def _segment_input(
-    *, part: DatePartSpec, side: str, label: str, value: str
-) -> Node:
+def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> Node:
     side_label = "from" if side == "min" else "to"
     return Input(
         attributes=[

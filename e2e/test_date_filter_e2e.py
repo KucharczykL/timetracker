@@ -121,9 +121,7 @@ def test_max_only_serializes_as_less_than(live_server, page):
             ".dispatchEvent(new Event('submit', {cancelable: true}))"
         )
     parsed = _filter_from_url(page.url)
-    assert parsed == {
-        "date_refunded": {"value": "2025-06-30", "modifier": "LESS_THAN"}
-    }
+    assert parsed == {"date_refunded": {"value": "2025-06-30", "modifier": "LESS_THAN"}}
 
 
 @pytest.mark.django_db

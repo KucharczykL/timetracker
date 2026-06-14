@@ -173,9 +173,7 @@ def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
     return ""
 
 
-def _enum_filter(
-    field_name: str, options, choice: FilterChoice, *, nullable
-) -> Node:
+def _enum_filter(field_name: str, options, choice: FilterChoice, *, nullable) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
     Enum fields are single-valued, so no M2M modifiers (all/only are

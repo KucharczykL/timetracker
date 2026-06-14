@@ -9,6 +9,7 @@ from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.html import conditional_escape
+
 from common.components import (
     A,
     Div,
@@ -100,10 +101,9 @@ def _year_nav(year, year_range, url_template) -> Node:
         else "text-body hover:text-heading underline decoration-dotted"
     )
     alltime_btn = A(
-        url_name="games:stats_alltime",
-        attributes=[("class", alltime_classes)],
-        children=["All-time stats"],
-    )
+        href=reverse("games:stats_alltime"),
+        class_=alltime_classes,
+    )["All-time stats"]
     picker = YearPicker(
         year=year_int,
         available_years=tuple(year_range or []),

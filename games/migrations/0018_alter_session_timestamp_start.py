@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0017_add_filter_preset'),
+        ("games", "0017_add_filter_preset"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='session',
-            name='timestamp_start',
-            field=models.DateTimeField(db_index=True, verbose_name='Start'),
+            model_name="session",
+            name="timestamp_start",
+            field=models.DateTimeField(db_index=True, verbose_name="Start"),
         ),
     ]

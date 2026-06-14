@@ -560,8 +560,14 @@ class TestFilterBarRendering:
 
     def test_mastered_not_checked_by_default(self):
         html = str(FilterBar(filter_json=""))
-        assert 'name="filter-mastered" value="true" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"' not in html
-        assert 'name="filter-mastered" value="false" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"' not in html
+        assert (
+            'name="filter-mastered" value="true" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"'
+            not in html
+        )
+        assert (
+            'name="filter-mastered" value="false" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"'
+            not in html
+        )
 
     def test_mastered_checked_when_filtered(self):
         html = str(
@@ -784,7 +790,7 @@ class TestExpandedFiltersAgainstDB:
         from games.filters import SessionFilter
         from games.models import Session
 
-        data = self._setup_entities()
+        self._setup_entities()
 
         # Test duration_total_hours equals 4
         sf_tot = SessionFilter.from_json(
@@ -808,7 +814,7 @@ class TestExpandedFiltersAgainstDB:
         from games.filters import PurchaseFilter
         from games.models import Purchase
 
-        data = self._setup_entities()
+        self._setup_entities()
 
         pf = PurchaseFilter.from_json(
             {

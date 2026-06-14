@@ -124,6 +124,15 @@ Only a small number of HTML templates remain (platform icon snippets and partial
   - `utils.js` — shared ES-module helpers (`onSwap`, `toISOUTCString`, …)
 - **Widget initialization**: widget JS registers with `onSwap(selector, initializeElement)` from `utils.js` — a port of FastHTML's `proc_htmx` built on `htmx.onLoad`. It runs the initializer once per matching element, on initial page load and inside every htmx-swapped fragment. Never hand-roll `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
 
+### Interactive components: custom elements + TypeScript
+
+New interactive components are **custom elements**, not inline JS in Python. A component that needs behavior emits a semantic tag via `custom_element("tag", Props(...))` (light DOM, server-rendered inner markup built with the htpy-style node builders). Behavior lives in `ts/elements/<tag>.ts` (TypeScript, vanilla DOM, `customElements.define`); the native `connectedCallback` replaces `onSwap` (it fires on parse *and* htmx swap). The server↔client contract is one Python `TypedDict` per element registered with `register_element(...)` in `common/components/custom_elements.py`; `manage.py gen_element_types` codegens `ts/generated/props.ts` (interface + attribute reader) so renaming a prop fails `tsc`.
+
+- **Build:** `tsc` per-module (`tsconfig.json`) compiles `ts/` → `games/static/js/dist/` (build-only, gitignored). `make ts` = codegen + compile; `make ts-check` (in `make check`) = codegen + `tsc --noEmit`; `make dev` runs `tsc --watch`. The Docker image builds CSS + TS in a Node stage. Run `make ts` after editing any `.ts` so e2e/local serving sees fresh output.
+- **htpy-style markup:** generic builders take kwargs attributes and `[]` children — `Div(class_="x", hx_get="/y")[child1, child2]` (`class_`→`class`, `hx_get`→`hx-get`, `True`→bare attr, `False`/`None`→omitted). Still a walkable `Element` tree, so `Media` bubbles.
+- **Do NOT** author HTML/JS as Python f-strings or add new inline Alpine `x-data` blobs. Alpine remains only for trivial pre-existing toggles (toast store, etc.).
+- **Tables collect cell media:** `SimpleTable` stringifies cells, so it explicitly `collect_media`s its rows/header and re-attaches it — a custom element in a table cell still gets its `<script>` emitted by `Page()`.
+
 ### Deployment
 
 Docker-based: multi-stage Dockerfile (uv builder → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): builds Docker image; Drone CI (`.drone.yml`) also present for deployments via Portainer webhook.

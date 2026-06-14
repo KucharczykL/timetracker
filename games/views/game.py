@@ -8,19 +8,18 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import SafeText
 
 from common.components import (
-    Fragment,
     H1,
     A,
     AddForm,
-    Button,
     ButtonGroup,
     CsrfInput,
     Div,
     Element,
     FilterBar,
+    Fragment,
     GameStatus,
     GameStatusSelector,
     Icon,
@@ -35,11 +34,11 @@ from common.components import (
     Safe,
     SearchField,
     SimpleTable,
+    StyledButton,
     Ul,
     paginated_table_content,
 )
 from common.components.primitives import Li, P, Span, Strong
-from common.icons import get_icon
 from common.layout import render_page
 from common.time import (
     dateformat,
@@ -91,12 +90,11 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     data = {
         "header_action": Div(
-            children=[
-                SearchField(search_string=search_string),
-                A([], Button([], "Add game"), url_name="games:add_game"),
-            ],
-            attributes=[("class", "flex justify-between")],
-        ),
+            class_="flex justify-between",
+        )[
+            SearchField(search_string=search_string),
+            A(href=reverse("games:add_game"))[StyledButton()["Add game"]],
+        ],
         "columns": [
             "Name",
             "Sort Name",
@@ -173,7 +171,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            additional_row=Button(
+            additional_row=StyledButton(
                 [],
                 "Submit & Create Purchase",
                 color="gray",
@@ -249,14 +247,14 @@ def _delete_game_confirmation_modal(
             Div(
                 [("class", "items-center mt-5")],
                 [
-                    Button(
+                    StyledButton(
                         [("class", "w-full")],
                         "Delete",
                         color="red",
                         size="lg",
                         type="submit",
                     ),
-                    Button(
+                    StyledButton(
                         [("class", "mt-0 w-full")],
                         "Cancel",
                         color="gray",
@@ -340,69 +338,69 @@ _STAT_SVGS = {
     "playrange": '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" /></svg>',
 }
 
-_PLAYED_ROW_TEMPLATE = """<div class="flex gap-2 items-center" x-data="{ open: false }">
-    <span class="uppercase">Played</span>
-    <div class="inline-flex rounded-md shadow-2xs" role="group" x-data="{ played: @@PLAYED_COUNT@@ }">
-        <a href="@@ADD_PE@@">
-        <button type="button" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer">
-            <span x-text="played"></span> times
-        </button>
-        </a>
-        <button type="button" x-on:click="open = !open" @click.outside="open = false" class="relative px-4 py-2 text-sm font-medium text-gray-900 bg-white border-e border-b border-t border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white align-middle hover:cursor-pointer">
-            @@ARROWDOWN@@
-            <div
-                class="absolute top-full -left-px w-auto whitespace-nowrap z-10 text-sm font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border border-gray-200 dark:border-gray-700"
-                x-show="open"
-            >
-                <ul
-                    class=""
-                >
-                    <li class="px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white rounded-tr-md">
-                        <a href="@@ADD_PE_FOR_GAME@@">Add playthrough...</a>
-                    </li>
-                    <li
-                        x-on:click="createPlayEvent"
-                        class="relative px-4 py-2 dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white rounded-b-md"
-                    >
-                        Played times +1
-                    </li>
-                    <script>
-                       function createPlayEvent() {
-                        this.played++;
-                        // TODO: migrate to hx-post + hx-on::after-request for HTMX-native toast handling
-                        fetchWithHtmxTriggers('@@API_CREATE@@', {
-                            method: 'POST',
-                            headers: { 'X-CSRFToken': '@@CSRF@@', 'Content-Type': 'application/json' },
-                            body: '{"game_id": @@GAME_ID@@}'
-                        })
-                        .catch(() => {
-                            this.played--;
-                            console.error('Failed to record play');
-                        });
-                       }
-                    </script>
-                </ul>
-            </div>
-        </button>
-      </div>
-</div>"""
+_PLAYED_BTN = (
+    "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
+    "hover:bg-gray-100 hover:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
+    "dark:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
+)
+_PLAYED_MENU = (
+    "absolute top-full -left-px w-auto whitespace-nowrap z-10 text-sm font-medium "
+    "bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border "
+    "border-gray-200 dark:border-gray-700"
+)
 
 
 def _played_row(game: Game, request: HttpRequest) -> Node:
-    """The 'Played N times' control with its Alpine.js dropdown."""
-    replacements = {
-        "@@PLAYED_COUNT@@": str(game.playevents.count()),
-        "@@ADD_PE@@": reverse("games:add_playevent"),
-        "@@ARROWDOWN@@": get_icon("arrowdown"),
-        "@@ADD_PE_FOR_GAME@@": reverse("games:add_playevent_for_game", args=[game.id]),
-        "@@API_CREATE@@": reverse("api-1.0.0:create_playevent"),
-        "@@CSRF@@": get_token(request),
-        "@@GAME_ID@@": str(game.id),
-    }
-    html = _PLAYED_ROW_TEMPLATE
-    for token, value in replacements.items():
-        html = html.replace(token, value)
-    return Safe(html)
+    """'Played N times' control as a custom element (ts/elements/play-event-row.ts)."""
+    from common.components import Element
+    from common.components.custom_elements import _PlayEventRow
+    from common.components.primitives import Button
+
+    played: int = 0
+    played = game.playevents.count()
+
+    count_button = A(href=reverse("games:add_playevent"))[
+        Button(class_=_PLAYED_BTN + " rounded-s-lg")[
+            Span(data_count="")[str(played)], " times"
+        ]
+    ]
+    menu = Div(data_menu="", hidden=True, class_=_PLAYED_MENU)[
+        Ul()[
+            Li(class_="px-4 py-2")[
+                A(href=reverse("games:add_playevent_for_game", args=[game.id]))[
+                    "Add playthrough..."
+                ]
+            ],
+            Li(class_="px-4 py-2 cursor-pointer")[
+                Element(
+                    "button",
+                    [("type", "button"), ("data-add-play", "")],
+                    children=["Played times +1"],
+                )
+            ],
+        ]
+    ]
+    toggle = Element(
+        "button",
+        [
+            ("type", "button"),
+            ("data-toggle", ""),
+            ("class", _PLAYED_BTN + " rounded-e-lg"),
+        ],
+        [Icon("arrowdown")],
+    )
+    # Menu is a SIBLING of the toggle (not nested inside it): a <button> may not
+    # contain another <button>, and that invalid nesting makes the HTML parser
+    # close ancestors early, ejecting later page sections from their container.
+    toggle_group = Div(class_="relative inline-flex")[toggle, menu]
+    group = Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
+        count_button, toggle_group
+    ]
+    return _PlayEventRow(
+        game_id=game.id,
+        csrf=get_token(request),
+        api_create_url=reverse("api-1.0.0:create_playevent"),
+    )[Div(class_="flex gap-2 items-center")[Span(class_="uppercase")["Played"], group]]
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:
@@ -686,10 +684,9 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
 
     header_action = Div(
         children=[
-            A(
-                url_name="games:add_session",
-                children=Button(icon=True, size="xs", children=[Icon("play"), "LOG"]),
-            ),
+            A(href=reverse("games:add_session"))[
+                StyledButton(icon=True, color="blue", size="xs")[Icon("plus")]
+            ],
             A(
                 href=reverse(
                     "games:list_sessions_start_session_from_session",
@@ -698,7 +695,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
                 children=Popover(
                     popover_content=last_session.game.name,
                     children=[
-                        Button(
+                        StyledButton(
                             icon=True,
                             color="gray",
                             size="xs",
@@ -784,7 +781,7 @@ def _history_section(game: Game) -> SafeText:
     )
 
 
-_GET_SESSION_COUNT_SCRIPT = mark_safe(
+_GET_SESSION_COUNT_SCRIPT = Safe(
     "<script>\n"
     "            function getSessionCount() {\n"
     "                return document.getElementById('session-count')"

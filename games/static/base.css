@@ -1790,6 +1790,9 @@
   .items-start {
     align-items: flex-start;
   }
+  .items-stretch {
+    align-items: stretch;
+  }
   .justify-between {
     justify-content: space-between;
   }
@@ -1963,16 +1966,9 @@
     border-top-right-radius: var(--radius-lg);
     border-bottom-right-radius: var(--radius-lg);
   }
-  .rounded-tr-md {
-    border-top-right-radius: var(--radius-md);
-  }
   .rounded-b {
     border-bottom-right-radius: var(--radius);
     border-bottom-left-radius: var(--radius);
-  }
-  .rounded-b-md {
-    border-bottom-right-radius: var(--radius-md);
-    border-bottom-left-radius: var(--radius-md);
   }
   .border {
     border-style: var(--tw-border-style);
@@ -1981,10 +1977,6 @@
   .border-0 {
     border-style: var(--tw-border-style);
     border-width: 0px;
-  }
-  .border-0\! {
-    border-style: var(--tw-border-style) !important;
-    border-width: 0px !important;
   }
   .border-2 {
     border-style: var(--tw-border-style);
@@ -2774,9 +2766,6 @@
   .line-through {
     text-decoration-line: line-through;
   }
-  .no-underline\! {
-    text-decoration-line: none !important;
-  }
   .underline {
     text-decoration-line: underline;
   }
@@ -3159,6 +3148,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-gray-200);
+      }
+    }
+  }
+  .hover\:bg-gray-700 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-gray-700);
       }
     }
   }
@@ -4198,17 +4194,6 @@
   .\[\&_a\]\:underline-offset-4 {
     & a {
       text-underline-offset: 4px;
-    }
-  }
-  .\[\&_li\:first-of-type_a\]\:rounded-none {
-    & li:first-of-type a {
-      border-radius: 0;
-    }
-  }
-  .\[\&_li\:last-of-type_a\]\:rounded-t-none {
-    & li:last-of-type a {
-      border-top-left-radius: 0;
-      border-top-right-radius: 0;
     }
   }
   .\[\&_td\:last-child\]\:text-right {

@@ -4,7 +4,6 @@ __pycache__
 .venv/
 node_modules
 package-lock.json
-pnpm-lock.yaml
 db.sqlite3
 data/
 /static/
@@ -13,3 +12,8 @@ dist/
 .python-version
 .direnv
 .hermes/
+
+# Build artifacts: generated in CI/Docker assets stage, not committed
+/games/static/base.css
+/games/static/js/dist/
+/ts/generated/
