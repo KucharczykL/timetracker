@@ -10,10 +10,5 @@
   "dependencies": {
     "@tailwindcss/cli": "^4.1.18",
     "flowbite": "^4.0.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "tar": "^7.5.11"
-    }
   }
 }
