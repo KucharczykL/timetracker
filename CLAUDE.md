@@ -141,15 +141,20 @@ Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim 
 
 ### Database
 
-SQLite with WAL journal mode. Connection timeout 20s. The `DATA_DIR` env var controls the database file location. Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
+SQLite with WAL journal mode. Connection timeout 20s. The `DATA_DIR` setting controls the database file location and is read consistently by both `settings.py` and `entrypoint.sh` (same env var + matching default). Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
 
 ### Configuration
 
-- `DEBUG` is `True` unless `PROD` env var is set
-- `TIME_ZONE` defaults to `Europe/Prague` in debug, otherwise reads `TZ` env var (default `UTC`)
-- Django Admin, Debug Toolbar, and `django_extensions` are only available in `DEBUG` mode
-- `CSRF_TRUSTED_ORIGINS` is parsed from a comma-separated env var
-- `DATA_DIR` env var sets the SQLite database location (defaults to `BASE_DIR`)
+All configurable Django settings are read through `config()` in `timetracker/config.py`, never via bare `os.environ` in `settings.py`. Full reference: `docs/configuration.md`.
+
+- **Resolution priority** (highest first): `NAME__FILE` (opt-in file secret) → `NAME` env var → `.env` → `settings.ini` (`[timetracker]` section) → in-code default. Missing + no default = `ImproperlyConfigured`.
+- `config(name, *, default, cast, allow_file, required_in_prod)`: `cast` handles `bool`/`list`/`int`/`Path`/callable; `allow_file=True` honors `NAME__FILE` (contents `.strip()`-ed); `required_in_prod=True` hard-fails when missing and DEBUG is off.
+- `DEBUG` defaults `True` (dev), turned off with `DEBUG=false`. `PROD` is a **deprecated alias** kept for one release.
+- `SECRET_KEY` is required in production (insecure default only in DEBUG); supports `SECRET_KEY__FILE`.
+- `APP_URL` derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` when those aren't set explicitly; the two are never merged (different security checks) and each can be overridden directly.
+- `TIME_ZONE` reads `TZ` (defaults `Europe/Prague` in debug, `UTC` in prod).
+- Django Admin, Debug Toolbar, and `django_extensions` are only available in `DEBUG` mode.
+- **Container/entrypoint-only** flags (`PUID`, `PGID`, `CREATE_DEFAULT_SUPERUSER`, `STAGING`, `LOAD_SAMPLE_DATA`) live in `entrypoint.sh`, not the Python config — they are bootstrap concerns, not Django settings.
 - django-q2 cluster: 1 worker, 60s timeout, 120s retry, ORM broker
 
 ### Testing
@@ -180,6 +185,7 @@ Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJAN
 - **Components are nodes; use the named builders** — build with `Div()`, `Span()`, `Element("tag", ...)`, etc., which return `Node` objects. For a tag with no builder, add it to the whitelist in `primitives.py` (one line) or use `Element("tag", attrs, children)`. Use `Fragment(a, b, ...)` to group siblings (never `str(a)+str(b)`, which flattens the tree and drops media). Wrap trusted pre-rendered HTML in `Safe(html)` (the `mark_safe` analogue).
 - **JS-bearing components declare `Media`, they don't rely on the view** — give a component `class Media: js = (...)` (a `BaseComponent`) or `return node.with_media(Media(js=...))`. `Page()` collects and emits it. Never re-add `scripts=ModuleScript(...)` threading in a view for a component that can declare its own dependency.
 - **Filter views** accept `?filter=<JSON>` (structured) and fall back to `?search_string=` (free-text). New filter criteria go in `games/filters.py`; new criterion types go in `common/criteria.py`.
+- **Read settings via `config()`** — new Django settings go through `config()` from `timetracker/config.py`, never bare `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod` explicitly. Container-bootstrap flags belong in `entrypoint.sh`, not the Python config. See `docs/configuration.md`.
 - **Signals handle side-effects** — do not manually recalculate `Game.playtime` or `Purchase.num_purchases`; the signals in `games/signals.py` do this on save/delete.
 - **Button colors**: `blue` (primary action), `red` (destructive), `gray` (secondary), `green` (positive). Icon buttons use `icon=True`.
 - **Inline Alpine.js** is used for client-side reactivity in domain components (`GameStatusSelector`, `SessionDeviceSelector`). The pattern is `x-data="{...}"` with `fetchWithHtmxTriggers()` for PATCH API calls.

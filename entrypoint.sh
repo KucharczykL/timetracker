@@ -1,8 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
+# Container-bootstrap configuration. These variables are consumed only by this
+# entrypoint, NOT by Django (see timetracker/config.py for the app settings):
+#   PUID/PGID                — uid/gid the container process runs as
+#   DATA_DIR                 — writable dir for the SQLite database (kept in
+#                              sync with Django via the same env var + default)
+#   CREATE_DEFAULT_SUPERUSER — create an admin/admin user on first start
+#   STAGING / LOAD_SAMPLE_DATA — staging-only data bootstrap (see below)
 PUID=${PUID:-1000}
 PGID=${PGID:-100}
+DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
 
 USERHOME=$(grep timetracker /etc/passwd | cut -d ":" -f6)
 usermod -d "/root" timetracker
@@ -10,11 +18,11 @@ groupmod -o -g "$PGID" timetracker
 usermod -o -u "$PUID" timetracker
 usermod -d "${USERHOME}" timetracker
 
-mkdir -p /home/timetracker/app/data /var/log/supervisor
+mkdir -p "$DATA_DIR" /var/log/supervisor
 chmod 755 /home/timetracker/app
 chmod 755 /home/timetracker/app/.venv
 
-chown "$PUID:$PGID" /home/timetracker/app/data
+chown "$PUID:$PGID" "$DATA_DIR"
 chown "$PUID:$PGID" /var/log/supervisor
 
 python manage.py migrate
@@ -49,6 +57,6 @@ if not User.objects.filter(username='admin').exists():
 "
 fi
 
-chown -R "$PUID:$PGID" /home/timetracker/app/data
+chown -R "$PUID:$PGID" "$DATA_DIR"
 
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisor.conf

@@ -1,0 +1,15 @@
+# Alternative to a .env file for non-Docker / bare-metal deployments.
+# Copy to settings.ini (next to manage.py) or point INI_FILE at it.
+# Real environment variables and a .env file both take precedence over this.
+# See docs/configuration.md for the full reference.
+
+[timetracker]
+DEBUG = false
+SECRET_KEY = change-me-to-a-long-random-string
+APP_URL = https://tracker.kucharczyk.xyz
+TZ = Europe/Prague
+DATA_DIR = /var/lib/timetracker
+
+# Optional explicit overrides (comma-separated); win over APP_URL when set.
+# ALLOWED_HOSTS = *
+# CSRF_TRUSTED_ORIGINS = https://tracker.kucharczyk.xyz

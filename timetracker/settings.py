@@ -11,7 +11,11 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
 import os
+import warnings
 from pathlib import Path
+from urllib.parse import urlparse
+
+from timetracker.config import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,18 +24,44 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
+# SECURITY WARNING: don't run with debug turned on in production!
+# DEBUG defaults on for local development. Production turns it off via
+# DEBUG=false (preferred) or the deprecated PROD env var.
+_debug = config("DEBUG", default=None, cast=bool)
+if _debug is None:
+    if os.environ.get("PROD"):
+        warnings.warn(
+            "The PROD environment variable is deprecated; set DEBUG=false instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _debug = False
+    else:
+        _debug = True
+DEBUG = _debug
+
 # SECURITY WARNING: keep the secret key used in production secret!
-# Read from the environment so each deployment (prod, staging) can supply its
-# own key; falls back to an insecure default for local development and tests.
-SECRET_KEY = os.environ.get(
+# Each deployment supplies its own key (env, .env/.ini, or a SECRET_KEY__FILE
+# secret); falls back to an insecure default only in DEBUG. Missing in
+# production is a hard error rather than a silent insecure fallback.
+SECRET_KEY = config(
     "SECRET_KEY",
-    "django-insecure-x0_t$gei=_o_p(%%!-db$jezka@y+d67$a8tvw13nl^8$l*t@=",
+    default="django-insecure-x0_t$gei=_o_p(%%!-db$jezka@y+d67$a8tvw13nl^8$l*t@=",
+    allow_file=True,
+    required_in_prod=True,
 )
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False if os.environ.get("PROD") else True
+# ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are configured independently (they
+# guard different things), but both default off a single user-facing APP_URL
+# when not set explicitly. Power users override either one directly — e.g.
+# ALLOWED_HOSTS=* behind a reverse proxy while CSRF stays locked to the domain.
+APP_URL = config("APP_URL", default="http://localhost:8000")
+_app_url = urlparse(APP_URL)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or [_app_url.hostname]
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default=None, cast=list) or [
+    f"{_app_url.scheme}://{_app_url.netloc}"
+]
 
 
 # Application definition
@@ -114,7 +144,7 @@ WSGI_APPLICATION = "timetracker.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": Path(os.environ.get("DATA_DIR", str(BASE_DIR))) / "db.sqlite3",
+        "NAME": config("DATA_DIR", default=BASE_DIR, cast=Path) / "db.sqlite3",
         "OPTIONS": {
             "timeout": 20,
             "init_command": "PRAGMA synchronous=FULL; PRAGMA journal_mode=WAL;",
@@ -147,7 +177,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "Europe/Prague" if DEBUG else os.environ.get("TZ", "UTC")
+TIME_ZONE = config("TZ", default="Europe/Prague" if DEBUG else "UTC")
 
 USE_I18N = True
 
@@ -180,9 +210,3 @@ LOGGING = {
         "games": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }
-
-_csrf_trusted_origins = os.environ.get("CSRF_TRUSTED_ORIGINS")
-if _csrf_trusted_origins:
-    CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins.split(",")
-else:
-    CSRF_TRUSTED_ORIGINS = []

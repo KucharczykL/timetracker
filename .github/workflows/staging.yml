@@ -43,9 +43,10 @@ jobs:
           # Per-app SECRET_KEY so each staging instance is independent and no
           # session cookie is shared across instances or with production.
           SECRET_KEY="staging-${SLUG}-$(head -c16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
+          # APP_URL derives both ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS.
           flyctl secrets set --app "$APP" --stage \
             "SECRET_KEY=${SECRET_KEY}" \
-            "CSRF_TRUSTED_ORIGINS=https://${HOST}"
+            "APP_URL=https://${HOST}"
 
       - name: Deploy
         run: flyctl deploy --app "$APP" --config fly.staging.toml --remote-only --yes

@@ -10,6 +10,10 @@ data/
 dist/
 .DS_Store
 .python-version
+
+# Local configuration (may contain secrets); examples are committed instead
+.env
+/settings.ini
 .direnv
 .hermes/
 
