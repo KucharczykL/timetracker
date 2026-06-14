@@ -14,14 +14,13 @@ from django.utils.safestring import SafeText, mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
-    Fragment,
     A,
     AddForm,
-    Button,
     ButtonGroup,
     CsrfInput,
     Div,
     Element,
+    Fragment,
     GameLink,
     Icon,
     LinkedPurchase,
@@ -30,6 +29,7 @@ from common.components import (
     Node,
     PriceConverted,
     PurchasePrice,
+    StyledButton,
     TableRow,
     paginated_table_content,
 )
@@ -110,9 +110,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     purchases, page_obj, elided_page_range = paginate(request, purchases)
 
     data = {
-        "header_action": A(
-            [], Button([], "Add purchase"), url_name="games:add_purchase"
-        ),
+        "header_action": A(href=reverse("games:add_purchase"))[
+            StyledButton()["Add purchase"]
+        ],
         "columns": [
             "Name",
             "Type",
@@ -153,7 +153,7 @@ def _purchase_additional_row() -> SafeText:
             Td(),
             Td(
                 children=[
-                    Button(
+                    StyledButton(
                         [],
                         "Submit & Create Session",
                         color="gray",
@@ -319,14 +319,14 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
             Div(
                 [("class", "items-center mt-5")],
                 [
-                    Button(
+                    StyledButton(
                         [("class", "w-full")],
                         "Refund",
                         color="blue",
                         size="lg",
                         type="submit",
                     ),
-                    Button(
+                    StyledButton(
                         [("class", "mt-0 w-full")],
                         "Cancel",
                         color="gray",

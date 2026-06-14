@@ -7,10 +7,10 @@ from django.utils.safestring import SafeText
 from common.components import (
     A,
     AddForm,
-    Button,
     CsrfInput,
     Div,
     Element,
+    StyledButton,
     paginated_table_content,
 )
 from common.components.primitives import P
@@ -79,12 +79,12 @@ def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText
             P(
                 children=["Are you sure you want to delete this status change?"],
             ),
-            Button(
+            StyledButton(
                 [("class", "w-full")], "Delete", color="red", type="submit", size="lg"
             ),
             A(
                 [("class", "")],
-                Button([("class", "w-full")], "Cancel", color="gray"),
+                StyledButton([("class", "w-full")], "Cancel", color="gray"),
                 href=reverse("games:view_game", args=[statuschange.game.id]),
             ),
         ],

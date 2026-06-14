@@ -6,7 +6,7 @@ from django.test import SimpleTestCase
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
-from games.models import Platform, Game, Purchase, Session
+from games.models import Game, Platform, Purchase, Session
 
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
 # HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
@@ -243,12 +243,12 @@ class ComponentReturnTypeTest(unittest.TestCase):
             str(components.A(href="/path", url_name="some_name"))
 
     def test_button_returns_safe_text(self):
-        result = str(components.Button([], "click"))
+        result = str(components.StyledButton([], "click"))
         self.assertIsInstance(result, SafeText)
         self.assertIn("<button", result)
 
     def test_button_default_colors(self):
-        result = str(components.Button([], "click"))
+        result = str(components.StyledButton([], "click"))
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
@@ -269,7 +269,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     def test_component_output_starts_with_tag(self):
         for label, html in [
             ("A", str(components.A(href="/foo", children=["link"]))),
-            ("Button", str(components.Button([], "click"))),
+            ("Button", str(components.StyledButton([], "click"))),
             ("Div", str(components.Div([], ["hello"]))),
             ("Input", str(components.Input())),
             ("ButtonGroup", str(components.ButtonGroup([]))),
@@ -294,7 +294,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_button_with_icon_children_not_escaped(self):
         result = str(
-            components.Button(
+            components.StyledButton(
                 icon=True,
                 size="xs",
                 children=[components.Icon("play"), "LOG"],
@@ -307,7 +307,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             components.Popover(
                 popover_content="test tooltip",
                 children=[
-                    components.Button(
+                    components.StyledButton(
                         icon=True,
                         color="gray",
                         size="xs",
@@ -923,6 +923,7 @@ class ComponentPrimitivesTest(SimpleTestCase):
 class PrimitiveWidgetsTest(SimpleTestCase):
     def test_mixin_applies_widget_to_boolean_fields_only(self):
         from django import forms
+
         from games.forms import PrimitiveCheckboxWidget, PrimitiveWidgetsMixin
 
         class DummyForm(PrimitiveWidgetsMixin, forms.Form):

@@ -13,7 +13,6 @@ from django.utils.safestring import SafeText, mark_safe
 from common.components import (
     A,
     AddForm,
-    Button,
     ButtonGroup,
     Div,
     Fragment,
@@ -25,9 +24,10 @@ from common.components import (
     Safe,
     SearchField,
     SessionDeviceSelector,
+    SessionTimestampButtons,
+    StyledButton,
     paginated_table_content,
 )
-from common.components import SessionTimestampButtons
 from common.components.primitives import Span, Td, Tr
 from common.layout import render_page
 from common.time import (
@@ -77,13 +77,13 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                 Div(
                     children=[
                         A(
-                            url_name="games:add_session",
-                            children=Button(
+                            href=reverse("games:add_session"),
+                        )[
+                            StyledButton(
                                 icon=True,
                                 size="xs",
-                                children=[Icon("play"), "LOG"],
-                            ),
-                        ),
+                            )[Icon("play"), "LOG"]
+                        ],
                         A(
                             href=reverse(
                                 "games:list_sessions_start_session_from_session",
@@ -92,7 +92,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             children=Popover(
                                 popover_content=last_session.game.name,
                                 children=[
-                                    Button(
+                                    StyledButton(
                                         icon=True,
                                         color="gray",
                                         size="xs",
@@ -213,13 +213,13 @@ def _session_fields(form) -> Fragment:
                     class_="form-row-button-group flex-row gap-3 justify-start mt-3",
                     hx_boost="false",
                 )[
-                    Button(data_target=field.name, data_type="now", size="xs")[
+                    StyledButton(data_target=field.name, data_type="now", size="xs")[
                         "Set to now"
                     ],
-                    Button(data_target=field.name, data_type="toggle", size="xs")[
+                    StyledButton(data_target=field.name, data_type="toggle", size="xs")[
                         "Toggle text"
                     ],
-                    Button(data_target=field.name, data_type="copy", size="xs")[
+                    StyledButton(data_target=field.name, data_type="copy", size="xs")[
                         f"Copy {this_side} value to {other_side}"
                     ],
                 ]

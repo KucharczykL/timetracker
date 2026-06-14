@@ -9,7 +9,6 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
-from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
@@ -98,6 +97,8 @@ def _html_element(tag_name: str, media: Media | None = None):
     return element
 
 
+A = _html_element("a")
+Button = _html_element("button")
 Div = _html_element("div")
 P = _html_element("p")
 Ul = _html_element("ul")
@@ -218,35 +219,7 @@ def PopoverTruncated(
             return input_string
 
 
-def A(
-    attributes: Attributes | None = None,
-    children: Children = None,
-    url_name: str | None = None,
-    href: str | None = None,
-) -> Element:
-    """
-    Returns an anchor <a> tag.
-
-    Accepts one of two mutually-exclusive URL specifications:
-        - url_name: URL pattern name, resolved via reverse()
-        - href: Literal path string passed through as-is
-    """
-    attributes = as_attributes(attributes)
-    children = children or []
-    if url_name is not None and href is not None:
-        raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
-
-    additional_attributes = []
-    if url_name is not None:
-        additional_attributes = [("href", reverse(url_name))]
-    elif href is not None:
-        additional_attributes = [("href", href)]
-    return Element(
-        "a", attributes=attributes + additional_attributes, children=children
-    )
-
-
-def Button(
+def StyledButton(
     attributes: Attributes | None = None,
     children: Children = None,
     size: str = "base",
@@ -683,7 +656,7 @@ def AddForm(
         children=[
             CsrfInput(request),
             field_markup,
-            Div(children=[Button(submit_attrs, "Submit", type="submit")]),
+            Div(children=[StyledButton(submit_attrs, "Submit", type="submit")]),
             Div(
                 [("class", "submit-button-container")],
                 [additional_row] if additional_row else [],

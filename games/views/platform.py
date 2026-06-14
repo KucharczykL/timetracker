@@ -4,14 +4,14 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
-    Fragment,
     A,
     AddForm,
-    Button,
     ButtonGroup,
+    Fragment,
     Icon,
-    paginated_table_content,
     PlatformFilterBar,
+    StyledButton,
+    paginated_table_content,
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
@@ -35,9 +35,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms, page_obj, elided_page_range = paginate(request, platforms)
 
     data = {
-        "header_action": A(
-            [], Button([], "Add platform"), url_name="games:add_platform"
-        ),
+        "header_action": A(href=reverse("games:add_platform"))[
+            StyledButton()["Add platform"]
+        ],
         "columns": [
             "Name",
             "Icon",

@@ -9,17 +9,16 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
-
 from common.components import (
-    Fragment,
     A,
     AddForm,
-    Button,
     ButtonGroup,
+    Fragment,
     Icon,
     ModuleScript,
-    paginated_table_content,
     PlayEventFilterBar,
+    StyledButton,
+    paginated_table_content,
 )
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
@@ -87,9 +86,9 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-        "header_action": A(
-            [], Button([], "Add play event"), url_name="games:add_playevent"
-        ),
+        "header_action": A(href=reverse("games:add_playevent"))[
+            StyledButton()["Add play event"]
+        ],
         "columns": list(filtered_column_list),
         "rows": filtered_row_list,
     }
