@@ -11,7 +11,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - TZ=${TZ:-Europe/Prague}
       # APP_URL drives ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS unless overridden.
-      - APP_URL=${APP_URL:-https://tracker.kucharczyk.xyz}
+      - APP_URL=${APP_URL:-http://localhost:8000}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-100}
       - DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
