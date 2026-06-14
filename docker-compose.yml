@@ -12,6 +12,7 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-100}
       - DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
+      - CREATE_DEFAULT_SUPERUSER=${CREATE_DEFAULT_SUPERUSER:-false}
     ports:
       - "${TIMETRACKER_EXTERNAL_PORT:-8000}:8000"
     volumes:

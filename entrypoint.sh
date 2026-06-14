@@ -20,4 +20,16 @@ chown "$PUID:$PGID" /var/log/supervisor
 python manage.py migrate
 python manage.py collectstatic --clear --no-input
 
+if [ "${CREATE_DEFAULT_SUPERUSER:-false}" = "true" ]; then
+    python manage.py shell -c "
+from django.contrib.auth import get_user_model
+User = get_user_model()
+if not User.objects.filter(username='admin').exists():
+    User.objects.create_superuser('admin', '', 'admin')
+    print('Created default superuser: admin / admin')
+"
+fi
+
+chown -R "$PUID:$PGID" /home/timetracker/app/data
+
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisor.conf
