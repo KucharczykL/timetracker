@@ -25,7 +25,7 @@ RUN uv run python manage.py gen_element_types
 FROM node:22-bookworm-slim AS assets
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Corepack ships with Node and activates the pnpm version pinned in
 # package.json's "packageManager" field — no npm bootstrap needed.
 RUN corepack enable && pnpm install --frozen-lockfile --ignore-scripts

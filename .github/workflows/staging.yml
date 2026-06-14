@@ -1,0 +1,98 @@
+name: Staging deployment
+
+on:
+  push:
+    branches-ignore: [main]
+  delete:
+
+concurrency:
+  group: staging-${{ github.event.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    env:
+      BRANCH: ${{ github.ref_name }}
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute staging name
+        run: |
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30)
+          APP="timetracker-staging-${SLUG}"
+          echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
+          echo "APP=${APP}" >> "$GITHUB_ENV"
+          echo "HOST=${APP}.fly.dev" >> "$GITHUB_ENV"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create app if missing
+        run: |
+          if ! flyctl status --app "$APP" >/dev/null 2>&1; then
+            flyctl apps create "$APP" --org personal
+          fi
+
+      - name: Set staging secrets
+        run: |
+          # Per-app SECRET_KEY so each staging instance is independent and no
+          # session cookie is shared across instances or with production.
+          SECRET_KEY="staging-${SLUG}-$(head -c16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
+          flyctl secrets set --app "$APP" --stage \
+            "SECRET_KEY=${SECRET_KEY}" \
+            "CSRF_TRUSTED_ORIGINS=https://${HOST}"
+
+      - name: Deploy
+        run: flyctl deploy --app "$APP" --config fly.staging.toml --remote-only --yes
+
+      - name: Summary
+        run: echo "Deployed to https://${HOST}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment staging URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const host = process.env.HOST;
+            const branch = process.env.BRANCH;
+            const body = `Staging deployment: https://${host}`;
+            const { owner, repo } = context.repo;
+            const pulls = await github.rest.pulls.list({
+              owner, repo, state: "open", head: `${owner}:${branch}`,
+            });
+            const pr = pulls.data[0];
+            if (!pr) {
+              core.info(`No open PR for branch '${branch}', skipping comment`);
+              return;
+            }
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number,
+            });
+            if (comments.some((comment) => comment.body === body)) {
+              core.info(`Staging URL already commented on PR #${pr.number}`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: pr.number, body,
+            });
+            core.info(`Commented staging URL on PR #${pr.number}`);
+
+  teardown:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.ref }}
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Destroy staging app
+        run: |
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30)
+          APP="timetracker-staging-${SLUG}"
+          flyctl apps destroy "$APP" --yes 2>/dev/null || true
