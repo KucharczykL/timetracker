@@ -7,8 +7,11 @@ services:
       dockerfile: Dockerfile
     container_name: timetracker
     environment:
+      - DEBUG=false
       - TZ=Europe/Prague
-      - CSRF_TRUSTED_ORIGINS="https://tracker.kucharczyk.xyz"
+      # APP_URL drives ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS unless overridden.
+      # Behind your own reverse proxy you may also set ALLOWED_HOSTS=* directly.
+      - APP_URL=https://tracker.kucharczyk.xyz
     user: "1000"
     # volumes:
     #   - "db:/home/timetracker/app/src/timetracker/db.sqlite3"

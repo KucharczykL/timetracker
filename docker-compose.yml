@@ -7,8 +7,10 @@ services:
       dockerfile: Dockerfile
     container_name: timetracker
     environment:
+      - DEBUG=false
       - TZ=${TZ:-Europe/Prague}
-      - CSRF_TRUSTED_ORIGINS=https://tracker.kucharczyk.xyz
+      # APP_URL drives ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS unless overridden.
+      - APP_URL=https://tracker.kucharczyk.xyz
       - PUID=${PUID:-1000}
       - PGID=${PGID:-100}
       - DATA_DIR=${DATA_DIR:-/home/timetracker/app/data}
