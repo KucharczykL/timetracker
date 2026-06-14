@@ -135,7 +135,9 @@ New interactive components are **custom elements**, not inline JS in Python. A c
 
 ### Deployment
 
-Docker-based: multi-stage Dockerfile (uv builder → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): builds Docker image; Drone CI (`.drone.yml`) also present for deployments via Portainer webhook.
+Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): builds Docker image; Drone CI (`.drone.yml`) also present for deployments via Portainer webhook.
+
+**Package manager (pnpm):** front-end deps use **pnpm**, not npm. The pnpm version is pinned in `package.json`'s `packageManager` field and provisioned via **Corepack** (bundled with Node) — the Docker assets stage runs `corepack enable` rather than `npm install -g pnpm`. To bump pnpm, update the `packageManager` field; local, CI, and Docker all follow it. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
 
 ### Database
 
