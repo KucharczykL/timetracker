@@ -26,7 +26,9 @@ FROM node:22-bookworm-slim AS assets
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts
+# Corepack ships with Node and activates the pnpm version pinned in
+# package.json's "packageManager" field — no npm bootstrap needed.
+RUN corepack enable && pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 COPY --from=builder /home/timetracker/app/ts/generated ./ts/generated
 RUN pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css \
