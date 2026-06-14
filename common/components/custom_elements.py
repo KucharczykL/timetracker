@@ -9,9 +9,10 @@ reader so drift fails ``tsc``.
 """
 
 from dataclasses import dataclass
-from typing import Mapping, TypedDict, get_type_hints
+from typing import TypedDict, get_type_hints
 
-from common.components.core import Children, Element, HTMLAttribute, Media, Node
+from common.components.core import Media
+from common.components.primitives import custom_element_builder
 
 
 @dataclass(frozen=True)
@@ -31,22 +32,6 @@ def register_element(tag: str, ts_name: str, props: type) -> None:
 
 def _kebab(name: str) -> str:
     return name.replace("_", "-")
-
-
-def custom_element(
-    tag: str, props: Mapping[str, object], *, children: Children = None
-) -> Node:
-    """Emit ``<tag kebab-attrs>children</tag>`` and declare its compiled module.
-
-    The module path mirrors the source layout: ``ts/elements/<tag>.ts`` compiles
-    to ``dist/elements/<tag>.js``, which ``Media`` loads via ``ModuleScript``."""
-    attributes: list[HTMLAttribute] = [
-        (_kebab(key), value)  # type: ignore[misc]
-        for key, value in props.items()
-    ]
-    return Element(tag, attributes, children).with_media(
-        Media(js=(f"dist/elements/{tag}.js",))
-    )
 
 
 # ── Codegen ──────────────────────────────────────────────────────────────────
@@ -121,3 +106,22 @@ class PlayEventRowProps(TypedDict):
 
 
 register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
+
+
+class SessionTimestampButtonsProps(TypedDict):
+    pass
+
+
+register_element(
+    "session-timestamp-buttons", "SessionTimestampButtons", SessionTimestampButtonsProps
+)
+
+
+# ── Named tag builders (consistent htpy-style with Div/Span) ─────────────────
+# Underscore-prefixed: used internally by domain wrappers.
+# Public ones (no domain wrapper): exported directly.
+
+_GameStatusSelector = custom_element_builder("game-status-selector")
+_SessionDeviceSelector = custom_element_builder("session-device-selector")
+_PlayEventRow = custom_element_builder("play-event-row")
+SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")

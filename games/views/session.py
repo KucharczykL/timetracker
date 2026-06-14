@@ -11,12 +11,11 @@ from django.utils import timezone
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components import (
-    Fragment,
     A,
     AddForm,
-    Button,
     ButtonGroup,
     Div,
+    Fragment,
     Icon,
     ModuleScript,
     NameWithIcon,
@@ -25,6 +24,8 @@ from common.components import (
     Safe,
     SearchField,
     SessionDeviceSelector,
+    SessionTimestampButtons,
+    StyledButton,
     paginated_table_content,
 )
 from common.components.primitives import Span, Td, Tr
@@ -76,13 +77,13 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                 Div(
                     children=[
                         A(
-                            url_name="games:add_session",
-                            children=Button(
+                            href=reverse("games:add_session"),
+                        )[
+                            StyledButton(
                                 icon=True,
                                 size="xs",
-                                children=[Icon("play"), "LOG"],
-                            ),
-                        ),
+                            )[Icon("play"), "LOG"]
+                        ],
                         A(
                             href=reverse(
                                 "games:list_sessions_start_session_from_session",
@@ -91,7 +92,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             children=Popover(
                                 popover_content=last_session.game.name,
                                 children=[
-                                    Button(
+                                    StyledButton(
                                         icon=True,
                                         color="gray",
                                         size="xs",
@@ -208,32 +209,20 @@ def _session_fields(form) -> Fragment:
             this_side = "start" if field.name == "timestamp_start" else "end"
             other_side = "end" if field.name == "timestamp_start" else "start"
             children.append(
-                Span(
-                    attributes=[
-                        (
-                            "class",
-                            "form-row-button-group flex-row gap-3 justify-start mt-3",
-                        ),
-                        ("hx-boost", "false"),
+                SessionTimestampButtons(
+                    class_="form-row-button-group flex-row gap-3 justify-start mt-3",
+                    hx_boost="false",
+                )[
+                    StyledButton(data_target=field.name, data_type="now", size="xs")[
+                        "Set to now"
                     ],
-                    children=[
-                        Button(
-                            [("data-target", field.name), ("data-type", "now")],
-                            "Set to now",
-                            size="xs",
-                        ),
-                        Button(
-                            [("data-target", field.name), ("data-type", "toggle")],
-                            "Toggle text",
-                            size="xs",
-                        ),
-                        Button(
-                            [("data-target", field.name), ("data-type", "copy")],
-                            f"Copy {this_side} value to {other_side}",
-                            size="xs",
-                        ),
+                    StyledButton(data_target=field.name, data_type="toggle", size="xs")[
+                        "Toggle text"
                     ],
-                )
+                    StyledButton(data_target=field.name, data_type="copy", size="xs")[
+                        f"Copy {this_side} value to {other_side}"
+                    ],
+                ]
             )
         rows.append(Div(children=children))
     return Fragment(*rows, separator="\n")
@@ -265,9 +254,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Add New Session",
-        scripts=mark_safe(
-            ModuleScript("search_select.js") + ModuleScript("add_session.js")
-        ),
+        scripts=mark_safe(ModuleScript("search_select.js")),
     )
 
 
@@ -282,9 +269,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Edit Session",
-        scripts=mark_safe(
-            ModuleScript("search_select.js") + ModuleScript("add_session.js")
-        ),
+        scripts=mark_safe(ModuleScript("search_select.js")),
     )
 
 

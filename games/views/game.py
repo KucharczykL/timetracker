@@ -11,16 +11,15 @@ from django.urls import reverse
 from django.utils.safestring import SafeText
 
 from common.components import (
-    Fragment,
     H1,
     A,
     AddForm,
-    Button,
     ButtonGroup,
     CsrfInput,
     Div,
     Element,
     FilterBar,
+    Fragment,
     GameStatus,
     GameStatusSelector,
     Icon,
@@ -35,6 +34,7 @@ from common.components import (
     Safe,
     SearchField,
     SimpleTable,
+    StyledButton,
     Ul,
     paginated_table_content,
 )
@@ -90,12 +90,11 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     data = {
         "header_action": Div(
-            children=[
-                SearchField(search_string=search_string),
-                A([], Button([], "Add game"), url_name="games:add_game"),
-            ],
-            attributes=[("class", "flex justify-between")],
-        ),
+            class_="flex justify-between",
+        )[
+            SearchField(search_string=search_string),
+            A(href=reverse("games:add_game"))[StyledButton()["Add game"]],
+        ],
         "columns": [
             "Name",
             "Sort Name",
@@ -172,7 +171,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            additional_row=Button(
+            additional_row=StyledButton(
                 [],
                 "Submit & Create Purchase",
                 color="gray",
@@ -248,14 +247,14 @@ def _delete_game_confirmation_modal(
             Div(
                 [("class", "items-center mt-5")],
                 [
-                    Button(
+                    StyledButton(
                         [("class", "w-full")],
                         "Delete",
                         color="red",
                         size="lg",
                         type="submit",
                     ),
-                    Button(
+                    StyledButton(
                         [("class", "mt-0 w-full")],
                         "Cancel",
                         color="gray",
@@ -353,26 +352,26 @@ _PLAYED_MENU = (
 
 def _played_row(game: Game, request: HttpRequest) -> Node:
     """'Played N times' control as a custom element (ts/elements/play-event-row.ts)."""
-    from common.components import Element, custom_element
-    from common.components.custom_elements import PlayEventRowProps
+    from common.components import Element
+    from common.components.custom_elements import _PlayEventRow
+    from common.components.primitives import Button
 
+    played: int = 0
     played = game.playevents.count()
 
     count_button = A(href=reverse("games:add_playevent"))[
-        Element(
-            "button",
-            [("type", "button"), ("class", _PLAYED_BTN + " rounded-s-lg")],
-            [Span(data_count="")[str(played)], " times"],
-        )
+        Button(class_=_PLAYED_BTN + " rounded-s-lg")[
+            Span(data_count="")[str(played)], " times"
+        ]
     ]
     menu = Div(data_menu="", hidden=True, class_=_PLAYED_MENU)[
         Ul()[
-            Li(attributes=[("class", "px-4 py-2")])[
+            Li(class_="px-4 py-2")[
                 A(href=reverse("games:add_playevent_for_game", args=[game.id]))[
                     "Add playthrough..."
                 ]
             ],
-            Li(attributes=[("class", "px-4 py-2 cursor-pointer")])[
+            Li(class_="px-4 py-2 cursor-pointer")[
                 Element(
                     "button",
                     [("type", "button"), ("data-add-play", "")],
@@ -397,19 +396,11 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     group = Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
         count_button, toggle_group
     ]
-    return custom_element(
-        "play-event-row",
-        PlayEventRowProps(
-            game_id=game.id,
-            csrf=get_token(request),
-            api_create_url=reverse("api-1.0.0:create_playevent"),
-        ),
-        children=[
-            Div(class_="flex gap-2 items-center")[
-                Span(class_="uppercase")["Played"], group
-            ]
-        ],
-    )
+    return _PlayEventRow(
+        game_id=game.id,
+        csrf=get_token(request),
+        api_create_url=reverse("api-1.0.0:create_playevent"),
+    )[Div(class_="flex gap-2 items-center")[Span(class_="uppercase")["Played"], group]]
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:
@@ -693,10 +684,9 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
 
     header_action = Div(
         children=[
-            A(
-                url_name="games:add_session",
-                children=Button(icon=True, size="xs", children=[Icon("play"), "LOG"]),
-            ),
+            A(href=reverse("games:add_session"))[
+                StyledButton(icon=True, color="blue", size="xs")[Icon("plus")]
+            ],
             A(
                 href=reverse(
                     "games:list_sessions_start_session_from_session",
@@ -705,7 +695,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
                 children=Popover(
                     popover_content=last_session.game.name,
                     children=[
-                        Button(
+                        StyledButton(
                             icon=True,
                             color="gray",
                             size="xs",

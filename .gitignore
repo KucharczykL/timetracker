@@ -14,6 +14,7 @@ dist/
 .direnv
 .hermes/
 
-# TypeScript: compiled output and codegen are build-only
+# Build artifacts: generated in CI/Docker assets stage, not committed
+/games/static/base.css
 /games/static/js/dist/
 /ts/generated/

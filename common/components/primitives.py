@@ -9,7 +9,6 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
-from django.urls import reverse
 from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
@@ -68,8 +67,21 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     return result
 
 
-def _html_element(tag_name: str):
-    """Build a generic element builder for ``tag_name`` (the whitelist factory)."""
+def custom_element_builder(tag_name: str):
+    """Create a tag builder for a custom element with auto-attached Media.
+
+    The module path follows the convention ``ts/elements/<tag>.ts`` →
+    ``dist/elements/<tag>.js``.
+    """
+    return _html_element(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
+
+
+def _html_element(tag_name: str, media: Media | None = None):
+    """Build a generic element builder for ``tag_name`` (the whitelist factory).
+
+    If ``media`` is provided, every node created by the builder will carry it
+    (used for custom elements whose compiled JS must be loaded automatically).
+    """
 
     def element(
         attributes: Attributes | None = None,
@@ -77,13 +89,16 @@ def _html_element(tag_name: str):
         **attrs: object,
     ) -> Element:
         merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
-        return Element(tag_name, merged, children)
+        node = Element(tag_name, merged, children)
+        return node.with_media(media) if media else node
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
     element.__doc__ = f"Builder for the <{tag_name}> element."
     return element
 
 
+A = _html_element("a")
+Button = _html_element("button")
 Div = _html_element("div")
 P = _html_element("p")
 Ul = _html_element("ul")
@@ -204,35 +219,7 @@ def PopoverTruncated(
             return input_string
 
 
-def A(
-    attributes: Attributes | None = None,
-    children: Children = None,
-    url_name: str | None = None,
-    href: str | None = None,
-) -> Element:
-    """
-    Returns an anchor <a> tag.
-
-    Accepts one of two mutually-exclusive URL specifications:
-        - url_name: URL pattern name, resolved via reverse()
-        - href: Literal path string passed through as-is
-    """
-    attributes = as_attributes(attributes)
-    children = children or []
-    if url_name is not None and href is not None:
-        raise ValueError("Provide exactly one of 'url_name' or 'href', not both.")
-
-    additional_attributes = []
-    if url_name is not None:
-        additional_attributes = [("href", reverse(url_name))]
-    elif href is not None:
-        additional_attributes = [("href", href)]
-    return Element(
-        "a", attributes=attributes + additional_attributes, children=children
-    )
-
-
-def Button(
+def StyledButton(
     attributes: Attributes | None = None,
     children: Children = None,
     size: str = "base",
@@ -245,8 +232,9 @@ def Button(
     title: str = "",
     onclick: str = "",
     name: str = "",
+    **attrs: object,
 ) -> Element:
-    attributes = as_attributes(attributes)
+    attributes = as_attributes(attributes) + _attrs_from_kwargs(attrs)
     children = children or []
 
     # Separate custom class from other generic attributes
@@ -668,7 +656,7 @@ def AddForm(
         children=[
             CsrfInput(request),
             field_markup,
-            Div(children=[Button(submit_attrs, "Submit", type="submit")]),
+            Div(children=[StyledButton(submit_attrs, "Submit", type="submit")]),
             Div(
                 [("class", "submit-button-container")],
                 [additional_row] if additional_row else [],

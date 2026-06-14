@@ -1,7 +1,7 @@
 import unittest
 from typing import TypedDict
 
-from common.components import custom_element, render
+from common.components import custom_element_builder, render
 from common.components.custom_elements import (
     ElementSpec,
     _ts_for_spec,
@@ -17,9 +17,8 @@ class SampleProps(TypedDict):
 
 class CustomElementBuilderTest(unittest.TestCase):
     def test_serializes_props_to_kebab_attributes(self):
-        html = render(
-            custom_element("x-sample", {"game_id": 3, "status": "f"}, children=["hi"])
-        )
+        x_sample = custom_element_builder("x-sample")
+        html = render(x_sample(game_id=3, status="f")["hi"])
         self.assertIn("<x-sample", html)
         self.assertIn('game-id="3"', html)
         self.assertIn('status="f"', html)
@@ -28,7 +27,8 @@ class CustomElementBuilderTest(unittest.TestCase):
     def test_declares_compiled_module_media(self):
         from common.components import collect_media
 
-        node = custom_element("x-sample", {"game_id": 3})
+        x_sample = custom_element_builder("x-sample")
+        node = x_sample(game_id=3)
         self.assertEqual(collect_media(node).js, ("dist/elements/x-sample.js",))
 
 
