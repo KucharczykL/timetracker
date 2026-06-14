@@ -25,7 +25,7 @@ jobs:
           node-version: "22"
 
       - name: Install pnpm and JS dependencies
-        run: npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts
+        run: corepack enable && pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build TypeScript
         run: make ts
