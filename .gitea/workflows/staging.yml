@@ -37,7 +37,7 @@ jobs:
             -e DATA_DIR=/home/timetracker/app/data \
             -e STAGING=true \
             -e "SECRET_KEY=${STAGING_SECRET_KEY}" \
-            -e "CSRF_TRUSTED_ORIGINS=https://${HOST}" \
+            -e "APP_URL=https://${HOST}" \
             -v "timetracker-staging-${SLUG}:/home/timetracker/app/data" \
             -l "caddy=${HOST}" \
             -l 'caddy.reverse_proxy={{ upstreams 8000 }}' \

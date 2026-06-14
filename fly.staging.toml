@@ -11,7 +11,7 @@ primary_region = "ams"
   dockerfile = "Dockerfile"
 
 [env]
-  PROD = "1"
+  DEBUG = "false"
   TZ = "Europe/Prague"
   DATA_DIR = "/home/timetracker/app/data"
   LOAD_SAMPLE_DATA = "true"
