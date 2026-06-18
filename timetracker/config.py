@@ -40,6 +40,7 @@ import os
 from configparser import ConfigParser
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -112,6 +113,22 @@ def _load_ini_file() -> dict[str, str]:
         else:
             _ini_file_cache = {}
     return _ini_file_cache
+
+
+def derive_hosts_and_origins(
+    app_url: str,
+) -> tuple[list[str], list[str]]:
+    """Derive ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS from an APP_URL value.
+
+    ``app_url`` may be a single full URL or a comma-separated list of full URLs.
+    Returns ``(allowed_hosts, csrf_trusted_origins)``.
+    """
+    parsed_urls = [urlparse(raw_url.strip()) for raw_url in app_url.split(",")]
+    allowed_hosts = [parsed_url.hostname for parsed_url in parsed_urls]
+    csrf_trusted_origins = [
+        f"{parsed_url.scheme}://{parsed_url.netloc}" for parsed_url in parsed_urls
+    ]
+    return allowed_hosts, csrf_trusted_origins
 
 
 def reset_caches() -> None:

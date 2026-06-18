@@ -13,9 +13,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 import os
 import warnings
 from pathlib import Path
-from urllib.parse import urlparse
-
-from timetracker.config import config
+from timetracker.config import config, derive_hosts_and_origins
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -56,14 +54,9 @@ SECRET_KEY = config(
 # all listed URLs. ALLOWED_HOSTS can still be overridden directly for edge
 # cases like ALLOWED_HOSTS=* behind a reverse proxy.
 APP_URL = config("APP_URL", default="http://localhost:8000")
-_parsed_app_urls = [urlparse(raw_url.strip()) for raw_url in APP_URL.split(",")]
+_derived_hosts, CSRF_TRUSTED_ORIGINS = derive_hosts_and_origins(APP_URL)
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or [
-    parsed_url.hostname for parsed_url in _parsed_app_urls
-]
-CSRF_TRUSTED_ORIGINS = [
-    f"{parsed_url.scheme}://{parsed_url.netloc}" for parsed_url in _parsed_app_urls
-]
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or _derived_hosts
 
 
 # Application definition

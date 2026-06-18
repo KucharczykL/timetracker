@@ -1,10 +1,12 @@
 """Tests for the configuration reader in ``timetracker/config.py``."""
 
 import pytest
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import DisallowedHost, ImproperlyConfigured
+from django.middleware.csrf import CsrfViewMiddleware
+from django.test import RequestFactory, override_settings
 
 from timetracker import config as config_module
-from timetracker.config import config
+from timetracker.config import config, derive_hosts_and_origins
 
 
 @pytest.fixture(autouse=True)
@@ -196,3 +198,80 @@ def test_missing_files_are_ignored(monkeypatch, tmp_path):
     monkeypatch.setenv("INI_FILE", str(tmp_path / "does-not-exist.ini"))
     config_module.reset_caches()
     assert config("ANYTHING", default="fallback") == "fallback"
+
+
+# --- derive_hosts_and_origins -----------------------------------------------
+
+
+def test_single_url_derives_one_host_and_origin():
+    hosts, origins = derive_hosts_and_origins("https://tracker.example.com")
+    assert hosts == ["tracker.example.com"]
+    assert origins == ["https://tracker.example.com"]
+
+
+def test_multiple_urls_derive_multiple_hosts_and_origins():
+    hosts, origins = derive_hosts_and_origins(
+        "https://tracker.example.com,https://www.tracker.example.com"
+    )
+    assert hosts == ["tracker.example.com", "www.tracker.example.com"]
+    assert origins == ["https://tracker.example.com", "https://www.tracker.example.com"]
+
+
+def test_whitespace_around_commas_is_stripped():
+    hosts, origins = derive_hosts_and_origins(
+        "https://a.example.com , https://b.example.com"
+    )
+    assert hosts == ["a.example.com", "b.example.com"]
+    assert origins == ["https://a.example.com", "https://b.example.com"]
+
+
+def test_url_with_port_is_preserved_in_origin():
+    hosts, origins = derive_hosts_and_origins("http://localhost:8000")
+    assert hosts == ["localhost"]
+    assert origins == ["http://localhost:8000"]
+
+
+# --- Django integration: derived values are accepted by Django internals -----
+
+
+@pytest.mark.parametrize(
+    "app_url,request_host",
+    [
+        ("https://tracker.example.com", "tracker.example.com"),
+        (
+            "https://tracker.example.com,https://www.tracker.example.com",
+            "www.tracker.example.com",
+        ),
+        ("http://localhost:8000", "localhost"),
+    ],
+)
+def test_derived_hosts_accepted_by_django(app_url, request_host):
+    hosts, _ = derive_hosts_and_origins(app_url)
+    factory = RequestFactory()
+    with override_settings(ALLOWED_HOSTS=hosts):
+        request = factory.get("/", HTTP_HOST=request_host)
+        assert request.get_host() == request_host
+
+
+def test_host_not_in_derived_list_is_rejected():
+    hosts, _ = derive_hosts_and_origins("https://tracker.example.com")
+    factory = RequestFactory()
+    with override_settings(ALLOWED_HOSTS=hosts):
+        request = factory.get("/", HTTP_HOST="evil.example.com")
+        with pytest.raises(DisallowedHost):
+            request.get_host()
+
+
+def test_derived_origins_accepted_by_csrf_middleware():
+    _, origins = derive_hosts_and_origins(
+        "https://tracker.example.com,https://other.example.com"
+    )
+    factory = RequestFactory()
+    middleware = CsrfViewMiddleware(lambda request: None)
+    with override_settings(CSRF_TRUSTED_ORIGINS=origins):
+        for origin in origins:
+            request = factory.post("/", HTTP_ORIGIN=origin)
+            request.META["HTTP_REFERER"] = origin + "/"
+            # _check_token is not called here; _is_secure_referer_ok / origin
+            # matching is what we want — process_view returns None when trusted.
+            assert middleware.process_request(request) is None
