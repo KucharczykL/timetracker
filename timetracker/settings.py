@@ -51,16 +51,18 @@ SECRET_KEY = config(
     required_in_prod=True,
 )
 
-# ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are configured independently (they
-# guard different things), but both default off a single user-facing APP_URL
-# when not set explicitly. Power users override either one directly — e.g.
-# ALLOWED_HOSTS=* behind a reverse proxy while CSRF stays locked to the domain.
+# APP_URL accepts one or more comma-separated full URLs (single URL is the
+# common case). Both ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are derived from
+# all listed URLs. ALLOWED_HOSTS can still be overridden directly for edge
+# cases like ALLOWED_HOSTS=* behind a reverse proxy.
 APP_URL = config("APP_URL", default="http://localhost:8000")
-_app_url = urlparse(APP_URL)
+_parsed_app_urls = [urlparse(raw_url.strip()) for raw_url in APP_URL.split(",")]
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or [_app_url.hostname]
-CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default=None, cast=list) or [
-    f"{_app_url.scheme}://{_app_url.netloc}"
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or [
+    parsed_url.hostname for parsed_url in _parsed_app_urls
+]
+CSRF_TRUSTED_ORIGINS = [
+    f"{parsed_url.scheme}://{parsed_url.netloc}" for parsed_url in _parsed_app_urls
 ]
 
 

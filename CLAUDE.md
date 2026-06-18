@@ -151,7 +151,7 @@ All configurable Django settings are read through `config()` in `timetracker/con
 - `config(name, *, default, cast, allow_file, required_in_prod)`: `cast` handles `bool`/`list`/`int`/`Path`/callable; `allow_file=True` honors `NAME__FILE` (contents `.strip()`-ed); `required_in_prod=True` hard-fails when missing and DEBUG is off.
 - `DEBUG` defaults `True` (dev), turned off with `DEBUG=false`. `PROD` is a **deprecated alias** kept for one release.
 - `SECRET_KEY` is required in production (insecure default only in DEBUG); supports `SECRET_KEY__FILE`.
-- `APP_URL` derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` when those aren't set explicitly; the two are never merged (different security checks) and each can be overridden directly.
+- `APP_URL` accepts one full URL or a comma-separated list of full URLs; `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are derived from all listed URLs. `ALLOWED_HOSTS` can still be overridden directly (e.g. `ALLOWED_HOSTS=*` behind a reverse proxy); `CSRF_TRUSTED_ORIGINS` is always derived from `APP_URL`.
 - `TIME_ZONE` reads `TZ` (defaults `Europe/Prague` in debug, `UTC` in prod).
 - Django Admin, Debug Toolbar, and `django_extensions` are only available in `DEBUG` mode.
 - **Container/entrypoint-only** flags (`PUID`, `PGID`, `CREATE_DEFAULT_SUPERUSER`, `STAGING`, `LOAD_SAMPLE_DATA`) live in `entrypoint.sh`, not the Python config — they are bootstrap concerns, not Django settings.

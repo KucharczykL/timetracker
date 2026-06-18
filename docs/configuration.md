@@ -31,9 +31,8 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 |---------|------|---------|:---------:|-------------|
 | `SECRET_KEY` | str | insecure dev key | yes | Django secret key. **Required in production** (DEBUG off) — a missing value is a hard error, not a silent insecure fallback. |
 | `DEBUG` | bool | `true` (dev) | no | Debug mode. Turn **off** in production. Defaults on for local development. |
-| `APP_URL` | str | `http://localhost:8000` | no | Public URL of the site. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` when those are not set explicitly. |
-| `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation. |
-| `CSRF_TRUSTED_ORIGINS` | list | derived from `APP_URL` | no | Comma-separated full origins (`https://host`). Overrides the `APP_URL` derivation. |
+| `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs. |
+| `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Time zone. |
 | `DATA_DIR` | path | project root | no | Directory holding the SQLite database. Also read by `entrypoint.sh`. |
 
@@ -42,21 +41,31 @@ whitespace-trimmed, empty items dropped), `int`, `Path`, or any callable.
 
 ## APP_URL, ALLOWED_HOSTS and CSRF
 
-`ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` guard different things — the `Host`
-header versus cross-origin requests — so they are **never merged**. For the
-common case you set only `APP_URL` and both are derived:
+`APP_URL` accepts one full URL or a comma-separated list of full URLs. Both
+`ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are derived from all listed URLs —
+no need to repeat the same information in separate variables.
+
+Single domain (common case):
 
 ```
 APP_URL=https://tracker.example.com
-# -> ALLOWED_HOSTS = ["tracker.example.com"]
+# -> ALLOWED_HOSTS     = ["tracker.example.com"]
 # -> CSRF_TRUSTED_ORIGINS = ["https://tracker.example.com"]
 ```
 
-Power users override either independently. A typical reverse-proxy setup:
+Multiple domains:
+
+```
+APP_URL=https://tracker.example.com,https://www.tracker.example.com
+# -> ALLOWED_HOSTS     = ["tracker.example.com", "www.tracker.example.com"]
+# -> CSRF_TRUSTED_ORIGINS = ["https://tracker.example.com", "https://www.tracker.example.com"]
+```
+
+`ALLOWED_HOSTS` can still be overridden directly for edge cases. A typical
+reverse-proxy setup where the proxy validates the host:
 
 ```
 ALLOWED_HOSTS=*
-CSRF_TRUSTED_ORIGINS=https://tracker.example.com
 ```
 
 ## Secrets and `__FILE`
