@@ -393,25 +393,3 @@ def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         game.status = Game.Status.FINISHED
         game.save()
     return redirect("games:list_purchases")
-
-
-def related_purchase_by_game(request: HttpRequest) -> HttpResponse:
-    games: list[str] = request.GET.getlist("games")
-    if games:
-        from games.forms import related_purchase_queryset
-
-        form = PurchaseForm()
-        qs = (
-            related_purchase_queryset()
-            .filter(games__in=games)
-            .order_by("games__sort_name")
-        )
-
-        form.fields["related_purchase"].queryset = qs
-        first_option = qs.first()
-        if first_option:
-            form.fields["related_purchase"].initial = first_option.id
-        return HttpResponse(str(form["related_purchase"]))
-    else:
-        # abort swap
-        return HttpResponse(status=204)

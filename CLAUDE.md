@@ -44,7 +44,7 @@ docs/           — Additional documentation
 
 - **Game** — `name`, `platform` (FK), `status` (u/p/f/r/a), `mastered`, `playtime` (DurationField updated via signal), `year_released`, `sort_name`, `wikidata`
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
-- **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), links to Game via M2M. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have a `related_purchase`
+- **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), links to Game via M2M. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have a `related_game` (the base Game the add-on belongs to; reverse accessor `game.addon_purchases`)
 - **Session** — `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`. `duration_calculated` and `duration_total` are `GeneratedField`s (cannot be written directly)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **PlayEvent** — marks when a game was started/finished (separate from Sessions), `days_to_finish` is a `GeneratedField`

@@ -1,6 +1,5 @@
 from django import forms
 from django.db import transaction
-from django.db.models import OuterRef, Subquery
 
 from common.components import (
     DEFAULT_PREFETCH,
@@ -228,31 +227,6 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         return session
 
 
-def related_purchase_queryset():
-    """GAME purchases annotated with their first game's name.
-
-    Rendering the ``related_purchase`` ``<select>`` calls ``str()`` on every
-    option, and ``Purchase.__str__`` falls back to ``first_game`` — one extra
-    query per option (700+ on a large library). Annotating the first game's
-    name via a subquery lets the choice field build labels without those
-    per-row queries.
-    """
-    first_game_name = Subquery(
-        Game.objects.filter(purchases=OuterRef("pk")).order_by("id").values("name")[:1]
-    )
-    return Purchase.objects.filter(type=Purchase.GAME).annotate(
-        _first_game_name=first_game_name
-    )
-
-
-class RelatedPurchaseChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, obj) -> str:
-        # Mirrors Purchase.standardized_name but reads the annotated first-game
-        # name instead of querying first_game per option.
-        name = obj.name or getattr(obj, "_first_game_name", None)
-        return name or obj.standardized_name
-
-
 class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -272,9 +246,12 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             search_url="/api/platforms/search", options_resolver=_platform_options
         ),
     )
-    related_purchase = RelatedPurchaseChoiceField(
-        queryset=related_purchase_queryset(),
+    related_game = forms.ModelChoiceField(
+        queryset=Game.objects.order_by("sort_name"),
         required=False,
+        widget=SearchSelectWidget(
+            search_url="/api/games/search", options_resolver=_game_options
+        ),
     )
 
     price_currency = forms.CharField(
@@ -305,14 +282,14 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             "price_currency",
             "ownership_type",
             "type",
-            "related_purchase",
+            "related_game",
             "name",
         ]
 
     def clean(self):
         cleaned_data = super().clean()
         purchase_type = cleaned_data.get("type")
-        related_purchase = cleaned_data.get("related_purchase")
+        related_game = cleaned_data.get("related_game")
         name = cleaned_data.get("name")
 
         # Set the type on the instance to use get_type_display()
@@ -321,10 +298,10 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
         if purchase_type != Purchase.GAME:
             type_display = self.instance.get_type_display()
-            if not related_purchase:
+            if not related_game:
                 self.add_error(
-                    "related_purchase",
-                    f"{type_display} must have a related purchase.",
+                    "related_game",
+                    f"{type_display} must have a related game.",
                 )
             if not name:
                 self.add_error("name", f"{type_display} must have a name.")

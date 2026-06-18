@@ -120,7 +120,7 @@ def test_widgets_initialize_inside_htmx_swapped_content(
 def test_add_purchase_type_toggles_disabled_fields(
     authenticated_page: Page, live_server
 ):
-    """add_purchase.js disables name/related-purchase while type is "game"
+    """add_purchase.js disables name/related-game while type is "game"
     and re-enables them for other types."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
@@ -133,3 +133,17 @@ def test_add_purchase_type_toggles_disabled_fields(
 
     page.select_option("#id_type", "game")
     expect(name_input).to_be_disabled()
+
+
+def test_add_purchase_related_game_is_flat_game_search(
+    authenticated_page: Page, live_server
+):
+    """The DLC/Season-Pass anchor is now a flat game search (related_game),
+    wired to the games search API and present regardless of which games are
+    selected — not the old parent-purchase dropdown filtered by chosen games."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+
+    related = page.locator('[data-search-select][data-name="related_game"]')
+    expect(related).to_have_count(1)
+    expect(related).to_have_attribute("data-search-url", "/api/games/search")

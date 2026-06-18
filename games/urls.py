@@ -105,11 +105,6 @@ urlpatterns = [
         purchase.refund_purchase,
         name="refund_purchase",
     ),
-    path(
-        "purchase/related-purchase-by-game",
-        purchase.related_purchase_by_game,
-        name="related_purchase_by_game",
-    ),
     path("session/add", session.add_session, name="add_session"),
     path(
         "session/add/for-game/<int:game_id>",

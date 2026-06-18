@@ -198,12 +198,13 @@ class Purchase(models.Model):
     )
     type = models.CharField(max_length=255, choices=TYPES, default=GAME)
     name = models.CharField(max_length=255, blank=True, default="")
-    related_purchase = models.ForeignKey(
-        "self",
+    related_game = models.ForeignKey(
+        Game,
         on_delete=models.SET_NULL,
         default=None,
         null=True,
-        related_name="related_purchases",
+        blank=True,
+        related_name="addon_purchases",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -252,9 +253,9 @@ class Purchase(models.Model):
         self.save()
 
     def save(self, *args, **kwargs):
-        if self.type != Purchase.GAME and not self.related_purchase:
+        if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
-                f"{self.get_type_display()} must have a related purchase."
+                f"{self.get_type_display()} must have a related game."
             )
         super().save(*args, **kwargs)
 
