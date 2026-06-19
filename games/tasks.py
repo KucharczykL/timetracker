@@ -2,8 +2,6 @@ import logging
 
 import requests
 from django.db import models
-from django.template.defaultfilters import floatformat
-
 from games.models import ExchangeRate, Purchase
 
 logger = logging.getLogger("games")
@@ -38,7 +36,7 @@ def _get_exchange_rate(currency_from, currency_to, year):
                     currency_from=currency_from,
                     currency_to=currency_to,
                     year=year,
-                    rate=floatformat(rate, 2),
+                    rate=rate,
                 )
                 rate = exchange_rate.rate
             else:
@@ -84,7 +82,7 @@ def convert_prices():
         if rate:
             _save_converted_price(
                 purchase,
-                floatformat(purchase.price * rate, 0),
+                round(purchase.price * rate, 2),
                 needs_update,
             )
 
