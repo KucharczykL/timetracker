@@ -82,7 +82,7 @@ def convert_prices():
         if rate:
             _save_converted_price(
                 purchase,
-                round(purchase.price * rate, 2),
+                round(purchase.price * rate, 0),
                 needs_update,
             )
 
