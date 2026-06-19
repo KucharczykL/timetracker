@@ -5,6 +5,7 @@ from django.http import (
     HttpResponse,
     HttpResponseRedirect,
 )
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
@@ -17,18 +18,22 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Checkbox,
     CsrfInput,
     Div,
     Element,
     Fragment,
     GameLink,
     Icon,
+    Input,
     LinkedPurchase,
     Modal,
     ModuleScript,
     Node,
     PriceConverted,
     PurchasePrice,
+    Safe,
+    SelectionFields,
     StyledButton,
     TableRow,
     paginated_table_content,
@@ -42,7 +47,7 @@ from games.models import Game, Purchase
 from games.views.general import use_custom_redirect
 
 
-def _render_purchase_buttons(purchase_id, is_refunded):
+def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
     """Return button group HTML for a purchase row."""
     return ButtonGroup(
         [
@@ -57,6 +62,19 @@ def _render_purchase_buttons(purchase_id, is_refunded):
                 "title": "Mark as refunded",
             }
             if not is_refunded
+            else {},
+            {
+                "href": "#",
+                "hx_get": reverse(
+                    "games:split_purchase_confirmation",
+                    args=[purchase_id],
+                ),
+                "hx_target": "#global-modal-container",
+                "slot": Icon("split"),
+                "title": "Split into per-game purchases",
+                "color": "gray",
+            }
+            if can_split
             else {},
             {
                 "href": reverse("games:edit_purchase", args=[purchase_id]),
@@ -90,7 +108,11 @@ def _render_purchase_row(purchase):
                 else "-"
             ),
             purchase.created_at.strftime(dateformat),
-            _render_purchase_buttons(purchase.id, bool(purchase.date_refunded)),
+            _render_purchase_buttons(
+                purchase.id,
+                bool(purchase.date_refunded),
+                can_split=purchase.num_purchases > 1,
+            ),
         ],
     }
 
@@ -166,6 +188,76 @@ def _purchase_additional_row() -> SafeText:
     )
 
 
+def _pricing_controls() -> Node:
+    """Pricing UI for the add-purchase form.
+
+    By default the form's own single Price field is the bundle price. When 2+
+    games are selected and "Separate price per game" is checked, the per-game
+    inputs (the general ``selection-fields`` element) take over and the bundle
+    Price is hidden. Toggle/visibility wiring lives in add_purchase.js; the
+    hidden ``pricing_mode`` tells the view which path to take.
+    """
+    return Div(attributes=[("id", "pricing-controls")])[
+        Div(attributes=[("id", "separate-prices-row"), ("class", "hidden")])[
+            Checkbox(
+                name="separate_prices",
+                label="Separate price per game",
+                attributes=[("id", "id_separate_prices")],
+            ),
+        ],
+        Input(
+            type="hidden",
+            attributes=[
+                ("name", "pricing_mode"),
+                ("id", "id_pricing_mode"),
+                ("value", "combined"),
+            ],
+        ),
+        SelectionFields(
+            source="games",
+            name_prefix="price_for_game_",
+            field_type="number",
+            min_items=2,
+            active=False,
+            input_attributes=[
+                ("step", "0.01"),
+                ("min", "0"),
+                ("inputmode", "decimal"),
+                ("placeholder", "Price"),
+            ],
+        ),
+    ]
+
+
+@transaction.atomic
+def _create_separate_purchases(form: PurchaseForm, post) -> None:
+    """Create one single-game Purchase per selected game from the shared form
+    fields, each priced from its own ``price_for_game_<id>`` input. The
+    ``m2m_changed`` signal sets ``num_purchases``/``price_per_game`` once each
+    game is attached."""
+    data = form.cleaned_data
+    shared = {
+        "platform": data.get("platform"),
+        "date_purchased": data["date_purchased"],
+        "date_refunded": data.get("date_refunded"),
+        "infinite": data.get("infinite", False),
+        "price_currency": data["price_currency"],
+        "ownership_type": data["ownership_type"],
+        "type": data["type"],
+        "related_game": data.get("related_game"),
+        "name": data.get("name") or "",
+    }
+    for game in data["games"]:
+        raw_price = post.get(f"price_for_game_{game.id}", "")
+        try:
+            price = float(raw_price) if raw_price not in (None, "") else 0.0
+        except ValueError:
+            price = 0.0
+        purchase = Purchase(price=price, **shared)
+        purchase.save()
+        purchase.games.set([game])
+
+
 @login_required
 def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     initial = {"date_purchased": timezone.now()}
@@ -173,6 +265,9 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     if request.method == "POST":
         form = PurchaseForm(request.POST or None, initial=initial)
         if form.is_valid():
+            if request.POST.get("pricing_mode") == "per_game":
+                _create_separate_purchases(form, request.POST)
+                return redirect("games:list_purchases")
             purchase = form.save()
             if "submit_and_redirect" in request.POST:
                 return HttpResponseRedirect(
@@ -198,7 +293,12 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
     return render_page(
         request,
-        AddForm(form, request=request, additional_row=_purchase_additional_row()),
+        AddForm(
+            form,
+            request=request,
+            fields=Fragment(Safe(form.as_div()), _pricing_controls()),
+            additional_row=_purchase_additional_row(),
+        ),
         title="Add New Purchase",
         scripts=mark_safe(
             ModuleScript("search_select.js") + ModuleScript("add_purchase.js")
@@ -384,6 +484,108 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
     )
     return HttpResponse(row_html + modal_close, status=200)
+
+
+def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
+    count = purchase.num_purchases
+    form = Element(
+        "form",
+        attributes=[("hx-post", reverse("games:split_purchase", args=[purchase.id]))],
+        children=[
+            CsrfInput(request),
+            P(
+                attributes=[("class", "dark:text-white text-center mt-3 text-sm")],
+                children=[
+                    f"Creates {count} separate purchases, one per game, with the "
+                    "price split evenly. Each can then be priced and refunded "
+                    "independently."
+                ],
+            ),
+            Div(
+                [("class", "items-center mt-5")],
+                [
+                    StyledButton(
+                        [("class", "w-full")],
+                        "Split",
+                        color="blue",
+                        size="lg",
+                        type="submit",
+                    ),
+                    StyledButton(
+                        [("class", "mt-0 w-full")],
+                        "Cancel",
+                        color="gray",
+                        size="base",
+                        onclick="this.closest('#split-confirmation-modal').remove()",
+                    ),
+                ],
+            ),
+        ],
+    )
+    return Modal(
+        "split-confirmation-modal",
+        children=[
+            Element(
+                "h1",
+                attributes=[
+                    (
+                        "class",
+                        "text-2xl leading-6 font-medium dark:text-white text-center",
+                    )
+                ],
+                children=["Split purchase"],
+            ),
+            P(
+                attributes=[("class", "dark:text-white text-center mt-5")],
+                children=[
+                    f"Split “{purchase.standardized_name}” into per-game purchases?"
+                ],
+            ),
+            form,
+        ],
+    )
+
+
+@login_required
+def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    return HttpResponse(_split_confirmation_modal(purchase, request))
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
+    """Replace one multi-game (unsplittable-style) purchase with one single-game
+    purchase per game, splitting the price evenly as a starting point. Each new
+    purchase is then independently priceable and refundable."""
+    purchase = get_object_or_404(Purchase, id=purchase_id)
+    games = list(purchase.games.all())
+    count = len(games)
+    if count > 1:
+        share = purchase.price / count
+        for game in games:
+            new_purchase = Purchase(
+                price=share,
+                price_currency=purchase.price_currency,
+                date_purchased=purchase.date_purchased,
+                date_refunded=purchase.date_refunded,
+                infinite=purchase.infinite,
+                ownership_type=purchase.ownership_type,
+                type=purchase.type,
+                related_game=purchase.related_game,
+                name=purchase.name,
+                platform=purchase.platform,
+                needs_price_update=True,
+            )
+            new_purchase.save()
+            new_purchase.games.set([game])
+        purchase.delete()
+        messages.success(request, f"Split into {count} purchases")
+
+    response = HttpResponse(status=204)
+    response["HX-Redirect"] = reverse("games:list_purchases")
+    return response
 
 
 @login_required

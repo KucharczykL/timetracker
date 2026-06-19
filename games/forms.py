@@ -231,6 +231,9 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["platform"].queryset = Platform.objects.order_by("name")
+        # The bundle Price is optional: in price-per-game mode it is hidden and
+        # the per-game inputs carry the prices instead. Empty falls back to 0.
+        self.fields["price"].required = False
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -305,6 +308,11 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
                 )
             if not name:
                 self.add_error("name", f"{type_display} must have a name.")
+
+        # An empty bundle Price (price-per-game mode) saves as 0, not NULL.
+        if cleaned_data.get("price") is None:
+            cleaned_data["price"] = 0
+
         return cleaned_data
 
 

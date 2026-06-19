@@ -11,8 +11,14 @@ reader so drift fails ``tsc``.
 from dataclasses import dataclass
 from typing import TypedDict, get_type_hints
 
-from common.components.core import Media
-from common.components.primitives import custom_element_builder
+from common.components.core import Node
+from common.components.primitives import (
+    Div,
+    Input,
+    Label,
+    Template,
+    custom_element_builder,
+)
 
 
 @dataclass(frozen=True)
@@ -125,3 +131,51 @@ _GameStatusSelector = custom_element_builder("game-status-selector")
 _SessionDeviceSelector = custom_element_builder("session-device-selector")
 _PlayEventRow = custom_element_builder("play-event-row")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
+
+
+class SelectionFieldsProps(TypedDict):
+    source: str  # data-name of the source SearchSelect to mirror
+    name_prefix: str  # each rendered input is named f"{name_prefix}{item_id}"
+    field_type: str  # input type, e.g. "number"
+    min_items: int  # render nothing until at least this many items are selected
+    active: bool  # when false, render nothing (but preserve typed values)
+
+
+register_element("selection-fields", "SelectionFields", SelectionFieldsProps)
+
+_SelectionFields = custom_element_builder("selection-fields")
+
+
+def SelectionFields(
+    *,
+    source: str,
+    name_prefix: str,
+    field_type: str = "text",
+    min_items: int = 1,
+    active: bool = False,
+    input_attributes: list[tuple[str, str]] | None = None,
+) -> Node:
+    """Render one synced form field per selected item of a source SearchSelect.
+
+    General-purpose: it mirrors the SearchSelect named ``source`` and emits an
+    input named ``f"{name_prefix}{item_id}"`` per selected item. Behavior lives
+    in ``ts/elements/selection-fields.ts``; this is just the server-rendered
+    light DOM (an empty rows container + a row ``<template>``). Inputs inherit
+    the global ``#add-form`` styling, so the markup stays minimal.
+    """
+    row_template = Template(attributes=[("data-selection-fields-row", "")])[
+        Div(attributes=[("data-selection-fields-row-item", "")])[
+            Label(attributes=[("data-selection-fields-label", "")]),
+            Input(type=field_type, attributes=list(input_attributes or [])),
+        ]
+    ]
+    return _SelectionFields(
+        source=source,
+        name_prefix=name_prefix,
+        field_type=field_type,
+        min_items=min_items,
+        active="true" if active else "false",
+    )[
+        Div(attributes=[("data-selection-fields-rows", "")]),
+        row_template,
+    ]

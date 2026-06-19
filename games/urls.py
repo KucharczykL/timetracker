@@ -105,6 +105,16 @@ urlpatterns = [
         purchase.refund_purchase,
         name="refund_purchase",
     ),
+    path(
+        "purchase/<int:purchase_id>/split/confirm",
+        purchase.split_purchase_confirmation,
+        name="split_purchase_confirmation",
+    ),
+    path(
+        "purchase/<int:purchase_id>/split",
+        purchase.split_purchase,
+        name="split_purchase",
+    ),
     path("session/add", session.add_session, name="add_session"),
     path(
         "session/add/for-game/<int:game_id>",
