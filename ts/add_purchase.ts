@@ -53,7 +53,12 @@ onSwap("#id_separate_prices", (checkbox) => {
 });
 
 function setupElementHandlers(): void {
-  disableElementsWhenTrue("#id_type", "game", ["#id_name", "#id_related_game"]);
+  // related_game is a SearchSelect: its #id_related_game wrapper is a <div>
+  // (ignores `disabled`), so target the inner search <input> instead.
+  disableElementsWhenTrue("#id_type", "game", [
+    "#id_name",
+    "#id_related_game [data-search-select-search]",
+  ]);
 }
 
 onSwap("#id_type", (typeSelect) => {

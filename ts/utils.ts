@@ -52,11 +52,12 @@ function syncSelectInputUntilChanged(syncData: Array<{ source: string; target: s
     console.error(`The parent selector "${parentSelector}" is not valid.`);
     return;
   }
-  // Set up a single change event listener on the document for handling all source changes
-  parentElement.addEventListener("change", function (event) {
+  // One delegated "input" listener handles every source. "input" (not "change")
+  // makes the mirror live as the user types, instead of only on blur.
+  parentElement.addEventListener("input", function (event) {
     // Loop through each sync configuration item
     syncData.forEach((syncItem: { source: string; target: string; source_value: string; target_value: string }) => {
-      // Check if the change event target matches the source selector
+      // Check if the event target matches the source selector
       if ((event.target as HTMLElement).matches(syncItem.source)) {
         if (!event.target) return;
         const sourceElement = event.target;

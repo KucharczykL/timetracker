@@ -147,3 +147,28 @@ def test_add_purchase_related_game_is_flat_game_search(
     related = page.locator('[data-search-select][data-name="related_game"]')
     expect(related).to_have_count(1)
     expect(related).to_have_attribute("data-search-url", "/api/games/search")
+
+
+def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):
+    """Typing into Name live-fills Sort name (sync bound to the add form, not
+    the navbar logout form which is the first <form> on the page)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    page.locator("#id_name").click()
+    page.locator("#id_name").type("Halo")
+    expect(page.locator("#id_sort_name")).to_have_value("Halo")
+
+
+def test_add_purchase_type_game_disables_related_game_search(
+    authenticated_page: Page, live_server
+):
+    """When Type is 'game', the related-game SearchSelect is disabled — the
+    real disable target is the inner search input, not the wrapper <div>
+    (a <div> ignores the disabled property)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    search = page.locator('#id_related_game [data-search-select-search]')
+    page.select_option("#id_type", "game")
+    expect(search).to_be_disabled()
+    page.select_option("#id_type", "dlc")
+    expect(search).to_be_enabled()
