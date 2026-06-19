@@ -63,7 +63,7 @@ class RenderedPagesTest(TestCase):
         """The games list view passes no scripts= argument; the filter bar's
         components declare their JS and Page() collects it."""
         html = self.get("games:list_games").content.decode()
-        self.assertIn("js/filter_bar.js", html)
+        self.assertIn("js/dist/filter_bar.js", html)
         self.assertIn("js/dist/search_select.js", html)
         self.assertIn("js/range_slider.js", html)
 

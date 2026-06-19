@@ -169,7 +169,7 @@ class RealComponentMediaTest(unittest.TestCase):
         from common.components import FilterBar
 
         media = collect_media(FilterBar())
-        self.assertIn("filter_bar.js", media.js)
+        self.assertIn("dist/filter_bar.js", media.js)
         self.assertIn("dist/search_select.js", media.js)
         self.assertIn("range_slider.js", media.js)
 

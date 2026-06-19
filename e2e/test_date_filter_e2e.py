@@ -32,7 +32,7 @@ def _bar_page(filter_json: str = "") -> str:
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/range_slider.js" type="module"></script>
     <script src="/static/js/dist/search_select.js" type="module"></script>
-    <script src="/static/js/filter_bar.js" type="module"></script>
+    <script src="/static/js/dist/filter_bar.js" type="module"></script>
 </head>
 <body>
     {PurchaseFilterBar(filter_json=filter_json, preset_list_url="/p/l", preset_save_url="/p/s")}
