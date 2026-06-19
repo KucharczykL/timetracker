@@ -133,14 +133,14 @@ class RealComponentMediaTest(unittest.TestCase):
         from common.components import SearchSelect
 
         self.assertEqual(
-            collect_media(SearchSelect(name="games")).js, ("search_select.js",)
+            collect_media(SearchSelect(name="games")).js, ("dist/search_select.js",)
         )
 
     def test_filter_select_declares_its_script(self):
         from common.components import FilterSelect
 
         self.assertIn(
-            "search_select.js", collect_media(FilterSelect(field_name="type")).js
+            "dist/search_select.js", collect_media(FilterSelect(field_name="type")).js
         )
 
     def test_date_range_picker_declares_its_script(self):
@@ -170,7 +170,7 @@ class RealComponentMediaTest(unittest.TestCase):
 
         media = collect_media(FilterBar())
         self.assertIn("filter_bar.js", media.js)
-        self.assertIn("search_select.js", media.js)
+        self.assertIn("dist/search_select.js", media.js)
         self.assertIn("range_slider.js", media.js)
 
 

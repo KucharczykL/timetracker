@@ -64,7 +64,7 @@ class RenderedPagesTest(TestCase):
         components declare their JS and Page() collects it."""
         html = self.get("games:list_games").content.decode()
         self.assertIn("js/filter_bar.js", html)
-        self.assertIn("js/search_select.js", html)
+        self.assertIn("js/dist/search_select.js", html)
         self.assertIn("js/range_slider.js", html)
 
     def test_stats_page_auto_loads_datepicker(self):

@@ -6,7 +6,8 @@ hidden ``<input>`` so an existing ``ModelMultipleChoiceField`` keeps validating.
 
 This module imports only from ``common.components`` — it has no Django-forms or
 ``games`` knowledge. Styling is inline Tailwind utilities; behavioural hooks are
-``data-*`` attributes wired up by ``games/static/js/search_select.js``.
+``data-*`` attributes wired up by ``ts/search_select.ts`` (compiled to
+``games/static/js/dist/search_select.js``).
 
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
@@ -25,8 +26,8 @@ from typing import TypedDict
 from common.components.core import Attributes, Element, HTMLAttribute, Media, Node
 from common.components.primitives import Div, Input, Pill, Span, Template
 
-# Both comboboxes are wired by search_select.js.
-_SEARCH_SELECT_MEDIA = Media(js=("search_select.js",))
+# Both comboboxes are wired by ts/search_select.ts (compiled to dist/).
+_SEARCH_SELECT_MEDIA = Media(js=("dist/search_select.js",))
 
 
 class SearchSelectOption(TypedDict):
@@ -81,7 +82,7 @@ DEFAULT_PREFETCH = 20
 # Inline class strings (ported verbatim from the retired SelectableFilter CSS)
 # so the filter combobox is fully self-styled — nothing in input.css. JS-added
 # rows/pills are cloned from server-rendered <template>s, so these strings live
-# only here — never duplicated in search_select.js. The keyboard-highlighted
+# only here — never duplicated in ts/search_select.ts. The keyboard-highlighted
 # state is expressed via Tailwind `data-[search-select-highlighted]` and
 # `group-data-[search-select-highlighted]` variants on the row/label/button
 # classes below; the JS only toggles the data attribute on the row.

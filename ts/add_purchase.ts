@@ -1,16 +1,5 @@
 import { disableElementsWhenTrue, onSwap } from "./utils.js";
-
-interface SearchSelectOption {
-  value: string;
-  label: string;
-  data: Record<string, string>;
-}
-
-interface SearchSelectChangeDetail {
-  name: string;
-  values: string[];
-  last: SearchSelectOption | null;
-}
+import type { SearchSelectChangeDetail } from "./search_select.js";
 
 // Switch between a single bundle price and one price per game. The per-game
 // inputs are the selection-fields element; this only sets the policy: the

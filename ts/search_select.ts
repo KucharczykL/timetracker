@@ -23,6 +23,35 @@
  */
 import { onSwap } from "./utils.js";
 
+// The contract for the "search-select:change" CustomEvent this widget emits.
+// Consumers (e.g. add_purchase.ts) import these types — never redefine them.
+export interface SearchSelectOption {
+  value: string;
+  label: string;
+  data: Record<string, string>;
+}
+
+export interface SearchSelectChangeDetail {
+  name: string;
+  values: string[];
+  last: SearchSelectOption | null;
+}
+
+// The widget stashes per-instance state directly on its DOM elements.
+interface SearchSelectContainer extends HTMLElement {
+  _searchSelectLabel?: string;
+  _searchSelectDirty?: boolean;
+}
+
+interface OptionRow extends HTMLElement {
+  _searchSelectOption?: SearchSelectOption;
+}
+
+interface FilterPillEntry {
+  id: string;
+  label: string;
+}
+
 (() => {
   "use strict";
 
@@ -34,28 +63,29 @@ import { onSwap } from "./utils.js";
   // INCLUDES_ONLY) coexist with value pills.
   const PRESENCE_MODIFIERS = ["NOT_NULL", "IS_NULL"];
 
-  const initWidget = (container) => {
-    const search = container.querySelector("[data-search-select-search]");
-    const options = container.querySelector("[data-search-select-options]");
-    const pills = container.querySelector("[data-search-select-pills]");
+  const initWidget = (containerElement: Element) => {
+    const container = containerElement as SearchSelectContainer;
+    const search = container.querySelector<HTMLInputElement>("[data-search-select-search]");
+    const options = container.querySelector<HTMLElement>("[data-search-select-options]");
+    const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
     if (!search || !options || !pills) return;
 
-    const name = container.getAttribute("data-name");
+    const name = container.getAttribute("data-name") ?? "";
     const searchUrl = container.getAttribute("data-search-url");
     const isFilter = container.getAttribute("data-search-select-mode") === "filter";
     const freeText = container.getAttribute("data-search-select-free-text") === "true";
     const multi = container.getAttribute("data-multi") === "true";
     const alwaysVisible = container.getAttribute("data-always-visible") === "true";
-    const prefetch = parseInt(container.getAttribute("data-prefetch"), 10) || 0;
+    const prefetch = parseInt(container.getAttribute("data-prefetch") ?? "", 10) || 0;
     const syncUrl = container.getAttribute("data-sync-url") === "true";
 
-    const noResults = options.querySelector("[data-search-select-no-results]");
-    let debounceTimer = null;
-    let pendingRequest = null; // in-flight AbortController, so newer queries win
+    const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
     let hasPrefetched = false;
 
     const hasVisibleContent = () => {
-      const optionRows = options.querySelectorAll("[data-search-select-option]");
+      const optionRows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
       for (let i = 0; i < optionRows.length; i++) {
         if (optionRows[i].style.display !== "none") return true;
       }
@@ -73,16 +103,16 @@ import { onSwap } from "./utils.js";
       if (!alwaysVisible) options.classList.add("hidden");
     };
 
-    const setNoResults = (visible) => {
+    const setNoResults = (visible: boolean) => {
       if (!noResults) return;
       noResults.classList.toggle("hidden", !visible);
       if (visible) showPanel();
     };
 
     // ── Highlight tracking (filter mode) ──
-    let highlightedRow = null;
+    let highlightedRow: HTMLElement | null = null;
 
-    const highlightOption = (row) => {
+    const highlightOption = (row: HTMLElement | null) => {
       clearHighlight();
       if (!row) return;
       row.setAttribute("data-search-select-highlighted", "");
@@ -97,12 +127,12 @@ import { onSwap } from "./utils.js";
       }
     };
 
-    const getVisibleOptions = () => {
-      const all = options.querySelectorAll("[data-search-select-option]");
+    const getVisibleOptions = (): HTMLElement[] => {
+      const all = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
       return Array.from(all).filter(row => row.style.display !== "none");
     };
 
-    const autoHighlight = (query) => {
+    const autoHighlight = (query: string) => {
       const visible = getVisibleOptions();
       if (visible.length === 0) {
         clearHighlight();
@@ -130,38 +160,38 @@ import { onSwap } from "./utils.js";
     };
 
     // Get active values in both form and filter modes
-    const getSelectedValues = () => {
-      const vals = new Set();
-      pills.querySelectorAll('input[type="hidden"]').forEach(input => {
-        vals.add(input.value);
+    const getSelectedValues = (): Set<string> => {
+      const values = new Set<string>();
+      pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach(input => {
+        values.add(input.value);
       });
-      pills.querySelectorAll("[data-pill]").forEach(pill => {
-        const val = pill.getAttribute("data-value");
-        if (val) vals.add(val);
+      pills.querySelectorAll<HTMLElement>("[data-pill]").forEach(pill => {
+        const value = pill.getAttribute("data-value");
+        if (value) values.add(value);
       });
-      return vals;
+      return values;
     };
 
     // ── Render server-fetched rows into the panel ──
-    const renderRows = (items) => {
-      const selectedVals = getSelectedValues();
-      const preservedOptions = [];
+    const renderRows = (items: SearchSelectOption[]) => {
+      const selectedValues = getSelectedValues();
+      const preservedOptions: SearchSelectOption[] = [];
 
       // Extract existing option data for currently selected values before removing
-      options.querySelectorAll("[data-search-select-option]").forEach(row => {
-        const val = row.getAttribute("data-value");
-        if (selectedVals.has(val)) {
+      options.querySelectorAll<HTMLElement>("[data-search-select-option]").forEach(row => {
+        const value = row.getAttribute("data-value");
+        if (value && selectedValues.has(value)) {
           preservedOptions.push(optionFromRow(row));
         }
         row.remove();
       });
 
-      const renderedValues = new Set();
+      const renderedValues = new Set<string>();
 
       // Render preserved options first (to keep them at the top)
-      preservedOptions.forEach(opt => {
-        options.insertBefore(buildRow(opt), noResults || null);
-        renderedValues.add(String(opt.value));
+      preservedOptions.forEach(option => {
+        options.insertBefore(buildRow(option), noResults || null);
+        renderedValues.add(String(option.value));
       });
 
       // Render newly fetched items (excluding already rendered preserved ones)
@@ -178,19 +208,20 @@ import { onSwap } from "./utils.js";
 
     // ── Clone a server-rendered <template> prototype by name. The server emits
     //    the mode-appropriate prototypes, so the JS never names a class. ──
-    const cloneTemplate = (name) => {
-      const template = container.querySelector(`template[data-search-select-template="${name}"]`);
-      return template
-        ? template.content.firstElementChild.cloneNode(true)
-        : null;
+    const cloneTemplate = (templateName: string): HTMLElement | null => {
+      const template = container.querySelector<HTMLTemplateElement>(
+        `template[data-search-select-template="${templateName}"]`
+      );
+      const clone = template?.content.firstElementChild?.cloneNode(true);
+      return (clone as HTMLElement) ?? null;
     };
 
-    const setLabel = (node, label) => {
+    const setLabel = (node: Element, label: string) => {
       const slot = node.querySelector("[data-search-select-label]");
       if (slot) slot.textContent = label;
     };
 
-    const applyData = (node, data = {}) => {
+    const applyData = (node: Element, data: Record<string, string> = {}) => {
       Object.keys(data).forEach(key => {
         node.setAttribute(`data-${key}`, data[key]);
       });
@@ -198,8 +229,8 @@ import { onSwap } from "./utils.js";
 
     // Build an option row by cloning the "row" template (the same prototype the
     // server renders, so fetched and pre-rendered rows are identical).
-    const buildRow = (option) => {
-      const row = cloneTemplate("row");
+    const buildRow = (option: SearchSelectOption): HTMLElement | Comment => {
+      const row = cloneTemplate("row") as OptionRow | null;
       if (!row) return document.createComment("ss-row");
       row.setAttribute("data-value", option.value);
       row.setAttribute("data-label", option.label);
@@ -211,10 +242,10 @@ import { onSwap } from "./utils.js";
 
     // ── Client-side filter of the currently loaded rows. Returns the number of
     //    visible rows so the caller decides whether to show the no-results node. ──
-    const filterRows = (query) => {
+    const filterRows = (query: string): number => {
       const lower = query.toLowerCase();
       let visibleCount = 0;
-      options.querySelectorAll("[data-search-select-option]").forEach(item => {
+      options.querySelectorAll<HTMLElement>("[data-search-select-option]").forEach(item => {
         const label = (item.getAttribute("data-label") || "").toLowerCase();
         const match = label.includes(lower);
         item.style.display = match ? "" : "none";
@@ -225,14 +256,14 @@ import { onSwap } from "./utils.js";
 
     // ── Fetch matching rows from the server. The previous in-flight request is
     //    aborted so a slower earlier response can never overwrite a newer one. ──
-    const fetchFromServer = (query) => {
+    const fetchFromServer = (query: string) => {
       if (pendingRequest) pendingRequest.abort();
       pendingRequest = new AbortController();
       let url = `${searchUrl}?q=${encodeURIComponent(query)}`;
       if (prefetch && !query) url += `&limit=${prefetch}`;
       fetch(url, { credentials: "same-origin", signal: pendingRequest.signal })
         .then(response => response.json())
-        .then(items => {
+        .then((items: SearchSelectOption[]) => {
           pendingRequest = null;
           renderRows(items);
           // Re-apply the live query: the box may hold more text than was sent.
@@ -249,7 +280,7 @@ import { onSwap } from "./utils.js";
     // In free-text mode the typed text is the value itself: there is no
     // backing list, so we rebuild a single ephemeral option row reflecting the
     // current query so the +/− buttons (or Enter) can commit it as a pill.
-    const rebuildFreeTextRow = (query) => {
+    const rebuildFreeTextRow = (query: string) => {
       options.querySelectorAll("[data-search-select-option]").forEach(row => row.remove());
       if (!query) {
         setNoResults(false);
@@ -259,7 +290,7 @@ import { onSwap } from "./utils.js";
       const row = buildRow({ value: query, label: query, data: {} });
       options.insertBefore(row, noResults || null);
       setNoResults(false);
-      highlightOption(row);
+      highlightOption(row as HTMLElement);
     };
 
     // Called on every keystroke. With a search_url, filter the loaded window
@@ -277,7 +308,7 @@ import { onSwap } from "./utils.js";
       if (searchUrl) {
         filterRows(query);
         setNoResults(false);
-        clearTimeout(debounceTimer);
+        if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           fetchFromServer(query);
         }, DEBOUNCE_MS);
@@ -371,13 +402,13 @@ import { onSwap } from "./utils.js";
       if (key === "ArrowDown") {
         event.preventDefault();
         showPanel();
-        const downIdx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
-        highlightOption(visible[(downIdx + 1) % visible.length]);
+        const downIndex = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+        highlightOption(visible[(downIndex + 1) % visible.length]);
       } else if (key === "ArrowUp") {
         event.preventDefault();
         showPanel();
-        const upIdx = highlightedRow ? visible.indexOf(highlightedRow) : -1;
-        highlightOption(visible[(upIdx - 1 + visible.length) % visible.length]);
+        const upIndex = highlightedRow ? visible.indexOf(highlightedRow) : -1;
+        highlightOption(visible[(upIndex - 1 + visible.length) % visible.length]);
       } else if (key === "Enter") {
         if (highlightedRow) {
           event.preventDefault();
@@ -408,31 +439,32 @@ import { onSwap } from "./utils.js";
         handleFilterOptionClick(event);
         return;
       }
-      const row = event.target.closest("[data-search-select-option]");
+      const row = (event.target as Element).closest<HTMLElement>("[data-search-select-option]");
       if (!row) return;
       selectOption(optionFromRow(row));
     });
 
-    const handleFilterOptionClick = (event) => {
+    const handleFilterOptionClick = (event: MouseEvent) => {
+      const target = event.target as Element;
       // Pinned modifier pseudo-option → set the (mutually exclusive) modifier.
-      const modifierRow = event.target.closest("[data-search-select-modifier-option]");
+      const modifierRow = target.closest<HTMLElement>("[data-search-select-modifier-option]");
       if (modifierRow) {
         setModifier(
-          modifierRow.getAttribute("data-search-select-modifier-option"),
-          modifierRow.getAttribute("data-label")
+          modifierRow.getAttribute("data-search-select-modifier-option") ?? "",
+          modifierRow.getAttribute("data-label") ?? ""
         );
         return;
       }
       // Include / exclude button on a value row.
-      const button = event.target.closest("[data-search-select-action]");
+      const button = target.closest<HTMLElement>("[data-search-select-action]");
       if (button) {
-        const row = button.closest("[data-search-select-option]");
+        const row = button.closest<HTMLElement>("[data-search-select-option]");
         if (!row) return;
-        addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action"));
+        addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action") ?? "include");
         return;
       }
       // Click on the option row itself → include.
-      const optionRow = event.target.closest("[data-search-select-option]");
+      const optionRow = target.closest<HTMLElement>("[data-search-select-option]");
       if (optionRow) {
         addFilterPill(optionFromRow(optionRow), "include");
       }
@@ -442,11 +474,11 @@ import { onSwap } from "./utils.js";
     // clears a presence modifier — NOT_NULL / IS_NULL are mutually exclusive
     // with value pills.  Non-presence modifiers (INCLUDES_ALL / INCLUDES_ONLY)
     // persist alongside value pills.
-    const addFilterPill = (option, kind) => {
-      const modPill = pills.querySelector("[data-search-select-modifier]");
-      if (modPill) {
-        const modVal = modPill.getAttribute("data-search-select-modifier");
-        if (PRESENCE_MODIFIERS.includes(modVal)) {
+    const addFilterPill = (option: SearchSelectOption, kind: string) => {
+      const modifierPill = pills.querySelector("[data-search-select-modifier]");
+      if (modifierPill) {
+        const modifierValue = modifierPill.getAttribute("data-search-select-modifier") ?? "";
+        if (PRESENCE_MODIFIERS.includes(modifierValue)) {
           clearModifier();
         }
       }
@@ -459,8 +491,8 @@ import { onSwap } from "./utils.js";
       emitChange(null);
     };
 
-    const buildFilterValuePill = (option, kind) => {
-      const pill = cloneTemplate(kind === "include" ? "pill-include" : "pill-exclude");
+    const buildFilterValuePill = (option: SearchSelectOption, kind: string): HTMLElement => {
+      const pill = cloneTemplate(kind === "include" ? "pill-include" : "pill-exclude")!;
       pill.setAttribute("data-value", option.value);
       pill.setAttribute("data-label", option.label);
       applyData(pill, option.data);
@@ -471,13 +503,13 @@ import { onSwap } from "./utils.js";
     // Set the modifier pill.  Presence modifiers (NOT_NULL / IS_NULL) clear all
     // value pills — they are mutually exclusive.  Non-presence modifiers
     // (INCLUDES_ALL / INCLUDES_ONLY) are prepended before existing value pills.
-    const setModifier = (modifierValue, label) => {
+    const setModifier = (modifierValue: string, label: string) => {
       // Remove any existing modifier pill to avoid duplicates.
       clearModifierPill();
       if (PRESENCE_MODIFIERS.includes(modifierValue)) {
         pills.innerHTML = "";
       }
-      const pill = cloneTemplate("pill-modifier");
+      const pill = cloneTemplate("pill-modifier")!;
       pill.setAttribute("data-search-select-modifier", modifierValue);
       setLabel(pill, label);
       pills.insertBefore(pill, pills.firstChild);
@@ -498,22 +530,23 @@ import { onSwap } from "./utils.js";
       clearModifierPill();
     };
 
-    const optionFromRow = (row) => {
-      if (row._searchSelectOption) return row._searchSelectOption;
-      const data = {};
+    const optionFromRow = (row: HTMLElement): SearchSelectOption => {
+      const optionRow = row as OptionRow;
+      if (optionRow._searchSelectOption) return optionRow._searchSelectOption;
+      const data: Record<string, string> = {};
       Object.keys(row.dataset).forEach(key => {
         if (key !== "value" && key !== "label" && key !== "ssOption") {
-          data[key] = row.dataset[key];
+          data[key] = row.dataset[key] ?? "";
         }
       });
       return {
-        value: row.getAttribute("data-value"),
-        label: row.getAttribute("data-label"),
+        value: row.getAttribute("data-value") ?? "",
+        label: row.getAttribute("data-label") ?? "",
         data,
       };
     };
 
-    const selectOption = (option) => {
+    const selectOption = (option: SearchSelectOption) => {
       if (multi) {
         if (!pills.querySelector(`input[value="${cssEscape(option.value)}"]`)) {
           addPill(option);
@@ -532,13 +565,13 @@ import { onSwap } from "./utils.js";
       emitChange(option);
     };
 
-    const addPill = (option) => {
+    const addPill = (option: SearchSelectOption) => {
       const pill = buildPill(option);
       if (pill) pills.appendChild(pill);
       pills.appendChild(buildHidden(option.value));
     };
 
-    const buildPill = (option) => {
+    const buildPill = (option: SearchSelectOption): HTMLElement | null => {
       const pill = cloneTemplate("pill");
       if (!pill) return null;
       pill.setAttribute("data-value", option.value);
@@ -547,7 +580,7 @@ import { onSwap } from "./utils.js";
       return pill;
     };
 
-    const buildHidden = (value) => {
+    const buildHidden = (value: string): HTMLInputElement => {
       const input = document.createElement("input");
       input.type = "hidden";
       input.name = name;
@@ -557,7 +590,7 @@ import { onSwap } from "./utils.js";
 
     // ── Pill × → remove ──
     pills.addEventListener("click", (event) => {
-      const removeButton = event.target.closest("[data-pill-remove]");
+      const removeButton = (event.target as Element).closest("[data-pill-remove]");
       if (!removeButton) return;
       const pill = removeButton.closest("[data-pill]");
       if (!pill) return;
@@ -578,67 +611,69 @@ import { onSwap } from "./utils.js";
       emitChange(null);
     });
 
-    const currentValues = () => {
-      return Array.from(pills.querySelectorAll('input[type="hidden"]')).map(input => input.value);
+    const currentValues = (): string[] => {
+      return Array.from(
+        pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]')
+      ).map(input => input.value);
     };
 
-    const emitChange = (last) => {
+    const emitChange = (last: SearchSelectOption | null) => {
       const values = currentValues();
       if (syncUrl) syncToUrl(values);
       container.dispatchEvent(
-        new CustomEvent("search-select:change", {
+        new CustomEvent<SearchSelectChangeDetail>("search-select:change", {
           bubbles: true,
           detail: { name, values, last },
         })
       );
     };
 
-    const syncToUrl = (values) => {
+    const syncToUrl = (values: string[]) => {
       const params = new URLSearchParams(window.location.search);
       params.delete(name);
-      values.forEach(v => {
-        params.append(name, v);
+      values.forEach(value => {
+        params.append(name, value);
       });
-      const qs = params.toString();
-      history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+      const queryString = params.toString();
+      history.replaceState(null, "", queryString ? `?${queryString}` : window.location.pathname);
     };
 
     // On init, restore from URL params if the server supplied no selected pills.
     if (syncUrl && !pills.querySelector("[data-pill]")) {
       const initial = new URLSearchParams(window.location.search).getAll(name);
-      initial.forEach(v => {
-        addPill({ value: v, label: v, data: {} });
+      initial.forEach(value => {
+        addPill({ value, label: value, data: {} });
       });
     }
 
     // ── Close panel on outside click ──
     document.addEventListener("click", (event) => {
-      if (!container.contains(event.target)) hidePanel();
+      if (!container.contains(event.target as Node)) hidePanel();
     });
   };
 
   /** Minimal escape for use inside an attribute-value selector. */
-  const cssEscape = (value) => String(value).replace(/["\\]/g, "\\$&");
+  const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
 
   // Serialise each widget's current state onto data-* attributes for the caller.
   // Form widgets expose data-values (the submitted hidden-input values); filter
   // widgets expose data-included / data-excluded / data-modifier for the filter
   // bar to read.
-  window.readSearchSelect = (form) => {
-    form.querySelectorAll("[data-search-select]").forEach(container => {
-      const pills = container.querySelector("[data-search-select-pills]");
+  window.readSearchSelect = (form: HTMLElement) => {
+    form.querySelectorAll<HTMLElement>("[data-search-select]").forEach(container => {
+      const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
       if (container.getAttribute("data-search-select-mode") === "filter") {
-        const included = [];
-        const excluded = [];
+        const included: FilterPillEntry[] = [];
+        const excluded: FilterPillEntry[] = [];
         let modifier = "";
         if (pills) {
-          pills.querySelectorAll("[data-pill]").forEach(pill => {
+          pills.querySelectorAll<HTMLElement>("[data-pill]").forEach(pill => {
             const pillModifier = pill.getAttribute("data-search-select-modifier");
             if (pillModifier) {
               modifier = pillModifier;  // last modifier pill wins
               return;                    // skip value extraction for this pill
             }
-            const value = pill.getAttribute("data-value");
+            const value = pill.getAttribute("data-value") ?? "";
             const label = pill.getAttribute("data-label") || "";
             if (pill.getAttribute("data-search-select-type") === "exclude") {
               excluded.push({ id: value, label });
@@ -654,7 +689,7 @@ import { onSwap } from "./utils.js";
         return;
       }
       const values = pills
-        ? Array.from(pills.querySelectorAll('input[type="hidden"]')).map(input => input.value)
+        ? Array.from(pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]')).map(input => input.value)
         : [];
       container.setAttribute("data-values", JSON.stringify(values));
     });

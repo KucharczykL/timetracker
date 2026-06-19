@@ -14,7 +14,7 @@ def e2e_test_view(request):
         <!-- search_select.js is an ES module and initializes via onSwap(),
              which rides on htmx.onLoad — so htmx must be present. -->
         <script src="/static/js/htmx.min.js"></script>
-        <script type="module" src="/static/js/search_select.js"></script>
+        <script type="module" src="/static/js/dist/search_select.js"></script>
     </head>
     <body>
         <div style="padding: 50px;">

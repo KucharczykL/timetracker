@@ -180,7 +180,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
-        scripts=ModuleScript("search_select.js") + ModuleScript("dist/add_game.js"),
+        scripts=ModuleScript("dist/search_select.js") + ModuleScript("dist/add_game.js"),
     )
 
 
@@ -325,7 +325,7 @@ def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Edit Game",
-        scripts=ModuleScript("search_select.js"),
+        scripts=ModuleScript("dist/search_select.js"),
     )
 
 
