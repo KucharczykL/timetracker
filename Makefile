@@ -22,7 +22,7 @@ init:
 	pnpm install
 	$(MAKE) loadplatforms
 
-server:
+server: gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
@@ -38,7 +38,7 @@ ts: gen-element-types
 ts-check: gen-element-types
 	pnpm exec tsc --noEmit
 
-dev:
+dev: gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
