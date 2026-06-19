@@ -364,7 +364,7 @@ def Page(
         "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
         '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'
         f"        {_TOAST_CONTAINER}\n"
-        f'        <script src="{static("js/toast.js")}"></script>\n'
+        f'        <script src="{static("js/dist/toast.js")}"></script>\n'
         "    </body>\n</html>\n"
     )
 
