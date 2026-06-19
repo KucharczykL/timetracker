@@ -22,7 +22,7 @@ def _bar_page(filter_json: str = "") -> str:
 <head>
     <title>Boolean filter E2E</title>
     <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/range_slider.js" type="module"></script>
+    <script src="/static/js/dist/range_slider.js" type="module"></script>
     <script src="/static/js/dist/search_select.js" type="module"></script>
     <script src="/static/js/dist/filter_bar.js" type="module"></script>
 </head>

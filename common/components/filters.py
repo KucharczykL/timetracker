@@ -55,7 +55,7 @@ _FILTER_GRID_CLASS = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4"
 # range_slider.js wires RangeSlider; ts/filter_bar.ts wires the bar chrome
 # (Apply/Clear, presets, search injection). Widget media (dist/search_select.js,
 # date_range_picker.js) bubbles up from the contained FilterSelect / picker.
-_RANGE_SLIDER_MEDIA = Media(js=("range_slider.js",))
+_RANGE_SLIDER_MEDIA = Media(js=("dist/range_slider.js",))
 _FILTER_BAR_MEDIA = Media(js=("dist/filter_bar.js",))
 
 

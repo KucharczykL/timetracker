@@ -159,7 +159,7 @@ class RealComponentMediaTest(unittest.TestCase):
                 label="Year", input_name_prefix="year", range_min=2000, range_max=2025
             )
         )
-        self.assertEqual(media.js, ("range_slider.js",))
+        self.assertEqual(media.js, ("dist/range_slider.js",))
 
     def test_filter_bar_collects_chrome_and_widget_media(self):
         """A FilterBar's media merges its own chrome script with the scripts that
@@ -171,7 +171,7 @@ class RealComponentMediaTest(unittest.TestCase):
         media = collect_media(FilterBar())
         self.assertIn("dist/filter_bar.js", media.js)
         self.assertIn("dist/search_select.js", media.js)
-        self.assertIn("range_slider.js", media.js)
+        self.assertIn("dist/range_slider.js", media.js)
 
 
 class HtpyStyleSugarTest(unittest.TestCase):
