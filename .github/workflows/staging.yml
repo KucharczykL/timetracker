@@ -23,7 +23,7 @@ jobs:
 
       - name: Compute staging name
         run: |
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30)
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
           APP="timetracker-staging-${SLUG}"
           echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
           echo "APP=${APP}" >> "$GITHUB_ENV"
@@ -94,6 +94,6 @@ jobs:
 
       - name: Destroy staging app
         run: |
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30)
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
           APP="timetracker-staging-${SLUG}"
           flyctl apps destroy "$APP" --yes 2>/dev/null || true
