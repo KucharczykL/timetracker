@@ -187,7 +187,9 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
-def Navbar(*, today_played: str, last_7_played: str, current_year: int, csrf_token: str) -> "Node":
+def Navbar(
+    *, today_played: str, last_7_played: str, current_year: int, csrf_token: str
+) -> "Node":
     """Top navigation bar.
 
     Static chrome, so it's a single ``Safe`` node wrapping its markup rather

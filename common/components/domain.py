@@ -229,7 +229,7 @@ _SELECTOR_OPTION_CLASS = (
 def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     """Light-DOM custom element; behavior in ts/elements/game-status-selector.ts."""
     from common.components.core import Element
-    from common.components.custom_elements import _GameStatusSelector, GameStatusSelectorProps
+    from common.components.custom_elements import _GameStatusSelector
     from common.components.primitives import Li, Ul
 
     options = [
@@ -273,7 +273,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     """Light-DOM custom element; behavior in ts/elements/session-device-selector.ts."""
     from common.components.core import Element
-    from common.components.custom_elements import _SessionDeviceSelector, SessionDeviceSelectorProps
+    from common.components.custom_elements import _SessionDeviceSelector
     from common.components.primitives import Li, Ul
 
     current_name = session.device.name if session.device else "Unknown"
