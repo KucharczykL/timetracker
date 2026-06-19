@@ -23,7 +23,11 @@ init:
 	$(MAKE) loadplatforms
 
 server:
-	uv run python -Wa manage.py runserver
+	@pnpm concurrently \
+		--names "Django,TS" \
+		--prefix-colors "blue,green" \
+		"uv run python -Wa manage.py runserver" \
+		"pnpm exec tsc --watch"
 
 gen-element-types:
 	uv run python manage.py gen_element_types
