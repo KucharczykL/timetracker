@@ -216,7 +216,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Add new playthrough",
-        scripts=ModuleScript("search_select.js"),
+        scripts=ModuleScript("dist/search_select.js"),
     )
 
 
@@ -233,7 +233,7 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Edit Play Event",
-        scripts=ModuleScript("search_select.js"),
+        scripts=ModuleScript("dist/search_select.js"),
     )
 
 

@@ -12,17 +12,17 @@
 
 The committed value lives in two hidden ISO-date inputs named
 ``{input_name_prefix}-min`` / ``{input_name_prefix}-max`` — the same contract
-as the older ``DateRangeFilter``, so ``filter_bar.js`` serializes either
+as the older ``DateRangeFilter``, so ``filter_bar.ts`` serializes either
 widget into a ``DateCriterion`` unchanged. All behaviour is wired by
-``games/static/js/date_range_picker.js``.
+``ts/date_range_picker.ts`` (compiled to ``dist/date_range_picker.js``).
 """
 
 from common.components.core import Element, HTMLAttribute, Media, Node, Safe
 from common.components.primitives import Div, Input, Span
 from common.time import DatePartSpec, date_parts
 
-# Wired by date_range_picker.js.
-_DATE_RANGE_MEDIA = Media(js=("date_range_picker.js",))
+# Wired by ts/date_range_picker.ts (compiled to dist/).
+_DATE_RANGE_MEDIA = Media(js=("dist/date_range_picker.js",))
 
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "

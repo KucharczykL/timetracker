@@ -1,12 +1,36 @@
+declare const Alpine: any;
+
+interface Toast {
+  id: number;
+  message: string;
+  type: string;
+  visible: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  pausedAt: number | null;
+}
+
+interface ToastStore {
+  toasts: Toast[];
+  addToast(message: string, type?: string): void;
+  dismissToast(id: number): void;
+  clearToastTimer(id: number): void;
+  resumeToastTimer(id: number, duration: number): void;
+}
+
+interface ToastMessage {
+  message: string;
+  type?: string;
+}
+
 document.addEventListener("alpine:init", () => {
   let idCounter = 0;
 
   console.log("[toast] Alpine available:", typeof Alpine !== "undefined");
 
-  Alpine.store("toasts", {
+  const store: ToastStore = {
     toasts: [],
 
-    addToast(message, type) {
+    addToast(message: string, type?: string) {
       console.log("[toast] addToast called:", { message, type });
       if (!type) type = "info";
       const validTypes = ["success", "error", "info", "warning", "debug"];
@@ -25,29 +49,32 @@ document.addEventListener("alpine:init", () => {
         const toast = this.toasts[this.toasts.length - 1];
         const autoDismissDelay = type === "debug" ? 3000 : 5000;
         toast.timer = setTimeout(() => {
-          console.log("[toast] auto-dismiss after " + (autoDismissDelay / 1000) + "s");
+          console.log("[toast] auto-dismiss after " + autoDismissDelay / 1000 + "s");
           this.dismissToast(id);
         }, autoDismissDelay);
       }
     },
 
-    dismissToast(id) {
+    dismissToast(id: number) {
       console.log("[toast] dismissToast for id:", id);
-      const idx = this.toasts.findIndex((t) => t.id === id);
-      if (idx === -1) { console.log("[toast] toast not found"); return; }
+      const index = this.toasts.findIndex((toast) => toast.id === id);
+      if (index === -1) {
+        console.log("[toast] toast not found");
+        return;
+      }
 
-      const toast = this.toasts[idx];
+      const toast = this.toasts[index];
       if (toast.timer) clearTimeout(toast.timer);
       toast.visible = false;
 
       setTimeout(() => {
-        this.toasts = this.toasts.filter((t) => t.id !== id);
+        this.toasts = this.toasts.filter((toast) => toast.id !== id);
         console.log("[toast] after dismiss, count:", this.toasts.length);
       }, 300);
     },
 
-    clearToastTimer(id) {
-      const toast = this.toasts.find((t) => t.id === id);
+    clearToastTimer(id: number) {
+      const toast = this.toasts.find((toast) => toast.id === id);
       if (toast?.timer) {
         console.log("[toast] pause timer for toast id:", id);
         clearTimeout(toast.timer);
@@ -56,8 +83,8 @@ document.addEventListener("alpine:init", () => {
       }
     },
 
-    resumeToastTimer(id, duration) {
-      const toast = this.toasts.find((t) => t.id === id);
+    resumeToastTimer(id: number, duration: number) {
+      const toast = this.toasts.find((toast) => toast.id === id);
       if (toast?.pausedAt && toast.timer === null) {
         console.log("[toast] resume timer for toast id:", id);
         toast.timer = setTimeout(() => {
@@ -66,64 +93,67 @@ document.addEventListener("alpine:init", () => {
         toast.pausedAt = null;
       }
     },
-  });
+  };
+
+  Alpine.store("toasts", store);
 
   Alpine.data("toastStore", () => ({
     init() {
       console.log("[toast] toastStore.init running");
       console.log("[toast] Alpine store toasts:", Alpine.store("toasts").toasts);
 
-      window.addEventListener("show-toast", (e) => {
-        console.log("[toast] show-toast event received:", e.detail);
-        if (Array.isArray(e.detail)) {
-          e.detail.forEach((msg) => {
-            Alpine.store("toasts").addToast(msg.message, msg.type);
+      window.addEventListener("show-toast", (event) => {
+        const detail = (event as CustomEvent<ToastMessage | ToastMessage[]>).detail;
+        console.log("[toast] show-toast event received:", detail);
+        if (Array.isArray(detail)) {
+          detail.forEach((message) => {
+            Alpine.store("toasts").addToast(message.message, message.type);
           });
         } else {
-          Alpine.store("toasts").addToast(e.detail.message, e.detail.type);
+          Alpine.store("toasts").addToast(detail.message, detail.type);
         }
       });
 
       try {
         const script = document.getElementById("django-messages");
         if (script) {
-          const msgs = JSON.parse(
-            script.textContent || script.innerText || "[]"
+          const messages: ToastMessage[] = JSON.parse(
+            script.textContent || (script as HTMLElement).innerText || "[]"
           );
-          console.log("[toast] django-messages script found:", msgs);
-          if (Array.isArray(msgs)) {
-            msgs.forEach((msg) => {
-              console.log("[toast] loading django-message:", msg);
-              Alpine.store("toasts").addToast(msg.message, msg.type || "info");
+          console.log("[toast] django-messages script found:", messages);
+          if (Array.isArray(messages)) {
+            messages.forEach((message) => {
+              console.log("[toast] loading django-message:", message);
+              Alpine.store("toasts").addToast(message.message, message.type || "info");
             });
           }
         }
-      } catch (e) {
-        console.error("[toast] localStorage restore failed:", e);
+      } catch (error) {
+        console.error("[toast] localStorage restore failed:", error);
         // ignore parse errors
       }
     },
 
-    addToast(message, type) {
+    addToast(message: string, type?: string) {
       console.log("[toast] toastStore.addToast delegating:", { message, type });
       Alpine.store("toasts").addToast(message, type);
     },
 
-    dismissToast(id) {
+    dismissToast(id: number) {
       console.log("[toast] toastStore.dismissToast delegating:", id);
       Alpine.store("toasts").dismissToast(id);
     },
   }));
 });
 
-function toast(message, type) {
+function toast(message: string, type?: string): void {
   console.log("[toast] toast() called:", { message, type });
-  const evt = new CustomEvent("show-toast", {
+  const event = new CustomEvent("show-toast", {
     detail: { message, type },
     bubbles: true,
   });
-  document.dispatchEvent(evt);
-  console.log("[toast] CustomEvent dispatched, type:", evt.type);
+  document.dispatchEvent(event);
+  console.log("[toast] CustomEvent dispatched, type:", event.type);
 }
 window.toast = toast;
 
@@ -135,7 +165,10 @@ window.toast = toast;
  * @todo Migrate these call sites to hx-post + hx-on::after-request
  * for HTMX-native toast handling.
  */
-window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(url, options = {}) {
+window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
+  url: RequestInfo | URL,
+  options: RequestInit = {}
+): Promise<Response> {
   console.log("[fetchWithHtmxTriggers] fetching:", url);
   return fetch(url, options).then(async (response) => {
     console.log("[fetchWithHtmxTriggers] response status:", response.status);
@@ -152,19 +185,21 @@ window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(url, options = {})
       }
       // Handle both single object and array of events
       const events = Array.isArray(triggers) ? triggers : [triggers];
-      events.forEach((triggerObj) => {
-        Object.entries(triggerObj).forEach(([name, detail]) => {
+      events.forEach((triggerObject: Record<string, unknown>) => {
+        Object.entries(triggerObject).forEach(([name, detail]) => {
           console.log("[fetchWithHtmxTriggers] dispatching event:", name, detail);
-          let parsedDetail = detail;
+          let parsedDetail: unknown = detail;
           try {
-            parsedDetail = JSON.parse(detail);
+            parsedDetail = JSON.parse(detail as string);
           } catch {
             // keep as string
           }
-          document.dispatchEvent(new CustomEvent(name, {
-            detail: parsedDetail,
-            bubbles: true,
-          }));
+          document.dispatchEvent(
+            new CustomEvent(name, {
+              detail: parsedDetail,
+              bubbles: true,
+            })
+          );
         });
       });
     }

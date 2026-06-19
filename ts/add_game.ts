@@ -1,6 +1,6 @@
 import { syncSelectInputUntilChanged } from "./utils.js";
 
-let syncData = [
+const syncData = [
   {
     source: "#id_name",
     source_value: "value",

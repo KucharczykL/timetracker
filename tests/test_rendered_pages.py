@@ -63,9 +63,9 @@ class RenderedPagesTest(TestCase):
         """The games list view passes no scripts= argument; the filter bar's
         components declare their JS and Page() collects it."""
         html = self.get("games:list_games").content.decode()
-        self.assertIn("js/filter_bar.js", html)
-        self.assertIn("js/search_select.js", html)
-        self.assertIn("js/range_slider.js", html)
+        self.assertIn("js/dist/filter_bar.js", html)
+        self.assertIn("js/dist/search_select.js", html)
+        self.assertIn("js/dist/range_slider.js", html)
 
     def test_stats_page_auto_loads_datepicker(self):
         """YearPicker declares the datepicker UMD bundle as media; the stats
@@ -125,14 +125,14 @@ class RenderedPagesTest(TestCase):
 
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
-        self.assertIn("add_game.js", html)
+        self.assertIn("dist/add_game.js", html)
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
         self.assertNoEscapedTags(html)
 
     def test_add_purchase_form(self):
         html = self.get("games:add_purchase").content.decode()
-        self.assertIn("add_purchase.js", html)
+        self.assertIn("dist/add_purchase.js", html)
         self.assertIn("Submit &amp; Create Session", html)
         self.assertIn("<tr>", html)
         self.assertNoEscapedTags(html)

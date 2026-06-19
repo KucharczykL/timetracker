@@ -337,7 +337,7 @@ def Page(
         "            htmx.config.scrollBehavior = 'smooth';\n"
         "            htmx.config.selfRequestsOnly = false;\n"
         "        </script>\n"
-        f'        <script src="{static("js/htmx-redirect-toast.js")}"></script>\n'
+        f'        <script src="{static("js/dist/htmx-redirect-toast.js")}"></script>\n'
         f"        {django_htmx_script(nonce=None)}\n"
         f'        <link rel="stylesheet" href="{static("base.css")}" />\n'
         # Vendored bundles (flowbite 2.4.1, alpinejs/@alpinejs/mask 3.15.12) —
@@ -364,7 +364,7 @@ def Page(
         "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
         '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'
         f"        {_TOAST_CONTAINER}\n"
-        f'        <script src="{static("js/toast.js")}"></script>\n'
+        f'        <script src="{static("js/dist/toast.js")}"></script>\n'
         "    </body>\n</html>\n"
     )
 

@@ -1,17 +1,18 @@
+declare const htmx: any;
+
+
 /**
- * @description Runs initializeElement once for each element matching selector,
- * on initial page load and inside every htmx-swapped fragment (a port of
- * FastHTML's proc_htmx). htmx fires htmx:load for the initial document and for
- * each swapped-in element, so a single registration covers both; the WeakSet
+ * Runs initializeElement once for each element matching selector, on initial
+ * page load and inside every htmx-swapped fragment (a port of FastHTML's
+ * proc_htmx). htmx fires htmx:load for the initial document and for each
+ * swapped-in element, so a single registration covers both; the WeakSet
  * guarantees once-per-element initialization, replacing the old
  * DOMContentLoaded + htmx:afterSwap + per-element guard-flag pattern.
- * @param {string} selector
- * @param {function(Element): void} initializeElement
  */
-function onSwap(selector, initializeElement) {
+function onSwap(selector: string, initializeElement: (element: Element) => void) {
   const initialized = new WeakSet();
-  htmx.onLoad((swappedElement) => {
-    const elements = Array.from(htmx.findAll(swappedElement, selector));
+  htmx.onLoad((swappedElement: Element) => {
+    const elements: Element[] = Array.from(htmx.findAll(swappedElement, selector));
     if (swappedElement.matches && swappedElement.matches(selector)) {
       elements.unshift(swappedElement);
     }
@@ -23,14 +24,10 @@ function onSwap(selector, initializeElement) {
   });
 }
 
-/**
- * @description Formats Date to a UTC string accepted by the datetime-local input field.
- * @param {Date} date
- * @returns {string}
- */
-function toISOUTCString(date) {
-  function stringAndPad(number) {
-    return number.toString().padStart(2, 0);
+/** Formats Date to a UTC string accepted by the datetime-local input field. */
+function toISOUTCString(date: Date): string {
+  function stringAndPad(number: number) {
+    return number.toString().padStart(2, "0");
   }
   const year = date.getFullYear();
   const month = stringAndPad(date.getMonth() + 1);
@@ -41,14 +38,15 @@ function toISOUTCString(date) {
 }
 
 /**
- * @description Sync values between source and target elements based on syncData configuration.
- * @param {Array} syncData - Array of objects to define source and target elements with their respective value types.
+ * Mirrors each source element's value onto its target until the target is
+ * focused (manual edit wins). Each syncData entry maps a source selector and
+ * property onto a target selector and property.
  */
-function syncSelectInputUntilChanged(syncData, parentSelector = document) {
+function syncSelectInputUntilChanged(syncData: Array<{ source: string; target: string; source_value: string; target_value: string }>, parentSelector: string | Document = document) {
   const parentElement =
     parentSelector === document
       ? document
-      : document.querySelector(parentSelector);
+      : document.querySelector(parentSelector as string);
 
   if (!parentElement) {
     console.error(`The parent selector "${parentSelector}" is not valid.`);
@@ -57,94 +55,82 @@ function syncSelectInputUntilChanged(syncData, parentSelector = document) {
   // Set up a single change event listener on the document for handling all source changes
   parentElement.addEventListener("change", function (event) {
     // Loop through each sync configuration item
-    syncData.forEach((syncItem) => {
+    syncData.forEach((syncItem: { source: string; target: string; source_value: string; target_value: string }) => {
       // Check if the change event target matches the source selector
-      if (event.target.matches(syncItem.source)) {
+      if ((event.target as HTMLElement).matches(syncItem.source)) {
+        if (!event.target) return;
         const sourceElement = event.target;
         const valueToSync = getValueFromProperty(
           sourceElement,
           syncItem.source_value
         );
-        const targetElement = document.querySelector(syncItem.target);
+        const targetElement = document.querySelector<HTMLSelectElement>(syncItem.target);
 
         if (targetElement && valueToSync !== null) {
-          console.log(`Changing value of ${syncItem.target} to ${valueToSync}`)
-          targetElement[syncItem.target_value] = valueToSync;
+          console.log(`Changing value of ${syncItem.target} to ${valueToSync}`);
+          (targetElement as unknown as Record<string, unknown>)[syncItem.target_value] = valueToSync;
         }
       }
     });
   });
 
   // Set up a single focus event listener on the document for handling all target focuses
-  parentElement.addEventListener(
-    "focus",
-    function (event) {
+  const syncListener = (event:  Event) => {
       // Loop through each sync configuration item
-      syncData.forEach((syncItem) => {
+      syncData.forEach((syncItem: { source: string; target: string; source_value: string; target_value: string }) => {
         // Check if the focus event target matches the target selector
-        if (event.target.matches(syncItem.target)) {
+        if ((event.target as HTMLElement).matches(syncItem.target)) {
           // Remove the change event listener to stop syncing
           // This assumes you want to stop syncing once any target receives focus
           // You may need a more sophisticated way to remove listeners if you want to stop
           // syncing selectively based on other conditions
-          document.removeEventListener("change", syncSelectInputUntilChanged);
+          document.removeEventListener("change", syncListener);
         }
       });
-    },
+    }
+  parentElement.addEventListener(
+    "focus",
+    syncListener,
     true
   ); // Use capture phase to ensure the event is captured during focus, not bubble
 }
 
 /**
- * @description Retrieve the value from the source element based on the provided property.
- * @param {Element} sourceElement - The source HTML element.
- * @param {string} property - The property to retrieve the value from.
+ * Reads a property off the source element. For a <select>, reads from its
+ * selected option. A "dataset." prefix reads from the element's data-* set.
  */
-function getValueFromProperty(sourceElement, property) {
-  let source =
+function getValueFromProperty(sourceElement: EventTarget, property: string): any {
+  let source: HTMLElement | HTMLOptionElement =
     sourceElement instanceof HTMLSelectElement
       ? sourceElement.selectedOptions[0]
-      : sourceElement;
+      : sourceElement as HTMLElement;
   if (property.startsWith("dataset.")) {
     let datasetKey = property.slice(8); // Remove 'dataset.' part
     return source.dataset[datasetKey];
   } else if (property in source) {
-    return source[property];
+    return (source as unknown as Record<string, unknown>)[property];
   } else {
     console.error(`Property ${property} is not valid for the option element.`);
     return null;
   }
 }
 
-/**
- * @description Returns a single element by name.
- * @param {string} selector The selector to look for.
- */
-function getEl(selector) {
-  if (selector.startsWith("#")) {
-    return document.getElementById(selector.slice(1));
-  } else if (selector.startsWith(".")) {
-    return document.getElementsByClassName(selector);
-  } else {
-    return document.getElementsByTagName(selector);
-  }
-}
+type ElementHandlerConfig = [
+  condition: () => boolean, // condition function
+  targetElements: string[], // array of target element selectors
+  callbackfn1: (el: HTMLElement) => void, // callback function for matched condition
+  callbackfn2: (el: HTMLElement) => void // callback function for unmatched condition
+];
 
 /**
- * @description Applies different behaviors to elements based on multiple conditional configurations.
- * Each configuration is an array containing a condition function, an array of target element selectors,
- * and two callback functions for handling matched and unmatched conditions.
- * @param {...Array} configs Each configuration is an array of the form:
- *   - 0: {function(): boolean} condition - Function that returns true or false based on a condition.
- *   - 1: {string[]} targetElements - Array of CSS selectors for target elements.
- *   - 2: {function(HTMLElement): void} callbackfn1 - Function to execute when condition is true.
- *   - 3: {function(HTMLElement): void} callbackfn2 - Function to execute when condition is false.
+ * For each config, runs callbackfn1 on every target element when condition()
+ * is true, callbackfn2 otherwise. See ElementHandlerConfig for the tuple shape.
  */
-function conditionalElementHandler(...configs) {
+function conditionalElementHandler(...configs: ElementHandlerConfig[]) {
   configs.forEach(([condition, targetElements, callbackfn1, callbackfn2]) => {
     if (condition()) {
       targetElements.forEach((elementName) => {
-        let el = getEl(elementName);
+        let el = document.querySelector<HTMLElement>(elementName);
         if (el === null) {
           console.error(`Element ${elementName} doesn't exist.`);
         } else {
@@ -153,7 +139,7 @@ function conditionalElementHandler(...configs) {
       });
     } else {
       targetElements.forEach((elementName) => {
-        let el = getEl(elementName);
+        let el = document.querySelector<HTMLElement>(elementName);
         if (el === null) {
           console.error(`Element ${elementName} doesn't exist.`);
         } else {
@@ -165,13 +151,14 @@ function conditionalElementHandler(...configs) {
 }
 
 function disableElementsWhenValueNotEqual(
-  targetSelect,
-  targetValue,
-  elementList
+  targetSelect: string,
+  targetValue: string | string[],
+  elementList: string[]
 ) {
   return conditionalElementHandler([
     () => {
-      let target = getEl(targetSelect);
+      let target = document.querySelector<HTMLSelectElement>(targetSelect);
+      if (!target) return false;
       console.debug(
         `${disableElementsWhenTrue.name}: triggered on ${target.id}`
       );
@@ -184,6 +171,7 @@ function disableElementsWhenValueNotEqual(
           );
           return true;
         }
+        return false;
       } else {
         console.debug(
           `${disableElementsWhenTrue.name}: none of the values is equal to ${target.value}, returning true.`
@@ -196,32 +184,32 @@ function disableElementsWhenValueNotEqual(
       console.debug(
         `${disableElementsWhenTrue.name}: evaluated true, disabling ${el.id}.`
       );
-      el.disabled = "disabled";
+      (el as HTMLInputElement).disabled = true;
     },
     (el) => {
       console.debug(
         `${disableElementsWhenTrue.name}: evaluated false, NOT disabling ${el.id}.`
       );
-      el.disabled = "";
+      (el as HTMLInputElement).disabled = false;
     },
   ]);
 }
 
-function disableElementsWhenTrue(targetSelect, targetValue, elementList) {
+function disableElementsWhenTrue(targetSelect: string, targetValue: string | string[], elementList: string[]) {
   return conditionalElementHandler([
     () => {
       console.log(`${disableElementsWhenTrue.name}: triggered on ${targetSelect}`)
-      console.log(`Value of ${targetSelect} is ${targetValue}: ${getEl(targetSelect).value == targetValue}`)
-      return getEl(targetSelect).value == targetValue;
+      console.log(`Value of ${targetSelect} is ${targetValue}: ${document.querySelector<HTMLSelectElement>(targetSelect)?.value == targetValue}`)
+      return document.querySelector<HTMLSelectElement>(targetSelect)?.value == targetValue;
     },
     elementList,
     (el) => {
-      console.log(`${disableElementsWhenTrue.name}: disabling ${el.id}`)
-      el.disabled = "disabled";
+      console.log(`${disableElementsWhenTrue.name}: disabling ${el.id}`);
+      (el as HTMLInputElement).disabled = true;
     },
     (el) => {
-      console.log(`${disableElementsWhenTrue.name}: enabling ${el.id}`)
-      el.disabled = "";
+      console.log(`${disableElementsWhenTrue.name}: enabling ${el.id}`);
+      (el as HTMLInputElement).disabled = false;
     },
   ]);
 }
@@ -230,7 +218,6 @@ export {
   onSwap,
   toISOUTCString,
   syncSelectInputUntilChanged,
-  getEl,
   conditionalElementHandler,
   disableElementsWhenValueNotEqual,
   disableElementsWhenTrue,

@@ -542,9 +542,15 @@ def StaticScript(filename: str) -> SafeText:
     return mark_safe(f'<script src="{static("js/" + filename)}"></script>')
 
 
-# Media for the Flowbite-datepicker year picker (vendored UMD bundle). Declared
-# on the YearPicker node so Page() loads it wherever a YearPicker appears.
-_YEAR_PICKER_MEDIA = Media(js_external=("datepicker.umd.js",))
+# Media for the Flowbite-datepicker year picker: the vendored UMD bundle
+# (classic script) plus the ts/year_picker.ts glue (compiled module). Declared
+# on the YearPicker node so Page() loads both wherever a YearPicker appears. The
+# UMD bundle is a classic script (runs during parse) while year_picker.js is a
+# deferred module (runs after parse), so Datepicker is defined by the time the
+# module executes regardless of tag order.
+_YEAR_PICKER_MEDIA = Media(
+    js_external=("datepicker.umd.js",), js=("dist/year_picker.js",)
+)
 
 
 def YearPicker(
@@ -589,44 +595,7 @@ def YearPicker(
            data-available-years="{years_csv}"
            data-selected-year="{selected}"
            data-url-template="{url_template}">
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', () => {{
-    const pickerEl = document.getElementById('year-picker-input');
-    if (!pickerEl || pickerEl._pickerInstance) return;
-
-    const selectedYear = pickerEl.dataset.selectedYear;
-    const urlTemplate = pickerEl.dataset.urlTemplate;
-    const currentYear = new Date().getFullYear();
-    const availableYears = new Set(pickerEl.dataset.availableYears
-        .split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)));
-
-    const picker = new Datepicker(pickerEl, {{
-        pickLevel: 2,
-        format: 'yyyy',
-        minDate: new Date(1999, 0, 1),
-        maxDate: new Date(currentYear, 11, 31),
-        autohide: false,
-        orientation: 'bottom end',
-        showOnClick: false,
-        showOnFocus: false,
-        beforeShowYear: (date) => ({{ enabled: availableYears.has(date.getFullYear()) }})
-    }});
-    pickerEl._pickerInstance = picker;
-
-    picker.element.addEventListener('changeDate', (e) => {{
-        const year = e.detail.date?.getFullYear();
-        if (year && urlTemplate) {{
-            window.location.href = urlTemplate.replace('__year__', year);
-        }}
-    }});
-
-    if (selectedYear) {{
-        picker.dates = [new Date(parseInt(selectedYear), 0, 1)];
-        picker.update();
-    }}
-}});
-</script>""",
+</div>""",
         media=_YEAR_PICKER_MEDIA,
     )
 

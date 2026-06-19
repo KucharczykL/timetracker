@@ -24,7 +24,7 @@ def selection_fields_view(request):
     <html>
     <head>
         <script src="/static/js/htmx.min.js"></script>
-        <script type="module" src="/static/js/search_select.js"></script>
+        <script type="module" src="/static/js/dist/search_select.js"></script>
         <script type="module" src="/static/js/dist/elements/selection-fields.js"></script>
     </head>
     <body>

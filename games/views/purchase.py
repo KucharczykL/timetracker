@@ -194,7 +194,7 @@ def _pricing_controls() -> Node:
     By default the form's own single Price field is the bundle price. When 2+
     games are selected and "Separate price per game" is checked, the per-game
     inputs (the general ``selection-fields`` element) take over and the bundle
-    Price is hidden. Toggle/visibility wiring lives in add_purchase.js; the
+    Price is hidden. Toggle/visibility wiring lives in ts/add_purchase.ts; the
     hidden ``pricing_mode`` tells the view which path to take.
     """
     return Div(attributes=[("id", "pricing-controls")])[
@@ -301,7 +301,7 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         ),
         title="Add New Purchase",
         scripts=mark_safe(
-            ModuleScript("search_select.js") + ModuleScript("add_purchase.js")
+            ModuleScript("dist/search_select.js") + ModuleScript("dist/add_purchase.js")
         ),
     )
 
@@ -319,7 +319,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Edit Purchase",
         scripts=mark_safe(
-            ModuleScript("search_select.js") + ModuleScript("add_purchase.js")
+            ModuleScript("dist/search_select.js") + ModuleScript("dist/add_purchase.js")
         ),
     )
 
