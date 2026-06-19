@@ -66,9 +66,13 @@ _CONTAINER_CLASS = (
     "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 )
 _PILLS_CLASS = "contents"
+# disabled:cursor-not-allowed matches the wrapper's cursor so hovering across
+# the whole widget stays consistent — the inner input is excluded from the
+# global disabled rule (input.css), which would otherwise have set it.
 _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 bg-transparent text-sm text-heading "
-    "focus:ring-0 focus:outline-hidden placeholder:text-body"
+    "focus:ring-0 focus:outline-hidden placeholder:text-body "
+    "disabled:cursor-not-allowed"
 )
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be

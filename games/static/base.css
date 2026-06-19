@@ -3430,6 +3430,11 @@
       outline-style: none;
     }
   }
+  .disabled\:cursor-not-allowed {
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
   .has-\[\:disabled\]\:cursor-not-allowed {
     &:has(*:is(:disabled)) {
       cursor: not-allowed;
