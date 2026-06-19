@@ -337,7 +337,7 @@ def Page(
         "            htmx.config.scrollBehavior = 'smooth';\n"
         "            htmx.config.selfRequestsOnly = false;\n"
         "        </script>\n"
-        f'        <script src="{static("js/htmx-redirect-toast.js")}"></script>\n'
+        f'        <script src="{static("js/dist/htmx-redirect-toast.js")}"></script>\n'
         f"        {django_htmx_script(nonce=None)}\n"
         f'        <link rel="stylesheet" href="{static("base.css")}" />\n'
         # Vendored bundles (flowbite 2.4.1, alpinejs/@alpinejs/mask 3.15.12) —
