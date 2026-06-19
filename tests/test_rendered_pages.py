@@ -125,14 +125,14 @@ class RenderedPagesTest(TestCase):
 
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
-        self.assertIn("add_game.js", html)
+        self.assertIn("dist/add_game.js", html)
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
         self.assertNoEscapedTags(html)
 
     def test_add_purchase_form(self):
         html = self.get("games:add_purchase").content.decode()
-        self.assertIn("add_purchase.js", html)
+        self.assertIn("dist/add_purchase.js", html)
         self.assertIn("Submit &amp; Create Session", html)
         self.assertIn("<tr>", html)
         self.assertNoEscapedTags(html)
