@@ -149,7 +149,7 @@ class RealComponentMediaTest(unittest.TestCase):
         media = collect_media(
             DateRangePicker(label="Played", input_name_prefix="played")
         )
-        self.assertEqual(media.js, ("date_range_picker.js",))
+        self.assertEqual(media.js, ("dist/date_range_picker.js",))
 
     def test_range_slider_declares_its_script(self):
         from common.components.filters import RangeSlider
