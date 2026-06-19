@@ -13,8 +13,11 @@ This module imports only from ``common.components`` — it has no Django-forms o
 ``<div>``, which has no ``disabled`` state of its own. To disable it, set
 ``disabled`` on the inner search ``<input>`` (``[data-search-select-search]``);
 the wrapper then greys itself via the ``has-[:disabled]:`` utilities in
-``_CONTAINER_CLASS``. Callers toggle only the control's ``disabled`` — never
-styles. (See ``ts/add_purchase.ts`` gating ``related_game`` on the type field.)
+``_CONTAINER_CLASS``. The inner input is excluded from the global
+disabled-input surface (``common/input.css``) so it stays transparent — the
+widget reads as one faded element, not a nested box. Callers toggle only the
+control's ``disabled`` — never styles. (See ``ts/add_purchase.ts`` gating
+``related_game`` on the type field.)
 
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.

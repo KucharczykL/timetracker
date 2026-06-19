@@ -4400,7 +4400,7 @@
     border-left-color: var(--color-slate-500);
   }
 }
-form input:disabled, select:disabled, textarea:disabled {
+form input:disabled:not([data-search-select-search]), select:disabled, textarea:disabled {
   cursor: not-allowed;
   background-color: var(--color-neutral-secondary-strong);
   color: var(--color-fg-disabled);

@@ -174,6 +174,10 @@ def test_add_purchase_type_game_disables_related_game_search(
     expect(search).to_be_disabled()
     # The component greys itself via has-[:disabled] when the input is disabled.
     assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "0.5"
+    # The disabled inner input stays transparent (excluded from the global
+    # disabled-input surface) so the widget reads as one element, not a nested
+    # box. transparent is mode-independent, so this holds in light and dark.
+    assert search.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
 
     page.select_option("#id_type", "dlc")
     expect(search).to_be_enabled()

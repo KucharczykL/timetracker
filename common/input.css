@@ -127,11 +127,14 @@
   }
 }
 
-form input:disabled,
+/* Standalone form controls get a distinct disabled surface. The SearchSelect's
+   inner search box is excluded: it's a composite widget that owns its disabled
+   look on the wrapper (has-[:disabled] in _CONTAINER_CLASS), so painting the
+   inner input here would render a nested box inside the wrapper. */
+form input:disabled:not([data-search-select-search]),
 select:disabled,
 textarea:disabled {
   @apply cursor-not-allowed bg-neutral-secondary-strong text-fg-disabled;
-   
 }
 
 .errorlist {
