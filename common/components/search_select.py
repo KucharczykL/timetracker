@@ -9,6 +9,13 @@ This module imports only from ``common.components`` — it has no Django-forms o
 ``data-*`` attributes wired up by ``ts/search_select.ts`` (compiled to
 ``games/static/js/dist/search_select.js``).
 
+**Disabling**: this is a composite widget — its ``id`` sits on the wrapper
+``<div>``, which has no ``disabled`` state of its own. To disable it, set
+``disabled`` on the inner search ``<input>`` (``[data-search-select-search]``);
+the wrapper then greys itself via the ``has-[:disabled]:`` utilities in
+``_CONTAINER_CLASS``. Callers toggle only the control's ``disabled`` — never
+styles. (See ``ts/add_purchase.ts`` gating ``related_game`` on the type field.)
+
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
 *Completeness*: without a ``search_url`` the inline set is the whole dataset and
@@ -47,9 +54,13 @@ LabeledOption = tuple[str, str]
 # so its pills/hidden inputs flow as direct participants of that row, inline
 # with the search input. The options panel is absolute, so it sits outside the
 # flex flow. (border omitted intentionally — see if it's needed later.)
+# The widget owns its disabled appearance: when any control inside it is
+# :disabled (e.g. add_purchase.ts disabling the search input), the wrapper greys
+# itself via :has() — callers only toggle the control's `disabled`, never styles.
 _CONTAINER_CLASS = (
     "relative flex flex-wrap items-center gap-1 p-2 "
-    "rounded-base bg-neutral-secondary-medium"
+    "rounded-base bg-neutral-secondary-medium "
+    "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 )
 _PILLS_CLASS = "contents"
 _SEARCH_CLASS = (

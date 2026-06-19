@@ -3430,6 +3430,16 @@
       outline-style: none;
     }
   }
+  .has-\[\:disabled\]\:cursor-not-allowed {
+    &:has(*:is(:disabled)) {
+      cursor: not-allowed;
+    }
+  }
+  .has-\[\:disabled\]\:opacity-50 {
+    &:has(*:is(:disabled)) {
+      opacity: 50%;
+    }
+  }
   .data-\[search-select-highlighted\]\:bg-brand {
     &[data-search-select-highlighted] {
       background-color: var(--color-brand);
