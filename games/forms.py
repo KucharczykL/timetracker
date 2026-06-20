@@ -4,6 +4,7 @@ from django.db import transaction
 
 from common.components import (
     DEFAULT_PREFETCH,
+    DISABLED_CONTROL_CLASS,
     SearchSelect,
     SearchSelectOption,
     render,
@@ -28,12 +29,9 @@ autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 # Form controls self-style: these utility strings live on the elements (applied
 # by PrimitiveWidgetsMixin), so there is no form styling in input.css and no
-# selector reaching in to style them. The disabled: variants put state on the
-# element too — no specificity wars, robust to markup changes.
-_DISABLED_CONTROL = (
-    "disabled:bg-neutral-secondary-strong disabled:text-fg-disabled "
-    "disabled:cursor-not-allowed"
-)
+# selector reaching in to style them. The disabled appearance is the shared
+# DISABLED_CONTROL_CLASS so every form element looks the same disabled.
+_DISABLED_CONTROL = DISABLED_CONTROL_CLASS
 INPUT_CLASS = (
     "mb-3 bg-neutral-secondary-medium border border-default-medium text-heading "
     "text-sm rounded-base focus:ring-brand focus:border-brand block w-full "

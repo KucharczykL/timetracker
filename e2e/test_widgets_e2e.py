@@ -174,25 +174,27 @@ def test_add_purchase_type_game_disables_related_game_search(
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     wrapper = page.locator("#id_related_game")
     search = page.locator("#id_related_game [data-search-select-search]")
+    name = page.locator("#id_name")
+    opacity = "el => getComputedStyle(el).opacity"
+    bg = "el => getComputedStyle(el).backgroundColor"
 
     page.select_option("#id_type", "game")
     expect(search).to_be_disabled()
-    # The component greys itself via has-[:disabled] when the input is disabled.
-    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "0.5"
-    # The disabled inner input stays transparent (excluded from the global
-    # disabled-input surface) so the widget reads as one element, not a nested
-    # box. transparent is mode-independent, so this holds in light and dark.
-    assert (
-        search.evaluate("el => getComputedStyle(el).backgroundColor")
-        == "rgba(0, 0, 0, 0)"
-    )
-    # The inner input carries the same not-allowed cursor as the wrapper, so the
-    # cursor doesn't flicker as the pointer crosses the widget.
+    # A disabled SearchSelect must look identical to a disabled native input:
+    # both fade (opacity-50) over the same surface.
+    assert wrapper.evaluate(opacity) == "0.5"
+    assert name.evaluate(opacity) == "0.5"
+    assert wrapper.evaluate(bg) == name.evaluate(bg)
+    # The inner input stays transparent (no nested box) with the same not-allowed
+    # cursor (no flicker across the widget).
+    assert search.evaluate(bg) == "rgba(0, 0, 0, 0)"
     assert search.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
     page.select_option("#id_type", "dlc")
     expect(search).to_be_enabled()
-    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "1"
+    # Enabled, both return to full opacity.
+    assert wrapper.evaluate(opacity) == "1"
+    assert name.evaluate(opacity) == "1"
 
 
 def test_add_game_sync_stops_once_sort_name_edited(

@@ -3438,14 +3438,9 @@
       cursor: not-allowed;
     }
   }
-  .disabled\:bg-neutral-secondary-strong {
+  .disabled\:opacity-50 {
     &:disabled {
-      background-color: var(--color-neutral-secondary-strong);
-    }
-  }
-  .disabled\:text-fg-disabled {
-    &:disabled {
-      color: var(--color-fg-disabled);
+      opacity: 50%;
     }
   }
   .has-\[\:disabled\]\:cursor-not-allowed {

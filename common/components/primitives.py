@@ -46,6 +46,13 @@ _SIZE_CLASSES = {
     "xl": "px-6 py-3.5 text-base",
 }
 
+# Shared disabled appearance for every form control, so all form elements look
+# the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
+# for composite controls whose disabled state lives on an inner element (e.g.
+# SearchSelect), on the wrapper via :has() (DISABLED_WITHIN_CLASS).
+DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
+DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
+
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
@@ -404,7 +411,8 @@ def Checkbox(
         ("value", value),
         (
             "class",
-            "rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
+            "rounded border-default-medium bg-neutral-secondary-medium "
+            f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
         ),
     ] + attributes
     if checked:
