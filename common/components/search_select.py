@@ -63,15 +63,21 @@ LabeledOption = tuple[str, str]
 # widget reads as a single clickable field; the pills wrapper uses `contents`
 # so its pills/hidden inputs flow as direct participants of that row, inline
 # with the search input. The options panel is absolute, so it sits outside the
-# flex flow. (border omitted intentionally — see if it's needed later.)
+# flex flow.
+# Border + focus styling mirror a native input (INPUT_CLASS): border-default-medium
+# normally, brand border + ring on focus. The search input is the focusable
+# element, so the focus state is expressed on the wrapper with focus-within: (and
+# the inner input suppresses its own ring — see _SEARCH_CLASS).
 # The widget owns its disabled appearance: when any control inside it is
 # :disabled (e.g. add_purchase.ts disabling the search input), the wrapper fades
 # via :has() — the same opacity-50 a disabled native input uses (see
 # _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
 # toggle the control's `disabled`, never styles.
 _CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 p-2 "
-    f"rounded-base bg-neutral-secondary-medium {DISABLED_WITHIN_CLASS}"
+    "relative flex flex-wrap items-center gap-1 p-2 rounded-base "
+    "bg-neutral-secondary-medium border border-default-medium "
+    "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
+    f"{DISABLED_WITHIN_CLASS}"
 )
 _PILLS_CLASS = "contents"
 # disabled:cursor-not-allowed matches the wrapper's cursor so hovering across

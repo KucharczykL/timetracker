@@ -154,6 +154,30 @@ def test_add_purchase_related_game_is_flat_game_search(
     expect(related).to_have_attribute("data-search-url", "/api/games/search")
 
 
+def test_searchselect_border_matches_native_input(
+    authenticated_page: Page, live_server
+):
+    """A SearchSelect's wrapper has the same border as a native input, and turns
+    brand on focus (via focus-within on the wrapper, since the inner search box
+    is what's focused)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    price = page.locator("#id_price")  # always-enabled native input
+    wrapper = page.locator("#id_platform")
+    search = page.locator("#id_platform [data-search-select-search]")
+    border = "el => getComputedStyle(el).borderColor"
+
+    rest = price.evaluate(border)
+    assert wrapper.evaluate(border) == rest  # same border at rest
+
+    search.focus()
+    focused_wrapper = wrapper.evaluate(border)
+    price.focus()
+    focused_input = price.evaluate(border)
+    assert focused_wrapper == focused_input  # same brand border on focus
+    assert focused_wrapper != rest  # focus actually changes it
+
+
 def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):
     """Typing into Name live-fills Sort name (sync bound to the add form, not
     the navbar logout form which is the first <form> on the page)."""
