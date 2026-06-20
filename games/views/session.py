@@ -49,16 +49,12 @@ class SessionRowData(TypedDict):
     cell_data: list[Node]
 
 
-def session_row_data(
-    session: Session, device_list, csrf_token: str
-) -> SessionRowData:
+def session_row_data(session: Session, device_list, csrf_token: str) -> SessionRowData:
     """Canonical session-list row. Single source of truth shared by
     list_sessions and the htmx finish/reset fragments."""
     row_selector = f"#session-row-{session.pk}"
     end_url = reverse("games:list_sessions_end_session", args=[session.pk])
-    reset_url = reverse(
-        "games:list_sessions_reset_session_start", args=[session.pk]
-    )
+    reset_url = reverse("games:list_sessions_reset_session_start", args=[session.pk])
     actions = ButtonGroup(
         [
             {
@@ -202,8 +198,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             "Actions",
         ],
         "rows": [
-            session_row_data(session, device_list, csrf_token)
-            for session in sessions
+            session_row_data(session, device_list, csrf_token) for session in sessions
         ],
     }
     content = paginated_table_content(
@@ -313,9 +308,7 @@ def _row_with_navbar(request: HttpRequest, session: Session) -> HttpResponse:
     counts = model_counts(request)
     fragment = Fragment(
         session_row(session, device_list, get_token(request)),
-        NavbarPlaytime(
-            counts["today_played"], counts["last_7_played"], oob=True
-        ),
+        NavbarPlaytime(counts["today_played"], counts["last_7_played"], oob=True),
     )
     return HttpResponse(str(fragment))
 

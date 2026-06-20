@@ -130,7 +130,7 @@ class RenderedPagesTest(TestCase):
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
         self.assertIn("submit_and_create_session", html)
-        self.assertIn("Submit &amp; Create Session", html)   # & correctly escaped
+        self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
         self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS

@@ -38,9 +38,7 @@ def test_reset_session_start_htmx_returns_row_no_refresh_header(
     auth_client, running_session
 ):
     original_start = running_session.timestamp_start
-    url = reverse(
-        "games:list_sessions_reset_session_start", args=[running_session.pk]
-    )
+    url = reverse("games:list_sessions_reset_session_start", args=[running_session.pk])
     response = auth_client.get(url, HTTP_HX_REQUEST="true")
     body = response.content.decode()
     assert response.status_code == 200
