@@ -128,11 +128,28 @@ class RenderedPagesTest(TestCase):
         self.assertIn("dist/add_game.js", html)
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
+        self.assertIn("submit_and_create_session", html)
+        self.assertIn("Submit &amp; Create Session", html)   # & correctly escaped
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
         self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS
         self.assertIn("bg-neutral-secondary-medium", html)  # INPUT_CLASS surface
         self.assertNoEscapedTags(html)
+
+    def test_add_game_submit_and_create_session_redirects(self):
+        response = self.client.post(
+            reverse("games:add_game"),
+            {
+                "name": "New Session Game",
+                "status": "u",
+                "submit_and_create_session": "",
+            },
+        )
+        game = Game.objects.get(name="New Session Game")
+        self.assertRedirects(
+            response,
+            reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
+        )
 
     def test_form_errors_render_with_component_class(self):
         """Invalid submits re-render field errors via FormFields' own class, not
