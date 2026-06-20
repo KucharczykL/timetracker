@@ -187,6 +187,25 @@ def _main_script(mastered: bool) -> str:
     return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
 
 
+def NavbarPlaytime(
+    today_played: str, last_7_played: str, *, oob: bool = False
+) -> "Node":
+    """The navbar 'Today · Last 7 days' totals. Carries a stable id so
+    htmx endpoints can refresh it out-of-band after a session change."""
+    from common.components import Safe
+
+    oob_attr = ' hx-swap-oob="true"' if oob else ""
+    return Safe(
+        f'<li id="navbar-playtime"{oob_attr} '
+        'class="dark:text-white flex flex-col items-center text-xs">'
+        '<span class="flex uppercase gap-1">Today'
+        '<span class="dark:text-gray-400">·</span>Last 7 days</span>'
+        '<span class="flex items-center gap-1">'
+        f'{today_played}<span class="dark:text-gray-400">·</span>'
+        f"{last_7_played}</span></li>"
+    )
+
+
 def Navbar(
     *, today_played: str, last_7_played: str, current_year: int, csrf_token: str
 ) -> "Node":
@@ -225,10 +244,7 @@ def Navbar(
                         </svg>
                     </button>
                 </li>
-                <li class="dark:text-white flex flex-col items-center text-xs">
-                    <span class="flex uppercase gap-1">Today<span class="dark:text-gray-400">·</span>Last 7 days</span>
-                    <span class="flex items-center gap-1">{today_played}<span class="dark:text-gray-400">·</span>{last_7_played}</span>
-                </li>
+                {NavbarPlaytime(today_played, last_7_played)}
                 <li>
                     <a href="#" class="block py-2 px-3 text-white bg-blue-700 rounded-sm md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 dark:bg-blue-600 md:dark:bg-transparent" aria-current="page">Home</a>
                 </li>
