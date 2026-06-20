@@ -46,7 +46,7 @@ class SessionRowData(TypedDict):
     hx_get: str
     hx_select: str
     hx_swap: str
-    cell_data: list[Node]
+    cell_data: list[Node | str]
 
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> SessionRowData:

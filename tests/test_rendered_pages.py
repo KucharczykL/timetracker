@@ -255,13 +255,17 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
 
     def test_session_row_fragment_via_htmx(self):
-        # The inline "finish session" endpoint returns a <tr> fragment.
+        # The inline "finish session" endpoint returns an in-place row swap
+        # (<tr id="session-row-{pk}">) plus an OOB navbar-playtime update.
         resp = self.client.get(
             reverse("games:list_sessions_end_session", args=[self.session.id]),
             HTTP_HX_REQUEST="true",
         )
         html = resp.content.decode()
         self.assertTrue(html.lstrip().startswith("<tr"))
+        self.assertIn(f'id="session-row-{self.session.id}"', html)
+        self.assertIn('id="navbar-playtime"', html)
+        self.assertIn('hx-swap-oob="true"', html)
         self.assertIn(self.game.name, html)
         self.assertNoEscapedTags(html)
 
