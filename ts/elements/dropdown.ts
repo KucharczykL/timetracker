@@ -33,11 +33,14 @@ export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
     menu.style.width = `${rect.width}px`;
     menu.style.maxHeight = `${Math.max(0, openUp ? spaceAbove : spaceBelow)}px`;
     menu.style.overflowY = "auto";
+    // Set the unused anchor to "auto" (not "") so this inline value overrides
+    // the menu's `top-[105%]` utility class; clearing it to "" would let the
+    // class reassert top:105% and collapse the fixed menu off-screen.
     if (openUp) {
-      menu.style.top = "";
+      menu.style.top = "auto";
       menu.style.bottom = `${window.innerHeight - rect.top}px`;
     } else {
-      menu.style.bottom = "";
+      menu.style.bottom = "auto";
       menu.style.top = `${rect.bottom}px`;
     }
   };
