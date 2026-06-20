@@ -163,6 +163,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             return HttpResponseRedirect(
                 reverse("games:add_purchase_for_game", kwargs={"game_id": game.id})
             )
+        elif "submit_and_create_session" in request.POST:
+            return HttpResponseRedirect(
+                reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+            )
         else:
             return redirect("games:list_games")
 
@@ -171,12 +175,21 @@ def add_game(request: HttpRequest) -> HttpResponse:
         AddForm(
             form,
             request=request,
-            additional_row=StyledButton(
-                [],
-                "Submit & Create Purchase",
-                color="gray",
-                type="submit",
-                name="submit_and_redirect",
+            additional_row=Fragment(
+                StyledButton(
+                    [],
+                    "Submit & Create Purchase",
+                    color="gray",
+                    type="submit",
+                    name="submit_and_redirect",
+                ),
+                StyledButton(
+                    [],
+                    "Submit & Create Session",
+                    color="gray",
+                    type="submit",
+                    name="submit_and_create_session",
+                ),
             ),
         ),
         title="Add New Game",
