@@ -68,3 +68,56 @@ def test_device_dropdown_not_clipped_on_short_table(
     page.wait_for_timeout(200)
     session.refresh_from_db()
     assert session.device == devices[14]
+
+
+def test_device_dropdown_flips_up_near_viewport_bottom(
+    authenticated_page: Page, live_server
+):
+    """A dropdown whose toggle sits near the viewport bottom must open upward
+    and stay fully visible — not collapse off-screen.
+
+    Regression: the menu keeps a ``top-[105%]`` utility class; clearing inline
+    ``top`` to "" in the flip-up branch let that class reassert ``top: 105%``
+    on the now-``fixed`` menu, collapsing it to a 2px sliver below the viewport.
+    """
+    page = authenticated_page
+    page.set_viewport_size({"width": 1280, "height": 760})
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    game = Game.objects.create(name="Tunic")
+    game.platform = platform
+    game.save()
+    devices = [Device.objects.create(name=f"Device {i:02d}") for i in range(15)]
+    sessions = [
+        Session.objects.create(
+            game=game, device=devices[0], timestamp_start=timezone.now()
+        )
+        for _ in range(10)
+    ]
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    # Scroll the table so the lower rows sit near the viewport bottom, where the
+    # menu cannot fit below and must flip up.
+    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    page.wait_for_timeout(200)
+
+    bottom_row = sessions[-3]
+    page.locator(f"#session-row-{bottom_row.pk} [data-toggle]").click()
+    menu = page.locator("[data-menu]:not([hidden])")
+    menu.wait_for(state="visible")
+
+    geometry = page.evaluate(
+        """() => {
+            const menu = document.querySelector('[data-menu]:not([hidden])');
+            const rect = menu.getBoundingClientRect();
+            return {
+                top: rect.top,
+                bottom: rect.bottom,
+                height: rect.height,
+                viewportHeight: window.innerHeight,
+            };
+        }"""
+    )
+    # The flipped-up menu is a real, fully on-screen box (not a 2px sliver).
+    assert geometry["height"] > 50, geometry
+    assert geometry["top"] >= -1, geometry
+    assert geometry["bottom"] <= geometry["viewportHeight"] + 1, geometry
