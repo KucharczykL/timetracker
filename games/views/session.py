@@ -5,10 +5,9 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
-from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import mark_safe
 
 from common.components import (
     A,
@@ -29,8 +28,8 @@ from common.components import (
     TableRow,
     paginated_table_content,
 )
-from common.components.primitives import Span, Td, Tr
-from common.layout import render_page
+from common.layout import NavbarPlaytime, render_page
+from games.views.general import model_counts
 from common.time import (
     dateformat,
     local_strftime,
@@ -309,84 +308,16 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
 
 
-def _session_row_fragment(session: Session) -> SafeText:
-    """A single session <tr> (the old list_sessions.html#session-row partial),
-    returned by the inline end/clone-session HTMX endpoints."""
-    name_link = A(
-        href=reverse("games:view_game", args=[session.game.id]),
-        attributes=[
-            (
-                "class",
-                "underline decoration-slate-500 sm:decoration-2 inline-block "
-                "truncate max-w-20char group-hover:absolute group-hover:max-w-none "
-                "group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 "
-                "group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 "
-                "group-hover:rounded-xs group-hover:outline-dashed "
-                "group-hover:outline-purple-400 group-hover:outline-4 "
-                "group-hover:decoration-purple-900 group-hover:text-purple-100",
-            ),
-        ],
-        children=[session.game.name],
+def _row_with_navbar(request: HttpRequest, session: Session) -> HttpResponse:
+    device_list = Device.objects.order_by("name")
+    counts = model_counts(request)
+    fragment = Fragment(
+        session_row(session, device_list, get_token(request)),
+        NavbarPlaytime(
+            counts["today_played"], counts["last_7_played"], oob=True
+        ),
     )
-    name_td = Td(
-        attributes=[
-            (
-                "class",
-                "px-2 sm:px-4 md:px-6 md:py-2 purchase-name relative align-top "
-                "w-24 h-12 group",
-            )
-        ],
-        children=[
-            Span(
-                attributes=[("class", "inline-block relative")],
-                children=[name_link],
-            )
-        ],
-    )
-    start_td = Td(
-        attributes=[
-            ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell")
-        ],
-        children=[date_filter(session.timestamp_start, "d/m/Y H:i")],
-    )
-
-    if not session.timestamp_end:
-        end_url = reverse("games:list_sessions_end_session", args=[session.id])
-        end_inner: SafeText | str = A(
-            href=end_url,
-            attributes=[
-                ("hx-get", end_url),
-                ("hx-target", "closest tr"),
-                ("hx-swap", "outerHTML"),
-                ("hx-indicator", "#indicator"),
-                (
-                    "onClick",
-                    "document.querySelector('#last-session-start')"
-                    ".classList.remove('invisible')",
-                ),
-            ],
-            children=[
-                Span(
-                    attributes=[("class", "text-yellow-300")],
-                    children=["Finish now?"],
-                )
-            ],
-        )
-    elif session.duration_manual:
-        end_inner = "--"
-    else:
-        end_inner = date_filter(session.timestamp_end, "d/m/Y H:i")
-    end_td = Td(
-        attributes=[
-            ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell")
-        ],
-        children=[end_inner],
-    )
-    duration_td = Td(
-        attributes=[("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono")],
-        children=[session.duration_formatted()],
-    )
-    return Tr(children=[name_td, start_td, end_td, duration_td])
+    return HttpResponse(str(fragment))
 
 
 def clone_session_by_id(session_id: int) -> Session:
@@ -404,9 +335,13 @@ def clone_session_by_id(session_id: int) -> Session:
 def new_session_from_existing_session(
     request: HttpRequest, session_id: int
 ) -> HttpResponse:
-    session = clone_session_by_id(session_id)
+    clone_session_by_id(session_id)
     if request.htmx:
-        return HttpResponse(_session_row_fragment(session))
+        # Clone adds a new row whose position depends on sort + pagination,
+        # which a single-row swap cannot place — refresh the list instead.
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return redirect("games:list_sessions")
 
 
@@ -416,7 +351,7 @@ def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session.timestamp_end = timezone.now()
     session.save()
     if request.htmx:
-        return HttpResponse(_session_row_fragment(session))
+        return _row_with_navbar(request, session)
     return redirect("games:list_sessions")
 
 
@@ -426,11 +361,7 @@ def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
     session.timestamp_start = timezone.now()
     session.save()
     if request.htmx:
-        # The list table is rebuilt server-side per request; a full refresh
-        # avoids swapping in a row fragment whose layout could drift from it.
-        response = HttpResponse(status=204)
-        response["HX-Refresh"] = "true"
-        return response
+        return _row_with_navbar(request, session)
     return redirect("games:list_sessions")
 
 

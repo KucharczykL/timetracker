@@ -267,7 +267,7 @@ class RenderedPagesTest(TestCase):
 
     def test_reset_session_start_to_now_via_htmx(self):
         # The inline "reset start" endpoint sets timestamp_start to now and
-        # asks htmx to refresh the list (the table is rebuilt server-side).
+        # returns an in-place row swap plus an OOB navbar update.
         running = Session.objects.create(
             game=self.game,
             timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
@@ -277,7 +277,11 @@ class RenderedPagesTest(TestCase):
             reverse("games:list_sessions_reset_session_start", args=[running.id]),
             HTTP_HX_REQUEST="true",
         )
-        self.assertEqual(resp["HX-Refresh"], "true")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn(f'id="session-row-{running.id}"', body)
+        self.assertIn('id="navbar-playtime"', body)
+        self.assertNotIn("HX-Refresh", resp.headers)
         running.refresh_from_db()
         self.assertGreaterEqual(running.timestamp_start, before)
 
