@@ -234,7 +234,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             return redirect("games:list_sessions")
     else:
         if game_id:
-            game = Game.objects.get(id=game_id)
+            game = get_object_or_404(Game, id=game_id)
             form = SessionForm(
                 initial={
                     **initial,
