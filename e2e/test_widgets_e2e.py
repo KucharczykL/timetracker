@@ -9,6 +9,8 @@ vendored), so no network access is needed beyond the live server itself.
 Browser binaries must be installed once: ``uv run playwright install chromium``.
 """
 
+import re
+
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
@@ -258,3 +260,16 @@ def test_add_game_sync_stops_once_sort_name_edited(
     name.type(" 2")
     expect(name).to_have_value("Halo 2")
     expect(sort).to_have_value("Custom Sort")  # not clobbered
+
+
+def test_add_game_submit_and_create_session_redirects(
+    authenticated_page: Page, live_server
+):
+    """Submit & Create Session saves the game and redirects to add-session with
+    the new game pre-selected in the game SearchSelect."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    page.fill("#id_name", "E2E Session Game")
+    page.click('button[name="submit_and_create_session"]')
+    page.wait_for_url(f"{live_server.url}/tracker/session/add/for-game/**")
+    expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
