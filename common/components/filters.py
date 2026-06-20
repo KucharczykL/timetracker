@@ -563,10 +563,8 @@ def _filter_collapse_button() -> Node:
             ("type", "button"),
             # Slider handles are positioned in percentages, so initializing
             # them while the body is hidden is safe — no re-init on reveal.
-            (
-                "onclick",
-                "document.getElementById('filter-bar-body').classList.toggle('hidden')",
-            ),
+            # Click is wired by filter-bar.ts (no inline handler).
+            ("data-filter-bar-toggle", ""),
             (
                 "class",
                 "flex items-center gap-2 text-sm font-medium text-body "

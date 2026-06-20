@@ -403,6 +403,16 @@ class FilterBarElement extends HTMLElement {
     const form = this.querySelector<HTMLFormElement>("form");
     if (!form) return;
 
+    // Delegated on the persistent custom element so the toggle keeps working
+    // after the inner #filter-bar body is htmx-swapped — connectedCallback does
+    // not re-run for inner swaps, so a direct listener on the button would be
+    // lost (this is why the toggle was previously an inline onclick).
+    this.addEventListener("click", (event) => {
+      if ((event.target as Element).closest("[data-filter-bar-toggle]")) {
+        this.querySelector("#filter-bar-body")?.classList.toggle("hidden");
+      }
+    });
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const filter = buildFilterJSON(form);
