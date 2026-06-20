@@ -20,7 +20,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
-    page.click('input[type="submit"]')
+    page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
     return page
 
@@ -127,9 +127,14 @@ def test_add_purchase_type_toggles_disabled_fields(
 
     name_input = page.locator("#id_name")
     expect(name_input).to_be_disabled()
+    # The Name field (a plain input) self-styles its disabled state via the
+    # INPUT_CLASS disabled: variants — not a global rule. not-allowed is
+    # mode-independent, so it holds in light and dark.
+    assert name_input.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
     page.select_option("#id_type", "dlc")
     expect(name_input).to_be_enabled()
+    assert name_input.evaluate("el => getComputedStyle(el).cursor") != "not-allowed"
 
     page.select_option("#id_type", "game")
     expect(name_input).to_be_disabled()
@@ -168,7 +173,7 @@ def test_add_purchase_type_game_disables_related_game_search(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     wrapper = page.locator("#id_related_game")
-    search = page.locator('#id_related_game [data-search-select-search]')
+    search = page.locator("#id_related_game [data-search-select-search]")
 
     page.select_option("#id_type", "game")
     expect(search).to_be_disabled()
@@ -177,7 +182,10 @@ def test_add_purchase_type_game_disables_related_game_search(
     # The disabled inner input stays transparent (excluded from the global
     # disabled-input surface) so the widget reads as one element, not a nested
     # box. transparent is mode-independent, so this holds in light and dark.
-    assert search.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
+    assert (
+        search.evaluate("el => getComputedStyle(el).backgroundColor")
+        == "rgba(0, 0, 0, 0)"
+    )
     # The inner input carries the same not-allowed cursor as the wrapper, so the
     # cursor doesn't flicker as the pointer crosses the widget.
     assert search.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"

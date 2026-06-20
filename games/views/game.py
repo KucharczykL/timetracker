@@ -180,7 +180,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
-        scripts=ModuleScript("dist/search_select.js") + ModuleScript("dist/add_game.js"),
+        scripts=ModuleScript("dist/search_select.js")
+        + ModuleScript("dist/add_game.js"),
     )
 
 

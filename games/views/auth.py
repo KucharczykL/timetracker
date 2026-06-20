@@ -4,29 +4,12 @@ registration/login.html)."""
 from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 
-from common.components import CsrfInput, Div, Element, Input, Node, Safe
-from common.components.primitives import Td, Tr
+from common.components import CsrfInput, Div, Element, FormFields, Node, StyledButton
 from common.layout import render_page
+from games.forms import LoginForm
 
 
 def _login_content(form, request) -> Node:
-    table = Element(
-        "table",
-        children=[
-            CsrfInput(request),
-            Safe(str(form.as_table())),
-            Tr(
-                children=[
-                    Td(),
-                    Td(
-                        children=[
-                            Input(type="submit", attributes=[("value", "Login")])
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
     return Div(
         [("class", "flex items-center flex-col")],
         [
@@ -37,15 +20,25 @@ def _login_content(form, request) -> Node:
             ),
             Element(
                 "form",
-                attributes=[("method", "post")],
-                children=[table],
+                attributes=[
+                    ("method", "post"),
+                    ("class", "flex flex-col gap-3 w-full max-w-sm"),
+                ],
+                children=[
+                    CsrfInput(request),
+                    FormFields(form),
+                    StyledButton([], "Login", type="submit"),
+                ],
             ),
         ],
     )
 
 
 class LoginView(auth_views.LoginView):
-    """Django's LoginView, but the page body is built in Python."""
+    """Django's LoginView, but the page body is built in Python and the form is
+    our `LoginForm` so its inputs self-style like every other form."""
+
+    authentication_form = LoginForm
 
     def render_to_response(self, context, **response_kwargs) -> HttpResponse:
         return render_page(

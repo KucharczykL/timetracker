@@ -128,6 +128,21 @@ class RenderedPagesTest(TestCase):
         self.assertIn("dist/add_game.js", html)
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
+        # Fields self-style: label + control carry their own classes (no #add-form
+        # / form CSS in input.css).
+        self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS
+        self.assertIn("bg-neutral-secondary-medium", html)  # INPUT_CLASS surface
+        self.assertNoEscapedTags(html)
+
+    def test_form_errors_render_with_component_class(self):
+        """Invalid submits re-render field errors via FormFields' own class, not
+        Django's .errorlist (which no longer exists in the CSS)."""
+        # Non-empty but invalid (name is required) so the form binds and
+        # re-renders with errors — an empty {} POST is falsy and stays unbound.
+        response = self.client.post(reverse("games:add_game"), {"status": "u"})
+        html = response.content.decode()
+        self.assertIn("bg-red-600", html)  # _FIELD_ERROR_CLASS
+        self.assertNotIn('class="errorlist"', html)
         self.assertNoEscapedTags(html)
 
     def test_add_purchase_form(self):
@@ -264,8 +279,9 @@ class RenderedPagesTest(TestCase):
             "<!DOCTYPE html>",  # full Page() layout
             "Please log in to continue",
             "csrfmiddlewaretoken",
+            'name="username"',  # auth form fields rendered via FormFields
             'type="submit"',
-            'value="Login"',
+            ">Login<",  # StyledButton submit (was an <input value="Login">)
             "</html>",
         ]:
             self.assertIn(marker, html)

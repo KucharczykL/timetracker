@@ -106,7 +106,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
-    page.click('input[type="submit"]')
+    page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
     return page
 

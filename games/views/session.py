@@ -15,13 +15,13 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Div,
+    FormFields,
     Fragment,
     Icon,
     ModuleScript,
     NameWithIcon,
     Node,
     Popover,
-    Safe,
     SearchField,
     SessionDeviceSelector,
     SessionTimestampButtons,
@@ -193,39 +193,34 @@ def search_sessions(request: HttpRequest) -> HttpResponse:
     return list_sessions(request, search_string=request.GET.get("search_string", ""))
 
 
-def _session_fields(form) -> Fragment:
-    """Manual per-field layout for the session form.
+def _timestamp_buttons(field_name: str) -> Node:
+    """The now/toggle/copy helper buttons appended to a timestamp field's row."""
+    this_side = "start" if field_name == "timestamp_start" else "end"
+    other_side = "end" if field_name == "timestamp_start" else "start"
+    return SessionTimestampButtons(
+        class_="flex flex-row gap-3 justify-start mt-3",
+        hx_boost="false",
+    )[
+        StyledButton(data_target=field_name, data_type="now", size="xs")["Set to now"],
+        StyledButton(data_target=field_name, data_type="toggle", size="xs")[
+            "Toggle text"
+        ],
+        StyledButton(data_target=field_name, data_type="copy", size="xs")[
+            f"Copy {this_side} value to {other_side}"
+        ],
+    ]
 
-    Mirrors the old add_session.html: each field gets its label and widget,
-    and the timestamp fields gain a row of now/toggle/copy helper buttons.
-    """
-    rows: list[Node] = []
-    for field in form:
-        children: list[Node | str] = [
-            Safe(str(field.label_tag())),
-            Safe(str(field)),
-        ]
-        if field.name in ("timestamp_start", "timestamp_end"):
-            this_side = "start" if field.name == "timestamp_start" else "end"
-            other_side = "end" if field.name == "timestamp_start" else "start"
-            children.append(
-                SessionTimestampButtons(
-                    class_="form-row-button-group flex-row gap-3 justify-start mt-3",
-                    hx_boost="false",
-                )[
-                    StyledButton(data_target=field.name, data_type="now", size="xs")[
-                        "Set to now"
-                    ],
-                    StyledButton(data_target=field.name, data_type="toggle", size="xs")[
-                        "Toggle text"
-                    ],
-                    StyledButton(data_target=field.name, data_type="copy", size="xs")[
-                        f"Copy {this_side} value to {other_side}"
-                    ],
-                ]
-            )
-        rows.append(Div(children=children))
-    return Fragment(*rows, separator="\n")
+
+def _session_fields(form) -> Node:
+    """Session form fields via the shared renderer, with timestamp helper
+    buttons appended to the two timestamp rows."""
+    return FormFields(
+        form,
+        extras={
+            name: _timestamp_buttons(name)
+            for name in ("timestamp_start", "timestamp_end")
+        },
+    )
 
 
 @login_required
