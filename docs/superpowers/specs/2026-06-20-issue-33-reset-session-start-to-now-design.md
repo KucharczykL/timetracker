@@ -19,8 +19,8 @@ accidental clicks (the original start time is overwritten).
   None`), exactly like the green "Finish session now" button.
 - **Appearance:** gray button, new "reset" icon.
 - **Behavior:** confirm dialog before resetting; on confirm, sets
-  `timestamp_start = timezone.now()`, saves, and updates the row in place via
-  htmx.
+  `timestamp_start = timezone.now()`, saves, and refreshes the list via htmx so
+  the new start time shows.
 
 Out of scope: changing the existing Finish/Edit/Delete buttons; resetting end
 time; bulk operations.
@@ -36,7 +36,8 @@ registration needed.
 
 ### 2. New view — `games/views/session.py`
 
-Mirrors the existing `end_session` view:
+Mirrors the existing `end_session` view, but the htmx path returns an empty
+`204` with an `HX-Refresh: true` header instead of a row fragment:
 
 ```python
 @login_required
@@ -45,11 +46,19 @@ def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
     session.timestamp_start = timezone.now()
     session.save()
     if request.htmx:
-        return HttpResponse(_session_row_fragment(session))
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return redirect("games:list_sessions")
 ```
 
-`_session_row_fragment` already exists and is used by `end_session`.
+**Why `HX-Refresh` and not a row swap:** `_session_row_fragment` (used by
+`end_session`) renders a legacy 4-column `<tr>` that no longer matches the live
+session-list table (6 columns, built inline by `list_sessions`) and carries no
+`id="session-row-{pk}"`. Swapping it into the current table would produce a
+malformed row. The list table is rebuilt server-side on every request, so a full
+htmx refresh is the simplest correct update — and consistent with the existing
+Finish button, which also does a full-page navigation.
 
 ### 3. New URL — `games/urls.py`
 
@@ -82,11 +91,12 @@ Finish button:
 
 ```python
 {
+    "href": reverse(
+        "games:list_sessions_reset_session_start", args=[session.pk]
+    ),
     "hx_get": reverse(
         "games:list_sessions_reset_session_start", args=[session.pk]
     ),
-    "hx_target": f"#session-row-{session.pk}",
-    "hx_swap": "outerHTML",
     "hx_confirm": "Reset this session's start time to now?",
     "slot": Icon("reset"),
     "title": "Reset start to now",
@@ -96,16 +106,15 @@ if session.timestamp_end is None
 else {}
 ```
 
-Placement: directly after the Finish button, before Edit.
+Placement: directly after the Finish button, before Edit. `href` is a graceful
+fallback (the non-htmx view path redirects); `hx_get` + `hx_confirm` drive the
+confirm dialog and htmx refresh when JS is active.
 
-## Rationale: htmx for reset, plain href for Finish
+## Rationale: htmx confirm
 
-The reset button is htmx-driven (`hx-get` + `hx-target` + `hx-swap` +
-`hx-confirm`) so the confirm dialog and in-place row update come from htmx with
-no inline JS — consistent with the project's "no inline JS" convention. The
-existing Finish button uses a plain `href` (full-page navigation). This minor
-inconsistency is left as-is to keep the change focused; the reset view still
-returns a redirect for the non-htmx path, so it degrades gracefully.
+The confirm dialog comes from htmx's built-in `hx-confirm`, which only fires on
+htmx-driven requests — so the button must use `hx-get` (not just `href`). No
+inline JS is needed, consistent with the project's conventions.
 
 ## Testing
 

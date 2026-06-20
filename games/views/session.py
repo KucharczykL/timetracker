@@ -146,6 +146,24 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             else {},
                             {
                                 "href": reverse(
+                                    "games:list_sessions_reset_session_start",
+                                    args=[session.pk],
+                                ),
+                                "hx_get": reverse(
+                                    "games:list_sessions_reset_session_start",
+                                    args=[session.pk],
+                                ),
+                                "hx_confirm": (
+                                    "Reset this session's start time to now?"
+                                ),
+                                "slot": Icon("reset"),
+                                "title": "Reset start to now",
+                                "color": "gray",
+                            }
+                            if session.timestamp_end is None
+                            else {},
+                            {
+                                "href": reverse(
                                     "games:edit_session", args=[session.pk]
                                 ),
                                 "slot": Icon("edit"),
@@ -376,6 +394,20 @@ def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session.save()
     if request.htmx:
         return HttpResponse(_session_row_fragment(session))
+    return redirect("games:list_sessions")
+
+
+@login_required
+def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
+    session = get_object_or_404(Session, id=session_id)
+    session.timestamp_start = timezone.now()
+    session.save()
+    if request.htmx:
+        # The list table is rebuilt server-side per request; a full refresh
+        # avoids swapping in a row fragment whose layout could drift from it.
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return redirect("games:list_sessions")
 
 
