@@ -1572,7 +1572,8 @@ def StringFilter(
         ("placeholder", placeholder),
         (
             "class",
-            "w-full rounded-base border border-default-medium p-2 "
+            # text-sm + px-3 py-2.5 match every other input (canonical size).
+            "w-full rounded-base border border-default-medium px-3 py-2.5 text-sm "
             "bg-neutral-secondary-medium text-body "
             "focus:border-brand focus:ring-brand "
             # No transition-* here: with transition-all the border-color animated
