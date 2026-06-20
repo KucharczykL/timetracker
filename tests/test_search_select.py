@@ -154,6 +154,23 @@ class SearchSelectComponentTest(unittest.TestCase):
         html_custom = str(SearchSelect(name="t", prefetch=42))
         self.assertIn('prefetch="42"', html_custom)
 
+    def test_field_id_placed_on_search_input(self):
+        html = str(SearchSelect(name="games", id="id_games"))
+        # id appears exactly once in the whole widget
+        self.assertEqual(html.count('id="id_games"'), 1)
+        # must NOT appear in the <search-select> wrapper's opening tag
+        wrapper_open_end = html.index(">", html.index("<search-select"))
+        self.assertNotIn('id="id_games"', html[:wrapper_open_end])
+        # must appear on the element that carries data-search-select-search
+        search_pos = html.index("data-search-select-search")
+        tag_start = html.rindex("<", 0, search_pos)
+        tag_end = html.index(">", search_pos)
+        self.assertIn('id="id_games"', html[tag_start:tag_end])
+
+    def test_no_id_omits_id_attribute(self):
+        html = str(SearchSelect(name="games"))
+        self.assertNotIn("id=", html)
+
 
 class FilterSelectComponentTest(unittest.TestCase):
     MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
