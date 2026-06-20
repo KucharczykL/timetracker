@@ -1,14 +1,13 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
-from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import mark_safe
 
 from common.components import (
     A,
@@ -26,10 +25,11 @@ from common.components import (
     SessionDeviceSelector,
     SessionTimestampButtons,
     StyledButton,
+    TableRow,
     paginated_table_content,
 )
-from common.components.primitives import Span, Td, Tr
-from common.layout import render_page
+from common.layout import NavbarPlaytime, render_page
+from games.views.general import model_counts
 from common.time import (
     dateformat,
     local_strftime,
@@ -38,6 +38,83 @@ from common.time import (
 from common.utils import paginate, truncate
 from games.forms import SessionForm
 from games.models import Device, Game, Session
+
+
+class SessionRowData(TypedDict):
+    row_id: str
+    hx_trigger: str
+    hx_get: str
+    hx_select: str
+    hx_swap: str
+    cell_data: list[Node | str]
+
+
+def session_row_data(session: Session, device_list, csrf_token: str) -> SessionRowData:
+    """Canonical session-list row. Single source of truth shared by
+    list_sessions and the htmx finish/reset fragments."""
+    row_selector = f"#session-row-{session.pk}"
+    end_url = reverse("games:list_sessions_end_session", args=[session.pk])
+    reset_url = reverse("games:list_sessions_reset_session_start", args=[session.pk])
+    actions = ButtonGroup(
+        [
+            {
+                "href": end_url,
+                "hx_get": end_url,
+                "hx_target": row_selector,
+                "hx_swap": "outerHTML",
+                "slot": Icon("end"),
+                "title": "Finish session now",
+                "color": "green",
+            }
+            if session.timestamp_end is None
+            else {},
+            {
+                "href": reset_url,
+                "hx_get": reset_url,
+                "hx_target": row_selector,
+                "hx_swap": "outerHTML",
+                "hx_confirm": "Reset this session's start time to now?",
+                "slot": Icon("reset"),
+                "title": "Reset start to now",
+                "color": "gray",
+            }
+            if session.timestamp_end is None
+            else {},
+            {
+                "href": reverse("games:edit_session", args=[session.pk]),
+                "slot": Icon("edit"),
+                "title": "Edit",
+            },
+            {
+                "href": reverse("games:delete_session", args=[session.pk]),
+                "slot": Icon("delete"),
+                "title": "Delete",
+                "color": "red",
+            },
+        ]
+    )
+    return SessionRowData(
+        row_id=f"session-row-{session.pk}",
+        hx_trigger="device-changed from:body",
+        hx_get="",
+        hx_select=row_selector,
+        hx_swap="outerHTML",
+        cell_data=[
+            NameWithIcon(session=session),
+            f"{local_strftime(session.timestamp_start)}"
+            f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+            session.duration_formatted_with_mark(),
+            SessionDeviceSelector(session, device_list, csrf_token),
+            session.created_at.strftime(dateformat),
+            actions,
+        ],
+    )
+
+
+def session_row(session: Session, device_list, csrf_token: str) -> Node:
+    """The single-session <tr> node, rendered through the same TableRow
+    path the list table uses."""
+    return TableRow(session_row_data(session, device_list, csrf_token))
 
 
 @login_required
@@ -69,6 +146,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     except Session.DoesNotExist:
         last_session = None
     sessions, page_obj, elided_page_range = paginate(request, sessions)
+    csrf_token = get_token(request)
 
     data = {
         "header_action": Div(
@@ -120,68 +198,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             "Actions",
         ],
         "rows": [
-            {
-                "row_id": f"session-row-{session.pk}",
-                "hx_trigger": "device-changed from:body",
-                "hx_get": "",
-                "hx_select": f"#session-row-{session.pk}",
-                "hx_swap": "outerHTML",
-                "cell_data": [
-                    NameWithIcon(session=session),
-                    f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                    session.duration_formatted_with_mark(),
-                    SessionDeviceSelector(session, device_list, get_token(request)),
-                    session.created_at.strftime(dateformat),
-                    ButtonGroup(
-                        [
-                            {
-                                "href": reverse(
-                                    "games:list_sessions_end_session", args=[session.pk]
-                                ),
-                                "slot": Icon("end"),
-                                "title": "Finish session now",
-                                "color": "green",
-                            }
-                            if session.timestamp_end is None
-                            else {},
-                            {
-                                "href": reverse(
-                                    "games:list_sessions_reset_session_start",
-                                    args=[session.pk],
-                                ),
-                                "hx_get": reverse(
-                                    "games:list_sessions_reset_session_start",
-                                    args=[session.pk],
-                                ),
-                                "hx_confirm": (
-                                    "Reset this session's start time to now?"
-                                ),
-                                "slot": Icon("reset"),
-                                "title": "Reset start to now",
-                                "color": "gray",
-                            }
-                            if session.timestamp_end is None
-                            else {},
-                            {
-                                "href": reverse(
-                                    "games:edit_session", args=[session.pk]
-                                ),
-                                "slot": Icon("edit"),
-                                "title": "Edit",
-                            },
-                            {
-                                "href": reverse(
-                                    "games:delete_session", args=[session.pk]
-                                ),
-                                "slot": Icon("delete"),
-                                "title": "Delete",
-                                "color": "red",
-                            },
-                        ]
-                    ),
-                ],
-            }
-            for session in sessions
+            session_row_data(session, device_list, csrf_token) for session in sessions
         ],
     }
     content = paginated_table_content(
@@ -286,84 +303,14 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
 
 
-def _session_row_fragment(session: Session) -> SafeText:
-    """A single session <tr> (the old list_sessions.html#session-row partial),
-    returned by the inline end/clone-session HTMX endpoints."""
-    name_link = A(
-        href=reverse("games:view_game", args=[session.game.id]),
-        attributes=[
-            (
-                "class",
-                "underline decoration-slate-500 sm:decoration-2 inline-block "
-                "truncate max-w-20char group-hover:absolute group-hover:max-w-none "
-                "group-hover:-top-8 group-hover:-left-6 group-hover:min-w-60 "
-                "group-hover:px-6 group-hover:py-3.5 group-hover:bg-purple-600 "
-                "group-hover:rounded-xs group-hover:outline-dashed "
-                "group-hover:outline-purple-400 group-hover:outline-4 "
-                "group-hover:decoration-purple-900 group-hover:text-purple-100",
-            ),
-        ],
-        children=[session.game.name],
+def _row_with_navbar(request: HttpRequest, session: Session) -> HttpResponse:
+    device_list = Device.objects.order_by("name")
+    counts = model_counts(request)
+    fragment = Fragment(
+        session_row(session, device_list, get_token(request)),
+        NavbarPlaytime(counts["today_played"], counts["last_7_played"], oob=True),
     )
-    name_td = Td(
-        attributes=[
-            (
-                "class",
-                "px-2 sm:px-4 md:px-6 md:py-2 purchase-name relative align-top "
-                "w-24 h-12 group",
-            )
-        ],
-        children=[
-            Span(
-                attributes=[("class", "inline-block relative")],
-                children=[name_link],
-            )
-        ],
-    )
-    start_td = Td(
-        attributes=[
-            ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden sm:table-cell")
-        ],
-        children=[date_filter(session.timestamp_start, "d/m/Y H:i")],
-    )
-
-    if not session.timestamp_end:
-        end_url = reverse("games:list_sessions_end_session", args=[session.id])
-        end_inner: SafeText | str = A(
-            href=end_url,
-            attributes=[
-                ("hx-get", end_url),
-                ("hx-target", "closest tr"),
-                ("hx-swap", "outerHTML"),
-                ("hx-indicator", "#indicator"),
-                (
-                    "onClick",
-                    "document.querySelector('#last-session-start')"
-                    ".classList.remove('invisible')",
-                ),
-            ],
-            children=[
-                Span(
-                    attributes=[("class", "text-yellow-300")],
-                    children=["Finish now?"],
-                )
-            ],
-        )
-    elif session.duration_manual:
-        end_inner = "--"
-    else:
-        end_inner = date_filter(session.timestamp_end, "d/m/Y H:i")
-    end_td = Td(
-        attributes=[
-            ("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono hidden lg:table-cell")
-        ],
-        children=[end_inner],
-    )
-    duration_td = Td(
-        attributes=[("class", "px-2 sm:px-4 md:px-6 md:py-2 font-mono")],
-        children=[session.duration_formatted()],
-    )
-    return Tr(children=[name_td, start_td, end_td, duration_td])
+    return HttpResponse(str(fragment))
 
 
 def clone_session_by_id(session_id: int) -> Session:
@@ -381,9 +328,13 @@ def clone_session_by_id(session_id: int) -> Session:
 def new_session_from_existing_session(
     request: HttpRequest, session_id: int
 ) -> HttpResponse:
-    session = clone_session_by_id(session_id)
+    clone_session_by_id(session_id)
     if request.htmx:
-        return HttpResponse(_session_row_fragment(session))
+        # Clone adds a new row whose position depends on sort + pagination,
+        # which a single-row swap cannot place — refresh the list instead.
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return redirect("games:list_sessions")
 
 
@@ -393,7 +344,7 @@ def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session.timestamp_end = timezone.now()
     session.save()
     if request.htmx:
-        return HttpResponse(_session_row_fragment(session))
+        return _row_with_navbar(request, session)
     return redirect("games:list_sessions")
 
 
@@ -403,11 +354,7 @@ def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
     session.timestamp_start = timezone.now()
     session.save()
     if request.htmx:
-        # The list table is rebuilt server-side per request; a full refresh
-        # avoids swapping in a row fragment whose layout could drift from it.
-        response = HttpResponse(status=204)
-        response["HX-Refresh"] = "true"
-        return response
+        return _row_with_navbar(request, session)
     return redirect("games:list_sessions")
 
 

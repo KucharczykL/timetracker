@@ -130,7 +130,7 @@ class RenderedPagesTest(TestCase):
         self.assertIn("submit_and_redirect", html)
         self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
         self.assertIn("submit_and_create_session", html)
-        self.assertIn("Submit &amp; Create Session", html)   # & correctly escaped
+        self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
         self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS
@@ -255,19 +255,23 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
 
     def test_session_row_fragment_via_htmx(self):
-        # The inline "finish session" endpoint returns a <tr> fragment.
+        # The inline "finish session" endpoint returns an in-place row swap
+        # (<tr id="session-row-{pk}">) plus an OOB navbar-playtime update.
         resp = self.client.get(
             reverse("games:list_sessions_end_session", args=[self.session.id]),
             HTTP_HX_REQUEST="true",
         )
         html = resp.content.decode()
         self.assertTrue(html.lstrip().startswith("<tr"))
+        self.assertIn(f'id="session-row-{self.session.id}"', html)
+        self.assertIn('id="navbar-playtime"', html)
+        self.assertIn('hx-swap-oob="true"', html)
         self.assertIn(self.game.name, html)
         self.assertNoEscapedTags(html)
 
     def test_reset_session_start_to_now_via_htmx(self):
         # The inline "reset start" endpoint sets timestamp_start to now and
-        # asks htmx to refresh the list (the table is rebuilt server-side).
+        # returns an in-place row swap plus an OOB navbar update.
         running = Session.objects.create(
             game=self.game,
             timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
@@ -277,7 +281,11 @@ class RenderedPagesTest(TestCase):
             reverse("games:list_sessions_reset_session_start", args=[running.id]),
             HTTP_HX_REQUEST="true",
         )
-        self.assertEqual(resp["HX-Refresh"], "true")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn(f'id="session-row-{running.id}"', body)
+        self.assertIn('id="navbar-playtime"', body)
+        self.assertNotIn("HX-Refresh", resp.headers)
         running.refresh_from_db()
         self.assertGreaterEqual(running.timestamp_start, before)
 
