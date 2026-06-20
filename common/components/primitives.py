@@ -328,6 +328,8 @@ def _button_group_button(
     title: str = "",
     hx_get: str = "",
     hx_target: str = "",
+    hx_swap: str = "",
+    hx_confirm: str = "",
 ) -> Element:
     """Generate a single button-group button (inner <button> inside <a>)."""
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
@@ -337,6 +339,10 @@ def _button_group_button(
         a_attrs.append(("hx-get", hx_get))
     if hx_target:
         a_attrs.append(("hx-target", hx_target))
+    if hx_swap:
+        a_attrs.append(("hx-swap", hx_swap))
+    if hx_confirm:
+        a_attrs.append(("hx-confirm", hx_confirm))
     a_attrs.append(
         (
             "class",
@@ -361,7 +367,8 @@ def _button_group_button(
 def ButtonGroup(buttons: list[dict] | None = None) -> Element:
     """Generate a button group div.
 
-    Each button dict accepts: href, slot (required), color, title, hx_get, hx_target.
+    Each button dict accepts: href, slot (required), color, title, hx_get,
+    hx_target, hx_swap, hx_confirm.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
     """
@@ -378,6 +385,8 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
                 title=btn.get("title", ""),
                 hx_get=btn.get("hx_get", ""),
                 hx_target=btn.get("hx_target", ""),
+                hx_swap=btn.get("hx_swap", ""),
+                hx_confirm=btn.get("hx_confirm", ""),
             )
         )
 

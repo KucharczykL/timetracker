@@ -13,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from games.models import Game, GameStatusChange, Platform, Purchase, Session
 
@@ -263,6 +264,47 @@ class RenderedPagesTest(TestCase):
         self.assertTrue(html.lstrip().startswith("<tr"))
         self.assertIn(self.game.name, html)
         self.assertNoEscapedTags(html)
+
+    def test_reset_session_start_to_now_via_htmx(self):
+        # The inline "reset start" endpoint sets timestamp_start to now and
+        # asks htmx to refresh the list (the table is rebuilt server-side).
+        running = Session.objects.create(
+            game=self.game,
+            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        )
+        before = timezone.now()
+        resp = self.client.get(
+            reverse("games:list_sessions_reset_session_start", args=[running.id]),
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp["HX-Refresh"], "true")
+        running.refresh_from_db()
+        self.assertGreaterEqual(running.timestamp_start, before)
+
+    def test_reset_session_start_redirects_without_htmx(self):
+        running = Session.objects.create(
+            game=self.game,
+            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        )
+        resp = self.client.get(
+            reverse("games:list_sessions_reset_session_start", args=[running.id])
+        )
+        self.assertRedirects(resp, reverse("games:list_sessions"))
+
+    def test_reset_button_only_shown_for_running_sessions(self):
+        running = Session.objects.create(
+            game=self.game,
+            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        )
+        html = self.get("games:list_sessions").content.decode()
+        self.assertIn(
+            reverse("games:list_sessions_reset_session_start", args=[running.id]),
+            html,
+        )
+        self.assertNotIn(
+            reverse("games:list_sessions_reset_session_start", args=[self.session.id]),
+            html,
+        )
 
     # --- statuschange --------------------------------------------------------
 
