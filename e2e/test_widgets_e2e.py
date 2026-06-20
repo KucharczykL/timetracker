@@ -161,7 +161,6 @@ def test_searchselect_border_matches_native_input(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     price = page.locator("#id_price")  # always-enabled native input
-    # #id_platform is now on the inner <input>; find the wrapper by name attr.
     wrapper = page.locator("search-select[name='platform']")
     search_input = page.locator("#id_platform")
     border = "el => getComputedStyle(el).borderColor"
