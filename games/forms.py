@@ -1,8 +1,10 @@
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
 
 from common.components import (
     DEFAULT_PREFETCH,
+    DISABLED_CONTROL_CLASS,
     SearchSelect,
     SearchSelectOption,
     render,
@@ -24,6 +26,27 @@ custom_datetime_widget = forms.DateTimeInput(
     attrs={"type": "datetime-local"}, format="%Y-%m-%d %H:%M"
 )
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
+
+# Form controls self-style: these utility strings live on the elements (applied
+# by PrimitiveWidgetsMixin), so there is no form styling in input.css and no
+# selector reaching in to style them. The disabled appearance is the shared
+# DISABLED_CONTROL_CLASS so every form element looks the same disabled.
+_DISABLED_CONTROL = DISABLED_CONTROL_CLASS
+INPUT_CLASS = (
+    "mb-3 bg-neutral-secondary-medium border border-default-medium text-heading "
+    "text-sm rounded-base focus:ring-brand focus:border-brand block w-full "
+    f"px-3 py-2.5 shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
+)
+SELECT_CLASS = (
+    "w-full px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium "
+    "text-heading text-sm rounded-base focus:ring-brand focus:border-brand "
+    f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
+)
+TEXTAREA_CLASS = (
+    "bg-neutral-secondary-medium border border-default-medium text-heading "
+    "text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 "
+    f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
+)
 
 
 class PrimitiveCheckboxWidget(forms.CheckboxInput):
@@ -60,6 +83,20 @@ class PrimitiveWidgetsMixin:
             if isinstance(field, forms.BooleanField):
                 field.widget = PrimitiveCheckboxWidget()
                 # Maintain the field's explicit required status (usually False for booleans)
+                continue
+            widget = field.widget
+            # SearchSelect is a self-styled composite component; never stamp the
+            # native-control classes onto it.
+            if isinstance(widget, SearchSelectWidget):
+                continue
+            if isinstance(widget, forms.Select):
+                control_class = SELECT_CLASS
+            elif isinstance(widget, forms.Textarea):
+                control_class = TEXTAREA_CLASS
+            else:
+                control_class = INPUT_CLASS
+            existing = widget.attrs.get("class", "")
+            widget.attrs["class"] = f"{existing} {control_class}".strip()
 
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
@@ -420,3 +457,8 @@ class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widgets = {
             "timestamp": custom_datetime_widget,
         }
+
+
+class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):
+    """Django's auth form with our primitive widget styling so login inputs
+    self-style like every other form (no styling-at-a-distance)."""

@@ -1572,7 +1572,13 @@ def StringFilter(
         ("placeholder", placeholder),
         (
             "class",
-            "w-full rounded border-default-medium p-2 bg-neutral-secondary-medium text-body transition-all "
+            # text-sm + px-3 py-2.5 match every other input (canonical size).
+            "w-full rounded-base border border-default-medium px-3 py-2.5 text-sm "
+            "bg-neutral-secondary-medium text-body "
+            "focus:border-brand focus:ring-brand "
+            # No transition-* here: with transition-all the border-color animated
+            # from near-white default → brand on focus, which read as a white
+            # "blink". The other inputs snap to the focus state, so this does too.
             + ("opacity-50 cursor-not-allowed" if input_disabled else ""),
         ),
     ]

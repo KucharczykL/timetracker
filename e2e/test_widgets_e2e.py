@@ -20,7 +20,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
-    page.click('input[type="submit"]')
+    page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
     return page
 
@@ -127,9 +127,14 @@ def test_add_purchase_type_toggles_disabled_fields(
 
     name_input = page.locator("#id_name")
     expect(name_input).to_be_disabled()
+    # The Name field (a plain input) self-styles its disabled state via the
+    # INPUT_CLASS disabled: variants — not a global rule. not-allowed is
+    # mode-independent, so it holds in light and dark.
+    assert name_input.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
     page.select_option("#id_type", "dlc")
     expect(name_input).to_be_enabled()
+    assert name_input.evaluate("el => getComputedStyle(el).cursor") != "not-allowed"
 
     page.select_option("#id_type", "game")
     expect(name_input).to_be_disabled()
@@ -147,6 +152,30 @@ def test_add_purchase_related_game_is_flat_game_search(
     related = page.locator('[data-search-select][data-name="related_game"]')
     expect(related).to_have_count(1)
     expect(related).to_have_attribute("data-search-url", "/api/games/search")
+
+
+def test_searchselect_border_matches_native_input(
+    authenticated_page: Page, live_server
+):
+    """A SearchSelect's wrapper has the same border as a native input, and turns
+    brand on focus (via focus-within on the wrapper, since the inner search box
+    is what's focused)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    price = page.locator("#id_price")  # always-enabled native input
+    wrapper = page.locator("#id_platform")
+    search = page.locator("#id_platform [data-search-select-search]")
+    border = "el => getComputedStyle(el).borderColor"
+
+    rest = price.evaluate(border)
+    assert wrapper.evaluate(border) == rest  # same border at rest
+
+    search.focus()
+    focused_wrapper = wrapper.evaluate(border)
+    price.focus()
+    focused_input = price.evaluate(border)
+    assert focused_wrapper == focused_input  # same brand border on focus
+    assert focused_wrapper != rest  # focus actually changes it
 
 
 def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):
@@ -168,23 +197,28 @@ def test_add_purchase_type_game_disables_related_game_search(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     wrapper = page.locator("#id_related_game")
-    search = page.locator('#id_related_game [data-search-select-search]')
+    search = page.locator("#id_related_game [data-search-select-search]")
+    name = page.locator("#id_name")
+    opacity = "el => getComputedStyle(el).opacity"
+    bg = "el => getComputedStyle(el).backgroundColor"
 
     page.select_option("#id_type", "game")
     expect(search).to_be_disabled()
-    # The component greys itself via has-[:disabled] when the input is disabled.
-    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "0.5"
-    # The disabled inner input stays transparent (excluded from the global
-    # disabled-input surface) so the widget reads as one element, not a nested
-    # box. transparent is mode-independent, so this holds in light and dark.
-    assert search.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
-    # The inner input carries the same not-allowed cursor as the wrapper, so the
-    # cursor doesn't flicker as the pointer crosses the widget.
+    # A disabled SearchSelect must look identical to a disabled native input:
+    # both fade (opacity-50) over the same surface.
+    assert wrapper.evaluate(opacity) == "0.5"
+    assert name.evaluate(opacity) == "0.5"
+    assert wrapper.evaluate(bg) == name.evaluate(bg)
+    # The inner input stays transparent (no nested box) with the same not-allowed
+    # cursor (no flicker across the widget).
+    assert search.evaluate(bg) == "rgba(0, 0, 0, 0)"
     assert search.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
     page.select_option("#id_type", "dlc")
     expect(search).to_be_enabled()
-    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "1"
+    # Enabled, both return to full opacity.
+    assert wrapper.evaluate(opacity) == "1"
+    assert name.evaluate(opacity) == "1"
 
 
 def test_add_game_sync_stops_once_sort_name_edited(

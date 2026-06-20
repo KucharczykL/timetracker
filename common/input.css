@@ -127,19 +127,9 @@
   }
 }
 
-/* Standalone form controls get a distinct disabled surface. The SearchSelect's
-   inner search box is excluded: it's a composite widget that owns its disabled
-   look on the wrapper (has-[:disabled] in _CONTAINER_CLASS), so painting the
-   inner input here would render a nested box inside the wrapper. */
-form input:disabled:not([data-search-select-search]),
-select:disabled,
-textarea:disabled {
-  @apply cursor-not-allowed bg-neutral-secondary-strong text-fg-disabled;
-}
-
-.errorlist {
-  @apply mt-4 mb-1 pl-3 py-2 bg-red-600 text-slate-200 w-[300px];
-}
+/* Form controls (incl. disabled state) and form-field markup (labels, errors,
+   rows) are styled by utilities on the elements themselves — see
+   PrimitiveWidgetsMixin and FormFields. No form styling lives here. */
 
 #button-container button {
   @apply mx-1;
@@ -179,51 +169,6 @@ textarea:disabled {
     margin-top: 0.5em;
     margin-bottom: 0.5em;
     padding-left: 1em;
-}
-
-#add-form {
-  label + select, input, textarea {
-    @apply mt-1;
-  }
-  form {
-    @apply flex flex-col gap-3;
-  }
-
-  .form-row-button-group {
-    display: flex;
-    flex-direction: row;
-    @apply gap-0 p-0;
-    button {
-      @apply mr-0;
-      &:first-child {
-        @apply rounded-e-none;
-      }
-      &:nth-child(2) {
-        @apply rounded-none;
-      }
-      &:last-child {
-        @apply rounded-s-none;
-      }
-    }
-  }
-  label {
-    @apply mb-2.5 text-sm font-medium text-heading;
-  }
-  input:not([type="checkbox"]):not([data-search-select-search]) {
-    @apply mb-3 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body;
-  }
-  select {
-    @apply w-full px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body;
-  }
-  textarea {
-    @apply bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 shadow-xs placeholder:text-body;
-  }
-  :has(> label + input[type="checkbox"]) {
-    @apply mt-3; /* needed because compared to all other form elements checkbox and its label are on the same row */
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-  }
 }
 
 @layer utilities {

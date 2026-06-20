@@ -46,6 +46,13 @@ _SIZE_CLASSES = {
     "xl": "px-6 py-3.5 text-base",
 }
 
+# Shared disabled appearance for every form control, so all form elements look
+# the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
+# for composite controls whose disabled state lives on an inner element (e.g.
+# SearchSelect), on the wrapper via :has() (DISABLED_WITHIN_CLASS).
+DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
+DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
+
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
@@ -404,7 +411,8 @@ def Checkbox(
         ("value", value),
         (
             "class",
-            "rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
+            "rounded border-default-medium bg-neutral-secondary-medium "
+            f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
         ),
     ] + attributes
     if checked:
@@ -600,6 +608,74 @@ def YearPicker(
     )
 
 
+# Form-field rendering. The element classes (label/error/checkbox-row + the
+# controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
+# not in input.css — no selector reaches across the DOM to style a form.
+_LABEL_CLASS = "mb-2.5 text-sm font-medium text-heading"
+_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 bg-red-600 text-slate-200 w-[300px]"
+# Checkbox + its label share a row (unlike block fields), justified apart.
+_CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
+
+
+def _field_errors(errors) -> Node | None:
+    """Render a form/field ErrorList as a styled <ul>, or None if empty."""
+    items = [Li(children=[str(error)]) for error in errors]
+    if not items:
+        return None
+    return Ul(attributes=[("class", _FIELD_ERROR_CLASS)], children=items)
+
+
+def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
+    """Render a Django form's fields as self-styled component rows.
+
+    Replaces ``form.as_div()`` so labels, errors, row layout, and the checkbox
+    row carry their own classes (no form styling in input.css). Native controls
+    get their classes from ``PrimitiveWidgetsMixin``; composite widgets
+    (SearchSelect) self-style. ``extras`` maps a field name to a node appended
+    inside that field's row (e.g. the session timestamp helper buttons).
+    """
+    extras = extras or {}
+    rows: list[Node] = []
+
+    non_field = _field_errors(form.non_field_errors())
+    if non_field:
+        rows.append(non_field)
+
+    for field in form:
+        if field.is_hidden:
+            rows.append(Safe(str(field)))
+            continue
+
+        is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
+        label = Label(
+            attributes=[("for", field.id_for_label), ("class", _LABEL_CLASS)],
+            children=[str(field.label)],
+        )
+        control = Safe(str(field))
+        errors = _field_errors(field.errors)
+        extra = extras.get(field.name)
+
+        if is_checkbox:
+            children: list[Node] = [label, control]
+            if errors:
+                children.append(errors)
+            if extra:
+                children.append(extra)
+            rows.append(
+                Div(attributes=[("class", _CHECKBOX_ROW_CLASS)], children=children)
+            )
+        else:
+            children = []
+            if errors:
+                children.append(errors)
+            children.extend([label, control])
+            if extra:
+                children.append(extra)
+            rows.append(Div(children=children))
+
+    return Fragment(*rows, separator="\n")
+
+
 def AddForm(
     form,
     *,
@@ -610,18 +686,23 @@ def AddForm(
 ) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).
 
-    `fields` overrides the default ``form.as_div()`` field markup (used by the
+    `fields` overrides the default ``FormFields(form)`` field markup (used by the
     session form, which lays out its fields manually). `additional_row` holds
     extra submit buttons rendered below the main Submit button. `submit_class`
     is applied to the main Submit button (the session form passes "" to match
     its original markup).
     """
-    field_markup = fields if fields is not None else Safe(form.as_div())
+    field_markup = fields if fields is not None else FormFields(form)
     submit_attrs = [("class", submit_class)] if submit_class else []
 
     inner_form = Element(
         "form",
-        attributes=[("method", "post"), ("enctype", "multipart/form-data")],
+        attributes=[
+            ("method", "post"),
+            ("enctype", "multipart/form-data"),
+            # Form owns its row layout (was the #add-form form{} rule in input.css).
+            ("class", "flex flex-col gap-3"),
+        ],
         children=[
             CsrfInput(request),
             field_markup,
