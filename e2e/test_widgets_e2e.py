@@ -161,14 +161,14 @@ def test_searchselect_border_matches_native_input(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     price = page.locator("#id_price")  # always-enabled native input
-    wrapper = page.locator("#id_platform")
-    search = page.locator("#id_platform [data-search-select-search]")
+    wrapper = page.locator("search-select[name='platform']")
+    search_input = page.locator("#id_platform")
     border = "el => getComputedStyle(el).borderColor"
 
     rest = price.evaluate(border)
     assert wrapper.evaluate(border) == rest  # same border at rest
 
-    search.focus()
+    search_input.focus()
     focused_wrapper = wrapper.evaluate(border)
     price.focus()
     focused_input = price.evaluate(border)
@@ -189,19 +189,21 @@ def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_serve
 def test_add_purchase_type_game_disables_related_game_search(
     authenticated_page: Page, live_server
 ):
-    """When Type is 'game', the related-game SearchSelect is disabled — the
-    real disable target is the inner search input, not the wrapper <div>
-    (a <div> ignores the disabled property)."""
+    """When Type is 'game', the related-game SearchSelect is disabled.
+    #id_related_game is the inner search <input> (the real labelable control),
+    and the <search-select> wrapper fades via has-[:disabled]:opacity-50."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    wrapper = page.locator("#id_related_game")
-    search = page.locator("#id_related_game [data-search-select-search]")
+    # #id_related_game is now on the inner <input data-search-select-search>
+    search_input = page.locator("#id_related_game")
+    # The wrapper has no id; find it by the stable `name` attribute.
+    wrapper = page.locator("search-select[name='related_game']")
     name = page.locator("#id_name")
     opacity = "el => getComputedStyle(el).opacity"
     bg = "el => getComputedStyle(el).backgroundColor"
 
     page.select_option("#id_type", "game")
-    expect(search).to_be_disabled()
+    expect(search_input).to_be_disabled()
     # A disabled SearchSelect must look identical to a disabled native input:
     # both fade (opacity-50) over the same surface.
     assert wrapper.evaluate(opacity) == "0.5"
@@ -209,14 +211,28 @@ def test_add_purchase_type_game_disables_related_game_search(
     assert wrapper.evaluate(bg) == name.evaluate(bg)
     # The inner input stays transparent (no nested box) with the same not-allowed
     # cursor (no flicker across the widget).
-    assert search.evaluate(bg) == "rgba(0, 0, 0, 0)"
-    assert search.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
+    assert search_input.evaluate(bg) == "rgba(0, 0, 0, 0)"
+    assert search_input.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
     page.select_option("#id_type", "dlc")
-    expect(search).to_be_enabled()
+    expect(search_input).to_be_enabled()
     # Enabled, both return to full opacity.
     assert wrapper.evaluate(opacity) == "1"
     assert name.evaluate(opacity) == "1"
+
+
+def test_label_click_focuses_search_select(authenticated_page: Page, live_server):
+    """Clicking a <label for="id_X"> on a SearchSelect field must focus the
+    search input — confirmed now that id is on the real <input> control."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    # related_game is disabled when type is "game" (the default); switch so it
+    # is enabled, otherwise clicking the label for a disabled control fails.
+    page.select_option("#id_type", "dlc")
+    label = page.locator("label[for='id_related_game']")
+    search_input = page.locator("#id_related_game")
+    label.click()
+    expect(search_input).to_be_focused()
 
 
 def test_add_game_sync_stops_once_sort_name_edited(

@@ -9,15 +9,17 @@ This module imports only from ``common.components`` — it has no Django-forms o
 ``data-*`` attributes wired up by ``ts/search_select.ts`` (compiled to
 ``games/static/js/dist/search_select.js``).
 
-**Disabling**: this is a composite widget — its ``id`` sits on the wrapper
-``<div>``, which has no ``disabled`` state of its own. To disable it, set
-``disabled`` on the inner search ``<input>`` (``[data-search-select-search]``);
-the wrapper then greys itself via the ``has-[:disabled]:`` utilities in
-``_CONTAINER_CLASS``. The inner input is excluded from the global
-disabled-input surface (``common/input.css``) so it stays transparent — the
-widget reads as one faded element, not a nested box. Callers toggle only the
-control's ``disabled`` — never styles. (See ``ts/add_purchase.ts`` gating
-``related_game`` on the type field.)
+**Field id / label association**: when ``SearchSelect`` is used as a Django form
+widget, the field ``id`` (e.g. ``id_related_game``) is placed on the inner
+search ``<input>`` (``[data-search-select-search]``), making it a real labelable
+control. ``<label for="id_X">`` therefore focuses the search box, and
+``document.querySelector('#id_X').disabled`` behaves as for a native input.
+
+**Disabling**: set ``disabled`` directly on the field id (or on the inner
+``[data-search-select-search]`` input). The wrapper greys itself via the
+``has-[:disabled]:`` utilities in ``_CONTAINER_CLASS``. The inner input stays
+transparent — the widget reads as one faded element, not a nested box. Callers
+toggle only the control's ``disabled`` — never styles.
 
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
@@ -301,6 +303,8 @@ def SearchSelect(
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
     ]
+    if id:
+        search_attrs.append(("id", id))
     if autofocus:
         search_attrs.append(("autofocus", ""))
     if search_value:
@@ -345,7 +349,6 @@ def SearchSelect(
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
         class_=_CONTAINER_CLASS,
-        id_=id or None,
     )[*children]
 
 
