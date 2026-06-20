@@ -550,14 +550,19 @@ def StaticScript(filename: str) -> SafeText:
     return mark_safe(f'<script src="{static("js/" + filename)}"></script>')
 
 
-# Media for the Flowbite-datepicker year picker: the vendored UMD bundle
-# (classic script) plus the ts/year_picker.ts glue (compiled module). Declared
-# on the YearPicker node so Page() loads both wherever a YearPicker appears. The
-# UMD bundle is a classic script (runs during parse) while year_picker.js is a
-# deferred module (runs after parse), so Datepicker is defined by the time the
-# module executes regardless of tag order.
-_YEAR_PICKER_MEDIA = Media(
-    js_external=("datepicker.umd.js",), js=("dist/year_picker.js",)
+# The <year-picker> custom element wraps the Flowbite-datepicker year grid.
+# The builder auto-attaches dist/elements/year-picker.js; the vendored UMD
+# bundle (classic script, runs during parse) is merged in via with_media so
+# Datepicker is defined by the time the deferred element module executes.
+_YearPicker = custom_element_builder("year-picker")
+_DATEPICKER_MEDIA = Media(js_external=("datepicker.umd.js",))
+
+# The down-chevron rendered inside the YearPicker button. Trusted static SVG.
+_YEAR_PICKER_CHEVRON = Safe(
+    '<svg class="w-4 h-4 ms-2 rtl:rotate-180" aria-hidden="true" '
+    'xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">'
+    '<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" '
+    'stroke-width="2" d="M1 5h12m0 0L9 1m4 4L9 9"/></svg>'
 )
 
 
@@ -574,8 +579,10 @@ def YearPicker(
     placeholder, substituted with the chosen year in JS (keeps this component
     decoupled from the project's URL names).
 
-    The Flowbite-datepicker UMD bundle is declared as ``media`` on the returned
-    node, so ``Page()`` loads it automatically.
+    Behavior lives in ``ts/elements/year-picker.ts``; this renders the light
+    DOM (toggle button + hidden datepicker input). The element module and the
+    Flowbite UMD bundle are declared as ``media`` on the node, so ``Page()``
+    loads both automatically.
     """
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
@@ -586,26 +593,40 @@ def YearPicker(
         "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
     )
     years_csv = ",".join(str(y) for y in available_years)
-    return Safe(
-        f"""<div class="relative inline-block" x-data="{{ pickerOpen: false }}"
-     @keydown.escape.window="pickerOpen = false">
-    <button type="button"
-            x-on:click="pickerOpen = !pickerOpen; $refs.pickerInput._pickerInstance && ($refs.pickerInput._pickerInstance.active ? $refs.pickerInput._pickerInstance.hide() : $refs.pickerInput._pickerInstance.show())"
-            class="inline-flex items-center rounded-base px-4 py-2 text-sm font-medium {classes}">
-        {label}
-        <svg class="w-4 h-4 ms-2 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 5h12m0 0L9 1m4 4L9 9"/>
-        </svg>
-    </button>
-    <input type="text" x-ref="pickerInput" id="year-picker-input"
-           class="absolute opacity-0 pointer-events-none"
-           style="width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;"
-           data-available-years="{years_csv}"
-           data-selected-year="{selected}"
-           data-url-template="{url_template}">
-</div>""",
-        media=_YEAR_PICKER_MEDIA,
-    )
+    return _YearPicker(
+        attributes=[
+            ("selected-year", selected),
+            ("available-years", years_csv),
+            ("url-template", url_template),
+            ("class", "relative inline-block"),
+        ],
+        children=[
+            Element(
+                "button",
+                attributes=[
+                    ("type", "button"),
+                    ("data-year-picker-toggle", ""),
+                    (
+                        "class",
+                        "inline-flex items-center rounded-base px-4 py-2 "
+                        f"text-sm font-medium {classes}",
+                    ),
+                ],
+                children=[label, _YEAR_PICKER_CHEVRON],
+            ),
+            Input(
+                attributes=[
+                    ("id", "year-picker-input"),
+                    ("class", "absolute opacity-0 pointer-events-none"),
+                    (
+                        "style",
+                        "width: 1px; height: 1px; padding: 0; margin: -1px; "
+                        "overflow: hidden; clip: rect(0,0,0,0); border: 0;",
+                    ),
+                ],
+            ),
+        ],
+    ).with_media(_DATEPICKER_MEDIA)
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the

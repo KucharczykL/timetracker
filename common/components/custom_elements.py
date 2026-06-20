@@ -189,6 +189,18 @@ register_element("filter-bar", "FilterBar", FilterBarProps)
 _FilterBarElement = custom_element_builder("filter-bar")
 
 
+class YearPickerProps(TypedDict):
+    selected_year: str  # "" for the all-time/empty state
+    available_years: str  # csv, e.g. "2019,2020"
+    url_template: str  # contains the literal __year__ placeholder
+
+
+# The <year-picker> builder lives in primitives.py (next to YearPicker, which
+# uses it) because custom_elements imports from primitives — registering here
+# would be a circular import. Registration is codegen-only, so it belongs here.
+register_element("year-picker", "YearPicker", YearPickerProps)
+
+
 def SelectionFields(
     *,
     source: str,

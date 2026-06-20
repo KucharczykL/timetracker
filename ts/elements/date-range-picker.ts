@@ -20,6 +20,7 @@
  * NB: class strings below are emitted verbatim so the Tailwind scanner picks
  * them up — keep them as plain literals.
  */
+import { bindPopupDismiss } from "../utils.js";
 
 type Anchor = "" | "start" | "end";
 
@@ -517,22 +518,13 @@ function createCalendarState(
       closePopup();
     });
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && state.open) closePopup();
-  };
-  const onMouseDown = (event: MouseEvent): void => {
-    if (state.open && !picker.contains(event.target as Node)) closePopup();
-  };
-  document.addEventListener("keydown", onKeyDown);
-  document.addEventListener("mousedown", onMouseDown);
+  const cleanup = bindPopupDismiss({
+    host: picker,
+    isOpen: () => state.open,
+    close: closePopup,
+  });
 
-  return {
-    state,
-    cleanup() {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("mousedown", onMouseDown);
-    },
-  };
+  return { state, cleanup };
 }
 
 function initPicker(picker: HTMLElement): () => void {

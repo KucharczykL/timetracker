@@ -100,6 +100,43 @@ function getValueFromProperty(sourceElement: EventTarget, property: string): any
   }
 }
 
+interface PopupDismissOptions {
+  // Clicks within host (or any extraInside root) do not dismiss.
+  host: HTMLElement;
+  isOpen: () => boolean;
+  close: () => void;
+  // Extra roots considered "inside" — e.g. a library popup appended to
+  // document.body rather than nested under host. Evaluated per event so a
+  // lazily-created popup element is picked up once it exists.
+  extraInside?: () => Array<Element | null | undefined>;
+}
+
+/**
+ * Wires the shared dismiss behaviour for an anchored popup: Escape closes it,
+ * and a mousedown outside the host (and any extraInside roots) closes it. Only
+ * acts while isOpen() is true. Returns a cleanup function that removes both
+ * document listeners — call it from disconnectedCallback.
+ */
+function bindPopupDismiss(options: PopupDismissOptions): () => void {
+  const isInside = (target: Node): boolean => {
+    if (options.host.contains(target)) return true;
+    const extras = options.extraInside ? options.extraInside() : [];
+    return extras.some((root) => !!root && root.contains(target));
+  };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape" && options.isOpen()) options.close();
+  };
+  const onMouseDown = (event: MouseEvent): void => {
+    if (options.isOpen() && !isInside(event.target as Node)) options.close();
+  };
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("mousedown", onMouseDown);
+  return () => {
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("mousedown", onMouseDown);
+  };
+}
+
 type ElementHandlerConfig = [
   condition: () => boolean, // condition function
   targetElements: string[], // array of target element selectors
@@ -207,4 +244,5 @@ export {
   disableElementsWhenValueNotEqual,
   disableElementsWhenTrue,
   getValueFromProperty,
+  bindPopupDismiss,
 };
