@@ -33,7 +33,8 @@ from collections.abc import Callable, Iterable
 from typing import TypedDict
 
 
-from common.components.core import Attributes, Element, HTMLAttribute, Media, Node
+from common.components.core import Attributes, Element, HTMLAttribute, Node
+from common.components.custom_elements import _SearchSelect
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     Div,
@@ -42,9 +43,6 @@ from common.components.primitives import (
     Span,
     Template,
 )
-
-# Both comboboxes are wired by ts/search_select.ts (compiled to dist/).
-_SEARCH_SELECT_MEDIA = Media(js=("dist/search_select.js",))
 
 
 class SearchSelectOption(TypedDict):
@@ -210,27 +208,20 @@ def _option_row(option: SearchSelectOption) -> Node:
     )
 
 
-def _combobox_shell(
+def _combobox_children(
     *,
-    container_attributes: Attributes,
     pills: Node,
     search_attributes: Attributes,
     options_children: list[Node],
     always_visible: bool,
     items_visible: int,
     templates: list[Node] | None = None,
-) -> Node:
-    """Assemble the shared, domain-agnostic combobox skeleton.
+) -> list[Node]:
+    """Build and return the shared combobox interior nodes.
 
-    Every combobox built on top of this shell has the same three regions in the
-    same order: the ``pills`` region, the search box, and the options panel (which
-    always carries a trailing no-results node). Callers supply the already-built
-    ``pills`` region, the ``search_attributes`` for the text box, the
-    ``options_children`` (value rows plus any pinned pseudo-options), the
-    ``container_attributes`` that carry the widget's identity and behaviour flags,
-    and any ``templates`` (inert ``<template>`` prototypes the JS clones for
-    dynamically-added rows/pills). The shell knows nothing about how individual
-    rows or pills look.
+    Returns the three content regions (pills, search box, options panel) plus
+    any templates — ready to be placed as children of the caller's container
+    element. The shell knows nothing about how individual rows or pills look.
     """
     search = Input(attributes=search_attributes)
 
@@ -251,8 +242,7 @@ def _combobox_shell(
         children=[*options_children, no_results],
     )
 
-    children: list[Node] = [pills, search, options_panel, *(templates or [])]
-    return Div(attributes=container_attributes, children=children)
+    return [pills, search, options_panel, *(templates or [])]
 
 
 def SearchSelect(
@@ -337,30 +327,26 @@ def SearchSelect(
             )
         )
 
-    container_attributes: list[HTMLAttribute] = [
-        ("data-search-select", ""),
-        ("data-name", name),
-        ("data-search-url", search_url),
-        ("data-multi", "true" if multi_select else "false"),
-        ("data-always-visible", "true" if always_visible else "false"),
-        ("data-items-visible", str(items_visible)),
-        ("data-items-scroll", str(items_scroll)),
-        ("data-prefetch", str(prefetch)),
-        ("data-sync-url", "true" if sync_url else "false"),
-        ("class", _CONTAINER_CLASS),
-    ]
-    if id:
-        container_attributes.append(("id", id))
-
-    return _combobox_shell(
-        container_attributes=container_attributes,
+    children = _combobox_children(
         pills=pills,
         search_attributes=search_attrs,
         options_children=option_rows,
         always_visible=always_visible,
         items_visible=items_visible,
         templates=templates,
-    ).with_media(_SEARCH_SELECT_MEDIA)
+    )
+    return _SearchSelect(
+        name=name,
+        search_url=search_url,
+        multi="true" if multi_select else "false",
+        filter_mode="false",
+        free_text="false",
+        always_visible="true" if always_visible else "false",
+        prefetch=prefetch,
+        sync_url="true" if sync_url else "false",
+        class_=_CONTAINER_CLASS,
+        id_=id or None,
+    )[*children]
 
 
 def _filter_remove_button() -> Node:
@@ -567,35 +553,27 @@ def FilterSelect(
             )
         )
 
-    container_attributes: list[HTMLAttribute] = [
-        ("data-search-select", ""),
-        ("data-search-select-mode", "filter"),
-        ("data-name", field_name),
-        ("data-search-url", search_url),
-        ("data-multi", "true"),
-        ("data-always-visible", "false"),
-        ("data-items-visible", str(items_visible)),
-        ("data-items-scroll", str(items_scroll)),
-        ("data-prefetch", str(prefetch)),
-        ("data-sync-url", "false"),
-        ("class", _CONTAINER_CLASS),
-    ]
-    if free_text:
-        container_attributes.append(("data-search-select-free-text", "true"))
-    if modifier:
-        container_attributes.append(("data-modifier", modifier))
-    if id:
-        container_attributes.append(("id", id))
-
-    return _combobox_shell(
-        container_attributes=container_attributes,
+    children = _combobox_children(
         pills=pills,
         search_attributes=search_attributes,
         options_children=[*modifier_rows, *value_rows],
         always_visible=False,
         items_visible=items_visible,
         templates=templates,
-    ).with_media(_SEARCH_SELECT_MEDIA)
+    )
+    return _SearchSelect(
+        name=field_name,
+        search_url=search_url,
+        multi="true",
+        filter_mode="true",
+        free_text="true" if free_text else "false",
+        always_visible="false",
+        prefetch=prefetch,
+        sync_url="false",
+        class_=_CONTAINER_CLASS,
+        id_=id or None,
+        data_modifier=modifier or None,
+    )[*children]
 
 
 def searchselect_selected(

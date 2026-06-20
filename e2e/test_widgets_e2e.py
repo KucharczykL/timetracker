@@ -31,7 +31,7 @@ def open_filter_bar(page: Page) -> None:
 
 
 def status_filter_widget(page: Page):
-    return page.locator('[data-search-select][data-name="status"]')
+    return page.locator('search-select[name="status"]')
 
 
 def test_search_select_initializes_on_page_load(authenticated_page: Page, live_server):
@@ -78,12 +78,11 @@ def test_range_slider_mode_toggle_fires_exactly_once(
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_filter_bar(page)
 
-    block = page.locator(".range-slider-block").first
-    slider = block.locator(".range-slider")
-    expect(slider).to_have_attribute("data-mode", "range")
+    slider = page.locator("range-slider").first
+    expect(slider).to_have_attribute("mode", "range")
 
-    block.locator(".range-mode-toggle").click()
-    expect(slider).to_have_attribute("data-mode", "point")
+    slider.locator(".range-mode-toggle").click()
+    expect(slider).to_have_attribute("mode", "point")
 
 
 def test_widgets_initialize_inside_htmx_swapped_content(
@@ -110,11 +109,10 @@ def test_widgets_initialize_inside_htmx_swapped_content(
     widget.locator("[data-search-select-search]").click()
     expect(widget.locator("[data-search-select-options]")).to_be_visible()
 
-    block = page.locator(".range-slider-block").first
-    slider = block.locator(".range-slider")
-    expect(slider).to_have_attribute("data-mode", "range")
-    block.locator(".range-mode-toggle").click()
-    expect(slider).to_have_attribute("data-mode", "point")
+    slider = page.locator("range-slider").first
+    expect(slider).to_have_attribute("mode", "range")
+    slider.locator(".range-mode-toggle").click()
+    expect(slider).to_have_attribute("mode", "point")
 
 
 def test_add_purchase_type_toggles_disabled_fields(
@@ -149,9 +147,9 @@ def test_add_purchase_related_game_is_flat_game_search(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
 
-    related = page.locator('[data-search-select][data-name="related_game"]')
+    related = page.locator('search-select[name="related_game"]')
     expect(related).to_have_count(1)
-    expect(related).to_have_attribute("data-search-url", "/api/games/search")
+    expect(related).to_have_attribute("search-url", "/api/games/search")
 
 
 def test_searchselect_border_matches_native_input(

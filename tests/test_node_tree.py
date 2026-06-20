@@ -133,14 +133,16 @@ class RealComponentMediaTest(unittest.TestCase):
         from common.components import SearchSelect
 
         self.assertEqual(
-            collect_media(SearchSelect(name="games")).js, ("dist/search_select.js",)
+            collect_media(SearchSelect(name="games")).js,
+            ("dist/elements/search-select.js",),
         )
 
     def test_filter_select_declares_its_script(self):
         from common.components import FilterSelect
 
         self.assertIn(
-            "dist/search_select.js", collect_media(FilterSelect(field_name="type")).js
+            "dist/elements/search-select.js",
+            collect_media(FilterSelect(field_name="type")).js,
         )
 
     def test_date_range_picker_declares_its_script(self):
@@ -149,7 +151,7 @@ class RealComponentMediaTest(unittest.TestCase):
         media = collect_media(
             DateRangePicker(label="Played", input_name_prefix="played")
         )
-        self.assertEqual(media.js, ("dist/date_range_picker.js",))
+        self.assertEqual(media.js, ("dist/elements/date-range-picker.js",))
 
     def test_range_slider_declares_its_script(self):
         from common.components.filters import RangeSlider
@@ -159,7 +161,7 @@ class RealComponentMediaTest(unittest.TestCase):
                 label="Year", input_name_prefix="year", range_min=2000, range_max=2025
             )
         )
-        self.assertEqual(media.js, ("dist/range_slider.js",))
+        self.assertEqual(media.js, ("dist/elements/range-slider.js",))
 
     def test_filter_bar_collects_chrome_and_widget_media(self):
         """A FilterBar's media merges its own chrome script with the scripts that
@@ -169,9 +171,9 @@ class RealComponentMediaTest(unittest.TestCase):
         from common.components import FilterBar
 
         media = collect_media(FilterBar())
-        self.assertIn("dist/filter_bar.js", media.js)
-        self.assertIn("dist/search_select.js", media.js)
-        self.assertIn("dist/range_slider.js", media.js)
+        self.assertIn("dist/elements/filter-bar.js", media.js)
+        self.assertIn("dist/elements/search-select.js", media.js)
+        self.assertIn("dist/elements/range-slider.js", media.js)
 
 
 class HtpyStyleSugarTest(unittest.TestCase):

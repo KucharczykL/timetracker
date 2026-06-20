@@ -4,7 +4,8 @@ from typing import NamedTuple
 
 from django.db import models
 
-from common.components.core import BaseComponent, Element, Media, Node, Safe
+from common.components.core import BaseComponent, Element, Node, Safe
+from common.components.custom_elements import _FilterBarElement, _RangeSlider
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -50,13 +51,6 @@ _FILTER_RADIO_CLASS = (
 
 
 _FILTER_GRID_CLASS = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4"
-
-
-# range_slider.js wires RangeSlider; ts/filter_bar.ts wires the bar chrome
-# (Apply/Clear, presets, search injection). Widget media (dist/search_select.js,
-# date_range_picker.js) bubbles up from the contained FilterSelect / picker.
-_RANGE_SLIDER_MEDIA = Media(js=("dist/range_slider.js",))
-_FILTER_BAR_MEDIA = Media(js=("dist/filter_bar.js",))
 
 
 def _filter_parse(filter_json: str) -> dict:
@@ -340,157 +334,157 @@ def RangeSlider(
     point_mode = bool(min_value and max_value and min_value == max_value)
     initial_mode = "point" if point_mode else "range"
 
-    return Div(
-        attributes=[("class", "range-slider-block mb-4")],
-        children=[
-            # ── Label row ──
-            Div(
-                attributes=[("class", "flex items-center gap-2 mb-1")],
-                children=[
-                    # The field label is rendered by the _filter_field wrapper.
-                    # This composite widget has no single labelable root, so the
-                    # label carries no `for` (the two inputs are named below).
-                    Input(
-                        attributes=[
-                            ("type", "number"),
-                            ("name", min_input_id),
-                            ("id", min_input_id),
-                            ("value", min_value),
-                            ("placeholder", min_placeholder),
-                            (
-                                "class",
-                                f"{_RANGE_SLIDER_INPUT_CLASS}"
-                                + (" hidden" if point_mode else ""),
-                            ),
-                        ],
-                    ),
-                    Span(
-                        attributes=[
-                            (
-                                "class",
-                                "range-dash text-body text-sm"
-                                + (" hidden" if point_mode else ""),
-                            ),
-                        ],
-                        children=["–"],
-                    ),
-                    Input(
-                        attributes=[
-                            ("type", "number"),
-                            ("name", max_input_id),
-                            ("id", max_input_id),
-                            ("value", max_value),
-                            ("placeholder", max_placeholder),
-                            ("class", _RANGE_SLIDER_INPUT_CLASS),
-                        ],
-                    ),
-                    Element(
-                        "button",
-                        attributes=[
-                            ("type", "button"),
-                            (
-                                "class",
-                                "range-mode-toggle p-1 text-body hover:text-heading "
-                                "rounded cursor-pointer shrink-0",
-                            ),
-                            (
-                                "title",
-                                "Toggle between range and single value",
-                            ),
-                            (
-                                "aria-label",
-                                "Toggle between range and single value",
-                            ),
-                        ],
-                        children=[
-                            Span(
-                                attributes=[
-                                    (
-                                        "class",
-                                        "range-mode-icon-range"
-                                        + (" hidden" if point_mode else ""),
-                                    ),
-                                ],
-                                children=[Safe(_RANGE_ICON_SVG)],
-                            ),
-                            Span(
-                                attributes=[
-                                    (
-                                        "class",
-                                        "range-mode-icon-point"
-                                        + ("" if point_mode else " hidden"),
-                                    ),
-                                ],
-                                children=[Safe(_POINT_ICON_SVG)],
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-            # ── Slider row ──
-            Div(
-                attributes=[
-                    ("class", "range-slider relative h-10 w-5/6 select-none mt-1"),
-                    ("data-mode", initial_mode),
-                    ("data-min", str(range_min)),
-                    ("data-max", str(range_max)),
-                    ("data-step", str(step)),
-                ],
-                children=[
-                    Div(
-                        attributes=[
-                            (
-                                "class",
-                                "absolute top-1/2 -translate-y-1/2 w-full h-2 "
-                                "rounded-full bg-neutral-quaternary",
-                            ),
-                        ],
-                    ),
-                    Div(
-                        attributes=[
-                            (
-                                "class",
-                                "range-track-fill absolute top-1/2 -translate-y-1/2 "
-                                "h-2 bg-brand rounded-full",
-                            ),
-                            ("style", "left:0;width:100%"),
-                        ],
-                    ),
-                    # Min handle (hidden in point mode via JS)
-                    Div(
-                        attributes=[
-                            (
-                                "class",
-                                "range-handle range-handle-min absolute top-1/2 "
-                                "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
-                                "border-2 border-white shadow cursor-pointer "
-                                "hover:scale-110 transition-transform",
-                            ),
-                            ("data-target", min_input_id),
-                            (
-                                "style",
-                                "left:0" + (";display:none" if point_mode else ""),
-                            ),
-                        ],
-                    ),
-                    # Max handle
-                    Div(
-                        attributes=[
-                            (
-                                "class",
-                                "range-handle range-handle-max absolute top-1/2 "
-                                "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
-                                "border-2 border-white shadow cursor-pointer "
-                                "hover:scale-110 transition-transform",
-                            ),
-                            ("data-target", max_input_id),
-                            ("style", "left:100%"),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    ).with_media(_RANGE_SLIDER_MEDIA)
+    return _RangeSlider(
+        min=range_min,
+        max=range_max,
+        step=int(step),
+        mode=initial_mode,
+        class_="mb-4 block",
+    )[
+        # ── Label row ──
+        Div(
+            attributes=[("class", "flex items-center gap-2 mb-1")],
+            children=[
+                # The field label is rendered by the _filter_field wrapper.
+                # This composite widget has no single labelable root, so the
+                # label carries no `for` (the two inputs are named below).
+                Input(
+                    attributes=[
+                        ("type", "number"),
+                        ("name", min_input_id),
+                        ("id", min_input_id),
+                        ("value", min_value),
+                        ("placeholder", min_placeholder),
+                        (
+                            "class",
+                            f"{_RANGE_SLIDER_INPUT_CLASS}"
+                            + (" hidden" if point_mode else ""),
+                        ),
+                    ],
+                ),
+                Span(
+                    attributes=[
+                        (
+                            "class",
+                            "range-dash text-body text-sm"
+                            + (" hidden" if point_mode else ""),
+                        ),
+                    ],
+                    children=["–"],
+                ),
+                Input(
+                    attributes=[
+                        ("type", "number"),
+                        ("name", max_input_id),
+                        ("id", max_input_id),
+                        ("value", max_value),
+                        ("placeholder", max_placeholder),
+                        ("class", _RANGE_SLIDER_INPUT_CLASS),
+                    ],
+                ),
+                Element(
+                    "button",
+                    attributes=[
+                        ("type", "button"),
+                        (
+                            "class",
+                            "range-mode-toggle p-1 text-body hover:text-heading "
+                            "rounded cursor-pointer shrink-0",
+                        ),
+                        (
+                            "title",
+                            "Toggle between range and single value",
+                        ),
+                        (
+                            "aria-label",
+                            "Toggle between range and single value",
+                        ),
+                    ],
+                    children=[
+                        Span(
+                            attributes=[
+                                (
+                                    "class",
+                                    "range-mode-icon-range"
+                                    + (" hidden" if point_mode else ""),
+                                ),
+                            ],
+                            children=[Safe(_RANGE_ICON_SVG)],
+                        ),
+                        Span(
+                            attributes=[
+                                (
+                                    "class",
+                                    "range-mode-icon-point"
+                                    + ("" if point_mode else " hidden"),
+                                ),
+                            ],
+                            children=[Safe(_POINT_ICON_SVG)],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        # ── Track row ──
+        Div(
+            attributes=[
+                ("class", "relative h-10 w-5/6 select-none mt-1"),
+                ("data-range-track", ""),
+            ],
+            children=[
+                Div(
+                    attributes=[
+                        (
+                            "class",
+                            "absolute top-1/2 -translate-y-1/2 w-full h-2 "
+                            "rounded-full bg-neutral-quaternary",
+                        ),
+                    ],
+                ),
+                Div(
+                    attributes=[
+                        (
+                            "class",
+                            "range-track-fill absolute top-1/2 -translate-y-1/2 "
+                            "h-2 bg-brand rounded-full",
+                        ),
+                        ("style", "left:0;width:100%"),
+                    ],
+                ),
+                # Min handle (hidden in point mode via JS)
+                Div(
+                    attributes=[
+                        (
+                            "class",
+                            "range-handle range-handle-min absolute top-1/2 "
+                            "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
+                            "border-2 border-white shadow cursor-pointer "
+                            "hover:scale-110 transition-transform",
+                        ),
+                        ("data-target", min_input_id),
+                        (
+                            "style",
+                            "left:0" + (";display:none" if point_mode else ""),
+                        ),
+                    ],
+                ),
+                # Max handle
+                Div(
+                    attributes=[
+                        (
+                            "class",
+                            "range-handle range-handle-max absolute top-1/2 "
+                            "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
+                            "border-2 border-white shadow cursor-pointer "
+                            "hover:scale-110 transition-transform",
+                        ),
+                        ("data-target", max_input_id),
+                        ("style", "left:100%"),
+                    ],
+                ),
+            ],
+        ),
+    ]
 
 
 _DATE_RANGE_INPUT_CLASS = (
@@ -588,7 +582,7 @@ def _filter_collapse_button() -> Node:
     )
 
 
-def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
+def _filter_action_row() -> Node:
     return Div(
         attributes=[("class", "flex gap-3 items-center")],
         children=[
@@ -609,10 +603,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
                 "button",
                 attributes=[
                     ("type", "button"),
-                    (
-                        "onclick",
-                        f"clearFilterBar('{_FILTER_FORM_ID}', '{_FILTER_INPUT_ID}')",
-                    ),
+                    ("data-filter-bar-clear", ""),
                     (
                         "class",
                         "px-4 py-2 text-sm font-medium text-gray-900 bg-white "
@@ -633,6 +624,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
                         attributes=[
                             ("type", "text"),
                             ("id", "preset-name-input"),
+                            ("data-filter-bar-preset-name", ""),
                             ("placeholder", "Preset name..."),
                             (
                                 "class",
@@ -647,7 +639,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
                         attributes=[
                             ("type", "button"),
                             ("id", "save-preset-btn"),
-                            ("onclick", "showPresetNameInput()"),
+                            ("data-filter-bar-save", ""),
                             (
                                 "class",
                                 "px-4 py-2 text-sm font-medium text-gray-900 "
@@ -664,10 +656,7 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
                         attributes=[
                             ("type", "button"),
                             ("id", "confirm-save-preset-btn"),
-                            (
-                                "onclick",
-                                f"savePreset('{_FILTER_FORM_ID}', '{_FILTER_INPUT_ID}', '{preset_save_url}')",
-                            ),
+                            ("data-filter-bar-confirm-save", ""),
                             (
                                 "class",
                                 "hidden px-4 py-2 text-sm font-medium text-white "
@@ -683,7 +672,6 @@ def _filter_action_row(preset_list_url: str, preset_save_url: str) -> Node:
                 attributes=[
                     ("id", "preset-dropdown"),
                     ("class", "relative"),
-                    ("data-preset-list-url", preset_list_url),
                 ],
                 children=[
                     Span(
@@ -702,13 +690,10 @@ class _FilterBarBase(BaseComponent):
     Subclasses implement ``build_fields()`` returning the per-entity body
     (grids, sliders, checkboxes); this base wraps it in the collapse toggle,
     the form, the hidden filter-json input and the Apply/Clear/preset action
-    row. ``filter_bar.js`` (declared as this component's ``media``) wires the
-    chrome; widget media (search_select.js, range_slider.js,
-    date_range_picker.js) bubbles up from the contained widgets via the node
+    row. ``filter-bar.js`` (declared via ``_FilterBarElement``) wires the
+    chrome; widget media bubbles up from the contained widgets via the node
     tree, so the view never threads ``scripts=`` by hand.
     """
-
-    media = _FILTER_BAR_MEDIA
 
     def __init__(
         self,
@@ -726,47 +711,49 @@ class _FilterBarBase(BaseComponent):
         raise NotImplementedError
 
     def render(self) -> Node:
-        return Div(
-            attributes=[("id", "filter-bar"), ("class", "mb-6")],
-            children=[
-                _filter_collapse_button(),
-                Div(
-                    attributes=[
-                        ("id", "filter-bar-body"),
-                        (
-                            "class",
-                            "hidden border border-default-medium rounded-base p-4 "
-                            "bg-neutral-secondary-medium/50",
-                        ),
-                    ],
-                    children=[
-                        Element(
-                            "form",
-                            attributes=[
-                                ("id", _FILTER_FORM_ID),
-                                ("onsubmit", "return applyFilterBar(event)"),
-                            ],
-                            children=[
-                                Input(
-                                    attributes=[
-                                        ("type", "hidden"),
-                                        ("id", _FILTER_INPUT_ID),
-                                        ("name", "filter"),
-                                        # NB: attribute values are escaped, so the
-                                        # raw JSON passes through (no double-escape).
-                                        ("value", self.filter_json),
-                                    ],
-                                ),
-                                *self.build_fields(),
-                                _filter_action_row(
-                                    self.preset_list_url, self.preset_save_url
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-            ],
-        )
+        return _FilterBarElement(
+            preset_list_url=self.preset_list_url,
+            preset_save_url=self.preset_save_url,
+        )[
+            Div(
+                attributes=[("id", "filter-bar"), ("class", "mb-6")],
+                children=[
+                    _filter_collapse_button(),
+                    Div(
+                        attributes=[
+                            ("id", "filter-bar-body"),
+                            (
+                                "class",
+                                "hidden border border-default-medium rounded-base p-4 "
+                                "bg-neutral-secondary-medium/50",
+                            ),
+                        ],
+                        children=[
+                            Element(
+                                "form",
+                                attributes=[
+                                    ("id", _FILTER_FORM_ID),
+                                ],
+                                children=[
+                                    Input(
+                                        attributes=[
+                                            ("type", "hidden"),
+                                            ("id", _FILTER_INPUT_ID),
+                                            ("name", "filter"),
+                                            # NB: attribute values are escaped, so the
+                                            # raw JSON passes through (no double-escape).
+                                            ("value", self.filter_json),
+                                        ],
+                                    ),
+                                    *self.build_fields(),
+                                    _filter_action_row(),
+                                ],
+                            ),
+                        ],
+                    ),
+                ],
+            )
+        ]
 
 
 class FilterBar(_FilterBarBase):
@@ -1557,7 +1544,6 @@ def StringFilter(
             value=mod_val,
             attributes=[
                 ("data-string-modifier-radio", ""),
-                ("onclick", "toggleStringFilterInput(this)"),
             ],
         )
         for mod_val, lbl in options

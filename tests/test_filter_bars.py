@@ -44,8 +44,8 @@ class FilterBarRenderingTest(TestCase):
     def _assert_range_slider(self, html):
         """Every filter bar must use the RangeSlider component with custom
         draggable <div> handles, a track fill, and mode-toggle button."""
-        self.assertIn("range-slider-block", html)
-        self.assertIn('data-mode="range"', html)
+        self.assertIn("<range-slider", html)
+        self.assertIn('mode="range"', html)
         self.assertIn("range-mode-toggle", html)
         self.assertIn("range-mode-icon-range", html)
         self.assertIn("range-mode-icon-point", html)
@@ -107,8 +107,8 @@ class FilterBarRenderingTest(TestCase):
         # No legacy match-mode <select>.
         self.assertNotIn("data-search-select-match", html)
         # Platform is single-valued: no M2M modifier options in its section.
-        games_start = html.find('data-name="games"')
-        platform_start = html.find('data-name="platform"')
+        games_start = html.find('name="games"')
+        platform_start = html.find('name="platform"')
         platform_section = html[platform_start:]
         self.assertNotIn("INCLUDES_ALL", platform_section)
         self.assertGreater(games_start, 0)
@@ -150,7 +150,7 @@ class FilterBarRenderingTest(TestCase):
                 filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
             )
         )
-        self.assertIn('data-search-select-mode="filter"', html)
+        self.assertIn('filter-mode="true"', html)
         self.assertIn(
             'data-search-select-type="include"', html
         )  # rendered as an include pill
@@ -235,11 +235,11 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         # New search-backed selects
-        self.assertIn('data-search-url="/api/devices/search"', html)
-        self.assertIn('data-search-url="/api/platforms/groups"', html)
+        self.assertIn('search-url="/api/devices/search"', html)
+        self.assertIn('search-url="/api/platforms/groups"', html)
         # New enum selects (purchase type / ownership)
-        self.assertIn('data-name="purchase_type"', html)
-        self.assertIn('data-name="purchase_ownership_type"', html)
+        self.assertIn('name="purchase_type"', html)
+        self.assertIn('name="purchase_ownership_type"', html)
         # Free-text widget for playevent notes (now StringFilter)
         self.assertIn('name="filter-playevent_note"', html)
         self.assertIn('name="filter-playevent_note-modifier"', html)

@@ -1,25 +1,31 @@
 /**
  * Range slider — custom draggable handles (no native <input type=range>).
  *
- * Supports two modes on each slider, toggled via the .range-mode-toggle button:
+ * Supports two modes, toggled via the .range-mode-toggle button:
  *   range (default) — two handles, min ≤ max constraint
  *   point           — single handle, sets both number inputs to the same value
  *
  * Handles track-fill positioning and sync between handles and the connected
- * number inputs (linked via data-target attributes).
+ * number inputs (linked via data-target attributes on the handles).
+ * Behavior is wired in connectedCallback; the typed props (min, max, step, mode)
+ * come from the server via readRangeSliderProps.
  */
-import { onSwap } from "./utils.js";
+import { readRangeSliderProps } from "../generated/props.js";
 
-(() => {
-  "use strict";
+class RangeSliderElement extends HTMLElement {
+  private onMouseMove: ((event: MouseEvent) => void) | null = null;
+  private onMouseUp: (() => void) | null = null;
 
-  function initializeSlider(sliderElement: Element) {
-    const slider = sliderElement as HTMLElement;
-    let mode = slider.getAttribute("data-mode") || "range";
-    const trackFill = slider.querySelector<HTMLElement>(".range-track-fill");
-    const minHandle = slider.querySelector<HTMLElement>(".range-handle-min");
-    const maxHandle = slider.querySelector<HTMLElement>(".range-handle-max");
-    if (!minHandle || !maxHandle) return;
+  connectedCallback(): void {
+    const { min: dataMin, max: dataMax, step, mode: initialMode } =
+      readRangeSliderProps(this);
+    let mode = initialMode;
+
+    const track = this.querySelector<HTMLElement>("[data-range-track]");
+    const trackFill = this.querySelector<HTMLElement>(".range-track-fill");
+    const minHandle = this.querySelector<HTMLElement>(".range-handle-min");
+    const maxHandle = this.querySelector<HTMLElement>(".range-handle-max");
+    if (!track || !minHandle || !maxHandle) return;
 
     const minTarget = document.getElementById(
       minHandle.getAttribute("data-target") ?? ""
@@ -27,9 +33,6 @@ import { onSwap } from "./utils.js";
     const maxTarget = document.getElementById(
       maxHandle.getAttribute("data-target") ?? ""
     ) as HTMLInputElement | null;
-    const dataMin = parseInt(slider.getAttribute("data-min") ?? "", 10);
-    const dataMax = parseInt(slider.getAttribute("data-max") ?? "", 10);
-    const step = parseInt(slider.getAttribute("data-step") ?? "", 10) || 1;
 
     // ── Helpers ──
 
@@ -44,12 +47,18 @@ import { onSwap } from "./utils.js";
       return Math.max(low, Math.min(high, value));
     }
 
-    function getTargetValue(target: HTMLInputElement | null, defaultValue: number): number {
+    function getTargetValue(
+      target: HTMLInputElement | null,
+      defaultValue: number
+    ): number {
       if (!target || target.value === "") return defaultValue;
       const parsed = parseInt(target.value, 10);
       return isNaN(parsed) ? defaultValue : parsed;
     }
-    function setTargetValue(target: HTMLInputElement | null, value: number | string): void {
+    function setTargetValue(
+      target: HTMLInputElement | null,
+      value: number | string
+    ): void {
       if (target) target.value = String(value);
     }
 
@@ -86,12 +95,12 @@ import { onSwap } from "./utils.js";
 
     // ── Dragging ──
 
-    function makeDraggable(handle: HTMLElement, isMin: boolean): void {
+    const makeDraggable = (handle: HTMLElement, isMin: boolean): void => {
       handle.addEventListener("mousedown", (event) => {
         event.preventDefault();
-        const rect = slider.getBoundingClientRect();
+        const rect = track.getBoundingClientRect();
 
-        function onMove(moveEvent: MouseEvent): void {
+        const onMove = (moveEvent: MouseEvent): void => {
           const percent = ((moveEvent.clientX - rect.left) / rect.width) * 100;
           const value = percentToValue(clamp(percent, 0, 100));
 
@@ -114,17 +123,22 @@ import { onSwap } from "./utils.js";
             if (maxTarget) maxTarget.dispatchEvent(new Event("input", { bubbles: true }));
           }
           updateHandles();
-        }
+        };
 
-        function onUp(): void {
+        const onUp = (): void => {
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("mouseup", onUp);
-        }
+          this.onMouseMove = null;
+          this.onMouseUp = null;
+        };
+
+        this.onMouseMove = onMove;
+        this.onMouseUp = onUp;
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
         onMove(event);
       });
-    }
+    };
 
     makeDraggable(minHandle, true);
     makeDraggable(maxHandle, false);
@@ -133,7 +147,8 @@ import { onSwap } from "./utils.js";
 
     function syncFromInputs(event?: Event): void {
       if (mode === "point") {
-        const source = (event?.target as HTMLInputElement | null) || minTarget || maxTarget;
+        const source =
+          (event?.target as HTMLInputElement | null) || minTarget || maxTarget;
         const value = source ? source.value : "";
         setTargetValue(minTarget, value);
         setTargetValue(maxTarget, value);
@@ -178,12 +193,11 @@ import { onSwap } from "./utils.js";
 
     // ── Mode toggle ──
 
-    const block = slider.closest(".range-slider-block");
-    const toggleButton = block && block.querySelector(".range-mode-toggle");
+    const toggleButton = this.querySelector<HTMLElement>(".range-mode-toggle");
     if (toggleButton) {
       toggleButton.addEventListener("click", () => {
         const newMode = mode === "range" ? "point" : "range";
-        slider.setAttribute("data-mode", newMode);
+        this.setAttribute("mode", newMode);
 
         // Swap toggle icons
         const iconRange = toggleButton.querySelector(".range-mode-icon-range");
@@ -191,7 +205,7 @@ import { onSwap } from "./utils.js";
         if (iconRange) iconRange.classList.toggle("hidden");
         if (iconPoint) iconPoint.classList.toggle("hidden");
 
-        const dashSpan = block && block.querySelector(".range-dash");
+        const dashSpan = this.querySelector(".range-dash");
         if (newMode === "point") {
           minHandle.style.display = "none";
           setTargetValue(minTarget, maxTarget ? maxTarget.value : "");
@@ -211,5 +225,16 @@ import { onSwap } from "./utils.js";
     updateHandles();
   }
 
-  onSwap(".range-slider", initializeSlider);
-})();
+  disconnectedCallback(): void {
+    if (this.onMouseMove) {
+      document.removeEventListener("mousemove", this.onMouseMove);
+      this.onMouseMove = null;
+    }
+    if (this.onMouseUp) {
+      document.removeEventListener("mouseup", this.onMouseUp);
+      this.onMouseUp = null;
+    }
+  }
+}
+
+customElements.define("range-slider", RangeSliderElement);

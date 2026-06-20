@@ -145,7 +145,7 @@ class DateRangePickerTest(SimpleTestCase):
                 max_value="2024-12-31",
             )
         )
-        self.assertIn("data-date-range-picker", html)
+        self.assertIn("<date-range-picker", html)
         self.assertIn('data-input-name-prefix="filter-date-purchased"', html)
         self.assertIn("data-date-range-field", html)
         self.assertIn("data-date-range-calendar", html)
@@ -166,7 +166,7 @@ class PurchaseFilterBarDateRangePickerTest(TestCase):
 
     def test_purchased_uses_date_range_picker(self):
         html = self.render()
-        self.assertIn("data-date-range-picker", html)
+        self.assertIn("<date-range-picker", html)
         self.assertIn('data-input-name-prefix="filter-date-purchased"', html)
         # The hidden ISO inputs keep the names filter_bar.js serializes.
         self.assertIn('name="filter-date-purchased-min"', html)

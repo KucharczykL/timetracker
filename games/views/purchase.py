@@ -301,7 +301,8 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         ),
         title="Add New Purchase",
         scripts=mark_safe(
-            ModuleScript("dist/search_select.js") + ModuleScript("dist/add_purchase.js")
+            ModuleScript("dist/elements/search-select.js")
+            + ModuleScript("dist/add_purchase.js")
         ),
     )
 
@@ -319,7 +320,8 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Edit Purchase",
         scripts=mark_safe(
-            ModuleScript("dist/search_select.js") + ModuleScript("dist/add_purchase.js")
+            ModuleScript("dist/elements/search-select.js")
+            + ModuleScript("dist/add_purchase.js")
         ),
     )
 

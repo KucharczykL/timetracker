@@ -2,7 +2,7 @@ import { readSelectionFieldsProps, SelectionFieldsProps } from "../generated/pro
 
 /**
  * Renders one form field per selected item of a source SearchSelect (matched by
- * its data-name). Reacts to the SearchSelect's "search-select:change" event and
+ * its name attribute). Reacts to the SearchSelect's "search-select:change" event and
  * to its own "active" attribute. Typed values are preserved (keyed by item id)
  * across selection changes and active toggling.
  */
@@ -24,7 +24,7 @@ class SelectionFieldsElement extends HTMLElement {
   connectedCallback(): void {
     this.props = readSelectionFieldsProps(this);
     this.source = document.querySelector<HTMLElement>(
-      `[data-search-select][data-name="${this.props.source}"]`,
+      `search-select[name="${this.props.source}"]`,
     );
     document.addEventListener("search-select:change", this.onSourceChange);
     this.render();
