@@ -9,4 +9,6 @@ const syncData = [
   },
 ];
 
-syncSelectInputUntilChanged(syncData, "form");
+// Scope to the add form (#add-form), not "form": the first <form> on the page
+// is the navbar logout form, which never contains these fields.
+syncSelectInputUntilChanged(syncData, "#add-form");

@@ -147,3 +147,66 @@ def test_add_purchase_related_game_is_flat_game_search(
     related = page.locator('[data-search-select][data-name="related_game"]')
     expect(related).to_have_count(1)
     expect(related).to_have_attribute("data-search-url", "/api/games/search")
+
+
+def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):
+    """Typing into Name live-fills Sort name (sync bound to the add form, not
+    the navbar logout form which is the first <form> on the page)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    page.locator("#id_name").click()
+    page.locator("#id_name").type("Halo")
+    expect(page.locator("#id_sort_name")).to_have_value("Halo")
+
+
+def test_add_purchase_type_game_disables_related_game_search(
+    authenticated_page: Page, live_server
+):
+    """When Type is 'game', the related-game SearchSelect is disabled — the
+    real disable target is the inner search input, not the wrapper <div>
+    (a <div> ignores the disabled property)."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    wrapper = page.locator("#id_related_game")
+    search = page.locator('#id_related_game [data-search-select-search]')
+
+    page.select_option("#id_type", "game")
+    expect(search).to_be_disabled()
+    # The component greys itself via has-[:disabled] when the input is disabled.
+    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "0.5"
+    # The disabled inner input stays transparent (excluded from the global
+    # disabled-input surface) so the widget reads as one element, not a nested
+    # box. transparent is mode-independent, so this holds in light and dark.
+    assert search.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
+    # The inner input carries the same not-allowed cursor as the wrapper, so the
+    # cursor doesn't flicker as the pointer crosses the widget.
+    assert search.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
+
+    page.select_option("#id_type", "dlc")
+    expect(search).to_be_enabled()
+    assert wrapper.evaluate("el => getComputedStyle(el).opacity") == "1"
+
+
+def test_add_game_sync_stops_once_sort_name_edited(
+    authenticated_page: Page, live_server
+):
+    """Name → Sort name mirrors live, but stops the moment the user edits Sort
+    name directly (the 'UntilChanged' contract). Editing Name afterwards must
+    not clobber the user's manual Sort name."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    name = page.locator("#id_name")
+    sort = page.locator("#id_sort_name")
+
+    name.click()
+    name.type("Halo")
+    expect(sort).to_have_value("Halo")  # live mirror before any manual edit
+
+    sort.fill("Custom Sort")  # user takes over the target → sync drops
+    expect(sort).to_have_value("Custom Sort")
+
+    name.click()
+    name.press("End")
+    name.type(" 2")
+    expect(name).to_have_value("Halo 2")
+    expect(sort).to_have_value("Custom Sort")  # not clobbered

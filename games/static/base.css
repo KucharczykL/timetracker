@@ -3430,6 +3430,21 @@
       outline-style: none;
     }
   }
+  .disabled\:cursor-not-allowed {
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+  .has-\[\:disabled\]\:cursor-not-allowed {
+    &:has(*:is(:disabled)) {
+      cursor: not-allowed;
+    }
+  }
+  .has-\[\:disabled\]\:opacity-50 {
+    &:has(*:is(:disabled)) {
+      opacity: 50%;
+    }
+  }
   .data-\[search-select-highlighted\]\:bg-brand {
     &[data-search-select-highlighted] {
       background-color: var(--color-brand);
@@ -4390,7 +4405,7 @@
     border-left-color: var(--color-slate-500);
   }
 }
-form input:disabled, select:disabled, textarea:disabled {
+form input:disabled:not([data-search-select-search]), select:disabled, textarea:disabled {
   cursor: not-allowed;
   background-color: var(--color-neutral-secondary-strong);
   color: var(--color-fg-disabled);

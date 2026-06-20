@@ -38,9 +38,10 @@ function toISOUTCString(date: Date): string {
 }
 
 /**
- * Mirrors each source element's value onto its target until the target is
- * focused (manual edit wins). Each syncData entry maps a source selector and
- * property onto a target selector and property.
+ * Mirrors each source element's value onto its target live as the user types,
+ * until the user edits the target directly — at which point that target is
+ * "dirty" and the manual value wins (no more mirroring into it). Each syncData
+ * entry maps a source selector and property onto a target selector and property.
  */
 function syncSelectInputUntilChanged(syncData: Array<{ source: string; target: string; source_value: string; target_value: string }>, parentSelector: string | Document = document) {
   const parentElement =
@@ -52,47 +53,31 @@ function syncSelectInputUntilChanged(syncData: Array<{ source: string; target: s
     console.error(`The parent selector "${parentSelector}" is not valid.`);
     return;
   }
-  // Set up a single change event listener on the document for handling all source changes
-  parentElement.addEventListener("change", function (event) {
-    // Loop through each sync configuration item
-    syncData.forEach((syncItem: { source: string; target: string; source_value: string; target_value: string }) => {
-      // Check if the change event target matches the source selector
-      if ((event.target as HTMLElement).matches(syncItem.source)) {
-        if (!event.target) return;
-        const sourceElement = event.target;
-        const valueToSync = getValueFromProperty(
-          sourceElement,
-          syncItem.source_value
-        );
+  // One delegated "input" listener drives both directions per syncItem. "input"
+  // (not "change") makes the mirror live as the user types. A target the user
+  // edits is marked dirty so the mirror stops clobbering it — programmatically
+  // setting target.value does NOT fire "input", so our own writes never mark a
+  // target dirty; only real user edits do.
+  const dirtyTargets = new Set<number>();
+  parentElement.addEventListener("input", function (event) {
+    const eventTarget = event.target as HTMLElement;
+    syncData.forEach((syncItem, index) => {
+      // User edited the target directly → stop mirroring into it.
+      if (eventTarget.matches(syncItem.target)) {
+        dirtyTargets.add(index);
+        return;
+      }
+      // Source changed → mirror into the target unless the user took it over.
+      if (eventTarget.matches(syncItem.source) && !dirtyTargets.has(index)) {
+        const valueToSync = getValueFromProperty(eventTarget, syncItem.source_value);
         const targetElement = document.querySelector<HTMLSelectElement>(syncItem.target);
-
         if (targetElement && valueToSync !== null) {
-          console.log(`Changing value of ${syncItem.target} to ${valueToSync}`);
-          (targetElement as unknown as Record<string, unknown>)[syncItem.target_value] = valueToSync;
+          (targetElement as unknown as Record<string, unknown>)[syncItem.target_value] =
+            valueToSync;
         }
       }
     });
   });
-
-  // Set up a single focus event listener on the document for handling all target focuses
-  const syncListener = (event:  Event) => {
-      // Loop through each sync configuration item
-      syncData.forEach((syncItem: { source: string; target: string; source_value: string; target_value: string }) => {
-        // Check if the focus event target matches the target selector
-        if ((event.target as HTMLElement).matches(syncItem.target)) {
-          // Remove the change event listener to stop syncing
-          // This assumes you want to stop syncing once any target receives focus
-          // You may need a more sophisticated way to remove listeners if you want to stop
-          // syncing selectively based on other conditions
-          document.removeEventListener("change", syncListener);
-        }
-      });
-    }
-  parentElement.addEventListener(
-    "focus",
-    syncListener,
-    true
-  ); // Use capture phase to ensure the event is captured during focus, not bubble
 }
 
 /**
