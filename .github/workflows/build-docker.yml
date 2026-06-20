@@ -30,6 +30,9 @@ jobs:
       - name: Build TypeScript
         run: make ts
 
+      - name: Build CSS
+        run: make css
+
       - name: Install Playwright browsers
         run: uv run playwright install --with-deps chromium
 

@@ -81,10 +81,12 @@ collectstatic:
 uv.lock: pyproject.toml
 	uv sync
 
-test: uv.lock
+# base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
+# tracked — build both before tests so e2e/static serving has fresh assets.
+test: uv.lock css ts
 	uv run --with pytest-django pytest
 
-test-e2e: uv.lock
+test-e2e: uv.lock css ts
 	uv run pytest e2e/
 
 lint:
