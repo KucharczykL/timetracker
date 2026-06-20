@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
@@ -26,6 +26,7 @@ from common.components import (
     SessionDeviceSelector,
     SessionTimestampButtons,
     StyledButton,
+    TableRow,
     paginated_table_content,
 )
 from common.components.primitives import Span, Td, Tr
@@ -38,6 +39,87 @@ from common.time import (
 from common.utils import paginate, truncate
 from games.forms import SessionForm
 from games.models import Device, Game, Session
+
+
+class SessionRowData(TypedDict):
+    row_id: str
+    hx_trigger: str
+    hx_get: str
+    hx_select: str
+    hx_swap: str
+    cell_data: list[Node]
+
+
+def session_row_data(
+    session: Session, device_list, csrf_token: str
+) -> SessionRowData:
+    """Canonical session-list row. Single source of truth shared by
+    list_sessions and the htmx finish/reset fragments."""
+    row_selector = f"#session-row-{session.pk}"
+    end_url = reverse("games:list_sessions_end_session", args=[session.pk])
+    reset_url = reverse(
+        "games:list_sessions_reset_session_start", args=[session.pk]
+    )
+    actions = ButtonGroup(
+        [
+            {
+                "href": end_url,
+                "hx_get": end_url,
+                "hx_target": row_selector,
+                "hx_swap": "outerHTML",
+                "slot": Icon("end"),
+                "title": "Finish session now",
+                "color": "green",
+            }
+            if session.timestamp_end is None
+            else {},
+            {
+                "href": reset_url,
+                "hx_get": reset_url,
+                "hx_target": row_selector,
+                "hx_swap": "outerHTML",
+                "hx_confirm": "Reset this session's start time to now?",
+                "slot": Icon("reset"),
+                "title": "Reset start to now",
+                "color": "gray",
+            }
+            if session.timestamp_end is None
+            else {},
+            {
+                "href": reverse("games:edit_session", args=[session.pk]),
+                "slot": Icon("edit"),
+                "title": "Edit",
+            },
+            {
+                "href": reverse("games:delete_session", args=[session.pk]),
+                "slot": Icon("delete"),
+                "title": "Delete",
+                "color": "red",
+            },
+        ]
+    )
+    return SessionRowData(
+        row_id=f"session-row-{session.pk}",
+        hx_trigger="device-changed from:body",
+        hx_get="",
+        hx_select=row_selector,
+        hx_swap="outerHTML",
+        cell_data=[
+            NameWithIcon(session=session),
+            f"{local_strftime(session.timestamp_start)}"
+            f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+            session.duration_formatted_with_mark(),
+            SessionDeviceSelector(session, device_list, csrf_token),
+            session.created_at.strftime(dateformat),
+            actions,
+        ],
+    )
+
+
+def session_row(session: Session, device_list, csrf_token: str) -> Node:
+    """The single-session <tr> node, rendered through the same TableRow
+    path the list table uses."""
+    return TableRow(session_row_data(session, device_list, csrf_token))
 
 
 @login_required
@@ -69,6 +151,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     except Session.DoesNotExist:
         last_session = None
     sessions, page_obj, elided_page_range = paginate(request, sessions)
+    csrf_token = get_token(request)
 
     data = {
         "header_action": Div(
@@ -120,67 +203,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             "Actions",
         ],
         "rows": [
-            {
-                "row_id": f"session-row-{session.pk}",
-                "hx_trigger": "device-changed from:body",
-                "hx_get": "",
-                "hx_select": f"#session-row-{session.pk}",
-                "hx_swap": "outerHTML",
-                "cell_data": [
-                    NameWithIcon(session=session),
-                    f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-                    session.duration_formatted_with_mark(),
-                    SessionDeviceSelector(session, device_list, get_token(request)),
-                    session.created_at.strftime(dateformat),
-                    ButtonGroup(
-                        [
-                            {
-                                "href": reverse(
-                                    "games:list_sessions_end_session", args=[session.pk]
-                                ),
-                                "slot": Icon("end"),
-                                "title": "Finish session now",
-                                "color": "green",
-                            }
-                            if session.timestamp_end is None
-                            else {},
-                            {
-                                "href": reverse(
-                                    "games:list_sessions_reset_session_start",
-                                    args=[session.pk],
-                                ),
-                                "hx_get": reverse(
-                                    "games:list_sessions_reset_session_start",
-                                    args=[session.pk],
-                                ),
-                                "hx_confirm": (
-                                    "Reset this session's start time to now?"
-                                ),
-                                "slot": Icon("reset"),
-                                "title": "Reset start to now",
-                                "color": "gray",
-                            }
-                            if session.timestamp_end is None
-                            else {},
-                            {
-                                "href": reverse(
-                                    "games:edit_session", args=[session.pk]
-                                ),
-                                "slot": Icon("edit"),
-                                "title": "Edit",
-                            },
-                            {
-                                "href": reverse(
-                                    "games:delete_session", args=[session.pk]
-                                ),
-                                "slot": Icon("delete"),
-                                "title": "Delete",
-                                "color": "red",
-                            },
-                        ]
-                    ),
-                ],
-            }
+            session_row_data(session, device_list, csrf_token)
             for session in sessions
         ],
     }
