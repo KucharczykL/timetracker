@@ -53,15 +53,23 @@ Both consumers go through the same dict builder and the same renderer:
 rows = [session_row_data(s, device_list, csrf_token) for s in sessions]
 # → paginated_table_content → SimpleTable → TableRow(data=dict)
 
-# _session_row_fragment
-def _session_row_fragment(session, device_list, csrf_token) -> SafeText:
-    return str(TableRow(session_row_data(session, device_list, csrf_token)))
+# single-row htmx fragment — returns a Node, not a stringified SafeText
+def session_row(session, device_list, csrf_token) -> Node:
+    return TableRow(session_row_data(session, device_list, csrf_token))
 ```
 
 The fragment is therefore the *same* row the table renders, for a single session. Change
 a column once in `session_row_data` and list + fragment move together. The old hand-built
-`Tr` (4-column, the `#last-session-start` toggle, the yellow "Finish now?" link) is
-deleted entirely.
+`Tr` (4-column, the `#last-session-start` toggle, the yellow "Finish now?" link) — and the
+`_session_row_fragment` helper returning `SafeText` — are deleted entirely.
+
+**Return `Node`, not `SafeText`.** Per the component-system direction, builders return
+`Node` objects and stringification happens only at the `HttpResponse` boundary (Django
+str-encodes response content automatically — `HttpResponse(node)` already works across the
+codebase, e.g. `purchase.py` `HttpResponse(_refund_confirmation_modal(...))`). `TableRow`
+already returns an `Element` (a `Node`), so `session_row` returns it directly with no
+`str()`/`mark_safe`. The endpoints combine the row and the OOB navbar with `Fragment`
+(also a `Node`) and pass that straight to `HttpResponse`.
 
 `session_row_data` reproduces today's `list_sessions` dict exactly:
 
@@ -122,14 +130,15 @@ All three endpoints keep their non-htmx branch (`redirect("games:list_sessions")
 
 | Endpoint | htmx response |
 |---|---|
-| `end_session` | `TableRow(session_row_data(...))` **+** `NavbarPlaytime(..., oob=True)` |
-| `reset_session_start` | `TableRow(session_row_data(...))` **+** `NavbarPlaytime(..., oob=True)` |
+| `end_session` | `HttpResponse(Fragment(session_row(...), NavbarPlaytime(..., oob=True)))` |
+| `reset_session_start` | `HttpResponse(Fragment(session_row(...), NavbarPlaytime(..., oob=True)))` |
 | `new_session_from_existing_session` (clone) | `204 + HX-Refresh: true` |
 
-- **end / reset** return the fresh row plus the OOB navbar fragment in one response body.
-  The triggering button targets `#session-row-{pk}` with `hx-swap="outerHTML"`; htmx
-  extracts the OOB `<li>` and swaps the remainder (the `<tr>`) into the row.
-  `reset_session_start` drops its current `204 + HX-Refresh` workaround.
+- **end / reset** return a `Fragment` Node holding the fresh row plus the OOB navbar in one
+  response body, passed straight to `HttpResponse` (no manual stringification). The
+  triggering button targets `#session-row-{pk}` with `hx-swap="outerHTML"`; htmx extracts
+  the OOB `<li>` and swaps the remainder (the `<tr>`) into the row. `reset_session_start`
+  drops its current `204 + HX-Refresh` workaround.
 - **clone stays on `HX-Refresh`**: it creates a *new* session whose correct position
   depends on sort + pagination, which a single-row `outerHTML` swap cannot place. Its htmx
   branch returns `204 + HX-Refresh: true` (replacing the dead fragment return). This is a
@@ -154,9 +163,11 @@ Edit, Delete, and the clone/"play" affordances are unchanged.
 
 ## Components / files touched
 
-- `games/views/session.py` — add `SessionRowData`, `session_row_data()`; rewrite
-  `_session_row_fragment()` to delegate; update `list_sessions` to use the builder; rewire
-  `end_session`, `reset_session_start`, `new_session_from_existing_session`.
+- `games/views/session.py` — add `SessionRowData`, `session_row_data() -> SessionRowData`,
+  `session_row() -> Node`; delete the old `_session_row_fragment() -> SafeText`; update
+  `list_sessions` to use the builder; rewire `end_session`, `reset_session_start`,
+  `new_session_from_existing_session`. Drop the now-unused `SafeText`/`Tr` imports if no
+  other references remain.
 - `common/layout.py` — add `NavbarPlaytime`; use it inside `Navbar()`.
 - (If `NavbarPlaytime` is placed in `common/components`, re-export via `__init__.py`.)
 
@@ -187,8 +198,8 @@ htmx: OOB <li> → #navbar-playtime ; <tr> → #session-row-pk (outerHTML)
 Unit (`tests/`):
 - `session_row_data` returns 6 `cell_data` entries and `row_id == "session-row-{pk}"`,
   with the device/created/actions cells present.
-- `_session_row_fragment` output contains `id="session-row-{pk}"` and 6 `<td>/<th>` cells
-  (regression against the 4-column drift).
+- `session_row(...)` is a `Node`; `str(session_row(...))` contains `id="session-row-{pk}"`
+  and 6 `<td>/<th>` cells (regression against the 4-column drift).
 - `NavbarPlaytime(oob=True)` emits `id="navbar-playtime"` and `hx-swap-oob="true"`;
   `oob=False` omits the OOB attribute.
 
