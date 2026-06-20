@@ -17,12 +17,10 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 ``ts/date_range_picker.ts`` (compiled to ``dist/date_range_picker.js``).
 """
 
-from common.components.core import Element, HTMLAttribute, Media, Node, Safe
+from common.components.core import Element, Node, Safe
+from common.components.custom_elements import _DateRangePicker
 from common.components.primitives import Div, Input, Span
 from common.time import DatePartSpec, date_parts
-
-# Wired by ts/date_range_picker.ts (compiled to dist/).
-_DATE_RANGE_MEDIA = Media(js=("dist/date_range_picker.js",))
 
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
@@ -335,20 +333,12 @@ def DateRangePicker(
     serializer needs no changes. ``min_value`` / ``max_value`` are ISO
     ``YYYY-MM-DD`` strings used to prefill both the segments and the hidden
     inputs."""
-    attributes: list[HTMLAttribute] = [
-        ("class", "date-range-picker relative"),
-        ("data-date-range-picker", ""),
-        ("data-input-name-prefix", input_name_prefix),
+    return _DateRangePicker(class_="relative")[
+        DateRangeField(
+            label=label,
+            input_name_prefix=input_name_prefix,
+            min_value=min_value,
+            max_value=max_value,
+        ),
+        DateRangeCalendar(input_name_prefix=input_name_prefix),
     ]
-    return Div(
-        attributes=attributes,
-        children=[
-            DateRangeField(
-                label=label,
-                input_name_prefix=input_name_prefix,
-                min_value=min_value,
-                max_value=max_value,
-            ),
-            DateRangeCalendar(input_name_prefix=input_name_prefix),
-        ],
-    ).with_media(_DATE_RANGE_MEDIA)

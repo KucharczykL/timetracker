@@ -63,9 +63,9 @@ class RenderedPagesTest(TestCase):
         """The games list view passes no scripts= argument; the filter bar's
         components declare their JS and Page() collects it."""
         html = self.get("games:list_games").content.decode()
-        self.assertIn("js/dist/filter_bar.js", html)
-        self.assertIn("js/dist/search_select.js", html)
-        self.assertIn("js/dist/range_slider.js", html)
+        self.assertIn("js/dist/elements/filter-bar.js", html)
+        self.assertIn("js/dist/elements/search-select.js", html)
+        self.assertIn("js/dist/elements/range-slider.js", html)
 
     def test_stats_page_auto_loads_datepicker(self):
         """YearPicker declares the datepicker UMD bundle as media; the stats

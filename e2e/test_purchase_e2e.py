@@ -24,7 +24,7 @@ def selection_fields_view(request):
     <html>
     <head>
         <script src="/static/js/htmx.min.js"></script>
-        <script type="module" src="/static/js/dist/search_select.js"></script>
+        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
         <script type="module" src="/static/js/dist/elements/selection-fields.js"></script>
     </head>
     <body>
@@ -66,7 +66,7 @@ urlpatterns = [
 def test_selection_fields_syncs_with_source(live_server, page: Page):
     page.goto(live_server.url + "/sf-test/")
 
-    games = page.locator('[data-search-select][data-name="games"]')
+    games = page.locator('search-select[name="games"]')
     rows = page.locator("selection-fields [data-selection-fields-rows] input")
 
     # Below min_items (2): nothing rendered.
@@ -112,7 +112,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 def _select_two_games(page: Page) -> None:
-    games = page.locator('[data-search-select][data-name="games"]')
+    games = page.locator('search-select[name="games"]')
     games.locator("[data-search-select-search]").click()
     options = games.locator("[data-search-select-option]")
     expect(options).to_have_count(2)  # prefetched on focus

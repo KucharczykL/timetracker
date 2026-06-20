@@ -11,10 +11,9 @@ def e2e_test_view(request):
     <html>
     <head>
         <title>SearchSelect E2E Test</title>
-        <!-- search_select.js is an ES module and initializes via onSwap(),
-             which rides on htmx.onLoad — so htmx must be present. -->
+        <!-- search-select is a custom element; htmx must be present for filter_bar. -->
         <script src="/static/js/htmx.min.js"></script>
-        <script type="module" src="/static/js/dist/search_select.js"></script>
+        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
     </head>
     <body>
         <div style="padding: 50px;">
@@ -52,7 +51,7 @@ def test_search_select_backspace_clears_single_select(live_server, page):
     # Inject our event logger
     page.evaluate("""() => {
         const s = document.querySelector('input[data-search-select-search]');
-        const c = document.querySelector('[data-search-select]');
+        const c = document.querySelector('search-select');
         s.addEventListener('focus', () => console.log('JS-EVENT: focus, dirty=' + c._searchSelectDirty + ', value="' + s.value + '"'));
         s.addEventListener('blur', () => console.log('JS-EVENT: blur, dirty=' + c._searchSelectDirty + ', value="' + s.value + '"'));
         s.addEventListener('input', () => console.log('JS-EVENT: input, dirty=' + c._searchSelectDirty + ', value="' + s.value + '"'));

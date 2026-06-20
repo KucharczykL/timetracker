@@ -146,6 +146,49 @@ register_element("selection-fields", "SelectionFields", SelectionFieldsProps)
 _SelectionFields = custom_element_builder("selection-fields")
 
 
+class RangeSliderProps(TypedDict):
+    min: int
+    max: int
+    step: int
+    mode: str  # "range" | "point"
+
+
+register_element("range-slider", "RangeSlider", RangeSliderProps)
+_RangeSlider = custom_element_builder("range-slider")
+
+
+class DateRangePickerProps(TypedDict):
+    pass
+
+
+register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
+_DateRangePicker = custom_element_builder("date-range-picker")
+
+
+class SearchSelectProps(TypedDict):
+    name: str
+    search_url: str
+    multi: bool
+    filter_mode: bool
+    free_text: bool
+    always_visible: bool
+    prefetch: int
+    sync_url: bool
+
+
+register_element("search-select", "SearchSelect", SearchSelectProps)
+_SearchSelect = custom_element_builder("search-select")
+
+
+class FilterBarProps(TypedDict):
+    preset_list_url: str
+    preset_save_url: str
+
+
+register_element("filter-bar", "FilterBar", FilterBarProps)
+_FilterBarElement = custom_element_builder("filter-bar")
+
+
 def SelectionFields(
     *,
     source: str,

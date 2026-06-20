@@ -64,10 +64,10 @@ class SearchSelectComponentTest(unittest.TestCase):
                 name="games", search_url="/api/games/search", multi_select=True
             )
         )
-        self.assertIn("data-search-select", html)
-        self.assertIn('data-name="games"', html)
-        self.assertIn('data-search-url="/api/games/search"', html)
-        self.assertIn('data-multi="true"', html)
+        self.assertIn("<search-select", html)
+        self.assertIn('name="games"', html)
+        self.assertIn('search-url="/api/games/search"', html)
+        self.assertIn('multi="true"', html)
 
     def test_multi_selected_renders_pills_and_hidden_inputs(self):
         html = str(
@@ -80,9 +80,8 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertIn("data-pill", html)
         self.assertIn('<input name="games" value="7" type="hidden">', html)
         self.assertIn('data-platform="2"', html)
-        # exactly one submitted value (the hidden input) — the search box has no
-        # name. The leading space avoids matching the container's data-name.
-        self.assertEqual(html.count(' name="games"'), 1)
+        # two occurrences: the <search-select name="games"> tag + the hidden input.
+        self.assertEqual(html.count(' name="games"'), 2)
 
     def test_single_selected_has_no_pill_and_value_in_search_box(self):
         html = str(
@@ -96,13 +95,13 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertIn('value="Game A"', html)
         # the value is still submitted via a lone hidden input
         self.assertIn('<input name="games" value="7" type="hidden">', html)
-        self.assertEqual(html.count(' name="games"'), 1)
+        self.assertEqual(html.count(' name="games"'), 2)
 
     def test_search_box_has_no_name(self):
         html = str(SearchSelect(name="games"))
         self.assertIn("data-search-select-search", html)
-        # container exposes data-name, never a submittable name on the search box
-        self.assertEqual(html.count(' name="games"'), 0)
+        # <search-select name="games"> is the tag; the search box carries no name
+        self.assertEqual(html.count(' name="games"'), 1)
 
     def test_tuple_options_are_normalized(self):
         html = str(SearchSelect(name="t", options=[("1", "One")]))
@@ -149,11 +148,11 @@ class SearchSelectComponentTest(unittest.TestCase):
     def test_prefetch_attribute_and_defaults(self):
         # Default prefetch is 0 in SearchSelect
         html_default = str(SearchSelect(name="t"))
-        self.assertIn('data-prefetch="0"', html_default)
+        self.assertIn('prefetch="0"', html_default)
 
         # Custom prefetch is rendered
         html_custom = str(SearchSelect(name="t", prefetch=42))
-        self.assertIn('data-prefetch="42"', html_custom)
+        self.assertIn('prefetch="42"', html_custom)
 
 
 class FilterSelectComponentTest(unittest.TestCase):
@@ -164,12 +163,12 @@ class FilterSelectComponentTest(unittest.TestCase):
 
     def test_is_filter_mode_on_shared_shell(self):
         html = str(FilterSelect(field_name="type"))
-        # Reuses the SearchSelect shell (data-search-select) but flags filter mode.
-        self.assertIn("data-search-select", html)
-        self.assertIn('data-search-select-mode="filter"', html)
-        self.assertIn('data-name="type"', html)
-        # No name is submitted — state is read from the DOM into the filter JSON.
-        self.assertEqual(html.count(' name="type"'), 0)
+        # FilterSelect is a <search-select> with filter-mode="true".
+        self.assertIn("<search-select", html)
+        self.assertIn('filter-mode="true"', html)
+        self.assertIn('name="type"', html)
+        # <search-select name="type"> carries the name; state is read from DOM into filter JSON.
+        self.assertEqual(html.count(' name="type"'), 1)
 
     def test_value_rows_have_include_exclude_buttons(self):
         html = str(FilterSelect(field_name="type", options=[("g", "Game")]))
@@ -238,7 +237,7 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn(
             'data-search-select-modifier-option="NOT_NULL"', html
         )  # still pinned
-        self.assertIn('data-prefetch="20"', html)
+        self.assertIn('prefetch="20"', html)
 
     def test_search_url_pills_use_resolved_labels(self):
         # A selected value outside the fetched window still shows its label.

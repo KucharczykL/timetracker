@@ -29,10 +29,10 @@ def _bar_page(filter_json: str = "") -> str:
 <head>
     <title>Date range picker E2E</title>
     <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/dist/range_slider.js" type="module"></script>
-    <script src="/static/js/dist/search_select.js" type="module"></script>
-    <script src="/static/js/dist/date_range_picker.js" type="module"></script>
-    <script src="/static/js/dist/filter_bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/range-slider.js" type="module"></script>
+    <script src="/static/js/dist/elements/search-select.js" type="module"></script>
+    <script src="/static/js/dist/elements/date-range-picker.js" type="module"></script>
+    <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
 </head>
 <body>
     {PurchaseFilterBar(filter_json=filter_json, preset_list_url="/p/l", preset_save_url="/p/s")}
@@ -63,7 +63,7 @@ urlpatterns = [
 ]
 
 
-PICKER = '[data-date-range-picker][data-input-name-prefix="filter-date-purchased"]'
+PICKER = "date-range-picker"
 POPUP = PICKER + " [data-date-range-calendar]"
 HIDDEN_MIN = 'input[name="filter-date-purchased-min"]'
 HIDDEN_MAX = 'input[name="filter-date-purchased-max"]'

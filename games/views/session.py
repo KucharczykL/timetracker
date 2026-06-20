@@ -249,7 +249,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Add New Session",
-        scripts=mark_safe(ModuleScript("dist/search_select.js")),
+        scripts=mark_safe(ModuleScript("dist/elements/search-select.js")),
     )
 
 
@@ -264,7 +264,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Edit Session",
-        scripts=mark_safe(ModuleScript("dist/search_select.js")),
+        scripts=mark_safe(ModuleScript("dist/elements/search-select.js")),
     )
 
 
