@@ -15,6 +15,7 @@ from django.utils.timezone import now as timezone_now
 
 from common.layout import render_page
 from common.time import format_duration
+from games.filters import SessionFilter, filter_url
 from games.models import Game, Platform, Purchase, Session
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
@@ -23,20 +24,36 @@ from games.views.stats_data import compute_stats
 # component, so Page() loads it automatically on the stats pages.
 
 
-def model_counts(request: HttpRequest) -> dict[str, bool]:
+def model_counts(request: HttpRequest) -> dict[str, Any]:
     now = timezone_now()
     # Use a contiguous [midnight, next midnight) range in the active timezone
     # instead of day/month/year extracts: a range filter can use an index on
     # timestamp_start, whereas the extracts force a per-row datetime function.
+    today = localtime(now).date()
     start_of_today = localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
     start_of_tomorrow = start_of_today + timedelta(days=1)
+    # "Last 7 days" is a calendar-day window (today plus the previous six) so the
+    # displayed total matches the list its navbar link points to.
+    start_of_window = start_of_today - timedelta(days=6)
     today_played = Session.objects.filter(
         timestamp_start__gte=start_of_today,
         timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
     last_7_played = Session.objects.filter(
-        timestamp_start__gte=(now - timedelta(days=7))
+        timestamp_start__gte=start_of_window,
+        timestamp_start__lt=start_of_tomorrow,
     ).aggregate(time=Sum(F("duration_total")))["time"]
+
+    today_iso = today.isoformat()
+    today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
+    last_7_url = filter_url(
+        SessionFilter.where(
+            timestamp_start__between=(
+                (today - timedelta(days=6)).isoformat(),
+                today_iso,
+            )
+        )
+    )
 
     return {
         "game_available": Game.objects.exists(),
@@ -45,6 +62,8 @@ def model_counts(request: HttpRequest) -> dict[str, bool]:
         "session_count": Session.objects.exists(),
         "today_played": format_duration(today_played, "%H h %m m"),
         "last_7_played": format_duration(last_7_played, "%H h %m m"),
+        "today_url": today_url,
+        "last_7_url": last_7_url,
     }
 
 

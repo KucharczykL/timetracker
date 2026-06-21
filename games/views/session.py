@@ -308,7 +308,13 @@ def _row_with_navbar(request: HttpRequest, session: Session) -> HttpResponse:
     counts = model_counts(request)
     fragment = Fragment(
         session_row(session, device_list, get_token(request)),
-        NavbarPlaytime(counts["today_played"], counts["last_7_played"], oob=True),
+        NavbarPlaytime(
+            counts["today_played"],
+            counts["last_7_played"],
+            today_url=counts["today_url"],
+            last_7_url=counts["last_7_url"],
+            oob=True,
+        ),
     )
     return HttpResponse(str(fragment))
 

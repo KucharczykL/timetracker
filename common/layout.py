@@ -188,11 +188,24 @@ def _main_script(mastered: bool) -> str:
 
 
 def NavbarPlaytime(
-    today_played: str, last_7_played: str, *, oob: bool = False
+    today_played: str,
+    last_7_played: str,
+    *,
+    today_url: str | None = None,
+    last_7_url: str | None = None,
+    oob: bool = False,
 ) -> "Node":
     """The navbar 'Today · Last 7 days' totals. Carries a stable id so
-    htmx endpoints can refresh it out-of-band after a session change."""
+    htmx endpoints can refresh it out-of-band after a session change.
+
+    When ``today_url`` / ``last_7_url`` are given, each total links to the
+    matching filtered session list."""
     from common.components import Safe
+
+    def total(text: str, url: str | None) -> str:
+        if not url:
+            return text
+        return f'<a href="{url}" class="hover:underline">{text}</a>'
 
     oob_attr = ' hx-swap-oob="true"' if oob else ""
     return Safe(
@@ -201,13 +214,20 @@ def NavbarPlaytime(
         '<span class="flex uppercase gap-1">Today'
         '<span class="dark:text-gray-400">·</span>Last 7 days</span>'
         '<span class="flex items-center gap-1">'
-        f'{today_played}<span class="dark:text-gray-400">·</span>'
-        f"{last_7_played}</span></li>"
+        f"{total(today_played, today_url)}"
+        '<span class="dark:text-gray-400">·</span>'
+        f"{total(last_7_played, last_7_url)}</span></li>"
     )
 
 
 def Navbar(
-    *, today_played: str, last_7_played: str, current_year: int, csrf_token: str
+    *,
+    today_played: str,
+    last_7_played: str,
+    today_url: str | None = None,
+    last_7_url: str | None = None,
+    current_year: int,
+    csrf_token: str,
 ) -> "Node":
     """Top navigation bar.
 
@@ -244,7 +264,7 @@ def Navbar(
                         </svg>
                     </button>
                 </li>
-                {NavbarPlaytime(today_played, last_7_played)}
+                {NavbarPlaytime(today_played, last_7_played, today_url=today_url, last_7_url=last_7_url)}
                 <li>
                     <a href="#" class="block py-2 px-3 text-white bg-blue-700 rounded-sm md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 dark:bg-blue-600 md:dark:bg-transparent" aria-current="page">Home</a>
                 </li>
@@ -330,6 +350,8 @@ def Page(
     navbar = Navbar(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
+        today_url=counts["today_url"],
+        last_7_url=counts["last_7_url"],
         current_year=year,
         csrf_token=get_token(request),
     )
