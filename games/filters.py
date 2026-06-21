@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.db.models import Q
+from django.urls import reverse
+from django.utils.http import urlencode
 
 from common.criteria import (
     BoolCriterion,
@@ -26,6 +28,7 @@ from common.criteria import (
     OperatorFilter,
     StringCriterion,
     filter_from_json,
+    filter_to_json,
 )
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
@@ -438,8 +441,8 @@ class SessionFilter(OperatorFilter):
     duration_manual_hours: IntCriterion | None = None
     duration_calculated_hours: IntCriterion | None = None
     is_active: BoolCriterion | None = None  # timestamp_end IS NULL
-    timestamp_start: StringCriterion | None = None  # date string
-    timestamp_end: StringCriterion | None = None  # date string
+    timestamp_start: DateCriterion | None = None  # date, compared via __date
+    timestamp_end: DateCriterion | None = None  # date, compared via __date
     is_manual: BoolCriterion | None = None  # duration_manual > 0
     created_at: StringCriterion | None = None
 
@@ -519,9 +522,10 @@ class SessionFilter(OperatorFilter):
             else:
                 q &= Q(timestamp_end__isnull=False)
         if self.timestamp_start is not None:
-            q &= self.timestamp_start.to_q("timestamp_start")
+            # Compare the date portion so a date matches the datetime column.
+            q &= self.timestamp_start.to_q("timestamp_start__date")
         if self.timestamp_end is not None:
-            q &= self.timestamp_end.to_q("timestamp_end")
+            q &= self.timestamp_end.to_q("timestamp_end__date")
         if self.is_manual is not None:
             if self.is_manual.value:
                 q &= ~Q(duration_manual=timedelta(0))
@@ -977,3 +981,36 @@ def parse_platform_filter(json_str: str) -> PlatformFilter | None:
 
 def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
     return filter_from_json(PlayEventFilter, json_str)
+
+
+# ── URL building (the "reverse() for filters") ─────────────────────────────
+
+
+_FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
+    GameFilter: "games:list_games",
+    SessionFilter: "games:list_sessions",
+    PurchaseFilter: "games:list_purchases",
+    PlayEventFilter: "games:list_playevents",
+    DeviceFilter: "games:list_devices",
+    PlatformFilter: "games:list_platforms",
+}
+
+
+def filter_url(filter_obj: OperatorFilter, **extra_params: str) -> str:
+    """Build a URL to the filtered list view for ``filter_obj``.
+
+    The target view is inferred from the filter's type, so a filter can never be
+    paired with a mismatched list URL.  ``extra_params`` are merged into the
+    query string (e.g. ``sort``, ``page``).
+
+    Usage:
+        filter_url(GameFilter.where(purchase_count__gt=1))
+    """
+    try:
+        url_name = _FILTER_LIST_URL[type(filter_obj)]
+    except KeyError:
+        raise TypeError(
+            f"No list view registered for {type(filter_obj).__name__}"
+        ) from None
+    params = {"filter": filter_to_json(filter_obj), **extra_params}
+    return f"{reverse(url_name)}?{urlencode(params)}"

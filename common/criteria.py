@@ -379,6 +379,57 @@ class ChoiceCriterion(_SetCriterion):
 F = TypeVar("F", bound="OperatorFilter")
 
 
+# Maps criterion class names (as they appear in dataclass annotations) to the
+# concrete class. Shared by from_json() and where() so the two construction
+# paths resolve field types identically and cannot drift.
+_CRITERION_TYPES: dict[str, type[_Criterion]] = {
+    "StringCriterion": StringCriterion,
+    "IntCriterion": IntCriterion,
+    "FloatCriterion": FloatCriterion,
+    "DateCriterion": DateCriterion,
+    "BoolCriterion": BoolCriterion,
+    "MultiCriterion": MultiCriterion,
+    "ChoiceCriterion": ChoiceCriterion,
+}
+
+
+def _criterion_class_for(
+    cls: type["OperatorFilter"], field_name: str
+) -> type[_Criterion] | None:
+    """Resolve the criterion class declared for ``field_name`` on a filter, or
+    None if the field is absent or isn't a criterion field."""
+    for dataclass_field in dc_fields(cls):
+        if dataclass_field.name != field_name:
+            continue
+        field_type = dataclass_field.type
+        if isinstance(field_type, str):
+            # e.g. "StringCriterion | None" → "StringCriterion"
+            field_type = field_type.split("|")[0].strip()
+            return _CRITERION_TYPES.get(field_type)
+        if isinstance(field_type, type) and issubclass(field_type, _Criterion):
+            return field_type
+        return None
+    return None
+
+
+# Lookup suffix → Modifier. A missing suffix defaults per criterion type
+# (EQUALS for scalars, INCLUDES for set criteria) and is handled in where().
+_SUFFIX_MODIFIER: dict[str, Modifier] = {
+    "gt": Modifier.GREATER_THAN,
+    "lt": Modifier.LESS_THAN,
+    "ne": Modifier.NOT_EQUALS,
+    "between": Modifier.BETWEEN,
+    "not_between": Modifier.NOT_BETWEEN,
+    "in": Modifier.INCLUDES,
+    "exclude": Modifier.EXCLUDES,
+    "all": Modifier.INCLUDES_ALL,
+    "contains": Modifier.INCLUDES,
+    "regex": Modifier.MATCHES_REGEX,
+    "isnull": Modifier.IS_NULL,
+    "notnull": Modifier.NOT_NULL,
+}
+
+
 @dataclass
 class OperatorFilter:
     """Mixin providing AND/OR/NOT composition for entity filter types.
@@ -393,6 +444,53 @@ class OperatorFilter:
             name: StringCriterion | None = None
             ...
     """
+
+    @classmethod
+    def where(cls: type[F], **lookups: Any) -> F:
+        """Build a filter from Django-``QuerySet.filter()``-style lookups.
+
+        Each keyword is ``field__suffix=value`` (or ``field=value`` for the
+        default modifier). The criterion class is resolved from the field's
+        annotation, so the same value can target an int / string / date / set
+        field without naming the criterion type::
+
+            GameFilter.where(year_released__gt=2010, status=["f", "p"])
+
+        Suffix → modifier follows ``_SUFFIX_MODIFIER``; a missing suffix means
+        EQUALS for scalars and INCLUDES for set criteria. ``between`` /
+        ``not_between`` consume a 2-tuple; ``isnull`` / ``notnull`` ignore the
+        value. Unknown fields or suffixes raise ``TypeError``.
+        """
+        field_criteria: dict[str, Any] = {}
+        for lookup, value in lookups.items():
+            field_name, _, suffix = lookup.rpartition("__")
+            if not field_name:
+                field_name, suffix = lookup, ""
+
+            criterion_class = _criterion_class_for(cls, field_name)
+            if criterion_class is None:
+                raise TypeError(f"{cls.__name__} has no filter field {field_name!r}")
+
+            is_set_criterion = issubclass(criterion_class, _SetCriterion)
+            if suffix == "":
+                modifier = Modifier.INCLUDES if is_set_criterion else Modifier.EQUALS
+            elif suffix in _SUFFIX_MODIFIER:
+                modifier = _SUFFIX_MODIFIER[suffix]
+            else:
+                raise TypeError(f"Unknown lookup suffix {suffix!r} on {field_name!r}")
+
+            criterion_arguments: dict[str, Any] = {"modifier": modifier}
+            if suffix in ("isnull", "notnull"):
+                pass  # presence test ignores the value
+            elif modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+                lower_bound, upper_bound = value
+                criterion_arguments["value"] = lower_bound
+                criterion_arguments["value2"] = upper_bound
+            else:
+                criterion_arguments["value"] = value
+
+            field_criteria[field_name] = criterion_class(**criterion_arguments)
+        return cls(**field_criteria)
 
     def sub_filter(self) -> OperatorFilter | None:
         """Return the first non-None of AND / OR / NOT."""
@@ -436,15 +534,7 @@ class OperatorFilter:
         if data is None or not isinstance(data, dict):
             return None
         # Resolve criterion class names to actual types
-        criterion_types: dict[str, type[_Criterion]] = {
-            "StringCriterion": StringCriterion,
-            "IntCriterion": IntCriterion,
-            "FloatCriterion": FloatCriterion,
-            "DateCriterion": DateCriterion,
-            "BoolCriterion": BoolCriterion,
-            "MultiCriterion": MultiCriterion,
-            "ChoiceCriterion": ChoiceCriterion,
-        }
+        criterion_types = _CRITERION_TYPES
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:
