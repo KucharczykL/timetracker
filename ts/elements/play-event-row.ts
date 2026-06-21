@@ -31,6 +31,11 @@ class PlayEventRowElement extends HTMLElement {
           headers: { "Content-Type": "application/json", "X-CSRFToken": props.csrf },
           body: JSON.stringify({ game_id: props.gameId }),
         })
+        .then(() => {
+          // Refresh the Play Events section (table + count badge) without a
+          // full reload; #playevents-container listens for this on body.
+          document.body.dispatchEvent(new CustomEvent("play-added"));
+        })
         .catch(() => {
           if (count) count.textContent = String(Number(count.textContent) - 1);
           console.error("Failed to record play");

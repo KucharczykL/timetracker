@@ -375,6 +375,15 @@ _PLAYED_MENU = (
     "bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border "
     "border-gray-200 dark:border-gray-700"
 )
+# Each menu item is the interactive element itself: it fills the whole row
+# (block w-full + own padding), carries the hover highlight and pointer cursor,
+# so there is no handler-less padding to swallow hover/clicks (issue #70).
+# Mirrors _SELECTOR_OPTION_CLASS in common/components/domain.py.
+_PLAYED_MENU_ITEM = (
+    "block w-full text-left px-4 py-2 rounded-sm cursor-pointer no-underline "
+    "hover:bg-gray-700 hover:text-white dark:hover:bg-gray-700 "
+    "dark:hover:text-white border-0"
+)
 
 
 def _played_row(game: Game, request: HttpRequest) -> Node:
@@ -393,15 +402,20 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     ]
     menu = Div(data_menu="", hidden=True, class_=_PLAYED_MENU)[
         Ul()[
-            Li(class_="px-4 py-2")[
-                A(href=reverse("games:add_playevent_for_game", args=[game.id]))[
-                    "Add playthrough..."
-                ]
+            Li()[
+                A(
+                    href=reverse("games:add_playevent_for_game", args=[game.id]),
+                    class_=_PLAYED_MENU_ITEM,
+                )["Add playthrough..."]
             ],
-            Li(class_="px-4 py-2 cursor-pointer")[
+            Li()[
                 Element(
                     "button",
-                    [("type", "button"), ("data-add-play", "")],
+                    [
+                        ("type", "button"),
+                        ("data-add-play", ""),
+                        ("class", _PLAYED_MENU_ITEM),
+                    ],
                     children=["Played times +1"],
                 )
             ],
@@ -820,12 +834,25 @@ def _playevents_section(game: Game) -> SafeText:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
     table = SimpleTable(columns=data["columns"], rows=data["rows"])
-    return _game_section(
+    section = _game_section(
         "Play Events",
         playevents.count(),
         table,
         "No play events yet.",
         view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
+    )
+    # Re-fetch this section (table + count badge) when the played-row "+1"
+    # control records a play, so it updates without a full reload. Mirrors the
+    # history section's status-changed refresh.
+    return Div(
+        [
+            ("id", "playevents-container"),
+            ("hx-get", ""),
+            ("hx-trigger", "play-added from:body"),
+            ("hx-select", "#playevents-container"),
+            ("hx-swap", "outerHTML"),
+        ],
+        [section],
     )
 
 
