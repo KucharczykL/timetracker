@@ -10,7 +10,9 @@ from django.test import RequestFactory
 from django.urls import reverse
 
 from games.filters import FindFilter
-from games.models import Game, Platform, Session
+import re
+
+from games.models import Game, Platform, Purchase, Session
 from games.sorting import (
     GAME_DEFAULT_SORT,
     GAME_SORTS,
@@ -199,5 +201,50 @@ class TestListSessionsSort:
 
     def test_unknown_sort_emits_warning(self, logged_client, two_games):
         response = logged_client.get(reverse("games:list_sessions"), {"sort": "nope"})
+        warnings = [str(m) for m in get_messages(response.wsgi_request)]
+        assert any("nope" in w for w in warnings)
+
+
+class TestListPurchasesSort:
+    @pytest.fixture
+    def two_purchases(self, db, two_games):
+        alpha, beta = two_games
+        # cheap (Alpha, price=10) purchased LATER so default -purchased order would show Alpha first
+        # dear (Beta, price=90) purchased EARLIER — so -price must override default order to pass
+        dear = Purchase.objects.create(
+            date_purchased=datetime(2022, 1, 1, tzinfo=ZONEINFO),
+            price=90,
+            converted_price=90,
+            platform=beta.platform,
+        )
+        dear.games.add(beta)
+        cheap = Purchase.objects.create(
+            date_purchased=datetime(2022, 1, 2, tzinfo=ZONEINFO),
+            price=10,
+            converted_price=10,
+            platform=alpha.platform,
+        )
+        cheap.games.add(alpha)
+        return cheap, dear
+
+    def test_sort_by_price_descending(self, logged_client, two_purchases):
+        # default -purchased puts Alpha (later date) first; -price must override to show Beta (90) first
+        response = logged_client.get(reverse("games:list_purchases"), {"sort": "-price"})
+        assert response.status_code == 200
+        body = response.content.decode()
+        tbody = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL).group(1)
+        assert tbody.index("Beta") < tbody.index("Alpha")  # 90 before 10
+
+    def test_name_aggregate_sort_no_duplicate_rows(self, logged_client, two_purchases):
+        # a multi-game purchase must still render exactly one row
+        cheap, _ = two_purchases
+        extra = Game.objects.create(name="Aaa", sort_name="Aaa", platform=cheap.platform)
+        cheap.games.add(extra)
+        response = logged_client.get(reverse("games:list_purchases"), {"sort": "name"})
+        body = response.content.decode()
+        assert body.count("purchase-row-") == 2  # exactly two purchase rows
+
+    def test_unknown_sort_emits_warning(self, logged_client, two_purchases):
+        response = logged_client.get(reverse("games:list_purchases"), {"sort": "nope"})
         warnings = [str(m) for m in get_messages(response.wsgi_request)]
         assert any("nope" in w for w in warnings)

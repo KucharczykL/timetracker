@@ -44,6 +44,12 @@ from common.time import dateformat
 from common.utils import paginate
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
+from games.sorting import (
+    PURCHASE_DEFAULT_SORT,
+    PURCHASE_SORTS,
+    apply_sort,
+    parse_find_filter,
+)
 from games.views.general import use_custom_redirect
 
 
@@ -119,7 +125,7 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases = Purchase.objects.order_by("-date_purchased", "-created_at")
+    purchases = Purchase.objects.prefetch_related("games", "games__platform")
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -128,6 +134,11 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         pf = parse_purchase_filter(filter_json)
         if pf is not None:
             purchases = purchases.filter(pf.to_q())
+
+    sort = apply_sort(purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
+    purchases = sort.queryset
+    for key in sort.unknown:
+        messages.warning(request, f"Unknown sort field '{key}' was ignored.")
 
     purchases, page_obj, elided_page_range = paginate(request, purchases)
 
