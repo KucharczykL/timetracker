@@ -18,6 +18,7 @@ import urllib.parse
 import pytest
 from django.http import HttpResponse
 from django.test import override_settings
+from playwright.sync_api import expect
 
 from common.components import PurchaseFilterBar
 from django.urls import path
@@ -324,3 +325,136 @@ def test_prefilled_picker_round_trips_unchanged(live_server, page):
         "value2": "2024-09-20",
         "modifier": "BETWEEN",
     }
+
+
+# ── Keyboard navigation ─────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_right_moves_focus_across_segments(live_server, page):
+    """ArrowRight walks DD → MM → YYYY and crosses the min→max separator."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "min", "day").click()
+    page.keyboard.press("ArrowRight")
+    expect(_segment(page, "min", "month")).to_be_focused()
+    page.keyboard.press("ArrowRight")
+    expect(_segment(page, "min", "year")).to_be_focused()
+    page.keyboard.press("ArrowRight")
+    expect(_segment(page, "max", "day")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_left_moves_focus_backwards(live_server, page):
+    """ArrowLeft from the max side's first part lands on the min side's last."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "max", "day").click()
+    page.keyboard.press("ArrowLeft")
+    expect(_segment(page, "min", "year")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_left_clamps_at_first_segment(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "min", "day").click()
+    page.keyboard.press("ArrowLeft")
+    expect(_segment(page, "min", "day")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_right_clamps_at_last_segment(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "max", "year").click()
+    page.keyboard.press("ArrowRight")
+    expect(_segment(page, "max", "year")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_up_on_empty_day_seeds_value(live_server, page):
+    """First ArrowUp on an empty part lands on its seed (day → 01)."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.press("ArrowUp")
+    assert day_segment.input_value() == "01"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_up_on_empty_year_uses_current_year(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    year_segment = _segment(page, "min", "year")
+    year_segment.click()
+    page.keyboard.press("ArrowUp")
+    assert year_segment.input_value() == str(datetime.date.today().year)
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_up_down_increments_and_clamps_day(live_server, page):
+    """Up increments and clamps at 31; Down clamps at 01 (no wrap)."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    # Typing a full 2-digit part auto-advances, so re-focus before arrowing.
+    day_segment.click()
+    page.keyboard.type("28")
+    day_segment.click()
+    for _ in range(4):
+        page.keyboard.press("ArrowUp")
+    assert day_segment.input_value() == "31"
+    page.keyboard.press("ArrowDown")
+    assert day_segment.input_value() == "30"
+    day_segment.click()
+    page.keyboard.type("01")
+    day_segment.click()
+    page.keyboard.press("ArrowDown")
+    assert day_segment.input_value() == "01"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_up_down_clamps_month(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    month_segment = _segment(page, "min", "month")
+    month_segment.click()
+    page.keyboard.type("12")
+    month_segment.click()
+    page.keyboard.press("ArrowUp")
+    assert month_segment.input_value() == "12"
+    month_segment.click()
+    page.keyboard.type("01")
+    month_segment.click()
+    page.keyboard.press("ArrowDown")
+    assert month_segment.input_value() == "01"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_arrow_value_change_commits_complete_date(live_server, page):
+    """Stepping the last empty part to a valid value commits the hidden ISO."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "min", "month").click()
+    page.keyboard.type("032024")  # month=03 → year=2024, day left empty
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.press("ArrowUp")  # day → 01
+    assert page.locator(HIDDEN_MIN).input_value() == "2024-03-01"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_ctrl_arrow_does_not_change_value(live_server, page):
+    """Ctrl+Arrow falls through to native — the segment value is untouched."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.type("15")
+    day_segment.click()
+    page.keyboard.down("Control")
+    page.keyboard.press("ArrowUp")
+    page.keyboard.up("Control")
+    assert day_segment.input_value() == "15"

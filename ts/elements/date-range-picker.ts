@@ -137,6 +137,23 @@ function segmentBuffer(segment: HTMLInputElement): string {
   return segment.dataset.typedDigits || "";
 }
 
+// The numeric bounds of a date part plus the value an empty part jumps to on
+// the first ArrowUp/ArrowDown (day/month start at 01, year at the current year
+// rather than 0001).
+interface PartRange {
+  min: number;
+  max: number;
+  empty: number;
+}
+
+function partRange(datePart: string): PartRange {
+  if (datePart === "month") return { min: 1, max: 12, empty: 1 };
+  if (datePart === "year") {
+    return { min: 1, max: 9999, empty: new Date().getFullYear() };
+  }
+  return { min: 1, max: 31, empty: 1 }; // day
+}
+
 function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
   segment.dataset.typedDigits = buffer;
   if (buffer === "") {
@@ -229,6 +246,36 @@ function initField(picker: HTMLElement, calendarState: CalendarState): void {
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      // Arrow keys move between parts (Left/Right) or step the focused part's
+      // value (Up/Down); handled before the digit-only path below. Out-of-range
+      // index clamps (no wrap); Up/Down clamp at the part's range ends.
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        const target = segments[segmentIndex + step];
+        if (target) {
+          target.focus();
+          target.select();
+        }
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const range = partRange(segment.dataset.datePart ?? "");
+        const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
+        const buffer = segmentBuffer(segment);
+        let next: number;
+        if (buffer === "") {
+          next = range.empty;
+        } else {
+          next = parseInt(buffer, 10) + (event.key === "ArrowUp" ? 1 : -1);
+        }
+        if (next < range.min) next = range.min;
+        if (next > range.max) next = range.max;
+        setSegmentBuffer(segment, padNumber(next, width));
+        syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
+        return;
+      }
       event.preventDefault();
       if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
       const maximumLength = parseInt(segment.getAttribute("maxlength") ?? "", 10);
