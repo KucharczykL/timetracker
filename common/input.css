@@ -24,6 +24,16 @@
 
   --color-accent: #7c3aed;
   --color-background: #1f2937;
+
+  /* Opaque, soft brand-tinted surface for callouts/popovers (the "soft"
+     counterpart to brand-strong). A 15% brand wash over the neutral surface:
+     stays fully opaque, and adapts to light/dark on its own because both
+     source tokens do (nested var() resolves at point-of-use). */
+  --color-brand-soft: color-mix(
+    in oklab,
+    var(--color-brand) 15%,
+    var(--color-neutral-primary)
+  );
 }
 
 

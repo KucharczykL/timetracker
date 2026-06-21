@@ -145,9 +145,8 @@ def _popover_html(
         # scrollbar (issue #53 / #40). Removing it from layout while hidden
         # fixes that; Flowbite drops `invisible` on show, restoring display.
         "absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
-        "text-heading transition-opacity duration-300 "
-        "bg-[color-mix(in_oklab,var(--color-brand)_15%,var(--color-neutral-primary))] "
-        "border border-brand/30 rounded-lg shadow-xs opacity-0"
+        "text-heading transition-opacity duration-300 bg-brand-soft border "
+        "border-brand/30 rounded-lg shadow-xs opacity-0"
     )
 
     div = Div(
@@ -483,7 +482,7 @@ def Radio(
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
-    "bg-brand/15 text-heading"
+    "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
 
@@ -842,8 +841,8 @@ def H1(
             attributes=[
                 (
                     "class",
-                    "bg-blue-100 text-blue-800 text-2xl font-semibold me-2 "
-                    "px-2.5 py-0.5 rounded-sm dark:bg-blue-200 dark:text-blue-800 ms-2",
+                    "bg-brand-soft text-heading text-2xl font-semibold me-2 "
+                    "px-2.5 py-0.5 rounded-sm ms-2",
                 ),
             ],
             children=[badge],
