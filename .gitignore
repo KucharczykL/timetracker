@@ -23,3 +23,4 @@ dist/
 /games/static/base.css
 /games/static/js/dist/
 /ts/generated/
+.claude/
