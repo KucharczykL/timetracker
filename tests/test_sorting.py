@@ -155,6 +155,10 @@ class TestListGamesSort:
         assert response.status_code == 200
         body = response.content.decode()
         assert body.index("Beta") < body.index("Alpha")
+        # ascending name must flip order vs the default (-created → Beta first)
+        ascending = logged_client.get(reverse("games:list_games"), {"sort": "name"})
+        ascending_body = ascending.content.decode()
+        assert ascending_body.index("Alpha") < ascending_body.index("Beta")
 
     def test_unknown_sort_emits_warning_message(self, logged_client, two_games):
         response = logged_client.get(reverse("games:list_games"), {"sort": "bogus"})
