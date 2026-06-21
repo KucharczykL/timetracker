@@ -899,8 +899,8 @@ class PlayEventFilter(OperatorFilter):
     NOT: PlayEventFilter | None = None
 
     game: MultiCriterion | None = None  # filters on game_id
-    started: StringCriterion | None = None  # date string
-    ended: StringCriterion | None = None  # date string
+    started: DateCriterion | None = None  # DateField, bare lookup
+    ended: DateCriterion | None = None  # DateField, bare lookup
     days_to_finish: IntCriterion | None = None
     note: StringCriterion | None = None
     created_at: StringCriterion | None = None

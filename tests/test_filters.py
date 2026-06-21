@@ -1241,3 +1241,101 @@ class TestPurchaseFilterDates:
         assert out["date_purchased"]["value2"] == "2024-12-31"
         assert out["date_purchased"]["modifier"] == Modifier.BETWEEN
         assert out["date_refunded"]["modifier"] == Modifier.NOT_NULL
+
+
+class TestPlayEventFilterDates:
+    """End-to-end: a PlayEventFilter built from JSON narrows the queryset
+    correctly across the started/ended DateCriterion fields. PlayEvent.started
+    and ended are DateField columns, so the criteria apply with bare field
+    names (no __date lookup)."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Game, Platform, PlayEvent
+
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        game = Game.objects.create(name="Test Game", platform=platform)
+        early = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 1, 10),
+            ended=datetime.date(2024, 1, 20),
+        )
+        mid = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 6, 1),
+            ended=datetime.date(2024, 6, 30),
+        )
+        late = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2025, 2, 1),
+            ended=datetime.date(2025, 2, 15),
+        )
+        return {"early": early, "mid": mid, "late": late}
+
+    @pytest.mark.django_db
+    def test_ended_between_finds_year(self):
+        """'Finished in 2024' expressed as a BETWEEN range over ended."""
+        from games.filters import PlayEventFilter
+        from games.models import PlayEvent
+
+        seeded = self._seed()
+        pf = PlayEventFilter.from_json(
+            {
+                "ended": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
+        results = set(PlayEvent.objects.filter(pf.to_q()))
+        assert results == {seeded["early"], seeded["mid"]}
+
+    @pytest.mark.django_db
+    def test_started_greater_than(self):
+        from games.filters import PlayEventFilter
+        from games.models import PlayEvent
+
+        seeded = self._seed()
+        pf = PlayEventFilter.from_json(
+            {"started": {"value": "2024-06-01", "modifier": "GREATER_THAN"}}
+        )
+        results = set(PlayEvent.objects.filter(pf.to_q()))
+        assert results == {seeded["late"]}
+
+    @pytest.mark.django_db
+    def test_ended_less_than(self):
+        from games.filters import PlayEventFilter
+        from games.models import PlayEvent
+
+        seeded = self._seed()
+        pf = PlayEventFilter.from_json(
+            {"ended": {"value": "2024-06-30", "modifier": "LESS_THAN"}}
+        )
+        results = set(PlayEvent.objects.filter(pf.to_q()))
+        assert results == {seeded["early"]}
+
+    @pytest.mark.django_db
+    def test_playevent_filter_json_round_trip(self):
+        """PlayEventFilter started/ended survive json → object → json,
+        confirming DateCriterion is dispatched by from_json (not
+        StringCriterion)."""
+        from games.filters import PlayEventFilter
+
+        payload = {
+            "started": {"value": "2024-01-01", "modifier": "GREATER_THAN"},
+            "ended": {
+                "value": "2024-01-01",
+                "value2": "2024-12-31",
+                "modifier": "BETWEEN",
+            },
+        }
+        pf = PlayEventFilter.from_json(payload)
+        assert isinstance(pf.started, DateCriterion)
+        assert isinstance(pf.ended, DateCriterion)
+        out = pf.to_json()
+        assert out["ended"]["value"] == "2024-01-01"
+        assert out["ended"]["value2"] == "2024-12-31"
+        assert out["ended"]["modifier"] == Modifier.BETWEEN
+        assert out["started"]["modifier"] == Modifier.GREATER_THAN

@@ -223,6 +223,59 @@ class FilterBarRenderingTest(TestCase):
         )
         self._assert_shell(html, "/presets/playevents/list", "/presets/playevents/save")
 
+    def test_playevent_filter_bar_renders_date_inputs(self):
+        """PlayEventFilterBar surfaces started and ended as DateRangePicker
+        widgets whose -min/-max hidden inputs (the JS serializer contract)
+        carry the filter-started / filter-ended prefixes, in labelled fields."""
+        from common.components import PlayEventFilterBar
+
+        html = str(
+            PlayEventFilterBar(
+                filter_json="", preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        for name in (
+            "filter-started-min",
+            "filter-started-max",
+            "filter-ended-min",
+            "filter-ended-max",
+        ):
+            self.assertIn(f'name="{name}"', html)
+            self.assertIn(f'id="{name}"', html)
+        self.assertIn("<date-range-picker", html)
+        self.assertIn("Started", html)
+        self.assertIn("Finished", html)
+        self.assertNoEscapedTags(html)
+
+    def test_playevent_filter_bar_prepopulates_ended_between(self):
+        """A BETWEEN filter on ended populates both date bounds via _parse_range."""
+        from common.components import PlayEventFilterBar
+
+        filter_json = json.dumps(
+            {
+                "ended": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+        )
+        html = str(
+            PlayEventFilterBar(
+                filter_json=filter_json,
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        self.assertIn(
+            'name="filter-ended-min" id="filter-ended-min" value="2024-01-01"',
+            html,
+        )
+        self.assertIn(
+            'name="filter-ended-max" id="filter-ended-max" value="2024-12-31"',
+            html,
+        )
+
     def test_playevent_filter_bar_labels_days_to_finish_slider(self):
         """The Days to Finish range slider must be wrapped in a labelled field —
         RangeSlider does not render its own label, so a bare slider shows none."""
