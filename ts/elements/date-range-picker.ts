@@ -137,6 +137,53 @@ function segmentBuffer(segment: HTMLInputElement): string {
   return segment.dataset.typedDigits || "";
 }
 
+// The numeric bounds of a date part plus the value an empty part jumps to on
+// the first ArrowUp/ArrowDown (day/month start at 01, year at the current year
+// rather than 0001).
+interface PartRange {
+  min: number;
+  max: number;
+  empty: number;
+}
+
+function partRange(datePart: string): PartRange {
+  if (datePart === "month") return { min: 1, max: 12, empty: 1 };
+  if (datePart === "year") {
+    return { min: 1, max: 9999, empty: new Date().getFullYear() };
+  }
+  return { min: 1, max: 31, empty: 1 }; // day
+}
+
+interface DigitEntry {
+  buffer: string;
+  complete: boolean;
+}
+
+// Fold a freshly typed digit into a part's buffer, clamping to the part's max
+// and deciding whether to auto-advance. A digit that cannot validly extend the
+// current value (e.g. 9 into a ≤12 month, or a second digit pushing past the
+// max) commits as a zero-padded single digit and completes; an ambiguous digit
+// that could still take another (month 1 → 10/11/12) stays pending.
+//
+// Invariant: complete === true MUST imply buffer.length === width, because
+// syncHiddenFromSegments re-derives completeness from buffer length — that is
+// why a completing single digit is padded to full width before returning.
+function applyDigit(
+  buffer: string,
+  digit: string,
+  width: number,
+  max: number
+): DigitEntry {
+  if (buffer.length >= width) buffer = ""; // restart an already-full part
+  let candidate = buffer + digit;
+  if (parseInt(candidate, 10) > max) candidate = digit; // overflow → fresh ones digit
+  const value = parseInt(candidate, 10);
+  // Strict >: value*10 <= max means another digit could still land in range.
+  const complete = candidate.length === width || value * 10 > max;
+  if (complete) candidate = padNumber(value, width);
+  return { buffer: candidate, complete };
+}
+
 function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
   segment.dataset.typedDigits = buffer;
   if (buffer === "") {
@@ -144,8 +191,13 @@ function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
     return;
   }
   const placeholder = segment.getAttribute("placeholder") ?? "";
-  // Fill the placeholder from the right: typing 19 into YYYY shows YY19.
-  segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
+  if (segment.dataset.datePart === "year") {
+    // Fill the placeholder from the right: typing 19 into YYYY shows YY19.
+    segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
+  } else {
+    // Day/month show a pending single digit zero-padded: typing 1 shows 01.
+    segment.value = buffer.padStart(placeholder.length, "0");
+  }
 }
 
 function segmentsForSide(picker: HTMLElement, side: string): HTMLInputElement[] {
@@ -229,15 +281,48 @@ function initField(picker: HTMLElement, calendarState: CalendarState): void {
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      // Arrow keys move between parts (Left/Right) or step the focused part's
+      // value (Up/Down); handled before the digit-only path below. Out-of-range
+      // index clamps (no wrap); Up/Down clamp at the part's range ends.
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        const target = segments[segmentIndex + step];
+        if (target) {
+          target.focus();
+        }
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const range = partRange(segment.dataset.datePart ?? "");
+        const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
+        const buffer = segmentBuffer(segment);
+        let next: number;
+        if (buffer === "") {
+          next = range.empty;
+        } else {
+          next = parseInt(buffer, 10) + (event.key === "ArrowUp" ? 1 : -1);
+        }
+        if (next < range.min) next = range.min;
+        if (next > range.max) next = range.max;
+        setSegmentBuffer(segment, padNumber(next, width));
+        syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
+        return;
+      }
       event.preventDefault();
       if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
-      const maximumLength = parseInt(segment.getAttribute("maxlength") ?? "", 10);
-      let buffer = segmentBuffer(segment);
-      // Typing into an already-full part starts it over.
-      buffer = buffer.length >= maximumLength ? event.key : buffer + event.key;
+      const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
+      const max = partRange(segment.dataset.datePart ?? "").max;
+      const { buffer, complete } = applyDigit(
+        segmentBuffer(segment),
+        event.key,
+        width,
+        max
+      );
       setSegmentBuffer(segment, buffer);
       syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
-      if (buffer.length === maximumLength && segmentIndex + 1 < segments.length) {
+      if (complete && segmentIndex + 1 < segments.length) {
         segments[segmentIndex + 1].focus();
       }
     });
