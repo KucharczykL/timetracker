@@ -125,7 +125,9 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases = Purchase.objects.prefetch_related("games", "games__platform")
+    purchases = Purchase.objects.select_related("platform").prefetch_related(
+        "games", "games__platform"
+    )
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
