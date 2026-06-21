@@ -1,6 +1,29 @@
 """Tests for the list-view sorting system (games/sorting.py)."""
 
-from games.sorting import SortSpec, SortTerm, parse_sort_terms
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+from django.conf import settings
+from django.test import RequestFactory
+
+from games.filters import FindFilter
+from games.models import Game, Platform, Purchase, Session
+from games.sorting import (
+    GAME_DEFAULT_SORT,
+    GAME_SORTS,
+    PURCHASE_DEFAULT_SORT,
+    PURCHASE_SORTS,
+    SESSION_DEFAULT_SORT,
+    SESSION_SORTS,
+    SortSpec,
+    SortTerm,
+    apply_sort,
+    parse_find_filter,
+    parse_sort_terms,
+)
+
+ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 # A minimal map; parse_sort_terms only checks key membership, not spec internals.
 SAMPLE_MAP = {"name": SortSpec("name"), "date": SortSpec("created_at")}
@@ -38,3 +61,78 @@ class TestParseSortTerms:
         parsed = parse_sort_terms("", SAMPLE_MAP)
         assert parsed.terms == []
         assert parsed.unknown == []
+
+
+def _find(sort=None):
+    return FindFilter(sort=sort)
+
+
+@pytest.fixture
+def two_games(db):
+    platform = Platform.objects.create(name="P", icon="p")
+    alpha = Game.objects.create(name="Alpha", sort_name="Alpha", platform=platform)
+    beta = Game.objects.create(name="Beta", sort_name="Beta", platform=platform)
+    return alpha, beta
+
+
+class TestApplySortGames:
+    def test_name_ascending(self, two_games):
+        alpha, beta = two_games
+        result = apply_sort(Game.objects.all(), _find("name"), GAME_SORTS, GAME_DEFAULT_SORT)
+        assert list(result.queryset) == [alpha, beta]
+        assert result.terms[0].key == "name"
+        assert result.unknown == []
+
+    def test_name_descending(self, two_games):
+        alpha, beta = two_games
+        result = apply_sort(Game.objects.all(), _find("-name"), GAME_SORTS, GAME_DEFAULT_SORT)
+        assert list(result.queryset) == [beta, alpha]
+
+    def test_default_sort_when_absent_is_created_desc(self, two_games):
+        alpha, beta = two_games  # beta created after alpha
+        result = apply_sort(Game.objects.all(), _find(None), GAME_SORTS, GAME_DEFAULT_SORT)
+        assert list(result.queryset) == [beta, alpha]
+
+    def test_unknown_key_reported_and_falls_back(self, two_games):
+        result = apply_sort(Game.objects.all(), _find("bogus"), GAME_SORTS, GAME_DEFAULT_SORT)
+        assert result.unknown == ["bogus"]
+        assert result.queryset.count() == 2  # still returns rows (default order)
+
+    def test_playtime_annotation_no_duplicate_rows(self, two_games):
+        alpha, _ = two_games
+        Session.objects.create(
+            game=alpha,
+            timestamp_start=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 1, 1, 12, tzinfo=ZONEINFO),
+        )
+        Session.objects.create(
+            game=alpha,
+            timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 1, 2, 11, tzinfo=ZONEINFO),
+        )
+        result = apply_sort(Game.objects.all(), _find("-playtime"), GAME_SORTS, GAME_DEFAULT_SORT)
+        # two sessions on alpha must not duplicate the alpha row
+        assert result.queryset.count() == 2
+        assert list(result.queryset)[0] == alpha  # most playtime first
+
+
+class TestParseFindFilter:
+    def test_reads_sort_param(self):
+        request = RequestFactory().get("/x", {"sort": "-playtime,name"})
+        assert parse_find_filter(request).sort == "-playtime,name"
+
+    def test_absent_sort_is_none(self):
+        request = RequestFactory().get("/x")
+        assert parse_find_filter(request).sort is None
+
+
+class TestSortMapShapes:
+    def test_default_sort_keys_exist_in_maps(self):
+        # every key referenced by a default sort string must be defined in its map
+        for default, sort_map in [
+            (GAME_DEFAULT_SORT, GAME_SORTS),
+            (SESSION_DEFAULT_SORT, SESSION_SORTS),
+            (PURCHASE_DEFAULT_SORT, PURCHASE_SORTS),
+        ]:
+            for token in default.split(","):
+                assert token.lstrip("-") in sort_map
