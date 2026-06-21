@@ -48,7 +48,13 @@ from common.time import (
     timeformat,
 )
 from common.utils import build_dynamic_filter, paginate, safe_division, truncate
-from games.filters import parse_game_filter
+from games.filters import (
+    PlayEventFilter,
+    PurchaseFilter,
+    SessionFilter,
+    filter_url,
+    parse_game_filter,
+)
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.forms import GameForm
 from games.models import Game
@@ -534,12 +540,35 @@ def _game_history(statuschanges) -> SafeText:
 
 
 def _game_section(
-    title: str, count: int, table: SafeText, empty_message: str
+    title: str,
+    count: int,
+    table: SafeText,
+    empty_message: str,
+    view_all_url: str | None = None,
 ) -> SafeText:
+    if view_all_url and count:
+        view_all_link = A(
+            href=view_all_url,
+            children=[
+                StyledButton(
+                    icon=True,
+                    color="gray",
+                    size="xs",
+                    title=f"View all {title.lower()} for this game",
+                    children=[Icon("arrowright"), "View all"],
+                )
+            ],
+        )
+        header = Div(
+            [("class", "flex items-center justify-between")],
+            [H1(children=[title], badge=count), view_all_link],
+        )
+    else:
+        header = H1(children=[title], badge=count)
     return Div(
         [("class", "mb-6")],
         [
-            H1(children=[title], badge=count),
+            header,
             table if count else empty_message,
         ],
     )
@@ -687,7 +716,13 @@ def _purchases_section(game: Game) -> SafeText:
         for purchase in purchases
     ]
     table = SimpleTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
-    return _game_section("Purchases", purchases.count(), table, "No purchases yet.")
+    return _game_section(
+        "Purchases",
+        purchases.count(),
+        table,
+        "No purchases yet.",
+        view_all_url=filter_url(PurchaseFilter.where(games=[game.id])),
+    )
 
 
 def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
@@ -772,7 +807,13 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
         elided_page_range=elided_page_range,
         request=request,
     )
-    return _game_section("Sessions", session_count, table, "No sessions yet.")
+    return _game_section(
+        "Sessions",
+        session_count,
+        table,
+        "No sessions yet.",
+        view_all_url=filter_url(SessionFilter.where(game=[game.id])),
+    )
 
 
 def _playevents_section(game: Game) -> SafeText:
@@ -780,7 +821,11 @@ def _playevents_section(game: Game) -> SafeText:
     data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
     table = SimpleTable(columns=data["columns"], rows=data["rows"])
     return _game_section(
-        "Play Events", playevents.count(), table, "No play events yet."
+        "Play Events",
+        playevents.count(),
+        table,
+        "No play events yet.",
+        view_all_url=filter_url(PlayEventFilter.where(game=[game.id])),
     )
 
 
