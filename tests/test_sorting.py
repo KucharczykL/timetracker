@@ -1,6 +1,6 @@
 """Tests for the list-view sorting system (games/sorting.py)."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -8,7 +8,7 @@ from django.conf import settings
 from django.test import RequestFactory
 
 from games.filters import FindFilter
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, Session
 from games.sorting import (
     GAME_DEFAULT_SORT,
     GAME_SORTS,
@@ -114,6 +114,7 @@ class TestApplySortGames:
         # two sessions on alpha must not duplicate the alpha row
         assert result.queryset.count() == 2
         assert list(result.queryset)[0] == alpha  # most playtime first
+
 
 
 class TestParseFindFilter:
