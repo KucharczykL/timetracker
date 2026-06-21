@@ -174,21 +174,28 @@ class TestListGamesSort:
 
 class TestListSessionsSort:
     def test_sort_by_duration_descending(self, logged_client, two_games):
+        import re
+
         alpha, beta = two_games
         Session.objects.create(
             game=alpha,
             timestamp_start=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 1, 1, 10, 30, tzinfo=ZONEINFO),  # 30 min
+            timestamp_end=datetime(2022, 1, 1, 13, tzinfo=ZONEINFO),  # 3 h, earlier date
         )
         Session.objects.create(
             game=beta,
             timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 1, 2, 13, tzinfo=ZONEINFO),  # 3 h
+            timestamp_end=datetime(2022, 1, 2, 10, 30, tzinfo=ZONEINFO),  # 30 min, later date
         )
+        # default order is -date (beta first); -duration must override it (alpha's 3h first)
         response = logged_client.get(reverse("games:list_sessions"), {"sort": "-duration"})
         assert response.status_code == 200
         body = response.content.decode()
-        assert body.index("Beta") < body.index("Alpha")  # longer session first
+        # Extract only the table body to avoid finding "Beta" in header's last-session button
+        tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert tbody_match
+        tbody = tbody_match.group(1)
+        assert tbody.index("Alpha") < tbody.index("Beta")  # longer session first, despite earlier date
 
     def test_unknown_sort_emits_warning(self, logged_client, two_games):
         response = logged_client.get(reverse("games:list_sessions"), {"sort": "nope"})
