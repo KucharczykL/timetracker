@@ -458,3 +458,136 @@ def test_ctrl_arrow_does_not_change_value(live_server, page):
     page.keyboard.press("ArrowUp")
     page.keyboard.up("Control")
     assert day_segment.input_value() == "15"
+
+
+# ── Digit clamping & auto-advance ───────────────────────────────────────────
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_month_high_digit_autoadvances_zero_padded(live_server, page):
+    """A digit that cannot lead a valid month commits zero-padded and advances."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    month_segment = _segment(page, "min", "month")
+    month_segment.click()
+    page.keyboard.press("9")
+    assert month_segment.input_value() == "09"
+    expect(_segment(page, "min", "year")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_month_one_stays_then_two_completes(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    month_segment = _segment(page, "min", "month")
+    month_segment.click()
+    page.keyboard.press("1")
+    assert month_segment.input_value() == "01"
+    expect(month_segment).to_be_focused()  # ambiguous: could become 10/11/12
+    page.keyboard.press("2")
+    assert month_segment.input_value() == "12"
+    expect(_segment(page, "min", "year")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_month_one_then_nine_drops_overflow(live_server, page):
+    """1 then 9 (19 > 12) drops the leading 1 and commits 09."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    month_segment = _segment(page, "min", "month")
+    month_segment.click()
+    page.keyboard.press("1")
+    page.keyboard.press("9")
+    assert month_segment.input_value() == "09"
+    expect(_segment(page, "min", "year")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_day_high_digit_autoadvances(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.press("6")
+    assert day_segment.input_value() == "06"
+    expect(_segment(page, "min", "month")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_day_three_then_two_overflows_to_pending_two(live_server, page):
+    """3 stays (30/31 possible); 2 (32 > 31) drops to a pending 02, still day."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.press("3")
+    assert day_segment.input_value() == "03"
+    expect(day_segment).to_be_focused()
+    page.keyboard.press("2")
+    assert day_segment.input_value() == "02"
+    expect(day_segment).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_leading_zero_then_digit_on_day(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.press("0")
+    assert day_segment.input_value() == "00"
+    expect(day_segment).to_be_focused()
+    page.keyboard.press("9")
+    assert day_segment.input_value() == "09"
+    expect(_segment(page, "min", "month")).to_be_focused()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_double_zero_day_does_not_commit(live_server, page):
+    """Day 00 is a complete-but-invalid part, so the side stays uncommitted."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "min", "day").click()
+    page.keyboard.type("00032024")  # day=00, month=03, year=2024
+    assert _segment(page, "min", "day").input_value() == "00"
+    assert page.locator(HIDDEN_MIN).input_value() == ""
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_year_pending_still_right_fills(live_server, page):
+    """Year keeps the right-fill placeholder display under the new logic."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    year_segment = _segment(page, "min", "year")
+    year_segment.click()
+    page.keyboard.press("1")
+    assert year_segment.input_value() == "YYY1"
+    page.keyboard.press("9")
+    assert year_segment.input_value() == "YY19"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_single_high_digit_commits_when_other_parts_present(live_server, page):
+    """An auto-advanced single digit is a complete part, so it commits the ISO."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "min", "day").click()
+    page.keyboard.type("15")  # day=15 → advances to month
+    _segment(page, "min", "year").click()
+    page.keyboard.type("2024")  # year=2024
+    _segment(page, "min", "month").click()
+    page.keyboard.press("9")  # month=09 (auto-advance)
+    assert page.locator(HIDDEN_MIN).input_value() == "2024-09-15"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_retype_full_part_restarts(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    day_segment = _segment(page, "min", "day")
+    day_segment.click()
+    page.keyboard.type("15")  # advances to month
+    day_segment.click()
+    page.keyboard.press("3")
+    assert day_segment.input_value() == "03"
+    expect(day_segment).to_be_focused()
