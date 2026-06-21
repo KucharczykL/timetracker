@@ -1515,16 +1515,19 @@ def _playevent_fields(existing: dict) -> list:
                 max_value=ended_max,
             ),
         ),
-        RangeSlider(
-            label="Days to Finish",
-            input_name_prefix="filter-days-to-finish",
-            min_value=days_min,
-            max_value=days_max,
-            range_min=0,
-            range_max=365,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 30",
+        _filter_field(
+            "Days to Finish",
+            RangeSlider(
+                label="Days to Finish",
+                input_name_prefix="filter-days-to-finish",
+                min_value=days_min,
+                max_value=days_max,
+                range_min=0,
+                range_max=365,
+                step="1",
+                min_placeholder="e.g. 1",
+                max_placeholder="e.g. 30",
+            ),
         ),
     ]
     return fields
