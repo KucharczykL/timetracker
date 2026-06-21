@@ -65,9 +65,19 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
-def _extract_labeled(items: list[dict]) -> list[LabeledOption]:
-    """Convert a list of ``{id, label}`` dicts to ``(value, label)`` pairs."""
-    return [(str(item["id"]), str(item["label"])) for item in items]
+def _extract_labeled(items: list) -> list[LabeledOption]:
+    """Convert filter values to ``(value, label)`` pairs.
+
+    UI-built filters carry ``{id, label}`` dicts; programmatically-built ones
+    (e.g. stats_links) carry bare ids/choices. A bare value uses itself as its
+    own label so the bar renders any valid filter instead of crashing."""
+    pairs: list[LabeledOption] = []
+    for item in items:
+        if isinstance(item, dict):
+            pairs.append((str(item["id"]), str(item["label"])))
+        else:
+            pairs.append((str(item), str(item)))
+    return pairs
 
 
 def _filter_get_choice(existing: dict, field: str) -> FilterChoice:

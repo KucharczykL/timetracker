@@ -247,7 +247,7 @@ def compute_stats(year: int | None = None) -> StatsData:
             .annotate(total_playtime=Sum("sessions__duration_total"))
             .filter(total_playtime__gt=timedelta(0))
         )
-        top_games = games_with_playtime.order_by("-total_playtime")[:10]
+        top_games = games_with_playtime.order_by("-total_playtime")
     else:
         games_with_playtime = (
             Game.objects.filter(sessions__timestamp_start__year=year)
@@ -256,11 +256,16 @@ def compute_stats(year: int | None = None) -> StatsData:
         )
         top_games = games_with_playtime.order_by("-total_playtime")
 
+    # platform_id is carried alongside the name so the stats row can link to a
+    # platform-scoped session list (#65).
     total_playtime_per_platform = (
-        sessions.values("game__platform__name")
+        sessions.values("game__platform__name", "game__platform__id")
         .annotate(playtime=Sum(F("duration_total")))
-        .annotate(platform_name=F("game__platform__name"))
-        .values("platform_name", "playtime")
+        .annotate(
+            platform_name=F("game__platform__name"),
+            platform_id=F("game__platform__id"),
+        )
+        .values("platform_name", "platform_id", "playtime")
         .order_by("-playtime")
     )
 
