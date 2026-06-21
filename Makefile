@@ -20,6 +20,7 @@ init:
 	uv python install $(PYTHON_VERSION)
 	uv sync
 	pnpm install
+	$(MAKE) migrate
 	$(MAKE) loadplatforms
 
 server: gen-element-types
