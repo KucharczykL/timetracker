@@ -12,6 +12,7 @@ from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.utils import timezone
 
 from common.time import format_duration
+from common.utils import label_with_details
 
 logger = logging.getLogger("games")
 
@@ -67,7 +68,7 @@ class Game(models.Model):
 
     @property
     def search_label(self) -> str:
-        return f"{self.sort_name} ({self.platform}, {self.year_released})"
+        return label_with_details(self.name, self.platform, self.year_released)
 
     def finished(self):
         return (
@@ -234,16 +235,12 @@ class Purchase(models.Model):
 
     @property
     def full_name(self):
-        additional_info = [
-            str(item)
-            for item in [
-                f"{self.num_purchases} game{pluralize(self.num_purchases)}",
-                self.date_purchased,
-                self.standardized_price,
-            ]
-            if item
-        ]
-        return f"{self.standardized_name} ({', '.join(additional_info)})"
+        return label_with_details(
+            self.standardized_name,
+            f"{self.num_purchases} game{pluralize(self.num_purchases)}",
+            self.date_purchased,
+            self.standardized_price,
+        )
 
     def is_game(self):
         return self.type == self.GAME

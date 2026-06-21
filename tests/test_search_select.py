@@ -338,6 +338,26 @@ class SearchLabelTest(django.test.TestCase):
     def test_format(self):
         self.assertEqual(self.game.search_label, "Mario (Steam, 2020)")
 
+    def test_format_uses_name_not_sort_name(self):
+        game = Game.objects.create(
+            name="Tetris", sort_name="", platform=self.platform, year_released=1984
+        )
+        self.assertEqual(game.search_label, "Tetris (Steam, 1984)")
+
+    def test_format_omits_missing_year(self):
+        game = Game.objects.create(name="Tetris", platform=self.platform)
+        self.assertEqual(game.search_label, "Tetris (Steam)")
+
+    def test_format_uses_sentinel_platform_when_unset(self):
+        # Game.save() substitutes the "Unspecified" sentinel platform, so the
+        # platform part is never a literal "None"; only year_released can drop out.
+        game = Game.objects.create(name="Tetris", year_released=1984)
+        self.assertEqual(game.search_label, "Tetris (Unspecified, 1984)")
+
+    def test_format_with_sentinel_platform_and_no_year(self):
+        game = Game.objects.create(name="Tetris")
+        self.assertEqual(game.search_label, "Tetris (Unspecified)")
+
     def test_choice_fields_use_search_label(self):
         from games.forms import MultipleGameChoiceField, SingleGameChoiceField
 
