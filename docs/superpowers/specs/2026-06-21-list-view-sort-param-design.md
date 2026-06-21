@@ -300,6 +300,7 @@ reproduces the stats list's order. Call this out in the #68 PR description.
   free-text); fixes the `paginate()` 10-vs-25 / `limit`-vs-`per_page` mismatch.
 - **#75** — purchase list free-text search parity.
 - **#76** — extract a shared `list_view` helper across the three list views.
+- **#77** — saved filter presets should persist/restore sort (`FilterPreset.find_filter`).
 
 ## Out of scope (follow-up issue)
 
