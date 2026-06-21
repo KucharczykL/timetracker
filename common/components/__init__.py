@@ -42,6 +42,7 @@ from common.components.domain import (
 from common.components.filters import (
     DeviceFilterBar,
     FilterBar,
+    NumberFilter,
     PlatformFilterBar,
     PlayEventFilterBar,
     PurchaseFilterBar,
@@ -176,4 +177,5 @@ __all__ = [
     "PlatformFilterBar",
     "PlayEventFilterBar",
     "StringFilter",
+    "NumberFilter",
 ]

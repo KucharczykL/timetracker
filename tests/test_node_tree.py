@@ -153,27 +153,16 @@ class RealComponentMediaTest(unittest.TestCase):
         )
         self.assertEqual(media.js, ("dist/elements/date-range-picker.js",))
 
-    def test_range_slider_declares_its_script(self):
-        from common.components.filters import RangeSlider
-
-        media = collect_media(
-            RangeSlider(
-                label="Year", input_name_prefix="year", range_min=2000, range_max=2025
-            )
-        )
-        self.assertEqual(media.js, ("dist/elements/range-slider.js",))
-
     def test_filter_bar_collects_chrome_and_widget_media(self):
         """A FilterBar's media merges its own chrome script with the scripts that
-        bubble up from the FilterSelect and RangeSlider widgets it contains —
-        exactly the set the view used to thread by hand. (FilterBar wraps its DB
-        aggregates in try/except, so it builds without a database.)"""
+        bubble up from the FilterSelect widgets it contains — exactly the set the
+        view used to thread by hand. (NumberFilter/StringFilter declare no media;
+        their behavior lives in the always-present filter-bar element.)"""
         from common.components import FilterBar
 
         media = collect_media(FilterBar())
         self.assertIn("dist/elements/filter-bar.js", media.js)
         self.assertIn("dist/elements/search-select.js", media.js)
-        self.assertIn("dist/elements/range-slider.js", media.js)
 
 
 class HtpyStyleSugarTest(unittest.TestCase):

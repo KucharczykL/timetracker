@@ -17,7 +17,6 @@ def _bar_page(filter_json: str = "") -> str:
 <head>
     <title>String filter E2E</title>
     <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/dist/elements/range-slider.js" type="module"></script>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
 </head>
