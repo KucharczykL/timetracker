@@ -3,6 +3,9 @@
 **Date:** 2026-06-21
 **Issue:** https://github.com/KucharczykL/timetracker/issues/65 (sub-issue of #61, follow-up to #56)
 **Prereq:** #67 — date-range filtering on `PlayEventFilter.ended`/`started`
+(**merged**, PR #69). `ended`/`started` are now `DateCriterion`; because they are
+`DateField`s (not `DateTimeField`s) the implementation uses a bare lookup, not
+`__date`. Tier 2 is therefore unblocked — both tiers can ship together.
 
 ## Problem
 
@@ -20,8 +23,8 @@ is an int) or all-time (`compute_stats(None)`, `data["year"] == "Alltime"`).
 Two tiers, split by what the filter system can express **today**:
 
 - **Tier 1 — implemented in this issue** (no new filter machinery).
-- **Tier 2 — gated on prereq #67** (needs "finished in year" filtering). Specified
-  here, implemented once #67 lands.
+- **Tier 2 — needs "finished in year" filtering** from #67 (now merged, PR #69),
+  so it can ship alongside Tier 1.
 
 Also in scope (from design review): shorten long lists to 5 items with a "view
 all" link, and remove the "All purchases" list.
@@ -117,8 +120,8 @@ entry point is the "Total purchased" count link. The `StatsData` key may remain
 
 ### D. Tier 2 — gated on prereq #67
 
-After #67 makes `PlayEventFilter.ended` a `DateCriterion` applied via `__date`,
-"finished in year" becomes expressible and the chain
+With #67 merged, `PlayEventFilter.ended` is a `DateCriterion` (bare `DateField`
+lookup), so "finished in year" is expressible and the chain
 `PurchaseFilter.game_filter → GameFilter.playevent_filter → PlayEventFilter`
 composes the Tier-2 targets. Reference semantics (from `stats_data.py`):
 
@@ -205,10 +208,11 @@ exactly is reported (not silently shipped with a wrong number).
    platform / month session links, sessions/games/total-purchased/refunded count
    links, list capping with Tier-1 "view all" links, remove "All purchases",
    `platform_id` data change.
-2. **Tier 2** (after #67 merges): finished/dropped/unfinished/backlog-decrease
-   count and "view all" links.
+2. **Tier 2** (unblocked — #67 is merged): finished/dropped/unfinished/
+   backlog-decrease count and "view all" links.
 
-If #67 lands first, both tiers can ship together.
+Both tiers can ship together now that #67 is merged; Tier 1 remains independently
+shippable if a smaller first PR is preferred.
 
 ## Out of scope
 
