@@ -63,6 +63,21 @@ class AddPurchasePricingTest(TestCase):
             {self.game_a.id, self.game_b.id},
         )
 
+    def test_full_name_keeps_parenthesized_detail_shape(self):
+        bundle = Purchase.objects.create(
+            name="Humble Bundle",
+            date_purchased=date(2025, 1, 1),
+            price=30,
+            price_currency="USD",
+            ownership_type=Purchase.DIGITAL,
+        )
+        bundle.games.set([self.game_a, self.game_b])
+        bundle.refresh_from_db()
+
+        full_name = bundle.full_name
+        self.assertTrue(full_name.startswith("Humble Bundle (2 games, "))
+        self.assertTrue(full_name.endswith(")"))
+
 
 class SplitPurchaseTest(TestCase):
     def setUp(self):

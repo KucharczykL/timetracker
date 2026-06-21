@@ -114,6 +114,17 @@ def format_float_or_int(number: int | float):
     return int(number) if float(number).is_integer() else f"{number:03.2f}"
 
 
+def label_with_details(name: str, *details: object, separator: str = ", ") -> str:
+    """Build a ``"Name (detail, detail)"`` label from a name and optional details.
+
+    Falsy details (``None``, ``""``, ``0``) are dropped; the rest are stringified
+    and joined with ``separator`` inside parentheses. With no details remaining,
+    the bare ``name`` is returned without parentheses.
+    """
+    present = [str(detail) for detail in details if detail]
+    return f"{name} ({separator.join(present)})" if present else name
+
+
 OperatorType = Literal["|", "&"]
 
 
