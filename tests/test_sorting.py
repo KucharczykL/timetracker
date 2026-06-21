@@ -170,3 +170,27 @@ class TestListGamesSort:
         response = logged_client.get(reverse("games:list_games"), {"sort": "name"})
         warnings = [str(m) for m in get_messages(response.wsgi_request)]
         assert warnings == []
+
+
+class TestListSessionsSort:
+    def test_sort_by_duration_descending(self, logged_client, two_games):
+        alpha, beta = two_games
+        Session.objects.create(
+            game=alpha,
+            timestamp_start=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 1, 1, 10, 30, tzinfo=ZONEINFO),  # 30 min
+        )
+        Session.objects.create(
+            game=beta,
+            timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 1, 2, 13, tzinfo=ZONEINFO),  # 3 h
+        )
+        response = logged_client.get(reverse("games:list_sessions"), {"sort": "-duration"})
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert body.index("Beta") < body.index("Alpha")  # longer session first
+
+    def test_unknown_sort_emits_warning(self, logged_client, two_games):
+        response = logged_client.get(reverse("games:list_sessions"), {"sort": "nope"})
+        warnings = [str(m) for m in get_messages(response.wsgi_request)]
+        assert any("nope" in w for w in warnings)
