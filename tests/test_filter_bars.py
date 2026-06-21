@@ -223,6 +223,19 @@ class FilterBarRenderingTest(TestCase):
         )
         self._assert_shell(html, "/presets/playevents/list", "/presets/playevents/save")
 
+    def test_playevent_filter_bar_labels_days_to_finish_slider(self):
+        """The Days to Finish range slider must be wrapped in a labelled field —
+        RangeSlider does not render its own label, so a bare slider shows none."""
+        from common.components import PlayEventFilterBar
+
+        html = str(
+            PlayEventFilterBar(
+                filter_json="", preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        self.assertIn("Days to Finish", html)
+        self.assertNoEscapedTags(html)
+
     def test_game_filter_bar_has_new_widgets(self):
         """The expanded games FilterBar exposes platform_group, device, playevent_note,
         purchase_type / purchase_ownership_type, plus count and aggregate-playtime
