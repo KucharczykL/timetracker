@@ -87,8 +87,9 @@ In `_purchases_table`:
 - **Dropped** (Tier 2) → purchases that are abandoned-or-refunded and not
   finished; uses the `not_finished` composition (see Tier 2).
 - **Unfinished** (Tier 2) → the `purchased_unfinished` set (see Tier 2).
-- **Backlog decrease** — not linked (its definition — purchased in a prior year,
-  finished this year — has no clean single-filter expression; out of scope).
+- **Backlog decrease** (Tier 2) → per-year: purchases bought before the year whose
+  game is finished-in-year (see Tier 2). Expressible with prereq #67 — no extra
+  machinery.
 
 ### C. List capping + "view all"
 
@@ -135,6 +136,12 @@ composes the Tier-2 targets. Reference semantics (from `stats_data.py`):
   (`game status=ABANDONED` **or** `is_refunded=True`), **and** not finished-in-year.
 - **unfinished** = `is_refunded=False`, `infinite=False`, `type in (game, dlc)`,
   game `status NOT IN (FINISHED, RETIRED, ABANDONED)`, **and** not finished-in-year.
+- **backlog decrease** (per-year) = `date_purchased__lt = {year}-01-01`, game
+  `status=FINISHED`, **and** finished-in-year →
+  `PurchaseFilter.where(date_purchased__lt=jan1, game_filter=GameFilter.where(
+  status=[FINISHED], playevent_filter=PlayEventFilter.where(ended__between=(jan1, dec31))))`.
+  All-time backlog decrease equals the all-time finished count (matches current
+  `stats_data.py` behavior) → link to the all-time finished filter.
 
 These are nested AND/OR/NOT compositions of existing fields plus the #67 date
 range — no further machinery.
@@ -151,6 +158,23 @@ Add small helpers:
 Year-bounds helper (e.g. `_year_bounds(year)`) returns the session/purchase
 `where()` kwargs (or empty dict for all-time), so every builder scopes
 identically.
+
+## Sorting parity (#68)
+
+The stats lists are sorted (Games by playtime → playtime desc; the Finished lists
+→ finish date; etc.), but the list views hardcode their `order_by` and ignore any
+sort param (`game.py:59`, `session.py:122`, `purchase.py:122`). So a "view all"
+link lands on the right *set* but not the same *order*.
+
+This is handled by a separate, **non-prereq** issue (#68: honor a `sort` query
+param on the list views). #65 ships without waiting on it:
+
+- Each "view all" link that has a non-default sort on the stats page is built
+  with the intended `filter_url(..., sort=...)` param **and** carries a `TODO`
+  comment referencing #68, stating the linked list won't preserve the stats
+  order until #68 lands. Sites: Games by playtime, Finished, Finished (YYYY),
+  Bought & Finished (YYYY), Unfinished purchases.
+- The links are correct as *filtered sets* regardless; only ordering differs.
 
 ## Exact-match requirement
 
@@ -181,15 +205,13 @@ exactly is reported (not silently shipped with a wrong number).
    platform / month session links, sessions/games/total-purchased/refunded count
    links, list capping with Tier-1 "view all" links, remove "All purchases",
    `platform_id` data change.
-2. **Tier 2** (after #67 merges): finished/dropped/unfinished count and "view all"
-   links.
+2. **Tier 2** (after #67 merges): finished/dropped/unfinished/backlog-decrease
+   count and "view all" links.
 
 If #67 lands first, both tiers can ship together.
 
 ## Out of scope
 
-- Backlog-decrease count link.
 - The `view_game` table links (#66, the other #61 sub-issue).
-- Sorting the "Games by playtime" view-all target by playtime (the filtered list
-  is correct; sort order is best-effort polish via `filter_url(..., sort=...)` if
-  the list view supports it).
+- Implementing list-view sort support (#68) — #65 only passes the `sort` param and
+  leaves a `TODO` at each affected link site (see "Sorting parity").
