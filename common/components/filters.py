@@ -1479,6 +1479,8 @@ class PlayEventFilterBar(_FilterBarBase):
 def _playevent_fields(existing: dict) -> list:
     game_choice = _filter_get_choice(existing, "game")
     days_min, days_max = _parse_range(existing, "days_to_finish")
+    started_min, started_max = _parse_range(existing, "started")
+    ended_min, ended_max = _parse_range(existing, "ended")
 
     fields = [
         Div(
@@ -1494,6 +1496,24 @@ def _playevent_fields(existing: dict) -> list:
                     ),
                 ),
             ],
+        ),
+        _filter_field(
+            "Started",
+            DateRangePicker(
+                label="Started",
+                input_name_prefix="filter-started",
+                min_value=started_min,
+                max_value=started_max,
+            ),
+        ),
+        _filter_field(
+            "Finished",
+            DateRangePicker(
+                label="Finished",
+                input_name_prefix="filter-ended",
+                min_value=ended_min,
+                max_value=ended_max,
+            ),
         ),
         RangeSlider(
             label="Days to Finish",
