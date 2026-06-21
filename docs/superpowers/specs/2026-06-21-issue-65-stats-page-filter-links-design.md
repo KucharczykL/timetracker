@@ -162,22 +162,33 @@ Year-bounds helper (e.g. `_year_bounds(year)`) returns the session/purchase
 `where()` kwargs (or empty dict for all-time), so every builder scopes
 identically.
 
-## Sorting parity (#68)
+## Sorting parity (#68 — merged)
 
-The stats lists are sorted (Games by playtime → playtime desc; the Finished lists
-→ finish date; etc.), but the list views hardcode their `order_by` and ignore any
-sort param (`game.py:59`, `session.py:122`, `purchase.py:122`). So a "view all"
-link lands on the right *set* but not the same *order*.
+The stats lists are sorted, so a "view all" link must reproduce both the set *and*
+the order. #68 (PR #78) added `games/sorting.py` and a `?sort=` query param (a
+signed comma-list of public sort keys) honored by the list views, with the keys
+this feature needs:
 
-This is handled by a separate, **non-prereq** issue (#68: honor a `sort` query
-param on the list views). #65 ships without waiting on it:
+- `GAME_SORTS`: `playtime` (`Sum(sessions__duration_total)`), `finished`
+  (`Max(playevents__ended)`).
+- `PURCHASE_SORTS`: `finished` (`Max(games__playevents__ended)`), `purchased`,
+  `price`, `name`.
 
-- Each "view all" link that has a non-default sort on the stats page is built
-  with the intended `filter_url(..., sort=...)` param **and** carries a `TODO`
-  comment referencing #68, stating the linked list won't preserve the stats
-  order until #68 lands. Sites: Games by playtime, Finished, Finished (YYYY),
-  Bought & Finished (YYYY), Unfinished purchases.
-- The links are correct as *filtered sets* regardless; only ordering differs.
+So each "view all" link passes the matching key via `filter_url(..., sort=...)`
+— **no TODOs**. The annotated keys (`playtime`, `finished`) mirror the aggregates
+`stats_data.py` uses, so order matches exactly:
+
+| View all | sort= | matches stats order |
+|----------|-------|---------------------|
+| Games by playtime | `-playtime` | `top_*_games_by_playtime` (playtime desc) |
+| Finished | `finished` / `-finished` | the section's `order_by` in `stats_data.py` |
+| Finished (YYYY) | `finished` | `games__playevents__ended` asc |
+| Bought & Finished (YYYY) | `finished` | `games__playevents__ended` asc |
+| Unfinished purchases | `-purchased` | purchase list default order |
+
+Direction (asc vs desc) per finished section is chosen to match that section's
+`order_by` in `stats_data.py`; the rendering test asserts the linked list's order
+matches the preview's.
 
 ## Exact-match requirement
 
@@ -217,5 +228,5 @@ shippable if a smaller first PR is preferred.
 ## Out of scope
 
 - The `view_game` table links (#66, the other #61 sub-issue).
-- Implementing list-view sort support (#68) — #65 only passes the `sort` param and
-  leaves a `TODO` at each affected link site (see "Sorting parity").
+- List-view sort support itself (#68, merged) — #65 only *passes* the `sort` param
+  to the existing keys (see "Sorting parity").
