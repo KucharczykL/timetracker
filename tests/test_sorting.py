@@ -5,7 +5,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
+from django.contrib.messages import get_messages
 from django.test import RequestFactory
+from django.urls import reverse
 
 from games.filters import FindFilter
 from games.models import Game, Platform, Session
@@ -137,3 +139,30 @@ class TestSortMapShapes:
         ]:
             for token in default.split(","):
                 assert token.lstrip("-") in sort_map
+
+
+@pytest.fixture
+def logged_client(client, django_user_model):
+    user = django_user_model.objects.create_user(username="u", password="p")
+    client.force_login(user)
+    return client
+
+
+class TestListGamesSort:
+    def test_sort_param_orders_rows(self, logged_client, two_games):
+        alpha, beta = two_games
+        response = logged_client.get(reverse("games:list_games"), {"sort": "-name"})
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert body.index("Beta") < body.index("Alpha")
+
+    def test_unknown_sort_emits_warning_message(self, logged_client, two_games):
+        response = logged_client.get(reverse("games:list_games"), {"sort": "bogus"})
+        assert response.status_code == 200
+        warnings = [str(m) for m in get_messages(response.wsgi_request)]
+        assert any("bogus" in w for w in warnings)
+
+    def test_valid_sort_emits_no_warning(self, logged_client, two_games):
+        response = logged_client.get(reverse("games:list_games"), {"sort": "name"})
+        warnings = [str(m) for m in get_messages(response.wsgi_request)]
+        assert warnings == []
