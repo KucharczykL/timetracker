@@ -135,7 +135,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         if pf is not None:
             purchases = purchases.filter(pf.to_q())
 
-    sort = apply_sort(purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
+    sort = apply_sort(
+        purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT
+    )
     purchases = sort.queryset
     for key in sort.unknown:
         messages.warning(request, f"Unknown sort field '{key}' was ignored.")

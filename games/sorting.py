@@ -13,10 +13,16 @@ from django.http import HttpRequest
 
 from games.filters import FindFilter
 
-type SortKey = str         # public column key in a *_SORTS map and in a URL term ("playtime", "name")
-type SortString = str      # comma-list of signed SortKeys: the URL ?sort= value and *_DEFAULT_SORT ("-date,created")
-type AnnotationName = str  # an alias added via .annotate(), then referenced by SortSpec.expression
-type OrderField = str      # SortSpec.expression: a real model field path OR an AnnotationName
+type SortKey = (
+    str  # public column key in a *_SORTS map and in a URL term ("playtime", "name")
+)
+type SortString = str  # comma-list of signed SortKeys: the URL ?sort= value and *_DEFAULT_SORT ("-date,created")
+type AnnotationName = (
+    str  # an alias added via .annotate(), then referenced by SortSpec.expression
+)
+type OrderField = (
+    str  # SortSpec.expression: a real model field path OR an AnnotationName
+)
 
 # alias name -> the ORM aggregate that computes it, applied via queryset.annotate()
 # e.g. {"total_playtime": Sum("sessions__duration_total")}
@@ -25,13 +31,13 @@ type Annotations = dict[AnnotationName, Aggregate]
 
 @dataclass(frozen=True)
 class SortSpec:
-    expression: OrderField           # unsigned; a real column path or an AnnotationName
+    expression: OrderField  # unsigned; a real column path or an AnnotationName
     annotate: Annotations | None = None
 
 
 class SortTerm(NamedTuple):
     key: SortKey
-    descending: bool      # True = "-key" (desc), False = bare key (asc)
+    descending: bool  # True = "-key" (desc), False = bare key (asc)
 
 
 type SortMap = dict[SortKey, SortSpec]
@@ -39,7 +45,7 @@ type SortMap = dict[SortKey, SortSpec]
 
 class ParsedSort(NamedTuple):
     terms: list[SortTerm]
-    unknown: list[SortKey]   # keys not in the map — the view turns these into warnings
+    unknown: list[SortKey]  # keys not in the map — the view turns these into warnings
 
 
 def parse_sort_terms(raw: SortString, sort_map: SortMap) -> ParsedSort:
@@ -69,7 +75,9 @@ GAME_SORTS: SortMap = {
     "status": SortSpec("status"),
     "wikidata": SortSpec("wikidata"),
     "created": SortSpec("created_at"),
-    "playtime": SortSpec("total_playtime", {"total_playtime": Sum("sessions__duration_total")}),
+    "playtime": SortSpec(
+        "total_playtime", {"total_playtime": Sum("sessions__duration_total")}
+    ),
     "finished": SortSpec("last_finished", {"last_finished": Max("playevents__ended")}),
 }
 GAME_DEFAULT_SORT: SortString = "-created"
@@ -91,7 +99,9 @@ PURCHASE_SORTS: SortMap = {
     "purchased": SortSpec("date_purchased"),
     "refunded": SortSpec("date_refunded"),
     "created": SortSpec("created_at"),
-    "finished": SortSpec("last_finished", {"last_finished": Max("games__playevents__ended")}),
+    "finished": SortSpec(
+        "last_finished", {"last_finished": Max("games__playevents__ended")}
+    ),
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
@@ -101,8 +111,8 @@ PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
 class SortResult(NamedTuple):
     queryset: QuerySet
-    terms: list[SortTerm]    # the order actually applied — #73's header UI consumes this
-    unknown: list[SortKey]   # rejected keys — the view turns these into warning toasts
+    terms: list[SortTerm]  # the order actually applied — #73's header UI consumes this
+    unknown: list[SortKey]  # rejected keys — the view turns these into warning toasts
 
 
 def apply_sort(
@@ -125,4 +135,6 @@ def apply_sort(
 
 
 def parse_find_filter(request: HttpRequest) -> FindFilter:
-    return FindFilter(sort=request.GET.get("sort") or None)  # FindFilter.sort holds a SortString
+    return FindFilter(
+        sort=request.GET.get("sort") or None
+    )  # FindFilter.sort holds a SortString

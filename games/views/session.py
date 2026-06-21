@@ -152,7 +152,9 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         last_session = sessions.latest()
     except Session.DoesNotExist:
         last_session = None
-    sort = apply_sort(sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT)
+    sort = apply_sort(
+        sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
+    )
     sessions = sort.queryset
     for key in sort.unknown:
         messages.warning(request, f"Unknown sort field '{key}' was ignored.")
