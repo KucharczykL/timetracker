@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 import requests
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q, Sum
@@ -250,6 +251,10 @@ class Purchase(models.Model):
         self.save()
 
     def save(self, *args, **kwargs):
+        if self.platform is None:
+            self.platform = get_sentinel_platform()
+        if not self.price_currency:
+            self.price_currency = settings.DEFAULT_CURRENCY
         if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."

@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
 
@@ -282,6 +283,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     )
     platform = forms.ModelChoiceField(
         queryset=Platform.objects.order_by("name"),
+        required=False,
         widget=SearchSelectWidget(
             search_url="/api/platforms/search", options_resolver=_platform_options
         ),
@@ -295,10 +297,11 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     )
 
     price_currency = forms.CharField(
+        required=False,
         widget=forms.TextInput(
             attrs={
                 "x-mask": "aaa",
-                "placeholder": "CZK",
+                "placeholder": settings.DEFAULT_CURRENCY,
                 "x-data": "",
                 "class": "uppercase",
             }

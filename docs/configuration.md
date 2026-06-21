@@ -34,6 +34,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs. |
 | `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Time zone. |
+| `DEFAULT_CURRENCY` | str | `CZK` | no | Default currency for new purchases when none is entered, and the FX conversion target for background price conversion. |
 | `DATA_DIR` | path | project root | no | Directory holding the SQLite database. Also read by `entrypoint.sh`. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
