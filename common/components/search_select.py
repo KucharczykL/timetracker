@@ -100,7 +100,7 @@ _OPTIONS_CLASS = (
 )
 _OPTION_ROW_CLASS = (
     "px-3 py-2 text-sm text-heading cursor-pointer "
-    "hover:bg-brand/15 data-[search-select-highlighted]:bg-brand/15"
+    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
 _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
 
@@ -123,7 +123,7 @@ DEFAULT_PREFETCH = 20
 # classes below; the JS only toggles the data attribute on the row.
 _FILTER_INCLUDE_PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
-    "bg-brand/15 text-heading"
+    "bg-brand-soft text-heading"
 )
 _FILTER_EXCLUDE_PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
