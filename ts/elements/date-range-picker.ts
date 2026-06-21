@@ -290,7 +290,6 @@ function initField(picker: HTMLElement, calendarState: CalendarState): void {
         const target = segments[segmentIndex + step];
         if (target) {
           target.focus();
-          target.select();
         }
         return;
       }
