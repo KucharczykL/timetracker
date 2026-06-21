@@ -118,7 +118,7 @@ sites).
 entry point is the "Total purchased" count link. The `StatsData` key may remain
 (harmless) or be removed if no other consumer exists.
 
-### D. Tier 2 — gated on prereq #67
+### D. Tier 2 — finished/dropped/unfinished/backlog (uses #67)
 
 With #67 merged, `PlayEventFilter.ended` is a `DateCriterion` (bare `DateField`
 lookup), so "finished in year" is expressible and the chain
@@ -196,8 +196,8 @@ exactly is reported (not silently shipped with a wrong number).
   `parse_*_filter`. Year-scoped vs all-time variants both covered.
 - **Exact-match** (db): seed games/sessions/purchases/playevents spanning the year
   boundary and other years; assert each linked filter's count equals the
-  `compute_stats(year)` / `compute_stats(None)` value for that category (Tier 1
-  now; Tier 2 after #67).
+  `compute_stats(year)` / `compute_stats(None)` value for that category (both
+  tiers, since #67 is merged).
 - **Rendering** (db): stats page renders; capped lists show ≤5 rows + a "View all"
   link; the "All purchases" list is gone; smoke-test that the generated link URLs
   return 200.
