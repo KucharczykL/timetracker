@@ -7,6 +7,12 @@ const syncData = [
     target: "#id_sort_name",
     target_value: "value",
   },
+  {
+    source: "#id_year_released",
+    source_value: "value",
+    target: "#id_original_year_released",
+    target_value: "value",
+  },
 ];
 
 // Scope to the add form (#add-form), not "form": the first <form> on the page
