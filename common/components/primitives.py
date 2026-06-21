@@ -145,8 +145,9 @@ def _popover_html(
         # scrollbar (issue #53 / #40). Removing it from layout while hidden
         # fixes that; Flowbite drops `invisible` on show, restoring display.
         "absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
-        "text-heading transition-opacity duration-300 bg-brand/15 border "
-        "border-brand/30 rounded-lg shadow-xs opacity-0"
+        "text-heading transition-opacity duration-300 "
+        "bg-[color-mix(in_oklab,var(--color-brand)_15%,var(--color-neutral-primary))] "
+        "border border-brand/30 rounded-lg shadow-xs opacity-0"
     )
 
     div = Div(
