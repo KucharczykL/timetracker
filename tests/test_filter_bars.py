@@ -1,11 +1,9 @@
 """Characterization tests locking the rendered output of the three filter bars.
 
-The FilterBar family (FilterBar / SessionFilterBar / PurchaseFilterBar) is the
-target of a dedup + module split + RangeSlider component extraction. These tests
-pin the structural contract — form/input ids, the hidden ``filter`` field,
-preset wiring, the filter_json round-trip, no double-escaping, and the
-Flowbite-styled native range slider unification — so that refactor stays
-behaviour-preserving.
+The FilterBar family (FilterBar / SessionFilterBar / PurchaseFilterBar) pins the
+structural contract — form/input ids, the hidden ``filter`` field, preset wiring,
+the filter_json round-trip, no double-escaping, and the Stash-style NumberFilter /
+StringFilter modifier widgets — so refactors stay behaviour-preserving.
 """
 
 import json
@@ -14,6 +12,7 @@ from django.test import TestCase
 
 from common.components import (
     FilterBar,
+    NumberFilter,
     PurchaseFilterBar,
     SessionFilterBar,
 )
@@ -41,23 +40,20 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn(save_url, html)  # preset save URL wired in
         self.assertNoEscapedTags(html)
 
-    def _assert_range_slider(self, html):
-        """Every filter bar must use the RangeSlider component with custom
-        draggable <div> handles, a track fill, and mode-toggle button."""
-        self.assertIn("<range-slider", html)
-        self.assertIn('mode="range"', html)
-        self.assertIn("range-mode-toggle", html)
-        self.assertIn("range-mode-icon-range", html)
-        self.assertIn("range-mode-icon-point", html)
-        self.assertIn("range-track-fill", html)
-        self.assertIn("range-handle-min", html)
-        self.assertIn("range-handle-max", html)
-        # No native range inputs
-        self.assertNotIn(
-            '<input type="range"',
-            html,
-            "native <input type=range> found — should use custom div handles",
-        )
+    def _assert_number_filter(self, html, field_prefix):
+        """Every filter bar must use the Stash-style NumberFilter: a modifier
+        radio grid plus two number inputs (value + value2), with no legacy
+        RangeSlider custom element left behind."""
+        self.assertIn("data-number-modifier-radio", html)
+        self.assertIn(f'name="{field_prefix}-modifier"', html)
+        self.assertIn('value="BETWEEN"', html)
+        self.assertIn('value="IS_NULL"', html)
+        self.assertIn(f'name="{field_prefix}"', html)
+        self.assertIn(f'name="{field_prefix}-value2"', html)
+        self.assertIn("data-number-value2", html)
+        # The old slider element must be fully gone.
+        self.assertNotIn("<range-slider", html)
+        self.assertNotIn("range-mode-toggle", html)
 
     def test_game_filter_bar(self):
         html = str(
@@ -68,7 +64,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/games/list", "/presets/games/save")
-        self._assert_range_slider(html)
+        self._assert_number_filter(html, "filter-year")
 
     def test_session_filter_bar(self):
         html = str(
@@ -79,7 +75,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/sessions/list", "/presets/sessions/save")
-        self._assert_range_slider(html)
+        self._assert_number_filter(html, "filter-duration-total-hours")
 
     def test_purchase_filter_bar(self):
         html = str(
@@ -90,7 +86,7 @@ class FilterBarRenderingTest(TestCase):
             )
         )
         self._assert_shell(html, "/presets/purchases/list", "/presets/purchases/save")
-        self._assert_range_slider(html)
+        self._assert_number_filter(html, "filter-price")
 
     def test_purchase_filter_bar_games_has_m2m_modifiers(self):
         """The many-to-many games field surfaces (All)/(Only) pseudo-options
@@ -277,8 +273,8 @@ class FilterBarRenderingTest(TestCase):
         )
 
     def test_playevent_filter_bar_labels_days_to_finish_slider(self):
-        """The Days to Finish range slider must be wrapped in a labelled field —
-        RangeSlider does not render its own label, so a bare slider shows none."""
+        """The Days to Finish NumberFilter must be wrapped in a labelled field —
+        NumberFilter does not render its own label, so a bare widget shows none."""
         from common.components import PlayEventFilterBar
 
         html = str(
@@ -309,14 +305,16 @@ class FilterBarRenderingTest(TestCase):
         # Free-text widget for playevent notes (now StringFilter)
         self.assertIn('name="filter-playevent_note"', html)
         self.assertIn('name="filter-playevent_note-modifier"', html)
-        # New range slider input prefixes
-        self.assertIn('name="filter-purchase-count-min"', html)
-        self.assertIn('name="filter-playevent-count-min"', html)
-        self.assertIn('name="filter-manual-playtime-hours-min"', html)
-        self.assertIn('name="filter-calculated-playtime-hours-min"', html)
-        self.assertIn('name="filter-original-year-min"', html)
-        self.assertIn('name="filter-purchase-price-total-min"', html)
-        self.assertIn('name="filter-purchase-price-any-min"', html)
+        # New NumberFilter input prefixes (value input named by bare prefix)
+        self.assertIn('name="filter-purchase-count"', html)
+        self.assertIn('name="filter-purchase-count-value2"', html)
+        self.assertIn('name="filter-playevent-count"', html)
+        self.assertIn('name="filter-manual-playtime-hours"', html)
+        self.assertIn('name="filter-calculated-playtime-hours"', html)
+        self.assertIn('name="filter-original-year"', html)
+        self.assertIn('name="filter-purchase-price-total"', html)
+        self.assertIn('name="filter-purchase-price-any"', html)
+        self.assertIn('name="filter-purchase-count-modifier"', html)
         # New boolean checkboxes
         self.assertIn('name="filter-purchase-refunded"', html)
         self.assertIn('name="filter-purchase-infinite"', html)
@@ -428,3 +426,71 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('name="filter-refunded"', purchase_html)
         self.assertIn('value="true"', purchase_html)
         self.assertIn('value="false"', purchase_html)
+
+
+class NumberFilterRenderTest(TestCase):
+    """Render-level contract for the Stash-style NumberFilter component."""
+
+    def test_renders_all_eight_modifier_radios(self):
+        html = str(NumberFilter(input_name_prefix="filter-year"))
+        for modifier in (
+            "EQUALS",
+            "NOT_EQUALS",
+            "GREATER_THAN",
+            "LESS_THAN",
+            "BETWEEN",
+            "NOT_BETWEEN",
+            "IS_NULL",
+            "NOT_NULL",
+        ):
+            self.assertIn(f'value="{modifier}"', html)
+        self.assertIn("data-number-modifier-radio", html)
+
+    def test_renders_two_number_inputs(self):
+        html = str(NumberFilter(input_name_prefix="filter-year"))
+        self.assertIn('type="number"', html)
+        self.assertIn('name="filter-year"', html)
+        self.assertIn('name="filter-year-value2"', html)
+        self.assertIn("data-number-value2", html)
+
+    def test_default_modifier_hides_second_input_and_enables_inputs(self):
+        html = str(NumberFilter(input_name_prefix="filter-year"))
+        # value2 is hidden for the default EQUALS modifier.
+        self.assertRegex(html, r'data-number-value2="" class="[^"]*\bhidden\b')
+        # Inputs are not disabled by default.
+        self.assertNotIn("disabled", html)
+
+    def test_between_shows_second_input_and_prefills_values(self):
+        html = str(
+            NumberFilter(
+                input_name_prefix="filter-year",
+                value="2000",
+                value2="2010",
+                modifier="BETWEEN",
+            )
+        )
+        self.assertIn('value="2000"', html)
+        self.assertIn('value="2010"', html)
+        # The second input must NOT carry the hidden class under BETWEEN.
+        self.assertNotRegex(html, r'data-number-value2="" class="[^"]*\bhidden\b')
+
+    def test_presence_modifier_disables_and_clears_inputs(self):
+        html = str(
+            NumberFilter(
+                input_name_prefix="filter-year",
+                value="2000",
+                value2="2010",
+                modifier="IS_NULL",
+            )
+        )
+        self.assertIn("disabled", html)
+        self.assertIn("cursor-not-allowed", html)
+        # Values are cleared while disabled.
+        self.assertNotIn('value="2000"', html)
+        self.assertNotIn('value="2010"', html)
+
+    def test_invalid_modifier_falls_back_to_equals(self):
+        html = str(NumberFilter(input_name_prefix="filter-year", modifier="INCLUDES"))
+        # EQUALS is the only checked radio when an invalid modifier is given.
+        self.assertRegex(html, r'value="EQUALS"[^>]*checked="true"')
+        self.assertNotRegex(html, r'value="INCLUDES"')

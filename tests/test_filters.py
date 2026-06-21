@@ -74,6 +74,45 @@ class TestIntCriterion:
             year_released__gte=2020, year_released__lte=2024
         )
 
+    def test_not_between(self):
+        c = IntCriterion(value=2020, value2=2024, modifier=Modifier.NOT_BETWEEN)
+        assert c.to_q("year_released") == Q(year_released__lt=2020) | Q(
+            year_released__gt=2024
+        )
+
+    def test_greater_than(self):
+        c = IntCriterion(value=10, modifier=Modifier.GREATER_THAN)
+        assert c.to_q("session_count") == Q(session_count__gt=10)
+
+    def test_less_than(self):
+        c = IntCriterion(value=10, modifier=Modifier.LESS_THAN)
+        assert c.to_q("session_count") == Q(session_count__lt=10)
+
+    def test_is_null(self):
+        c = IntCriterion(modifier=Modifier.IS_NULL)
+        assert c.to_q("year_released") == Q(year_released__isnull=True)
+
+    def test_not_null(self):
+        c = IntCriterion(modifier=Modifier.NOT_NULL)
+        assert c.to_q("year_released") == Q(year_released__isnull=False)
+
+    def test_round_trip_json_between(self):
+        """value/value2/modifier survive dict → dataclass → dict unchanged."""
+        original = IntCriterion(value=2020, value2=2024, modifier=Modifier.BETWEEN)
+        as_dict = original.to_json()
+        assert as_dict == {
+            "value": 2020,
+            "value2": 2024,
+            "modifier": Modifier.BETWEEN,
+        }
+        assert IntCriterion.from_json(as_dict) == original
+
+    def test_round_trip_json_is_null(self):
+        original = IntCriterion(modifier=Modifier.IS_NULL)
+        restored = IntCriterion.from_json(original.to_json())
+        assert restored == original
+        assert restored.to_q("year_released") == Q(year_released__isnull=True)
+
 
 class TestBoolCriterion:
     def test_equals_true(self):

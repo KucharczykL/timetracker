@@ -1,4 +1,4 @@
-"""Browser tests for widget JavaScript (search_select.js, range_slider.js,
+"""Browser tests for widget JavaScript (search_select.js, filter-bar.js,
 add_purchase.js) and their onSwap() initialization lifecycle.
 
 These run a real Chromium via pytest-playwright against pytest-django's
@@ -70,21 +70,21 @@ def test_search_select_adds_include_pill(authenticated_page: Page, live_server):
     expect(pill).to_contain_text("Finished")
 
 
-def test_range_slider_mode_toggle_fires_exactly_once(
+def test_number_filter_between_reveals_second_input(
     authenticated_page: Page, live_server
 ):
-    """One click on the mode toggle flips the slider from range to point mode
-    exactly once. Double-bound listeners (the old force-re-init bug) would
-    flip it twice, leaving data-mode unchanged."""
+    """Selecting the BETWEEN modifier on a NumberFilter reveals its second
+    (value2) input — proof that setupNumberFilters wired the modifier radios on
+    the initial page load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_filter_bar(page)
 
-    slider = page.locator("range-slider").first
-    expect(slider).to_have_attribute("mode", "range")
+    value2 = page.locator('input[name="filter-year-value2"]')
+    expect(value2).to_be_hidden()
 
-    slider.locator(".range-mode-toggle").click()
-    expect(slider).to_have_attribute("mode", "point")
+    page.locator('input[name="filter-year-modifier"][value="BETWEEN"]').check()
+    expect(value2).to_be_visible()
 
 
 def test_widgets_initialize_inside_htmx_swapped_content(
@@ -94,8 +94,8 @@ def test_widgets_initialize_inside_htmx_swapped_content(
 
     The filter bar is re-fetched and swapped in with htmx.ajax — fresh,
     uninitialized DOM. The swapped-in FilterSelect must open its panel and the
-    swapped-in slider must toggle exactly once, proving the htmx:load half of
-    onSwap and the once-per-element guard."""
+    swapped-in NumberFilter must reveal its second input on BETWEEN, proving the
+    htmx:load half of onSwap and the once-per-element guard."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
@@ -111,10 +111,10 @@ def test_widgets_initialize_inside_htmx_swapped_content(
     widget.locator("[data-search-select-search]").click()
     expect(widget.locator("[data-search-select-options]")).to_be_visible()
 
-    slider = page.locator("range-slider").first
-    expect(slider).to_have_attribute("mode", "range")
-    slider.locator(".range-mode-toggle").click()
-    expect(slider).to_have_attribute("mode", "point")
+    value2 = page.locator('input[name="filter-year-value2"]')
+    expect(value2).to_be_hidden()
+    page.locator('input[name="filter-year-modifier"][value="BETWEEN"]').check()
+    expect(value2).to_be_visible()
 
 
 def test_add_purchase_type_toggles_disabled_fields(

@@ -146,17 +146,6 @@ register_element("selection-fields", "SelectionFields", SelectionFieldsProps)
 _SelectionFields = custom_element_builder("selection-fields")
 
 
-class RangeSliderProps(TypedDict):
-    min: int
-    max: int
-    step: int
-    mode: str  # "range" | "point"
-
-
-register_element("range-slider", "RangeSlider", RangeSliderProps)
-_RangeSlider = custom_element_builder("range-slider")
-
-
 class DateRangePickerProps(TypedDict):
     pass
 

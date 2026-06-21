@@ -23,13 +23,6 @@ interface DeselectableRadio extends HTMLInputElement {
   wasChecked?: boolean;
 }
 
-interface RangeField {
-  prefix: string;
-  key: string;
-  ignoreZeroZero?: boolean;
-  convert?: (value: number) => number;
-}
-
 function criterion(value: unknown, value2: unknown, modifier: string): Criterion {
   const result: Criterion = { value, modifier };
   if (value2 !== null && value2 !== undefined && value2 !== "") {
@@ -166,7 +159,7 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
     }
   });
 
-  const rangeFields: RangeField[] = [
+  const numberFields = [
     { prefix: "filter-year", key: "year_released" },
     { prefix: "filter-original-year", key: "original_year_released" },
     { prefix: "filter-session-count", key: "session_count" },
@@ -183,19 +176,25 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
     { prefix: "filter-purchase-price-total", key: "purchase_price_total" },
     { prefix: "filter-purchase-price-any", key: "purchase_price_any" },
     { prefix: "filter-days-to-finish", key: "days_to_finish" },
-    { prefix: "filter-playtime-hours", key: "playtime_hours", ignoreZeroZero: true },
+    { prefix: "filter-playtime-hours", key: "playtime_hours" },
   ];
 
-  rangeFields.forEach((rangeField) => {
-    let valueMin = numberValue(form, rangeField.prefix + "-min");
-    let valueMax = numberValue(form, rangeField.prefix + "-max");
-    if (rangeField.convert) {
-      if (valueMin !== "") valueMin = rangeField.convert(valueMin);
-      if (valueMax !== "") valueMax = rangeField.convert(valueMax);
+  numberFields.forEach((numberField) => {
+    const modifierElement = form.querySelector<HTMLInputElement>(
+      `[name="${numberField.prefix}-modifier"]:checked`,
+    );
+    const modifier = modifierElement ? modifierElement.value : "EQUALS";
+    if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
+      filter[numberField.key] = { modifier };
+      return;
     }
-    if (rangeField.ignoreZeroZero && valueMin === 0 && valueMax === 0) return;
-    const result = buildRangeCriterion(valueMin, valueMax);
-    if (result !== null) filter[rangeField.key] = result;
+    const value = numberValue(form, numberField.prefix);
+    if (modifier === "BETWEEN" || modifier === "NOT_BETWEEN") {
+      const value2 = numberValue(form, numberField.prefix + "-value2");
+      if (value !== "") filter[numberField.key] = criterion(value, value2, modifier);
+      return;
+    }
+    if (value !== "") filter[numberField.key] = criterion(value, null, modifier);
   });
 
   const dateRangeFields = [
@@ -279,13 +278,48 @@ function toggleStringFilterInput(radio: HTMLInputElement): void {
 }
 
 function setupStringFilters(root: HTMLElement): void {
-  root
-    .querySelectorAll<HTMLInputElement>("input[data-string-modifier-radio]")
-    .forEach((radio) => {
-      radio.addEventListener("change", function (this: HTMLInputElement) {
-        toggleStringFilterInput(this);
-      });
-    });
+  // Delegated on the persistent custom element (see setupNumberFilters) so the
+  // modifier radios keep working after an htmx swap of the inner #filter-bar.
+  root.addEventListener("change", (event) => {
+    const target = event.target as Element;
+    if (target.matches("input[data-string-modifier-radio]")) {
+      toggleStringFilterInput(target as HTMLInputElement);
+    }
+  });
+}
+
+function toggleNumberFilterInput(radio: HTMLInputElement): void {
+  const container = radio.closest(".flex-col");
+  if (!container) return;
+  const inputs = container.querySelectorAll<HTMLInputElement>('input[type="number"]');
+  const value2 = container.querySelector<HTMLInputElement>("[data-number-value2]");
+  const checkedRadio = container.querySelector<HTMLInputElement>('input[type="radio"]:checked');
+  const modifier = checkedRadio ? checkedRadio.value : "";
+  const isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
+  const isBetween = modifier === "BETWEEN" || modifier === "NOT_BETWEEN";
+  inputs.forEach((input) => {
+    if (isPresence) {
+      input.disabled = true;
+      input.value = "";
+      input.classList.add("opacity-50", "cursor-not-allowed");
+    } else {
+      input.disabled = false;
+      input.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+  });
+  if (value2) value2.classList.toggle("hidden", isPresence || !isBetween);
+}
+
+function setupNumberFilters(root: HTMLElement): void {
+  // Delegated on the persistent custom element so the modifier radios keep
+  // working after the inner #filter-bar body is htmx-swapped (connectedCallback
+  // does not re-run for inner swaps — a direct per-radio listener would be lost).
+  root.addEventListener("change", (event) => {
+    const target = event.target as Element;
+    if (target.matches("input[data-number-modifier-radio]")) {
+      toggleNumberFilterInput(target as HTMLInputElement);
+    }
+  });
 }
 
 function setupPresetDeleteHandlers(container: HTMLElement): void {
@@ -442,6 +476,7 @@ class FilterBarElement extends HTMLElement {
     injectSearchInput(form);
     setupDeselectableRadios(this);
     setupStringFilters(this);
+    setupNumberFilters(this);
     if (presetListUrl) loadPresets(this, presetListUrl);
   }
 }

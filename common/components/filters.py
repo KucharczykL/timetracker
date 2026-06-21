@@ -2,10 +2,8 @@
 
 from typing import NamedTuple
 
-from django.db import models
-
 from common.components.core import BaseComponent, Element, Node, Safe
-from common.components.custom_elements import _FilterBarElement, _RangeSlider
+from common.components.custom_elements import _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
 from common.components.search_select import (
@@ -33,6 +31,14 @@ class RangeValues(NamedTuple):
 
     min: str
     max: str
+
+
+class NumberValues(NamedTuple):
+    """(value, value2, modifier) parsed from a numeric filter criterion."""
+
+    value: str
+    value2: str
+    modifier: str
 
 
 _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
@@ -97,6 +103,22 @@ def _parse_range(existing: dict, key: str) -> RangeValues:
     if not isinstance(field, dict):
         return RangeValues("", "")
     return RangeValues(str(field.get("value", "")), str(field.get("value2", "")))
+
+
+def _parse_number(existing: dict, key: str) -> NumberValues:
+    """Extract (value, value2, modifier) from a numeric filter criterion.
+
+    Backward compatible with old RangeSlider JSON: a stored GREATER_THAN /
+    LESS_THAN / BETWEEN criterion maps straight onto value/value2/modifier.
+    """
+    field = existing.get(key, {})
+    if not isinstance(field, dict):
+        return NumberValues("", "", "EQUALS")
+    return NumberValues(
+        str(field.get("value", "")),
+        str(field.get("value2", "")),
+        str(field.get("modifier") or "EQUALS"),
+    )
 
 
 def _parse_bool(existing: dict, key: str) -> bool:
@@ -299,204 +321,6 @@ def _filter_boolean_radio(name: str, label: str, value: bool | None) -> Node:
     )
 
 
-# SVG icons for the mode toggle (shared across all RangeSliders)
-_RANGE_ICON_SVG = (
-    '<svg width="16" height="10" viewBox="0 0 16 10">'
-    '<line x1="3" y1="5" x2="13" y2="5" stroke="currentColor" stroke-width="1.5"/>'
-    '<circle cx="3" cy="5" r="3" fill="currentColor"/>'
-    '<circle cx="13" cy="5" r="3" fill="currentColor"/>'
-    "</svg>"
-)
-
-_POINT_ICON_SVG = (
-    '<svg width="16" height="10" viewBox="0 0 16 10">'
-    '<circle cx="8" cy="5" r="3" fill="currentColor"/>'
-    "</svg>"
-)
-
-_RANGE_SLIDER_INPUT_CLASS = (
-    "w-24 rounded-base border border-default-medium bg-neutral-secondary-medium "
-    "text-sm text-heading p-1.5 focus:ring-brand focus:border-brand"
-)
-
-
-def RangeSlider(
-    *,
-    label: str,
-    input_name_prefix: str,
-    min_value: str = "",
-    max_value: str = "",
-    range_min: int,
-    range_max: int,
-    step: str = "1",
-    min_placeholder: str = "",
-    max_placeholder: str = "",
-) -> Node:
-    """A labelled range slider with number inputs and range/point mode toggle.
-
-    Renders a label row (label, two number inputs, toggle button) and a slider
-    row (track with one or two custom draggable handles). Defaults to range mode
-    (two handles). If min_value and max_value are both set and equal, starts in
-    point mode (single handle). The toggle switches between modes.
-    """
-    min_input_id = f"{input_name_prefix}-min"
-    max_input_id = f"{input_name_prefix}-max"
-    point_mode = bool(min_value and max_value and min_value == max_value)
-    initial_mode = "point" if point_mode else "range"
-
-    return _RangeSlider(
-        min=range_min,
-        max=range_max,
-        step=int(step),
-        mode=initial_mode,
-        class_="mb-4 block",
-    )[
-        # ── Label row ──
-        Div(
-            attributes=[("class", "flex items-center gap-2 mb-1")],
-            children=[
-                # The field label is rendered by the _filter_field wrapper.
-                # This composite widget has no single labelable root, so the
-                # label carries no `for` (the two inputs are named below).
-                Input(
-                    attributes=[
-                        ("type", "number"),
-                        ("name", min_input_id),
-                        ("id", min_input_id),
-                        ("value", min_value),
-                        ("placeholder", min_placeholder),
-                        (
-                            "class",
-                            f"{_RANGE_SLIDER_INPUT_CLASS}"
-                            + (" hidden" if point_mode else ""),
-                        ),
-                    ],
-                ),
-                Span(
-                    attributes=[
-                        (
-                            "class",
-                            "range-dash text-body text-sm"
-                            + (" hidden" if point_mode else ""),
-                        ),
-                    ],
-                    children=["–"],
-                ),
-                Input(
-                    attributes=[
-                        ("type", "number"),
-                        ("name", max_input_id),
-                        ("id", max_input_id),
-                        ("value", max_value),
-                        ("placeholder", max_placeholder),
-                        ("class", _RANGE_SLIDER_INPUT_CLASS),
-                    ],
-                ),
-                Element(
-                    "button",
-                    attributes=[
-                        ("type", "button"),
-                        (
-                            "class",
-                            "range-mode-toggle p-1 text-body hover:text-heading "
-                            "rounded cursor-pointer shrink-0",
-                        ),
-                        (
-                            "title",
-                            "Toggle between range and single value",
-                        ),
-                        (
-                            "aria-label",
-                            "Toggle between range and single value",
-                        ),
-                    ],
-                    children=[
-                        Span(
-                            attributes=[
-                                (
-                                    "class",
-                                    "range-mode-icon-range"
-                                    + (" hidden" if point_mode else ""),
-                                ),
-                            ],
-                            children=[Safe(_RANGE_ICON_SVG)],
-                        ),
-                        Span(
-                            attributes=[
-                                (
-                                    "class",
-                                    "range-mode-icon-point"
-                                    + ("" if point_mode else " hidden"),
-                                ),
-                            ],
-                            children=[Safe(_POINT_ICON_SVG)],
-                        ),
-                    ],
-                ),
-            ],
-        ),
-        # ── Track row ──
-        Div(
-            attributes=[
-                ("class", "relative h-10 w-5/6 select-none mt-1"),
-                ("data-range-track", ""),
-            ],
-            children=[
-                Div(
-                    attributes=[
-                        (
-                            "class",
-                            "absolute top-1/2 -translate-y-1/2 w-full h-2 "
-                            "rounded-full bg-neutral-quaternary",
-                        ),
-                    ],
-                ),
-                Div(
-                    attributes=[
-                        (
-                            "class",
-                            "range-track-fill absolute top-1/2 -translate-y-1/2 "
-                            "h-2 bg-brand rounded-full",
-                        ),
-                        ("style", "left:0;width:100%"),
-                    ],
-                ),
-                # Min handle (hidden in point mode via JS)
-                Div(
-                    attributes=[
-                        (
-                            "class",
-                            "range-handle range-handle-min absolute top-1/2 "
-                            "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
-                            "border-2 border-white shadow cursor-pointer "
-                            "hover:scale-110 transition-transform",
-                        ),
-                        ("data-target", min_input_id),
-                        (
-                            "style",
-                            "left:0" + (";display:none" if point_mode else ""),
-                        ),
-                    ],
-                ),
-                # Max handle
-                Div(
-                    attributes=[
-                        (
-                            "class",
-                            "range-handle range-handle-max absolute top-1/2 "
-                            "-translate-y-1/2 w-5 h-5 bg-brand rounded-full "
-                            "border-2 border-white shadow cursor-pointer "
-                            "hover:scale-110 transition-transform",
-                        ),
-                        ("data-target", max_input_id),
-                        ("style", "left:100%"),
-                    ],
-                ),
-            ],
-        ),
-    ]
-
-
 _DATE_RANGE_INPUT_CLASS = (
     "w-full rounded-base border border-default-medium bg-neutral-secondary-medium "
     "text-sm text-heading p-1.5 focus:ring-brand focus:border-brand"
@@ -514,11 +338,10 @@ def DateRangeFilter(
 ) -> Node:
     """A pair of ``<input type="date">`` elements representing a date range.
 
-    Mirrors ``RangeSlider`` in shape (two inputs named ``{prefix}-min`` and
-    ``{prefix}-max``) but without a slider track — the browser's native date
-    picker is the UI. Serialized client-side into a ``DateCriterion`` with
-    ``BETWEEN`` / ``GREATER_THAN`` / ``LESS_THAN`` depending on which bound(s)
-    the user filled.
+    Two inputs named ``{prefix}-min`` and ``{prefix}-max`` — the browser's
+    native date picker is the UI. Serialized client-side into a ``DateCriterion``
+    with ``BETWEEN`` / ``GREATER_THAN`` / ``LESS_THAN`` depending on which
+    bound(s) the user filled.
     """
     min_input_id = f"{input_name_prefix}-min"
     max_input_id = f"{input_name_prefix}-max"
@@ -800,70 +623,21 @@ def _game_fields(
         "modifier", "EQUALS"
     )
 
-    year_min, year_max = _parse_range(existing, "year_released")
-    original_year_min, original_year_max = _parse_range(
-        existing, "original_year_released"
-    )
+    year = _parse_number(existing, "year_released")
+    original_year = _parse_number(existing, "original_year_released")
     mastered_value = _parse_bool_nullable(existing, "mastered")
-    playtime = existing.get("playtime_hours", {})
-    if isinstance(playtime, dict):
-        playtime_min = playtime.get("value", "")
-        playtime_max = playtime.get("value2", "")
-    else:
-        playtime_min = ""
-        playtime_max = ""
-
-    session_count_min, session_count_max = _parse_range(existing, "session_count")
-    session_avg_min, session_avg_max = _parse_range(existing, "session_average")
-    purchase_count_min, purchase_count_max = _parse_range(existing, "purchase_count")
-    playevent_count_min, playevent_count_max = _parse_range(existing, "playevent_count")
-    manual_pt_min, manual_pt_max = _parse_range(existing, "manual_playtime_hours")
-    calc_pt_min, calc_pt_max = _parse_range(existing, "calculated_playtime_hours")
-    price_total_min, price_total_max = _parse_range(existing, "purchase_price_total")
-    price_any_min, price_any_max = _parse_range(existing, "purchase_price_any")
+    playtime = _parse_number(existing, "playtime_hours")
+    session_count = _parse_number(existing, "session_count")
+    session_avg = _parse_number(existing, "session_average")
+    purchase_count = _parse_number(existing, "purchase_count")
+    playevent_count = _parse_number(existing, "playevent_count")
+    manual_pt = _parse_number(existing, "manual_playtime_hours")
+    calc_pt = _parse_number(existing, "calculated_playtime_hours")
+    price_total = _parse_number(existing, "purchase_price_total")
+    price_any = _parse_number(existing, "purchase_price_any")
     purchase_refunded_value = _parse_bool_nullable(existing, "purchase_refunded")
     purchase_infinite_value = _parse_bool_nullable(existing, "purchase_infinite")
     session_emulated_value = _parse_bool_nullable(existing, "session_emulated")
-
-    try:
-        year_aggregate = Game.objects.aggregate(
-            year_min=models.Min("year_released"), year_max=models.Max("year_released")
-        )
-    except Exception:
-        year_aggregate = {}
-    try:
-        original_year_aggregate = Game.objects.aggregate(
-            year_min=models.Min("original_year_released"),
-            year_max=models.Max("original_year_released"),
-        )
-    except Exception:
-        original_year_aggregate = {}
-    try:
-        playtime_aggregate = Game.objects.aggregate(playtime_max=models.Max("playtime"))
-    except Exception:
-        playtime_aggregate = {}
-    try:
-        price_aggregate = Purchase.objects.aggregate(
-            price_min=models.Min("converted_price"),
-            price_max=models.Max("converted_price"),
-        )
-    except Exception:
-        price_aggregate = {}
-    year_range_min = max(int(year_aggregate.get("year_min") or 1970), 1970)
-    year_range_max = min(int(year_aggregate.get("year_max") or 2030), 2030)
-    original_year_range_min = max(
-        int(original_year_aggregate.get("year_min") or 1970), 1970
-    )
-    original_year_range_max = min(
-        int(original_year_aggregate.get("year_max") or 2030), 2030
-    )
-    playtime_range_max = (
-        int((playtime_aggregate.get("playtime_max") or 0).total_seconds() / 3600)
-        if playtime_aggregate.get("playtime_max")
-        else 200
-    )
-    price_range_min = int(price_aggregate.get("price_min") or 0)
-    price_range_max = max(int(price_aggregate.get("price_max") or 100), 1)
 
     fields = [
         Div(
@@ -934,152 +708,125 @@ def _game_fields(
                 ),
                 _filter_field(
                     "Year",
-                    RangeSlider(
-                        label="Year",
+                    NumberFilter(
                         input_name_prefix="filter-year",
-                        min_value=year_min,
-                        max_value=year_max,
-                        range_min=year_range_min,
-                        range_max=year_range_max,
-                        min_placeholder="e.g. 2020",
-                        max_placeholder="e.g. 2024",
+                        value=year.value,
+                        value2=year.value2,
+                        modifier=year.modifier,
+                        placeholder="e.g. 2020",
+                        placeholder2="e.g. 2024",
                     ),
                 ),
                 _filter_field(
                     "Original Year",
-                    RangeSlider(
-                        label="Original Year",
+                    NumberFilter(
                         input_name_prefix="filter-original-year",
-                        min_value=original_year_min,
-                        max_value=original_year_max,
-                        range_min=original_year_range_min,
-                        range_max=original_year_range_max,
-                        min_placeholder="e.g. 1985",
-                        max_placeholder="e.g. 2010",
+                        value=original_year.value,
+                        value2=original_year.value2,
+                        modifier=original_year.modifier,
+                        placeholder="e.g. 1985",
+                        placeholder2="e.g. 2010",
                     ),
                 ),
                 _filter_field(
                     "Total playtime",
-                    RangeSlider(
-                        label="Total playtime",
+                    NumberFilter(
                         input_name_prefix="filter-playtime-hours",
-                        min_value=playtime_min,
-                        max_value=playtime_max,
-                        range_min=0,
-                        range_max=playtime_range_max,
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 100",
+                        value=playtime.value,
+                        value2=playtime.value2,
+                        modifier=playtime.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 100",
                     ),
                 ),
                 _filter_field(
                     "Manual Playtime (hrs)",
-                    RangeSlider(
-                        label="Manual Playtime (hrs)",
+                    NumberFilter(
                         input_name_prefix="filter-manual-playtime-hours",
-                        min_value=manual_pt_min,
-                        max_value=manual_pt_max,
-                        range_min=0,
-                        range_max=max(playtime_range_max, 4),
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 10",
+                        value=manual_pt.value,
+                        value2=manual_pt.value2,
+                        modifier=manual_pt.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 10",
                     ),
                 ),
                 _filter_field(
                     "Calculated Playtime (hrs)",
-                    RangeSlider(
-                        label="Calculated Playtime (hrs)",
+                    NumberFilter(
                         input_name_prefix="filter-calculated-playtime-hours",
-                        min_value=calc_pt_min,
-                        max_value=calc_pt_max,
-                        range_min=0,
-                        range_max=max(playtime_range_max, 4),
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 10",
+                        value=calc_pt.value,
+                        value2=calc_pt.value2,
+                        modifier=calc_pt.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 10",
                     ),
                 ),
                 _filter_field(
                     "Session Count",
-                    RangeSlider(
-                        label="Session Count",
+                    NumberFilter(
                         input_name_prefix="filter-session-count",
-                        min_value=session_count_min,
-                        max_value=session_count_max,
-                        range_min=0,
-                        range_max=100,
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 50",
+                        value=session_count.value,
+                        value2=session_count.value2,
+                        modifier=session_count.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 50",
                     ),
                 ),
                 _filter_field(
                     "Average Session Duration (mins)",
-                    RangeSlider(
-                        label="Average Session Duration (mins)",
+                    NumberFilter(
                         input_name_prefix="filter-session-average",
-                        min_value=session_avg_min,
-                        max_value=session_avg_max,
-                        range_min=0,
-                        range_max=240,
-                        step="1",
-                        min_placeholder="e.g. 10",
-                        max_placeholder="e.g. 120",
+                        value=session_avg.value,
+                        value2=session_avg.value2,
+                        modifier=session_avg.modifier,
+                        placeholder="e.g. 10",
+                        placeholder2="e.g. 120",
                     ),
                 ),
                 _filter_field(
                     "Number of Purchases",
-                    RangeSlider(
-                        label="Number of Purchases",
+                    NumberFilter(
                         input_name_prefix="filter-purchase-count",
-                        min_value=purchase_count_min,
-                        max_value=purchase_count_max,
-                        range_min=0,
-                        range_max=20,
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 5",
+                        value=purchase_count.value,
+                        value2=purchase_count.value2,
+                        modifier=purchase_count.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 5",
                     ),
                 ),
                 _filter_field(
                     "Number of Play Events",
-                    RangeSlider(
-                        label="Number of Play Events",
+                    NumberFilter(
                         input_name_prefix="filter-playevent-count",
-                        min_value=playevent_count_min,
-                        max_value=playevent_count_max,
-                        range_min=0,
-                        range_max=20,
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 5",
+                        value=playevent_count.value,
+                        value2=playevent_count.value2,
+                        modifier=playevent_count.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 5",
                     ),
                 ),
                 _filter_field(
                     "Total Purchase Price",
-                    RangeSlider(
-                        label="Total Purchase Price",
+                    NumberFilter(
                         input_name_prefix="filter-purchase-price-total",
-                        min_value=price_total_min,
-                        max_value=price_total_max,
-                        range_min=price_range_min,
-                        range_max=price_range_max,
-                        min_placeholder="0",
-                        max_placeholder=str(price_range_max),
+                        value=price_total.value,
+                        value2=price_total.value2,
+                        modifier=price_total.modifier,
+                        placeholder="0",
+                        placeholder2="e.g. 100",
+                        step="0.01",
                     ),
                 ),
                 _filter_field(
                     "Any Purchase Price",
-                    RangeSlider(
-                        label="Any Purchase Price",
+                    NumberFilter(
                         input_name_prefix="filter-purchase-price-any",
-                        min_value=price_any_min,
-                        max_value=price_any_max,
-                        range_min=price_range_min,
-                        range_max=price_range_max,
-                        min_placeholder="0",
-                        max_placeholder=str(price_range_max),
+                        value=price_any.value,
+                        value2=price_any.value2,
+                        modifier=price_any.modifier,
+                        placeholder="0",
+                        placeholder2="e.g. 100",
+                        step="0.01",
                     ),
                 ),
             ],
@@ -1125,23 +872,11 @@ def _session_fields(existing: dict) -> list:
     note_value = existing.get("note", {}).get("value", "")
     note_modifier = existing.get("note", {}).get("modifier", "EQUALS")
 
-    dur_tot_min, dur_tot_max = _parse_range(existing, "duration_total_hours")
-    dur_man_min, dur_man_max = _parse_range(existing, "duration_manual_hours")
-    dur_calc_min, dur_calc_max = _parse_range(existing, "duration_calculated_hours")
+    dur_tot = _parse_number(existing, "duration_total_hours")
+    dur_man = _parse_number(existing, "duration_manual_hours")
+    dur_calc = _parse_number(existing, "duration_calculated_hours")
     emulated_value = _parse_bool_nullable(existing, "emulated")
     is_active_value = _parse_bool_nullable(existing, "is_active")
-    try:
-        duration_aggregate = Session.objects.aggregate(
-            duration_max=models.Max("duration_total")
-        )
-        duration_range_max = max(
-            int((duration_aggregate.get("duration_max") or 0).total_seconds() / 3600)
-            if duration_aggregate.get("duration_max")
-            else 200,
-            1,
-        )
-    except Exception:
-        duration_range_max = 200
 
     fields = [
         Div(
@@ -1176,38 +911,38 @@ def _session_fields(existing: dict) -> list:
                 ),
             ],
         ),
-        RangeSlider(
-            label="Total Duration (hrs)",
-            input_name_prefix="filter-duration-total-hours",
-            min_value=dur_tot_min,
-            max_value=dur_tot_max,
-            range_min=0,
-            range_max=duration_range_max,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 10",
+        _filter_field(
+            "Total Duration (hrs)",
+            NumberFilter(
+                input_name_prefix="filter-duration-total-hours",
+                value=dur_tot.value,
+                value2=dur_tot.value2,
+                modifier=dur_tot.modifier,
+                placeholder="e.g. 1",
+                placeholder2="e.g. 10",
+            ),
         ),
-        RangeSlider(
-            label="Manual Duration (hrs)",
-            input_name_prefix="filter-duration-manual-hours",
-            min_value=dur_man_min,
-            max_value=dur_man_max,
-            range_min=0,
-            range_max=duration_range_max,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 10",
+        _filter_field(
+            "Manual Duration (hrs)",
+            NumberFilter(
+                input_name_prefix="filter-duration-manual-hours",
+                value=dur_man.value,
+                value2=dur_man.value2,
+                modifier=dur_man.modifier,
+                placeholder="e.g. 1",
+                placeholder2="e.g. 10",
+            ),
         ),
-        RangeSlider(
-            label="Calculated Duration (hrs)",
-            input_name_prefix="filter-duration-calculated-hours",
-            min_value=dur_calc_min,
-            max_value=dur_calc_max,
-            range_min=0,
-            range_max=duration_range_max,
-            step="1",
-            min_placeholder="e.g. 1",
-            max_placeholder="e.g. 10",
+        _filter_field(
+            "Calculated Duration (hrs)",
+            NumberFilter(
+                input_name_prefix="filter-duration-calculated-hours",
+                value=dur_calc.value,
+                value2=dur_calc.value2,
+                modifier=dur_calc.modifier,
+                placeholder="e.g. 1",
+                placeholder2="e.g. 10",
+            ),
         ),
         Div(
             attributes=[("class", "flex gap-6 mb-4")],
@@ -1236,7 +971,7 @@ def _purchase_fields(existing: dict) -> list:
     platform_choice = _filter_get_choice(existing, "platform")
     type_choice = _filter_get_choice(existing, "type")
     ownership_choice = _filter_get_choice(existing, "ownership_type")
-    price_min, price_max = _parse_range(existing, "price")
+    price = _parse_number(existing, "price")
     is_refunded_value = _parse_bool_nullable(existing, "is_refunded")
     infinite_value = _parse_bool_nullable(existing, "infinite")
     needs_price_update_value = _parse_bool_nullable(existing, "needs_price_update")
@@ -1250,25 +985,7 @@ def _purchase_fields(existing: dict) -> list:
     )
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
     date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
-
-    try:
-        price_aggregate = Purchase.objects.aggregate(
-            price_min=models.Min("price"), price_max=models.Max("price")
-        )
-        price_range_min = int(price_aggregate.get("price_min") or 0)
-        price_range_max = max(int(price_aggregate.get("price_max") or 100), 1)
-    except Exception:
-        price_range_min, price_range_max = 0, 100
-
-    num_min, num_max = _parse_range(existing, "num_purchases")
-    try:
-        num_aggregate = Purchase.objects.aggregate(
-            num_min=models.Min("num_purchases"), num_max=models.Max("num_purchases")
-        )
-        num_range_min = max(int(num_aggregate.get("num_min") or 0), 0)
-        num_range_max = max(int(num_aggregate.get("num_max") or 10), 1)
-    except Exception:
-        num_range_min, num_range_max = 0, 10
+    num = _parse_number(existing, "num_purchases")
 
     fields = [
         Div(
@@ -1359,29 +1076,25 @@ def _purchase_fields(existing: dict) -> list:
                 ),
                 _filter_field(
                     "Price",
-                    RangeSlider(
-                        label="Price",
+                    NumberFilter(
                         input_name_prefix="filter-price",
-                        min_value=price_min,
-                        max_value=price_max,
-                        range_min=price_range_min,
-                        range_max=price_range_max,
-                        min_placeholder="0.00",
-                        max_placeholder="100.00",
+                        value=price.value,
+                        value2=price.value2,
+                        modifier=price.modifier,
+                        placeholder="0.00",
+                        placeholder2="100.00",
+                        step="0.01",
                     ),
                 ),
                 _filter_field(
                     "Games in purchase",
-                    RangeSlider(
-                        label="Games in purchase",
+                    NumberFilter(
                         input_name_prefix="filter-num-purchases",
-                        min_value=num_min,
-                        max_value=num_max,
-                        range_min=num_range_min,
-                        range_max=num_range_max,
-                        step="1",
-                        min_placeholder="e.g. 1",
-                        max_placeholder="e.g. 5",
+                        value=num.value,
+                        value2=num.value2,
+                        modifier=num.modifier,
+                        placeholder="e.g. 1",
+                        placeholder2="e.g. 5",
                     ),
                 ),
                 Div(
@@ -1488,7 +1201,7 @@ class PlayEventFilterBar(_FilterBarBase):
 
 def _playevent_fields(existing: dict) -> list:
     game_choice = _filter_get_choice(existing, "game")
-    days_min, days_max = _parse_range(existing, "days_to_finish")
+    days = _parse_number(existing, "days_to_finish")
     started_min, started_max = _parse_range(existing, "started")
     ended_min, ended_max = _parse_range(existing, "ended")
 
@@ -1527,16 +1240,13 @@ def _playevent_fields(existing: dict) -> list:
         ),
         _filter_field(
             "Days to Finish",
-            RangeSlider(
-                label="Days to Finish",
+            NumberFilter(
                 input_name_prefix="filter-days-to-finish",
-                min_value=days_min,
-                max_value=days_max,
-                range_min=0,
-                range_max=365,
-                step="1",
-                min_placeholder="e.g. 1",
-                max_placeholder="e.g. 30",
+                value=days.value,
+                value2=days.value2,
+                modifier=days.modifier,
+                placeholder="e.g. 1",
+                placeholder2="e.g. 30",
             ),
         ),
     ]
@@ -1615,5 +1325,110 @@ def StringFilter(
                 children=radio_buttons,
             ),
             Input(attributes=input_attrs),
+        ],
+    )
+
+
+# text-sm + px-3 py-2.5 match every other input (canonical size).
+_NUMBER_FILTER_INPUT_CLASS = (
+    "w-full rounded-base border border-default-medium px-3 py-2.5 text-sm "
+    "bg-neutral-secondary-medium text-body focus:border-brand focus:ring-brand "
+)
+
+
+def NumberFilter(
+    input_name_prefix: str,
+    value: str = "",
+    value2: str = "",
+    modifier: str = "EQUALS",
+    placeholder: str = "",
+    placeholder2: str = "",
+    step: str = "1",
+) -> Node:
+    """Renders a numeric filter with 8 modifier radio options and two inputs.
+
+    Modeled 1:1 on :func:`StringFilter`. Both inputs are disabled for the
+    presence modifiers (IS_NULL/NOT_NULL); the second input is shown only for
+    the range modifiers (BETWEEN/NOT_BETWEEN). Initial state is server-rendered
+    so the widget never flashes before its JS runs.
+    """
+    from common.criteria import Modifier
+
+    if modifier not in [m.value for m in Modifier.for_numbers()]:
+        modifier = "EQUALS"
+
+    options = [
+        ("EQUALS", "is"),
+        ("NOT_EQUALS", "is not"),
+        ("GREATER_THAN", "is greater than"),
+        ("LESS_THAN", "is less than"),
+        ("BETWEEN", "between"),
+        ("NOT_BETWEEN", "not between"),
+        ("IS_NULL", "is null"),
+        ("NOT_NULL", "is not null"),
+    ]
+
+    radio_buttons = [
+        Radio(
+            name=f"{input_name_prefix}-modifier",
+            label=lbl,
+            checked=(modifier == mod_val),
+            value=mod_val,
+            attributes=[
+                ("data-number-modifier-radio", ""),
+            ],
+        )
+        for mod_val, lbl in options
+    ]
+
+    inputs_disabled = modifier in ("IS_NULL", "NOT_NULL")
+    second_shown = modifier in ("BETWEEN", "NOT_BETWEEN")
+    disabled_class = "opacity-50 cursor-not-allowed" if inputs_disabled else ""
+
+    value_attrs = [
+        ("name", input_name_prefix),
+        ("value", value if not inputs_disabled else ""),
+        ("placeholder", placeholder),
+        ("step", step),
+        ("class", _NUMBER_FILTER_INPUT_CLASS + disabled_class),
+    ]
+    if inputs_disabled:
+        value_attrs.append(("disabled", "true"))
+
+    value2_attrs = [
+        ("name", f"{input_name_prefix}-value2"),
+        ("value", value2 if not inputs_disabled else ""),
+        ("placeholder", placeholder2),
+        ("step", step),
+        ("data-number-value2", ""),
+        (
+            "class",
+            _NUMBER_FILTER_INPUT_CLASS
+            + disabled_class
+            + ("" if second_shown else " hidden"),
+        ),
+    ]
+    if inputs_disabled:
+        value2_attrs.append(("disabled", "true"))
+
+    return Div(
+        attributes=[("class", "flex flex-col gap-2 @container")],
+        children=[
+            Div(
+                attributes=[
+                    (
+                        "class",
+                        "grid grid-cols-2 @md:grid-cols-4 gap-2 py-1",
+                    )
+                ],
+                children=radio_buttons,
+            ),
+            Div(
+                attributes=[("class", "flex items-center gap-2")],
+                children=[
+                    Input(type="number", attributes=value_attrs),
+                    Input(type="number", attributes=value2_attrs),
+                ],
+            ),
         ],
     )
