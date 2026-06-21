@@ -1,5 +1,6 @@
 from typing import Any, TypedDict
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
@@ -38,6 +39,12 @@ from common.time import (
 from common.utils import paginate, truncate
 from games.forms import SessionForm
 from games.models import Device, Game, Session
+from games.sorting import (
+    SESSION_DEFAULT_SORT,
+    SESSION_SORTS,
+    apply_sort,
+    parse_find_filter,
+)
 
 
 class SessionRowData(TypedDict):
@@ -119,7 +126,7 @@ def session_row(session: Session, device_list, csrf_token: str) -> Node:
 
 @login_required
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    sessions = Session.objects.order_by("-timestamp_start", "created_at")
+    sessions = Session.objects.select_related("game", "game__platform", "device")
     device_list = Device.objects.order_by("name")
 
     # ── Structured filter (JSON) ──
@@ -145,6 +152,12 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         last_session = sessions.latest()
     except Session.DoesNotExist:
         last_session = None
+    sort = apply_sort(
+        sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
+    )
+    sessions = sort.queryset
+    for key in sort.unknown:
+        messages.warning(request, f"Unknown sort field '{key}' was ignored.")
     sessions, page_obj, elided_page_range = paginate(request, sessions)
     csrf_token = get_token(request)
 
