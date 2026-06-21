@@ -1,5 +1,6 @@
 """Tests for the list-view sorting system (games/sorting.py)."""
 
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -10,8 +11,6 @@ from django.test import RequestFactory
 from django.urls import reverse
 
 from games.filters import FindFilter
-import re
-
 from games.models import Game, Platform, Purchase, Session
 from games.sorting import (
     GAME_DEFAULT_SORT,
@@ -185,8 +184,6 @@ class TestListGamesSort:
 
 class TestListSessionsSort:
     def test_sort_by_duration_descending(self, logged_client, two_games):
-        import re
-
         alpha, beta = two_games
         Session.objects.create(
             game=alpha,
@@ -251,7 +248,9 @@ class TestListPurchasesSort:
         )
         assert response.status_code == 200
         body = response.content.decode()
-        tbody = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL).group(1)
+        tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert tbody_match
+        tbody = tbody_match.group(1)
         assert tbody.index("Beta") < tbody.index("Alpha")  # 90 before 10
 
     def test_name_aggregate_sort_no_duplicate_rows(self, logged_client, two_purchases):
