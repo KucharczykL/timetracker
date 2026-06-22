@@ -10,7 +10,7 @@ reader so drift fails ``tsc``.
 
 import warnings
 from dataclasses import dataclass
-from typing import NamedTuple, TypedDict, get_type_hints
+from typing import Literal, NamedTuple, TypedDict, get_type_hints
 
 from common.components.core import Child, Element, Fragment, Node
 from common.components.primitives import (
@@ -424,6 +424,12 @@ def DropdownDivider() -> Node:
     return Li(role="separator", class_="my-1 h-px bg-gray-100 dark:bg-gray-600")
 
 
+# A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
+# as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
+# the caller-facing params so a typo'd literal is caught at check time.
+type DropdownBehaviorName = Literal["menu", "select"]
+
+
 def _assemble(
     trigger: Element,
     target: Element,
@@ -432,7 +438,7 @@ def _assemble(
     placement: str,
     submenu: bool,
     wrapper_class: str,
-    behavior: str = "menu",
+    behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. The single assembly
@@ -464,7 +470,7 @@ def Dropdown(
     target_element: Element,
     id: str,
     placement: str = "bottom-start",
-    behavior: str = "menu",
+    behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
