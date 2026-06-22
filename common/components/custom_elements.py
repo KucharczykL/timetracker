@@ -281,20 +281,22 @@ _DROPDOWN_TOGGLE_PLAIN = (
 # Putting the filter on a childless `::before` keeps the frosted look while
 # leaving the panel filter-free, so submenus still resolve against the viewport.
 _DROPDOWN_PANEL_BASE = (
-    "absolute z-20 w-44 overflow-hidden rounded-lg "
-    "bg-white dark:bg-gray-800/20 text-sm text-gray-700 dark:text-gray-200 "
+    "absolute z-20 w-44 overflow-hidden rounded-lg p-2 "
+    "bg-white dark:bg-gray-800/40 text-sm "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
-    "before:rounded-[inherit] dark:before:backdrop-blur-lg"
+    "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
 DROPDOWN_PANEL_OUTLINE_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} border border-gray-200 dark:border-gray-700"
 )
-_DROPDOWN_PANEL_PLAIN_CLASS = f"{_DROPDOWN_PANEL_BASE} shadow-sm"
+_DROPDOWN_PANEL_PLAIN_CLASS = (
+    f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
+)
 
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (
-    "block w-full text-left px-4 py-2 cursor-pointer no-underline "
-    "hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-white "
+    "block w-full text-left px-4 py-2 cursor-pointer no-underline rounded "
+    "hover:bg-gray-100 dark:hover:bg-gray-700 text-body hover:text-heading "
     "focus:bg-gray-100 dark:focus:bg-gray-700 dark:focus:text-white "
     "focus:outline-hidden aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
 )
