@@ -59,22 +59,20 @@ class RegistryTest(unittest.TestCase):
 
 
 class GameStatusSelectorRenderTest(unittest.TestCase):
-    def test_emits_tag_props_and_media(self):
+    def test_emits_listbox_and_patch_config(self):
         from types import SimpleNamespace
-
-        from common.components import GameStatusSelector, collect_media, render
+        from common.components import GameStatusSelector, render
 
         game = SimpleNamespace(id=7, status="f", get_status_display=lambda: "Finished")
-        node = GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
-        html = render(node)
-        self.assertIn("<game-status-selector", html)
-        self.assertIn('game-id="7"', html)
-        self.assertIn('status="f"', html)
-        self.assertIn('csrf="tok"', html)
-        self.assertIn("data-option", html)
+        html = render(
+            GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
+        )
+        self.assertIn('behavior="select"', html)
+        self.assertIn('role="listbox"', html)
+        self.assertIn('data-patch-url="/api/games/7/status"', html)
+        self.assertIn('data-body-key="status"', html)
         self.assertIn('data-value="u"', html)
-        self.assertNotIn("x-data", html)  # no Alpine left
-        self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)
+        self.assertNotIn("<game-status-selector", html)  # element retired
 
 
 class ContractStampingTest(unittest.TestCase):
@@ -138,6 +136,9 @@ class DropdownMenuPanelTest(unittest.TestCase):
         self.assertIn("overflow-hidden", html)  # #46 fix kept
         self.assertIn("<ul", html)
         self.assertIn('role="menuitem"', html)
+        # ul/li carry role=presentation so menu→menuitem ownership isn't interrupted
+        self.assertIn('<ul role="presentation"', html)
+        self.assertIn('<li role="presentation"', html)
 
 
 class DropdownWrapperTest(unittest.TestCase):
@@ -156,13 +157,14 @@ class DropdownWrapperTest(unittest.TestCase):
             items=[DropdownLinkItem("/games/", "Game", current=True)],
         )
         html = render(node)
-        self.assertIn("<dropdown-menu", html)
+        self.assertIn("<drop-down ", html)
         self.assertIn('placement="bottom-center"', html)
+        self.assertIn('behavior="menu"', html)
         self.assertIn('id="navbarMenuLink"', html)
         self.assertIn('aria-haspopup="menu"', html)  # menu semantics from the wrapper
         self.assertIn('role="menu"', html)
         self.assertIn('aria-current="page"', html)
-        self.assertIn("dist/elements/dropdown-menu.js", collect_media(node).js)
+        self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
     def test_button_dropdown_uses_styled_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render
@@ -234,8 +236,8 @@ class DropdownSubmenuTest(unittest.TestCase):
         )
         html = render(node)
         # The submenu trigger is itself a menuitem with a popup, nested in a
-        # right-start <dropdown-menu>.
-        self.assertEqual(html.count("<dropdown-menu"), 2)
+        # right-start <drop-down>.
+        self.assertEqual(html.count("<drop-down "), 2)
         self.assertIn('id="navbarMenuGameLink"', html)
         self.assertIn('role="menuitem"', html)
         self.assertIn('aria-haspopup="menu"', html)
@@ -281,18 +283,67 @@ class DropdownSubmenuTest(unittest.TestCase):
 
 
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
-    def test_emits_tag_and_options(self):
+    def test_emits_listbox_and_numeric_patch(self):
         from types import SimpleNamespace
-
         from common.components import SessionDeviceSelector, render
 
-        session = SimpleNamespace(id=4, device=SimpleNamespace(name="Desktop"))
+        session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
         devices = [
             SimpleNamespace(id=1, name="Desktop"),
             SimpleNamespace(id=2, name="Deck"),
         ]
         html = render(SessionDeviceSelector(session, devices, "tok"))
-        self.assertIn("<session-device-selector", html)
-        self.assertIn('session-id="4"', html)
+        self.assertIn('behavior="select"', html)
+        self.assertIn('data-patch-url="/api/session/4/device"', html)
+        self.assertIn('data-body-key="device_id"', html)
+        self.assertIn('data-numeric="true"', html)
         self.assertIn('data-value="2"', html)
-        self.assertNotIn("x-data", html)
+
+
+class SelectDropdownRenderTest(unittest.TestCase):
+    def test_renders_listbox_with_select_behavior(self):
+        from common.components import SelectDropdown, render
+        from common.components.custom_elements import SelectOption
+
+        html = render(
+            SelectDropdown(
+                current_label="Played",
+                options=[
+                    SelectOption("u", "Unplayed", False),
+                    SelectOption("f", "Finished", True),
+                ],
+                id="game-7-status",
+                patch_url="/api/games/7/status",
+                body_key="status",
+                event="status-changed",
+                csrf="tok",
+            )
+        )
+        self.assertIn('behavior="select"', html)
+        self.assertIn('role="listbox"', html)
+        self.assertIn('role="option"', html)
+        self.assertIn('aria-haspopup="listbox"', html)
+        self.assertIn('data-patch-url="/api/games/7/status"', html)
+        self.assertIn('data-body-key="status"', html)
+        self.assertIn('data-event="status-changed"', html)
+        self.assertIn('data-value="f"', html)
+        self.assertIn('aria-selected="true"', html)  # the current option
+        self.assertIn("data-label", html)  # the toggle's swappable label
+
+    def test_numeric_flag_sets_data_numeric(self):
+        from common.components import SelectDropdown, render
+        from common.components.custom_elements import SelectOption
+
+        html = render(
+            SelectDropdown(
+                current_label="Deck",
+                options=[SelectOption("2", "Deck", True)],
+                id="session-4-device",
+                patch_url="/api/session/4/device",
+                body_key="device_id",
+                event="device-changed",
+                csrf="t",
+                numeric=True,
+            )
+        )
+        self.assertIn('data-numeric="true"', html)

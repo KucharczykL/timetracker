@@ -10,7 +10,7 @@ reader so drift fails ``tsc``.
 
 import warnings
 from dataclasses import dataclass
-from typing import TypedDict, get_type_hints
+from typing import Literal, NamedTuple, TypedDict, get_type_hints
 
 from common.components.core import Child, Element, Fragment, Node
 from common.components.primitives import (
@@ -31,8 +31,8 @@ from common.components.primitives import (
 
 @dataclass(frozen=True)
 class ElementSpec:
-    tag: str  # e.g. "game-status-selector"
-    ts_name: str  # e.g. "GameStatusSelector"
+    tag: str  # e.g. "drop-down"
+    ts_name: str  # e.g. "Dropdown"
     props: type  # a TypedDict subclass
 
 
@@ -94,25 +94,6 @@ def render_props_module() -> str:
 # ── Element prop schemas (registered at import time) ─────────────────────────
 
 
-class GameStatusSelectorProps(TypedDict):
-    game_id: int
-    status: str
-    csrf: str
-
-
-register_element("game-status-selector", "GameStatusSelector", GameStatusSelectorProps)
-
-
-class SessionDeviceSelectorProps(TypedDict):
-    session_id: int
-    csrf: str
-
-
-register_element(
-    "session-device-selector", "SessionDeviceSelector", SessionDeviceSelectorProps
-)
-
-
 class PlayEventRowProps(TypedDict):
     game_id: int
     csrf: str
@@ -135,8 +116,6 @@ register_element(
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
 
-_GameStatusSelector = custom_element_builder("game-status-selector")
-_SessionDeviceSelector = custom_element_builder("session-device-selector")
 _PlayEventRow = custom_element_builder("play-event-row")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
 
@@ -234,19 +213,20 @@ def SelectionFields(
 
 
 # ── Dropdown ─────────────────────────────────────────────────────────────────
-# A generic, accessible dropdown menu. Behavior lives in
-# ts/elements/dropdown-menu.ts (open/close, keyboard nav, submenus); the shared
-# positioning/keyboard core is ts/elements/menu-behavior.ts. Opening is instant
-# (no animation, by design).
+# A generic, accessible dropdown element. Behavior lives in
+# ts/elements/drop-down.ts (open/close, keyboard nav, behavior dispatch); the
+# shared positioning/keyboard core is ts/elements/menu-behavior.ts. Opening is
+# instant (no animation, by design).
 
 
-class DropdownMenuProps(TypedDict):
-    placement: str  # "bottom-start" | "bottom-end" | "right-start"
+class DropdownProps(TypedDict):
+    placement: str  # "bottom-start" | "bottom-center" | "bottom-end" | "right-start"
     submenu: bool  # enables hover-open + arrow-key submenu behavior
+    behavior: str  # registered client behavior: "menu" | "select" | …
 
 
-register_element("dropdown-menu", "DropdownMenu", DropdownMenuProps)
-_DropdownMenu = custom_element_builder("dropdown-menu")
+register_element("drop-down", "Dropdown", DropdownProps)
+_Dropdown = custom_element_builder("drop-down")
 
 
 # Unified dropdown styling — ONE look for every dropdown: white in light mode,
@@ -306,8 +286,8 @@ DROPDOWN_ITEM_CLASS = (
 
 
 # The single panel look for menu-style dropdowns (shadow + border). The old
-# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS survives
-# only for the value selectors (domain.py), which keep their own path until PR 2.
+# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS is now the
+# borderless-shadow variant used by ListboxPanel/SelectDropdown (this file).
 _DROPDOWN_MENU_PANEL_CLASS = _DROPDOWN_PANEL_PLAIN_CLASS
 
 
@@ -388,7 +368,7 @@ def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
     ]
     if current:
         attributes.append(("aria-current", "page"))
-    return Li()[A(attributes)[label]]
+    return Li(role="presentation")[A(attributes)[label]]
 
 
 def DropdownActionItem(
@@ -408,7 +388,7 @@ def DropdownActionItem(
     if disabled:
         item_attributes += [("disabled", ""), ("aria-disabled", "true")]
     item_attributes += list(attributes or [])
-    return Li()[Element("button", item_attributes, [label])]
+    return Li(role="presentation")[Element("button", item_attributes, [label])]
 
 
 def DropdownCheckItem(
@@ -427,7 +407,7 @@ def DropdownCheckItem(
         ("class", DROPDOWN_ITEM_CLASS + " group flex items-center gap-2"),
     ]
     item_attributes += list(attributes or [])
-    return Li()[
+    return Li(role="presentation")[
         Element(
             "button",
             item_attributes,
@@ -444,6 +424,12 @@ def DropdownDivider() -> Node:
     return Li(role="separator", class_="my-1 h-px bg-gray-100 dark:bg-gray-600")
 
 
+# A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
+# as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
+# the caller-facing params so a typo'd literal is caught at check time.
+type DropdownBehaviorName = Literal["menu", "select"]
+
+
 def _assemble(
     trigger: Element,
     target: Element,
@@ -452,13 +438,24 @@ def _assemble(
     placement: str,
     submenu: bool,
     wrapper_class: str,
+    behavior: DropdownBehaviorName = "menu",
+    config: dict[str, str] | None = None,
 ) -> Node:
-    """Stamp both contracts and wire the ``<dropdown-menu>`` element. The single
-    assembly point shared by the public ``Dropdown`` and ``DropdownSubmenu``."""
-    return _DropdownMenu(
+    """Stamp both contracts and wire the <drop-down> element. The single assembly
+    point shared by the public Dropdown and DropdownSubmenu. `config` becomes
+    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
+    # config keys use underscores (e.g. data_patch_url); convert to data-* names
+    # and pass as an explicit attribute list so the dict never spreads onto the
+    # builder's typed attributes/children params.
+    config_attributes = [
+        (key.replace("_", "-"), value) for key, value in (config or {}).items()
+    ]
+    return _Dropdown(
+        config_attributes,
         class_=wrapper_class,
         placement=placement,
         submenu="true" if submenu else "false",
+        behavior=behavior,
     )[
         Fragment(
             _stamp_trigger_contract(trigger, id),
@@ -473,17 +470,13 @@ def Dropdown(
     target_element: Element,
     id: str,
     placement: str = "bottom-start",
+    behavior: DropdownBehaviorName = "menu",
+    config: dict[str, str] | None = None,
 ) -> Node:
-    """Attach a popup (``target_element``) to a ``trigger_element``.
-
-    A generic primitive: it owns only *behavior* — it stamps the JS/ARIA contract
-    onto the caller's two elements and wires the ``<dropdown-menu>`` for open/close,
-    positioning and keyboard nav. The caller owns the *look* of both halves (build
-    them directly, or use ``MenuDropdown`` / ``ButtonDropdown`` /
-    ``SplitButtonDropdown`` for the menu presets). Menu semantics (``role="menu"``,
-    ``aria-haspopup``) are NOT added here — they belong to the menu preset/wrappers,
-    so a non-menu target (listbox, dialog, disclosure) stays clean.
-    """
+    """Attach a popup (target_element) to a trigger_element. Generic primitive:
+    stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
+    client `behavior` (menu by default). Menu semantics live in the menu preset/
+    wrappers, not here."""
     return _assemble(
         trigger_element,
         target_element,
@@ -491,15 +484,13 @@ def Dropdown(
         placement=placement,
         submenu=False,
         # inline-flex (not inline-block) so the trigger stretches to fill the
-        # wrapper — needed when the wrapper is itself a stretched flex child, e.g.
-        # the SplitButtonDropdown group, where the caret must match the primary's
-        # height. Visually identical for a standalone single-trigger dropdown.
-        # FRICTION POINT: this imposes a flex context on every dropdown wrapper to
-        # serve one composition. If it ever fights a future layout, the cleaner
-        # fix is `display: contents` on the wrapper (it leaves the box tree, so the
-        # trigger becomes a direct child of whatever the parent layout is) — at the
-        # cost of the wrapper losing its positioning context and box semantics.
+        # wrapper — needed when the wrapper is itself a stretched flex child (the
+        # SplitButtonDropdown group). Visually identical for a standalone dropdown.
+        # FRICTION POINT: imposes flex on every wrapper; `display: contents` is the
+        # cleaner-but-broader fallback if it ever fights a layout.
         wrapper_class="relative inline-flex",
+        behavior=behavior,
+        config=config,
     )
 
 
@@ -513,7 +504,9 @@ def DropdownMenuPanel(*, items: list[Node], aria_label: str = "") -> Element:
     ]
     if aria_label:
         attributes.append(("aria-label", aria_label))
-    return Element("div", attributes, [Ul()[*items]])
+    # role="presentation" on the list wrappers so the implicit list/listitem roles
+    # don't break the menu→menuitem ownership the role="menu" panel declares.
+    return Element("div", attributes, [Ul(role="presentation")[*items]])
 
 
 def MenuDropdown(
@@ -612,7 +605,7 @@ def DropdownSubmenu(
             ]
         )[Span()[label], Icon("arrowright")]
     )
-    return Li()[
+    return Li(role="presentation")[
         _assemble(
             trigger,
             DropdownMenuPanel(items=items),
@@ -622,3 +615,89 @@ def DropdownSubmenu(
             wrapper_class="relative",
         )
     ]
+
+
+class SelectOption(NamedTuple):
+    value: str
+    label: Child
+    selected: bool  # is this option the current value? → aria-selected
+
+
+# e.g. SelectOption("f", "Finished", True)
+
+
+def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Element:
+    """A single-select listbox target: role="listbox" over role="option" items
+    carrying [data-option][data-value][aria-selected]. The select behavior wires
+    clicks; the core stamps data-menu/hidden/id when it's used as target_element."""
+    attributes: list[tuple[str, str]] = [
+        ("role", "listbox"),
+        ("class", DROPDOWN_PANEL_OUTLINE_CLASS),
+    ]
+    if aria_label:
+        attributes.append(("aria-label", aria_label))
+    option_nodes = [
+        Li(role="presentation")[
+            Element(
+                "button",
+                [
+                    ("type", "button"),
+                    ("role", "option"),
+                    ("data-option", ""),
+                    ("data-value", value),
+                    ("aria-selected", "true" if selected else "false"),
+                    ("tabindex", "-1"),
+                    ("class", DROPDOWN_ITEM_CLASS),
+                ],
+                [label],
+            )
+        ]
+        for value, label, selected in options
+    ]
+    # role="presentation" on the list wrappers keeps the listbox→option ownership
+    # intact (the implicit list/listitem roles would otherwise interrupt it).
+    return Element("div", attributes, [Ul(role="presentation")[*option_nodes]])
+
+
+def SelectDropdown(
+    *,
+    current_label: Child,
+    options: list[SelectOption],
+    id: str,
+    patch_url: str,
+    body_key: str,
+    event: str,
+    csrf: str,
+    numeric: bool = False,
+    placement: str = "bottom-start",
+) -> Node:
+    """A value-selector dropdown: a current-value trigger + a listbox whose picks
+    PATCH the server (via the client `select` behavior). The per-entity specifics
+    (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
+    trigger = Button(
+        attributes=[
+            ("type", "button"),
+            ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"),
+            ("aria-haspopup", "listbox"),
+        ]
+    )[
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            Span(data_label="")[current_label], Icon("arrowdown")
+        ]
+    ]
+    config: dict[str, str] = {
+        "data_patch_url": patch_url,
+        "data_body_key": body_key,
+        "data_event": event,
+        "data_csrf": csrf,
+    }
+    if numeric:
+        config["data_numeric"] = "true"
+    return Dropdown(
+        trigger_element=trigger,
+        target_element=ListboxPanel(options=options),
+        id=id,
+        placement=placement,
+        behavior="select",
+        config=config,
+    )

@@ -292,7 +292,7 @@ def test_add_game_submit_and_create_session_redirects(
     expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
 
 
-# ── Navbar Dropdown (the generic <dropdown-menu> custom element) ──────────────
+# ── Navbar Dropdown (the generic <dropdown> custom element) ──────────────────
 # The navbar's single entity "Menu" (with per-entity submenus) is on every page,
 # so it exercises the real component including the nested-submenu path.
 
@@ -515,3 +515,22 @@ def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
     # would have closed the submenu by now.
     page.wait_for_timeout(300)
     expect(game_submenu).to_be_visible()
+
+
+def test_dropdown_lifecycle_events(authenticated_page: Page, live_server):
+    """Opening/closing a dropdown dispatches dropdown:show / dropdown:hide on the host."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.evaluate(
+        """() => {
+            window.__dd = [];
+            const host = document.querySelector('#navbarMenu').closest('drop-down');
+            host.addEventListener('dropdown:show', () => window.__dd.push('show'));
+            host.addEventListener('dropdown:hide', () => window.__dd.push('hide'));
+        }"""
+    )
+    page.locator("#navbarMenuLink").click()
+    expect(page.locator("#navbarMenu")).to_be_visible()
+    page.locator("#navbarMenuLink").click()
+    expect(page.locator("#navbarMenu")).to_be_hidden()
+    assert page.evaluate("() => window.__dd") == ["show", "hide"]

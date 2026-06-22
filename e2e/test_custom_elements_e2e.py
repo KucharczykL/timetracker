@@ -24,8 +24,14 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    host = page.locator("game-status-selector").first
+    host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
+    # Listen for the cross-widget refresh event the select behavior fires on success.
+    page.evaluate(
+        "() => { window.__refreshed = false; "
+        "document.body.addEventListener('status-changed', () => "
+        "{ window.__refreshed = true; }); }"
+    )
     host.locator("[data-toggle]").click()
     expect(host.locator("[data-menu]")).to_be_visible()
     with page.expect_response(
@@ -33,6 +39,15 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
     ):
         host.locator('[data-option][data-value="f"]').click()
     expect(host.locator("[data-menu]")).to_be_hidden()
+    # Client effects of the pick: toggle label swapped, selection reflected.
+    expect(host.locator("[data-label]")).to_contain_text("Finished")
+    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(host.locator('[data-option][data-value="u"]')).to_have_attribute(
+        "aria-selected", "false"
+    )
+    page.wait_for_function("() => window.__refreshed === true")
     game.refresh_from_db()
     assert game.status == "f"
 
@@ -52,15 +67,55 @@ def test_session_device_selector_patches(authenticated_page: Page, live_server):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    host = page.locator("session-device-selector").first
+    host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
+    page.evaluate(
+        "() => { window.__refreshed = false; "
+        "document.body.addEventListener('device-changed', () => "
+        "{ window.__refreshed = true; }); }"
+    )
     host.locator("[data-toggle]").click()
     with page.expect_response(
         lambda r: "/device" in r.url and r.request.method == "PATCH"
     ):
         host.locator(f'[data-option][data-value="{deck.id}"]').click()
+    expect(host.locator("[data-label]")).to_contain_text("Deck")
+    expect(host.locator(f'[data-option][data-value="{deck.id}"]')).to_have_attribute(
+        "aria-selected", "true"
+    )
+    page.wait_for_function("() => window.__refreshed === true")
     session.refresh_from_db()
     assert session.device_id == deck.id
+
+
+@pytest.mark.django_db
+def test_status_selector_reverts_on_failed_patch(authenticated_page: Page, live_server):
+    """A rejected PATCH (mocked 422) reverts the optimistic label + aria-selected
+    and surfaces an error toast — the server value never silently diverges."""
+    from games.models import Game, Platform
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    game = Game.objects.create(name="Test Game", platform=platform, status="u")
+
+    page = authenticated_page
+    page.route(
+        "**/api/games/**/status",
+        lambda route: route.fulfill(status=422, body=""),
+    )
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    host = page.locator('drop-down[behavior="select"]').first
+    host.locator("[data-toggle]").click()
+    host.locator('[data-option][data-value="f"]').click()
+
+    # The optimistic pick reverts: label back to Unplayed, "f" no longer selected.
+    expect(host.locator("[data-label]")).to_contain_text("Unplayed")
+    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+        "aria-selected", "false"
+    )
+    expect(page.get_by_text("Couldn't save your change")).to_be_visible()
+    game.refresh_from_db()
+    assert game.status == "u"  # server unchanged
 
 
 @pytest.mark.django_db

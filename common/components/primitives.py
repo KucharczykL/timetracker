@@ -1065,7 +1065,7 @@ def SimpleTable(
     # Rows/header are stringified into the table markup, so their components'
     # declared Media would be lost; collect it from the nodes first and attach
     # it to the returned node so Page() still emits each cell component's JS
-    # (e.g. a <game-status-selector> in a cell).
+    # (e.g. a <drop-down> in a cell).
     media = Media()
 
     header_html = ""

@@ -1,7 +1,8 @@
-// Shared behavior for light-DOM dropdown menus: viewport-aware positioning,
-// instant open/close (no animation — by design), ARIA wiring, full keyboard
-// navigation, and single-open coordination. Used both by the <dropdown-menu>
-// custom element and by the PATCH value-selectors (initDropdown).
+// Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
+// positioning, instant open/close (no animation — by design), ARIA wiring, full
+// keyboard navigation, and single-open coordination. Driven by the generic
+// <drop-down> element; type-specific wiring lives in the registered behaviors
+// (menu, select).
 
 export type MenuPlacement =
   | "bottom-start"
@@ -16,7 +17,8 @@ export interface MenuOptions {
   // the PATCH selectors pass "[data-option]" (their options carry no role).
   itemSelector?: string;
   // Force the menu's width to match the toggle's (the value-selectors want this;
-  // content-width menus like the navbar/played-row do not). Bottom-start only.
+  // content-width menus like the navbar/played-row do not). Honored for the
+  // bottom-start/right-start branch (not bottom-end/bottom-center).
   matchToggleWidth?: boolean;
   // A submenu opens (idempotently) on click instead of toggling — it is already
   // hover-opened on mouse, so a click must not toggle it closed.
@@ -204,6 +206,10 @@ export function attachMenu(
     document.dispatchEvent(
       new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
     );
+    // Lifecycle seam for future consumers: behaviors or htmx (hx-on:dropdown:show)
+    // can observe visibility here instead of via a JS callback. These bubble, so a
+    // submenu open also fires dropdown:show on its ancestor <drop-down>s.
+    host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
 
   const close = (): void => {
@@ -213,6 +219,7 @@ export function attachMenu(
     toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
+    host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
   };
 
   const toggleChecked = (item: HTMLElement): void => {
@@ -342,12 +349,14 @@ export function attachMenu(
     if (index >= 0) setActive(index);
   });
 
-  // Pointer activation for role-bearing items (the PATCH selectors' options have
-  // no role and wire their own click handlers, so they are skipped here).
+  // Pointer activation for menu items. Listbox `option`s are owned by the select
+  // behavior's own click handler, so ignore them here explicitly — don't rely on
+  // that handler's stopPropagation to keep them out of this branch.
   menu.addEventListener("click", (event) => {
     const item = (event.target as HTMLElement).closest<HTMLElement>(itemSelector);
     if (!item || !menu.contains(item)) return;
     const role = item.getAttribute("role");
+    if (role === "option") return;
     if (!role || item.getAttribute("aria-haspopup")) return;
     if (role === "menuitemcheckbox" || role === "menuitemradio") {
       toggleChecked(item);

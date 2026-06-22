@@ -169,16 +169,12 @@ window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
   url: RequestInfo | URL,
   options: RequestInit = {}
 ): Promise<Response> {
-  console.log("[fetchWithHtmxTriggers] fetching:", url);
   return fetch(url, options).then(async (response) => {
-    console.log("[fetchWithHtmxTriggers] response status:", response.status);
     const htmxTrigger = response.headers.get("HX-Trigger");
-    console.log("[fetchWithHtmxTriggers] HX-Trigger header:", htmxTrigger);
     if (htmxTrigger) {
       let triggers;
       try {
         triggers = JSON.parse(htmxTrigger);
-        console.log("[fetchWithHtmxTriggers] parsed triggers:", triggers);
       } catch {
         console.warn("[fetchWithHtmxTriggers] failed to parse HX-Trigger JSON");
         return response;
@@ -187,7 +183,6 @@ window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
       const events = Array.isArray(triggers) ? triggers : [triggers];
       events.forEach((triggerObject: Record<string, unknown>) => {
         Object.entries(triggerObject).forEach(([name, detail]) => {
-          console.log("[fetchWithHtmxTriggers] dispatching event:", name, detail);
           let parsedDetail: unknown = detail;
           try {
             parsedDetail = JSON.parse(detail as string);
