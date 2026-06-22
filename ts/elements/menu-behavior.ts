@@ -70,24 +70,36 @@ export function attachMenu(
     const rect = toggle.getBoundingClientRect();
     menu.style.position = "fixed";
     menu.style.overflowY = "auto";
+    menu.style.right = "auto";
+    menu.style.bottom = "auto";
 
-    // Keep the menu within the viewport horizontally (read offsetWidth after any
-    // width has been set above). Prevents a wide menu — or a right-edge submenu
-    // that couldn't flip — from running off-screen.
+    // A transformed/filtered ancestor (e.g. a nested submenu's backdrop-blur
+    // parent panel) becomes the containing block for `position: fixed`, so fixed
+    // coords are relative to it, not the viewport. Pin to (0,0) to measure that
+    // origin, then convert viewport coords by subtracting it.
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    const origin = menu.getBoundingClientRect();
+
     const clampLeft = (left: number): number =>
       Math.max(
         VIEWPORT_MARGIN,
         Math.min(left, window.innerWidth - menu.offsetWidth - VIEWPORT_MARGIN),
       );
+    const setLeft = (viewportLeft: number): void => {
+      menu.style.left = `${clampLeft(viewportLeft) - origin.x}px`;
+    };
+    const setTop = (viewportTop: number): void => {
+      menu.style.top = `${viewportTop - origin.y}px`;
+    };
 
     if (placement === "right-start") {
       const menuWidth = menu.offsetWidth;
       const spaceRight = window.innerWidth - rect.right - VIEWPORT_MARGIN;
       const openLeft = menuWidth > spaceRight && rect.left - VIEWPORT_MARGIN > spaceRight;
-      menu.style.top = `${rect.top}px`;
-      menu.style.bottom = "auto";
-      menu.style.left = `${clampLeft(openLeft ? rect.left - menuWidth : rect.right)}px`;
       menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
+      setLeft(openLeft ? rect.left - menuWidth : rect.right);
+      setTop(rect.top);
       return;
     }
 
@@ -97,29 +109,17 @@ export function attachMenu(
     menu.style.maxHeight = `${Math.max(0, openUp ? spaceAbove : spaceBelow)}px`;
 
     if (placement === "bottom-end") {
-      // Right-align the menu's right edge with the toggle's, keeping the menu's
-      // own width (it is usually wider than a compact toggle).
-      menu.style.left = `${clampLeft(rect.right - menu.offsetWidth)}px`;
+      setLeft(rect.right - menu.offsetWidth);
     } else {
       if (matchToggleWidth) {
-        // Grow to fit the widest option but never narrower than the toggle, so
-        // long option labels don't wrap/clip under the panel's overflow-hidden
-        // (value selectors). Plain width-matching would pin to the toggle.
         menu.style.minWidth = `${rect.width}px`;
         menu.style.width = "max-content";
       }
-      menu.style.left = `${clampLeft(rect.left)}px`;
+      setLeft(rect.left);
     }
-
-    // Set the unused vertical anchor to "auto" (not "") so the inline value wins
-    // over any positioning utility class on the menu.
-    if (openUp) {
-      menu.style.top = "auto";
-      menu.style.bottom = `${window.innerHeight - rect.top}px`;
-    } else {
-      menu.style.bottom = "auto";
-      menu.style.top = `${rect.bottom}px`;
-    }
+    // Anchor with `top` in both directions (not `bottom`) so the single
+    // origin-offset conversion covers the flip-up case too.
+    setTop(openUp ? rect.top - menu.offsetHeight : rect.bottom);
   };
 
   const clearPosition = (): void => {
@@ -128,6 +128,7 @@ export function attachMenu(
       "top",
       "bottom",
       "left",
+      "right",
       "width",
       "min-width",
       "max-height",
@@ -217,17 +218,12 @@ export function attachMenu(
 
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    // A submenu is hover-opened on mouse, so a click must not toggle it closed —
-    // open idempotently. (It closes via outside-click / hover-out / ArrowLeft.)
-    if (isSubmenu) {
-      open();
-      setActive(0);
-    } else if (isOpen()) {
-      close();
-    } else {
-      open();
-      setActive(0);
-    }
+    // No setActive() here: on a mouse click, let hover drive the highlight so the
+    // first item isn't left permanently focus-highlighted. Keyboard open (Arrow
+    // keys, below) focuses the first/last item. A submenu opens idempotently (it
+    // is hover-opened on mouse, so the click must not toggle it closed).
+    if (isSubmenu || !isOpen()) open();
+    else close();
   });
 
   toggle.addEventListener("keydown", (event) => {
@@ -288,6 +284,16 @@ export function attachMenu(
           typeahead(event.key, currentIndex);
         }
     }
+  });
+
+  // Mouse hover drives the active item, so the highlight follows the cursor and
+  // only one item is ever highlighted (own items only — not a nested submenu's).
+  menu.addEventListener("pointerover", (event) => {
+    if (event.pointerType !== "mouse") return;
+    const item = (event.target as HTMLElement).closest<HTMLElement>(itemSelector);
+    if (!item || item.closest("[data-menu]") !== menu) return;
+    const index = enabledItems().indexOf(item);
+    if (index >= 0) setActive(index);
   });
 
   // Pointer activation for role-bearing items (the PATCH selectors' options have

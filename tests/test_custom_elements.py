@@ -133,14 +133,15 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertIn("data-add-play", html)
         self.assertIn("border", html)  # outlined toggle + panel
 
-    def test_unified_panel_light_white_dark_frosted(self):
+    def test_unified_panel_light_white_dark_solid(self):
         from common.components import Dropdown, DropdownLinkItem, render
 
-        # Menu-like (no outline): white in light, frosted in dark, borderless.
+        # Menu-like (no outline): white in light, solid dark in dark, borderless.
+        # No backdrop-filter: it would trap the fixed-positioned submenu flyouts.
         menu = render(Dropdown(label="M", id="m", items=[DropdownLinkItem("/a/", "A")]))
         self.assertIn("bg-white", menu)
-        self.assertIn("dark:bg-gray-800/20", menu)
-        self.assertIn("dark:backdrop-blur-lg", menu)
+        self.assertIn("dark:bg-gray-800", menu)
+        self.assertNotIn("backdrop-blur", menu)
         self.assertIn("overflow-hidden", menu)  # #46 fix kept
         self.assertIn("shadow-sm", menu)
         self.assertNotIn("border-gray-200", menu)  # borderless menu
@@ -151,7 +152,7 @@ class DropdownRenderTest(unittest.TestCase):
                 label="B", id="b", outline=True, items=[DropdownLinkItem("/a/", "A")]
             )
         )
-        self.assertIn("dark:bg-gray-800/20", outlined)  # same frosted-dark panel
+        self.assertIn("dark:bg-gray-800", outlined)  # same solid-dark panel
         self.assertIn("border-gray-200", outlined)  # outlined
 
     def test_submenu_item(self):

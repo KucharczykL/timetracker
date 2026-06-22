@@ -273,9 +273,12 @@ _DROPDOWN_TOGGLE_PLAIN = (
 
 # Panel: white (light) / frosted (dark). Keeps the #46 overflow-hidden. Outline
 # adds a border; otherwise a shadow.
+# NB: no backdrop-filter — it makes the panel the containing block for `fixed`
+# descendants AND clips them by its overflow-hidden, which breaks the submenu
+# flyouts (they must escape to the viewport). Dark mode uses a solid surface.
 _DROPDOWN_PANEL_BASE = (
-    "absolute z-20 w-44 overflow-hidden rounded-lg bg-white dark:bg-gray-800/20 "
-    "dark:backdrop-blur-lg text-sm text-gray-700 dark:text-gray-200"
+    "absolute z-20 w-44 overflow-hidden rounded-lg bg-white dark:bg-gray-800 "
+    "text-sm text-gray-700 dark:text-gray-200"
 )
 DROPDOWN_PANEL_OUTLINE_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} border border-gray-200 dark:border-gray-700"
