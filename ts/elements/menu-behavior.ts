@@ -17,7 +17,8 @@ export interface MenuOptions {
   // the PATCH selectors pass "[data-option]" (their options carry no role).
   itemSelector?: string;
   // Force the menu's width to match the toggle's (the value-selectors want this;
-  // content-width menus like the navbar/played-row do not). Bottom-start only.
+  // content-width menus like the navbar/played-row do not). Honored for the
+  // bottom-start/right-start branch (not bottom-end/bottom-center).
   matchToggleWidth?: boolean;
   // A submenu opens (idempotently) on click instead of toggling — it is already
   // hover-opened on mouse, so a click must not toggle it closed.

@@ -286,8 +286,8 @@ DROPDOWN_ITEM_CLASS = (
 
 
 # The single panel look for menu-style dropdowns (shadow + border). The old
-# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS survives
-# only for the value selectors (domain.py), which keep their own path until PR 2.
+# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS is now the
+# borderless-shadow variant used by ListboxPanel/SelectDropdown (this file).
 _DROPDOWN_MENU_PANEL_CLASS = _DROPDOWN_PANEL_PLAIN_CLASS
 
 
