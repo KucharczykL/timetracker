@@ -59,22 +59,20 @@ class RegistryTest(unittest.TestCase):
 
 
 class GameStatusSelectorRenderTest(unittest.TestCase):
-    def test_emits_tag_props_and_media(self):
+    def test_emits_listbox_and_patch_config(self):
         from types import SimpleNamespace
-
-        from common.components import GameStatusSelector, collect_media, render
+        from common.components import GameStatusSelector, render
 
         game = SimpleNamespace(id=7, status="f", get_status_display=lambda: "Finished")
-        node = GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
-        html = render(node)
-        self.assertIn("<game-status-selector", html)
-        self.assertIn('game-id="7"', html)
-        self.assertIn('status="f"', html)
-        self.assertIn('csrf="tok"', html)
-        self.assertIn("data-option", html)
+        html = render(
+            GameStatusSelector(game, [("u", "Unplayed"), ("f", "Finished")], "tok")
+        )
+        self.assertIn('behavior="select"', html)
+        self.assertIn('role="listbox"', html)
+        self.assertIn('data-patch-url="/api/games/7/status"', html)
+        self.assertIn('data-body-key="status"', html)
         self.assertIn('data-value="u"', html)
-        self.assertNotIn("x-data", html)  # no Alpine left
-        self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)
+        self.assertNotIn("<game-status-selector", html)  # element retired
 
 
 class ContractStampingTest(unittest.TestCase):
@@ -282,21 +280,21 @@ class DropdownSubmenuTest(unittest.TestCase):
 
 
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
-    def test_emits_tag_and_options(self):
+    def test_emits_listbox_and_numeric_patch(self):
         from types import SimpleNamespace
-
         from common.components import SessionDeviceSelector, render
 
-        session = SimpleNamespace(id=4, device=SimpleNamespace(name="Desktop"))
+        session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
         devices = [
             SimpleNamespace(id=1, name="Desktop"),
             SimpleNamespace(id=2, name="Deck"),
         ]
         html = render(SessionDeviceSelector(session, devices, "tok"))
-        self.assertIn("<session-device-selector", html)
-        self.assertIn('session-id="4"', html)
+        self.assertIn('behavior="select"', html)
+        self.assertIn('data-patch-url="/api/session/4/device"', html)
+        self.assertIn('data-body-key="device_id"', html)
+        self.assertIn('data-numeric="true"', html)
         self.assertIn('data-value="2"', html)
-        self.assertNotIn("x-data", html)
 
 
 class SelectDropdownRenderTest(unittest.TestCase):

@@ -31,8 +31,8 @@ from common.components.primitives import (
 
 @dataclass(frozen=True)
 class ElementSpec:
-    tag: str  # e.g. "game-status-selector"
-    ts_name: str  # e.g. "GameStatusSelector"
+    tag: str  # e.g. "drop-down"
+    ts_name: str  # e.g. "Dropdown"
     props: type  # a TypedDict subclass
 
 
@@ -94,25 +94,6 @@ def render_props_module() -> str:
 # ── Element prop schemas (registered at import time) ─────────────────────────
 
 
-class GameStatusSelectorProps(TypedDict):
-    game_id: int
-    status: str
-    csrf: str
-
-
-register_element("game-status-selector", "GameStatusSelector", GameStatusSelectorProps)
-
-
-class SessionDeviceSelectorProps(TypedDict):
-    session_id: int
-    csrf: str
-
-
-register_element(
-    "session-device-selector", "SessionDeviceSelector", SessionDeviceSelectorProps
-)
-
-
 class PlayEventRowProps(TypedDict):
     game_id: int
     csrf: str
@@ -135,8 +116,6 @@ register_element(
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
 
-_GameStatusSelector = custom_element_builder("game-status-selector")
-_SessionDeviceSelector = custom_element_builder("session-device-selector")
 _PlayEventRow = custom_element_builder("play-event-row")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
 

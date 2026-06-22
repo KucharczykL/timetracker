@@ -6,11 +6,6 @@ from django.template.defaultfilters import floatformat
 from django.urls import reverse
 
 from common.components.core import Children, Node, Safe, as_children
-from common.components.custom_elements import (
-    DROPDOWN_ITEM_CLASS,
-    DROPDOWN_PANEL_OUTLINE_CLASS,
-    DROPDOWN_TOGGLE_OUTLINE,
-)
 from common.components.primitives import (
     A,
     Div,
@@ -214,91 +209,47 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-# The value selectors share the unified dropdown look (white light / frosted
-# dark) and are button-like, so they use the outlined toggle + panel. Width still
-# matches the toggle (initDropdown passes matchToggleWidth).
-_SELECTOR_MENU_CLASS = DROPDOWN_PANEL_OUTLINE_CLASS
-_SELECTOR_TOGGLE_CLASS = DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"
-_SELECTOR_OPTION_CLASS = DROPDOWN_ITEM_CLASS
-
-
 def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
-    """Light-DOM custom element; behavior in ts/elements/game-status-selector.ts."""
-    from common.components.core import Element
-    from common.components.custom_elements import _GameStatusSelector
-    from common.components.primitives import Li, Ul
+    """Status value-selector: a listbox that PATCHes /api/games/<id>/status."""
+    from common.components.custom_elements import SelectDropdown, SelectOption
 
-    options = [
-        Li()[
-            Element(
-                "button",
-                [
-                    ("type", "button"),
-                    ("data-option", ""),
-                    ("data-value", str(value)),
-                    ("class", _SELECTOR_OPTION_CLASS),
-                ],
-                GameStatus(status=value, children=[label], display="flex"),
-            )
-        ]
+    options: list[SelectOption] = [
+        (
+            value,
+            GameStatus(status=value, children=[label], display="flex"),
+            value == game.status,
+        )
         for value, label in game_statuses
     ]
-    current_label = Span(data_label="")[
-        GameStatus(
-            status=game.status,
-            children=[game.get_status_display()],
-            display="flex",
-        )
-    ]
-    toggle = Element(
-        "button",
-        [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
-        Span(class_="flex flex-row gap-4 justify-between items-center")[
-            current_label, Icon("arrowdown")
-        ],
+    return SelectDropdown(
+        current_label=GameStatus(
+            status=game.status, children=[game.get_status_display()], display="flex"
+        ),
+        options=options,
+        id=f"game-{game.id}-status",
+        patch_url=f"/api/games/{game.id}/status",
+        body_key="status",
+        event="status-changed",
+        csrf=csrf_token,
     )
-    menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
-    dropdown = Div(
-        data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
-    )[toggle, menu]
-    return _GameStatusSelector(game_id=game.id, status=game.status, csrf=csrf_token)[
-        Div(class_="flex gap-2 items-center")[dropdown]
-    ]
 
 
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
-    """Light-DOM custom element; behavior in ts/elements/session-device-selector.ts."""
-    from common.components.core import Element
-    from common.components.custom_elements import _SessionDeviceSelector
-    from common.components.primitives import Li, Ul
+    """Device value-selector: a listbox that PATCHes /api/session/<id>/device."""
+    from common.components.custom_elements import SelectDropdown, SelectOption
 
-    current_name = session.device.name if session.device else "Unknown"
-    options = [
-        Li()[
-            Element(
-                "button",
-                [
-                    ("type", "button"),
-                    ("data-option", ""),
-                    ("data-value", str(device.id)),
-                    ("class", _SELECTOR_OPTION_CLASS),
-                ],
-                children=[device.name],
-            )
-        ]
+    current = session.device.id if session.device else None
+    options: list[SelectOption] = [
+        (str(device.id), device.name, device.id == current)
         for device in session_devices
     ]
-    toggle = Element(
-        "button",
-        [("type", "button"), ("data-toggle", ""), ("class", _SELECTOR_TOGGLE_CLASS)],
-        Span(class_="flex flex-row gap-4 justify-between items-center")[
-            Span(data_label="")[current_name], Icon("arrowdown")
-        ],
+    return SelectDropdown(
+        current_label=session.device.name if session.device else "Unknown",
+        options=options,
+        id=f"session-{session.id}-device",
+        patch_url=f"/api/session/{session.id}/device",
+        body_key="device_id",
+        event="device-changed",
+        csrf=csrf_token,
+        numeric=True,
     )
-    menu = Div(data_menu="", hidden=True, class_=_SELECTOR_MENU_CLASS)[Ul()[*options]]
-    dropdown = Div(
-        data_dropdown="", class_="inline-flex rounded-md shadow-2xs relative"
-    )[toggle, menu]
-    return _SessionDeviceSelector(session_id=session.id, csrf=csrf_token)[
-        Div(class_="flex gap-2 items-center")[dropdown]
-    ]
