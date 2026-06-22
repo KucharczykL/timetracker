@@ -17,6 +17,12 @@ export interface MenuOptions {
   // A submenu opens (idempotently) on click instead of toggling — it is already
   // hover-opened on mouse, so a click must not toggle it closed.
   submenu?: boolean;
+  // Element whose edges anchor the menu *horizontally* (right-start only),
+  // instead of the toggle. A submenu passes its parent panel so the flyout sits
+  // flush at the panel's edge regardless of the toggle row's padding/margin —
+  // the toggle still anchors the *vertical* position (it aligns with the hovered
+  // row). Defaults to the toggle.
+  horizontalAnchor?: HTMLElement;
 }
 
 export interface MenuController {
@@ -51,6 +57,7 @@ export function attachMenu(
     '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
   const matchToggleWidth = options.matchToggleWidth ?? false;
   const isSubmenu = options.submenu ?? false;
+  const horizontalAnchor = options.horizontalAnchor ?? toggle;
 
   // Items of *this* menu only — never those of a nested submenu (whose closest
   // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
@@ -94,11 +101,15 @@ export function attachMenu(
     };
 
     if (placement === "right-start") {
+      // Horizontal anchor (panel edge for a submenu) governs left/right and the
+      // flip decision; the toggle still governs the vertical position so the
+      // flyout lines up with the hovered row, not the panel top.
+      const anchor = horizontalAnchor.getBoundingClientRect();
       const menuWidth = menu.offsetWidth;
-      const spaceRight = window.innerWidth - rect.right - VIEWPORT_MARGIN;
-      const openLeft = menuWidth > spaceRight && rect.left - VIEWPORT_MARGIN > spaceRight;
+      const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
+      const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
       menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
-      setLeft(openLeft ? rect.left - menuWidth : rect.right);
+      setLeft(openLeft ? anchor.left - menuWidth : anchor.right);
       setTop(rect.top);
       return;
     }

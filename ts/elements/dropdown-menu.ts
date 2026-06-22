@@ -24,9 +24,16 @@ class DropdownMenuElement extends HTMLElement {
     const menu = ownChild(this, "[data-menu]");
     if (!toggle || !menu) return;
 
+    // A submenu's flyout anchors horizontally to the parent panel's edge (the
+    // nearest [data-menu] ancestor), so panel padding never insets it; non-submenu
+    // menus fall back to the toggle (horizontalAnchor omitted).
+    const parentPanel = props.submenu
+      ? (this.closest("[data-menu]") as HTMLElement | null)
+      : null;
     const controller = attachMenu(this, toggle, menu, {
       placement: props.placement as MenuPlacement,
       submenu: props.submenu,
+      ...(parentPanel ? { horizontalAnchor: parentPanel } : {}),
     });
     this.controller = controller;
 

@@ -419,16 +419,21 @@ def test_navbar_submenu_keyboard_open_close(authenticated_page: Page, live_serve
 
 
 def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_server):
-    """Every entity submenu opens flush at its parent toggle's right edge, all at
-    the same x. Regression: opening a low submenu briefly grew a scrollbar in the
-    parent menu (the panel is `absolute` until positionMenu makes it `fixed`),
-    shifting the toggle ~15px and anchoring Purchase/Session flyouts over the
-    parent. Use a wide viewport so the flyouts open to the right (as on the wide
-    screen where the bug showed) rather than flipping left for want of room."""
+    """Every entity submenu opens flush at the parent *panel's* right edge, all at
+    the same x. Two regressions guarded: (1) opening a low submenu briefly grew a
+    scrollbar in the parent menu, shifting the anchor ~15px and overlapping the
+    parent (positionMenu now pins `fixed` before unhide); (2) panel padding inset
+    the toggle from the panel edge, so a toggle-anchored flyout opened *inside*
+    the padded panel — the flyout anchors to the parent panel's edge, not the
+    toggle's, so any row padding/margin leaves it flush. Use a wide viewport so
+    the flyouts open to the right rather than flipping left for want of room."""
     page = authenticated_page
     page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     page.locator("#navbarMenuLink").click()
+    panel_box = page.locator("#navbarMenu").bounding_box()
+    assert panel_box
+    panel_right = round(panel_box["x"] + panel_box["width"])
 
     rows = []
     for entity in ["Device", "Game", "Platform", "PlayEvent", "Purchase", "Session"]:
@@ -437,14 +442,15 @@ def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_serv
         toggle.hover()
         expect(submenu).to_be_visible()
         sub_box = submenu.bounding_box()
-        tog_box = toggle.bounding_box()
-        assert sub_box and tog_box  # both visible, so boxes are present
-        rows.append((entity, round(sub_box["x"]), round(tog_box["x"] + tog_box["width"])))
+        assert sub_box  # visible, so the box is present
+        rows.append((entity, round(sub_box["x"]), panel_right))
 
     lefts = [x for _, x, _ in rows]
     assert max(lefts) - min(lefts) <= 1, f"submenu x drift between items: {rows}"
-    for entity, x, toggle_right in rows:
-        assert abs(x - toggle_right) <= 1, f"{entity} not flush: x={x} right={toggle_right}"
+    for entity, x, panel_right_edge in rows:
+        assert abs(x - panel_right_edge) <= 1, (
+            f"{entity} not flush to panel edge: x={x} panel_right={panel_right_edge}"
+        )
 
 
 def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):

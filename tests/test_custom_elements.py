@@ -137,26 +137,25 @@ class DropdownRenderTest(unittest.TestCase):
         from common.components import Dropdown, DropdownLinkItem, render
 
         # Menu-like (no outline): white in light, frosted (translucent + blur) in
-        # dark, borderless. The blur sits on a `::before` layer (`before:` /
-        # `dark:before:backdrop-blur-lg`), never the panel — a filtered panel
+        # dark. The blur sits on a `::before` layer (`before:` /
+        # `dark:before:backdrop-blur-xl`), never the panel — a filtered panel
         # would become the containing block for the `fixed` submenu flyouts and
         # mis-anchor them.
         menu = render(Dropdown(label="M", id="m", items=[DropdownLinkItem("/a/", "A")]))
         self.assertIn("bg-white", menu)
-        self.assertIn("dark:bg-gray-800/20", menu)  # translucent frosted surface
-        self.assertIn("dark:before:backdrop-blur-lg", menu)  # blur on ::before only
+        self.assertIn("dark:bg-gray-800/40", menu)  # translucent frosted surface
+        self.assertIn("dark:before:backdrop-blur-xl", menu)  # blur on ::before only
         self.assertNotIn("dark:backdrop-blur", menu)  # never on the panel itself
         self.assertIn("overflow-hidden", menu)  # #46 fix kept
         self.assertIn("shadow-sm", menu)
-        self.assertNotIn("border-gray-200", menu)  # borderless menu
 
-        # Button-like (outline): same panel + a border on toggle and panel.
+        # Button-like (outline): same frosted panel, no shadow.
         outlined = render(
             Dropdown(
                 label="B", id="b", outline=True, items=[DropdownLinkItem("/a/", "A")]
             )
         )
-        self.assertIn("dark:bg-gray-800/20", outlined)  # same frosted panel
+        self.assertIn("dark:bg-gray-800/40", outlined)  # same frosted panel
         self.assertIn("border-gray-200", outlined)  # outlined
 
     def test_submenu_item(self):
