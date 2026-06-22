@@ -24,6 +24,12 @@ registerBehavior("select", {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         const rawValue = option.dataset.value ?? "";
+        if (numeric && Number.isNaN(Number(rawValue))) {
+          // Don't send {key: NaN} (serializes to null) — abort the malformed PATCH.
+          console.error("select: non-numeric data-value", rawValue, patchUrl);
+          controller.close();
+          return;
+        }
         // Snapshot the pre-click UI so a failed PATCH can revert — the update
         // below is optimistic (applied before the server confirms).
         const previousLabelHtml = label?.innerHTML;
