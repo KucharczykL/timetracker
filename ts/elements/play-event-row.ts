@@ -1,7 +1,7 @@
 import { readPlayEventRowProps } from "../generated/props.js";
 
 // The "Played N times" split button. Open/close + positioning come from the
-// inner <dropdown-menu> (menu-behavior.ts); this element owns only the
+// inner <drop-down> (menu-behavior.ts); this element owns only the
 // "Played +1" action: optimistic count bump + POST + refresh of the Play
 // Events section. The menu auto-closes on the click (attachMenu), so there is
 // no toggle/outside-click code here anymore.

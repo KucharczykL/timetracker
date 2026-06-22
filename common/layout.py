@@ -490,7 +490,7 @@ def Page(
     )
 
     # Collect JS from both the page body and the navbar (the navbar owns the
-    # <dropdown-menu> custom element, so its media must be emitted too).
+    # <drop-down> custom element, so its media must be emitted too).
     media = collect_media(content) + collect_media(navbar)
     collected_scripts = "".join(
         [str(ModuleScript(name)) for name in media.js]

@@ -1,7 +1,8 @@
-// Shared behavior for light-DOM dropdown menus: viewport-aware positioning,
-// instant open/close (no animation — by design), ARIA wiring, full keyboard
-// navigation, and single-open coordination. Used both by the <dropdown-menu>
-// custom element and by the PATCH value-selectors (initDropdown).
+// Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
+// positioning, instant open/close (no animation — by design), ARIA wiring, full
+// keyboard navigation, and single-open coordination. Driven by the generic
+// <drop-down> element; type-specific wiring lives in the registered behaviors
+// (menu, select).
 
 export type MenuPlacement =
   | "bottom-start"
