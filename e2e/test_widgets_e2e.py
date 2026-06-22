@@ -358,6 +358,66 @@ def test_navbar_menu_keyboard_navigation(authenticated_page: Page, live_server):
     expect(page.locator("#navbarMenuSession")).to_be_visible()
 
 
+def test_navbar_menu_arrow_roving(authenticated_page: Page, live_server):
+    """ArrowDown/Up rove the parent items (wrapping) and never auto-open a submenu."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    menu = page.locator("#navbarMenu")
+
+    def focused(name: str):
+        return menu.get_by_role("menuitem", name=name, exact=True)
+
+    page.locator("#navbarMenuLink").focus()
+    page.keyboard.press("ArrowDown")  # open, Device focused
+    expect(focused("Device")).to_be_focused()
+
+    page.keyboard.press("ArrowDown")  # -> Game, must NOT open Device's submenu
+    expect(focused("Game")).to_be_focused()
+    expect(page.locator("#navbarMenuDevice")).to_be_hidden()
+    expect(page.locator("#navbarMenuGame")).to_be_hidden()
+
+    page.keyboard.press("ArrowDown")  # -> Platform
+    expect(focused("Platform")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # -> Game
+    expect(focused("Game")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # -> Device (first)
+    expect(focused("Device")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # wrap -> Session (last)
+    expect(focused("Session")).to_be_focused()
+    page.keyboard.press("ArrowDown")  # wrap -> Device
+    expect(focused("Device")).to_be_focused()
+
+
+def test_navbar_submenu_keyboard_open_close(authenticated_page: Page, live_server):
+    """ArrowRight / Enter open a submenu and focus its first item; ArrowLeft closes
+    and returns focus to the parent item."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    menu = page.locator("#navbarMenu")
+    game_sub = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").focus()
+    page.keyboard.press("ArrowDown")  # Device
+    page.keyboard.press("ArrowDown")  # Game
+    expect(menu.get_by_role("menuitem", name="Game", exact=True)).to_be_focused()
+
+    page.keyboard.press("ArrowRight")  # open Game submenu, focus its first item
+    expect(game_sub).to_be_visible()
+    expect(
+        game_sub.get_by_role("menuitem", name="Add game", exact=True)
+    ).to_be_focused()
+
+    page.keyboard.press("ArrowLeft")  # close, refocus the Game parent item
+    expect(game_sub).to_be_hidden()
+    expect(page.locator("#navbarMenuGameLink")).to_be_focused()
+
+    page.keyboard.press("Enter")  # Enter also opens + focuses the first item
+    expect(game_sub).to_be_visible()
+    expect(
+        game_sub.get_by_role("menuitem", name="Add game", exact=True)
+    ).to_be_focused()
+
+
 def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
     """On touch, tapping a submenu open must keep it open. Regression: hover was
     wired to pointerenter/pointerleave, and pointerleave fires on finger lift, so

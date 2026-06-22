@@ -218,20 +218,28 @@ export function attachMenu(
 
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    // No setActive() here: on a mouse click, let hover drive the highlight so the
-    // first item isn't left permanently focus-highlighted. Keyboard open (Arrow
-    // keys, below) focuses the first/last item. A submenu opens idempotently (it
-    // is hover-opened on mouse, so the click must not toggle it closed).
-    if (isSubmenu || !isOpen()) open();
-    else close();
+    // Keyboard/synthetic clicks (Enter/Space, or activate()'s item.click()) report
+    // detail === 0 and focus the first item; a real mouse click (detail >= 1) opens
+    // without grabbing focus so hover drives the single highlight. A submenu opens
+    // idempotently (hover-opened on mouse, so the click must not toggle it closed).
+    const fromKeyboard = event.detail === 0;
+    if (isSubmenu || !isOpen()) {
+      open();
+      if (fromKeyboard) setActive(0);
+    } else {
+      close();
+    }
   });
 
   toggle.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") {
+    // Arrow open/roving applies to a top-level toggle only. A submenu toggle is a
+    // menuitem in its parent menu, so ArrowDown/Up must bubble up to the parent's
+    // roving (it opens via ArrowRight / Enter — handled elsewhere), not open here.
+    if (!isSubmenu && event.key === "ArrowDown") {
       event.preventDefault();
       if (!isOpen()) open();
       setActive(0);
-    } else if (event.key === "ArrowUp") {
+    } else if (!isSubmenu && event.key === "ArrowUp") {
       event.preventDefault();
       if (!isOpen()) open();
       setActive(-1);
