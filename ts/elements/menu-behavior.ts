@@ -347,12 +347,14 @@ export function attachMenu(
     if (index >= 0) setActive(index);
   });
 
-  // Pointer activation for role-bearing items (the PATCH selectors' options have
-  // no role and wire their own click handlers, so they are skipped here).
+  // Pointer activation for menu items. Listbox `option`s are owned by the select
+  // behavior's own click handler, so ignore them here explicitly — don't rely on
+  // that handler's stopPropagation to keep them out of this branch.
   menu.addEventListener("click", (event) => {
     const item = (event.target as HTMLElement).closest<HTMLElement>(itemSelector);
     if (!item || !menu.contains(item)) return;
     const role = item.getAttribute("role");
+    if (role === "option") return;
     if (!role || item.getAttribute("aria-haspopup")) return;
     if (role === "menuitemcheckbox" || role === "menuitemradio") {
       toggleChecked(item);
