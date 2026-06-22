@@ -67,13 +67,22 @@ export function attachMenu(
     menu.style.position = "fixed";
     menu.style.overflowY = "auto";
 
+    // Keep the menu within the viewport horizontally (read offsetWidth after any
+    // width has been set above). Prevents a wide menu — or a right-edge submenu
+    // that couldn't flip — from running off-screen.
+    const clampLeft = (left: number): number =>
+      Math.max(
+        VIEWPORT_MARGIN,
+        Math.min(left, window.innerWidth - menu.offsetWidth - VIEWPORT_MARGIN),
+      );
+
     if (placement === "right-start") {
       const menuWidth = menu.offsetWidth;
       const spaceRight = window.innerWidth - rect.right - VIEWPORT_MARGIN;
       const openLeft = menuWidth > spaceRight && rect.left - VIEWPORT_MARGIN > spaceRight;
       menu.style.top = `${rect.top}px`;
       menu.style.bottom = "auto";
-      menu.style.left = `${openLeft ? rect.left - menuWidth : rect.right}px`;
+      menu.style.left = `${clampLeft(openLeft ? rect.left - menuWidth : rect.right)}px`;
       menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
       return;
     }
@@ -86,9 +95,8 @@ export function attachMenu(
     if (placement === "bottom-end") {
       // Right-align the menu's right edge with the toggle's, keeping the menu's
       // own width (it is usually wider than a compact toggle).
-      menu.style.left = `${Math.max(VIEWPORT_MARGIN, rect.right - menu.offsetWidth)}px`;
+      menu.style.left = `${clampLeft(rect.right - menu.offsetWidth)}px`;
     } else {
-      menu.style.left = `${rect.left}px`;
       if (matchToggleWidth) {
         // Grow to fit the widest option but never narrower than the toggle, so
         // long option labels don't wrap/clip under the panel's overflow-hidden
@@ -96,6 +104,7 @@ export function attachMenu(
         menu.style.minWidth = `${rect.width}px`;
         menu.style.width = "max-content";
       }
+      menu.style.left = `${clampLeft(rect.left)}px`;
     }
 
     // Set the unused vertical anchor to "auto" (not "") so the inline value wins
