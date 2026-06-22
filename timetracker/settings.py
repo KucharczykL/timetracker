@@ -174,6 +174,10 @@ LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = config("TZ", default="Europe/Prague" if DEBUG else "UTC")
 
+# Default currency for new purchases when none is entered, and FX conversion
+# target for background price conversion (issues #88/#89).
+DEFAULT_CURRENCY = config("DEFAULT_CURRENCY", default="CZK")
+
 USE_I18N = True
 
 USE_TZ = True

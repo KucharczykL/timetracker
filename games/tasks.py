@@ -1,14 +1,13 @@
 import logging
 
 import requests
+from django.conf import settings
 from django.db import models
 from games.models import ExchangeRate, Purchase
 
 logger = logging.getLogger("games")
 
-# fixme: save preferred currency in user model
-currency_to = "CZK"
-currency_to = currency_to.upper()
+currency_to = settings.DEFAULT_CURRENCY.upper()
 
 
 def _get_exchange_rate(currency_from, currency_to, year):
