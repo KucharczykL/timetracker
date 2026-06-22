@@ -1,3 +1,5 @@
+import { attachMenu } from "./menu-behavior.js";
+
 export interface DropdownConfig {
   patchUrl: string;
   bodyKey: string; // server field name, e.g. "status" or "device_id"
@@ -6,7 +8,9 @@ export interface DropdownConfig {
   numericValue?: boolean; // parse the option value as a number
 }
 
-// Wires a light-DOM value-selector dropdown that lives inside `host`.
+// Wires a light-DOM value-selector dropdown that lives inside `host`. Open/close,
+// positioning (#39) and keyboard navigation come from the shared `attachMenu`
+// helper; this only adds the PATCH-on-select behavior unique to the selectors.
 // Markup hooks (rendered server-side): [data-toggle], [data-menu],
 // [data-label], and one or more [data-option][data-value].
 export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
@@ -15,78 +19,7 @@ export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
   const label = host.querySelector<HTMLElement>("[data-label]");
   if (!toggle || !menu || !label) return;
 
-  // The menu lives inside the table's `overflow-x-auto` wrapper, which forces
-  // `overflow-y: auto` and clips an absolutely-positioned menu that extends
-  // past a short table (issue #39). Position it `fixed` while open so it
-  // escapes the clipping ancestor, anchored to the toggle and bounded to the
-  // viewport (flipping up when there is more room above).
-  const VIEWPORT_MARGIN = 8;
-
-  const positionMenu = (): void => {
-    const rect = toggle.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
-    const spaceAbove = rect.top - VIEWPORT_MARGIN;
-    const openUp = menu.scrollHeight > spaceBelow && spaceAbove > spaceBelow;
-
-    menu.style.position = "fixed";
-    menu.style.left = `${rect.left}px`;
-    menu.style.width = `${rect.width}px`;
-    menu.style.maxHeight = `${Math.max(0, openUp ? spaceAbove : spaceBelow)}px`;
-    menu.style.overflowY = "auto";
-    // Set the unused anchor to "auto" (not "") so this inline value overrides
-    // the menu's `top-[105%]` utility class; clearing it to "" would let the
-    // class reassert top:105% and collapse the fixed menu off-screen.
-    if (openUp) {
-      menu.style.top = "auto";
-      menu.style.bottom = `${window.innerHeight - rect.top}px`;
-    } else {
-      menu.style.bottom = "auto";
-      menu.style.top = `${rect.bottom}px`;
-    }
-  };
-
-  const clearPosition = (): void => {
-    for (const property of [
-      "position",
-      "top",
-      "bottom",
-      "left",
-      "width",
-      "max-height",
-      "overflow-y",
-    ]) {
-      menu.style.removeProperty(property);
-    }
-  };
-
-  const reposition = (): void => {
-    if (!menu.hidden) positionMenu();
-  };
-
-  const open = (): void => {
-    menu.hidden = false;
-    positionMenu();
-    // Capture-phase scroll listener so scrolling any ancestor (incl. the table
-    // wrapper) keeps the fixed menu anchored to its toggle.
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-  };
-
-  const close = (): void => {
-    menu.hidden = true;
-    clearPosition();
-    window.removeEventListener("scroll", reposition, true);
-    window.removeEventListener("resize", reposition);
-  };
-
-  toggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (menu.hidden) open();
-    else close();
-  });
-  document.addEventListener("click", (event) => {
-    if (!host.contains(event.target as Node)) close();
-  });
+  const controller = attachMenu(host, toggle, menu, { itemSelector: "[data-option]" });
 
   host.querySelectorAll<HTMLElement>("[data-option]").forEach((option) => {
     option.addEventListener("click", (event) => {
@@ -94,7 +27,7 @@ export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
       event.stopPropagation();
       const raw = option.dataset.value ?? "";
       label.innerHTML = option.innerHTML;
-      close();
+      controller.close();
       const body: Record<string, unknown> = {
         [config.bodyKey]: config.numericValue ? Number(raw) : raw,
       };

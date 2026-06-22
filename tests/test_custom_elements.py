@@ -77,6 +77,105 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
         self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)
 
 
+class DropdownRenderTest(unittest.TestCase):
+    def test_navbar_dropdown_emits_tag_panel_and_fix(self):
+        from common.components import Dropdown, DropdownLinkItem, collect_media, render
+
+        node = Dropdown(
+            label="New",
+            id="dropdownNavbarNew",
+            placement="bottom-end",
+            items=[
+                DropdownLinkItem("/games/add/", "Game"),
+                DropdownLinkItem("/sessions/add/", "Session", current=True),
+            ],
+        )
+        html = render(node)
+        self.assertIn("<dropdown-menu", html)
+        self.assertIn('placement="bottom-end"', html)
+        self.assertIn('submenu="false"', html)
+        self.assertIn('id="dropdownNavbarNewLink"', html)
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('aria-controls="dropdownNavbarNew"', html)
+        self.assertIn('role="menu"', html)
+        self.assertIn("hidden", html)
+        self.assertIn('role="menuitem"', html)
+        self.assertIn('aria-current="page"', html)
+        # #46 fix: panel clips its corners and the list has no vertical padding.
+        self.assertIn("overflow-hidden", html)
+        self.assertNotIn('<ul class="py-2', html)
+        self.assertIn("dist/elements/dropdown-menu.js", collect_media(node).js)
+
+    def test_split_button_primary_slot(self):
+        from common.components import (
+            Dropdown,
+            DropdownActionItem,
+            DropdownLinkItem,
+            Span,
+            render,
+        )
+
+        primary = Span(class_="rounded-s-lg")["Played 3 times"]
+        node = Dropdown(
+            label="",
+            id="played",
+            variant="button",
+            primary=primary,
+            items=[
+                DropdownLinkItem("/add/", "Add playthrough…"),
+                DropdownActionItem("Played +1", attributes=[("data-add-play", "")]),
+            ],
+        )
+        html = render(node)
+        self.assertIn("rounded-s-lg", html)
+        self.assertIn("rounded-e-lg", html)  # toggle gains it in split mode
+        self.assertIn("inline-flex items-stretch", html)
+        self.assertIn("data-add-play", html)
+
+    def test_nested_submenu_item(self):
+        from common.components import Dropdown, DropdownLinkItem, render
+
+        submenu = Dropdown(
+            label="More",
+            id="more",
+            placement="right-start",
+            submenu=True,
+            items=[DropdownLinkItem("/x/", "X")],
+        )
+        node = Dropdown(
+            label="Manage",
+            id="manage",
+            items=[DropdownLinkItem("/games/", "Games"), submenu],
+        )
+        html = render(node)
+        self.assertEqual(html.count("<dropdown-menu"), 2)
+        self.assertIn('placement="right-start"', html)
+        self.assertIn('submenu="true"', html)
+
+    def test_check_and_divider_items(self):
+        from common.components import (
+            Dropdown,
+            DropdownCheckItem,
+            DropdownDivider,
+            render,
+        )
+
+        node = Dropdown(
+            label="Filter",
+            id="filter",
+            items=[
+                DropdownCheckItem("Emulated", checked=True),
+                DropdownDivider(),
+                DropdownCheckItem("Mastered", checked=False),
+            ],
+        )
+        html = render(node)
+        self.assertIn('role="menuitemcheckbox"', html)
+        self.assertIn('aria-checked="true"', html)
+        self.assertIn('aria-checked="false"', html)
+        self.assertIn('role="separator"', html)
+
+
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
     def test_emits_tag_and_options(self):
         from types import SimpleNamespace

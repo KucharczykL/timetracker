@@ -220,6 +220,180 @@ def NavbarPlaytime(
     )
 
 
+# Navbar-specific inline SVGs (hamburger + theme sun/moon). Trusted markup, so
+# they live in Safe() snippets rather than the icon-file system.
+_HAMBURGER_SVG = (
+    '<svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
+    'fill="none" viewBox="0 0 17 14"><path stroke="currentColor" '
+    'stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
+    'd="M1 1h15M1 7h15M1 13h15" /></svg>'
+)
+_THEME_TOGGLE_SVGS = (
+    '<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" '
+    'viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path '
+    'd="M3.32031 11.6835C3.32031 16.6541 7.34975 20.6835 12.3203 20.6835C16.1075 '
+    "20.6835 19.3483 18.3443 20.6768 15.032C19.6402 15.4486 18.5059 15.6834 "
+    "17.3203 15.6834C12.3497 15.6834 8.32031 11.654 8.32031 6.68342C8.32031 "
+    "5.50338 8.55165 4.36259 8.96453 3.32996C5.65605 4.66028 3.32031 7.89912 "
+    '3.32031 11.6835Z" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    '<svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" '
+    'viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path '
+    'd="M12 3V4M12 20V21M4 12H3M6.31412 6.31412L5.5 5.5M17.6859 6.31412L18.5 '
+    "5.5M6.31412 17.69L5.5 18.5001M17.6859 17.69L18.5 18.5001M21 12H20M16 "
+    "12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 "
+    '8 12 8C14.2091 8 16 9.79086 16 12Z" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+)
+
+# Shared classes for the plain navbar entries (Home/Stats/Log out).
+_NAV_LINK_CLASS = (
+    "block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 "
+    "md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 "
+    "dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 "
+    "dark:hover:text-white md:dark:hover:bg-transparent"
+)
+
+
+def NavbarMenu(
+    *,
+    today_played: str,
+    last_7_played: str,
+    today_url: str | None,
+    last_7_url: str | None,
+    current_year: int,
+    csrf_token: str,
+) -> "Node":
+    """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
+    from common.components import (
+        A,
+        Div,
+        Dropdown,
+        DropdownLinkItem,
+        Element,
+        Li,
+        Safe,
+        Ul,
+    )
+
+    theme_toggle = Li(class_="flex items-center")[
+        Element(
+            "button",
+            [
+                ("id", "theme-toggle"),
+                ("type", "button"),
+                (
+                    "class",
+                    "p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 "
+                    "dark:hover:bg-gray-700 focus:outline-hidden focus:ring-4 "
+                    "focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg "
+                    "text-sm hover:cursor-pointer",
+                ),
+            ],
+            Safe(_THEME_TOGGLE_SVGS),
+        )
+    ]
+
+    home = Li()[
+        A(
+            [
+                ("href", reverse("games:index")),
+                (
+                    "class",
+                    "block py-2 px-3 text-white bg-blue-700 rounded-sm "
+                    "md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 "
+                    "dark:bg-blue-600 md:dark:bg-transparent",
+                ),
+                ("aria-current", "page"),
+            ]
+        )["Home"]
+    ]
+
+    new_menu = Li()[
+        Dropdown(
+            label="New",
+            id="dropdownNavbarNew",
+            placement="bottom-end",
+            items=[
+                DropdownLinkItem(reverse("games:add_device"), "Device"),
+                DropdownLinkItem(reverse("games:add_game"), "Game"),
+                DropdownLinkItem(reverse("games:add_platform"), "Platform"),
+                DropdownLinkItem(reverse("games:add_purchase"), "Purchase"),
+                DropdownLinkItem(reverse("games:add_session"), "Session"),
+            ],
+        )
+    ]
+
+    manage_menu = Li()[
+        Dropdown(
+            label="Manage",
+            id="dropdownNavbarManage",
+            placement="bottom-end",
+            items=[
+                DropdownLinkItem(reverse("games:list_devices"), "Devices"),
+                DropdownLinkItem(reverse("games:list_games"), "Games"),
+                DropdownLinkItem(reverse("games:list_platforms"), "Platforms"),
+                DropdownLinkItem(reverse("games:list_playevents"), "Play events"),
+                DropdownLinkItem(reverse("games:list_purchases"), "Purchases"),
+                DropdownLinkItem(reverse("games:list_sessions"), "Sessions"),
+            ],
+        )
+    ]
+
+    stats = Li()[
+        A(
+            [
+                ("href", reverse("games:stats_by_year", args=[current_year])),
+                ("class", _NAV_LINK_CLASS),
+            ]
+        )["Stats"]
+    ]
+
+    logout = Li()[
+        Element(
+            "form",
+            [("method", "post"), ("action", reverse("logout"))],
+            [
+                Element(
+                    "input",
+                    [
+                        ("type", "hidden"),
+                        ("name", "csrfmiddlewaretoken"),
+                        ("value", csrf_token),
+                    ],
+                ),
+                Element(
+                    "button",
+                    [("type", "submit"), ("class", _NAV_LINK_CLASS)],
+                    ["Log out"],
+                ),
+            ],
+        )
+    ]
+
+    return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
+        Ul(
+            class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
+            "border-gray-100 rounded-lg bg-gray-50 md:space-x-8 rtl:space-x-reverse "
+            "md:flex-row md:mt-0 md:border-0 md:bg-white dark:bg-gray-800 "
+            "md:dark:bg-gray-900 dark:border-gray-700"
+        )[
+            theme_toggle,
+            NavbarPlaytime(
+                today_played,
+                last_7_played,
+                today_url=today_url,
+                last_7_url=last_7_url,
+            ),
+            home,
+            new_menu,
+            manage_menu,
+            stats,
+            logout,
+        ]
+    ]
+
+
 def Navbar(
     *,
     today_played: str,
@@ -229,95 +403,57 @@ def Navbar(
     current_year: int,
     csrf_token: str,
 ) -> "Node":
-    """Top navigation bar.
-
-    Static chrome, so it's a single ``Safe`` node wrapping its markup rather
-    than a hand-built element tree — trusted HTML belongs in a ``Safe`` node,
-    not a ``mark_safe`` string."""
-    from common.components import Safe
+    """Top navigation bar, assembled from components (logo + hamburger + menu)."""
+    from common.components import A, Div, Element, Safe, Span
 
     logo = static("icons/schedule.png")
-    return Safe(f"""<nav class="bg-neutral-primary-soft border-b border-default">
-    <div class="max-w-(--breakpoint-xl) flex flex-wrap items-center justify-between mx-auto p-4">
-        <a href="{reverse("games:index")}"
-           class="flex items-center space-x-3 rtl:space-x-reverse">
-            <img src="{logo}" height="48" width="48" alt="Timetracker Logo" class="mr-4" />
-            <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">Timetracker</span>
-        </a>
-        <button data-collapse-toggle="navbar-dropdown" type="button"
-                class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
-                aria-controls="navbar-dropdown" aria-expanded="false">
-            <span class="sr-only">Open main menu</span>
-            <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 17 14">
-                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 1h15M1 7h15M1 13h15" />
-            </svg>
-        </button>
-        <div class="hidden w-full md:block md:w-auto" id="navbar-dropdown">
-            <ul class="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border border-gray-100 rounded-lg bg-gray-50 md:space-x-8 rtl:space-x-reverse md:flex-row md:mt-0 md:border-0 md:bg-white dark:bg-gray-800 md:dark:bg-gray-900 dark:border-gray-700">
-                <li class="flex items-center">
-                    <button id="theme-toggle" type="button" class="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-hidden focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm hover:cursor-pointer">
-                        <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3.32031 11.6835C3.32031 16.6541 7.34975 20.6835 12.3203 20.6835C16.1075 20.6835 19.3483 18.3443 20.6768 15.032C19.6402 15.4486 18.5059 15.6834 17.3203 15.6834C12.3497 15.6834 8.32031 11.654 8.32031 6.68342C8.32031 5.50338 8.55165 4.36259 8.96453 3.32996C5.65605 4.66028 3.32031 7.89912 3.32031 11.6835Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 3V4M12 20V21M4 12H3M6.31412 6.31412L5.5 5.5M17.6859 6.31412L18.5 5.5M6.31412 17.69L5.5 18.5001M17.6859 17.69L18.5 18.5001M21 12H20M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                </li>
-                {NavbarPlaytime(today_played, last_7_played, today_url=today_url, last_7_url=last_7_url)}
-                <li>
-                    <a href="#" class="block py-2 px-3 text-white bg-blue-700 rounded-sm md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 dark:bg-blue-600 md:dark:bg-transparent" aria-current="page">Home</a>
-                </li>
-                <li>
-                    <button id="dropdownNavbarNewLink" data-dropdown-toggle="dropdownNavbarNew"
-                            class="flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 md:dark:hover:bg-transparent hover:cursor-pointer">
-                        New
-                        <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4" />
-                        </svg>
-                    </button>
-                    <div id="dropdownNavbarNew" class="z-10 hidden font-normal bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700 dark:divide-gray-600">
-                        <ul class="py-2 text-sm text-gray-700 dark:text-gray-400" aria-labelledby="dropdownLargeButton">
-                            <li><a href="{reverse("games:add_device")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Device</a></li>
-                            <li><a href="{reverse("games:add_game")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Game</a></li>
-                            <li><a href="{reverse("games:add_platform")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platform</a></li>
-                            <li><a href="{reverse("games:add_purchase")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchase</a></li>
-                            <li><a href="{reverse("games:add_session")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Session</a></li>
-                        </ul>
-                    </div>
-                </li>
-                <li>
-                    <button id="dropdownNavbarManageLink" data-dropdown-toggle="dropdownNavbarManage"
-                            class="flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 md:dark:hover:bg-transparent hover:cursor-pointer">
-                        Manage
-                        <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4" />
-                        </svg>
-                    </button>
-                    <div id="dropdownNavbarManage" class="z-10 hidden font-normal bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700 dark:divide-gray-600">
-                        <ul class="py-2 text-sm text-gray-700 dark:text-gray-400" aria-labelledby="dropdownLargeButton">
-                            <li><a href="{reverse("games:list_devices")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Devices</a></li>
-                            <li><a href="{reverse("games:list_games")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Games</a></li>
-                            <li><a href="{reverse("games:list_platforms")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Platforms</a></li>
-                            <li><a href="{reverse("games:list_playevents")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Play events</a></li>
-                            <li><a href="{reverse("games:list_purchases")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Purchases</a></li>
-                            <li><a href="{reverse("games:list_sessions")}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Sessions</a></li>
-                        </ul>
-                    </div>
-                </li>
-                <li>
-                    <a href="{reverse("games:stats_by_year", args=[current_year])}" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Stats</a>
-                </li>
-                <li>
-                    <form method="post" action="{reverse("logout")}">
-                        <input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">
-                        <button type="submit" class="block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent">Log out</button>
-                    </form>
-                </li>
-            </ul>
-        </div>
-    </div>
-</nav>""")
+    brand = A(
+        [
+            ("href", reverse("games:index")),
+            ("class", "flex items-center space-x-3 rtl:space-x-reverse"),
+        ]
+    )[
+        Safe(
+            f'<img src="{logo}" height="48" width="48" alt="Timetracker Logo" '
+            'class="mr-4" />'
+        ),
+        Span(
+            class_="self-center text-2xl font-semibold whitespace-nowrap dark:text-white"
+        )["Timetracker"],
+    ]
+    hamburger = Element(
+        "button",
+        [
+            ("data-collapse-toggle", "navbar-dropdown"),
+            ("type", "button"),
+            (
+                "class",
+                "inline-flex items-center p-2 w-10 h-10 justify-center text-sm "
+                "text-gray-500 rounded-lg md:hidden hover:bg-gray-100 "
+                "focus:outline-hidden focus:ring-2 focus:ring-gray-200 "
+                "dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600",
+            ),
+            ("aria-controls", "navbar-dropdown"),
+            ("aria-expanded", "false"),
+        ],
+        [Span(class_="sr-only")["Open main menu"], Safe(_HAMBURGER_SVG)],
+    )
+    menu = NavbarMenu(
+        today_played=today_played,
+        last_7_played=last_7_played,
+        today_url=today_url,
+        last_7_url=last_7_url,
+        current_year=current_year,
+        csrf_token=csrf_token,
+    )
+    return Element(
+        "nav",
+        [("class", "bg-neutral-primary-soft border-b border-default")],
+        Div(
+            class_="max-w-(--breakpoint-xl) flex flex-wrap items-center "
+            "justify-between mx-auto p-4"
+        )[brand, hamburger, menu],
+    )
 
 
 def Page(
@@ -338,13 +474,6 @@ def Page(
     from common.components import ModuleScript, StaticScript, collect_media
     from games.views.general import global_current_year, model_counts
 
-    media = collect_media(content)
-    collected_scripts = "".join(
-        [str(ModuleScript(name)) for name in media.js]
-        + [str(StaticScript(name)) for name in media.js_external]
-    )
-    all_scripts = collected_scripts + (str(scripts) if scripts else "")
-
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
     navbar = Navbar(
@@ -355,6 +484,15 @@ def Page(
         current_year=year,
         csrf_token=get_token(request),
     )
+
+    # Collect JS from both the page body and the navbar (the navbar owns the
+    # <dropdown-menu> custom element, so its media must be emitted too).
+    media = collect_media(content) + collect_media(navbar)
+    collected_scripts = "".join(
+        [str(ModuleScript(name)) for name in media.js]
+        + [str(StaticScript(name)) for name in media.js_external]
+    )
+    all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
     messages = [
         {"message": str(m.message), "type": (m.tags or "info")}

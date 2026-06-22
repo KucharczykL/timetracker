@@ -273,3 +273,68 @@ def test_add_game_submit_and_create_session_redirects(
     page.click('button[name="submit_and_create_session"]')
     page.wait_for_url(f"{live_server.url}/tracker/session/add/for-game/**")
     expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
+
+
+# ── Navbar Dropdown (the generic <dropdown-menu> custom element) ──────────────
+# The navbar is on every page, so its New/Manage menus exercise the real
+# component. Multi-select check items and submenus have no navbar consumer yet
+# and are covered by the render tests in tests/test_custom_elements.py.
+
+
+def test_navbar_dropdown_opens_and_closes_on_toggle(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#dropdownNavbarNewLink")
+    menu = page.locator("#dropdownNavbarNew")
+    expect(menu).to_be_hidden()
+    toggle.click()
+    expect(menu).to_be_visible()
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    toggle.click()
+    expect(menu).to_be_hidden()
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+
+
+def test_navbar_dropdown_closes_on_escape_and_refocuses_toggle(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#dropdownNavbarNewLink")
+    menu = page.locator("#dropdownNavbarNew")
+    toggle.click()
+    expect(menu).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()
+    expect(toggle).to_be_focused()
+
+
+def test_navbar_only_one_dropdown_open_at_a_time(authenticated_page: Page, live_server):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    new_menu = page.locator("#dropdownNavbarNew")
+    manage_menu = page.locator("#dropdownNavbarManage")
+    page.locator("#dropdownNavbarNewLink").click()
+    expect(new_menu).to_be_visible()
+    page.locator("#dropdownNavbarManageLink").click()
+    expect(manage_menu).to_be_visible()
+    expect(new_menu).to_be_hidden()  # coordination closed the first one
+
+
+def test_navbar_dropdown_keyboard_navigation(authenticated_page: Page, live_server):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#dropdownNavbarNewLink")
+    menu = page.locator("#dropdownNavbarNew")
+    toggle.focus()
+    page.keyboard.press("ArrowDown")  # opens and focuses the first item
+    expect(menu).to_be_visible()
+    expect(menu.get_by_role("menuitem", name="Device")).to_be_focused()
+    page.keyboard.press("ArrowDown")
+    expect(menu.get_by_role("menuitem", name="Game")).to_be_focused()
+    page.keyboard.press("End")
+    expect(menu.get_by_role("menuitem", name="Session")).to_be_focused()
+    page.keyboard.press("Home")
+    expect(menu.get_by_role("menuitem", name="Device")).to_be_focused()
