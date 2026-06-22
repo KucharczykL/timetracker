@@ -235,7 +235,7 @@ def SelectionFields(
 
 # ── Dropdown ─────────────────────────────────────────────────────────────────
 # A generic, accessible dropdown element. Behavior lives in
-# ts/elements/dropdown.ts (open/close, keyboard nav, behavior dispatch); the
+# ts/elements/drop-down.ts (open/close, keyboard nav, behavior dispatch); the
 # shared positioning/keyboard core is ts/elements/menu-behavior.ts. Opening is
 # instant (no animation, by design).
 
@@ -459,12 +459,18 @@ def _assemble(
     """Stamp both contracts and wire the <dropdown> element. The single assembly
     point shared by the public Dropdown and DropdownSubmenu. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
+    # config keys use underscores (e.g. data_patch_url); convert to data-* names
+    # and pass as an explicit attribute list so the dict never spreads onto the
+    # builder's typed attributes/children params.
+    config_attributes = [
+        (key.replace("_", "-"), value) for key, value in (config or {}).items()
+    ]
     return _Dropdown(
+        config_attributes,
         class_=wrapper_class,
         placement=placement,
         submenu="true" if submenu else "false",
         behavior=behavior,
-        **(config or {}),
     )[
         Fragment(
             _stamp_trigger_contract(trigger, id),
