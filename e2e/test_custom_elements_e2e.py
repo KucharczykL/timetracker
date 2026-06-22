@@ -24,7 +24,7 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    host = page.locator("game-status-selector").first
+    host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
     host.locator("[data-toggle]").click()
     expect(host.locator("[data-menu]")).to_be_visible()
@@ -52,7 +52,7 @@ def test_session_device_selector_patches(authenticated_page: Page, live_server):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    host = page.locator("session-device-selector").first
+    host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
     host.locator("[data-toggle]").click()
     with page.expect_response(
