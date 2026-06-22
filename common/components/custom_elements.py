@@ -368,7 +368,7 @@ def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
     ]
     if current:
         attributes.append(("aria-current", "page"))
-    return Li()[A(attributes)[label]]
+    return Li(role="presentation")[A(attributes)[label]]
 
 
 def DropdownActionItem(
@@ -388,7 +388,7 @@ def DropdownActionItem(
     if disabled:
         item_attributes += [("disabled", ""), ("aria-disabled", "true")]
     item_attributes += list(attributes or [])
-    return Li()[Element("button", item_attributes, [label])]
+    return Li(role="presentation")[Element("button", item_attributes, [label])]
 
 
 def DropdownCheckItem(
@@ -407,7 +407,7 @@ def DropdownCheckItem(
         ("class", DROPDOWN_ITEM_CLASS + " group flex items-center gap-2"),
     ]
     item_attributes += list(attributes or [])
-    return Li()[
+    return Li(role="presentation")[
         Element(
             "button",
             item_attributes,
@@ -504,7 +504,9 @@ def DropdownMenuPanel(*, items: list[Node], aria_label: str = "") -> Element:
     ]
     if aria_label:
         attributes.append(("aria-label", aria_label))
-    return Element("div", attributes, [Ul()[*items]])
+    # role="presentation" on the list wrappers so the implicit list/listitem roles
+    # don't break the menu→menuitem ownership the role="menu" panel declares.
+    return Element("div", attributes, [Ul(role="presentation")[*items]])
 
 
 def MenuDropdown(
@@ -603,7 +605,7 @@ def DropdownSubmenu(
             ]
         )[Span()[label], Icon("arrowright")]
     )
-    return Li()[
+    return Li(role="presentation")[
         _assemble(
             trigger,
             DropdownMenuPanel(items=items),
@@ -635,7 +637,7 @@ def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Elemen
     if aria_label:
         attributes.append(("aria-label", aria_label))
     option_nodes = [
-        Li()[
+        Li(role="presentation")[
             Element(
                 "button",
                 [
@@ -652,7 +654,9 @@ def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Elemen
         ]
         for value, label, selected in options
     ]
-    return Element("div", attributes, [Ul()[*option_nodes]])
+    # role="presentation" on the list wrappers keeps the listbox→option ownership
+    # intact (the implicit list/listitem roles would otherwise interrupt it).
+    return Element("div", attributes, [Ul(role="presentation")[*option_nodes]])
 
 
 def SelectDropdown(

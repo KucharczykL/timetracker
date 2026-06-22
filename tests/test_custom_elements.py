@@ -136,6 +136,9 @@ class DropdownMenuPanelTest(unittest.TestCase):
         self.assertIn("overflow-hidden", html)  # #46 fix kept
         self.assertIn("<ul", html)
         self.assertIn('role="menuitem"', html)
+        # ul/li carry role=presentation so menu→menuitem ownership isn't interrupted
+        self.assertIn('<ul role="presentation"', html)
+        self.assertIn('<li role="presentation"', html)
 
 
 class DropdownWrapperTest(unittest.TestCase):
@@ -300,11 +303,15 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
 class SelectDropdownRenderTest(unittest.TestCase):
     def test_renders_listbox_with_select_behavior(self):
         from common.components import SelectDropdown, render
+        from common.components.custom_elements import SelectOption
 
         html = render(
             SelectDropdown(
                 current_label="Played",
-                options=[("u", "Unplayed", False), ("f", "Finished", True)],
+                options=[
+                    SelectOption("u", "Unplayed", False),
+                    SelectOption("f", "Finished", True),
+                ],
                 id="game-7-status",
                 patch_url="/api/games/7/status",
                 body_key="status",
@@ -325,11 +332,12 @@ class SelectDropdownRenderTest(unittest.TestCase):
 
     def test_numeric_flag_sets_data_numeric(self):
         from common.components import SelectDropdown, render
+        from common.components.custom_elements import SelectOption
 
         html = render(
             SelectDropdown(
                 current_label="Deck",
-                options=[("2", "Deck", True)],
+                options=[SelectOption("2", "Deck", True)],
                 id="session-4-device",
                 patch_url="/api/session/4/device",
                 body_key="device_id",
