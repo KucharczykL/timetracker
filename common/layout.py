@@ -270,11 +270,22 @@ def NavbarMenu(
         Div,
         Dropdown,
         DropdownLinkItem,
+        DropdownSubmenu,
         Element,
         Li,
         Safe,
         Ul,
     )
+
+    def entity_submenu(label, slug, add_url, list_url):
+        return DropdownSubmenu(
+            label,
+            id=f"navbarMenu{slug}",
+            items=[
+                DropdownLinkItem(reverse(add_url), f"Add {label.lower()}"),
+                DropdownLinkItem(reverse(list_url), f"List {label.lower()}s"),
+            ],
+        )
 
     theme_toggle = Li(class_="flex items-center")[
         Element(
@@ -309,33 +320,28 @@ def NavbarMenu(
         )["Home"]
     ]
 
-    new_menu = Li()[
+    # One entity menu: each entity is a submenu of its actions (Add / List),
+    # plus Play events (which has no standalone "add") as a direct link.
+    entity_menu = Li()[
         Dropdown(
-            label="New",
-            id="dropdownNavbarNew",
+            label="Menu",
+            id="navbarMenu",
             placement="bottom-end",
             items=[
-                DropdownLinkItem(reverse("games:add_device"), "Device"),
-                DropdownLinkItem(reverse("games:add_game"), "Game"),
-                DropdownLinkItem(reverse("games:add_platform"), "Platform"),
-                DropdownLinkItem(reverse("games:add_purchase"), "Purchase"),
-                DropdownLinkItem(reverse("games:add_session"), "Session"),
-            ],
-        )
-    ]
-
-    manage_menu = Li()[
-        Dropdown(
-            label="Manage",
-            id="dropdownNavbarManage",
-            placement="bottom-end",
-            items=[
-                DropdownLinkItem(reverse("games:list_devices"), "Devices"),
-                DropdownLinkItem(reverse("games:list_games"), "Games"),
-                DropdownLinkItem(reverse("games:list_platforms"), "Platforms"),
+                entity_submenu(
+                    "Device", "Device", "games:add_device", "games:list_devices"
+                ),
+                entity_submenu("Game", "Game", "games:add_game", "games:list_games"),
+                entity_submenu(
+                    "Platform", "Platform", "games:add_platform", "games:list_platforms"
+                ),
                 DropdownLinkItem(reverse("games:list_playevents"), "Play events"),
-                DropdownLinkItem(reverse("games:list_purchases"), "Purchases"),
-                DropdownLinkItem(reverse("games:list_sessions"), "Sessions"),
+                entity_submenu(
+                    "Purchase", "Purchase", "games:add_purchase", "games:list_purchases"
+                ),
+                entity_submenu(
+                    "Session", "Session", "games:add_session", "games:list_sessions"
+                ),
             ],
         )
     ]
@@ -386,8 +392,7 @@ def NavbarMenu(
                 last_7_url=last_7_url,
             ),
             home,
-            new_menu,
-            manage_menu,
+            entity_menu,
             stats,
             logout,
         ]

@@ -46,9 +46,13 @@ export function attachMenu(
     '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
   const matchToggleWidth = options.matchToggleWidth ?? false;
 
+  // Items of *this* menu only — never those of a nested submenu (whose closest
+  // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
+  // wandering into a submenu's hidden rows.
   const enabledItems = (): HTMLElement[] =>
     Array.from(menu.querySelectorAll<HTMLElement>(itemSelector)).filter(
       (item) =>
+        item.closest("[data-menu]") === menu &&
         item.getAttribute("aria-disabled") !== "true" &&
         !item.hasAttribute("disabled"),
     );
@@ -214,6 +218,8 @@ export function attachMenu(
   });
 
   menu.addEventListener("keydown", (event) => {
+    // Let a nested submenu handle its own keys (the event bubbles up to us).
+    if ((event.target as HTMLElement).closest("[data-menu]") !== menu) return;
     const items = enabledItems();
     const currentIndex = items.findIndex((item) => item === document.activeElement);
     switch (event.key) {

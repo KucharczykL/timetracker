@@ -172,6 +172,38 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertNotIn("overflow-hidden", html)  # frosted keeps its own corners
         self.assertIn("hover:bg-gray-700", html)  # frosted item hover
 
+    def test_submenu_item(self):
+        from common.components import (
+            Dropdown,
+            DropdownLinkItem,
+            DropdownSubmenu,
+            render,
+        )
+
+        node = Dropdown(
+            label="Menu",
+            id="navbarMenu",
+            items=[
+                DropdownSubmenu(
+                    "Game",
+                    id="navbarMenuGame",
+                    items=[
+                        DropdownLinkItem("/games/add/", "Add game"),
+                        DropdownLinkItem("/games/", "List games"),
+                    ],
+                ),
+            ],
+        )
+        html = render(node)
+        # The submenu toggle is itself a menuitem with a popup, nested in a
+        # right-start <dropdown-menu>.
+        self.assertEqual(html.count("<dropdown-menu"), 2)
+        self.assertIn('id="navbarMenuGameLink"', html)
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('placement="right-start"', html)
+        self.assertIn('submenu="true"', html)
+        self.assertIn("Add game", html)
+
     def test_check_and_divider_items(self):
         from common.components import (
             Dropdown,

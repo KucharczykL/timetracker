@@ -276,18 +276,15 @@ def test_add_game_submit_and_create_session_redirects(
 
 
 # ── Navbar Dropdown (the generic <dropdown-menu> custom element) ──────────────
-# The navbar is on every page, so its New/Manage menus exercise the real
-# component. Multi-select check items and submenus have no navbar consumer yet
-# and are covered by the render tests in tests/test_custom_elements.py.
+# The navbar's single entity "Menu" (with per-entity submenus) is on every page,
+# so it exercises the real component including the nested-submenu path.
 
 
-def test_navbar_dropdown_opens_and_closes_on_toggle(
-    authenticated_page: Page, live_server
-):
+def test_navbar_menu_opens_and_closes_on_toggle(authenticated_page: Page, live_server):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    toggle = page.locator("#dropdownNavbarNewLink")
-    menu = page.locator("#dropdownNavbarNew")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
     expect(menu).to_be_hidden()
     toggle.click()
     expect(menu).to_be_visible()
@@ -297,13 +294,13 @@ def test_navbar_dropdown_opens_and_closes_on_toggle(
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
 
-def test_navbar_dropdown_closes_on_escape_and_refocuses_toggle(
+def test_navbar_menu_closes_on_escape_and_refocuses_toggle(
     authenticated_page: Page, live_server
 ):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    toggle = page.locator("#dropdownNavbarNewLink")
-    menu = page.locator("#dropdownNavbarNew")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
     toggle.click()
     expect(menu).to_be_visible()
     page.keyboard.press("Escape")
@@ -311,30 +308,34 @@ def test_navbar_dropdown_closes_on_escape_and_refocuses_toggle(
     expect(toggle).to_be_focused()
 
 
-def test_navbar_only_one_dropdown_open_at_a_time(authenticated_page: Page, live_server):
+def test_navbar_submenu_opens_without_closing_parent(
+    authenticated_page: Page, live_server
+):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    new_menu = page.locator("#dropdownNavbarNew")
-    manage_menu = page.locator("#dropdownNavbarManage")
-    page.locator("#dropdownNavbarNewLink").click()
-    expect(new_menu).to_be_visible()
-    page.locator("#dropdownNavbarManageLink").click()
-    expect(manage_menu).to_be_visible()
-    expect(new_menu).to_be_hidden()  # coordination closed the first one
+    top_menu = page.locator("#navbarMenu")
+    game_submenu = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").click()
+    expect(top_menu).to_be_visible()
+    page.locator("#navbarMenuGameLink").click()
+    # The submenu opens and the parent menu stays open (nesting coordination).
+    expect(game_submenu).to_be_visible()
+    expect(top_menu).to_be_visible()
+    expect(game_submenu.get_by_role("menuitem", name="Add game")).to_be_visible()
 
 
-def test_navbar_dropdown_keyboard_navigation(authenticated_page: Page, live_server):
+def test_navbar_menu_keyboard_navigation(authenticated_page: Page, live_server):
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    toggle = page.locator("#dropdownNavbarNewLink")
-    menu = page.locator("#dropdownNavbarNew")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
     toggle.focus()
     page.keyboard.press("ArrowDown")  # opens and focuses the first item
     expect(menu).to_be_visible()
-    expect(menu.get_by_role("menuitem", name="Device")).to_be_focused()
-    page.keyboard.press("ArrowDown")
-    expect(menu.get_by_role("menuitem", name="Game")).to_be_focused()
+    # Roving stays on this menu's own rows, not the submenus' hidden items.
+    expect(menu.get_by_role("menuitem", name="Device", exact=True)).to_be_focused()
     page.keyboard.press("End")
-    expect(menu.get_by_role("menuitem", name="Session")).to_be_focused()
-    page.keyboard.press("Home")
-    expect(menu.get_by_role("menuitem", name="Device")).to_be_focused()
+    expect(menu.get_by_role("menuitem", name="Session", exact=True)).to_be_focused()
+    page.keyboard.press("ArrowRight")  # enter the Session submenu
+    expect(page.locator("#navbarMenuSession")).to_be_visible()

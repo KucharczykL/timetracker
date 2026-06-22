@@ -379,6 +379,54 @@ def DropdownDivider(*, style: str = "menu") -> Node:
     return Li(role="separator", class_=f"my-1 h-px {color}")
 
 
+def DropdownSubmenu(
+    label: Child,
+    items: list[Node],
+    *,
+    id: str,
+    panel: str = "menu",
+    style: str = "menu",
+) -> Node:
+    """A menu item that opens a nested submenu (flyout to the right).
+
+    Renders an ``<li>`` whose toggle is itself a ``role="menuitem"`` (so the
+    parent menu's keyboard nav includes it) carrying ``aria-haspopup`` so the
+    parent stays open when it activates. Behavior is the nested ``<dropdown-menu
+    submenu>`` (hover-open + ArrowRight/Left)."""
+    toggle = Element(
+        "button",
+        [
+            ("type", "button"),
+            ("data-toggle", ""),
+            ("id", f"{id}Link"),
+            ("role", "menuitem"),
+            ("aria-haspopup", "menu"),
+            ("aria-controls", id),
+            ("aria-expanded", "false"),
+            ("tabindex", "-1"),
+            (
+                "class",
+                _dropdown_item_class(style)
+                + " flex items-center justify-between gap-2",
+            ),
+        ],
+        [Span()[label], Icon("arrowright")],
+    )
+    panel_node = Div(
+        data_menu="",
+        role="menu",
+        id=id,
+        aria_labelledby=f"{id}Link",
+        hidden=True,
+        class_=_DROPDOWN_PANELS.get(panel, _DROPDOWN_PANELS["menu"]),
+    )[Ul()[*items]]
+    return Li()[
+        _DropdownMenu(class_="relative", placement="right-start", submenu="true")[
+            Fragment(toggle, panel_node)
+        ]
+    ]
+
+
 def Dropdown(
     *,
     label: Child,
