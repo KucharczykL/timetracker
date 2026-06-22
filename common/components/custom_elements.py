@@ -409,15 +409,14 @@ def Dropdown(
     outline: bool = False,
     primary: Node | None = None,
     placement: str = "bottom-start",
-    submenu: bool = False,
 ) -> Node:
     """A generic dropdown: a toggle button + a menu panel.
 
     ``items`` are nodes (use ``DropdownLinkItem`` / ``DropdownActionItem`` /
-    ``DropdownCheckItem`` / ``DropdownDivider``), so a menu can mix links,
-    actions, checkboxes and even nested ``Dropdown``s (submenus). Every dropdown
-    shares one look (white in light mode, frosted in dark); ``outline=True`` adds
-    a border to the toggle and panel for button-like (non-menu) dropdowns.
+    ``DropdownCheckItem`` / ``DropdownDivider`` / ``DropdownSubmenu``), so a menu
+    can mix links, actions, checkboxes and nested submenus. Every dropdown shares
+    one look (white in light mode, frosted in dark); ``outline=True`` adds a
+    border to the toggle and panel for button-like (non-menu) dropdowns.
     ``primary`` renders a split button (a leading action grouped with the caret).
     """
     if outline:
@@ -458,5 +457,5 @@ def Dropdown(
     return _DropdownMenu(
         class_="relative inline-block",
         placement=placement,
-        submenu="true" if submenu else "false",
+        submenu="false",  # top-level dropdowns are never submenus (see DropdownSubmenu)
     )[inner]

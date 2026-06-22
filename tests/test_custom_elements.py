@@ -133,26 +133,6 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertIn("data-add-play", html)
         self.assertIn("border", html)  # outlined toggle + panel
 
-    def test_nested_submenu_item(self):
-        from common.components import Dropdown, DropdownLinkItem, render
-
-        submenu = Dropdown(
-            label="More",
-            id="more",
-            placement="right-start",
-            submenu=True,
-            items=[DropdownLinkItem("/x/", "X")],
-        )
-        node = Dropdown(
-            label="Manage",
-            id="manage",
-            items=[DropdownLinkItem("/games/", "Games"), submenu],
-        )
-        html = render(node)
-        self.assertEqual(html.count("<dropdown-menu"), 2)
-        self.assertIn('placement="right-start"', html)
-        self.assertIn('submenu="true"', html)
-
     def test_unified_panel_light_white_dark_frosted(self):
         from common.components import Dropdown, DropdownLinkItem, render
 
