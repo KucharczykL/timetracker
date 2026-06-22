@@ -490,7 +490,16 @@ def Dropdown(
         id=id,
         placement=placement,
         submenu=False,
-        wrapper_class="relative inline-block",
+        # inline-flex (not inline-block) so the trigger stretches to fill the
+        # wrapper — needed when the wrapper is itself a stretched flex child, e.g.
+        # the SplitButtonDropdown group, where the caret must match the primary's
+        # height. Visually identical for a standalone single-trigger dropdown.
+        # FRICTION POINT: this imposes a flex context on every dropdown wrapper to
+        # serve one composition. If it ever fights a future layout, the cleaner
+        # fix is `display: contents` on the wrapper (it leaves the box tree, so the
+        # trigger becomes a direct child of whatever the parent layout is) — at the
+        # cost of the wrapper losing its positioning context and box semantics.
+        wrapper_class="relative inline-flex",
     )
 
 
