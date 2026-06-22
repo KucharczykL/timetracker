@@ -1,5 +1,5 @@
 import { readDropdownMenuProps } from "../generated/props.js";
-import { attachMenu, MenuPlacement } from "./menu-behavior.js";
+import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
 
 const SUBMENU_CLOSE_DELAY_MS = 150;
 
@@ -16,6 +16,8 @@ function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
 // open/close + keyboard behavior lives in attachMenu; this element only adds
 // hover-open + arrow-key handling for the submenu (placement="right-start") case.
 class DropdownMenuElement extends HTMLElement {
+  private controller?: MenuController;
+
   connectedCallback(): void {
     const props = readDropdownMenuProps(this);
     const toggle = ownChild(this, "[data-toggle]");
@@ -25,6 +27,7 @@ class DropdownMenuElement extends HTMLElement {
     const controller = attachMenu(this, toggle, menu, {
       placement: props.placement as MenuPlacement,
     });
+    this.controller = controller;
 
     if (props.submenu) {
       // Hover open/close is for mouse only. On touch, pointerleave fires when
@@ -55,6 +58,11 @@ class DropdownMenuElement extends HTMLElement {
         }
       });
     }
+  }
+
+  disconnectedCallback(): void {
+    this.controller?.destroy();
+    this.controller = undefined;
   }
 }
 

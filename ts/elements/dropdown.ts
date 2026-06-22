@@ -1,4 +1,4 @@
-import { attachMenu } from "./menu-behavior.js";
+import { attachMenu, MenuController } from "./menu-behavior.js";
 
 export interface DropdownConfig {
   patchUrl: string;
@@ -13,11 +13,14 @@ export interface DropdownConfig {
 // helper; this only adds the PATCH-on-select behavior unique to the selectors.
 // Markup hooks (rendered server-side): [data-toggle], [data-menu],
 // [data-label], and one or more [data-option][data-value].
-export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
+export function initDropdown(
+  host: HTMLElement,
+  config: DropdownConfig,
+): MenuController | undefined {
   const toggle = host.querySelector<HTMLElement>("[data-toggle]");
   const menu = host.querySelector<HTMLElement>("[data-menu]");
   const label = host.querySelector<HTMLElement>("[data-label]");
-  if (!toggle || !menu || !label) return;
+  if (!toggle || !menu || !label) return undefined;
 
   const controller = attachMenu(host, toggle, menu, {
     itemSelector: "[data-option]",
@@ -44,4 +47,6 @@ export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
         .catch(() => console.error("Failed to update", config.patchUrl));
     });
   });
+
+  return controller;
 }

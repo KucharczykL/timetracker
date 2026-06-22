@@ -21,6 +21,8 @@ export interface MenuController {
   close: () => void;
   isOpen: () => boolean;
   focusFirst: () => void;
+  // Removes the document-level listeners; call from disconnectedCallback.
+  destroy: () => void;
 }
 
 const VIEWPORT_MARGIN = 8;
@@ -277,16 +279,26 @@ export function attachMenu(
     }
   });
 
-  document.addEventListener("click", (event) => {
+  const onDocumentClick = (event: MouseEvent): void => {
     if (isOpen() && !host.contains(event.target as Node)) close();
-  });
+  };
+  document.addEventListener("click", onDocumentClick);
 
   // Single-open coordination: close when any other (non-ancestor) menu opens.
-  document.addEventListener(OPEN_MENUS_EVENT, (event) => {
+  const onOtherMenuOpen = (event: Event): void => {
     const detail = (event as CustomEvent<OpenMenuDetail>).detail;
     if (!detail || detail.host === host || host.contains(detail.host)) return;
     close();
-  });
+  };
+  document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
 
-  return { open, close, isOpen, focusFirst };
+  // The two document listeners above outlive the host's DOM, so the element must
+  // remove them on disconnect or they accumulate across htmx re-mounts.
+  const destroy = (): void => {
+    close(); // also detaches the open-only scroll/resize listeners
+    document.removeEventListener("click", onDocumentClick);
+    document.removeEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
+  };
+
+  return { open, close, isOpen, focusFirst, destroy };
 }
