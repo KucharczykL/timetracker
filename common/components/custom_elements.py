@@ -435,7 +435,7 @@ def _assemble(
     behavior: str = "menu",
     config: dict[str, str] | None = None,
 ) -> Node:
-    """Stamp both contracts and wire the <dropdown> element. The single assembly
+    """Stamp both contracts and wire the <drop-down> element. The single assembly
     point shared by the public Dropdown and DropdownSubmenu. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
@@ -468,7 +468,7 @@ def Dropdown(
     config: dict[str, str] | None = None,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
-    stamps the JS/ARIA contract, wires the <dropdown> element, and tags it with a
+    stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
     client `behavior` (menu by default). Menu semantics live in the menu preset/
     wrappers, not here."""
     return _assemble(
