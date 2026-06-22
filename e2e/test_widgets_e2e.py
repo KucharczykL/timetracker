@@ -418,6 +418,35 @@ def test_navbar_submenu_keyboard_open_close(authenticated_page: Page, live_serve
     ).to_be_focused()
 
 
+def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_server):
+    """Every entity submenu opens flush at its parent toggle's right edge, all at
+    the same x. Regression: opening a low submenu briefly grew a scrollbar in the
+    parent menu (the panel is `absolute` until positionMenu makes it `fixed`),
+    shifting the toggle ~15px and anchoring Purchase/Session flyouts over the
+    parent. Use a wide viewport so the flyouts open to the right (as on the wide
+    screen where the bug showed) rather than flipping left for want of room."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.locator("#navbarMenuLink").click()
+
+    rows = []
+    for entity in ["Device", "Game", "Platform", "PlayEvent", "Purchase", "Session"]:
+        toggle = page.locator(f"#navbarMenu{entity}Link")
+        submenu = page.locator(f"#navbarMenu{entity}")
+        toggle.hover()
+        expect(submenu).to_be_visible()
+        sub_box = submenu.bounding_box()
+        tog_box = toggle.bounding_box()
+        assert sub_box and tog_box  # both visible, so boxes are present
+        rows.append((entity, round(sub_box["x"]), round(tog_box["x"] + tog_box["width"])))
+
+    lefts = [x for _, x, _ in rows]
+    assert max(lefts) - min(lefts) <= 1, f"submenu x drift between items: {rows}"
+    for entity, x, toggle_right in rows:
+        assert abs(x - toggle_right) <= 1, f"{entity} not flush: x={x} right={toggle_right}"
+
+
 def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
     """On touch, tapping a submenu open must keep it open. Regression: hover was
     wired to pointerenter/pointerleave, and pointerleave fires on finger lift, so

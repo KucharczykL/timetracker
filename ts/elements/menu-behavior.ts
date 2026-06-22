@@ -158,6 +158,11 @@ export function attachMenu(
 
   const open = (): void => {
     if (isOpen()) return;
+    // Pin to `fixed` BEFORE unhiding. The panel class is `absolute`; if it became
+    // visible while still absolute it would join an ancestor scroll container's
+    // overflow (the parent menu), spawn a transient scrollbar, and shift the
+    // toggle we then measure — mis-anchoring a submenu opened from a low row.
+    menu.style.position = "fixed";
     menu.hidden = false;
     positionMenu();
     toggle.setAttribute("aria-expanded", "true");
