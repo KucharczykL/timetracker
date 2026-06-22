@@ -6,6 +6,11 @@ from django.template.defaultfilters import floatformat
 from django.urls import reverse
 
 from common.components.core import Children, Node, Safe, as_children
+from common.components.custom_elements import (
+    DROPDOWN_ITEM_CLASS,
+    DROPDOWN_PANEL_OUTLINE_CLASS,
+    DROPDOWN_TOGGLE_OUTLINE,
+)
 from common.components.primitives import (
     A,
     Div,
@@ -209,21 +214,12 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-_SELECTOR_MENU_CLASS = (
-    "absolute top-[105%] left-0 w-full whitespace-nowrap z-10 text-sm "
-    "font-medium bg-gray-800/20 backdrop-blur-lg rounded-md rounded-t-none "
-    "border border-gray-200 dark:border-gray-700"
-)
-_SELECTOR_TOGGLE_CLASS = (
-    "relative px-4 py-2 text-sm font-medium bg-white border border-gray-200 "
-    "rounded-lg hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 "
-    "dark:hover:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
-)
-_SELECTOR_OPTION_CLASS = (
-    "block w-full text-left px-4 py-2 rounded-sm cursor-pointer "
-    "hover:bg-gray-700 hover:text-white dark:hover:bg-gray-700 "
-    "dark:hover:text-white border-0"
-)
+# The value selectors share the unified dropdown look (white light / frosted
+# dark) and are button-like, so they use the outlined toggle + panel. Width still
+# matches the toggle (initDropdown passes matchToggleWidth).
+_SELECTOR_MENU_CLASS = DROPDOWN_PANEL_OUTLINE_CLASS
+_SELECTOR_TOGGLE_CLASS = DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"
+_SELECTOR_OPTION_CLASS = DROPDOWN_ITEM_CLASS
 
 
 def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:

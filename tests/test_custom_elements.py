@@ -77,6 +77,209 @@ class GameStatusSelectorRenderTest(unittest.TestCase):
         self.assertIn("dist/elements/game-status-selector.js", collect_media(node).js)
 
 
+class ContractStampingTest(unittest.TestCase):
+    def test_core_stamps_trigger_and_target_contracts(self):
+        from common.components import Dropdown, DropdownLinkItem, DropdownMenuPanel
+        from common.components import render
+        from common.components.core import Element
+
+        trigger = Element("button", [("class", "look")], ["Open"])
+        target = DropdownMenuPanel(items=[DropdownLinkItem("/a/", "A")])
+        html = render(Dropdown(trigger_element=trigger, target_element=target, id="d"))
+        # Behavioral hooks + ARIA wiring stamped by the core.
+        self.assertIn('data-toggle=""', html)
+        self.assertIn('id="dLink"', html)
+        self.assertIn('aria-controls="d"', html)
+        self.assertIn('aria-expanded="false"', html)
+        self.assertIn('data-menu=""', html)
+        self.assertIn('id="d"', html)
+        self.assertIn("hidden", html)
+        self.assertIn('aria-labelledby="dLink"', html)
+        self.assertIn('class="look"', html)  # caller's look preserved
+        self.assertIn('submenu="false"', html)
+        # No menu semantics injected by the generic core.
+        self.assertNotIn("aria-haspopup", html.split("<div")[0])  # not on the trigger
+
+    def test_reserved_attr_conflict_warns(self):
+        from common.components import DropdownContractWarning, render
+        from common.components.custom_elements import _stamp_trigger_contract
+        from common.components.core import Element
+
+        trigger = Element("button", [("aria-expanded", "true"), ("class", "c")])
+        with self.assertWarns(DropdownContractWarning):
+            stamped = _stamp_trigger_contract(trigger, "x")
+        html = render(stamped)
+        self.assertEqual(html.count("aria-expanded"), 1)  # de-duped
+        self.assertIn('aria-expanded="false"', html)  # contract value wins
+        self.assertIn('class="c"', html)  # non-reserved attr preserved
+
+    def test_aria_label_suppresses_auto_labelledby(self):
+        from common.components import DropdownMenuPanel, render
+        from common.components.custom_elements import _stamp_target_contract
+
+        labelled = _stamp_target_contract(
+            DropdownMenuPanel(items=[], aria_label="Playthrough actions"), "p"
+        )
+        html = render(labelled)
+        self.assertIn('aria-label="Playthrough actions"', html)
+        self.assertNotIn("aria-labelledby", html)  # explicit label wins
+
+        auto = _stamp_target_contract(DropdownMenuPanel(items=[]), "p")
+        self.assertIn('aria-labelledby="pLink"', render(auto))
+
+
+class DropdownMenuPanelTest(unittest.TestCase):
+    def test_renders_role_menu_panel(self):
+        from common.components import DropdownLinkItem, DropdownMenuPanel, render
+
+        html = render(DropdownMenuPanel(items=[DropdownLinkItem("/a/", "A")]))
+        self.assertIn('role="menu"', html)
+        self.assertIn("shadow-sm", html)  # the single shadowed panel look
+        self.assertIn("overflow-hidden", html)  # #46 fix kept
+        self.assertIn("<ul", html)
+        self.assertIn('role="menuitem"', html)
+
+
+class DropdownWrapperTest(unittest.TestCase):
+    def test_menu_dropdown_emits_tag_and_menu_trigger(self):
+        from common.components import (
+            DropdownLinkItem,
+            MenuDropdown,
+            collect_media,
+            render,
+        )
+
+        node = MenuDropdown(
+            label="Menu",
+            id="navbarMenu",
+            placement="bottom-center",
+            items=[DropdownLinkItem("/games/", "Game", current=True)],
+        )
+        html = render(node)
+        self.assertIn("<dropdown-menu", html)
+        self.assertIn('placement="bottom-center"', html)
+        self.assertIn('id="navbarMenuLink"', html)
+        self.assertIn('aria-haspopup="menu"', html)  # menu semantics from the wrapper
+        self.assertIn('role="menu"', html)
+        self.assertIn('aria-current="page"', html)
+        self.assertIn("dist/elements/dropdown-menu.js", collect_media(node).js)
+
+    def test_button_dropdown_uses_styled_button_trigger(self):
+        from common.components import ButtonDropdown, DropdownLinkItem, render
+
+        html = render(
+            ButtonDropdown(
+                label="Actions", id="acts", items=[DropdownLinkItem("/a/", "A")]
+            )
+        )
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('id="actsLink"', html)
+        self.assertIn("rounded-base", html)  # StyledButton styling
+
+    def test_split_button_groups_primary_with_caret(self):
+        from common.components import (
+            DropdownActionItem,
+            DropdownLinkItem,
+            SplitButtonDropdown,
+            Span,
+            render,
+        )
+
+        primary = Span(class_="rounded-s-lg")["Played 3 times"]
+        html = render(
+            SplitButtonDropdown(
+                primary=primary,
+                id="played",
+                aria_label="Playthrough actions",
+                items=[
+                    DropdownLinkItem("/add/", "Add playthrough…"),
+                    DropdownActionItem("Played +1", attributes=[("data-add-play", "")]),
+                ],
+            )
+        )
+        self.assertIn("inline-flex items-stretch", html)  # the flex group
+        self.assertIn("rounded-s-lg", html)  # caller's primary
+        self.assertIn("rounded-e-lg", html)  # the caret
+        self.assertIn("data-add-play", html)
+        self.assertIn('aria-label="Playthrough actions"', html)
+        self.assertNotIn("aria-labelledby", html)  # icon-only caret → explicit label
+
+
+class DropdownSubmenuTest(unittest.TestCase):
+    def test_submenu_item(self):
+        from common.components import (
+            Dropdown,
+            DropdownLinkItem,
+            DropdownMenuPanel,
+            DropdownSubmenu,
+            render,
+        )
+        from common.components.core import Element
+
+        node = Dropdown(
+            trigger_element=Element("button", [], ["Menu"]),
+            target_element=DropdownMenuPanel(
+                items=[
+                    DropdownSubmenu(
+                        "Game",
+                        id="navbarMenuGame",
+                        items=[
+                            DropdownLinkItem("/games/add/", "Add game"),
+                            DropdownLinkItem("/games/", "List games"),
+                        ],
+                    ),
+                ]
+            ),
+            id="navbarMenu",
+        )
+        html = render(node)
+        # The submenu trigger is itself a menuitem with a popup, nested in a
+        # right-start <dropdown-menu>.
+        self.assertEqual(html.count("<dropdown-menu"), 2)
+        self.assertIn('id="navbarMenuGameLink"', html)
+        self.assertIn('role="menuitem"', html)
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('placement="right-start"', html)
+        self.assertIn('submenu="true"', html)
+        self.assertIn("Add game", html)
+
+    def test_placement_override(self):
+        from common.components import DropdownLinkItem, DropdownSubmenu, render
+
+        html = render(
+            DropdownSubmenu(
+                "Game",
+                id="g",
+                placement="bottom-start",
+                items=[DropdownLinkItem("/a/", "A")],
+            )
+        )
+        self.assertIn('placement="bottom-start"', html)
+        self.assertIn('submenu="true"', html)  # intrinsic, unaffected
+
+    def test_check_and_divider_items(self):
+        from common.components import (
+            DropdownCheckItem,
+            DropdownDivider,
+            DropdownMenuPanel,
+            render,
+        )
+
+        html = render(
+            DropdownMenuPanel(
+                items=[
+                    DropdownCheckItem("Emulated", checked=True),
+                    DropdownDivider(),
+                    DropdownCheckItem("Mastered", checked=False),
+                ]
+            )
+        )
+        self.assertIn('role="menuitemcheckbox"', html)
+        self.assertIn('aria-checked="true"', html)
+        self.assertIn('aria-checked="false"', html)
+        self.assertIn('role="separator"', html)
+
+
 class SessionDeviceSelectorRenderTest(unittest.TestCase):
     def test_emits_tag_and_options(self):
         from types import SimpleNamespace

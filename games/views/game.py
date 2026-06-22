@@ -365,83 +365,49 @@ _STAT_SVGS = {
     "playrange": '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" /></svg>',
 }
 
-_PLAYED_BTN = (
-    "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
-    "hover:bg-gray-100 hover:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-    "dark:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
-)
-_PLAYED_MENU = (
-    "absolute top-full -left-px w-auto whitespace-nowrap z-10 text-sm font-medium "
-    "bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border "
-    "border-gray-200 dark:border-gray-700"
-)
-# Each menu item is the interactive element itself: it fills the whole row
-# (block w-full + own padding), carries the hover highlight and pointer cursor,
-# so there is no handler-less padding to swallow hover/clicks (issue #70).
-# Mirrors _SELECTOR_OPTION_CLASS in common/components/domain.py.
-_PLAYED_MENU_ITEM = (
-    "block w-full text-left px-4 py-2 rounded-sm cursor-pointer no-underline "
-    "hover:bg-gray-700 hover:text-white dark:hover:bg-gray-700 "
-    "dark:hover:text-white border-0"
-)
-
 
 def _played_row(game: Game, request: HttpRequest) -> Node:
-    """'Played N times' control as a custom element (ts/elements/play-event-row.ts)."""
-    from common.components import Element
-    from common.components.custom_elements import _PlayEventRow
+    """'Played N times' split button: a generic outlined Dropdown wrapped in
+    <play-event-row>, which owns only the 'Played +1' action."""
+    from common.components import (
+        DropdownActionItem,
+        DropdownLinkItem,
+        SplitButtonDropdown,
+    )
+    from common.components.custom_elements import DROPDOWN_TOGGLE_OUTLINE, _PlayEventRow
     from common.components.primitives import Button
 
-    played: int = 0
     played = game.playevents.count()
 
     count_button = A(href=reverse("games:add_playevent"))[
-        Button(class_=_PLAYED_BTN + " rounded-s-lg")[
+        Button(class_=DROPDOWN_TOGGLE_OUTLINE + " rounded-s-lg")[
             Span(data_count="")[str(played)], " times"
         ]
     ]
-    menu = Div(data_menu="", hidden=True, class_=_PLAYED_MENU)[
-        Ul()[
-            Li()[
-                A(
-                    href=reverse("games:add_playevent_for_game", args=[game.id]),
-                    class_=_PLAYED_MENU_ITEM,
-                )["Add playthrough..."]
-            ],
-            Li()[
-                Element(
-                    "button",
-                    [
-                        ("type", "button"),
-                        ("data-add-play", ""),
-                        ("class", _PLAYED_MENU_ITEM),
-                    ],
-                    children=["Played times +1"],
-                )
-            ],
-        ]
-    ]
-    toggle = Element(
-        "button",
-        [
-            ("type", "button"),
-            ("data-toggle", ""),
-            ("class", _PLAYED_BTN + " rounded-e-lg"),
+    dropdown = SplitButtonDropdown(
+        primary=count_button,
+        id=f"played-{game.id}",
+        aria_label="Playthrough actions",
+        items=[
+            DropdownLinkItem(
+                reverse("games:add_playevent_for_game", args=[game.id]),
+                "Add playthrough...",
+            ),
+            DropdownActionItem(
+                "Played times +1",
+                attributes=[("data-add-play", "")],
+            ),
         ],
-        [Icon("arrowdown")],
     )
-    # Menu is a SIBLING of the toggle (not nested inside it): a <button> may not
-    # contain another <button>, and that invalid nesting makes the HTML parser
-    # close ancestors early, ejecting later page sections from their container.
-    toggle_group = Div(class_="relative inline-flex")[toggle, menu]
-    group = Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
-        count_button, toggle_group
-    ]
     return _PlayEventRow(
         game_id=game.id,
         csrf=get_token(request),
         api_create_url=reverse("api-1.0.0:create_playevent"),
-    )[Div(class_="flex gap-2 items-center")[Span(class_="uppercase")["Played"], group]]
+    )[
+        Div(class_="flex gap-2 items-center")[
+            Span(class_="uppercase")["Played"], dropdown
+        ]
+    ]
 
 
 def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:

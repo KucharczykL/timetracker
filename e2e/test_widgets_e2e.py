@@ -16,15 +16,32 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def _login(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, django_user_model) -> Page:
+    django_user_model.objects.create_user(username="tester", password="secret123")
+    _login(page, live_server)
     return page
+
+
+@pytest.fixture
+def touch_page(live_server, browser, django_user_model):
+    """A logged-in page in a touch-enabled context (so locator.tap() works and
+    pointer events report pointerType "touch"). Desktop-width viewport so the
+    navbar menu is visible (md:block) rather than collapsed in the hamburger."""
+    django_user_model.objects.create_user(username="tester", password="secret123")
+    context = browser.new_context(has_touch=True)
+    page = context.new_page()
+    _login(page, live_server)
+    yield page
+    context.close()
 
 
 def open_filter_bar(page: Page) -> None:
@@ -273,3 +290,228 @@ def test_add_game_submit_and_create_session_redirects(
     page.click('button[name="submit_and_create_session"]')
     page.wait_for_url(f"{live_server.url}/tracker/session/add/for-game/**")
     expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
+
+
+# ── Navbar Dropdown (the generic <dropdown-menu> custom element) ──────────────
+# The navbar's single entity "Menu" (with per-entity submenus) is on every page,
+# so it exercises the real component including the nested-submenu path.
+
+
+def test_navbar_menu_opens_and_closes_on_toggle(authenticated_page: Page, live_server):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
+    expect(menu).to_be_hidden()
+    toggle.click()
+    expect(menu).to_be_visible()
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    toggle.click()
+    expect(menu).to_be_hidden()
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+
+
+def test_navbar_menu_closes_on_escape_and_refocuses_toggle(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
+    toggle.click()
+    expect(menu).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()
+    expect(toggle).to_be_focused()
+
+
+def test_navbar_submenu_opens_without_closing_parent(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    top_menu = page.locator("#navbarMenu")
+    game_submenu = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").click()
+    expect(top_menu).to_be_visible()
+    page.locator("#navbarMenuGameLink").click()
+    # The submenu opens and the parent menu stays open (nesting coordination).
+    expect(game_submenu).to_be_visible()
+    expect(top_menu).to_be_visible()
+    expect(game_submenu.get_by_role("menuitem", name="Add game")).to_be_visible()
+
+
+def test_navbar_menu_keyboard_navigation(authenticated_page: Page, live_server):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#navbarMenuLink")
+    menu = page.locator("#navbarMenu")
+    toggle.focus()
+    page.keyboard.press("ArrowDown")  # opens and focuses the first item
+    expect(menu).to_be_visible()
+    # Roving stays on this menu's own rows, not the submenus' hidden items.
+    expect(menu.get_by_role("menuitem", name="Device", exact=True)).to_be_focused()
+    page.keyboard.press("End")
+    expect(menu.get_by_role("menuitem", name="Session", exact=True)).to_be_focused()
+    page.keyboard.press("ArrowRight")  # enter the Session submenu
+    expect(page.locator("#navbarMenuSession")).to_be_visible()
+
+
+def test_navbar_menu_arrow_roving(authenticated_page: Page, live_server):
+    """ArrowDown/Up rove the parent items (wrapping) and never auto-open a submenu."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    menu = page.locator("#navbarMenu")
+
+    def focused(name: str):
+        return menu.get_by_role("menuitem", name=name, exact=True)
+
+    page.locator("#navbarMenuLink").focus()
+    page.keyboard.press("ArrowDown")  # open, Device focused
+    expect(focused("Device")).to_be_focused()
+
+    page.keyboard.press("ArrowDown")  # -> Game, must NOT open Device's submenu
+    expect(focused("Game")).to_be_focused()
+    expect(page.locator("#navbarMenuDevice")).to_be_hidden()
+    expect(page.locator("#navbarMenuGame")).to_be_hidden()
+
+    page.keyboard.press("ArrowDown")  # -> Platform
+    expect(focused("Platform")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # -> Game
+    expect(focused("Game")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # -> Device (first)
+    expect(focused("Device")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # wrap -> Session (last)
+    expect(focused("Session")).to_be_focused()
+    page.keyboard.press("ArrowDown")  # wrap -> Device
+    expect(focused("Device")).to_be_focused()
+
+
+def test_navbar_submenu_keyboard_open_close(authenticated_page: Page, live_server):
+    """ArrowRight / Enter open a submenu and focus its first item; ArrowLeft closes
+    and returns focus to the parent item."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    menu = page.locator("#navbarMenu")
+    game_sub = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").focus()
+    page.keyboard.press("ArrowDown")  # Device
+    page.keyboard.press("ArrowDown")  # Game
+    expect(menu.get_by_role("menuitem", name="Game", exact=True)).to_be_focused()
+
+    page.keyboard.press("ArrowRight")  # open Game submenu, focus its first item
+    expect(game_sub).to_be_visible()
+    expect(
+        game_sub.get_by_role("menuitem", name="Add game", exact=True)
+    ).to_be_focused()
+
+    page.keyboard.press("ArrowLeft")  # close, refocus the Game parent item
+    expect(game_sub).to_be_hidden()
+    expect(page.locator("#navbarMenuGameLink")).to_be_focused()
+
+    page.keyboard.press("Enter")  # Enter also opens + focuses the first item
+    expect(game_sub).to_be_visible()
+    expect(
+        game_sub.get_by_role("menuitem", name="Add game", exact=True)
+    ).to_be_focused()
+
+
+def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_server):
+    """Every entity submenu opens just past the parent *panel's* right edge (a 1px
+    aesthetic gap, never inside it), all at the same x, with its first item aligned
+    to the hovered toggle row (y). Three regressions guarded: (1) opening a low
+    submenu briefly grew a scrollbar in the parent menu, shifting the anchor ~15px
+    and overlapping the parent (positionMenu now pins `fixed` before unhide);
+    (2) panel padding inset the toggle from the panel edge, so a toggle-anchored
+    flyout opened *inside* the padded panel — x now anchors to the parent panel's
+    edge (+SUBMENU_GAP); (3) the flyout's panel-top (not its first item) was
+    aligned to the toggle, so the panel's top padding pushed the first row ~8px
+    low — y now subtracts the measured first-item inset, so any padding/border
+    leaves the row aligned. Use a wide viewport so the flyouts open to the right
+    rather than flipping left for want of room."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.locator("#navbarMenuLink").click()
+    panel_box = page.locator("#navbarMenu").bounding_box()
+    assert panel_box
+    panel_right = round(panel_box["x"] + panel_box["width"])
+
+    rows = []
+    for entity in ["Device", "Game", "Platform", "PlayEvent", "Purchase", "Session"]:
+        toggle = page.locator(f"#navbarMenu{entity}Link")
+        submenu = page.locator(f"#navbarMenu{entity}")
+        toggle.hover()
+        expect(submenu).to_be_visible()
+        sub_box = submenu.bounding_box()
+        tog_box = toggle.bounding_box()
+        first_item_box = submenu.locator("[role=menuitem]").first.bounding_box()
+        assert sub_box and tog_box and first_item_box  # visible → boxes present
+        rows.append(
+            (
+                entity,
+                round(sub_box["x"]),
+                panel_right,
+                tog_box["y"],
+                first_item_box["y"],
+            )
+        )
+
+    lefts = [x for _, x, _, _, _ in rows]
+    assert max(lefts) - min(lefts) <= 1, f"submenu x drift between items: {rows}"
+    for entity, x, panel_right_edge, toggle_top, first_item_top in rows:
+        # Just past the edge by the ~1px aesthetic gap — never inside the panel
+        # (which would read as overlap) and never detached.
+        assert 0 <= x - panel_right_edge <= 2, (
+            f"{entity} not at panel edge + gap: x={x} panel_right={panel_right_edge}"
+        )
+        assert abs(first_item_top - toggle_top) <= 2, (
+            f"{entity} first item not aligned to toggle row: "
+            f"item_top={first_item_top} toggle_top={toggle_top}"
+        )
+
+
+def test_navbar_menu_centered_under_toggle(authenticated_page: Page, live_server):
+    """The top-level navbar Menu panel opens centered under its toggle
+    (placement="bottom-center"). Regression: it inherited "bottom-end" from the
+    pre-consolidation New/Manage menus that sat near the navbar's right edge, so
+    the single central Menu opened right-edge aligned, which looked off."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#navbarMenuLink")
+    toggle.click()
+    panel = page.locator("#navbarMenu")
+    expect(panel).to_be_visible()
+
+    tog_box = toggle.bounding_box()
+    panel_box = panel.bounding_box()
+    assert tog_box and panel_box
+    toggle_center = tog_box["x"] + tog_box["width"] / 2
+    panel_center = panel_box["x"] + panel_box["width"] / 2
+    assert abs(panel_center - toggle_center) <= 1, (
+        f"Menu not centered: panel_center={panel_center} toggle_center={toggle_center}"
+    )
+
+
+def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
+    """On touch, tapping a submenu open must keep it open. Regression: hover was
+    wired to pointerenter/pointerleave, and pointerleave fires on finger lift, so
+    the submenu closed on release (now gated to pointerType === 'mouse')."""
+    page = touch_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    top_menu = page.locator("#navbarMenu")
+    game_submenu = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").tap()
+    expect(top_menu).to_be_visible()
+    page.locator("#navbarMenuGameLink").tap()
+    expect(game_submenu).to_be_visible()
+    expect(top_menu).to_be_visible()  # parent stays open
+
+    # Past SUBMENU_CLOSE_DELAY_MS (150): pre-fix the touch-release pointerleave
+    # would have closed the submenu by now.
+    page.wait_for_timeout(300)
+    expect(game_submenu).to_be_visible()
