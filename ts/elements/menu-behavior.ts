@@ -89,7 +89,13 @@ export function attachMenu(
       menu.style.left = `${Math.max(VIEWPORT_MARGIN, rect.right - menu.offsetWidth)}px`;
     } else {
       menu.style.left = `${rect.left}px`;
-      if (matchToggleWidth) menu.style.width = `${rect.width}px`;
+      if (matchToggleWidth) {
+        // Grow to fit the widest option but never narrower than the toggle, so
+        // long option labels don't wrap/clip under the panel's overflow-hidden
+        // (value selectors). Plain width-matching would pin to the toggle.
+        menu.style.minWidth = `${rect.width}px`;
+        menu.style.width = "max-content";
+      }
     }
 
     // Set the unused vertical anchor to "auto" (not "") so the inline value wins
@@ -110,6 +116,7 @@ export function attachMenu(
       "bottom",
       "left",
       "width",
+      "min-width",
       "max-height",
       "overflow-y",
     ]) {
