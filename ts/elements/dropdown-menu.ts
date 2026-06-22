@@ -26,6 +26,7 @@ class DropdownMenuElement extends HTMLElement {
 
     const controller = attachMenu(this, toggle, menu, {
       placement: props.placement as MenuPlacement,
+      submenu: props.submenu,
     });
     this.controller = controller;
 

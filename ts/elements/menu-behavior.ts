@@ -14,6 +14,9 @@ export interface MenuOptions {
   // Force the menu's width to match the toggle's (the value-selectors want this;
   // content-width menus like the navbar/played-row do not). Bottom-start only.
   matchToggleWidth?: boolean;
+  // A submenu opens (idempotently) on click instead of toggling — it is already
+  // hover-opened on mouse, so a click must not toggle it closed.
+  submenu?: boolean;
 }
 
 export interface MenuController {
@@ -47,6 +50,7 @@ export function attachMenu(
     options.itemSelector ??
     '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
   const matchToggleWidth = options.matchToggleWidth ?? false;
+  const isSubmenu = options.submenu ?? false;
 
   // Items of *this* menu only — never those of a nested submenu (whose closest
   // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
@@ -213,7 +217,12 @@ export function attachMenu(
 
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (isOpen()) {
+    // A submenu is hover-opened on mouse, so a click must not toggle it closed —
+    // open idempotently. (It closes via outside-click / hover-out / ArrowLeft.)
+    if (isSubmenu) {
+      open();
+      setActive(0);
+    } else if (isOpen()) {
       close();
     } else {
       open();
