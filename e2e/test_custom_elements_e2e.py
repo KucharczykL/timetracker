@@ -26,6 +26,12 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
 
     host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
+    # Listen for the cross-widget refresh event the select behavior fires on success.
+    page.evaluate(
+        "() => { window.__refreshed = false; "
+        "document.body.addEventListener('status-changed', () => "
+        "{ window.__refreshed = true; }); }"
+    )
     host.locator("[data-toggle]").click()
     expect(host.locator("[data-menu]")).to_be_visible()
     with page.expect_response(
@@ -33,6 +39,15 @@ def test_game_status_selector_opens_and_patches(authenticated_page: Page, live_s
     ):
         host.locator('[data-option][data-value="f"]').click()
     expect(host.locator("[data-menu]")).to_be_hidden()
+    # Client effects of the pick: toggle label swapped, selection reflected.
+    expect(host.locator("[data-label]")).to_contain_text("Finished")
+    expect(host.locator('[data-option][data-value="f"]')).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(host.locator('[data-option][data-value="u"]')).to_have_attribute(
+        "aria-selected", "false"
+    )
+    page.wait_for_function("() => window.__refreshed === true")
     game.refresh_from_db()
     assert game.status == "f"
 
@@ -54,11 +69,21 @@ def test_session_device_selector_patches(authenticated_page: Page, live_server):
 
     host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
+    page.evaluate(
+        "() => { window.__refreshed = false; "
+        "document.body.addEventListener('device-changed', () => "
+        "{ window.__refreshed = true; }); }"
+    )
     host.locator("[data-toggle]").click()
     with page.expect_response(
         lambda r: "/device" in r.url and r.request.method == "PATCH"
     ):
         host.locator(f'[data-option][data-value="{deck.id}"]').click()
+    expect(host.locator("[data-label]")).to_contain_text("Deck")
+    expect(host.locator(f'[data-option][data-value="{deck.id}"]')).to_have_attribute(
+        "aria-selected", "true"
+    )
+    page.wait_for_function("() => window.__refreshed === true")
     session.refresh_from_db()
     assert session.device_id == deck.id
 
