@@ -24,6 +24,12 @@ registerBehavior("select", {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         const rawValue = option.dataset.value ?? "";
+        // Snapshot the pre-click UI so a failed PATCH can revert — the update
+        // below is optimistic (applied before the server confirms).
+        const previousLabelHtml = label?.innerHTML;
+        const previousSelected = options.map((other) =>
+          other.getAttribute("aria-selected"),
+        );
         if (label) label.innerHTML = option.innerHTML;
         for (const other of options) {
           other.setAttribute("aria-selected", other === option ? "true" : "false");
@@ -35,8 +41,24 @@ registerBehavior("select", {
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
             body: JSON.stringify({ [bodyKey]: numeric ? Number(rawValue) : rawValue }),
           })
-          .then(() => document.body.dispatchEvent(new CustomEvent(event)))
-          .catch(() => console.error("Failed to update", patchUrl));
+          .then((response) => {
+            // fetch resolves on 4xx/5xx, so an unchecked response would make a
+            // rejected change look successful — check the status explicitly.
+            if (!response.ok) throw new Error(`PATCH ${patchUrl} → ${response.status}`);
+            document.body.dispatchEvent(new CustomEvent(event));
+          })
+          .catch((error) => {
+            console.error("Failed to update", patchUrl, error);
+            if (label && previousLabelHtml !== undefined) {
+              label.innerHTML = previousLabelHtml;
+            }
+            options.forEach((other, index) => {
+              const previous = previousSelected[index];
+              if (previous === null) other.removeAttribute("aria-selected");
+              else other.setAttribute("aria-selected", previous);
+            });
+            window.toast("Couldn't save your change — please try again.", "error");
+          });
       };
       option.addEventListener("click", handler);
       handlers.push([option, handler]);
