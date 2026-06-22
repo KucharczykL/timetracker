@@ -28,6 +28,15 @@ class DropdownElement extends HTMLElement {
     if (!toggle || !menu) return;
 
     const behavior = getBehavior(props.behavior);
+    if (props.behavior && !behavior) {
+      // A named-but-unregistered behavior degrades to a bare open/close menu with
+      // no wiring (e.g. a `select` dropdown that never PATCHes) — say so loudly
+      // instead of failing silently. An empty behavior is intentional and quiet.
+      console.error(
+        `<drop-down> requested behavior "${props.behavior}" but none is registered; ` +
+          "it will open/close but its behavior wiring is missing.",
+      );
+    }
     const controller = attachMenu(this, toggle, menu, {
       placement: props.placement as MenuPlacement,
       submenu: props.submenu,
