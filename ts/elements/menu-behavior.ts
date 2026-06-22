@@ -204,6 +204,9 @@ export function attachMenu(
     document.dispatchEvent(
       new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
     );
+    // Lifecycle seam: behaviors and outside code (incl. htmx hx-on:dropdown:show)
+    // observe visibility via these host events rather than JS callbacks.
+    host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
 
   const close = (): void => {
@@ -213,6 +216,7 @@ export function attachMenu(
     toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
+    host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
   };
 
   const toggleChecked = (item: HTMLElement): void => {
