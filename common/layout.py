@@ -320,8 +320,7 @@ def NavbarMenu(
         )["Home"]
     ]
 
-    # One entity menu: each entity is a submenu of its actions (Add / List),
-    # plus Play events (which has no standalone "add") as a direct link.
+    # One entity menu: each entity is a submenu of its actions (Add / List).
     entity_menu = Li()[
         Dropdown(
             label="Menu",
@@ -335,7 +334,12 @@ def NavbarMenu(
                 entity_submenu(
                     "Platform", "Platform", "games:add_platform", "games:list_platforms"
                 ),
-                DropdownLinkItem(reverse("games:list_playevents"), "Play events"),
+                entity_submenu(
+                    "Play event",
+                    "PlayEvent",
+                    "games:add_playevent",
+                    "games:list_playevents",
+                ),
                 entity_submenu(
                     "Purchase", "Purchase", "games:add_purchase", "games:list_purchases"
                 ),

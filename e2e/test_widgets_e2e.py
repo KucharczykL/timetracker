@@ -16,15 +16,32 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def _login(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, django_user_model) -> Page:
+    django_user_model.objects.create_user(username="tester", password="secret123")
+    _login(page, live_server)
     return page
+
+
+@pytest.fixture
+def touch_page(live_server, browser, django_user_model):
+    """A logged-in page in a touch-enabled context (so locator.tap() works and
+    pointer events report pointerType "touch"). Desktop-width viewport so the
+    navbar menu is visible (md:block) rather than collapsed in the hamburger."""
+    django_user_model.objects.create_user(username="tester", password="secret123")
+    context = browser.new_context(has_touch=True)
+    page = context.new_page()
+    _login(page, live_server)
+    yield page
+    context.close()
 
 
 def open_filter_bar(page: Page) -> None:
@@ -339,3 +356,24 @@ def test_navbar_menu_keyboard_navigation(authenticated_page: Page, live_server):
     expect(menu.get_by_role("menuitem", name="Session", exact=True)).to_be_focused()
     page.keyboard.press("ArrowRight")  # enter the Session submenu
     expect(page.locator("#navbarMenuSession")).to_be_visible()
+
+
+def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
+    """On touch, tapping a submenu open must keep it open. Regression: hover was
+    wired to pointerenter/pointerleave, and pointerleave fires on finger lift, so
+    the submenu closed on release (now gated to pointerType === 'mouse')."""
+    page = touch_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    top_menu = page.locator("#navbarMenu")
+    game_submenu = page.locator("#navbarMenuGame")
+
+    page.locator("#navbarMenuLink").tap()
+    expect(top_menu).to_be_visible()
+    page.locator("#navbarMenuGameLink").tap()
+    expect(game_submenu).to_be_visible()
+    expect(top_menu).to_be_visible()  # parent stays open
+
+    # Past SUBMENU_CLOSE_DELAY_MS (150): pre-fix the touch-release pointerleave
+    # would have closed the submenu by now.
+    page.wait_for_timeout(300)
+    expect(game_submenu).to_be_visible()
