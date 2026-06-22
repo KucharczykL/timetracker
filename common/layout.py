@@ -220,14 +220,9 @@ def NavbarPlaytime(
     )
 
 
-# Navbar-specific inline SVGs (hamburger + theme sun/moon). Trusted markup, so
-# they live in Safe() snippets rather than the icon-file system.
-_HAMBURGER_SVG = (
-    '<svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
-    'fill="none" viewBox="0 0 17 14"><path stroke="currentColor" '
-    'stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
-    'd="M1 1h15M1 7h15M1 13h15" /></svg>'
-)
+# Theme toggle sun/moon SVGs: kept as a Safe() snippet because the FOUC script in
+# Page() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
+# is a plain icon, so it lives in the icon system (Icon("hamburger")).
 _THEME_TOGGLE_SVGS = (
     '<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" '
     'viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path '
@@ -413,7 +408,7 @@ def Navbar(
     csrf_token: str,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
-    from common.components import A, Div, Element, Safe, Span
+    from common.components import A, Div, Element, Icon, Safe, Span
 
     logo = static("icons/schedule.png")
     brand = A(
@@ -445,7 +440,7 @@ def Navbar(
             ("aria-controls", "navbar-dropdown"),
             ("aria-expanded", "false"),
         ],
-        [Span(class_="sr-only")["Open main menu"], Safe(_HAMBURGER_SVG)],
+        [Span(class_="sr-only")["Open main menu"], Icon("hamburger")],
     )
     menu = NavbarMenu(
         today_played=today_played,
