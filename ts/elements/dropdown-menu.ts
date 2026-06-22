@@ -27,12 +27,17 @@ class DropdownMenuElement extends HTMLElement {
     });
 
     if (props.submenu) {
+      // Hover open/close is for mouse only. On touch, pointerleave fires when
+      // the finger lifts, which would close the submenu immediately; there a
+      // tap toggles it instead (attachMenu's toggle click handler).
       let closeTimer = 0;
-      this.addEventListener("pointerenter", () => {
+      this.addEventListener("pointerenter", (event) => {
+        if (event.pointerType !== "mouse") return;
         window.clearTimeout(closeTimer);
         controller.open();
       });
-      this.addEventListener("pointerleave", () => {
+      this.addEventListener("pointerleave", (event) => {
+        if (event.pointerType !== "mouse") return;
         closeTimer = window.setTimeout(() => controller.close(), SUBMENU_CLOSE_DELAY_MS);
       });
       toggle.addEventListener("keydown", (event) => {
