@@ -10,7 +10,7 @@ reader so drift fails ``tsc``.
 
 import warnings
 from dataclasses import dataclass
-from typing import TypedDict, get_type_hints
+from typing import NamedTuple, TypedDict, get_type_hints
 
 from common.components.core import Child, Element, Fragment, Node
 from common.components.primitives import (
@@ -609,9 +609,13 @@ def DropdownSubmenu(
     ]
 
 
-type SelectOption = tuple[
-    str, Child, bool
-]  # (value, label, is_selected); e.g. ("f", "Finished", True)
+class SelectOption(NamedTuple):
+    value: str
+    label: Child
+    selected: bool  # is this option the current value? → aria-selected
+
+
+# e.g. SelectOption("f", "Finished", True)
 
 
 def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Element:

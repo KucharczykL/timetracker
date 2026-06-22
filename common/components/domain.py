@@ -214,7 +214,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
     from common.components.custom_elements import SelectDropdown, SelectOption
 
     options: list[SelectOption] = [
-        (
+        SelectOption(
             value,
             GameStatus(status=value, children=[label], display="flex"),
             value == game.status,
@@ -240,7 +240,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
 
     current = session.device.id if session.device else None
     options: list[SelectOption] = [
-        (str(device.id), device.name, device.id == current)
+        SelectOption(str(device.id), device.name, device.id == current)
         for device in session_devices
     ]
     return SelectDropdown(
