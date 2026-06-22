@@ -11,6 +11,9 @@ export interface MenuOptions {
   // Which descendants count as navigable items. Defaults to the menuitem roles;
   // the PATCH selectors pass "[data-option]" (their options carry no role).
   itemSelector?: string;
+  // Force the menu's width to match the toggle's (the value-selectors want this;
+  // content-width menus like the navbar/played-row do not). Bottom-start only.
+  matchToggleWidth?: boolean;
 }
 
 export interface MenuController {
@@ -41,6 +44,7 @@ export function attachMenu(
   const itemSelector =
     options.itemSelector ??
     '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+  const matchToggleWidth = options.matchToggleWidth ?? false;
 
   const enabledItems = (): HTMLElement[] =>
     Array.from(menu.querySelectorAll<HTMLElement>(itemSelector)).filter(
@@ -79,7 +83,7 @@ export function attachMenu(
       menu.style.left = `${Math.max(VIEWPORT_MARGIN, rect.right - menu.offsetWidth)}px`;
     } else {
       menu.style.left = `${rect.left}px`;
-      menu.style.width = `${rect.width}px`;
+      if (matchToggleWidth) menu.style.width = `${rect.width}px`;
     }
 
     // Set the unused vertical anchor to "auto" (not "") so the inline value wins

@@ -152,6 +152,26 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertIn('placement="right-start"', html)
         self.assertIn('submenu="true"', html)
 
+    def test_frosted_panel_variant(self):
+        from common.components import Dropdown, DropdownActionItem, render
+
+        node = Dropdown(
+            label="",
+            id="played-1",
+            variant="button",
+            panel="frosted",
+            items=[
+                DropdownActionItem(
+                    "Played +1", attributes=[("x", "1")], style="frosted"
+                )
+            ],
+        )
+        html = render(node)
+        self.assertIn("backdrop-blur-lg", html)  # frosted panel
+        self.assertIn("bg-gray-800/20", html)
+        self.assertNotIn("overflow-hidden", html)  # frosted keeps its own corners
+        self.assertIn("hover:bg-gray-700", html)  # frosted item hover
+
     def test_check_and_divider_items(self):
         from common.components import (
             Dropdown,

@@ -249,8 +249,17 @@ _DropdownMenu = custom_element_builder("dropdown-menu")
 type DropdownLink = tuple[str, str]  # (url, label), e.g. ("/games/add/", "Game")
 
 
-# Outline-less navbar look ("plain") vs. a bordered button ("button"). The
-# variant only changes the toggle's classes, not its behavior.
+# Bordered button toggle look (the "button" variant), shared with split-button
+# consumers (e.g. the played-row count button) as the single source of truth.
+# Carries no corner rounding — Dropdown adds rounded-lg / rounded-e-lg by shape.
+DROPDOWN_BUTTON_CLASS = (
+    "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
+    "hover:bg-gray-100 hover:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
+    "dark:text-white dark:hover:bg-gray-700 hover:cursor-pointer"
+)
+
+# Toggle look: outline-less navbar ("plain") vs. bordered button ("button").
+# The variant only changes the toggle's classes, not its behavior.
 _DROPDOWN_TOGGLE_VARIANTS: dict[str, str] = {
     "plain": (
         "flex items-center justify-between w-full py-2 px-3 text-gray-900 "
@@ -259,34 +268,55 @@ _DROPDOWN_TOGGLE_VARIANTS: dict[str, str] = {
         "md:dark:hover:text-blue-500 dark:focus:text-white dark:border-gray-700 "
         "dark:hover:bg-gray-700 md:dark:hover:bg-transparent hover:cursor-pointer"
     ),
-    "button": (
-        "inline-flex items-center gap-1 px-4 py-2 text-sm font-medium bg-white "
-        "border border-gray-200 rounded-lg hover:bg-gray-100 dark:bg-gray-800 "
-        "dark:border-gray-700 dark:hover:text-white dark:hover:bg-gray-700 "
-        "hover:cursor-pointer"
+    "button": DROPDOWN_BUTTON_CLASS,
+}
+
+# Panel look: "menu" is the standard white dropdown (navbar); "frosted" is the
+# translucent contextual menu (the played-row split button). Each panel pairs
+# with the matching item ``style`` so an item carries its own (panel-appropriate)
+# classes rather than inheriting them across the DOM.
+_DROPDOWN_PANELS: dict[str, str] = {
+    "menu": (
+        "absolute z-20 w-44 overflow-hidden rounded-lg bg-white shadow-sm "
+        "text-sm font-normal text-gray-700 dark:bg-gray-700 dark:text-gray-400"
+    ),
+    "frosted": (
+        "absolute z-20 w-max whitespace-nowrap text-sm font-medium "
+        "bg-gray-800/20 backdrop-blur-lg rounded-md rounded-tl-none border "
+        "border-gray-200 dark:border-gray-700"
+    ),
+}
+_DROPDOWN_ITEM_CLASSES: dict[str, str] = {
+    "menu": (
+        "block w-full cursor-pointer px-4 py-2 text-left no-underline "
+        "hover:bg-gray-100 focus:bg-gray-100 focus:outline-hidden "
+        "dark:hover:bg-gray-600 dark:hover:text-white dark:focus:bg-gray-600 "
+        "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+    ),
+    # Mirrors the former _PLAYED_MENU_ITEM (each item fills the row — issue #70),
+    # plus a keyboard-focus highlight now that the menu is keyboard-navigable.
+    "frosted": (
+        "block w-full text-left px-4 py-2 rounded-sm cursor-pointer no-underline "
+        "border-0 hover:bg-gray-700 hover:text-white focus:bg-gray-700 "
+        "focus:text-white focus:outline-hidden dark:hover:bg-gray-700 "
+        "dark:hover:text-white aria-disabled:opacity-50"
     ),
 }
 
-_DROPDOWN_PANEL_CLASS = (
-    "absolute z-20 w-44 overflow-hidden rounded-lg bg-white shadow-sm text-sm "
-    "font-normal text-gray-700 dark:bg-gray-700 dark:text-gray-400"
-)
-_DROPDOWN_ITEM_CLASS = (
-    "block w-full cursor-pointer px-4 py-2 text-left no-underline "
-    "hover:bg-gray-100 focus:bg-gray-100 focus:outline-hidden "
-    "dark:hover:bg-gray-600 dark:hover:text-white dark:focus:bg-gray-600 "
-    "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
-)
-_DROPDOWN_CHECK_ITEM_CLASS = _DROPDOWN_ITEM_CLASS + " group flex items-center gap-2"
+
+def _dropdown_item_class(style: str) -> str:
+    return _DROPDOWN_ITEM_CLASSES.get(style, _DROPDOWN_ITEM_CLASSES["menu"])
 
 
-def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
+def DropdownLinkItem(
+    url: str, label: str, *, current: bool = False, style: str = "menu"
+) -> Node:
     """A navigation menu item (an ``<a>`` link)."""
     attributes: list[tuple[str, str]] = [
         ("href", url),
         ("role", "menuitem"),
         ("tabindex", "-1"),
-        ("class", _DROPDOWN_ITEM_CLASS),
+        ("class", _dropdown_item_class(style)),
     ]
     if current:
         attributes.append(("aria-current", "page"))
@@ -298,6 +328,7 @@ def DropdownActionItem(
     *,
     attributes: list[tuple[str, str]] | None = None,
     disabled: bool = False,
+    style: str = "menu",
 ) -> Node:
     """An action menu item (a ``<button>``). ``attributes`` carries the caller's
     data hooks (e.g. ``[("data-add-play", "")]``) wiring its own JS behavior."""
@@ -305,7 +336,7 @@ def DropdownActionItem(
         ("type", "button"),
         ("role", "menuitem"),
         ("tabindex", "-1"),
-        ("class", _DROPDOWN_ITEM_CLASS),
+        ("class", _dropdown_item_class(style)),
     ]
     if disabled:
         item_attributes += [("disabled", ""), ("aria-disabled", "true")]
@@ -318,6 +349,7 @@ def DropdownCheckItem(
     *,
     checked: bool,
     attributes: list[tuple[str, str]] | None = None,
+    style: str = "menu",
 ) -> Node:
     """A multi-select menu item (``role="menuitemcheckbox"``). Toggling it keeps
     the menu open; the checked state is reflected via ``aria-checked``."""
@@ -326,7 +358,7 @@ def DropdownCheckItem(
         ("role", "menuitemcheckbox"),
         ("aria-checked", "true" if checked else "false"),
         ("tabindex", "-1"),
-        ("class", _DROPDOWN_CHECK_ITEM_CLASS),
+        ("class", _dropdown_item_class(style) + " group flex items-center gap-2"),
     ]
     item_attributes += list(attributes or [])
     return Li()[
@@ -341,9 +373,10 @@ def DropdownCheckItem(
     ]
 
 
-def DropdownDivider() -> Node:
+def DropdownDivider(*, style: str = "menu") -> Node:
     """A separator between groups of items."""
-    return Li(role="separator", class_="my-1 h-px bg-gray-100 dark:bg-gray-600")
+    color = "bg-gray-100 dark:bg-gray-600" if style == "menu" else "bg-gray-200/40"
+    return Li(role="separator", class_=f"my-1 h-px {color}")
 
 
 def Dropdown(
@@ -352,6 +385,7 @@ def Dropdown(
     items: list[Node],
     id: str,
     variant: str = "plain",
+    panel: str = "menu",
     primary: Node | None = None,
     placement: str = "bottom-start",
     submenu: bool = False,
@@ -360,13 +394,18 @@ def Dropdown(
 
     ``items`` are nodes (use ``DropdownLinkItem`` / ``DropdownActionItem`` /
     ``DropdownCheckItem`` / ``DropdownDivider``), so a menu can mix links,
-    actions, checkboxes and even nested ``Dropdown``s (submenus). ``primary``
-    renders a split button (a leading action grouped with the caret toggle).
+    actions, checkboxes and even nested ``Dropdown``s (submenus). ``variant``
+    styles the toggle (``plain`` | ``button``); ``panel`` styles the menu
+    (``menu`` | ``frosted`` — pass the matching ``style=`` to the items).
+    ``primary`` renders a split button (a leading action grouped with the caret).
     """
     toggle_class = _DROPDOWN_TOGGLE_VARIANTS.get(
         variant, _DROPDOWN_TOGGLE_VARIANTS["plain"]
     )
-    if primary is not None:
+    if variant == "button":
+        # The button look carries no rounding; apply it by shape.
+        toggle_class += " rounded-e-lg" if primary is not None else " rounded-lg"
+    elif primary is not None:
         toggle_class += " rounded-e-lg"
     toggle = Element(
         "button",
@@ -381,20 +420,20 @@ def Dropdown(
         ],
         Span(class_="flex items-center gap-1")[label, Icon("arrowdown")],
     )
-    panel = Div(
+    panel_node = Div(
         data_menu="",
         role="menu",
         id=id,
         aria_labelledby=f"{id}Link",
         hidden=True,
-        class_=_DROPDOWN_PANEL_CLASS,
+        class_=_DROPDOWN_PANELS.get(panel, _DROPDOWN_PANELS["menu"]),
     )[Ul()[*items]]
     if primary is not None:
         inner: Node = Div(
             class_="relative inline-flex items-stretch rounded-md shadow-2xs"
-        )[primary, toggle, panel]
+        )[primary, toggle, panel_node]
     else:
-        inner = Fragment(toggle, panel)
+        inner = Fragment(toggle, panel_node)
     return _DropdownMenu(
         class_="relative inline-block",
         placement=placement,

@@ -1,30 +1,19 @@
 import { readPlayEventRowProps } from "../generated/props.js";
 
+// The "Played N times" split button. Open/close + positioning come from the
+// inner <dropdown-menu> (menu-behavior.ts); this element owns only the
+// "Played +1" action: optimistic count bump + POST + refresh of the Play
+// Events section. The menu auto-closes on the click (attachMenu), so there is
+// no toggle/outside-click code here anymore.
 class PlayEventRowElement extends HTMLElement {
   connectedCallback(): void {
     const props = readPlayEventRowProps(this);
-    const toggle = this.querySelector<HTMLElement>("[data-toggle]");
-    const menu = this.querySelector<HTMLElement>("[data-menu]");
     const count = this.querySelector<HTMLElement>("[data-count]");
     const addPlay = this.querySelector<HTMLElement>("[data-add-play]");
-    if (!toggle || !menu) return;
+    if (!addPlay) return;
 
-    const close = () => {
-      menu.hidden = true;
-    };
-    toggle.addEventListener("click", (event) => {
-      event.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
-    document.addEventListener("click", (event) => {
-      if (!this.contains(event.target as Node)) close();
-    });
-
-    addPlay?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+    addPlay.addEventListener("click", () => {
       if (count) count.textContent = String(Number(count.textContent) + 1);
-      close();
       window
         .fetchWithHtmxTriggers(props.apiCreateUrl, {
           method: "POST",

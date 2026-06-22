@@ -19,7 +19,10 @@ export function initDropdown(host: HTMLElement, config: DropdownConfig): void {
   const label = host.querySelector<HTMLElement>("[data-label]");
   if (!toggle || !menu || !label) return;
 
-  const controller = attachMenu(host, toggle, menu, { itemSelector: "[data-option]" });
+  const controller = attachMenu(host, toggle, menu, {
+    itemSelector: "[data-option]",
+    matchToggleWidth: true,
+  });
 
   host.querySelectorAll<HTMLElement>("[data-option]").forEach((option) => {
     option.addEventListener("click", (event) => {
