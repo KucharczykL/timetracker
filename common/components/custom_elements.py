@@ -246,9 +246,6 @@ register_element("dropdown-menu", "DropdownMenu", DropdownMenuProps)
 _DropdownMenu = custom_element_builder("dropdown-menu")
 
 
-type DropdownLink = tuple[str, str]  # (url, label), e.g. ("/games/add/", "Game")
-
-
 # Unified dropdown styling — ONE look for every dropdown: white in light mode,
 # frosted (translucent + backdrop blur) in dark mode. The only option is
 # `outline`: a border on the toggle AND panel for button-like (non-menu)
