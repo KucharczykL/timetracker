@@ -292,7 +292,7 @@ def test_add_game_submit_and_create_session_redirects(
     expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
 
 
-# ── Navbar Dropdown (the generic <dropdown-menu> custom element) ──────────────
+# ── Navbar Dropdown (the generic <dropdown> custom element) ──────────────────
 # The navbar's single entity "Menu" (with per-entity submenus) is on every page,
 # so it exercises the real component including the nested-submenu path.
 
@@ -524,7 +524,7 @@ def test_dropdown_lifecycle_events(authenticated_page: Page, live_server):
     page.evaluate(
         """() => {
             window.__dd = [];
-            const host = document.querySelector('#navbarMenu').closest('dropdown, dropdown-menu');
+            const host = document.querySelector('#navbarMenu').closest('drop-down');
             host.addEventListener('dropdown:show', () => window.__dd.push('show'));
             host.addEventListener('dropdown:hide', () => window.__dd.push('hide'));
         }"""

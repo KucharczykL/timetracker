@@ -9,8 +9,8 @@ export interface DropdownConfig {
 }
 
 // Wires a light-DOM value-selector dropdown that lives inside `host`. Open/close,
-// positioning (#39) and keyboard navigation come from the shared `attachMenu`
-// helper; this only adds the PATCH-on-select behavior unique to the selectors.
+// positioning and keyboard navigation come from the shared `attachMenu` helper;
+// this only adds the PATCH-on-select behavior unique to the selectors.
 // Markup hooks (rendered server-side): [data-toggle], [data-menu],
 // [data-label], and one or more [data-option][data-value].
 export function initDropdown(

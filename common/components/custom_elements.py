@@ -234,19 +234,20 @@ def SelectionFields(
 
 
 # ── Dropdown ─────────────────────────────────────────────────────────────────
-# A generic, accessible dropdown menu. Behavior lives in
-# ts/elements/dropdown-menu.ts (open/close, keyboard nav, submenus); the shared
-# positioning/keyboard core is ts/elements/menu-behavior.ts. Opening is instant
-# (no animation, by design).
+# A generic, accessible dropdown element. Behavior lives in
+# ts/elements/dropdown.ts (open/close, keyboard nav, behavior dispatch); the
+# shared positioning/keyboard core is ts/elements/menu-behavior.ts. Opening is
+# instant (no animation, by design).
 
 
-class DropdownMenuProps(TypedDict):
-    placement: str  # "bottom-start" | "bottom-end" | "right-start"
+class DropdownProps(TypedDict):
+    placement: str  # "bottom-start" | "bottom-center" | "bottom-end" | "right-start"
     submenu: bool  # enables hover-open + arrow-key submenu behavior
+    behavior: str  # registered client behavior: "menu" | "select" | …
 
 
-register_element("dropdown-menu", "DropdownMenu", DropdownMenuProps)
-_DropdownMenu = custom_element_builder("dropdown-menu")
+register_element("drop-down", "Dropdown", DropdownProps)
+_Dropdown = custom_element_builder("drop-down")
 
 
 # Unified dropdown styling — ONE look for every dropdown: white in light mode,
@@ -452,13 +453,18 @@ def _assemble(
     placement: str,
     submenu: bool,
     wrapper_class: str,
+    behavior: str = "menu",
+    config: dict[str, str] | None = None,
 ) -> Node:
-    """Stamp both contracts and wire the ``<dropdown-menu>`` element. The single
-    assembly point shared by the public ``Dropdown`` and ``DropdownSubmenu``."""
-    return _DropdownMenu(
+    """Stamp both contracts and wire the <dropdown> element. The single assembly
+    point shared by the public Dropdown and DropdownSubmenu. `config` becomes
+    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
+    return _Dropdown(
         class_=wrapper_class,
         placement=placement,
         submenu="true" if submenu else "false",
+        behavior=behavior,
+        **(config or {}),
     )[
         Fragment(
             _stamp_trigger_contract(trigger, id),
@@ -473,17 +479,13 @@ def Dropdown(
     target_element: Element,
     id: str,
     placement: str = "bottom-start",
+    behavior: str = "menu",
+    config: dict[str, str] | None = None,
 ) -> Node:
-    """Attach a popup (``target_element``) to a ``trigger_element``.
-
-    A generic primitive: it owns only *behavior* — it stamps the JS/ARIA contract
-    onto the caller's two elements and wires the ``<dropdown-menu>`` for open/close,
-    positioning and keyboard nav. The caller owns the *look* of both halves (build
-    them directly, or use ``MenuDropdown`` / ``ButtonDropdown`` /
-    ``SplitButtonDropdown`` for the menu presets). Menu semantics (``role="menu"``,
-    ``aria-haspopup``) are NOT added here — they belong to the menu preset/wrappers,
-    so a non-menu target (listbox, dialog, disclosure) stays clean.
-    """
+    """Attach a popup (target_element) to a trigger_element. Generic primitive:
+    stamps the JS/ARIA contract, wires the <dropdown> element, and tags it with a
+    client `behavior` (menu by default). Menu semantics live in the menu preset/
+    wrappers, not here."""
     return _assemble(
         trigger_element,
         target_element,
@@ -491,15 +493,13 @@ def Dropdown(
         placement=placement,
         submenu=False,
         # inline-flex (not inline-block) so the trigger stretches to fill the
-        # wrapper — needed when the wrapper is itself a stretched flex child, e.g.
-        # the SplitButtonDropdown group, where the caret must match the primary's
-        # height. Visually identical for a standalone single-trigger dropdown.
-        # FRICTION POINT: this imposes a flex context on every dropdown wrapper to
-        # serve one composition. If it ever fights a future layout, the cleaner
-        # fix is `display: contents` on the wrapper (it leaves the box tree, so the
-        # trigger becomes a direct child of whatever the parent layout is) — at the
-        # cost of the wrapper losing its positioning context and box semantics.
+        # wrapper — needed when the wrapper is itself a stretched flex child (the
+        # SplitButtonDropdown group). Visually identical for a standalone dropdown.
+        # FRICTION POINT: imposes flex on every wrapper; `display: contents` is the
+        # cleaner-but-broader fallback if it ever fights a layout.
         wrapper_class="relative inline-flex",
+        behavior=behavior,
+        config=config,
     )
 
 

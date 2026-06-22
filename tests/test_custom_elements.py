@@ -156,13 +156,14 @@ class DropdownWrapperTest(unittest.TestCase):
             items=[DropdownLinkItem("/games/", "Game", current=True)],
         )
         html = render(node)
-        self.assertIn("<dropdown-menu", html)
+        self.assertIn("<drop-down ", html)
         self.assertIn('placement="bottom-center"', html)
+        self.assertIn('behavior="menu"', html)
         self.assertIn('id="navbarMenuLink"', html)
         self.assertIn('aria-haspopup="menu"', html)  # menu semantics from the wrapper
         self.assertIn('role="menu"', html)
         self.assertIn('aria-current="page"', html)
-        self.assertIn("dist/elements/dropdown-menu.js", collect_media(node).js)
+        self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
     def test_button_dropdown_uses_styled_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render
@@ -234,8 +235,8 @@ class DropdownSubmenuTest(unittest.TestCase):
         )
         html = render(node)
         # The submenu trigger is itself a menuitem with a popup, nested in a
-        # right-start <dropdown-menu>.
-        self.assertEqual(html.count("<dropdown-menu"), 2)
+        # right-start <drop-down>.
+        self.assertEqual(html.count("<drop-down "), 2)
         self.assertIn('id="navbarMenuGameLink"', html)
         self.assertIn('role="menuitem"', html)
         self.assertIn('aria-haspopup="menu"', html)

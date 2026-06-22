@@ -1,5 +1,5 @@
 import { readSessionDeviceSelectorProps } from "../generated/props.js";
-import { initDropdown } from "./dropdown.js";
+import { initDropdown } from "./dropdown-select-helper.js";
 import { MenuController } from "./menu-behavior.js";
 
 class SessionDeviceSelectorElement extends HTMLElement {
