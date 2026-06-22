@@ -320,7 +320,7 @@ def NavbarMenu(
         Dropdown(
             label="Menu",
             id="navbarMenu",
-            placement="bottom-end",
+            placement="bottom-center",
             items=[
                 entity_submenu(
                     "Device", "Device", "games:add_device", "games:list_devices"

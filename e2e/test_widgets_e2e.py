@@ -473,6 +473,29 @@ def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_serv
         )
 
 
+def test_navbar_menu_centered_under_toggle(authenticated_page: Page, live_server):
+    """The top-level navbar Menu panel opens centered under its toggle
+    (placement="bottom-center"). Regression: it inherited "bottom-end" from the
+    pre-consolidation New/Manage menus that sat near the navbar's right edge, so
+    the single central Menu opened right-edge aligned, which looked off."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    toggle = page.locator("#navbarMenuLink")
+    toggle.click()
+    panel = page.locator("#navbarMenu")
+    expect(panel).to_be_visible()
+
+    tog_box = toggle.bounding_box()
+    panel_box = panel.bounding_box()
+    assert tog_box and panel_box
+    toggle_center = tog_box["x"] + tog_box["width"] / 2
+    panel_center = panel_box["x"] + panel_box["width"] / 2
+    assert abs(panel_center - toggle_center) <= 1, (
+        f"Menu not centered: panel_center={panel_center} toggle_center={toggle_center}"
+    )
+
+
 def test_navbar_submenu_stays_open_on_tap(touch_page: Page, live_server):
     """On touch, tapping a submenu open must keep it open. Regression: hover was
     wired to pointerenter/pointerleave, and pointerleave fires on finger lift, so

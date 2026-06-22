@@ -3,7 +3,11 @@
 // navigation, and single-open coordination. Used both by the <dropdown-menu>
 // custom element and by the PATCH value-selectors (initDropdown).
 
-export type MenuPlacement = "bottom-start" | "bottom-end" | "right-start";
+export type MenuPlacement =
+  | "bottom-start"
+  | "bottom-center"
+  | "bottom-end"
+  | "right-start";
 
 export interface MenuOptions {
   // Where the menu opens relative to its toggle. Defaults to "bottom-start".
@@ -136,6 +140,9 @@ export function attachMenu(
 
     if (placement === "bottom-end") {
       setLeft(rect.right - menu.offsetWidth);
+    } else if (placement === "bottom-center") {
+      // Center the panel under the toggle's midpoint (clampLeft keeps it on-screen).
+      setLeft(rect.left + rect.width / 2 - menu.offsetWidth / 2);
     } else {
       if (matchToggleWidth) {
         menu.style.minWidth = `${rect.width}px`;
