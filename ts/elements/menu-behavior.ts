@@ -206,8 +206,9 @@ export function attachMenu(
     document.dispatchEvent(
       new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
     );
-    // Lifecycle seam: behaviors and outside code (incl. htmx hx-on:dropdown:show)
-    // observe visibility via these host events rather than JS callbacks.
+    // Lifecycle seam for future consumers: behaviors or htmx (hx-on:dropdown:show)
+    // can observe visibility here instead of via a JS callback. These bubble, so a
+    // submenu open also fires dropdown:show on its ancestor <drop-down>s.
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
 
