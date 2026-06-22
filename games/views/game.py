@@ -367,35 +367,32 @@ _STAT_SVGS = {
 
 
 def _played_row(game: Game, request: HttpRequest) -> Node:
-    """'Played N times' split button: a generic Dropdown (frosted panel) wrapped
-    in <play-event-row>, which owns only the 'Played +1' action."""
+    """'Played N times' split button: a generic outlined Dropdown wrapped in
+    <play-event-row>, which owns only the 'Played +1' action."""
     from common.components import Dropdown, DropdownActionItem, DropdownLinkItem
-    from common.components.custom_elements import DROPDOWN_BUTTON_CLASS, _PlayEventRow
+    from common.components.custom_elements import DROPDOWN_TOGGLE_OUTLINE, _PlayEventRow
     from common.components.primitives import Button
 
     played = game.playevents.count()
 
     count_button = A(href=reverse("games:add_playevent"))[
-        Button(class_=DROPDOWN_BUTTON_CLASS + " rounded-s-lg")[
+        Button(class_=DROPDOWN_TOGGLE_OUTLINE + " rounded-s-lg")[
             Span(data_count="")[str(played)], " times"
         ]
     ]
     dropdown = Dropdown(
         label="",
         id=f"played-{game.id}",
-        variant="button",
-        panel="frosted",
+        outline=True,
         primary=count_button,
         items=[
             DropdownLinkItem(
                 reverse("games:add_playevent_for_game", args=[game.id]),
                 "Add playthrough...",
-                style="frosted",
             ),
             DropdownActionItem(
                 "Played times +1",
                 attributes=[("data-add-play", "")],
-                style="frosted",
             ),
         ],
     )

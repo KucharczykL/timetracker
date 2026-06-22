@@ -119,7 +119,7 @@ class DropdownRenderTest(unittest.TestCase):
         node = Dropdown(
             label="",
             id="played",
-            variant="button",
+            outline=True,
             primary=primary,
             items=[
                 DropdownLinkItem("/add/", "Add playthrough…"),
@@ -131,6 +131,7 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertIn("rounded-e-lg", html)  # toggle gains it in split mode
         self.assertIn("inline-flex items-stretch", html)
         self.assertIn("data-add-play", html)
+        self.assertIn("border", html)  # outlined toggle + panel
 
     def test_nested_submenu_item(self):
         from common.components import Dropdown, DropdownLinkItem, render
@@ -152,25 +153,26 @@ class DropdownRenderTest(unittest.TestCase):
         self.assertIn('placement="right-start"', html)
         self.assertIn('submenu="true"', html)
 
-    def test_frosted_panel_variant(self):
-        from common.components import Dropdown, DropdownActionItem, render
+    def test_unified_panel_light_white_dark_frosted(self):
+        from common.components import Dropdown, DropdownLinkItem, render
 
-        node = Dropdown(
-            label="",
-            id="played-1",
-            variant="button",
-            panel="frosted",
-            items=[
-                DropdownActionItem(
-                    "Played +1", attributes=[("x", "1")], style="frosted"
-                )
-            ],
+        # Menu-like (no outline): white in light, frosted in dark, borderless.
+        menu = render(Dropdown(label="M", id="m", items=[DropdownLinkItem("/a/", "A")]))
+        self.assertIn("bg-white", menu)
+        self.assertIn("dark:bg-gray-800/20", menu)
+        self.assertIn("dark:backdrop-blur-lg", menu)
+        self.assertIn("overflow-hidden", menu)  # #46 fix kept
+        self.assertIn("shadow-sm", menu)
+        self.assertNotIn("border-gray-200", menu)  # borderless menu
+
+        # Button-like (outline): same panel + a border on toggle and panel.
+        outlined = render(
+            Dropdown(
+                label="B", id="b", outline=True, items=[DropdownLinkItem("/a/", "A")]
+            )
         )
-        html = render(node)
-        self.assertIn("backdrop-blur-lg", html)  # frosted panel
-        self.assertIn("bg-gray-800/20", html)
-        self.assertNotIn("overflow-hidden", html)  # frosted keeps its own corners
-        self.assertIn("hover:bg-gray-700", html)  # frosted item hover
+        self.assertIn("dark:bg-gray-800/20", outlined)  # same frosted-dark panel
+        self.assertIn("border-gray-200", outlined)  # outlined
 
     def test_submenu_item(self):
         from common.components import (
