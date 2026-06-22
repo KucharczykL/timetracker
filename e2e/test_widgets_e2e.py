@@ -419,17 +419,18 @@ def test_navbar_submenu_keyboard_open_close(authenticated_page: Page, live_serve
 
 
 def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_server):
-    """Every entity submenu opens flush at the parent *panel's* right edge (same
-    x) and with its first item aligned to the hovered toggle row (y). Three
-    regressions guarded: (1) opening a low submenu briefly grew a scrollbar in the
-    parent menu, shifting the anchor ~15px and overlapping the parent (positionMenu
-    now pins `fixed` before unhide); (2) panel padding inset the toggle from the
-    panel edge, so a toggle-anchored flyout opened *inside* the padded panel — x
-    now anchors to the parent panel's edge; (3) the flyout's panel-top (not its
-    first item) was aligned to the toggle, so the panel's top padding pushed the
-    first row ~8px low — y now subtracts the measured first-item inset, so any
-    padding/border leaves the row aligned. Use a wide viewport so the flyouts open
-    to the right rather than flipping left for want of room."""
+    """Every entity submenu opens just past the parent *panel's* right edge (a 1px
+    aesthetic gap, never inside it), all at the same x, with its first item aligned
+    to the hovered toggle row (y). Three regressions guarded: (1) opening a low
+    submenu briefly grew a scrollbar in the parent menu, shifting the anchor ~15px
+    and overlapping the parent (positionMenu now pins `fixed` before unhide);
+    (2) panel padding inset the toggle from the panel edge, so a toggle-anchored
+    flyout opened *inside* the padded panel — x now anchors to the parent panel's
+    edge (+SUBMENU_GAP); (3) the flyout's panel-top (not its first item) was
+    aligned to the toggle, so the panel's top padding pushed the first row ~8px
+    low — y now subtracts the measured first-item inset, so any padding/border
+    leaves the row aligned. Use a wide viewport so the flyouts open to the right
+    rather than flipping left for want of room."""
     page = authenticated_page
     page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
@@ -461,8 +462,10 @@ def test_navbar_submenu_alignment_consistent(authenticated_page: Page, live_serv
     lefts = [x for _, x, _, _, _ in rows]
     assert max(lefts) - min(lefts) <= 1, f"submenu x drift between items: {rows}"
     for entity, x, panel_right_edge, toggle_top, first_item_top in rows:
-        assert abs(x - panel_right_edge) <= 1, (
-            f"{entity} not flush to panel edge: x={x} panel_right={panel_right_edge}"
+        # Just past the edge by the ~1px aesthetic gap — never inside the panel
+        # (which would read as overlap) and never detached.
+        assert 0 <= x - panel_right_edge <= 2, (
+            f"{entity} not at panel edge + gap: x={x} panel_right={panel_right_edge}"
         )
         assert abs(first_item_top - toggle_top) <= 2, (
             f"{entity} first item not aligned to toggle row: "

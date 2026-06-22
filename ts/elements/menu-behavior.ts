@@ -35,6 +35,10 @@ export interface MenuController {
 }
 
 const VIEWPORT_MARGIN = 8;
+// A hairline gap between a submenu flyout and its parent panel edge. Purely
+// aesthetic: flush edges read as one merged surface; 1px of daylight makes the
+// flyout legible as a distinct, layered panel without looking detached.
+const SUBMENU_GAP = 1;
 const OPEN_MENUS_EVENT = "dropdown-menu:open";
 const TYPEAHEAD_RESET_MS = 500;
 
@@ -117,7 +121,10 @@ export function attachMenu(
       const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
       const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
       menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
-      setLeft(openLeft ? anchor.left - menuWidth : anchor.right);
+      // SUBMENU_GAP of daylight on whichever side the flyout opens.
+      setLeft(
+        openLeft ? anchor.left - menuWidth - SUBMENU_GAP : anchor.right + SUBMENU_GAP,
+      );
       setTop(rect.top - firstItemInset);
       return;
     }
