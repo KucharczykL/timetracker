@@ -273,12 +273,18 @@ _DROPDOWN_TOGGLE_PLAIN = (
 
 # Panel: white (light) / frosted (dark). Keeps the #46 overflow-hidden. Outline
 # adds a border; otherwise a shadow.
-# NB: no backdrop-filter — it makes the panel the containing block for `fixed`
-# descendants AND clips them by its overflow-hidden, which breaks the submenu
-# flyouts (they must escape to the viewport). Dark mode uses a solid surface.
+# NB: the dark-mode backdrop blur lives on a `::before` layer, NOT the panel.
+# A non-`none` backdrop-filter makes its element the containing block for `fixed`
+# descendants — so blurring the panel itself would (a) re-anchor the `fixed`
+# submenu flyouts relative to the panel and (b) make them count toward the
+# panel's overflow, growing a transient scrollbar that mis-anchored low submenus.
+# Putting the filter on a childless `::before` keeps the frosted look while
+# leaving the panel filter-free, so submenus still resolve against the viewport.
 _DROPDOWN_PANEL_BASE = (
-    "absolute z-20 w-44 overflow-hidden rounded-lg bg-white dark:bg-gray-800 "
-    "text-sm text-gray-700 dark:text-gray-200"
+    "absolute z-20 w-44 overflow-hidden rounded-lg "
+    "bg-white dark:bg-gray-800/20 text-sm text-gray-700 dark:text-gray-200 "
+    "before:content-[''] before:absolute before:inset-0 before:-z-10 "
+    "before:rounded-[inherit] dark:before:backdrop-blur-lg"
 )
 DROPDOWN_PANEL_OUTLINE_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} border border-gray-200 dark:border-gray-700"
