@@ -102,15 +102,23 @@ export function attachMenu(
 
     if (placement === "right-start") {
       // Horizontal anchor (panel edge for a submenu) governs left/right and the
-      // flip decision; the toggle still governs the vertical position so the
-      // flyout lines up with the hovered row, not the panel top.
+      // flip decision; the toggle governs the vertical position so the flyout
+      // lines up with the hovered row.
       const anchor = horizontalAnchor.getBoundingClientRect();
+      // Align the flyout's FIRST ITEM with the toggle row, not the panel's
+      // border-box top — the panel's own top padding/border would otherwise push
+      // the first row down by that amount. Measured from the live layout, so it
+      // tracks any padding/border/header change instead of a hardcoded offset.
+      const items = enabledItems();
+      const firstItemInset = items.length
+        ? items[0].getBoundingClientRect().top - origin.y
+        : 0;
       const menuWidth = menu.offsetWidth;
       const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
       const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
       menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
       setLeft(openLeft ? anchor.left - menuWidth : anchor.right);
-      setTop(rect.top);
+      setTop(rect.top - firstItemInset);
       return;
     }
 
