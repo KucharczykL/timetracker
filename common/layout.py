@@ -263,11 +263,11 @@ def NavbarMenu(
     from common.components import (
         A,
         Div,
-        Dropdown,
         DropdownLinkItem,
         DropdownSubmenu,
         Element,
         Li,
+        MenuDropdown,
         Safe,
         Ul,
     )
@@ -317,7 +317,7 @@ def NavbarMenu(
 
     # One entity menu: each entity is a submenu of its actions (Add / List).
     entity_menu = Li()[
-        Dropdown(
+        MenuDropdown(
             label="Menu",
             id="navbarMenu",
             placement="bottom-center",

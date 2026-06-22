@@ -8,18 +8,21 @@ is the single source of truth for the server<->client contract;
 reader so drift fails ``tsc``.
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import TypedDict, get_type_hints
 
 from common.components.core import Child, Element, Fragment, Node
 from common.components.primitives import (
     A,
+    Button,
     Div,
     Icon,
     Input,
     Label,
     Li,
     Span,
+    StyledButton,
     Template,
     Ul,
     custom_element_builder,
@@ -295,15 +298,84 @@ _DROPDOWN_PANEL_PLAIN_CLASS = (
 
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (
-    "block w-full text-left px-4 py-2 cursor-pointer no-underline rounded "
+    "block w-full text-left px-4 py-2 cursor-pointer no-underline rounded-base "
     "hover:bg-gray-100 dark:hover:bg-gray-700 text-body hover:text-heading "
     "focus:bg-gray-100 dark:focus:bg-gray-700 dark:focus:text-white "
     "focus:outline-hidden aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
 )
 
 
-def _dropdown_panel_class(outline: bool) -> str:
-    return DROPDOWN_PANEL_OUTLINE_CLASS if outline else _DROPDOWN_PANEL_PLAIN_CLASS
+# The single panel look for menu-style dropdowns (shadow + border). The old
+# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS survives
+# only for the value selectors (domain.py), which keep their own path until PR 2.
+_DROPDOWN_MENU_PANEL_CLASS = _DROPDOWN_PANEL_PLAIN_CLASS
+
+
+# ── Trigger/target contract stamping ─────────────────────────────────────────
+# `Dropdown` is a generic "attach a popup to a trigger" primitive: the caller
+# owns each element's *look*, the core stamps the behavioral/ARIA *contract* onto
+# them. The contract is the single source of truth for what the TS + ARIA need;
+# a caller setting a reserved key is a misuse, surfaced as a warning (the contract
+# value still wins). Menu *semantics* (role/aria-haspopup) are NOT stamped here —
+# they live in the menu preset/wrappers, so non-menu targets stay clean.
+
+
+class DropdownContractWarning(UserWarning):
+    """A trigger/target supplied a reserved contract attribute; the core's value
+    wins. Its own category so tests can ``pytest.warns(DropdownContractWarning)``
+    precisely and callers can filter/escalate it independently."""
+
+
+def _stamp(element: Element, contract: list[tuple[str, str]], id: str) -> Element:
+    """Return a clone of `element` carrying `contract`, preserving its other attrs
+    (class, hx-*, …) and media. Warns on each reserved-key collision."""
+    reserved = {key for key, _ in contract}
+    for key, _ in element.attributes:
+        if key in reserved:
+            warnings.warn(
+                f"dropdown {id!r}: supplied element sets reserved attr {key!r}; "
+                "the contract value wins",
+                DropdownContractWarning,
+                stacklevel=3,
+            )
+    kept = [(key, value) for key, value in element.attributes if key not in reserved]
+    clone = Element(element.tag_name, kept + contract, element.children)
+    clone.media = element.media
+    return clone
+
+
+def _stamp_trigger_contract(trigger: Element, id: str) -> Element:
+    """The toggle's behavioral contract: the [data-toggle] hook the TS finds plus
+    the ARIA wiring to its panel. `type` is button-ness, set by trigger builders."""
+    return _stamp(
+        trigger,
+        [
+            ("data-toggle", ""),
+            ("id", f"{id}Link"),
+            ("aria-controls", id),
+            ("aria-expanded", "false"),
+        ],
+        id,
+    )
+
+
+def _stamp_target_contract(target: Element, id: str) -> Element:
+    """The panel's behavioral contract: the [data-menu] hook + initial hidden
+    state + id. `aria-labelledby` auto-wires to the toggle UNLESS the target
+    carries an explicit `aria-label` (which would otherwise be overridden by it —
+    the icon-only-trigger case)."""
+    contract = [("data-menu", ""), ("id", id), ("hidden", "")]
+    if not any(key == "aria-label" for key, _ in target.attributes):
+        contract.append(("aria-labelledby", f"{id}Link"))
+    return _stamp(target, contract, id)
+
+
+def _as_menu_trigger(trigger: Element) -> Element:
+    """Add the menu semantic (`aria-haspopup="menu"`) to a trigger. The single
+    home for "this trigger opens a menu", shared by the menu wrappers."""
+    if any(key == "aria-haspopup" for key, _ in trigger.attributes):
+        return trigger
+    return _stamp(trigger, [("aria-haspopup", "menu")], "menu")
 
 
 def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
@@ -372,98 +444,172 @@ def DropdownDivider() -> Node:
     return Li(role="separator", class_="my-1 h-px bg-gray-100 dark:bg-gray-600")
 
 
-def DropdownSubmenu(label: Child, items: list[Node], *, id: str) -> Node:
-    """A menu item that opens a nested submenu (flyout to the right).
-
-    Renders an ``<li>`` whose toggle is itself a ``role="menuitem"`` (so the
-    parent menu's keyboard nav includes it) carrying ``aria-haspopup`` so the
-    parent stays open when it activates. Behavior is the nested ``<dropdown-menu
-    submenu>`` (hover-open + ArrowRight/Left)."""
-    toggle = Element(
-        "button",
-        [
-            ("type", "button"),
-            ("data-toggle", ""),
-            ("id", f"{id}Link"),
-            ("role", "menuitem"),
-            ("aria-haspopup", "menu"),
-            ("aria-controls", id),
-            ("aria-expanded", "false"),
-            ("tabindex", "-1"),
-            ("class", DROPDOWN_ITEM_CLASS + " flex items-center justify-between gap-2"),
-        ],
-        [Span()[label], Icon("arrowright")],
-    )
-    panel_node = Div(
-        data_menu="",
-        role="menu",
-        id=id,
-        aria_labelledby=f"{id}Link",
-        hidden=True,
-        class_=_dropdown_panel_class(False),
-    )[Ul()[*items]]
-    return Li()[
-        _DropdownMenu(class_="relative", placement="right-start", submenu="true")[
-            Fragment(toggle, panel_node)
-        ]
+def _assemble(
+    trigger: Element,
+    target: Element,
+    *,
+    id: str,
+    placement: str,
+    submenu: bool,
+    wrapper_class: str,
+) -> Node:
+    """Stamp both contracts and wire the ``<dropdown-menu>`` element. The single
+    assembly point shared by the public ``Dropdown`` and ``DropdownSubmenu``."""
+    return _DropdownMenu(
+        class_=wrapper_class,
+        placement=placement,
+        submenu="true" if submenu else "false",
+    )[
+        Fragment(
+            _stamp_trigger_contract(trigger, id),
+            _stamp_target_contract(target, id),
+        )
     ]
 
 
 def Dropdown(
     *,
+    trigger_element: Element,
+    target_element: Element,
+    id: str,
+    placement: str = "bottom-start",
+) -> Node:
+    """Attach a popup (``target_element``) to a ``trigger_element``.
+
+    A generic primitive: it owns only *behavior* — it stamps the JS/ARIA contract
+    onto the caller's two elements and wires the ``<dropdown-menu>`` for open/close,
+    positioning and keyboard nav. The caller owns the *look* of both halves (build
+    them directly, or use ``MenuDropdown`` / ``ButtonDropdown`` /
+    ``SplitButtonDropdown`` for the menu presets). Menu semantics (``role="menu"``,
+    ``aria-haspopup``) are NOT added here — they belong to the menu preset/wrappers,
+    so a non-menu target (listbox, dialog, disclosure) stays clean.
+    """
+    return _assemble(
+        trigger_element,
+        target_element,
+        id=id,
+        placement=placement,
+        submenu=False,
+        wrapper_class="relative inline-block",
+    )
+
+
+def DropdownMenuPanel(*, items: list[Node], aria_label: str = "") -> Element:
+    """The canonical menu target: a ``role="menu"`` panel wrapping ``items`` in a
+    list. Pass ``aria_label`` to name the menu when its trigger has no text (an
+    icon-only trigger); otherwise the core auto-labels it from the trigger."""
+    attributes: list[tuple[str, str]] = [
+        ("role", "menu"),
+        ("class", _DROPDOWN_MENU_PANEL_CLASS),
+    ]
+    if aria_label:
+        attributes.append(("aria-label", aria_label))
+    return Element("div", attributes, [Ul()[*items]])
+
+
+def MenuDropdown(
+    *,
     label: Child,
     items: list[Node],
     id: str,
-    outline: bool = False,
-    primary: Node | None = None,
     placement: str = "bottom-start",
+    aria_label: str = "",
 ) -> Node:
-    """A generic dropdown: a toggle button + a menu panel.
-
-    ``items`` are nodes (use ``DropdownLinkItem`` / ``DropdownActionItem`` /
-    ``DropdownCheckItem`` / ``DropdownDivider`` / ``DropdownSubmenu``), so a menu
-    can mix links, actions, checkboxes and nested submenus. Every dropdown shares
-    one look (white in light mode, frosted in dark); ``outline=True`` adds a
-    border to the toggle and panel for button-like (non-menu) dropdowns.
-    ``primary`` renders a split button (a leading action grouped with the caret).
-    """
-    if outline:
-        toggle_class = DROPDOWN_TOGGLE_OUTLINE + (
-            " rounded-e-lg" if primary is not None else " rounded-lg"
-        )
-    else:
-        toggle_class = _DROPDOWN_TOGGLE_PLAIN
-        if primary is not None:
-            toggle_class += " rounded-e-lg"
-    toggle = Element(
-        "button",
-        [
-            ("type", "button"),
-            ("data-toggle", ""),
-            ("id", f"{id}Link"),
-            ("aria-haspopup", "menu"),
-            ("aria-controls", id),
-            ("aria-expanded", "false"),
-            ("class", toggle_class),
-        ],
-        Span(class_="flex items-center gap-1")[label, Icon("arrowdown")],
+    """A borderless, navbar-style menu dropdown (the old non-outline look)."""
+    trigger = _as_menu_trigger(
+        Button(attributes=[("type", "button"), ("class", _DROPDOWN_TOGGLE_PLAIN)])[
+            Span(class_="flex items-center gap-1")[label, Icon("arrowdown")]
+        ]
     )
-    panel_node = Div(
-        data_menu="",
-        role="menu",
+    return Dropdown(
+        trigger_element=trigger,
+        target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
         id=id,
-        aria_labelledby=f"{id}Link",
-        hidden=True,
-        class_=_dropdown_panel_class(outline),
-    )[Ul()[*items]]
-    if primary is not None:
-        inner: Node = Div(
-            class_="relative inline-flex items-stretch rounded-md shadow-2xs"
-        )[primary, toggle, panel_node]
-    else:
-        inner = Fragment(toggle, panel_node)
-    return _DropdownMenu(
-        class_="relative inline-block",
         placement=placement,
-        submenu="false",  # top-level dropdowns are never submenus (see DropdownSubmenu)
-    )[inner]
+    )
+
+
+def ButtonDropdown(
+    *,
+    label: Child,
+    items: list[Node],
+    id: str,
+    color: str = "gray",
+    size: str = "base",
+    placement: str = "bottom-start",
+    aria_label: str = "",
+) -> Node:
+    """A button-styled menu dropdown; the trigger is a ``StyledButton``."""
+    trigger = _as_menu_trigger(
+        StyledButton(color=color, size=size, icon=True)[label, Icon("arrowdown")]
+    )
+    return Dropdown(
+        trigger_element=trigger,
+        target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
+        id=id,
+        placement=placement,
+    )
+
+
+def SplitButtonDropdown(
+    *,
+    primary: Node,
+    items: list[Node],
+    id: str,
+    placement: str = "bottom-start",
+    aria_label: str = "",
+) -> Node:
+    """A split button: a leading ``primary`` action grouped with an outlined caret
+    that opens the menu. The Dropdown attaches to the caret only — ``primary`` is
+    a plain sibling, so the core never needs to know it exists."""
+    caret = _as_menu_trigger(
+        Button(
+            attributes=[
+                ("type", "button"),
+                ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-e-lg"),
+            ]
+        )[Icon("arrowdown")]
+    )
+    dropdown = Dropdown(
+        trigger_element=caret,
+        target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
+        id=id,
+        placement=placement,
+    )
+    return Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
+        primary, dropdown
+    ]
+
+
+def DropdownSubmenu(
+    label: Child, items: list[Node], *, id: str, placement: str = "right-start"
+) -> Node:
+    """A menu item that opens a nested submenu (a flyout, right by default).
+
+    Renders an ``<li>`` whose trigger is itself a ``role="menuitem"`` (so the
+    parent menu's keyboard nav includes it) carrying ``aria-haspopup`` so the
+    parent stays open when it activates. ``submenu=True`` is intrinsic (hover-open
+    + ArrowRight/Left); only ``placement`` is tunable."""
+    trigger = _as_menu_trigger(
+        Button(
+            attributes=[
+                ("type", "button"),
+                ("role", "menuitem"),
+                ("tabindex", "-1"),
+                (
+                    "class",
+                    DROPDOWN_ITEM_CLASS + " flex items-center justify-between gap-2",
+                ),
+            ]
+        )[Span()[label], Icon("arrowright")]
+    )
+    return Li()[
+        _assemble(
+            trigger,
+            DropdownMenuPanel(items=items),
+            id=id,
+            placement=placement,
+            submenu=True,
+            wrapper_class="relative",
+        )
+    ]
