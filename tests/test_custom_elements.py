@@ -297,3 +297,47 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
         self.assertIn('session-id="4"', html)
         self.assertIn('data-value="2"', html)
         self.assertNotIn("x-data", html)
+
+
+class SelectDropdownRenderTest(unittest.TestCase):
+    def test_renders_listbox_with_select_behavior(self):
+        from common.components import SelectDropdown, render
+
+        html = render(
+            SelectDropdown(
+                current_label="Played",
+                options=[("u", "Unplayed", False), ("f", "Finished", True)],
+                id="game-7-status",
+                patch_url="/api/games/7/status",
+                body_key="status",
+                event="status-changed",
+                csrf="tok",
+            )
+        )
+        self.assertIn('behavior="select"', html)
+        self.assertIn('role="listbox"', html)
+        self.assertIn('role="option"', html)
+        self.assertIn('aria-haspopup="listbox"', html)
+        self.assertIn('data-patch-url="/api/games/7/status"', html)
+        self.assertIn('data-body-key="status"', html)
+        self.assertIn('data-event="status-changed"', html)
+        self.assertIn('data-value="f"', html)
+        self.assertIn('aria-selected="true"', html)  # the current option
+        self.assertIn("data-label", html)  # the toggle's swappable label
+
+    def test_numeric_flag_sets_data_numeric(self):
+        from common.components import SelectDropdown, render
+
+        html = render(
+            SelectDropdown(
+                current_label="Deck",
+                options=[("2", "Deck", True)],
+                id="session-4-device",
+                patch_url="/api/session/4/device",
+                body_key="device_id",
+                event="device-changed",
+                csrf="t",
+                numeric=True,
+            )
+        )
+        self.assertIn('data-numeric="true"', html)

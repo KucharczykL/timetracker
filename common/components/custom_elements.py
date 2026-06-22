@@ -628,3 +628,83 @@ def DropdownSubmenu(
             wrapper_class="relative",
         )
     ]
+
+
+type SelectOption = tuple[
+    str, Child, bool
+]  # (value, label, is_selected); e.g. ("f", "Finished", True)
+
+
+def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Element:
+    """A single-select listbox target: role="listbox" over role="option" items
+    carrying [data-option][data-value][aria-selected]. The select behavior wires
+    clicks; the core stamps data-menu/hidden/id when it's used as target_element."""
+    attributes: list[tuple[str, str]] = [
+        ("role", "listbox"),
+        ("class", DROPDOWN_PANEL_OUTLINE_CLASS),
+    ]
+    if aria_label:
+        attributes.append(("aria-label", aria_label))
+    option_nodes = [
+        Li()[
+            Element(
+                "button",
+                [
+                    ("type", "button"),
+                    ("role", "option"),
+                    ("data-option", ""),
+                    ("data-value", value),
+                    ("aria-selected", "true" if selected else "false"),
+                    ("tabindex", "-1"),
+                    ("class", DROPDOWN_ITEM_CLASS),
+                ],
+                [label],
+            )
+        ]
+        for value, label, selected in options
+    ]
+    return Element("div", attributes, [Ul()[*option_nodes]])
+
+
+def SelectDropdown(
+    *,
+    current_label: Child,
+    options: list[SelectOption],
+    id: str,
+    patch_url: str,
+    body_key: str,
+    event: str,
+    csrf: str,
+    numeric: bool = False,
+    placement: str = "bottom-start",
+) -> Node:
+    """A value-selector dropdown: a current-value trigger + a listbox whose picks
+    PATCH the server (via the client `select` behavior). The per-entity specifics
+    (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
+    trigger = Button(
+        attributes=[
+            ("type", "button"),
+            ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"),
+            ("aria-haspopup", "listbox"),
+        ]
+    )[
+        Span(class_="flex flex-row gap-4 justify-between items-center")[
+            Span(data_label="")[current_label], Icon("arrowdown")
+        ]
+    ]
+    config: dict[str, str] = {
+        "data_patch_url": patch_url,
+        "data_body_key": body_key,
+        "data_event": event,
+        "data_csrf": csrf,
+    }
+    if numeric:
+        config["data_numeric"] = "true"
+    return Dropdown(
+        trigger_element=trigger,
+        target_element=ListboxPanel(options=options),
+        id=id,
+        placement=placement,
+        behavior="select",
+        config=config,
+    )
