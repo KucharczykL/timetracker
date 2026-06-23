@@ -7,9 +7,10 @@ classes or behaviour (``Button``, ``Pill``, ``Checkbox`` …) are written out.
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Sequence
+from typing import NotRequired, TypedDict
 
+from django.conf import settings
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.html import conditional_escape
@@ -899,21 +900,60 @@ def TableTd(
     )
 
 
-def TableRow(data: Mapping[str, Any] | list | None = None) -> Element:
-    """Generate a <tr> from a row data dict or list.
+type Cell = Child  # one table cell, e.g. NameWithIcon(game=game) or "2024"
 
-    Dict form: {"row_id": "...", "cell_data": [...], "hx_trigger": ..., ...}
-    - first cell is <th>, rest <td>.
-    List form: [...] — all cells are <td>.
+
+class TableRowData(TypedDict):
+    """Canonical row shape: positional cells plus optional ``<tr>`` attributes.
+
+    Build with :func:`make_row`; rendered by :func:`TableRow`. The first cell
+    becomes a ``<th scope="row">``, the rest ``<td>``. ``attributes`` carries
+    htpy-style ``<tr>`` attributes (``id``, ``hx-*`` …) already translated to
+    ``(name, value)`` pairs.
     """
-    if data is None:
-        data = {}
-    if isinstance(data, dict):
-        row_id = data.get("row_id", "")
-        cells = data.get("cell_data", [])
-    else:
-        row_id = ""
-        cells = data
+
+    cell_data: list[Cell]
+    attributes: NotRequired[list[HTMLAttribute]]
+
+
+class TableData(TypedDict):
+    """Canonical table shape consumed by :func:`SimpleTable` /
+    :func:`paginated_table_content`. Every list view builds this."""
+
+    header_action: Child | None
+    columns: list[str]
+    rows: Sequence[TableRowData]
+
+
+def make_row(*cells: Cell, **attributes: object) -> TableRowData:
+    """Build a :class:`TableRowData` from positional cells and htpy-style
+    attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
+
+    Mirrors the generic element builders: ``class_`` → ``class``, ``True`` →
+    bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
+    :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
+    for a custom-classed row.
+    """
+    if "class_" in attributes or "class" in attributes:
+        raise ValueError(
+            "make_row() does not accept a class attribute — TableRow owns the "
+            "styled row class. Use the generic Tr builder for a custom-classed row."
+        )
+    data: TableRowData = {"cell_data": list(cells)}
+    attrs = _attrs_from_kwargs(attributes)
+    if attrs:
+        data["attributes"] = attrs
+    return data
+
+
+def TableRow(data: TableRowData) -> Element:
+    """Render a styled ``<tr>`` from a :class:`TableRowData`.
+
+    First cell is a ``<th scope="row">``, the rest ``<td>``. The cosmetic row
+    ``class`` is fixed here; ``data["attributes"]`` (``id``, ``hx-*`` …) is
+    applied on top. For a differently-styled row use the generic ``Tr`` builder.
+    """
+    cells = data["cell_data"]
 
     tr_class = (
         "odd:bg-white dark:odd:bg-gray-900 even:bg-gray-50 "
@@ -921,18 +961,7 @@ def TableRow(data: Mapping[str, Any] | list | None = None) -> Element:
         "dark:hover:bg-gray-600 [&_a]:underline [&_a]:underline-offset-4 "
         "[&_a]:decoration-2 [&_td:last-child]:text-right"
     )
-    tr_attrs: list[HTMLAttribute] = [("class", tr_class)]
-    if row_id:
-        tr_attrs.append(("id", row_id))
-    if isinstance(data, dict):
-        if data.get("hx_trigger"):
-            tr_attrs.append(("hx-trigger", data["hx_trigger"]))
-        if data.get("hx_get"):
-            tr_attrs.append(("hx-get", data["hx_get"]))
-        if data.get("hx_select"):
-            tr_attrs.append(("hx-select", data["hx_select"]))
-        if data.get("hx_swap"):
-            tr_attrs.append(("hx-swap", data["hx_swap"]))
+    tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
     cell_elements: list[Node] = []
     for i, cell in enumerate(cells):
@@ -1055,7 +1084,7 @@ def _pagination_nav(page_obj, elided_page_range, request) -> str:
 
 def SimpleTable(
     columns: list[str] | None = None,
-    rows: list | None = None,
+    rows: Sequence[TableRowData] | None = None,
     header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
@@ -1064,6 +1093,19 @@ def SimpleTable(
     """Paginated table. Python equivalent of the old simple_table.html."""
     columns = columns or []
     rows = rows or []
+
+    # Dev-only guard: a row must have one cell per column, else cells render
+    # misaligned under the headers and the position-based mobile column-hiding
+    # CSS corrupts. The type system can't express this count rule, so catch a
+    # mismatch loudly in DEBUG; prod degrades to a ragged table over a 500.
+    if settings.DEBUG:
+        for row in rows:
+            cell_count = len(row["cell_data"])
+            if cell_count != len(columns):
+                raise ValueError(
+                    f"SimpleTable row has {cell_count} cells but {len(columns)} "
+                    f"columns were given: {row['cell_data']!r}"
+                )
 
     # Rows/header are stringified into the table markup, so their components'
     # declared Media would be lost; collect it from the nodes first and attach
@@ -1106,7 +1148,7 @@ def SimpleTable(
 
 
 def paginated_table_content(
-    data: Mapping[str, Any],
+    data: TableData,
     *,
     page_obj=None,
     elided_page_range=None,
