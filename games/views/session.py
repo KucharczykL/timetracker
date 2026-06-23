@@ -37,8 +37,7 @@ from common.time import (
     timeformat,
 )
 from common.utils import paginate, truncate
-from django_htmx.middleware import HtmxDetails
-
+from common.http import HtmxHttpRequest
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
@@ -47,12 +46,6 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-
-
-class HtmxHttpRequest(HttpRequest):
-    """HttpRequest with the ``htmx`` attribute django-htmx's middleware adds."""
-
-    htmx: HtmxDetails
 
 
 class SessionRowData(TypedDict):
