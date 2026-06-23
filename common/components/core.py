@@ -200,8 +200,15 @@ def _render_element(
 
     ``attrs_key`` is (name, stringified value) pairs (values always escaped);
     ``children_key`` is (text, is_safe) pairs (safe passes through, else escaped).
+
+    Children are concatenated with no separator: in HTML, inter-element
+    whitespace is significant for inline content (a newline between two inline
+    spans renders as a space) and literal inside ``<pre>``/``<textarea>``. A
+    separator-less join matches the string-concatenation semantics the app used
+    before the node tree, and matches ``Fragment``'s default ``separator=""``.
+    For deliberate spacing, put it in an explicit child.
     """
-    children_blob = "\n".join(
+    children_blob = "".join(
         child if is_safe else escape(child) for child, is_safe in children_key
     )
     if attrs_key:
