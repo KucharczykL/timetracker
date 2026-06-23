@@ -820,7 +820,7 @@ def _playevents_section(game: Game) -> Node:
     )
 
 
-def _history_section(game: Game) -> Element:
+def _history_section(game: Game) -> Node:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
     count = statuschanges.count()
     return Div(
