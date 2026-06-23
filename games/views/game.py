@@ -504,11 +504,11 @@ def _game_history(statuschanges: QuerySet[GameStatusChange]) -> Node:
             Li(
                 attributes=[("class", "text-slate-500")],
                 children=[
-                    f"{prefix} status from ",
+                    f"{prefix} status from",
                     old_status,
-                    " to ",
+                    "to",
                     new_status,
-                    " (",
+                    "(",
                     edit,
                     ", ",
                     delete,

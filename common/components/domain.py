@@ -57,21 +57,44 @@ def GameStatus(
     display: str = "",
     class_: str = "",
 ) -> Node:
-    """Colored status dot with label. Status codes: u/p/f/a/r."""
+    """Colored status dot with label. Status codes: u/p/f/a/r.
+
+    The dot is sized in the `cap` unit (`w-[1cap]`), so it is exactly one
+    cap-height tall in whatever font renders it — the browser computes the
+    cap-height, no per-font tuning needed — and it scales with the text. Color
+    comes from a background utility so any CSS color works.
+
+    Flex mode (`display="flex"`, e.g. the status selector) lays dot + label out
+    as a flex row and lets `items-center` handle vertical centering.
+
+    Inline mode (default, e.g. the game-detail history line) keeps the label in
+    normal inline flow so it sits on the surrounding text baseline (issue #97),
+    and centers the dot on the text: the dot is an *empty* inline-block, whose
+    baseline is its bottom edge, so the default `vertical-align: baseline` seats
+    its bottom on the text baseline; being `1cap` tall it then spans exactly
+    baseline→cap-top and is centered on the capital letters in any font. (A
+    `&nbsp;` filler would give the dot its own inner text baseline and lift it
+    visibly above the line.) Spacing is component-owned and em-based: the inner
+    gap (`mr-[0.28em]`, dot↔label) is deliberately smaller than the outer gap
+    (`mx-[0.45em]`, group↔neighbors) so dot + label read as one group by
+    proximity at any font size — independent of surrounding word-spaces.
+    `whitespace-nowrap` keeps the dot and its label on the same line.
+    """
     children = children or []
-    outer_class = (
-        f"{'flex' if display == 'flex' else 'inline-flex'} "
-        "gap-2 items-center align-middle"
-    )
+    dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS["u"])
+    dot_base = f"inline-block rounded-full w-[1cap] h-[1cap] {dot_color}"
+
+    if display == "flex":
+        outer_class = "flex gap-2 items-center"
+        if class_:
+            outer_class += f" {class_}"
+        dot = Span(attributes=[("class", dot_base)])
+        return Span(class_=outer_class, children=[dot] + as_children(children))
+
+    dot = Span(attributes=[("class", f"mr-[0.28em] {dot_base}")])
+    outer_class = "mx-[0.45em] whitespace-nowrap"
     if class_:
         outer_class += f" {class_}"
-    dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS["u"])
-
-    dot = Span(
-        attributes=[("class", f"rounded-xl w-3 h-3 {dot_color}")],
-        children=["\xa0"],
-    )
-
     return Span(class_=outer_class, children=[dot] + as_children(children))
 
 
