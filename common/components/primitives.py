@@ -545,6 +545,43 @@ def Pill(
     return Span(attributes=pill_attrs, children=children)
 
 
+# A small count/label badge (the brand-soft pill historically inlined in H1).
+# Distinct from `Pill`: that is a removable filter tag carrying JS hooks
+# (`data-pill`, search-select label slot); this is a static, hook-free badge for
+# counts/indicators. Shape + palette are fixed; only text size + padding vary so
+# it reads well from a heading count down to a one-character sort position.
+_BADGE_BASE_CLASS = (
+    "inline-flex items-center justify-center font-semibold leading-none "
+    "rounded-sm bg-brand-soft text-heading"
+)
+_BADGE_SIZE_CLASSES = {
+    "sm": "text-[0.7rem] px-1.5 py-0.5",
+    "base": "text-sm px-2 py-0.5",
+    "lg": "text-2xl px-2.5 py-0.5",
+}
+
+
+def Badge(
+    content: Child,
+    *,
+    size: str = "base",
+    extra_class: str = "",
+    attributes: Attributes | None = None,
+) -> Node:
+    """A static brand-soft badge for counts and indicators.
+
+    ``size`` picks the text/padding scale (``sm`` / ``base`` / ``lg``);
+    ``extra_class`` appends positioning utilities (e.g. ``ms-2`` next to a
+    heading). For a removable filter tag use :func:`Pill` instead.
+    """
+    attributes = as_attributes(attributes)
+    size_class = _BADGE_SIZE_CLASSES.get(size, _BADGE_SIZE_CLASSES["base"])
+    classes = " ".join(
+        part for part in (_BADGE_BASE_CLASS, size_class, extra_class) if part
+    )
+    return Span(attributes=[("class", classes), *attributes], children=[content])
+
+
 def CsrfInput(request) -> Node:
     """Hidden CSRF input, equivalent to the `{% csrf_token %}` template tag.
 
@@ -846,16 +883,7 @@ def H1(
 
     if badge:
         heading_class = "flex items-center " + heading_class
-        badge_html = Span(
-            attributes=[
-                (
-                    "class",
-                    "bg-brand-soft text-heading text-2xl font-semibold me-2 "
-                    "px-2.5 py-0.5 rounded-sm ms-2",
-                ),
-            ],
-            children=[badge],
-        )
+        badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
     return Element(
         "h1",
@@ -1214,12 +1242,7 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
         Span(attributes=[("class", arrow_class)], children=[Icon("arrowdownlong")])
     ]
     if total > 1:
-        children.append(
-            Span(
-                attributes=[("class", "text-[0.65rem] font-semibold leading-none")],
-                children=[str(position + 1)],
-            )
-        )
+        children.append(Badge(str(position + 1), size="sm"))
     return Fragment(*children)
 
 
