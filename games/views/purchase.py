@@ -6,6 +6,7 @@ from django.http import (
     HttpResponseRedirect,
 )
 from django.db import transaction
+from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
@@ -125,9 +126,9 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases = Purchase.objects.select_related("platform").prefetch_related(
-        "games", "games__platform"
-    )
+    purchases: QuerySet[Purchase] = Purchase.objects.select_related(
+        "platform"
+    ).prefetch_related("games", "games__platform")
 
     filter_json = request.GET.get("filter", "")
     if filter_json:

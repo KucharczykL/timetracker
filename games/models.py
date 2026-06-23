@@ -61,9 +61,6 @@ class Game(models.Model):
     status = models.CharField(max_length=1, choices=Status, default=Status.UNPLAYED)
     mastered = models.BooleanField(default=False)
 
-    session_average: float | int | timedelta | None
-    session_count: int | None
-
     def __str__(self):
         return self.name
 
@@ -415,13 +412,13 @@ def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float
 
             if rate:
                 logger.info(f"[convert_prices]: Got {rate}, saving...")
-                exchange_rate = ExchangeRate.objects.create(
+                created_rate = ExchangeRate.objects.create(
                     currency_from=currency_from,
                     currency_to=currency_to,
                     year=year,
                     rate=floatformat(rate, 2),
                 )
-                exchange_rate = exchange_rate.rate
+                exchange_rate = created_rate.rate
             else:
                 logger.info("[convert_prices]: Could not get an exchange rate.")
         except requests.RequestException as e:

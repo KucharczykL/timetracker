@@ -102,7 +102,10 @@ format:
 format-check:
 	uv run ruff format --check
 
-check: lint format-check ts-check test
+typecheck:
+	uv run mypy .
+
+check: lint format-check typecheck ts-check test
 
 date:
 	uv run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'

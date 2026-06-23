@@ -38,10 +38,10 @@ def date_parts(format_string: str = dateformat_hyphenated) -> list[DatePartSpec]
     return [_DATE_PART_SPECS[directive] for directive in format_string.split("-")]
 
 
-def _safe_timedelta(duration: timedelta | int | None):
+def _safe_timedelta(duration: timedelta | int | float | None):
     if duration is None:
         return timedelta(0)
-    elif isinstance(duration, int):
+    elif isinstance(duration, (int, float)):
         return timedelta(seconds=duration)
     elif isinstance(duration, timedelta):
         return duration
@@ -73,7 +73,8 @@ def format_duration(
     # timestamps where end is before start
     if seconds_total < 0:
         seconds_total = 0
-    days = hours = hours_float = minutes = seconds = 0
+    days = hours_float = minutes = seconds = 0
+    hours: float = 0
     remainder = seconds = seconds_total
     if "%d" in format_string:
         days, remainder = divmod(seconds_total, day_seconds)

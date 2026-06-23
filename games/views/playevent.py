@@ -41,6 +41,8 @@ def create_playevent_tabledata(
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
 ) -> TableData:
+    if isinstance(playevents, BaseManager):
+        playevents = playevents.all()
     column_list = [
         "Game",
         "Started",
@@ -174,19 +176,21 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             # This will be either the day after the last playevent ended, or the earliest session.
             try:
                 latest_playevent = game.playevents.latest("ended")
-                # Start date for the new PlayEvent form
+            except PlayEvent.DoesNotExist:
+                latest_playevent = None
+
+            if latest_playevent is not None and latest_playevent.ended is not None:
+                # Start the day after the last playevent ended.
                 new_playevent_form_start_date = latest_playevent.ended + timedelta(
                     days=1
                 )
                 initial["started"] = new_playevent_form_start_date
-
-                # Start timestamp for playtime calculation
                 playtime_calc_start_ts = datetime.combine(
                     new_playevent_form_start_date, datetime.min.time()
                 )
-
-            except PlayEvent.DoesNotExist:
-                # No previous playevents, so the new playevent starts from the earliest session.
+            else:
+                # No previous playevent (or none with an end date), so the new
+                # playevent starts from the earliest session.
                 earliest_session_ts = game.sessions.earliest(
                     "timestamp_start"
                 ).timestamp_start

@@ -31,7 +31,7 @@ first open, ``0`` = none) seeds that window so the panel is populated before the
 user types.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import TypedDict
 
 
@@ -50,7 +50,7 @@ from common.components.primitives import (
 class SearchSelectOption(TypedDict):
     value: str | int
     label: str
-    data: dict[str, str]  # becomes data-* attrs on the row / pill
+    data: dict[str, str | int]  # becomes data-* attrs on the row / pill
 
 
 # A lightweight (value, label) pair used wherever only those two fields are
@@ -175,7 +175,7 @@ def _normalize_option(option) -> SearchSelectOption:
     return {"value": value, "label": label, "data": {}}
 
 
-def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
+def _data_attributes(data: dict[str, str | int]) -> list[HTMLAttribute]:
     return [(f"data-{key}", str(value)) for key, value in data.items()]
 
 
@@ -447,9 +447,9 @@ def _filter_modifier_row(modifier_value: str, label: str) -> Node:
 def FilterSelect(
     *,
     field_name: str,
-    options: list[LabeledOption | SearchSelectOption] | None = None,
-    included: list[LabeledOption | SearchSelectOption] | None = None,
-    excluded: list[LabeledOption | SearchSelectOption] | None = None,
+    options: Sequence[LabeledOption | SearchSelectOption] | None = None,
+    included: Sequence[LabeledOption | SearchSelectOption] | None = None,
+    excluded: Sequence[LabeledOption | SearchSelectOption] | None = None,
     modifier: str = "",
     modifier_options: list[LabeledOption] | None = None,
     search_url: str = "",
@@ -481,9 +481,9 @@ def FilterSelect(
     types so the +/− buttons (and Enter) commit the typed string itself as an
     include / exclude pill.
     """
-    options = [_normalize_option(option) for option in (options or [])]
-    included = [_normalize_option(option) for option in (included or [])]
-    excluded = [_normalize_option(option) for option in (excluded or [])]
+    normalized_options = [_normalize_option(option) for option in (options or [])]
+    normalized_included = [_normalize_option(option) for option in (included or [])]
+    normalized_excluded = [_normalize_option(option) for option in (excluded or [])]
     modifier_options = modifier_options or []
 
     active_modifier_label = ""
@@ -500,9 +500,9 @@ def FilterSelect(
     pills_children: list[Node] = []
     if active_modifier_label:
         pills_children.append(_filter_modifier_pill(modifier, active_modifier_label))
-    for option in included:
+    for option in normalized_included:
         pills_children.append(_filter_value_pill(option, "include"))
-    for option in excluded:
+    for option in normalized_excluded:
         pills_children.append(_filter_value_pill(option, "exclude"))
 
     pills = Div(
@@ -524,7 +524,10 @@ def FilterSelect(
         _filter_modifier_row(value, label) for value, label in modifier_options
     ]
     value_rows = (
-        [_filter_option_row(option["value"], option["label"]) for option in options]
+        [
+            _filter_option_row(option["value"], option["label"])
+            for option in normalized_options
+        ]
         if not search_url
         else []
     )
