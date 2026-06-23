@@ -539,10 +539,10 @@ def _game_section(
         )
         header = Div(
             [("class", "flex items-center justify-between")],
-            [H1(children=[title], badge=str(count)), view_all_link],
+            [H1(children=[title], badge=str(count) if count else ""), view_all_link],
         )
     else:
-        header = H1(children=[title], badge=str(count))
+        header = H1(children=[title], badge=str(count) if count else "")
     return Div(
         [("class", "mb-6")],
         [
@@ -822,6 +822,7 @@ def _playevents_section(game: Game) -> Node:
 
 def _history_section(game: Game) -> Element:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
+    count = statuschanges.count()
     return Div(
         class_="mb-6",
         id="history-container",
@@ -829,7 +830,7 @@ def _history_section(game: Game) -> Element:
         hx_select="#history-container",
         hx_swap="outerHTML",
     )[
-        H1(children=["History"], badge=str(statuschanges.count())),
+        H1(children=["History"], badge=str(count) if count else ""),
         _game_history(statuschanges),
     ]
 
