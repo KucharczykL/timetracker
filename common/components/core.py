@@ -14,7 +14,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 """
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from typing import Self
 
@@ -187,6 +187,11 @@ def _child_key(child: object) -> tuple[str, bool]:
         return (child._render(), True)
     if isinstance(child, str):
         return (child, False)
+    if isinstance(child, Iterable):
+        raise TypeError(
+            f"Iterable child {child!r} of type {type(child).__name__} cannot be a "
+            f"child; unpack it with [*items] or wrap in Fragment(*items)."
+        )
     return (str(child), False)
 
 
@@ -247,9 +252,13 @@ class Element(Node):
         """htpy-style children: ``Div(class_="x")[child1, child2]``.
 
         Returns an Element with the same tag/attributes/media and these
-        children, so the tree stays walkable (Media still bubbles)."""
-        items = children if isinstance(children, tuple) else (children,)
-        clone = Element(self.tag_name, self.attributes, list(items))
+        children, so the tree stays walkable (Media still bubbles).
+
+        A subscripted tuple (``[a, b]``) and a single bare list (``[items]``)
+        both flatten to their elements via :func:`as_children`; a single
+        node/string becomes one child. Nested lists are *not* flattened — they
+        survive as children and fail loud in :func:`_child_key`."""
+        clone = Element(self.tag_name, self.attributes, as_children(children))
         clone.media = self.media
         return clone
 

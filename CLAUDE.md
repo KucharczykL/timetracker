@@ -18,7 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Format Python | `make format` (or `uv run ruff format`) |
 | Lint Python | `make lint` (or `uv run ruff check`) |
 | Auto-fix lint | `make lint-fix` (`ruff check --fix`) |
-| Lint + format check + tests | `make check` (CI-style aggregate) |
+| Type check (mypy) | `make typecheck` (or `uv run mypy .`) |
+| Lint + format check + mypy + ts-check + tests | `make check` (CI-style aggregate) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
@@ -66,7 +67,8 @@ docs/           — Additional documentation
 - **`primitives.py`** — Generic HTML. Plain leaf builders (`A`, `Button`, `Div`, `Span`, `P`, `Ul`, `Li`, `Strong`, `Label`, `Template`, `Td`, `Tr`, `Th`, `Table`, `Thead`, `Tbody`, `Caption`, `Nav`) are **generated from a whitelist** via the `_html_element(tag)` factory over `Element` — not hand-written per tag. Builders that add classes/behaviour are written out: `StyledButton()`, `ButtonGroup()`, `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`, `PopoverTruncated()`, `SearchField()`, `H1()`, `Modal()`, `StyledTable()`, `TableRow()`, `TableTd()`, `TableHeader()`, `paginated_table_content()`, `AddForm()`, `YearPicker()` (declares datepicker media), `CsrfInput()`/`ModuleScript()`/`StaticScript()` (script-tag string helpers used by `Page()`).
 - **`domain.py`** — Domain-specific: `GameLink()`, `GameStatus()` (colored dot + label), `GameStatusSelector()` (Alpine.js PATCH dropdown), `SessionDeviceSelector()` (Alpine.js PATCH dropdown), `LinkedPurchase()`, `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — Filter UI: `FilterBar()`, `SessionFilterBar()`, `PurchaseFilterBar()` (built from `FilterSelect` widgets)
-- **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `games/static/js/search_select.js`
+- **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `ts/elements/search-select.ts` (compiled to `dist/search_select.js`)
+- **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/`DateRangeCalendar()` custom-element date-range widget (wired by `ts/elements/date-range-picker.ts`); used by filter bars
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired structured filtering.
 
@@ -82,6 +84,7 @@ docs/           — Additional documentation
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` context processor, `global_current_year` context processor, `use_custom_redirect` decorator (redirects to `request.session["return_path"]` if set)
 - `stats_data.py` — `compute_stats(year)` returns a `StatsData` TypedDict; pure computation, no HTTP
 - `stats_content.py` — renders stats page content from a `StatsData` dict
+- `stats_links.py` — pure filter-link builders for stats rows/counts (issue #65); parity-tested so each builder's queryset count equals the stat it links from
 - `filter_presets.py` — `list_presets`, `save_preset`, `delete_preset`, `load_preset`
 - `auth.py` — custom `LoginView` subclassing Django's auth view, renders login page via `render_page()`
 
@@ -118,11 +121,11 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 - **Flowbite** (vendored: `flowbite.min.js`; `datepicker.umd.js` for the stats YearPicker) — navbar collapse, dropdown toggles
 - **Tailwind CSS** — utility classes, compiled from `common/input.css` → `games/static/base.css`
 - All third-party JS is served locally from `games/static/js/` (no CDNs), so pages and browser tests work offline
-- **Custom JS** in `games/static/js/`:
-  - `toast.js` — Alpine.js toast store (listens for `show-toast` HTMX event); also defines `window.fetchWithHtmxTriggers`
-  - `search_select.js` — SearchSelect/FilterSelect widgets (search-as-you-type, pills, include/exclude filter mode)
-  - `utils.js` — shared ES-module helpers (`onSwap`, `toISOUTCString`, …)
-- **Widget initialization**: widget JS registers with `onSwap(selector, initializeElement)` from `utils.js` — a port of FastHTML's `proc_htmx` built on `htmx.onLoad`. It runs the initializer once per matching element, on initial page load and inside every htmx-swapped fragment. Never hand-roll `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
+- **Custom JS** authored in TypeScript under `ts/`, compiled to `games/static/js/dist/` (gitignored, build-only):
+  - `ts/toast.ts` — Alpine.js toast store (listens for `show-toast` HTMX event); also defines `window.fetchWithHtmxTriggers`
+  - `ts/elements/search-select.ts` — SearchSelect/FilterSelect widgets (search-as-you-type, pills, include/exclude filter mode)
+  - `ts/utils.ts` — shared ES-module helpers (`onSwap`, `toISOUTCString`, …)
+- **Widget initialization**: widget JS registers with `onSwap(selector, initializeElement)` from `ts/utils.ts` — a port of FastHTML's `proc_htmx` built on `htmx.onLoad`. It runs the initializer once per matching element, on initial page load and inside every htmx-swapped fragment. Never hand-roll `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
 
 ### Interactive components: custom elements + TypeScript
 
