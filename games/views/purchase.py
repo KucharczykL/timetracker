@@ -20,6 +20,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Checkbox,
+    Column,
     CsrfInput,
     Div,
     Element,
@@ -153,15 +154,16 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             StyledButton()["Add purchase"]
         ],
         "columns": [
-            "Name",
-            "Type",
-            "Price",
-            "Infinite",
-            "Purchased",
-            "Refunded",
-            "Created",
-            "Actions",
+            Column("Name", "name"),
+            Column("Type", "type"),
+            Column("Price", "price"),
+            Column("Infinite", "infinite"),
+            Column("Purchased", "purchased"),
+            Column("Refunded", "refunded"),
+            Column("Created", "created"),
+            Column("Actions"),
         ],
+        "sort_terms": sort.terms,
         "rows": [_render_purchase_row(purchase) for purchase in purchases],
     }
     content = paginated_table_content(

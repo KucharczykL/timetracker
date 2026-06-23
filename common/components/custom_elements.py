@@ -141,6 +141,17 @@ register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
 _DateRangePicker = custom_element_builder("date-range-picker")
 
 
+# The <sort-header> builder lives in primitives.py (next to StyledTable, which
+# renders it). Its whole contract is two plain attributes already on the anchor
+# (href + data-shift-href), so the props are empty; registration here is
+# codegen-only. Behavior: ts/elements/sort-header.ts (a shift-click dispatcher).
+class SortHeaderProps(TypedDict):
+    pass
+
+
+register_element("sort-header", "SortHeader", SortHeaderProps)
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str

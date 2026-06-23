@@ -14,6 +14,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Cell,
+    Column,
     Fragment,
     GameLink,
     Icon,
@@ -42,19 +43,22 @@ def create_playevent_tabledata(
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
     column_list = [
-        "Game",
-        "Started",
-        "Ended",
-        "Days to finish",
-        "Note",
-        "Created",
-        "Actions",
+        Column("Game"),
+        Column("Started"),
+        Column("Ended"),
+        Column("Days to finish"),
+        Column("Note"),
+        Column("Created"),
+        Column("Actions"),
     ]
-    filtered_column_list = filter(
-        lambda x: x not in exclude_columns,
-        column_list,
-    )
-    excluded_column_indexes = [column_list.index(column) for column in exclude_columns]
+    filtered_column_list = [
+        column for column in column_list if column.label not in exclude_columns
+    ]
+    excluded_column_indexes = [
+        index
+        for index, column in enumerate(column_list)
+        if column.label in exclude_columns
+    ]
 
     row_list: list[list[Cell]] = [
         [
@@ -89,7 +93,7 @@ def create_playevent_tabledata(
         "header_action": A(href=reverse("games:add_playevent"))[
             StyledButton()["Add play event"]
         ],
-        "columns": list(filtered_column_list),
+        "columns": filtered_column_list,
         "rows": [make_row(*cells) for cells in filtered_row_list],
     }
 

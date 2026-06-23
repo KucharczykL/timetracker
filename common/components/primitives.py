@@ -7,10 +7,11 @@ classes or behaviour (``StyledButton``, ``Pill``, ``Checkbox`` …) are written 
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
-from collections.abc import Sequence
-from typing import NotRequired, TypedDict
+from collections.abc import Mapping, Sequence
+from typing import NamedTuple, NotRequired, TypedDict
 
 from django.conf import settings
+from django.http import QueryDict
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.safestring import SafeText, mark_safe
@@ -30,6 +31,7 @@ from common.components.core import (
     randomid,
 )
 from common.icons import get_icon
+from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
 _COLOR_CLASSES = {
@@ -919,13 +921,25 @@ class TableRowData(TypedDict):
     attributes: NotRequired[list[HTMLAttribute]]
 
 
+class Column(NamedTuple):
+    """One table column header. ``sort_key`` (a public key in the view's
+    ``*_SORTS`` map) makes the header clickable-to-sort; ``None`` → a static
+    header (e.g. an "Actions" column)."""
+
+    label: str
+    sort_key: str | None = None
+
+
 class TableData(TypedDict):
     """Canonical table shape consumed by :func:`StyledTable` /
     :func:`paginated_table_content`. Every list view builds this."""
 
     header_action: Child | None
-    columns: list[str]
+    columns: list[Column]
     rows: Sequence[TableRowData]
+    # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
+    # the sortable list views; omitted by views with no sortable columns.
+    sort_terms: NotRequired[Sequence[SortTerm]]
 
 
 def make_row(*cells: Cell, **attributes: object) -> TableRowData:
@@ -1012,13 +1026,39 @@ def TableHeader(
     )
 
 
+def _replace_query(
+    request, *, set_params: Mapping[str, str] | None = None, drop: Sequence[str] = ()
+) -> str:
+    """The current querystring with `set_params` applied and `drop` keys removed.
+
+    The single home for list-view querystring surgery (pagination + sort links).
+    Preserves every other param (filter, search, …) untouched.
+    """
+    params: QueryDict = (
+        request.GET.copy() if request is not None else QueryDict(mutable=True)
+    )
+    for key in drop:
+        params.pop(key, None)
+    for key, value in (set_params or {}).items():
+        params[key] = value
+    encoded = params.urlencode()
+    return "?" + encoded if encoded else "?"
+
+
 def _page_url(request, page) -> str:
     """Current querystring with `page` replaced (mirrors {% param_replace %})."""
-    if request is None:
-        return f"?page={page}"
-    params = request.GET.copy()
-    params["page"] = page
-    return "?" + params.urlencode()
+    return _replace_query(request, set_params={"page": str(page)})
+
+
+def _sort_href(request, sort_string: SortString) -> str:
+    """Sort link target: set (or clear) `sort` and reset to page 1.
+
+    An empty `sort_string` drops the param entirely so the view's default sort
+    applies. `page` is always dropped — a sort change invalidates the old page.
+    """
+    if sort_string:
+        return _replace_query(request, set_params={"sort": sort_string}, drop=("page",))
+    return _replace_query(request, drop=("sort", "page"))
 
 
 def _pagination_nav(page_obj, elided_page_range, request) -> Node:
@@ -1155,13 +1195,84 @@ def _pagination_nav(page_obj, elided_page_range, request) -> Node:
     )
 
 
+# <sort-header> wraps a header anchor; its TS intercepts shift-click to navigate
+# to the multi-column target (data-shift-href). Registered in custom_elements.py.
+_SortHeader = custom_element_builder("sort-header")
+
+_SORT_HEADER_LINK_CLASS = (
+    "flex items-center gap-1 select-none no-underline "
+    "hover:text-gray-900 dark:hover:text-white"
+)
+
+
+def _sort_indicator(position: int, descending: bool, total: int) -> Node:
+    """Active-column affordance: an arrow (down=desc, rotated up=asc) plus a
+    1-based position badge when more than one column is active."""
+    # `arrowdown` points down (descending); rotate 180° → up (ascending).
+    arrow_class = "inline-block w-3 h-3" + ("" if descending else " rotate-180")
+    children: list[Child] = [
+        Span(attributes=[("class", arrow_class)], children=[Icon("arrowdown")])
+    ]
+    if total > 1:
+        children.append(
+            Span(
+                attributes=[("class", "text-[0.65rem] font-semibold leading-none")],
+                children=[str(position + 1)],
+            )
+        )
+    return Fragment(*children)
+
+
+def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> Node:
+    """One ``<th>``: a static header for a non-sortable column, else a clickable
+    sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
+    base_class = "px-6 py-3"
+    if column.sort_key is None:
+        return Th(
+            attributes=[("scope", "col"), ("class", base_class)],
+            children=[column.label],
+        )
+
+    active = next(
+        (
+            (index, term)
+            for index, term in enumerate(sort_terms)
+            if term.key == column.sort_key
+        ),
+        None,
+    )
+    aria_sort = "none"
+    indicator: Child = ""
+    if active is not None:
+        index, term = active
+        aria_sort = "descending" if term.descending else "ascending"
+        indicator = _sort_indicator(index, term.descending, len(sort_terms))
+
+    link = A(
+        attributes=[
+            ("href", _sort_href(request, collapse_sort(sort_terms, column.sort_key))),
+            (
+                "data-shift-href",
+                _sort_href(request, cycle_sort(sort_terms, column.sort_key)),
+            ),
+            ("class", _SORT_HEADER_LINK_CLASS),
+        ],
+        children=[column.label, indicator],
+    )
+    return Th(
+        attributes=[("scope", "col"), ("class", base_class), ("aria-sort", aria_sort)],
+        children=[_SortHeader(children=[link])],
+    )
+
+
 def StyledTable(
-    columns: list[str] | None = None,
+    columns: list[Column] | None = None,
     rows: Sequence[TableRowData] | None = None,
     header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
     request=None,
+    sort_terms: Sequence[SortTerm] | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -1172,6 +1283,7 @@ def StyledTable(
     """
     columns = columns or []
     rows = rows or []
+    sort_terms = sort_terms or []
 
     # Dev-only guard: a row must have one cell per column, else cells render
     # misaligned under the headers and the position-based mobile column-hiding
@@ -1191,13 +1303,7 @@ def StyledTable(
         table_children.append(TableHeader(children=[header_action]))
 
     header_row = Tr(
-        children=[
-            Th(
-                attributes=[("scope", "col"), ("class", "px-6 py-3")],
-                children=[column],
-            )
-            for column in columns
-        ]
+        children=[_header_cell(column, sort_terms, request) for column in columns]
     )
     table_children.append(
         Thead(
@@ -1278,6 +1384,7 @@ def paginated_table_content(
                 page_obj=page_obj,
                 elided_page_range=elided_page_range,
                 request=request,
+                sort_terms=data.get("sort_terms"),
             )
         ],
     )

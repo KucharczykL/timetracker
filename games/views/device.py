@@ -7,6 +7,7 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Column,
     DeviceFilterBar,
     Fragment,
     Icon,
@@ -40,10 +41,10 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             StyledButton()["Add device"]
         ],
         "columns": [
-            "Name",
-            "Type",
-            "Created",
-            "Actions",
+            Column("Name"),
+            Column("Type"),
+            Column("Created"),
+            Column("Actions"),
         ],
         "rows": [
             make_row(

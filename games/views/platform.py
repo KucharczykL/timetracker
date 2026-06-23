@@ -7,6 +7,7 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Column,
     Fragment,
     Icon,
     PlatformFilterBar,
@@ -41,11 +42,11 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             StyledButton()["Add platform"]
         ],
         "columns": [
-            "Name",
-            "Icon",
-            "Group",
-            "Created",
-            "Actions",
+            Column("Name"),
+            Column("Icon"),
+            Column("Group"),
+            Column("Created"),
+            Column("Actions"),
         ],
         "rows": [
             make_row(

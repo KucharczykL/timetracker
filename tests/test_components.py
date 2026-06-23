@@ -800,7 +800,11 @@ class StyledTableRenderingTest(unittest.TestCase):
         result = str(
             str(
                 components.StyledTable(
-                    columns=["Game", "Started", "Ended"],
+                    columns=[
+                        components.Column("Game"),
+                        components.Column("Started"),
+                        components.Column("Ended"),
+                    ],
                     rows=[components.make_row("Game1", "2025-01-01", "2025-03-01")],
                 )
             )
@@ -816,7 +820,12 @@ class StyledTableRenderingTest(unittest.TestCase):
 
     def test_simple_table_empty_rows(self):
         """Verify empty rows list renders empty <tbody>."""
-        result = str(components.StyledTable(columns=["Game", "Started"], rows=[]))
+        result = str(
+            components.StyledTable(
+                columns=[components.Column("Game"), components.Column("Started")],
+                rows=[],
+            )
+        )
         self.assertIn("<tbody", result)
         tbody = self._tbody(result)
         self.assertNotIn("<tr", tbody)
@@ -827,7 +836,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         result = str(
             str(
                 components.StyledTable(
-                    columns=["Game", "Started"],
+                    columns=[components.Column("Game"), components.Column("Started")],
                     rows=[
                         components.make_row("GameA", "2025-01-01"),
                         components.make_row("GameB", "2025-02-01"),
@@ -845,7 +854,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         result = str(
             str(
                 components.StyledTable(
-                    columns=["Game", "Started"],
+                    columns=[components.Column("Game"), components.Column("Started")],
                     rows=[components.make_row("Game1", "2025-01-01")],
                     header_action=components.Safe('<a href="/add">Add</a>'),
                 )
@@ -860,7 +869,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         result = str(
             str(
                 components.StyledTable(
-                    columns=["Name", "Date"],
+                    columns=[components.Column("Name"), components.Column("Date")],
                     rows=[
                         components.make_row(
                             "Game1",
@@ -887,7 +896,7 @@ class StyledTableRenderingTest(unittest.TestCase):
             components.Media(js=("test-cell.js",))
         )
         table = components.StyledTable(
-            columns=["Only"],
+            columns=[components.Column("Only")],
             rows=[components.make_row(cell)],
         )
         media = components.collect_media(table)
@@ -918,7 +927,7 @@ class StyledTablePaginationTest(SimpleTestCase):
         paginator = Paginator(list(range(1, 51)), 10)
         return str(
             components.StyledTable(
-                columns=["N"],
+                columns=[components.Column("N")],
                 rows=[components.make_row("x")],
                 page_obj=paginator.page(page_number),
                 elided_page_range=list(paginator.get_elided_page_range(page_number)),
@@ -949,7 +958,7 @@ class StyledTableColumnGuardTest(SimpleTestCase):
     def test_cell_count_mismatch_raises(self):
         with self.assertRaises(ValueError):
             components.StyledTable(
-                columns=["A", "B"],
+                columns=[components.Column("A"), components.Column("B")],
                 rows=[components.make_row("only-one-cell")],
             )
 
@@ -957,11 +966,120 @@ class StyledTableColumnGuardTest(SimpleTestCase):
     def test_matching_cell_count_renders(self):
         result = str(
             components.StyledTable(
-                columns=["A", "B"],
+                columns=[components.Column("A"), components.Column("B")],
                 rows=[components.make_row("x", "y")],
             )
         )
         self.assertIn("<td", result)
+
+
+class SortableHeaderTest(SimpleTestCase):
+    """Clickable sortable column headers (issue #73)."""
+
+    @staticmethod
+    def _thead(result):
+        return result.split("<thead")[1].split("</thead>")[0]
+
+    def _render(self, columns, sort_terms=None):
+        return str(
+            components.StyledTable(
+                columns=columns,
+                rows=[],
+                request=None,
+                sort_terms=sort_terms,
+            )
+        )
+
+    def test_non_sortable_column_is_static_th(self):
+        """A Column without a sort_key renders a plain <th>, no link/affordance."""
+        thead = self._thead(self._render([components.Column("Actions")]))
+        self.assertIn("Actions", thead)
+        self.assertNotIn("<sort-header", thead)
+        self.assertNotIn("aria-sort", thead)
+        self.assertNotIn("<a ", thead)
+
+    def test_sortable_inactive_column_renders_link(self):
+        thead = self._thead(self._render([components.Column("Name", "name")]))
+        self.assertIn("<sort-header", thead)
+        self.assertIn('aria-sort="none"', thead)
+        # plain-click target sorts ascending by this key
+        self.assertIn("sort=name", thead)
+        self.assertIn("data-shift-href", thead)
+        # no active arrow on an inactive column
+        self.assertNotIn("rotate-180", thead)
+
+    def test_active_ascending_shows_arrow_and_flips_to_descending(self):
+        from common.sorting import SortTerm
+
+        thead = self._thead(
+            self._render(
+                [components.Column("Name", "name")],
+                sort_terms=[SortTerm("name", False)],
+            )
+        )
+        self.assertIn('aria-sort="ascending"', thead)
+        # ascending → arrow is rotated up
+        self.assertIn("rotate-180", thead)
+        # plain click on the sole-active ascending column flips to descending
+        self.assertIn("sort=-name", thead)
+
+    def test_active_descending_no_rotation_flips_to_ascending(self):
+        from common.sorting import SortTerm
+
+        thead = self._thead(
+            self._render(
+                [components.Column("Name", "name")],
+                sort_terms=[SortTerm("name", True)],
+            )
+        )
+        self.assertIn('aria-sort="descending"', thead)
+        self.assertNotIn("rotate-180", thead)
+        # sole-active descending flips back to ascending (bare key)
+        self.assertIn("sort=name", thead)
+        self.assertNotIn("sort=-name", thead)
+
+    def test_multi_column_shows_position_badges(self):
+        from common.sorting import SortTerm
+
+        thead = self._thead(
+            self._render(
+                [
+                    components.Column("Status", "status"),
+                    components.Column("Name", "name"),
+                ],
+                sort_terms=[SortTerm("status", False), SortTerm("name", True)],
+            )
+        )
+        # 1-based badges for both active columns
+        self.assertIn(">1<", thead)
+        self.assertIn(">2<", thead)
+
+
+class SortHrefTest(SimpleTestCase):
+    """_sort_href / _replace_query querystring surgery."""
+
+    def setUp(self):
+        from django.test import RequestFactory
+
+        self.factory = RequestFactory()
+
+    def test_sets_sort_drops_page_preserves_filter(self):
+        from common.components.primitives import _sort_href
+
+        request = self.factory.get("/x", {"filter": "abc", "page": "3", "sort": "name"})
+        href = _sort_href(request, "-name")
+        self.assertIn("filter=abc", href)
+        self.assertIn("sort=-name", href)
+        self.assertNotIn("page=", href)
+
+    def test_empty_sort_drops_sort_and_page(self):
+        from common.components.primitives import _sort_href
+
+        request = self.factory.get("/x", {"filter": "abc", "page": "2", "sort": "name"})
+        href = _sort_href(request, "")
+        self.assertIn("filter=abc", href)
+        self.assertNotIn("sort=", href)
+        self.assertNotIn("page=", href)
 
 
 class ComponentPrimitivesTest(SimpleTestCase):

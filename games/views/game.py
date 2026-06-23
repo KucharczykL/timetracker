@@ -15,6 +15,7 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Column,
     CsrfInput,
     Div,
     Element,
@@ -110,14 +111,15 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             A(href=reverse("games:add_game"))[StyledButton()["Add game"]],
         ],
         "columns": [
-            "Name",
-            "Sort Name",
-            "Year",
-            "Status",
-            "Wikidata",
-            "Created",
-            "Actions",
+            Column("Name", "name"),
+            Column("Sort Name", "sort_name"),
+            Column("Year", "year"),
+            Column("Status", "status"),
+            Column("Wikidata", "wikidata"),
+            Column("Created", "created"),
+            Column("Actions"),
         ],
+        "sort_terms": sort.terms,
         "rows": [
             make_row(
                 NameWithIcon(game=game),
@@ -695,7 +697,16 @@ def _purchases_section(game: Game) -> Node:
         )
         for purchase in purchases
     ]
-    table = StyledTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
+    table = StyledTable(
+        columns=[
+            Column("Name"),
+            Column("Type"),
+            Column("Date"),
+            Column("Price"),
+            Column("Actions"),
+        ],
+        rows=rows,
+    )
     return _game_section(
         "Purchases",
         purchases.count(),
@@ -780,7 +791,12 @@ def _sessions_section(game: Game, request: HttpRequest) -> Node:
         for session in page_obj.object_list
     ]
     table = StyledTable(
-        columns=["Game", "Date", "Duration", "Actions"],
+        columns=[
+            Column("Game"),
+            Column("Date"),
+            Column("Duration"),
+            Column("Actions"),
+        ],
         rows=rows,
         header_action=header_action,
         page_obj=page_obj,
