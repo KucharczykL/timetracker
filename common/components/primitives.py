@@ -929,10 +929,15 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
     attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
 
     Mirrors the generic element builders: ``class_`` → ``class``, ``True`` →
-    bare attribute, ``False``/``None`` omitted. Do **not** pass ``class_`` for a
-    styled row — :func:`TableRow` owns the row class; drop to the generic ``Tr``
-    builder for a custom-classed row.
+    bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
+    :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
+    for a custom-classed row.
     """
+    if "class_" in attributes or "class" in attributes:
+        raise ValueError(
+            "make_row() does not accept a class attribute — TableRow owns the "
+            "styled row class. Use the generic Tr builder for a custom-classed row."
+        )
     data: TableRowData = {"cell_data": list(cells)}
     attrs = _attrs_from_kwargs(attributes)
     if attrs:

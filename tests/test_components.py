@@ -877,6 +877,20 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn("Game1", tbody)
         self.assertIn("2025-01-01", tbody)
 
+    def test_make_row_rejects_class(self):
+        """make_row refuses a class attribute — TableRow owns the styled row class."""
+        with self.assertRaises(ValueError):
+            components.make_row("A", class_="custom")
+
+    def test_make_row_attribute_translation(self):
+        """True renders bare; False/None are omitted; the rest become pairs."""
+        data = components.make_row("A", flag=True, gone=False, nothing=None)
+        self.assertEqual(data["attributes"], [("flag", "flag")])
+
+    def test_make_row_no_attributes_omits_key(self):
+        """A plain row carries no attributes key (NotRequired stays absent)."""
+        self.assertNotIn("attributes", components.make_row("A", "B"))
+
 
 class ComponentPrimitivesTest(SimpleTestCase):
     def test_checkbox_primitive(self):
