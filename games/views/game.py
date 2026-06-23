@@ -33,7 +33,7 @@ from common.components import (
     PurchasePrice,
     Safe,
     SearchField,
-    SimpleTable,
+    StyledTable,
     StyledButton,
     TableData,
     Ul,
@@ -695,7 +695,7 @@ def _purchases_section(game: Game) -> Node:
         )
         for purchase in purchases
     ]
-    table = SimpleTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
+    table = StyledTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
     return _game_section(
         "Purchases",
         purchases.count(),
@@ -779,7 +779,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> Node:
         )
         for session in page_obj.object_list
     ]
-    table = SimpleTable(
+    table = StyledTable(
         columns=["Game", "Date", "Duration", "Actions"],
         rows=rows,
         header_action=header_action,
@@ -799,7 +799,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> Node:
 def _playevents_section(game: Game) -> Node:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
-    table = SimpleTable(columns=data["columns"], rows=data["rows"])
+    table = StyledTable(columns=data["columns"], rows=data["rows"])
     section = _game_section(
         "Play Events",
         playevents.count(),
