@@ -405,13 +405,67 @@ class IconTest(unittest.TestCase):
         self.assertIsInstance(result, SafeText)
         self.assertIn("<svg", result)
 
-    def test_icon_passes_attributes_to_template(self):
+    def test_icon_title_becomes_title_child(self):
+        # A title= renders as a <title> child (the SVG-correct accessible name /
+        # tooltip), not an inert title attribute on the <svg>.
         result = str(components.Icon("play", attributes=[("title", "Play")]))
         self.assertIsInstance(result, SafeText)
+        self.assertIn("<title>Play</title>", result)
+        self.assertNotIn('title="Play"', result)
+
+    def test_icon_merges_class_with_existing(self):
+        # `arrowdownlong` ships with class="w-3 h-3"; a passed class appends.
+        result = str(components.Icon("arrowdownlong", [("class", "rotate-180")]))
+        self.assertIn('class="w-3 h-3 rotate-180"', result)
+
+    def test_icon_escapes_title_text(self):
+        result = str(components.Icon("play", [("title", 'a"<&b')]))
+        self.assertIn("&lt;", result)
+        self.assertIn("&amp;", result)
+        self.assertNotIn("<&", result)
+
+    def test_icon_without_attributes_returns_shared_node(self):
+        from common.components.primitives import get_icon_node
+
+        self.assertEqual(
+            str(components.Icon("arrowdownlong")),
+            str(get_icon_node("arrowdownlong")),
+        )
 
     def test_returns_safetext(self):
         result = str(components.Icon("delete"))
         self.assertIsInstance(result, SafeText)
+
+
+class IconCodegenFaithfulnessTest(unittest.TestCase):
+    """Guard that the generated icon nodes still match their SVG sources.
+
+    Parses each raw .html source and the rendered node independently with
+    ElementTree and compares normalized trees, so a converter/codegen bug fails
+    here instead of silently corrupting an icon. Run `make gen-icons` if this
+    fails after editing an icon.
+    """
+
+    @staticmethod
+    def _normalize(element):
+        return (
+            element.tag,
+            dict(element.attrib),
+            (element.text or "").strip(),
+            [IconCodegenFaithfulnessTest._normalize(child) for child in element],
+        )
+
+    def test_every_icon_node_matches_its_source(self):
+        import xml.etree.ElementTree as ElementTree
+
+        from common.components.primitives import get_icon_node
+        from common.icons import iter_icon_sources
+
+        for name, raw_html in iter_icon_sources():
+            with self.subTest(icon=name):
+                source = ElementTree.fromstring(raw_html)
+                rendered = ElementTree.fromstring(str(get_icon_node(name)))
+                self.assertEqual(self._normalize(source), self._normalize(rendered))
 
 
 class InputTest(unittest.TestCase):

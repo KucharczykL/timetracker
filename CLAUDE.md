@@ -19,6 +19,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Lint Python | `make lint` (or `uv run ruff check`) |
 | Auto-fix lint | `make lint-fix` (`ruff check --fix`) |
 | Type check (mypy) | `make typecheck` (or `uv run mypy .`) |
+| Codegen element types (TS props) | `make gen-element-types` |
+| Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
 | Lint + format check + mypy + ts-check + tests | `make check` (CI-style aggregate) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
@@ -111,7 +113,7 @@ docs/           — Additional documentation
 
 Only a small number of HTML templates remain (platform icon snippets and partials). The bulk of the UI is built via Python components. Template files:
 
-- `games/templates/icons/<slug>.html` — SVG icon snippets (loaded by `common/icons.py` via `get_icon()`)
+- `games/templates/icons/<slug>.html` — SVG icon snippets; **source** for the icon codegen (`manage.py gen_icons` → committed `common/components/icons_generated.py`), not loaded at runtime
 - `games/templates/` — minimal partials for HTMX responses where needed
 
 ### Frontend stack
@@ -196,6 +198,6 @@ Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJAN
 - **Forms render via `FormFields`/`AddForm`, never `form.as_div()`**: `FormFields(form, *, extras=...)` (in `primitives.py`) renders label + control + errors + row layout with their own classes; native controls get their classes from `PrimitiveWidgetsMixin` (`games/forms.py`, which stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:` variants by widget type, skipping SearchSelect + checkbox). Every form is on this path, including login (`LoginForm(PrimitiveWidgetsMixin, AuthenticationForm)`). `extras` appends a node into a named field's row (e.g. the session timestamp buttons).
 - **Disabled form controls share one look**: every form element fades the same way when disabled, via the shared constants in `primitives.py` — `DISABLED_CONTROL_CLASS` (`disabled:opacity-50 disabled:cursor-not-allowed`, put on the control: native inputs via the mixin, `Checkbox`, etc.) and `DISABLED_WITHIN_CLASS` (the `has-[:disabled]:` wrapper variant, for composite controls like `SearchSelect` whose disabled state lives on an inner element). Reuse these constants; don't hand-roll a different disabled style per control.
 - **Disabling composite widgets**: a composite widget (e.g. `SearchSelect`) carries its `id` on a wrapper `<div>`, which has no `disabled` state — setting `.disabled` on it is a no-op. Disable the inner control (for `SearchSelect`, the `[data-search-select-search]` input); the wrapper fades itself via `DISABLED_WITHIN_CLASS`, so callers toggle only the control's `disabled`, never styles.
-- **Platform icons** are SVG snippets in `games/templates/icons/<slug>.html`. Add new ones there and reference them by slug in `Platform.icon`.
+- **Platform icons** are SVG snippets in `games/templates/icons/<slug>.html`, compiled to first-class `Element` node trees by `make gen-icons` (committed `common/components/icons_generated.py`; drift-guarded in `make check`). Add/edit a snippet, run `make gen-icons`, reference by slug in `Platform.icon`. `Icon(name, attributes=...)` returns a node: `class` merges onto the svg, `title` becomes a `<title>` child. Never edit `icons_generated.py` by hand.
 - **Name compound types explicitly** — if a `tuple`, `dict`, or other compound value is passed between functions or appears in multiple signatures, give it a named type (`TypedDict`, `NamedTuple`, or a `type` alias) rather than repeating the structural annotation. This applies even to small types used in only a few places; the name carries intent that the structure cannot. Examples: `LabeledOption = tuple[str, str]` instead of repeating `tuple[str, str]` for (value, label) pairs; `RangeValues(min, max)` instead of `tuple[str, str]` for range bounds.
 - **Name primitive roles too** — when a bare `str`/`int` stands for a domain concept (an id, a key, a token, a field name), give it a PEP 695 transparent alias (`type SortKey = str`) so signatures say *which* string/int goes where instead of a wall of `str`. These are zero-cost and need no wrapping (unlike `NewType`); reach for them especially when several distinct string roles meet in one function (e.g. a `dict[SortKey, SortSpec]` whose values reference an `AnnotationName`). Add a trailing comment on the alias noting an example value. Use `NewType` only when you actually want the checker to reject cross-assignment and are willing to wrap every literal.

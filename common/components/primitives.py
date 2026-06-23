@@ -30,7 +30,7 @@ from common.components.core import (
     as_children,
     randomid,
 )
-from common.icons import get_icon
+from common.components.icons_generated import ICON_NODES
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
@@ -1030,11 +1030,71 @@ def TableRow(data: TableRowData) -> Element:
     return Tr(attributes=tr_attrs, children=cell_elements)
 
 
+def get_icon_node(name: str) -> Element:
+    """Return the pre-built node tree for an icon. Falls back to 'unspecified'.
+
+    The returned node is shared (module-level) and must be treated as read-only.
+    """
+    return ICON_NODES.get(name) or ICON_NODES["unspecified"]
+
+
+def _merge_icon_attributes(base: Attributes, extra: Attributes) -> list[HTMLAttribute]:
+    """Merge ``extra`` onto an icon's existing attributes, returning a new list.
+
+    ``class`` *appends* to any existing class (Tailwind classes are additive, so
+    the snippet's built-in sizing survives); every other attribute *replaces* a
+    same-named one. Never mutates ``base`` (the shared node's attribute list).
+    """
+    merged: list[HTMLAttribute] = list(base)
+    for key, value in extra:
+        for index, (existing_key, existing_value) in enumerate(merged):
+            if existing_key == key:
+                merged[index] = (
+                    key,
+                    f"{existing_value} {value}" if key == "class" else value,
+                )
+                break
+        else:
+            merged.append((key, value))
+    return merged
+
+
+def _with_title(children: Sequence[Child], title: str) -> list[Child]:
+    """Return a new child list with the svg's direct-child ``<title>`` set.
+
+    Replaces an existing direct-child ``<title>`` element's text if present,
+    else prepends one. Titles baked deeper in the tree (e.g. inside a ``<path>``)
+    are left untouched; this sets the icon's accessible name / native tooltip.
+    """
+    title_node = Element("title", [], [title])
+    result = list(children)
+    for index, child in enumerate(result):
+        if isinstance(child, Element) and child.tag_name == "title":
+            result[index] = title_node
+            return result
+    return [title_node, *result]
+
+
 def Icon(
     name: str,
     attributes: Attributes | None = None,
 ) -> Node:
-    return Safe(get_icon(name))
+    root = get_icon_node(name)
+    if not attributes:
+        return root
+    extra_attributes: list[HTMLAttribute] = []
+    title: str | None = None
+    for key, value in attributes:
+        if key == "title":
+            title = str(value)
+        else:
+            extra_attributes.append((key, value))
+    children = _with_title(root.children, title) if title is not None else root.children
+    return Element(
+        root.tag_name,
+        _merge_icon_attributes(root.attributes, extra_attributes),
+        children,
+    )
 
 
 def TableHeader(
@@ -1237,10 +1297,9 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
     """Active-column affordance: an arrow (down=desc, rotated up=asc) plus a
     1-based position badge when more than one column is active."""
     # `arrowdownlong` points down (descending); rotate 180° → up (ascending).
-    arrow_class = "inline-block w-3 h-3" + ("" if descending else " rotate-180")
-    children: list[Child] = [
-        Span(attributes=[("class", arrow_class)], children=[Icon("arrowdownlong")])
-    ]
+    # The snippet already carries `w-3 h-3`; Icon merges these extras onto it.
+    arrow_class = "inline-block" + ("" if descending else " rotate-180")
+    children: list[Child] = [Icon("arrowdownlong", [("class", arrow_class)])]
     if total > 1:
         children.append(Badge(str(position + 1), size="sm"))
     return Fragment(*children)

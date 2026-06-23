@@ -22,6 +22,7 @@ init:
 	pnpm install
 	$(MAKE) migrate
 	$(MAKE) loadplatforms
+	$(MAKE) gen-icons
 
 server: gen-element-types
 	@pnpm concurrently \
@@ -32,6 +33,12 @@ server: gen-element-types
 
 gen-element-types:
 	uv run python manage.py gen_element_types
+
+gen-icons:
+	uv run python manage.py gen_icons
+
+check-icons:
+	uv run python manage.py gen_icons --check
 
 ts: gen-element-types
 	pnpm exec tsc
@@ -105,7 +112,7 @@ format-check:
 typecheck:
 	uv run mypy .
 
-check: lint format-check typecheck ts-check test
+check: lint format-check typecheck ts-check check-icons test
 
 date:
 	uv run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
