@@ -11,6 +11,8 @@ from common.components import (
     Icon,
     PlatformFilterBar,
     StyledButton,
+    TableData,
+    make_row,
     paginated_table_content,
 )
 from common.layout import render_page
@@ -34,7 +36,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
     platforms, page_obj, elided_page_range = paginate(request, platforms)
 
-    data = {
+    data: TableData = {
         "header_action": A(href=reverse("games:add_platform"))[
             StyledButton()["Add platform"]
         ],
@@ -46,7 +48,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             "Actions",
         ],
         "rows": [
-            [
+            make_row(
                 platform.name,
                 Icon(platform.icon),
                 platform.group,
@@ -67,7 +69,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            ]
+            )
             for platform in platforms
         ],
     }

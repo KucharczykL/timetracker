@@ -793,13 +793,13 @@ class SimpleTableRenderingTest(unittest.TestCase):
     def _tbody(result):
         return result.split("<tbody")[1].split("</tbody>")[0]
 
-    def test_simple_table_renders_list_rows(self):
-        """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
+    def test_simple_table_renders_rows(self):
+        """Verify make_row rows render as <tr> with <th scope='row'> + <td>."""
         result = str(
             str(
                 components.SimpleTable(
                     columns=["Game", "Started", "Ended"],
-                    rows=[["Game1", "2025-01-01", "2025-03-01"]],
+                    rows=[components.make_row("Game1", "2025-01-01", "2025-03-01")],
                 )
             )
         )
@@ -826,7 +826,10 @@ class SimpleTableRenderingTest(unittest.TestCase):
             str(
                 components.SimpleTable(
                     columns=["Game", "Started"],
-                    rows=[["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+                    rows=[
+                        components.make_row("GameA", "2025-01-01"),
+                        components.make_row("GameB", "2025-02-01"),
+                    ],
                 )
             )
         )
@@ -841,7 +844,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
             str(
                 components.SimpleTable(
                     columns=["Game", "Started"],
-                    rows=[["Game1", "2025-01-01"]],
+                    rows=[components.make_row("Game1", "2025-01-01")],
                     header_action=components.Safe('<a href="/add">Add</a>'),
                 )
             )
@@ -850,18 +853,19 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn('href="/add"', result)
         self.assertIn(">Add</", result)
 
-    def test_simple_table_dict_rows_with_cell_data(self):
-        """Verify dict-style rows with row_id and cell_data render correctly."""
+    def test_simple_table_rows_with_attributes(self):
+        """Verify make_row attributes (id, hx-*) land on the <tr>."""
         result = str(
             str(
                 components.SimpleTable(
                     columns=["Name", "Date"],
                     rows=[
-                        {
-                            "row_id": "session-row-1",
-                            "hx_trigger": "device-changed",
-                            "cell_data": ["Game1", "2025-01-01"],
-                        }
+                        components.make_row(
+                            "Game1",
+                            "2025-01-01",
+                            id="session-row-1",
+                            hx_trigger="device-changed",
+                        )
                     ],
                 )
             )

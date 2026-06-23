@@ -11,6 +11,8 @@ from common.components import (
     Fragment,
     Icon,
     StyledButton,
+    TableData,
+    make_row,
     paginated_table_content,
 )
 from common.layout import render_page
@@ -33,7 +35,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 
     devices, page_obj, elided_page_range = paginate(request, devices)
 
-    data = {
+    data: TableData = {
         "header_action": A(href=reverse("games:add_device"))[
             StyledButton()["Add device"]
         ],
@@ -44,7 +46,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             "Actions",
         ],
         "rows": [
-            [
+            make_row(
                 device.name,
                 device.get_type_display(),
                 local_strftime(device.created_at, dateformat),
@@ -62,7 +64,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            ]
+            )
             for device in devices
         ],
     }

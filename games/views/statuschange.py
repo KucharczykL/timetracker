@@ -11,6 +11,8 @@ from common.components import (
     Div,
     Element,
     StyledButton,
+    TableData,
+    make_row,
     paginated_table_content,
 )
 from common.components.primitives import P
@@ -50,16 +52,16 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
         request, GameStatusChange.objects.select_related("game").all()
     )
 
-    data = {
+    data: TableData = {
         "header_action": None,
         "columns": ["Game", "Old Status", "New Status", "Timestamp"],
         "rows": [
-            [
+            make_row(
                 sc.game.name,
                 sc.get_old_status_display() if sc.old_status else "-",
                 sc.get_new_status_display(),
                 local_strftime(sc.timestamp, dateformat) if sc.timestamp else "-",
-            ]
+            )
             for sc in statuschanges
         ],
     }
