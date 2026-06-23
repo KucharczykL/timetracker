@@ -10,6 +10,7 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 from collections.abc import Sequence
 from typing import NotRequired, TypedDict
 
+from django.conf import settings
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.html import conditional_escape
@@ -1092,6 +1093,19 @@ def SimpleTable(
     """Paginated table. Python equivalent of the old simple_table.html."""
     columns = columns or []
     rows = rows or []
+
+    # Dev-only guard: a row must have one cell per column, else cells render
+    # misaligned under the headers and the position-based mobile column-hiding
+    # CSS corrupts. The type system can't express this count rule, so catch a
+    # mismatch loudly in DEBUG; prod degrades to a ragged table over a 500.
+    if settings.DEBUG:
+        for row in rows:
+            cell_count = len(row["cell_data"])
+            if cell_count != len(columns):
+                raise ValueError(
+                    f"SimpleTable row has {cell_count} cells but {len(columns)} "
+                    f"columns were given: {row['cell_data']!r}"
+                )
 
     # Rows/header are stringified into the table markup, so their components'
     # declared Media would be lost; collect it from the nodes first and attach

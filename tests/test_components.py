@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import django
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
@@ -890,6 +890,28 @@ class SimpleTableRenderingTest(unittest.TestCase):
     def test_make_row_no_attributes_omits_key(self):
         """A plain row carries no attributes key (NotRequired stays absent)."""
         self.assertNotIn("attributes", components.make_row("A", "B"))
+
+
+class SimpleTableColumnGuardTest(SimpleTestCase):
+    """The DEBUG-only guard that a row's cell count matches the column count."""
+
+    @override_settings(DEBUG=True)
+    def test_cell_count_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            components.SimpleTable(
+                columns=["A", "B"],
+                rows=[components.make_row("only-one-cell")],
+            )
+
+    @override_settings(DEBUG=True)
+    def test_matching_cell_count_renders(self):
+        result = str(
+            components.SimpleTable(
+                columns=["A", "B"],
+                rows=[components.make_row("x", "y")],
+            )
+        )
+        self.assertIn("<td", result)
 
 
 class ComponentPrimitivesTest(SimpleTestCase):
