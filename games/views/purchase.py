@@ -1,5 +1,3 @@
-from typing import Any
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import (
@@ -128,7 +126,7 @@ def _render_purchase_row(purchase):
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases: QuerySet[Any, Any] = Purchase.objects.select_related(
+    purchases: QuerySet[Purchase] = Purchase.objects.select_related(
         "platform"
     ).prefetch_related("games", "games__platform")
 

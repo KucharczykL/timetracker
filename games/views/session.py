@@ -127,7 +127,7 @@ def session_row(session: Session, device_list, csrf_token: str) -> Node:
 
 @login_required
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    sessions: QuerySet[Any, Any] = Session.objects.select_related(
+    sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
     )
     device_list = Device.objects.order_by("name")
