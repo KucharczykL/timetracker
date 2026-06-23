@@ -12,8 +12,9 @@ with AND/OR/NOT composition and typed criterion fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -137,7 +138,7 @@ class GameFilter(OperatorFilter):
 
             from games.models import Game
 
-            matching_ids = (
+            matching_ids: QuerySet[Any, Any] = (
                 Game.objects.annotate(s_count=Count("sessions", distinct=True))
                 .filter(self.session_count.to_q("s_count"))
                 .values_list("id", flat=True)
@@ -551,7 +552,9 @@ class SessionFilter(OperatorFilter):
             from games.models import Game
 
             game_q = self.game_filter.to_q()
-            matching_ids = Game.objects.filter(game_q).values_list("id", flat=True)
+            matching_ids: QuerySet[Any, Any] = Game.objects.filter(game_q).values_list(
+                "id", flat=True
+            )
             q &= Q(game_id__in=matching_ids)
 
         # Cross-entity filter: sessions for devices matching DeviceFilter
@@ -668,7 +671,9 @@ class PurchaseFilter(OperatorFilter):
             from games.models import Game
 
             game_q = self.game_filter.to_q()
-            matching_ids = Game.objects.filter(game_q).values_list("id", flat=True)
+            matching_ids: QuerySet[Any, Any] = Game.objects.filter(game_q).values_list(
+                "id", flat=True
+            )
             q &= Q(games__id__in=matching_ids)
 
         # Cross-entity platform filter
@@ -713,37 +718,41 @@ class PurchaseFilter(OperatorFilter):
         consistent with every other modifier. All other modifiers delegate
         to the criterion.
         """
+        # Criterion values arrive as strings; the M2M lookups want game PKs.
+        game_ids = [int(game_id) for game_id in criterion.value]
+        exclude_ids = [int(game_id) for game_id in criterion.excludes]
+
         # Empty value means no constraint; still apply excludes if any
-        if not criterion.value:
-            if criterion.excludes:
-                return ~Q(games__in=criterion.excludes)
+        if not game_ids:
+            if exclude_ids:
+                return ~Q(games__in=exclude_ids)
             return Q()
 
         from games.models import Game, Purchase
 
         if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
             subquery = Purchase.objects.all()
-            for game_id in criterion.value:
+            for game_id in game_ids:
                 subquery = subquery.filter(games=game_id)
 
             if criterion.modifier == Modifier.INCLUDES_ONLY:
-                extra_ids = Game.objects.exclude(id__in=criterion.value).values_list(
+                extra_ids = Game.objects.exclude(id__in=game_ids).values_list(
                     "id", flat=True
                 )
                 if extra_ids:
                     subquery = subquery.exclude(games__in=extra_ids)
 
             q = Q(pk__in=subquery.values("pk"))
-            if criterion.excludes:
-                q &= ~Q(games__in=criterion.excludes)
+            if exclude_ids:
+                q &= ~Q(games__in=exclude_ids)
             return q
 
         if criterion.modifier == Modifier.INCLUDES:
             # Use subquery to avoid duplicate rows from M2M join
-            subquery = Purchase.objects.filter(games__in=criterion.value)
+            subquery = Purchase.objects.filter(games__in=game_ids)
             q = Q(pk__in=subquery.values("pk"))
-            if criterion.excludes:
-                q &= ~Q(games__in=criterion.excludes)
+            if exclude_ids:
+                q &= ~Q(games__in=exclude_ids)
             return q
 
         return criterion.to_q("games")
@@ -860,7 +869,7 @@ class PlatformFilter(OperatorFilter):
             from games.models import Game
 
             game_q = self.game_filter.to_q()
-            matching_ids = Game.objects.filter(game_q).values_list(
+            matching_ids: QuerySet[Any, Any] = Game.objects.filter(game_q).values_list(
                 "platform_id", flat=True
             )
             q &= Q(id__in=matching_ids)
@@ -941,7 +950,9 @@ class PlayEventFilter(OperatorFilter):
             from games.models import Game
 
             game_q = self.game_filter.to_q()
-            matching_ids = Game.objects.filter(game_q).values_list("id", flat=True)
+            matching_ids: QuerySet[Any, Any] = Game.objects.filter(game_q).values_list(
+                "id", flat=True
+            )
             q &= Q(game_id__in=matching_ids)
 
         sub = self.sub_filter()

@@ -44,6 +44,7 @@ dev = [
     "ruff",
     "pytest-django>=4.12.0",
     "pytest-playwright>=0.8.0",
+    "django-stubs[compatible-mypy]>=6.0.5",
 ]
 
 [tool.uv]
@@ -63,6 +64,16 @@ extend-exclude = [
     # it's excluded for now rather than contorted to satisfy the linter.
     "streak_bruteforce.py",
 ]
+
+[tool.mypy]
+plugins = ["mypy_django_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "timetracker.settings"
+
+[[tool.mypy.overrides]]
+module = ["django_q.*", "django_htmx.*"]
+ignore_missing_imports = true
 
 [tool.isort]
  profile = "black"

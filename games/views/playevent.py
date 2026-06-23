@@ -41,6 +41,8 @@ def create_playevent_tabledata(
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
 ) -> TableData:
+    if isinstance(playevents, BaseManager):
+        playevents = playevents.all()
     column_list = [
         "Game",
         "Started",
@@ -175,6 +177,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             try:
                 latest_playevent = game.playevents.latest("ended")
                 # Start date for the new PlayEvent form
+                assert latest_playevent.ended is not None
                 new_playevent_form_start_date = latest_playevent.ended + timedelta(
                     days=1
                 )

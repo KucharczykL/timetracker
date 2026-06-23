@@ -319,7 +319,7 @@ def _stamp(element: Element, contract: list[tuple[str, str]], id: str) -> Elemen
                 stacklevel=3,
             )
     kept = [(key, value) for key, value in element.attributes if key not in reserved]
-    clone = Element(element.tag_name, kept + contract, element.children)
+    clone = Element(element.tag_name, [*kept, *contract], element.children)
     clone.media = element.media
     return clone
 

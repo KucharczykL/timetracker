@@ -27,6 +27,7 @@ from common.components import (
 from common.time import durationformat, format_duration
 from games.filters import filter_url
 from games.views import stats_links
+from games.views.stats_data import StatsData
 
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2"
 _CELL_MONO = f"{_CELL} font-mono"
@@ -359,8 +360,8 @@ def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
     return _table(rows, thead)
 
 
-def stats_content(ctx: dict) -> Node:
-    year = ctx.get("year")
+def stats_content(ctx: StatsData) -> Node:
+    year = ctx["year"]
     currency = ctx.get("total_spent_currency")
     # Build a navigation URL with an `__year__` placeholder the picker's JS
     # substitutes. Reverse a sentinel year, then swap it for the placeholder

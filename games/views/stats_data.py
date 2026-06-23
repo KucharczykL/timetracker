@@ -169,7 +169,7 @@ def compute_stats(year: int | None = None) -> StatsData:
                 first_session.timestamp_start.date(),
                 last_session.timestamp_start.date(),
             )
-            if first_session
+            if first_session and last_session
             else 0
         )
     else:

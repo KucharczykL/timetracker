@@ -39,6 +39,9 @@ jobs:
       - name: Run Migrations
         run: uv run python manage.py migrate
 
+      - name: Type check
+        run: uv run mypy .
+
       - name: Run Tests
         run: uv run --with pytest-django pytest
 

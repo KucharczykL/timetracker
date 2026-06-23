@@ -7,6 +7,9 @@ classes or behaviour (``Button``, ``Pill``, ``Checkbox`` …) are written out.
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
+from collections.abc import Mapping
+from typing import Any
+
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.html import conditional_escape
@@ -896,7 +899,7 @@ def TableTd(
     )
 
 
-def TableRow(data: dict | list | None = None) -> Element:
+def TableRow(data: Mapping[str, Any] | list | None = None) -> Element:
     """Generate a <tr> from a row data dict or list.
 
     Dict form: {"row_id": "...", "cell_data": [...], "hx_trigger": ..., ...}
@@ -1103,7 +1106,7 @@ def SimpleTable(
 
 
 def paginated_table_content(
-    data: dict,
+    data: Mapping[str, Any],
     *,
     page_obj=None,
     elided_page_range=None,

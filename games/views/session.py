@@ -2,7 +2,7 @@ from typing import Any, TypedDict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
@@ -37,6 +37,8 @@ from common.time import (
     timeformat,
 )
 from common.utils import paginate, truncate
+from django_htmx.middleware import HtmxDetails
+
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
@@ -45,6 +47,12 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+
+
+class HtmxHttpRequest(HttpRequest):
+    """HttpRequest with the ``htmx`` attribute django-htmx's middleware adds."""
+
+    htmx: HtmxDetails
 
 
 class SessionRowData(TypedDict):
@@ -126,7 +134,9 @@ def session_row(session: Session, device_list, csrf_token: str) -> Node:
 
 @login_required
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    sessions = Session.objects.select_related("game", "game__platform", "device")
+    sessions: QuerySet[Any, Any] = Session.objects.select_related(
+        "game", "game__platform", "device"
+    )
     device_list = Device.objects.order_by("name")
 
     # ── Structured filter (JSON) ──
@@ -195,7 +205,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                 ],
                             ),
                         )
-                        if last_session
+                        if last_session and last_session.game
                         else "",
                     ]
                 ),
@@ -345,7 +355,7 @@ def clone_session_by_id(session_id: int) -> Session:
 
 @login_required
 def new_session_from_existing_session(
-    request: HttpRequest, session_id: int
+    request: HtmxHttpRequest, session_id: int
 ) -> HttpResponse:
     clone_session_by_id(session_id)
     if request.htmx:
@@ -358,7 +368,7 @@ def new_session_from_existing_session(
 
 
 @login_required
-def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
+def end_session(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_end = timezone.now()
     session.save()
@@ -368,7 +378,7 @@ def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 
 @login_required
-def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
+def reset_session_start(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_start = timezone.now()
     session.save()

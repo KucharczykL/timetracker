@@ -124,7 +124,9 @@ def derive_hosts_and_origins(
     Returns ``(allowed_hosts, csrf_trusted_origins)``.
     """
     parsed_urls = [urlparse(raw_url.strip()) for raw_url in app_url.split(",")]
-    allowed_hosts = [parsed_url.hostname for parsed_url in parsed_urls]
+    allowed_hosts = [
+        parsed_url.hostname for parsed_url in parsed_urls if parsed_url.hostname
+    ]
     csrf_trusted_origins = [
         f"{parsed_url.scheme}://{parsed_url.netloc}" for parsed_url in parsed_urls
     ]

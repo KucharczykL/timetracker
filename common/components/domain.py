@@ -72,10 +72,7 @@ def GameStatus(
         children=["\xa0"],
     )
 
-    return Span(
-        attributes=[("class", outer_class)],
-        children=[dot] + as_children(children),
-    )
+    return Span(class_=outer_class, children=[dot] + as_children(children))
 
 
 def PriceConverted(
@@ -99,8 +96,10 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     game_count = purchase.games.count()
     popover_if_not_truncated = False
     if game_count == 1:
-        link_content += purchase.games.first().name
-        popover_content = link_content
+        first_game = purchase.games.first()
+        if first_game is not None:
+            link_content += first_game.name
+            popover_content = link_content
     if game_count > 1:
         if purchase.name:
             link_content += f"{purchase.name}"
@@ -185,11 +184,12 @@ def _resolve_name_with_icon(
 
     if session is not None:
         game = session.game
-        platform = game.platform
         final_emulated = session.emulated
-        if linkify:
-            create_link = True
-            link = reverse("games:view_game", args=[int(game.pk)])
+        if game is not None:
+            platform = game.platform
+            if linkify:
+                create_link = True
+                link = reverse("games:view_game", args=[int(game.pk)])
     elif game is not None:
         platform = game.platform
         if linkify:

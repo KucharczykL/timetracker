@@ -16,6 +16,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 import hashlib
 from collections.abc import Sequence
 from functools import lru_cache
+from typing import Self
 
 from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
@@ -113,7 +114,7 @@ class Node:
         """Total media of this node and its subtree."""
         return self.media
 
-    def with_media(self, media: Media) -> "Node":
+    def with_media(self, media: Media) -> Self:
         """Attach JS dependencies to this node and return it (for fluent use).
 
         Lets a function-built node declare its media without becoming a full
