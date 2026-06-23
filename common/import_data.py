@@ -8,12 +8,14 @@ DataList: TypeAlias = list[dict[str, str]] | None
 
 def read_csv(filename: str) -> DataList:
     with open(filename, "r") as csvfile:
-        writer = csv.DictReader(csvfile)
-        return writer
+        reader = csv.DictReader(csvfile)
+        return list(reader)
 
 
 def import_data(data: DataList):
     matching_names = {}
+    if data is None:
+        return
     for line in data:
         name = line["name"]
         if name not in matching_names:

@@ -1,4 +1,5 @@
 import operator
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from functools import reduce, wraps
@@ -135,7 +136,7 @@ class FilterEntry:
 
 
 def build_dynamic_filter(
-    filters: list[FilterEntry | Q], default_operator: OperatorType = "&"
+    filters: Sequence[FilterEntry | Q], default_operator: OperatorType = "&"
 ):
     """
     Constructs a Django Q filter from a list of filter conditions.

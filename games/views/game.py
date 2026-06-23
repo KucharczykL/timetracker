@@ -3,13 +3,12 @@ from typing import Any
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
-from django.utils.safestring import SafeText
 
 from common.components import (
     H1,
@@ -34,9 +33,11 @@ from common.components import (
     PurchasePrice,
     Safe,
     SearchField,
-    SimpleTable,
+    StyledTable,
     StyledButton,
+    TableData,
     Ul,
+    make_row,
     paginated_table_content,
 )
 from common.components.primitives import Li, P, Span, Strong
@@ -55,9 +56,9 @@ from games.filters import (
     filter_url,
     parse_game_filter,
 )
-from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.forms import GameForm
-from games.models import Game
+from games.models import Game, GameStatusChange
+from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
 
@@ -101,7 +102,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     games, page_obj, elided_page_range = paginate(request, games)
 
-    data = {
+    data: TableData = {
         "header_action": Div(
             class_="flex justify-between",
         )[
@@ -118,14 +119,14 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             "Actions",
         ],
         "rows": [
-            [
+            make_row(
                 NameWithIcon(game=game),
                 PopoverTruncated(
                     game.sort_name
                     if game.sort_name is not None and game.name != game.sort_name
                     else "(identical)"
                 ),
-                game.year_released,
+                str(game.year_released),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
                 game.wikidata,
                 local_strftime(game.created_at, dateformat),
@@ -143,7 +144,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                         },
                     ]
                 ),
-            ]
+            )
             for game in games
         ],
     }
@@ -217,7 +218,7 @@ def _delete_game_confirmation_modal(
     purchase_count: int,
     playevent_count: int,
     request: HttpRequest,
-) -> SafeText:
+) -> Node:
     data_items = []
     if session_count:
         data_items.append(Li(children=[f"{session_count} session(s)"]))
@@ -323,12 +324,14 @@ def _delete_game_confirmation_modal(
 def delete_game_confirmation(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
     return HttpResponse(
-        _delete_game_confirmation_modal(
-            game,
-            game.sessions.count(),
-            game.purchases.count(),
-            game.playevents.count(),
-            request,
+        str(
+            _delete_game_confirmation_modal(
+                game,
+                game.sessions.count(),
+                game.purchases.count(),
+                game.playevents.count(),
+                request,
+            )
         )
     )
 
@@ -410,7 +413,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     ]
 
 
-def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> SafeText:
+def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> Node:
     return Popover(
         popover_content=tooltip,
         wrapped_classes="flex gap-2 items-center",
@@ -429,7 +432,7 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     return Div([("class", "flex gap-2 items-center")], children)
 
 
-def _game_action_buttons(game: Game) -> SafeText:
+def _game_action_buttons(game: Game) -> Node:
     edit_class = (
         "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
         "rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
@@ -474,7 +477,7 @@ def _game_action_buttons(game: Game) -> SafeText:
     )
 
 
-def _game_history(statuschanges) -> SafeText:
+def _game_history(statuschanges: QuerySet[GameStatusChange]) -> Node:
     items = []
     for change in statuschanges:
         if change.timestamp:
@@ -501,11 +504,11 @@ def _game_history(statuschanges) -> SafeText:
             Li(
                 attributes=[("class", "text-slate-500")],
                 children=[
-                    f"{prefix} status from ",
+                    f"{prefix} status from",
                     old_status,
-                    " to ",
+                    "to",
                     new_status,
-                    " (",
+                    "(",
                     edit,
                     ", ",
                     delete,
@@ -513,19 +516,16 @@ def _game_history(statuschanges) -> SafeText:
                 ],
             )
         )
-    return Ul(
-        attributes=[("class", "list-disc list-inside")],
-        children=items,
-    )
+    return Ul(class_="list-disc list-inside", children=items)
 
 
 def _game_section(
     title: str,
     count: int,
-    table: SafeText,
+    table: Node,
     empty_message: str,
     view_all_url: str | None = None,
-) -> SafeText:
+) -> Node:
     if view_all_url and count:
         view_all_link = A(
             href=view_all_url,
@@ -541,10 +541,10 @@ def _game_section(
         )
         header = Div(
             [("class", "flex items-center justify-between")],
-            [H1(children=[title], badge=count), view_all_link],
+            [H1(children=[title], badge=str(count) if count else ""), view_all_link],
         )
     else:
-        header = H1(children=[title], badge=count)
+        header = H1(children=[title], badge=str(count) if count else "")
     return Div(
         [("class", "mb-6")],
         [
@@ -581,7 +581,7 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
     }
 
 
-def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> SafeText:
+def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> Node:
     grey_value_class = "text-black dark:text-slate-300"
     title_span = Span(
         attributes=[("class", "text-balance max-w-120 text-4xl")],
@@ -670,10 +670,10 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> S
     )
 
 
-def _purchases_section(game: Game) -> SafeText:
+def _purchases_section(game: Game) -> Node:
     purchases = game.purchases.order_by("date_purchased")
     rows = [
-        [
+        make_row(
             LinkedPurchase(purchase),
             purchase.get_type_display(),
             purchase.date_purchased.strftime(dateformat),
@@ -692,10 +692,10 @@ def _purchases_section(game: Game) -> SafeText:
                     },
                 ]
             ),
-        ]
+        )
         for purchase in purchases
     ]
-    table = SimpleTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
+    table = StyledTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
     return _game_section(
         "Purchases",
         purchases.count(),
@@ -705,7 +705,7 @@ def _purchases_section(game: Game) -> SafeText:
     )
 
 
-def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
+def _sessions_section(game: Game, request: HttpRequest) -> Node:
     sessions_all = game.sessions.order_by("-timestamp_start")
     session_count = sessions_all.count()
     last_session = sessions_all.latest() if sessions_all.exists() else None
@@ -743,12 +743,12 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
                     ],
                 ),
             )
-            if last_session
+            if last_session and last_session.game
             else "",
         ],
     )
     rows = [
-        [
+        make_row(
             NameWithIcon(session=session),
             f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
             session.duration_formatted_with_mark(),
@@ -776,10 +776,10 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
                     },
                 ]
             ),
-        ]
+        )
         for session in page_obj.object_list
     ]
-    table = SimpleTable(
+    table = StyledTable(
         columns=["Game", "Date", "Duration", "Actions"],
         rows=rows,
         header_action=header_action,
@@ -796,10 +796,10 @@ def _sessions_section(game: Game, request: HttpRequest) -> SafeText:
     )
 
 
-def _playevents_section(game: Game) -> SafeText:
+def _playevents_section(game: Game) -> Node:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
-    table = SimpleTable(columns=data["columns"], rows=data["rows"])
+    table = StyledTable(columns=data["columns"], rows=data["rows"])
     section = _game_section(
         "Play Events",
         playevents.count(),
@@ -822,22 +822,19 @@ def _playevents_section(game: Game) -> SafeText:
     )
 
 
-def _history_section(game: Game) -> SafeText:
-    statuschanges = game.status_changes.all()
+def _history_section(game: Game) -> Node:
+    statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
+    count = statuschanges.count()
     return Div(
-        [
-            ("class", "mb-6"),
-            ("id", "history-container"),
-            ("hx-get", ""),
-            ("hx-trigger", "status-changed from:body"),
-            ("hx-select", "#history-container"),
-            ("hx-swap", "outerHTML"),
-        ],
-        [
-            H1(children=["History"], badge=statuschanges.count()),
-            _game_history(statuschanges),
-        ],
-    )
+        class_="mb-6",
+        id="history-container",
+        hx_trigger="status-changed from:body",
+        hx_select="#history-container",
+        hx_swap="outerHTML",
+    )[
+        H1(children=["History"], badge=str(count) if count else ""),
+        _game_history(statuschanges),
+    ]
 
 
 _GET_SESSION_COUNT_SCRIPT = Safe(

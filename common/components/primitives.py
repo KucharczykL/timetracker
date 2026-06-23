@@ -3,13 +3,16 @@
 Generic leaf elements (``Div``, ``Span``, ``Td`` …) are *not* hand-written one
 per tag: they are generated from a whitelist via :func:`_html_element`, each a
 thin builder over the single :class:`Element` node class. Only elements that add
-classes or behaviour (``Button``, ``Pill``, ``Checkbox`` …) are written out.
+classes or behaviour (``StyledButton``, ``Pill``, ``Checkbox`` …) are written out.
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
+from collections.abc import Sequence
+from typing import NotRequired, TypedDict
+
+from django.conf import settings
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
-from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
@@ -24,7 +27,6 @@ from common.components.core import (
     Safe,
     as_attributes,
     as_children,
-    collect_media,
     randomid,
 )
 from common.icons import get_icon
@@ -117,6 +119,11 @@ Template = _html_element("template")
 Td = _html_element("td")
 Tr = _html_element("tr")
 Th = _html_element("th")
+Table = _html_element("table")
+Thead = _html_element("thead")
+Tbody = _html_element("tbody")
+Caption = _html_element("caption")
+Nav = _html_element("nav")
 
 
 def _popover_html(
@@ -896,21 +903,60 @@ def TableTd(
     )
 
 
-def TableRow(data: dict | list | None = None) -> Element:
-    """Generate a <tr> from a row data dict or list.
+type Cell = Child  # one table cell, e.g. NameWithIcon(game=game) or "2024"
 
-    Dict form: {"row_id": "...", "cell_data": [...], "hx_trigger": ..., ...}
-    - first cell is <th>, rest <td>.
-    List form: [...] — all cells are <td>.
+
+class TableRowData(TypedDict):
+    """Canonical row shape: positional cells plus optional ``<tr>`` attributes.
+
+    Build with :func:`make_row`; rendered by :func:`TableRow`. The first cell
+    becomes a ``<th scope="row">``, the rest ``<td>``. ``attributes`` carries
+    htpy-style ``<tr>`` attributes (``id``, ``hx-*`` …) already translated to
+    ``(name, value)`` pairs.
     """
-    if data is None:
-        data = {}
-    if isinstance(data, dict):
-        row_id = data.get("row_id", "")
-        cells = data.get("cell_data", [])
-    else:
-        row_id = ""
-        cells = data
+
+    cell_data: list[Cell]
+    attributes: NotRequired[list[HTMLAttribute]]
+
+
+class TableData(TypedDict):
+    """Canonical table shape consumed by :func:`StyledTable` /
+    :func:`paginated_table_content`. Every list view builds this."""
+
+    header_action: Child | None
+    columns: list[str]
+    rows: Sequence[TableRowData]
+
+
+def make_row(*cells: Cell, **attributes: object) -> TableRowData:
+    """Build a :class:`TableRowData` from positional cells and htpy-style
+    attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
+
+    Mirrors the generic element builders: ``class_`` → ``class``, ``True`` →
+    bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
+    :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
+    for a custom-classed row.
+    """
+    if "class_" in attributes or "class" in attributes:
+        raise ValueError(
+            "make_row() does not accept a class attribute — TableRow owns the "
+            "styled row class. Use the generic Tr builder for a custom-classed row."
+        )
+    data: TableRowData = {"cell_data": list(cells)}
+    attrs = _attrs_from_kwargs(attributes)
+    if attrs:
+        data["attributes"] = attrs
+    return data
+
+
+def TableRow(data: TableRowData) -> Element:
+    """Render a styled ``<tr>`` from a :class:`TableRowData`.
+
+    First cell is a ``<th scope="row">``, the rest ``<td>``. The cosmetic row
+    ``class`` is fixed here; ``data["attributes"]`` (``id``, ``hx-*`` …) is
+    applied on top. For a differently-styled row use the generic ``Tr`` builder.
+    """
+    cells = data["cell_data"]
 
     tr_class = (
         "odd:bg-white dark:odd:bg-gray-900 even:bg-gray-50 "
@@ -918,18 +964,7 @@ def TableRow(data: dict | list | None = None) -> Element:
         "dark:hover:bg-gray-600 [&_a]:underline [&_a]:underline-offset-4 "
         "[&_a]:decoration-2 [&_td:last-child]:text-right"
     )
-    tr_attrs: list[HTMLAttribute] = [("class", tr_class)]
-    if row_id:
-        tr_attrs.append(("id", row_id))
-    if isinstance(data, dict):
-        if data.get("hx_trigger"):
-            tr_attrs.append(("hx-trigger", data["hx_trigger"]))
-        if data.get("hx_get"):
-            tr_attrs.append(("hx-get", data["hx_get"]))
-        if data.get("hx_select"):
-            tr_attrs.append(("hx-select", data["hx_select"]))
-        if data.get("hx_swap"):
-            tr_attrs.append(("hx-swap", data["hx_swap"]))
+    tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
     cell_elements: list[Node] = []
     for i, cell in enumerate(cells):
@@ -965,8 +1000,7 @@ def TableHeader(
 ) -> Element:
     """Table caption."""
     children = children or []
-    return Element(
-        "caption",
+    return Caption(
         attributes=[
             (
                 "class",
@@ -987,129 +1021,243 @@ def _page_url(request, page) -> str:
     return "?" + params.urlencode()
 
 
-def _pagination_nav(page_obj, elided_page_range, request) -> str:
-    pages_html = ""
+def _pagination_nav(page_obj, elided_page_range, request) -> Node:
+    page_link_class = (
+        "flex items-center justify-center px-3 h-8 leading-tight text-gray-500 "
+        "bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 "
+        "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+        "dark:hover:text-white"
+    )
+    current_link_class = (
+        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "text-white border bg-gray-400 border-gray-300 dark:bg-gray-900 dark:border-gray-700 "
+        "dark:text-gray-200"
+    )
+    page_items: list[Node] = []
     for page in elided_page_range:
         if page != page_obj.number:
-            pages_html += (
-                f'<li><a href="{_page_url(request, page)}" '
-                'class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 '
-                "bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 "
-                "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-                f'dark:hover:text-white">{conditional_escape(page)}</a></li>'
+            link = A(
+                attributes=[
+                    ("href", _page_url(request, page)),
+                    ("class", page_link_class),
+                ],
+                children=[str(page)],
             )
         else:
-            pages_html += (
-                '<li><a aria-current="page" '
-                'class="cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight '
-                "text-white border bg-gray-400 border-gray-300 dark:bg-gray-900 dark:border-gray-700 "
-                f'dark:text-gray-200">{conditional_escape(page)}</a></li>'
+            link = A(
+                attributes=[("aria-current", "page"), ("class", current_link_class)],
+                children=[str(page)],
             )
+        page_items.append(Li(children=[link]))
 
     if page_obj.has_previous():
-        prev_html = (
-            f'<a href="{_page_url(request, page_obj.previous_page_number())}" '
-            'class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 '
-            "bg-white border border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700 "
-            "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-            'dark:hover:text-white">Previous</a>'
+        prev_link = A(
+            attributes=[
+                ("href", _page_url(request, page_obj.previous_page_number())),
+                (
+                    "class",
+                    "flex items-center justify-center px-3 h-8 ms-0 leading-tight "
+                    "text-gray-500 bg-white border border-gray-300 rounded-s-lg "
+                    "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
+                    "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+                    "dark:hover:text-white",
+                ),
+            ],
+            children=["Previous"],
         )
     else:
-        prev_html = (
-            '<a aria-current="page" class="cursor-not-allowed flex items-center justify-center '
-            "px-3 h-8 leading-tight text-gray-300 bg-white border border-gray-300 rounded-s-lg "
-            'dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600">Previous</a>'
+        prev_link = A(
+            attributes=[
+                ("aria-current", "page"),
+                (
+                    "class",
+                    "cursor-not-allowed flex items-center justify-center px-3 h-8 "
+                    "leading-tight text-gray-300 bg-white border border-gray-300 "
+                    "rounded-s-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600",
+                ),
+            ],
+            children=["Previous"],
         )
 
     if page_obj.has_next():
-        next_html = (
-            f'<a href="{_page_url(request, page_obj.next_page_number())}" '
-            'class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 '
-            "bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700 "
-            "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-            'dark:hover:text-white">Next</a>'
+        next_link = A(
+            attributes=[
+                ("href", _page_url(request, page_obj.next_page_number())),
+                (
+                    "class",
+                    "flex items-center justify-center px-3 h-8 leading-tight "
+                    "text-gray-500 bg-white border border-gray-300 rounded-e-lg "
+                    "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
+                    "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+                    "dark:hover:text-white",
+                ),
+            ],
+            children=["Next"],
         )
     else:
-        next_html = (
-            '<a aria-current="page" class="cursor-not-allowed flex items-center justify-center '
-            "px-3 h-8 leading-tight text-gray-300 bg-white border border-gray-300 rounded-e-lg "
-            'dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600">Next</a>'
+        next_link = A(
+            attributes=[
+                ("aria-current", "page"),
+                (
+                    "class",
+                    "cursor-not-allowed flex items-center justify-center px-3 h-8 "
+                    "leading-tight text-gray-300 bg-white border border-gray-300 "
+                    "rounded-e-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600",
+                ),
+            ],
+            children=["Next"],
         )
 
-    return (
-        '<nav class="flex items-center flex-col md:flex-row md:justify-between px-6 py-4 '
-        'dark:bg-gray-900 sm:rounded-b-lg" aria-label="Table navigation">'
-        '<span class="text-sm text-center font-normal text-gray-500 dark:text-gray-400 mb-4 '
-        'md:mb-0 block w-full md:inline md:w-auto">'
-        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.start_index()}</span>—'
-        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.end_index()}</span> of '
-        f'<span class="font-semibold text-gray-900 dark:text-white">{page_obj.paginator.count}</span></span>'
-        '<ul class="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8"><li>'
-        f"{prev_html}{pages_html}{next_html}"
-        "</li></ul></nav>"
+    number_class = "font-semibold text-gray-900 dark:text-white"
+    summary = Span(
+        attributes=[
+            (
+                "class",
+                "text-sm text-center font-normal text-gray-500 dark:text-gray-400 "
+                "mb-4 md:mb-0 block w-full md:inline md:w-auto",
+            ),
+        ],
+        children=[
+            # Element joins children with "", so the em-dash and " of " hug the
+            # number spans inline — "1—10 of 50", not "1 — 10 of 50".
+            Span(
+                attributes=[("class", number_class)],
+                children=[str(page_obj.start_index())],
+            ),
+            "—",
+            Span(
+                attributes=[("class", number_class)],
+                children=[str(page_obj.end_index())],
+            ),
+            " of ",
+            Span(
+                attributes=[("class", number_class)],
+                children=[str(page_obj.paginator.count)],
+            ),
+        ],
+    )
+    pages = Ul(
+        attributes=[
+            ("class", "inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")
+        ],
+        children=[Li(children=[prev_link, *page_items, next_link])],
+    )
+    return Nav(
+        attributes=[
+            (
+                "class",
+                "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
+                "dark:bg-gray-900 sm:rounded-b-lg",
+            ),
+            ("aria-label", "Table navigation"),
+        ],
+        children=[summary, pages],
     )
 
 
-def SimpleTable(
+def StyledTable(
     columns: list[str] | None = None,
-    rows: list | None = None,
+    rows: Sequence[TableRowData] | None = None,
     header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
     request=None,
 ) -> Node:
-    """Paginated table. Python equivalent of the old simple_table.html."""
+    """Styled, paginated table — the opinionated wrapper over the generic
+    ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
+    pagination nav). Python equivalent of the old simple_table.html.
+
+    Returns a node tree, so each cell component's declared ``Media`` bubbles up
+    automatically via ``Page()``'s ``collect_media`` — no manual collection.
+    """
     columns = columns or []
     rows = rows or []
 
-    # Rows/header are stringified into the table markup, so their components'
-    # declared Media would be lost; collect it from the nodes first and attach
-    # it to the returned node so Page() still emits each cell component's JS
-    # (e.g. a <drop-down> in a cell).
-    media = Media()
+    # Dev-only guard: a row must have one cell per column, else cells render
+    # misaligned under the headers and the position-based mobile column-hiding
+    # CSS corrupts. The type system can't express this count rule, so catch a
+    # mismatch loudly in DEBUG; prod degrades to a ragged table over a 500.
+    if settings.DEBUG:
+        for row in rows:
+            cell_count = len(row["cell_data"])
+            if cell_count != len(columns):
+                raise ValueError(
+                    f"StyledTable row has {cell_count} cells but {len(columns)} "
+                    f"columns were given: {row['cell_data']!r}"
+                )
 
-    header_html = ""
+    table_children: list[Node] = []
     if header_action:
-        header_node = TableHeader(children=[header_action])
-        header_html = str(header_node)
-        media = media + collect_media(header_node)
+        table_children.append(TableHeader(children=[header_action]))
 
-    columns_html = "".join(
-        f'<th scope="col" class="px-6 py-3">{conditional_escape(col)}</th>'
-        for col in columns
+    header_row = Tr(
+        children=[
+            Th(
+                attributes=[("scope", "col"), ("class", "px-6 py-3")],
+                children=[column],
+            )
+            for column in columns
+        ]
     )
-    row_nodes = [TableRow(data=row) for row in rows]
-    rows_html = "".join(str(node) for node in row_nodes)
-    for node in row_nodes:
-        media = media + collect_media(node)
+    table_children.append(
+        Thead(
+            attributes=[
+                (
+                    "class",
+                    "text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 "
+                    "dark:text-gray-400 "
+                    "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden",
+                ),
+            ],
+            children=[header_row],
+        )
+    )
+    table_children.append(
+        Tbody(
+            attributes=[
+                (
+                    "class",
+                    "dark:divide-y "
+                    "max-sm:[&_td:not(:first-child):not(:last-child)]:hidden",
+                ),
+            ],
+            children=[TableRow(data=row) for row in rows],
+        )
+    )
 
-    pagination_html = ""
+    table = Table(
+        attributes=[
+            (
+                "class",
+                "w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400",
+            ),
+        ],
+        children=table_children,
+    )
+
+    inner_children: list[Node] = [
+        Div(
+            attributes=[("class", "relative overflow-x-auto sm:rounded-t-lg")],
+            children=[table],
+        )
+    ]
     if page_obj and elided_page_range:
-        pagination_html = _pagination_nav(page_obj, elided_page_range, request)
+        inner_children.append(_pagination_nav(page_obj, elided_page_range, request))
 
-    return Safe(
-        '<div class="shadow-md" hx-boost="false">'
-        '<div class="relative overflow-x-auto sm:rounded-t-lg">'
-        '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">'
-        f"{header_html}"
-        '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 '
-        'dark:text-gray-400 max-sm:[&_th:not(:first-child):not(:last-child)]:hidden">'
-        f"<tr>{columns_html}</tr></thead>"
-        '<tbody class="dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden">'
-        f"{rows_html}</tbody></table></div>"
-        f"{pagination_html}</div>",
-        media=media,
+    return Div(
+        attributes=[("class", "shadow-md"), ("hx-boost", "false")],
+        children=inner_children,
     )
 
 
 def paginated_table_content(
-    data: dict,
+    data: TableData,
     *,
     page_obj=None,
     elided_page_range=None,
     request=None,
 ) -> Node:
-    """Standard list-page body: a max-width Div wrapping a SimpleTable.
+    """Standard list-page body: a max-width Div wrapping a StyledTable.
 
     `data` is the table dict with keys ``columns``, ``rows`` and
     ``header_action`` (the same shape every list view already builds).
@@ -1123,7 +1271,7 @@ def paginated_table_content(
             )
         ],
         [
-            SimpleTable(
+            StyledTable(
                 columns=data["columns"],
                 rows=data["rows"],
                 header_action=data["header_action"],

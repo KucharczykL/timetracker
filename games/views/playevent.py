@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Callable, TypedDict
+from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
@@ -13,11 +13,15 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Cell,
     Fragment,
+    GameLink,
     Icon,
     ModuleScript,
     PlayEventFilterBar,
     StyledButton,
+    TableData,
+    make_row,
     paginated_table_content,
 )
 from common.layout import render_page
@@ -30,17 +34,13 @@ from games.models import Game, PlayEvent, Session
 logger = logging.getLogger("games")
 
 
-class TableData(TypedDict):
-    header_action: Callable[..., Any]
-    columns: list[str]
-    rows: list[list[Any]]
-
-
 def create_playevent_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
 ) -> TableData:
+    if isinstance(playevents, BaseManager):
+        playevents = playevents.all()
     column_list = [
         "Game",
         "Started",
@@ -56,12 +56,12 @@ def create_playevent_tabledata(
     )
     excluded_column_indexes = [column_list.index(column) for column in exclude_columns]
 
-    row_list = [
+    row_list: list[list[Cell]] = [
         [
-            playevent.game,
+            GameLink(playevent.game.id, playevent.game.name),
             playevent.started.strftime(dateformat) if playevent.started else "-",
             playevent.ended.strftime(dateformat) if playevent.ended else "-",
-            playevent.days_to_finish if playevent.days_to_finish else "-",
+            str(playevent.days_to_finish) if playevent.days_to_finish else "-",
             playevent.note,
             local_strftime(playevent.created_at, dateformat),
             ButtonGroup(
@@ -90,7 +90,7 @@ def create_playevent_tabledata(
             StyledButton()["Add play event"]
         ],
         "columns": list(filtered_column_list),
-        "rows": filtered_row_list,
+        "rows": [make_row(*cells) for cells in filtered_row_list],
     }
 
 
@@ -174,19 +174,21 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             # This will be either the day after the last playevent ended, or the earliest session.
             try:
                 latest_playevent = game.playevents.latest("ended")
-                # Start date for the new PlayEvent form
+            except PlayEvent.DoesNotExist:
+                latest_playevent = None
+
+            if latest_playevent is not None and latest_playevent.ended is not None:
+                # Start the day after the last playevent ended.
                 new_playevent_form_start_date = latest_playevent.ended + timedelta(
                     days=1
                 )
                 initial["started"] = new_playevent_form_start_date
-
-                # Start timestamp for playtime calculation
                 playtime_calc_start_ts = datetime.combine(
                     new_playevent_form_start_date, datetime.min.time()
                 )
-
-            except PlayEvent.DoesNotExist:
-                # No previous playevents, so the new playevent starts from the earliest session.
+            else:
+                # No previous playevent (or none with an end date), so the new
+                # playevent starts from the earliest session.
                 earliest_session_ts = game.sessions.earliest(
                     "timestamp_start"
                 ).timestamp_start

@@ -18,9 +18,9 @@ def running_session(db):
 def test_session_row_data_shape(running_session):
     device_list = Device.objects.order_by("name")
     data = session_row_data(running_session, device_list, "tok")
-    assert data["row_id"] == f"session-row-{running_session.pk}"
     assert len(data["cell_data"]) == 6
-    assert data["hx_select"] == f"#session-row-{running_session.pk}"
+    assert ("id", f"session-row-{running_session.pk}") in data["attributes"]
+    assert ("hx-select", f"#session-row-{running_session.pk}") in data["attributes"]
 
 
 def test_session_row_renders_id_and_six_cells(running_session):

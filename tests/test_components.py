@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import django
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
@@ -322,9 +322,11 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         result = str(components.Element(tag_name="span", children="hello"))
         self.assertIn("hello", result)
 
-    def test_multiple_children_joined_with_newlines(self):
+    def test_multiple_children_concatenated_without_separator(self):
         result = str(components.Element(tag_name="div", children=["hello", "world"]))
-        self.assertIn("hello\nworld", result)
+        # Children join with no separator (inline whitespace is significant);
+        # explicit spacing must be its own child.
+        self.assertIn("helloworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
 
@@ -786,20 +788,20 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.assertFalse(emulated)
 
 
-class SimpleTableRenderingTest(unittest.TestCase):
-    """Test that the Python SimpleTable() renders rows correctly."""
+class StyledTableRenderingTest(unittest.TestCase):
+    """Test that the Python StyledTable() renders rows correctly."""
 
     @staticmethod
     def _tbody(result):
         return result.split("<tbody")[1].split("</tbody>")[0]
 
-    def test_simple_table_renders_list_rows(self):
-        """Verify list-style rows render as <tr> with <th scope='row'> + <td>."""
+    def test_simple_table_renders_rows(self):
+        """Verify make_row rows render as <tr> with <th scope='row'> + <td>."""
         result = str(
             str(
-                components.SimpleTable(
+                components.StyledTable(
                     columns=["Game", "Started", "Ended"],
-                    rows=[["Game1", "2025-01-01", "2025-03-01"]],
+                    rows=[components.make_row("Game1", "2025-01-01", "2025-03-01")],
                 )
             )
         )
@@ -814,7 +816,7 @@ class SimpleTableRenderingTest(unittest.TestCase):
 
     def test_simple_table_empty_rows(self):
         """Verify empty rows list renders empty <tbody>."""
-        result = str(components.SimpleTable(columns=["Game", "Started"], rows=[]))
+        result = str(components.StyledTable(columns=["Game", "Started"], rows=[]))
         self.assertIn("<tbody", result)
         tbody = self._tbody(result)
         self.assertNotIn("<tr", tbody)
@@ -824,9 +826,12 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify multiple rows all render."""
         result = str(
             str(
-                components.SimpleTable(
+                components.StyledTable(
                     columns=["Game", "Started"],
-                    rows=[["GameA", "2025-01-01"], ["GameB", "2025-02-01"]],
+                    rows=[
+                        components.make_row("GameA", "2025-01-01"),
+                        components.make_row("GameB", "2025-02-01"),
+                    ],
                 )
             )
         )
@@ -839,9 +844,9 @@ class SimpleTableRenderingTest(unittest.TestCase):
         """Verify header_action renders inside <caption>."""
         result = str(
             str(
-                components.SimpleTable(
+                components.StyledTable(
                     columns=["Game", "Started"],
-                    rows=[["Game1", "2025-01-01"]],
+                    rows=[components.make_row("Game1", "2025-01-01")],
                     header_action=components.Safe('<a href="/add">Add</a>'),
                 )
             )
@@ -850,18 +855,19 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn('href="/add"', result)
         self.assertIn(">Add</", result)
 
-    def test_simple_table_dict_rows_with_cell_data(self):
-        """Verify dict-style rows with row_id and cell_data render correctly."""
+    def test_simple_table_rows_with_attributes(self):
+        """Verify make_row attributes (id, hx-*) land on the <tr>."""
         result = str(
             str(
-                components.SimpleTable(
+                components.StyledTable(
                     columns=["Name", "Date"],
                     rows=[
-                        {
-                            "row_id": "session-row-1",
-                            "hx_trigger": "device-changed",
-                            "cell_data": ["Game1", "2025-01-01"],
-                        }
+                        components.make_row(
+                            "Game1",
+                            "2025-01-01",
+                            id="session-row-1",
+                            hx_trigger="device-changed",
+                        )
                     ],
                 )
             )
@@ -872,6 +878,90 @@ class SimpleTableRenderingTest(unittest.TestCase):
         self.assertIn('th scope="row"', tbody)
         self.assertIn("Game1", tbody)
         self.assertIn("2025-01-01", tbody)
+
+    def test_cell_media_bubbles_through_table(self):
+        """A cell component's declared Media must reach the table's collected
+        media, so Page() still emits its JS. StyledTable returns a node tree, so
+        this now happens via automatic bubbling rather than manual collection."""
+        cell = components.Div(children=["x"]).with_media(
+            components.Media(js=("test-cell.js",))
+        )
+        table = components.StyledTable(
+            columns=["Only"],
+            rows=[components.make_row(cell)],
+        )
+        media = components.collect_media(table)
+        self.assertIn("test-cell.js", media.js)
+
+    def test_make_row_rejects_class(self):
+        """make_row refuses a class attribute — TableRow owns the styled row class."""
+        with self.assertRaises(ValueError):
+            components.make_row("A", class_="custom")
+
+    def test_make_row_attribute_translation(self):
+        """True renders bare; False/None are omitted; the rest become pairs."""
+        data = components.make_row("A", flag=True, gone=False, nothing=None)
+        self.assertEqual(data["attributes"], [("flag", "flag")])
+
+    def test_make_row_no_attributes_omits_key(self):
+        """A plain row carries no attributes key (NotRequired stays absent)."""
+        self.assertNotIn("attributes", components.make_row("A", "B"))
+
+
+class StyledTablePaginationTest(SimpleTestCase):
+    """The pagination nav rendered when page_obj + elided_page_range are given."""
+
+    @staticmethod
+    def _table(page_number):
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        return str(
+            components.StyledTable(
+                columns=["N"],
+                rows=[components.make_row("x")],
+                page_obj=paginator.page(page_number),
+                elided_page_range=list(paginator.get_elided_page_range(page_number)),
+                request=None,
+            )
+        )
+
+    def test_pagination_nav_renders(self):
+        result = self._table(2)
+        self.assertIn('aria-label="Table navigation"', result)
+        self.assertIn("Previous", result)
+        self.assertIn("Next", result)
+
+    def test_summary_numbers_hug_separators(self):
+        """The range summary must read "11—20 of 50": the em-dash and " of "
+        hug the number spans with no stray whitespace (a Fragment joins them
+        with "", unlike Element's newline join)."""
+        result = self._table(2)
+        self.assertIn("</span>—<span", result)
+        self.assertIn("</span> of <span", result)
+        self.assertNotIn(" — ", result)
+
+
+class StyledTableColumnGuardTest(SimpleTestCase):
+    """The DEBUG-only guard that a row's cell count matches the column count."""
+
+    @override_settings(DEBUG=True)
+    def test_cell_count_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            components.StyledTable(
+                columns=["A", "B"],
+                rows=[components.make_row("only-one-cell")],
+            )
+
+    @override_settings(DEBUG=True)
+    def test_matching_cell_count_renders(self):
+        result = str(
+            components.StyledTable(
+                columns=["A", "B"],
+                rows=[components.make_row("x", "y")],
+            )
+        )
+        self.assertIn("<td", result)
 
 
 class ComponentPrimitivesTest(SimpleTestCase):

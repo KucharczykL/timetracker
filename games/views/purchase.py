@@ -6,6 +6,7 @@ from django.http import (
     HttpResponseRedirect,
 )
 from django.db import transaction
+from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404, redirect
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
@@ -35,7 +36,10 @@ from common.components import (
     PurchasePrice,
     SelectionFields,
     StyledButton,
+    TableData,
     TableRow,
+    TableRowData,
+    make_row,
     paginated_table_content,
 )
 from common.components.primitives import Li, P, Td, Tr, Ul
@@ -98,36 +102,34 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
     )
 
 
-def _render_purchase_row(purchase):
-    """Return a row dict for simple-table rendering."""
-    return {
-        "row_id": f"purchase-row-{purchase.id}",
-        "cell_data": [
-            LinkedPurchase(purchase),
-            purchase.get_type_display(),
-            PurchasePrice(purchase),
-            purchase.infinite,
-            purchase.date_purchased.strftime(dateformat),
-            (
-                purchase.date_refunded.strftime(dateformat)
-                if purchase.date_refunded
-                else "-"
-            ),
-            purchase.created_at.strftime(dateformat),
-            _render_purchase_buttons(
-                purchase.id,
-                bool(purchase.date_refunded),
-                can_split=purchase.num_purchases > 1,
-            ),
-        ],
-    }
+def _render_purchase_row(purchase: Purchase) -> TableRowData:
+    """Return a row for simple-table rendering."""
+    return make_row(
+        LinkedPurchase(purchase),
+        purchase.get_type_display(),
+        PurchasePrice(purchase),
+        str(purchase.infinite),
+        purchase.date_purchased.strftime(dateformat),
+        (
+            purchase.date_refunded.strftime(dateformat)
+            if purchase.date_refunded
+            else "-"
+        ),
+        purchase.created_at.strftime(dateformat),
+        _render_purchase_buttons(
+            purchase.id,
+            bool(purchase.date_refunded),
+            can_split=purchase.num_purchases > 1,
+        ),
+        id=f"purchase-row-{purchase.id}",
+    )
 
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
-    purchases = Purchase.objects.select_related("platform").prefetch_related(
-        "games", "games__platform"
-    )
+    purchases: QuerySet[Purchase] = Purchase.objects.select_related(
+        "platform"
+    ).prefetch_related("games", "games__platform")
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -146,7 +148,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
     purchases, page_obj, elided_page_range = paginate(request, purchases)
 
-    data = {
+    data: TableData = {
         "header_action": A(href=reverse("games:add_purchase"))[
             StyledButton()["Add purchase"]
         ],

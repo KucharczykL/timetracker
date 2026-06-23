@@ -1,8 +1,8 @@
-from typing import Any, TypedDict
+from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
@@ -26,7 +26,10 @@ from common.components import (
     SessionDeviceSelector,
     SessionTimestampButtons,
     StyledButton,
+    TableData,
     TableRow,
+    TableRowData,
+    make_row,
     paginated_table_content,
 )
 from common.layout import NavbarPlaytime, render_page
@@ -37,6 +40,7 @@ from common.time import (
     timeformat,
 )
 from common.utils import paginate, truncate
+from common.http import HtmxHttpRequest
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
@@ -47,16 +51,7 @@ from games.sorting import (
 )
 
 
-class SessionRowData(TypedDict):
-    row_id: str
-    hx_trigger: str
-    hx_get: str
-    hx_select: str
-    hx_swap: str
-    cell_data: list[Node | str]
-
-
-def session_row_data(session: Session, device_list, csrf_token: str) -> SessionRowData:
+def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
     """Canonical session-list row. Single source of truth shared by
     list_sessions and the htmx finish/reset fragments."""
     row_selector = f"#session-row-{session.pk}"
@@ -100,21 +95,18 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> SessionR
             },
         ]
     )
-    return SessionRowData(
-        row_id=f"session-row-{session.pk}",
+    return make_row(
+        NameWithIcon(session=session),
+        f"{local_strftime(session.timestamp_start)}"
+        f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+        session.duration_formatted_with_mark(),
+        SessionDeviceSelector(session, device_list, csrf_token),
+        session.created_at.strftime(dateformat),
+        actions,
+        id=f"session-row-{session.pk}",
         hx_trigger="device-changed from:body",
-        hx_get="",
         hx_select=row_selector,
         hx_swap="outerHTML",
-        cell_data=[
-            NameWithIcon(session=session),
-            f"{local_strftime(session.timestamp_start)}"
-            f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
-            session.duration_formatted_with_mark(),
-            SessionDeviceSelector(session, device_list, csrf_token),
-            session.created_at.strftime(dateformat),
-            actions,
-        ],
     )
 
 
@@ -126,7 +118,9 @@ def session_row(session: Session, device_list, csrf_token: str) -> Node:
 
 @login_required
 def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
-    sessions = Session.objects.select_related("game", "game__platform", "device")
+    sessions: QuerySet[Session] = Session.objects.select_related(
+        "game", "game__platform", "device"
+    )
     device_list = Device.objects.order_by("name")
 
     # ── Structured filter (JSON) ──
@@ -161,7 +155,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     sessions, page_obj, elided_page_range = paginate(request, sessions)
     csrf_token = get_token(request)
 
-    data = {
+    data: TableData = {
         "header_action": Div(
             children=[
                 SearchField(search_string=search_string),
@@ -195,7 +189,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                 ],
                             ),
                         )
-                        if last_session
+                        if last_session and last_session.game
                         else "",
                     ]
                 ),
@@ -345,7 +339,7 @@ def clone_session_by_id(session_id: int) -> Session:
 
 @login_required
 def new_session_from_existing_session(
-    request: HttpRequest, session_id: int
+    request: HtmxHttpRequest, session_id: int
 ) -> HttpResponse:
     clone_session_by_id(session_id)
     if request.htmx:
@@ -358,7 +352,7 @@ def new_session_from_existing_session(
 
 
 @login_required
-def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
+def end_session(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_end = timezone.now()
     session.save()
@@ -368,7 +362,7 @@ def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
 
 
 @login_required
-def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
+def reset_session_start(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_start = timezone.now()
     session.save()
