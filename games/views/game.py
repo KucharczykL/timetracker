@@ -35,7 +35,9 @@ from common.components import (
     SearchField,
     SimpleTable,
     StyledButton,
+    TableData,
     Ul,
+    make_row,
     paginated_table_content,
 )
 from common.components.primitives import Li, P, Span, Strong
@@ -100,7 +102,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     games, page_obj, elided_page_range = paginate(request, games)
 
-    data = {
+    data: TableData = {
         "header_action": Div(
             class_="flex justify-between",
         )[
@@ -117,14 +119,14 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             "Actions",
         ],
         "rows": [
-            [
+            make_row(
                 NameWithIcon(game=game),
                 PopoverTruncated(
                     game.sort_name
                     if game.sort_name is not None and game.name != game.sort_name
                     else "(identical)"
                 ),
-                game.year_released,
+                str(game.year_released),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
                 game.wikidata,
                 local_strftime(game.created_at, dateformat),
@@ -142,7 +144,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                         },
                     ]
                 ),
-            ]
+            )
             for game in games
         ],
     }
@@ -671,7 +673,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
 def _purchases_section(game: Game) -> Node:
     purchases = game.purchases.order_by("date_purchased")
     rows = [
-        [
+        make_row(
             LinkedPurchase(purchase),
             purchase.get_type_display(),
             purchase.date_purchased.strftime(dateformat),
@@ -690,7 +692,7 @@ def _purchases_section(game: Game) -> Node:
                     },
                 ]
             ),
-        ]
+        )
         for purchase in purchases
     ]
     table = SimpleTable(columns=["Name", "Type", "Date", "Price", "Actions"], rows=rows)
@@ -746,7 +748,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> Node:
         ],
     )
     rows = [
-        [
+        make_row(
             NameWithIcon(session=session),
             f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
             session.duration_formatted_with_mark(),
@@ -774,7 +776,7 @@ def _sessions_section(game: Game, request: HttpRequest) -> Node:
                     },
                 ]
             ),
-        ]
+        )
         for session in page_obj.object_list
     ]
     table = SimpleTable(
