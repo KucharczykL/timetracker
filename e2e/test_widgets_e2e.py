@@ -534,3 +534,56 @@ def test_dropdown_lifecycle_events(authenticated_page: Page, live_server):
     page.locator("#navbarMenuLink").click()
     expect(page.locator("#navbarMenu")).to_be_hidden()
     assert page.evaluate("() => window.__dd") == ["show", "hide"]
+
+
+# ── Sortable column headers (issue #73) ──────────────────────────────────────
+# The <sort-header> custom element augments header links: plain click navigates
+# the link (single-column sort, server-computed); shift-click navigates to the
+# pre-baked multi-column target. connectedCallback wires this on parse and on
+# any htmx-swapped fragment.
+
+
+def _open_games_list(page: Page, live_server) -> None:
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+
+def test_sort_header_plain_click_toggles_direction(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    _open_games_list(page, live_server)
+
+    # Inactive column → ascending.
+    page.get_by_role("link", name="Name", exact=True).click()
+    expect(page).to_have_url(re.compile(r"sort=name(?:&|$)"))
+
+    # Sole-active ascending → flips to descending.
+    page.get_by_role("link", name="Name", exact=True).click()
+    expect(page).to_have_url(re.compile(r"sort=-name(?:&|$)"))
+
+
+def test_sort_header_shift_click_appends_column(authenticated_page: Page, live_server):
+    page = authenticated_page
+    _open_games_list(page, live_server)
+
+    page.get_by_role("link", name="Name", exact=True).click()
+    expect(page).to_have_url(re.compile(r"sort=name(?:&|$)"))
+
+    # Shift-click a second column appends it (",": "%2C" once urlencoded).
+    page.get_by_role("link", name="Year", exact=True).click(modifiers=["Shift"])
+    expect(page).to_have_url(re.compile(r"sort=name(?:%2C|,)year"))
+
+
+def test_sort_header_shift_click_removes_descending_column(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    _open_games_list(page, live_server)
+
+    page.get_by_role("link", name="Name", exact=True).click()  # name asc
+    page.get_by_role("link", name="Name", exact=True).click()  # -name desc (sole)
+
+    # Shift-clicking a descending column drops it; with nothing left the sort
+    # param disappears and the view's default order applies.
+    page.get_by_role("link", name="Name", exact=True).click(modifiers=["Shift"])
+    expect(page).not_to_have_url(re.compile(r"sort="))

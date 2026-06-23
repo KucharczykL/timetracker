@@ -7,6 +7,7 @@ from django.utils.safestring import SafeText
 from common.components import (
     A,
     AddForm,
+    Column,
     CsrfInput,
     Div,
     Element,
@@ -54,7 +55,12 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "header_action": None,
-        "columns": ["Game", "Old Status", "New Status", "Timestamp"],
+        "columns": [
+            Column("Game"),
+            Column("Old Status"),
+            Column("New Status"),
+            Column("Timestamp"),
+        ],
         "rows": [
             make_row(
                 sc.game.name,

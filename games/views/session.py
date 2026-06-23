@@ -14,6 +14,7 @@ from common.components import (
     A,
     AddForm,
     ButtonGroup,
+    Column,
     Div,
     FormFields,
     Fragment,
@@ -197,13 +198,14 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             attributes=[("class", "flex justify-between")],
         ),
         "columns": [
-            "Name",
-            "Date",
-            "Duration",
-            "Device",
-            "Created",
-            "Actions",
+            Column("Name", "name"),
+            Column("Date", "date"),
+            Column("Duration", "duration"),
+            Column("Device", "device"),
+            Column("Created", "created"),
+            Column("Actions"),
         ],
+        "sort_terms": sort.terms,
         "rows": [
             session_row_data(session, device_list, csrf_token) for session in sessions
         ],

@@ -11,12 +11,36 @@ from typing import NamedTuple
 from django.db.models import Aggregate, Max, Min, QuerySet, Sum
 from django.http import HttpRequest
 
+# The pure sort-string core lives in common.sorting; this module is the ORM
+# binding. Re-exported here so existing `from games.sorting import …` keeps working.
+from common.sorting import (
+    ParsedSort,
+    SortKey,
+    SortString,
+    SortTerm,
+    parse_sort_terms,
+)
 from games.filters import FindFilter
 
-type SortKey = (
-    str  # public column key in a *_SORTS map and in a URL term ("playtime", "name")
-)
-type SortString = str  # comma-list of signed SortKeys: the URL ?sort= value and *_DEFAULT_SORT ("-date,created")
+__all__ = [
+    "ParsedSort",
+    "SortKey",
+    "SortString",
+    "SortTerm",
+    "parse_sort_terms",
+    "SortSpec",
+    "SortMap",
+    "GAME_SORTS",
+    "GAME_DEFAULT_SORT",
+    "SESSION_SORTS",
+    "SESSION_DEFAULT_SORT",
+    "PURCHASE_SORTS",
+    "PURCHASE_DEFAULT_SORT",
+    "SortResult",
+    "apply_sort",
+    "parse_find_filter",
+]
+
 type AnnotationName = (
     str  # an alias added via .annotate(), then referenced by SortSpec.expression
 )
@@ -35,33 +59,7 @@ class SortSpec:
     annotate: Annotations | None = None
 
 
-class SortTerm(NamedTuple):
-    key: SortKey
-    descending: bool  # True = "-key" (desc), False = bare key (asc)
-
-
 type SortMap = dict[SortKey, SortSpec]
-
-
-class ParsedSort(NamedTuple):
-    terms: list[SortTerm]
-    unknown: list[SortKey]  # keys not in the map — the view turns these into warnings
-
-
-def parse_sort_terms(raw: SortString, sort_map: SortMap) -> ParsedSort:
-    terms: list[SortTerm] = []
-    unknown: list[SortKey] = []
-    for token in raw.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        descending = token.startswith("-")
-        key = token.lstrip("-")
-        if key in sort_map:
-            terms.append(SortTerm(key, descending))
-        else:
-            unknown.append(key)
-    return ParsedSort(terms, unknown)
 
 
 # ── Per-model sort maps ─────────────────────────────────────────────────────
