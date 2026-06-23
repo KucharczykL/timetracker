@@ -1208,10 +1208,10 @@ _SORT_HEADER_LINK_CLASS = (
 def _sort_indicator(position: int, descending: bool, total: int) -> Node:
     """Active-column affordance: an arrow (down=desc, rotated up=asc) plus a
     1-based position badge when more than one column is active."""
-    # `arrowdown` points down (descending); rotate 180° → up (ascending).
+    # `arrowdownlong` points down (descending); rotate 180° → up (ascending).
     arrow_class = "inline-block w-3 h-3" + ("" if descending else " rotate-180")
     children: list[Child] = [
-        Span(attributes=[("class", arrow_class)], children=[Icon("arrowdown")])
+        Span(attributes=[("class", arrow_class)], children=[Icon("arrowdownlong")])
     ]
     if total > 1:
         children.append(
