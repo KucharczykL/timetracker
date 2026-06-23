@@ -14,6 +14,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Fragment,
+    GameLink,
     Icon,
     ModuleScript,
     PlayEventFilterBar,
@@ -60,7 +61,7 @@ def create_playevent_tabledata(
 
     row_list = [
         [
-            playevent.game,
+            GameLink(playevent.game.id, playevent.game.name),
             playevent.started.strftime(dateformat) if playevent.started else "-",
             playevent.ended.strftime(dateformat) if playevent.ended else "-",
             playevent.days_to_finish if playevent.days_to_finish else "-",
