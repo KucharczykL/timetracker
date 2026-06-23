@@ -177,7 +177,18 @@ class HtpyStyleSugarTest(unittest.TestCase):
     def test_getitem_multiple_children(self):
         from common.components import Div
 
-        self.assertEqual(render(Div()["a", "b"]), "<div>a\nb</div>")
+        self.assertEqual(render(Div()["a", "b"]), "<div>ab</div>")
+
+    def test_children_join_without_separator(self):
+        """Children concatenate with no separator. A newline join would render
+        as a space between inline elements (e.g. "1 — 10" instead of "1—10")
+        and become literal content inside <pre>/<textarea>."""
+        from common.components import Element, Span
+
+        result = render(
+            Element("p", children=[Span()["1"], "—", Span()["10"]])
+        )
+        self.assertEqual(result, "<p><span>1</span>—<span>10</span></p>")
 
     def test_kwargs_class_underscore_becomes_class(self):
         from common.components import Div

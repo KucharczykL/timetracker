@@ -322,9 +322,11 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         result = str(components.Element(tag_name="span", children="hello"))
         self.assertIn("hello", result)
 
-    def test_multiple_children_joined_with_newlines(self):
+    def test_multiple_children_concatenated_without_separator(self):
         result = str(components.Element(tag_name="div", children=["hello", "world"]))
-        self.assertIn("hello\nworld", result)
+        # Children join with no separator (inline whitespace is significant);
+        # explicit spacing must be its own child.
+        self.assertIn("helloworld", result)
         self.assertIn("<div>", result)
         self.assertIn("</div>", result)
 
