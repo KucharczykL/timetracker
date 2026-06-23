@@ -185,9 +185,7 @@ class HtpyStyleSugarTest(unittest.TestCase):
         and become literal content inside <pre>/<textarea>."""
         from common.components import Element, Span
 
-        result = render(
-            Element("p", children=[Span()["1"], "—", Span()["10"]])
-        )
+        result = render(Element("p", children=[Span()["1"], "—", Span()["10"]]))
         self.assertEqual(result, "<p><span>1</span>—<span>10</span></p>")
 
     def test_kwargs_class_underscore_becomes_class(self):
@@ -217,6 +215,38 @@ class HtpyStyleSugarTest(unittest.TestCase):
 
         node = Div(class_="x").with_media(Media(js=("a.js",)))["child"]
         self.assertEqual(collect_media(node).js, ("a.js",))
+
+    def test_getitem_flattens_bare_list(self):
+        """A bare list passed to ``[]`` flattens to its children (issue #101),
+        matching the unpacked ``[*items]`` and ``children=items`` forms instead
+        of stringifying the list's repr."""
+        from common.components import Li, Ul
+
+        items = [Li()["a"], Li()["b"]]
+        self.assertEqual(
+            render(Ul(class_="x")[items]),
+            '<ul class="x"><li>a</li><li>b</li></ul>',
+        )
+
+    def test_nested_list_child_raises(self):
+        """Nested lists are not flattened; a stray iterable child fails loud
+        rather than escaping to repr — on both render paths (subscript via
+        Element and the Fragment / children= kwarg path)."""
+        from common.components import Fragment, Span, Ul
+
+        with self.assertRaises(TypeError):
+            render(Ul()[[Span()["a"]], [Span()["b"]]])
+        with self.assertRaises(TypeError):
+            render(Fragment([Span()["a"]]))
+        with self.assertRaises(TypeError):
+            render(Element("span", children=[["a"]]))
+
+    def test_scalar_child_still_renders(self):
+        """A bare scalar child keeps the str() fallback (decision A): only
+        iterables raise, so int/Decimal/timedelta children render as before."""
+        from common.components import Span
+
+        self.assertEqual(render(Span(children=[42])), "<span>42</span>")
 
 
 if __name__ == "__main__":
