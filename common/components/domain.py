@@ -80,7 +80,7 @@ def GameStatus(
     # align-middle lifts the whole badge off the baseline (issue #97).
     dot = Span(
         attributes=[
-            ("class", f"inline-block align-middle mr-2 rounded-xl w-3 h-3 {dot_color}")
+            ("class", f"inline-block align-middle mr-1 rounded-xl w-3 h-3 {dot_color}")
         ],
         children=["\xa0"],
     )
