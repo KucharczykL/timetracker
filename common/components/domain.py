@@ -59,21 +59,33 @@ def GameStatus(
 ) -> Node:
     """Colored status dot with label. Status codes: u/p/f/a/r."""
     children = children or []
-    outer_class = (
-        f"{'flex' if display == 'flex' else 'inline-flex'} "
-        "gap-2 items-center align-middle"
-    )
-    if class_:
-        outer_class += f" {class_}"
     dot_color = _STATUS_COLORS.get(status, _STATUS_COLORS["u"])
 
+    if display == "flex":
+        outer_class = "flex gap-2 items-center"
+        if class_:
+            outer_class += f" {class_}"
+        dot = Span(
+            attributes=[("class", f"rounded-xl w-3 h-3 {dot_color}")],
+            children=["\xa0"],
+        )
+        return Span(
+            attributes=[("class", outer_class)],
+            children=[dot] + as_children(children),
+        )
+
+    # Inline use (e.g. the game-detail history list): keep the label on the
+    # surrounding text baseline so it lines up with adjacent text and links,
+    # and vertically center the small dot on that text. inline-flex +
+    # align-middle lifts the whole badge off the baseline (issue #97).
     dot = Span(
-        attributes=[("class", f"rounded-xl w-3 h-3 {dot_color}")],
+        attributes=[
+            ("class", f"inline-block align-middle mr-2 rounded-xl w-3 h-3 {dot_color}")
+        ],
         children=["\xa0"],
     )
-
     return Span(
-        attributes=[("class", outer_class)],
+        attributes=[("class", class_)] if class_ else [],
         children=[dot] + as_children(children),
     )
 
