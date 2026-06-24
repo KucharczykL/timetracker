@@ -96,8 +96,8 @@ def test_sessions_section_is_read_only(game, rendered):
     assert reverse("games:delete_session", args=[session.pk]) not in rendered
     # No section-header resume button
     assert "/session/add/from-list/" not in rendered
-    # Device shown as a plain column
-    assert "Device" in rendered
+    # Device shown as a plain column (the column header, not an incidental match)
+    assert ">Device<" in rendered
 
 
 def test_sessions_section_shows_last_five(db, django_user_model, rf):
@@ -117,8 +117,9 @@ def test_sessions_section_shows_last_five(db, django_user_model, rf):
     html = view_game(request, many.id).content.decode()
 
     newest, oldest = sessions[-1], sessions[0]
-    assert escape(session_time_range(newest)) in html  # day 6 shown
-    assert escape(session_time_range(oldest)) not in html  # day 1 dropped (6th newest)
+    # session_time_range output (digits/spaces/em-dash) isn't HTML-escaped, so no escape() needed
+    assert session_time_range(newest) in html  # day 6 shown
+    assert session_time_range(oldest) not in html  # day 1 dropped (6th newest)
 
 
 def test_no_view_all_for_empty_section(db, django_user_model, rf):
