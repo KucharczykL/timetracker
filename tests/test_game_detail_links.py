@@ -14,7 +14,7 @@ from games.filters import (
 )
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views.game import view_game
-from games.views.session import session_time_range
+from games.formatting import session_time_range
 
 
 def _dt(day, hour=12):

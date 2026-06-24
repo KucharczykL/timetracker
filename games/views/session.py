@@ -37,9 +37,8 @@ from common.layout import NavbarPlaytime, render_page
 from games.views.general import model_counts
 from common.time import (
     dateformat,
-    local_strftime,
-    timeformat,
 )
+from games.formatting import session_time_range
 from common.utils import paginate, truncate
 from common.http import HtmxHttpRequest
 from games.forms import SessionForm
@@ -50,15 +49,6 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-
-
-def session_time_range(session: Session) -> str:
-    """The session's start (— end) timestamp string. Shared by every table that
-    renders a session, so the formatting cannot drift between them."""
-    start = local_strftime(session.timestamp_start)
-    if session.timestamp_end:
-        return f"{start} — {local_strftime(session.timestamp_end, timeformat)}"
-    return start
 
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:

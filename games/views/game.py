@@ -60,7 +60,7 @@ from games.models import Game, GameStatusChange
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
-from games.views.session import session_time_range
+from games.formatting import session_time_range
 
 
 @login_required
