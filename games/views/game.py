@@ -13,6 +13,7 @@ from common.components import (
     H1,
     A,
     AddForm,
+    Button,
     ButtonGroup,
     Column,
     CsrfInput,
@@ -457,39 +458,16 @@ def _game_action_buttons(game: Game) -> Node:
         "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
     )
     log_link = A(
-        href=reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
-        children=[
-            Element(
-                "button",
-                attributes=[("type", "button"), ("class", log_class)],
-                children=[Icon("play"), "Log this game"],
-            )
-        ],
-    )
-    edit_link = A(
-        href=reverse("games:edit_game", args=[game.id]),
-        children=[
-            Element(
-                "button",
-                attributes=[("type", "button"), ("class", edit_class)],
-                children=["Edit"],
-            )
-        ],
-    )
+        href=reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+    )[Button(type="button", class_=log_class)[Icon("play"), "Log this game"]]
+    edit_link = A(href=reverse("games:edit_game", args=[game.id]))[
+        Button(type="button", class_=edit_class)["Edit"]
+    ]
     delete_link = A(
         href="#",
-        attributes=[
-            ("hx-get", reverse("games:delete_game_confirmation", args=[game.id])),
-            ("hx-target", "#global-modal-container"),
-        ],
-        children=[
-            Element(
-                "button",
-                attributes=[("type", "button"), ("class", delete_class)],
-                children=["Delete"],
-            )
-        ],
-    )
+        hx_get=reverse("games:delete_game_confirmation", args=[game.id]),
+        hx_target="#global-modal-container",
+    )[Button(type="button", class_=delete_class)["Delete"]]
     return Div(
         [("class", "inline-flex rounded-md shadow-xs mb-3"), ("role", "group")],
         [log_link, edit_link, delete_link],

@@ -408,18 +408,9 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
     # trailing "Actions" cell), so alignment is owned by the component rather
     # than a positional CSS rule on the row. The inner group keeps the rounded
     # shadow hugging the buttons.
-    return Div(
-        attributes=[("class", "flex justify-end")],
-        children=[
-            Div(
-                attributes=[
-                    ("class", "inline-flex rounded-md shadow-xs"),
-                    ("role", "group"),
-                ],
-                children=children,
-            )
-        ],
-    )
+    return Div(class_="flex justify-end")[
+        Div(class_="inline-flex rounded-md shadow-xs", role="group")[children]
+    ]
 
 
 def Input(
