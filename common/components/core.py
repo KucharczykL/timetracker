@@ -9,7 +9,7 @@ media-bearing components subclass :class:`BaseComponent` and implement
 
 Nodes are *lazy*: they hold structure and render to HTML only when asked
 (``str(node)`` / ``node.__html__()`` / :func:`render`). This is what lets
-``Page()`` walk a finished tree and collect every component's declared JS
+``TimetrackerDocument()`` walk a finished tree and collect every component's declared JS
 (:class:`Media`) instead of each view threading ``scripts=`` by hand.
 """
 
@@ -359,7 +359,7 @@ class Document(Node):
     ``<html>`` subtree, as a single node.
 
     DOCTYPE is a document-type declaration, not an element, so it can't be an
-    ``Element``/builder — this node owns it as a fixed preamble. Lets ``Page()``
+    ``Element``/builder — this node owns it as a fixed preamble. Lets ``TimetrackerDocument()``
     return one typed node instead of a ``Fragment`` of (doctype, html); media
     still bubbles from the ``<html>`` subtree.
     """

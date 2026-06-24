@@ -21,7 +21,7 @@ from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 
 # The Flowbite-datepicker UMD bundle is declared as media on the YearPicker
-# component, so Page() loads it automatically on the stats pages.
+# component, so TimetrackerDocument() loads it automatically on the stats pages.
 
 
 def model_counts(request: HttpRequest) -> dict[str, Any]:

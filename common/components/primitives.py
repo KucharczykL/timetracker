@@ -733,7 +733,7 @@ def YearPicker(
 
     Behavior lives in ``ts/elements/year-picker.ts``; this renders the light
     DOM (toggle button + hidden datepicker input). The element module and the
-    Flowbite UMD bundle are declared as ``media`` on the node, so ``Page()``
+    Flowbite UMD bundle are declared as ``media`` on the node, so ``TimetrackerDocument()``
     loads both automatically.
     """
     label = str(year) if year is not None else "Choose a year"
@@ -1528,7 +1528,7 @@ def StyledTable(
     pagination nav). Python equivalent of the old simple_table.html.
 
     Returns a node tree, so each cell component's declared ``Media`` bubbles up
-    automatically via ``Page()``'s ``collect_media`` — no manual collection.
+    automatically via ``TimetrackerDocument()``'s ``collect_media`` — no manual collection.
     """
     columns = columns or []
     rows = rows or []

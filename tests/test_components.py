@@ -1028,7 +1028,8 @@ class StyledTableRenderingTest(unittest.TestCase):
 
     def test_cell_media_bubbles_through_table(self):
         """A cell component's declared Media must reach the table's collected
-        media, so Page() still emits its JS. StyledTable returns a node tree, so
+        media, so TimetrackerDocument() still emits its JS. StyledTable returns a
+        node tree, so
         this now happens via automatic bubbling rather than manual collection."""
         cell = components.Div(children=["x"]).with_media(
             components.Media(js=("test-cell.js",))

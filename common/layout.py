@@ -1,8 +1,8 @@
 """A small fast_app-style layout system.
 
 Instead of Django template inheritance (`{% extends "base.html" %}`), views
-build their page body with Python components and wrap it with `Page()` /
-`render_page()`. `Page()` is the equivalent of FastHTML's document wrapper:
+build their page body with Python components and wrap it with `TimetrackerDocument()` /
+`render_page()`. `TimetrackerDocument()` is the equivalent of FastHTML's document wrapper:
 it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 `fast_app(hdrs=...)`), renders the navbar, and assembles the full document.
 """
@@ -237,7 +237,7 @@ def NavbarPlaytime(
 
 
 # Theme toggle sun/moon SVGs: kept as a Safe() snippet because the FOUC script in
-# Page() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
+# TimetrackerDocument() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
 # is a plain icon, so it lives in the icon system (Icon("hamburger")).
 _THEME_TOGGLE_SVGS = (
     '<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" '
@@ -457,7 +457,7 @@ def Navbar(
     ]
 
 
-def Page(
+def TimetrackerDocument(
     content: "Node | SafeText | str",
     *,
     request: HttpRequest,
@@ -577,6 +577,8 @@ def render_page(
 ) -> HttpResponse:
     """`render()`-style shortcut: build a full page and return an HttpResponse."""
     return HttpResponse(
-        Page(content, request=request, title=title, scripts=scripts, mastered=mastered),
+        TimetrackerDocument(
+            content, request=request, title=title, scripts=scripts, mastered=mastered
+        ),
         status=status,
     )
