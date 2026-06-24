@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 import pytest
@@ -33,12 +34,15 @@ def test_existing_endpoint_allows_logged_in(auth_client):
 
 
 def _make_session(**overrides):
-    platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(name="Hades", platform=platform)
-    device = Device.objects.create(name="Deck", type="h")
+    # Only build the default game/device when the caller didn't supply one, so a
+    # call like _make_session(game=other) doesn't leave a throwaway Game/Platform
+    # in the DB that could skew count-based assertions.
+    if "game" not in overrides:
+        platform = Platform.objects.create(name="PC")
+        overrides["game"] = Game.objects.create(name="Hades", platform=platform)
+    if "device" not in overrides:
+        overrides["device"] = Device.objects.create(name="Deck", type="h")
     fields = dict(
-        game=game,
-        device=device,
         timestamp_start=datetime(2026, 6, 24, 18, 0, tzinfo=dt_timezone.utc),
         timestamp_end=None,
         duration_manual=timedelta(0),
@@ -146,8 +150,6 @@ def test_session_list_sort_parity(auth_client):
 
 
 def test_session_list_filter_parity(auth_client):
-    import json
-
     keep = _make_session()
     other_platform = Platform.objects.create(name="Switch")
     other_game = Game.objects.create(name="Celeste", platform=other_platform)
