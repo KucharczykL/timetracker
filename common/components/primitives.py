@@ -355,8 +355,18 @@ def _button_group_button(
     hx_swap: str = "",
     hx_confirm: str = "",
     size: str = "sm",
+    method: str = "",
+    action: str = "",
+    csrf_token: str = "",
 ) -> Element:
-    """Generate a single button-group button (inner <button> inside <a>)."""
+    """Generate a single button-group member.
+
+    Default form is a link: an inner ``<button>`` inside an ``<a href>``. When
+    ``method="post"`` the member is instead a ``<form method="post">`` wrapping a
+    CSRF input + a submit ``<button>`` — a state-changing action that needs no
+    JavaScript. The end-rounding is applied by ``ButtonGroup`` on the container
+    (keyed on child position), so this builder stays tag-agnostic.
+    """
     size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
     # inline-flex keeps every button the same height regardless of content — an
@@ -367,6 +377,31 @@ def _button_group_button(
         "inline-flex items-center justify-center hover:cursor-pointer"
     )
 
+    if method.lower() == "post":
+        submit = Element(
+            "button",
+            attributes=[
+                ("type", "submit"),
+                ("title", title),
+                ("class", button_classes),
+            ],
+            children=[slot],
+        )
+        form_children: list[Node] = []
+        if csrf_token:
+            form_children.append(
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{csrf_token}">'
+                )
+            )
+        form_children.append(submit)
+        return Element(
+            "form",
+            attributes=[("method", "post"), ("action", action or href)],
+            children=form_children,
+        )
+
     a_attrs: list[HTMLAttribute] = [("href", href)]
     if hx_get:
         a_attrs.append(("hx-get", hx_get))
@@ -376,13 +411,6 @@ def _button_group_button(
         a_attrs.append(("hx-swap", hx_swap))
     if hx_confirm:
         a_attrs.append(("hx-confirm", hx_confirm))
-    a_attrs.append(
-        (
-            "class",
-            "[&:first-of-type_button]:rounded-s-lg "
-            "[&:last-of-type_button]:rounded-e-lg",
-        )
-    )
 
     button = Element(
         "button",
@@ -400,8 +428,10 @@ def _button_group_button(
 def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Element:
     """Generate a button group div.
 
-    Each button dict accepts: href, slot (required), color, title, hx_get,
-    hx_target, hx_swap, hx_confirm.
+    Each button dict accepts: slot (required), href, color, title, hx_get,
+    hx_target, hx_swap, hx_confirm, and — for a state-changing member — method
+    ("post"), action (URL), csrf_token. A ``method="post"`` member renders as a
+    no-JS ``<form>`` submit button instead of a link.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
     ``size`` ("sm" default for icon buttons, "md" for larger text buttons) is
@@ -423,13 +453,25 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
                 hx_swap=btn.get("hx_swap", ""),
                 hx_confirm=btn.get("hx_confirm", ""),
                 size=size,
+                method=btn.get("method", ""),
+                action=btn.get("action", ""),
+                csrf_token=btn.get("csrf_token", ""),
             )
         )
 
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    return Div(class_="inline-flex rounded-md shadow-xs", role="group")[children]
+    # End-rounding lives here (keyed on child position, not member tag) so a
+    # group can freely mix <a> links and <form> submit buttons.
+    return Div(
+        class_=(
+            "inline-flex rounded-md shadow-xs "
+            "[&>*:first-child_button]:rounded-s-lg "
+            "[&>*:last-child_button]:rounded-e-lg"
+        ),
+        role="group",
+    )[children]
 
 
 def Input(
@@ -942,6 +984,70 @@ def Modal(
             ),
         ],
     )
+
+
+def ConfirmPage(
+    *,
+    title: str,
+    message: Children,
+    action_url: str,
+    csrf_token: str,
+    cancel_url: str,
+    confirm_label: str = "Confirm",
+    confirm_color: str = "red",
+) -> Node:
+    """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
+    and a cancel link back to the origin. The no-JS replacement for the htmx
+    confirmation modals — reusable across delete/refund/split/reset flows.
+    """
+    return Div(
+        class_="mx-auto w-full max-w-md p-5",
+    )[
+        Element(
+            "form",
+            attributes=[("method", "post"), ("action", action_url)],
+            children=[
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{csrf_token}">'
+                ),
+                P(
+                    attributes=[
+                        (
+                            "class",
+                            "text-2xl leading-6 font-medium dark:text-white "
+                            "text-center",
+                        )
+                    ],
+                    children=[title],
+                ),
+                P(
+                    attributes=[("class", "dark:text-white text-center mt-5")],
+                    children=as_children(message),
+                ),
+                Div(
+                    [("class", "items-center mt-6")],
+                    [
+                        StyledButton(
+                            [("class", "w-full")],
+                            confirm_label,
+                            color=confirm_color,
+                            size="lg",
+                            type="submit",
+                        ),
+                        A(href=cancel_url)[
+                            StyledButton(
+                                [("class", "mt-0 w-full")],
+                                "Cancel",
+                                color="gray",
+                                size="base",
+                            )
+                        ],
+                    ],
+                ),
+            ],
+        )
+    ]
 
 
 def TableTd(

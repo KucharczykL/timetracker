@@ -1,8 +1,8 @@
 """Browser test for the session-list "Reset start to now" button (issue #33).
 
 Drives the real session list against pytest-django's ``live_server``: clicks the
-reset button on a running session, accepts the confirm dialog, and asserts the
-row's start time is updated in place via htmx.
+reset link on a running session, confirms on the dedicated confirm page, and
+asserts the row's start time is updated after the full-page redirect.
 """
 
 import datetime as dt
@@ -39,8 +39,11 @@ def test_reset_session_start_to_now(authenticated_page: Page, live_server):
     row = page.locator(f"#session-row-{session.id}")
     expect(row).to_contain_text("2020")
 
-    page.on("dialog", lambda dialog: dialog.accept())
+    # Reset is a link to a dedicated confirm page (full-page, no htmx).
     row.locator('button[title="Reset start to now"]').click()
+    page.get_by_role("button", name="Reset to now").click()
 
-    # htmx swaps the row in place; the old 2020 start time is gone.
+    # Back on the list after the redirect; the old 2020 start time is gone.
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}")
+    row = page.locator(f"#session-row-{session.id}")
     expect(row).not_to_contain_text("2020")

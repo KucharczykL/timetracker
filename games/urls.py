@@ -138,11 +138,6 @@ urlpatterns = [
         name="delete_session",
     ),
     path(
-        "session/end/from-game/<int:session_id>",
-        session.end_session,
-        name="view_game_end_session",
-    ),
-    path(
         "session/end/from-list/<int:session_id>",
         session.end_session,
         name="list_sessions_end_session",
