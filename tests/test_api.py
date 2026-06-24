@@ -165,3 +165,25 @@ def test_session_list_filter_parity(auth_client):
 
 def test_session_list_requires_auth():
     assert Client().get("/api/session/").status_code == 401
+
+
+def test_session_list_page_overshoot_clamps(auth_client):
+    # get_page clamps an out-of-range page to the last page instead of erroring,
+    # so a JS client overshooting the end gets the last page, not a 404/500.
+    for _ in range(3):
+        _make_session()
+    response = auth_client.get("/api/session/?page=999")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["page"] == data["num_pages"] == 1
+    assert len(data["items"]) == 3
+
+
+def test_session_list_malformed_filter_ignored(auth_client):
+    # parse_session_filter returns None on malformed JSON; the handler skips
+    # filtering rather than 500-ing, returning the unfiltered list.
+    for _ in range(2):
+        _make_session()
+    response = auth_client.get("/api/session/?filter=not-json")
+    assert response.status_code == 200
+    assert response.json()["count"] == 2
