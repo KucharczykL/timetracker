@@ -315,28 +315,30 @@ _GROUP_BUTTON_SIZES = {
 }
 
 _GROUP_BUTTON_COLORS = {
+    # Every variant uses a hover border one shade darker than its hover fill, so
+    # the segmented buttons share the same "ring" look (only the hue differs).
     "gray": (
         "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 "
         "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:bg-gray-700 "
+        "dark:hover:text-white dark:hover:border-gray-800 dark:hover:bg-gray-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "red": (
         "font-medium text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-red-500 hover:text-white focus:z-10 "
-        "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
+        "border-gray-200 hover:bg-red-500 hover:border-red-600 hover:text-white "
+        "focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:border-red-700 "
+        "dark:hover:text-white dark:hover:border-red-800 "
         "dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "green": (
         "font-medium text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-green-500 "
+        "border-gray-200 hover:bg-green-500 hover:border-green-600 "
         "hover:text-white focus:z-10 focus:ring-2 focus:ring-green-700 "
         "focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-        "dark:text-white dark:hover:text-white dark:hover:border-green-600 "
+        "dark:text-white dark:hover:text-white dark:hover:border-green-700 "
         "dark:hover:bg-green-600 dark:focus:ring-green-500 "
         "dark:focus:text-white"
     ),
