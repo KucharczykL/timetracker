@@ -451,7 +451,10 @@ def Navbar(
         csrf_token=csrf_token,
     )
     return Nav(class_="bg-neutral-primary-soft border-b border-default")[
-        Div(class_="flex flex-wrap items-center justify-between mx-auto p-2")[
+        Div(
+            class_="max-w-(--breakpoint-xl) flex flex-wrap items-center "
+            "justify-between mx-auto p-2"
+        )[
             brand, hamburger, menu
         ]
     ]
