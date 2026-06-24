@@ -9,6 +9,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* StyledTable builds per-column body alignment as runtime `nth-child` strings
+   (from Column.align), which the JIT scanner can't see in source — safelist the
+   td variants up to 12 columns (the widest table has 8). */
+@source inline("[&_td:nth-child({1,2,3,4,5,6,7,8,9,10,11,12})]:text-right");
+
 @theme {
   --font-sans:
     IBM Plex Sans, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',

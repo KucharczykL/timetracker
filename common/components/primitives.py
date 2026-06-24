@@ -404,13 +404,10 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
             )
         )
 
-    # The group right-aligns itself within its table cell (it is always the
-    # trailing "Actions" cell), so alignment is owned by the component rather
-    # than a positional CSS rule on the row. The inner group keeps the rounded
-    # shadow hugging the buttons.
-    return Div(class_="flex justify-end")[
-        Div(class_="inline-flex rounded-md shadow-xs", role="group")[children]
-    ]
+    # Alignment-agnostic: the group sits where its container puts it. In a table
+    # Actions cell the <td> is right-aligned (table-level Column.align rule), so
+    # this inline-flex group is pushed right; in the game header it sits left.
+    return Div(class_="inline-flex rounded-md shadow-xs", role="group")[children]
 
 
 def Input(
@@ -1409,15 +1406,24 @@ def StyledTable(
             children=[header_row],
         )
     )
+    # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
+    # <tr> aligns from the live <tbody> it lands in — the fragment row stays
+    # dumb. Driven by Column.align; a right column at position i targets its
+    # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
+    # The nth-child literals are safelisted via @source inline in input.css.
+    tbody_class = (
+        "dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden"
+    )
+    align_rules = " ".join(
+        f"[&_td:nth-child({index + 1})]:text-right"
+        for index, column in enumerate(columns)
+        if column.align == "right"
+    )
+    if align_rules:
+        tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
         Tbody(
-            attributes=[
-                (
-                    "class",
-                    "dark:divide-y "
-                    "max-sm:[&_td:not(:first-child):not(:last-child)]:hidden",
-                ),
-            ],
+            attributes=[("class", tbody_class)],
             children=[TableRow(data=row) for row in rows],
         )
     )
