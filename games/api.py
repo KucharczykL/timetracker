@@ -6,10 +6,11 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
+from ninja.security import django_auth
 
 from games.models import Device, Game, Platform, PlayEvent, Session
 
-api = NinjaAPI()
+api = NinjaAPI(auth=django_auth)
 playevent_router = Router()
 game_router = Router()
 device_router = Router()
