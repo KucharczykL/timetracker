@@ -26,6 +26,7 @@
   --font-condensed:
     IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-alien: 'Alien Block', ui-sans-serif, system-ui, sans-serif;
 
   --color-accent: #7c3aed;
   --color-background: #1f2937;
@@ -116,6 +117,13 @@
   @font-face {
     font-family: 'IBM Plex Sans Condensed';
     src: url('fonts/IBMPlexSansCondensed-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'Alien Block';
+    src: url('fonts/AlienBlock-Regular.woff2') format('woff2');
     font-weight: 400;
     font-style: normal;
   }
