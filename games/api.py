@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List
 
 from django.contrib import messages
@@ -155,6 +155,53 @@ api.add_router("/devices", device_router)
 api.add_router("/platforms", platform_router)
 
 session_router = Router()
+
+
+class PlatformOut(Schema):
+    name: str
+    icon: str
+
+
+class GameOut(Schema):
+    id: int
+    name: str
+    platform: PlatformOut | None = None
+
+
+class DeviceOut(Schema):
+    id: int
+    name: str
+    type: str
+
+
+class SessionOut(Schema):
+    id: int
+    game: GameOut | None = None
+    device: DeviceOut | None = None
+    timestamp_start: datetime
+    timestamp_end: datetime | None = None
+    duration_manual_seconds: int
+    is_manual: bool
+    note: str
+    emulated: bool
+    created_at: datetime
+    modified_at: datetime
+
+    @staticmethod
+    def resolve_duration_manual_seconds(obj: Session) -> int:
+        return int(obj.duration_manual.total_seconds()) if obj.duration_manual else 0
+
+    @staticmethod
+    def resolve_is_manual(obj: Session) -> bool:
+        return obj.is_manual()
+
+
+@session_router.get("/{session_id}", response=SessionOut)
+def get_session(request, session_id: int):
+    return get_object_or_404(
+        Session.objects.select_related("game", "game__platform", "device"),
+        id=session_id,
+    )
 
 
 class SessionDeviceUpdate(Schema):
