@@ -1027,6 +1027,81 @@ class StyledTableColumnGuardTest(SimpleTestCase):
         self.assertIn("<td", result)
 
 
+class ColumnAlignmentTest(SimpleTestCase):
+    """Column alignment is driven by ``Column.align``: the header per-``<th>``
+    (``_header_cell``), the body via a table-level ``td:nth-child`` rule on the
+    ``<tbody>`` so htmx-swapped rows align without per-row knowledge. ``ButtonGroup``
+    is alignment-agnostic."""
+
+    @staticmethod
+    def _thead(result):
+        return result.split("<thead")[1].split("</thead>")[0]
+
+    @staticmethod
+    def _tbody(result):
+        return result.split("<tbody")[1].split(">", 1)[0]
+
+    def _render(self, columns):
+        return str(components.StyledTable(columns=columns, rows=[], request=None))
+
+    def test_right_aligned_header_is_text_right(self):
+        thead = self._thead(self._render([components.Column("Actions", align="right")]))
+        self.assertIn("text-right", thead)
+
+    def test_default_header_is_not_text_right(self):
+        thead = self._thead(self._render([components.Column("Device")]))
+        self.assertNotIn("text-right", thead)
+
+    def test_tbody_aligns_right_column_by_index(self):
+        # A right column at position i → [&_td:nth-child(i+1)]:text-right on tbody.
+        tbody = self._tbody(
+            self._render(
+                [
+                    components.Column("Name"),
+                    components.Column("Date"),
+                    components.Column("Actions", align="right"),
+                ]
+            )
+        )
+        self.assertIn("nth-child(3)]:text-right", tbody)
+
+    def test_tbody_aligns_middle_column_not_just_last(self):
+        # Proves it is index-driven, not last-only: a right MIDDLE column aligns it.
+        tbody = self._tbody(
+            self._render(
+                [
+                    components.Column("Name"),
+                    components.Column("Price", align="right"),
+                    components.Column("Actions"),
+                ]
+            )
+        )
+        self.assertIn("nth-child(2)]:text-right", tbody)
+
+    def test_tbody_no_alignment_for_all_left_columns(self):
+        tbody = self._tbody(
+            self._render([components.Column("Date"), components.Column("Device")])
+        )
+        self.assertNotIn("text-right", tbody)
+
+    def test_button_group_is_alignment_agnostic(self):
+        html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
+        self.assertNotIn("justify-end", html)
+
+
+class ButtonGroupSizeTest(SimpleTestCase):
+    """ButtonGroup size: default 'sm' (icon buttons) vs 'md' (larger text)."""
+
+    def test_default_size_is_small(self):
+        html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
+        self.assertIn("px-2 py-1 text-xs", html)
+
+    def test_md_size_is_larger(self):
+        html = str(components.ButtonGroup([{"href": "/x", "slot": "Edit"}], size="md"))
+        self.assertIn("px-4 py-2 text-sm", html)
+        self.assertNotIn("px-2 py-1 text-xs", html)
+
+
 class SortableHeaderTest(SimpleTestCase):
     """Clickable sortable column headers (issue #73)."""
 

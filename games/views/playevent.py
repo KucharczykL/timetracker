@@ -49,7 +49,7 @@ def create_playevent_tabledata(
         Column("Days to finish"),
         Column("Note"),
         Column("Created"),
-        Column("Actions"),
+        Column("Actions", align="right"),
     ]
     filtered_column_list = [
         column for column in column_list if column.label not in exclude_columns

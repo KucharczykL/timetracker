@@ -37,9 +37,8 @@ from common.layout import NavbarPlaytime, render_page
 from games.views.general import model_counts
 from common.time import (
     dateformat,
-    local_strftime,
-    timeformat,
 )
+from games.formatting import session_time_range
 from common.utils import paginate, truncate
 from common.http import HtmxHttpRequest
 from games.forms import SessionForm
@@ -98,8 +97,7 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
     )
     return make_row(
         NameWithIcon(session=session),
-        f"{local_strftime(session.timestamp_start)}"
-        f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+        session_time_range(session),
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
         session.created_at.strftime(dateformat),
@@ -203,7 +201,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             Column("Duration", "duration"),
             Column("Device", "device"),
             Column("Created", "created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "sort_terms": sort.terms,
         "rows": [

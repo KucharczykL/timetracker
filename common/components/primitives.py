@@ -8,7 +8,7 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import NamedTuple, NotRequired, TypedDict
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from django.conf import settings
 from django.http import QueryDict
@@ -306,25 +306,35 @@ def StyledButton(
     )
 
 
+# Button-group sizing is separate from color so a group can render small icon
+# buttons (default) or larger text buttons (the game-header actions). "sm"
+# reproduces the original baked-in size, so existing table groups are unchanged.
+_GROUP_BUTTON_SIZES = {
+    "sm": "px-2 py-1 text-xs",
+    "md": "px-4 py-2 text-sm",
+}
+
 _GROUP_BUTTON_COLORS = {
+    # Every variant uses a hover border one shade darker than its hover fill, so
+    # the segmented buttons share the same "ring" look (only the hue differs).
     "gray": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
+        "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 "
         "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:bg-gray-700 "
+        "dark:hover:text-white dark:hover:border-gray-800 dark:hover:bg-gray-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "red": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-red-500 hover:text-white focus:z-10 "
-        "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
+        "font-medium text-gray-900 bg-white border "
+        "border-gray-200 hover:bg-red-500 hover:border-red-600 hover:text-white "
+        "focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:border-red-700 "
+        "dark:hover:text-white dark:hover:border-red-800 "
         "dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "green": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
+        "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-green-500 hover:border-green-600 "
         "hover:text-white focus:z-10 focus:ring-2 focus:ring-green-700 "
         "focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
@@ -344,9 +354,18 @@ def _button_group_button(
     hx_target: str = "",
     hx_swap: str = "",
     hx_confirm: str = "",
+    size: str = "sm",
 ) -> Element:
     """Generate a single button-group button (inner <button> inside <a>)."""
+    size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
+    # inline-flex keeps every button the same height regardless of content — an
+    # icon+text button (e.g. "Log this game") would otherwise sit taller than its
+    # text-only siblings and step the segmented group's bottom edge.
+    button_classes = (
+        f"{size_classes} {color_classes} "
+        "inline-flex items-center justify-center hover:cursor-pointer"
+    )
 
     a_attrs: list[HTMLAttribute] = [("href", href)]
     if hx_get:
@@ -370,7 +389,7 @@ def _button_group_button(
         attributes=[
             ("type", "button"),
             ("title", title),
-            ("class", color_classes + " hover:cursor-pointer"),
+            ("class", button_classes),
         ],
         children=[slot],
     )
@@ -378,13 +397,15 @@ def _button_group_button(
     return Element("a", attributes=a_attrs, children=[button])
 
 
-def ButtonGroup(buttons: list[dict] | None = None) -> Element:
+def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Element:
     """Generate a button group div.
 
     Each button dict accepts: href, slot (required), color, title, hx_get,
     hx_target, hx_swap, hx_confirm.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
+    ``size`` ("sm" default for icon buttons, "md" for larger text buttons) is
+    applied to every button in the group.
     """
     buttons = buttons or []
     children: list[Node] = []
@@ -401,13 +422,14 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
                 hx_target=btn.get("hx_target", ""),
                 hx_swap=btn.get("hx_swap", ""),
                 hx_confirm=btn.get("hx_confirm", ""),
+                size=size,
             )
         )
 
-    return Div(
-        attributes=[("class", "inline-flex rounded-md shadow-xs"), ("role", "group")],
-        children=children,
-    )
+    # Alignment-agnostic: the group sits where its container puts it. In a table
+    # Actions cell the <td> is right-aligned (table-level Column.align rule), so
+    # this inline-flex group is pushed right; in the game header it sits left.
+    return Div(class_="inline-flex rounded-md shadow-xs", role="group")[children]
 
 
 def Input(
@@ -949,13 +971,19 @@ class TableRowData(TypedDict):
     attributes: NotRequired[list[HTMLAttribute]]
 
 
+type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
+
+
 class Column(NamedTuple):
     """One table column header. ``sort_key`` (a public key in the view's
     ``*_SORTS`` map) makes the header clickable-to-sort; ``None`` → a static
-    header (e.g. an "Actions" column)."""
+    header (e.g. an "Actions" column). ``align`` aligns *the header*; the body
+    cell owns its own alignment (e.g. an Actions ``ButtonGroup`` right-aligns
+    itself), so set both to "right" together for an Actions column."""
 
     label: str
     sort_key: str | None = None
+    align: Align = "left"
 
 
 class TableData(TypedDict):
@@ -1004,7 +1032,7 @@ def TableRow(data: TableRowData) -> Element:
         "odd:bg-white dark:odd:bg-gray-900 even:bg-gray-50 "
         "dark:even:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 "
         "dark:hover:bg-gray-600 [&_a]:underline [&_a]:underline-offset-4 "
-        "[&_a]:decoration-2 [&_td:last-child]:text-right"
+        "[&_a]:decoration-2"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
@@ -1308,7 +1336,7 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
 def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
-    base_class = "px-6 py-3"
+    base_class = "px-6 py-3" + (" text-right" if column.align == "right" else "")
     if column.sort_key is None:
         return Th(
             attributes=[("scope", "col"), ("class", base_class)],
@@ -1400,15 +1428,24 @@ def StyledTable(
             children=[header_row],
         )
     )
+    # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
+    # <tr> aligns from the live <tbody> it lands in — the fragment row stays
+    # dumb. Driven by Column.align; a right column at position i targets its
+    # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
+    # The nth-child literals are safelisted via @source inline in input.css.
+    tbody_class = (
+        "dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden"
+    )
+    align_rules = " ".join(
+        f"[&_td:nth-child({index + 1})]:text-right"
+        for index, column in enumerate(columns)
+        if column.align == "right"
+    )
+    if align_rules:
+        tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
         Tbody(
-            attributes=[
-                (
-                    "class",
-                    "dark:divide-y "
-                    "max-sm:[&_td:not(:first-child):not(:last-child)]:hidden",
-                ),
-            ],
+            attributes=[("class", tbody_class)],
             children=[TableRow(data=row) for row in rows],
         )
     )
