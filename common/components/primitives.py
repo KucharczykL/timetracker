@@ -57,6 +57,19 @@ _SIZE_CLASSES = {
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
+# Two shared content widths. Each carries no centering — every user adds its own
+# (`mx-auto` / `self-center`) so the constant stays purely about width.
+
+# The wide column for table/list pages (paginated tables, status-change list).
+TABLE_MAX_WIDTH_CLASS = (
+    "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
+    "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm)"
+)
+
+# The main content column (detail pages, stats). The navbar matches it so the
+# brand/menu line up with the content below.
+CONTENT_MAX_WIDTH_CLASS = "max-w-sm sm:max-w-xl lg:max-w-3xl"
+
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
@@ -1627,13 +1640,7 @@ def paginated_table_content(
     ``header_action`` (the same shape every list view already builds).
     """
     return Div(
-        [
-            (
-                "class",
-                "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
-                "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm) self-center",
-            )
-        ],
+        [("class", f"{TABLE_MAX_WIDTH_CLASS} self-center")],
         [
             StyledTable(
                 columns=data["columns"],

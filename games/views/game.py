@@ -10,6 +10,7 @@ from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     H1,
     A,
     AddForm,
@@ -786,7 +787,7 @@ _GET_SESSION_COUNT_SCRIPT = Safe(
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     content = Div(
-        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [("class", f"dark:text-white {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
         [
             _game_header(game, request, _game_overview_metrics(game)),
             _purchases_section(game),

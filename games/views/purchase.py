@@ -16,6 +16,7 @@ from django.utils.safestring import SafeText, mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     A,
     AddForm,
     ButtonGroup,
@@ -399,7 +400,7 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
         ],
     )
     return Div(
-        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [("class", f"dark:text-white {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
         [inner],
     )
 

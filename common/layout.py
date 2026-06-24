@@ -20,6 +20,7 @@ from django_htmx.jinja import django_htmx_script
 
 from common.components.core import Document, Safe
 from common.components.primitives import (
+    CONTENT_MAX_WIDTH_CLASS,
     Body,
     Button,
     Div,
@@ -452,11 +453,9 @@ def Navbar(
     )
     return Nav(class_="bg-neutral-primary-soft border-b border-default")[
         Div(
-            class_="max-w-(--breakpoint-xl) flex flex-wrap items-center "
+            class_=f"{CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
             "justify-between mx-auto p-2"
-        )[
-            brand, hamburger, menu
-        ]
+        )[brand, hamburger, menu]
     ]
 
 
