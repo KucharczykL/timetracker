@@ -397,6 +397,21 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertIn(css, result)
         self.assertNotIn("&gt;", result)
 
+    def test_void_element_has_no_closing_tag(self):
+        # HTML void elements get no closing tag and no self-closing slash.
+        result = str(components.Element(tag_name="img", attributes=[("src", "x")]))
+        self.assertEqual(result, '<img src="x">')
+        self.assertNotIn("</img>", result)
+        self.assertEqual(str(components.Element(tag_name="br")), "<br>")
+
+    def test_void_element_with_children_raises(self):
+        with self.assertRaises(ValueError):
+            str(components.Element(tag_name="img", children=["nope"]))
+
+    def test_non_void_element_keeps_closing_tag(self):
+        result = str(components.Element(tag_name="div", children=["hi"]))
+        self.assertEqual(result, "<div>hi</div>")
+
     def test_safe_node_children_pass_through(self):
         result = str(
             components.Element(
