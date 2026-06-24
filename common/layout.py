@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.utils.safestring import SafeText
 from django_htmx.jinja import django_htmx_script
 
-from common.components.core import Fragment, Safe
+from common.components.core import Document, Safe
 from common.components.primitives import (
     Body,
     Button,
@@ -464,7 +464,7 @@ def Page(
     title: str = "",
     scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
-) -> Fragment:
+) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
 
     Scripts are collected from `content`'s component tree: every component
@@ -502,9 +502,8 @@ def Page(
     # Embed as JSON; guard against `</script>` breaking out of the tag.
     messages_json = json.dumps(messages).replace("</", "<\\/")
 
-    def html_document(title: str = "") -> Fragment:
-        return Fragment(
-            Safe("<!DOCTYPE html>"),
+    def html_document(title: str = "") -> Document:
+        return Document(
             Html(lang="en")[
                 Head()[
                     [

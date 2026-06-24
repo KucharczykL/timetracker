@@ -132,7 +132,6 @@ Head = _html_element("head")
 Body = _html_element("body")
 Meta = _html_element("meta")
 Title = _html_element("title")
-Doctype = Safe("!DOCTYPE html")
 Script = _html_element("script")
 Link = _html_element("link")
 

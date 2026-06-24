@@ -354,6 +354,26 @@ class Fragment(Node):
         return self.separator.join(parts)
 
 
+class Document(Node):
+    """A full HTML document: the ``<!DOCTYPE html>`` preamble plus a root
+    ``<html>`` subtree, as a single node.
+
+    DOCTYPE is a document-type declaration, not an element, so it can't be an
+    ``Element``/builder — this node owns it as a fixed preamble. Lets ``Page()``
+    return one typed node instead of a ``Fragment`` of (doctype, html); media
+    still bubbles from the ``<html>`` subtree.
+    """
+
+    def __init__(self, html: Node) -> None:
+        self.html = html
+
+    def collect_media(self) -> Media:
+        return self.html.collect_media()
+
+    def _render(self) -> str:
+        return "<!DOCTYPE html>" + self.html._render()
+
+
 class BaseComponent(Node):
     """Base for higher-level components: implement ``render()`` returning a node
     subtree and declare ``media`` (a :class:`Media`).

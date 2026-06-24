@@ -412,6 +412,17 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         result = str(components.Element(tag_name="div", children=["hi"]))
         self.assertEqual(result, "<div>hi</div>")
 
+    def test_document_node_renders_doctype_and_bubbles_media(self):
+        # A whole document is the <!DOCTYPE html> preamble + an <html> subtree,
+        # as a single node; media still bubbles from the subtree.
+        body_child = components.Element(tag_name="div").with_media(
+            components.Media(js=("widget.js",))
+        )
+        html = components.Element(tag_name="html", children=[body_child])
+        document = components.Document(html)
+        self.assertTrue(str(document).startswith("<!DOCTYPE html><html>"))
+        self.assertIn("widget.js", components.collect_media(document).js)
+
     def test_safe_node_children_pass_through(self):
         result = str(
             components.Element(

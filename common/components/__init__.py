@@ -6,6 +6,7 @@ re-exports the public API so ``from common.components import X`` keeps working.
 
 from common.components.core import (
     BaseComponent,
+    Document,
     Element,
     Fragment,
     HTMLAttribute,
@@ -145,6 +146,7 @@ __all__ = [
     "SelectionFields",
     "SessionTimestampButtons",
     "custom_element_builder",
+    "Document",
     "Element",
     "Fragment",
     "Media",
