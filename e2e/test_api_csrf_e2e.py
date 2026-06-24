@@ -57,9 +57,11 @@ def test_device_patch_passes_csrf(authenticated_page: Page, live_server):
 
     # Click the option for the second device; capture the PATCH response.
     with page.expect_response(
-        lambda response: "/api/session/" in response.url
-        and "/device" in response.url
-        and response.request.method == "PATCH"
+        lambda response: (
+            "/api/session/" in response.url
+            and "/device" in response.url
+            and response.request.method == "PATCH"
+        )
     ) as response_info:
         host.locator(f'[data-option][data-value="{deck.id}"]').click()
 

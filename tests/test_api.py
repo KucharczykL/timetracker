@@ -138,12 +138,8 @@ def test_session_list_pagination(auth_client):
 
 
 def test_session_list_sort_parity(auth_client):
-    older = _make_session(
-        timestamp_start=datetime(2020, 1, 1, tzinfo=dt_timezone.utc)
-    )
-    newer = _make_session(
-        timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
-    )
+    older = _make_session(timestamp_start=datetime(2020, 1, 1, tzinfo=dt_timezone.utc))
+    newer = _make_session(timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc))
     ascending = auth_client.get("/api/session/?sort=date").json()["items"]
     ids = [row["id"] for row in ascending]
     assert ids.index(older.id) < ids.index(newer.id)
@@ -162,9 +158,7 @@ def test_session_list_filter_parity(auth_client):
             "modifier": "INCLUDES",
         }
     }
-    response = auth_client.get(
-        "/api/session/", {"filter": json.dumps(session_filter)}
-    )
+    response = auth_client.get("/api/session/", {"filter": json.dumps(session_filter)})
     items = response.json()["items"]
     assert [row["id"] for row in items] == [keep.id]
 
