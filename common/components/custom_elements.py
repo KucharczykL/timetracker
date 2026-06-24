@@ -103,6 +103,17 @@ class PlayEventRowProps(TypedDict):
 register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
 
 
+class SessionActionsProps(TypedDict):
+    session_id: int
+    api_url: str  # f"/api/session/{pk}"
+    csrf: str
+    game_name: str  # names the game in the reset-confirm modal copy
+    is_open: bool  # timestamp_end is None -> finish + reset are available
+
+
+register_element("session-actions", "SessionActions", SessionActionsProps)
+
+
 class SessionTimestampButtonsProps(TypedDict):
     pass
 
@@ -117,6 +128,7 @@ register_element(
 # Public ones (no domain wrapper): exported directly.
 
 _PlayEventRow = custom_element_builder("play-event-row")
+_SessionActions = custom_element_builder("session-actions")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
 
 

@@ -250,6 +250,49 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIsInstance(result, tuple)
 
 
+class SessionActionsTest(unittest.TestCase):
+    """The <session-actions> custom element: finish/reset only for an open
+    session, plus the hidden reset-confirm modal. Edit/Delete always present."""
+
+    def _session(self, *, pk=7, timestamp_end=None, game_name="Hades"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            pk=pk,
+            timestamp_end=timestamp_end,
+            game=SimpleNamespace(name=game_name),
+        )
+
+    def test_open_session_renders_finish_reset_csrf_and_modal(self):
+        from common.components.domain import SessionActions
+
+        html = str(SessionActions(self._session(), "tok123"))
+        self.assertIn("<session-actions", html)
+        self.assertIn('api-url="/api/session/7"', html)
+        self.assertIn('csrf="tok123"', html)
+        self.assertIn("data-finish", html)
+        self.assertIn("data-reset", html)
+        self.assertIn("data-reset-modal", html)
+        self.assertIn("Hades", html)  # modal copy names the game
+
+    def test_closed_session_hides_finish_reset_and_modal(self):
+        import datetime
+
+        from common.components.domain import SessionActions
+
+        ended = self._session(
+            timestamp_end=datetime.datetime(
+                2026, 6, 24, 19, 0, tzinfo=datetime.timezone.utc
+            )
+        )
+        html = str(SessionActions(ended, "tok123"))
+        self.assertIn("<session-actions", html)
+        self.assertNotIn("data-finish", html)
+        self.assertNotIn("data-reset", html)
+        self.assertNotIn("data-reset-modal", html)
+        self.assertIn("/session/7/edit", html)  # edit link still present
+
+
 class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     """Smoke test: every component that generates HTML must not double-escape."""
 

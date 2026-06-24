@@ -13,7 +13,6 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
 
 from games.models import Game, GameStatusChange, Platform, Purchase, Session
 
@@ -256,53 +255,26 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Refund", html)
         self.assertNoEscapedTags(html)
 
-    def test_finish_session_posts_and_redirects(self):
-        # Finishing is now a full-page POST → redirect to the list (no row swap).
-        resp = self.client.post(
-            reverse("games:list_sessions_end_session", args=[self.session.id]),
-        )
-        self.assertRedirects(resp, reverse("games:list_sessions"))
-        self.session.refresh_from_db()
-        self.assertIsNotNone(self.session.timestamp_end)
+    def test_session_list_renders_session_actions_element(self):
+        # Finish/reset are now driven by the <session-actions> custom element
+        # (PATCH /api/session/<id> + client-side row swap), not POST/confirm pages.
+        html = self.get("games:list_sessions").content.decode()
+        self.assertIn("<session-actions", html)
+        self.assertIn(f'api-url="/api/session/{self.session.id}"', html)
+        self.assertNoEscapedTags(html)
 
-    def test_reset_session_start_confirm_page_then_post(self):
-        running = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
-        )
-        url = reverse("games:list_sessions_reset_session_start", args=[running.id])
-        # GET renders a full confirm page that posts back to the same URL.
-        get_resp = self.client.get(url)
-        self.assertEqual(get_resp.status_code, 200)
-        get_body = get_resp.content.decode()
-        self.assertIn(f'action="{url}"', get_body)
-        self.assertNoEscapedTags(get_body)
-        running.refresh_from_db()
-        self.assertEqual(
-            running.timestamp_start,
-            datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
-        )
-        # POST performs the reset and redirects.
-        before = timezone.now()
-        post_resp = self.client.post(url)
-        self.assertRedirects(post_resp, reverse("games:list_sessions"))
-        running.refresh_from_db()
-        self.assertGreaterEqual(running.timestamp_start, before)
-
-    def test_reset_button_only_shown_for_running_sessions(self):
+    def test_finish_reset_buttons_only_shown_for_running_sessions(self):
         running = Session.objects.create(
             game=self.game,
             timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
         )
         html = self.get("games:list_sessions").content.decode()
-        self.assertIn(
-            reverse("games:list_sessions_reset_session_start", args=[running.id]),
-            html,
-        )
-        self.assertNotIn(
-            reverse("games:list_sessions_reset_session_start", args=[self.session.id]),
-            html,
-        )
+        # The running session's row exposes finish + reset; the finished
+        # self.session row exposes neither (its <session-actions> is_open=false).
+        self.assertIn("data-reset-modal", html)  # only the running row has one
+        self.assertIn(f'<session-actions session-id="{running.id}"', html)
+        self.assertIn('is-open="true"', html)
+        self.assertIn('is-open="false"', html)
 
     # --- statuschange --------------------------------------------------------
 

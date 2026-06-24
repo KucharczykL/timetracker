@@ -49,6 +49,7 @@ from common.components.domain import (
     NameWithIcon,
     PriceConverted,
     PurchasePrice,
+    SessionActions,
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
@@ -217,6 +218,7 @@ __all__ = [
     "NameWithIcon",
     "PriceConverted",
     "PurchasePrice",
+    "SessionActions",
     "SessionDeviceSelector",
     "_resolve_name_with_icon",
     "DateRangeCalendar",

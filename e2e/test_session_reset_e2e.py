@@ -1,8 +1,9 @@
-"""Browser test for the session-list "Reset start to now" button (issue #33).
+"""Browser test for the session-list "Reset start to now" action (issue #33).
 
-Drives the real session list against pytest-django's ``live_server``: clicks the
-reset link on a running session, confirms on the dedicated confirm page, and
-asserts the row's start time is updated after the full-page redirect.
+Reset now opens an inline confirm modal (the <session-actions> custom element),
+and on confirm drives PATCH /api/session/<id> with timestamp_start=now, swapping
+the row in place — no full-page navigation. Covers both the confirm and cancel
+paths.
 """
 
 import datetime as dt
@@ -25,25 +26,65 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def test_reset_session_start_to_now(authenticated_page: Page, live_server):
-    page = authenticated_page
+def _make_running_session() -> Session:
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game = Game.objects.create(name="Reset Game", platform=platform)
-    session = Session.objects.create(
+    return Session.objects.create(
         game=game,
         timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.timezone.utc),
     )
 
-    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
+def test_reset_confirm_swaps_row_in_place(authenticated_page: Page, live_server):
+    page = authenticated_page
+    session = _make_running_session()
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = page.locator(f"#session-row-{session.id}")
     expect(row).to_contain_text("2020")
 
-    # Reset is a link to a dedicated confirm page (full-page, no htmx).
-    row.locator('button[title="Reset start to now"]').click()
-    page.get_by_role("button", name="Reset to now").click()
+    page.evaluate("window.__noReload = true")
 
-    # Back on the list after the redirect; the old 2020 start time is gone.
-    page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}")
+    # Reset opens a confirm modal (no navigation). While open the modal is
+    # portaled to <body> (so it isn't a descendant of the hovered row), so the
+    # confirm button is located at page level, not under the row.
+    row.locator("button[data-reset]").click()
+    confirm = page.locator("button[data-reset-confirm]")
+    expect(confirm).to_be_visible()
+
+    with page.expect_response(
+        lambda response: (
+            "/api/session/" in response.url
+            and "/device" not in response.url
+            and response.request.method == "PATCH"
+        )
+    ) as response_info:
+        confirm.click()
+
+    assert response_info.value.status == 200
     row = page.locator(f"#session-row-{session.id}")
     expect(row).not_to_contain_text("2020")
+    assert page.evaluate("window.__noReload") is True, (
+        "page reloaded — expected in-place swap"
+    )
+
+
+def test_reset_cancel_leaves_start_unchanged(authenticated_page: Page, live_server):
+    page = authenticated_page
+    session = _make_running_session()
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    row = page.locator(f"#session-row-{session.id}")
+
+    row.locator("button[data-reset]").click()
+    confirm = page.locator("button[data-reset-confirm]")
+    expect(confirm).to_be_visible()
+    page.locator("button[data-reset-cancel]").click()
+    expect(confirm).to_be_hidden()
+
+    # The start time is untouched.
+    expect(row).to_contain_text("2020")
+    session.refresh_from_db()
+    assert session.timestamp_start == dt.datetime(
+        2020, 1, 1, 10, 0, tzinfo=dt.timezone.utc
+    )

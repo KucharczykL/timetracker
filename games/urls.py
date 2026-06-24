@@ -137,16 +137,6 @@ urlpatterns = [
         session.delete_session,
         name="delete_session",
     ),
-    path(
-        "session/end/from-list/<int:session_id>",
-        session.end_session,
-        name="list_sessions_end_session",
-    ),
-    path(
-        "session/start/reset-to-now/from-list/<int:session_id>",
-        session.reset_session_start,
-        name="list_sessions_reset_session_start",
-    ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("session/search", session.search_sessions, name="search_sessions"),
     path(

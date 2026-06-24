@@ -24,6 +24,16 @@ function onSwap(selector: string, initializeElement: (element: Element) => void)
   });
 }
 
+/**
+ * The current instant as a real ISO-8601 UTC string (…Z) for the JSON API. Use
+ * this — NOT toISOUTCString — when sending a timestamp to the server: the client
+ * owns "now", and the API stores the true instant. (toISOUTCString emits the
+ * offset-less datetime-local form, which would be read as the wrong instant.)
+ */
+function nowISOUTC(): string {
+  return new Date().toISOString();
+}
+
 /** Formats Date to a UTC string accepted by the datetime-local input field. */
 function toISOUTCString(date: Date): string {
   function stringAndPad(number: number) {
@@ -238,6 +248,7 @@ function disableElementsWhenTrue(targetSelect: string, targetValue: string | str
 
 export {
   onSwap,
+  nowISOUTC,
   toISOUTCString,
   syncSelectInputUntilChanged,
   conditionalElementHandler,

@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 from django.utils import timezone
 
 from common.components import TableRow
@@ -37,11 +36,25 @@ def test_session_row_renders_id_and_six_cells(running_session):
     assert html.count("<td") + html.count("<th") == 6
 
 
-def test_running_session_finish_is_a_post_form(running_session):
+def test_running_session_actions_drive_the_api(running_session):
     html = render_row(running_session)
-    end_url = reverse("games:list_sessions_end_session", args=[running_session.pk])
-    assert f'action="{end_url}"' in html
-    assert 'method="post"' in html
+    # Finish/reset are now JS-driven via the <session-actions> custom element
+    # hitting PATCH /api/session/<id>, not no-JS POST forms / confirm-page links.
+    assert "<session-actions" in html
+    assert f'api-url="/api/session/{running_session.pk}"' in html
+    assert "data-finish" in html
+    assert "data-reset" in html
+    assert "data-reset-modal" in html
     assert 'title="Finish session now"' in html
+    assert 'method="post"' not in html
     assert "hx-target" not in html
     assert "hx-swap" not in html
+
+
+def test_finished_session_has_no_finish_or_reset(running_session):
+    running_session.timestamp_end = timezone.now()
+    running_session.save()
+    html = render_row(running_session)
+    assert "data-finish" not in html
+    assert "data-reset" not in html
+    assert "data-reset-modal" not in html

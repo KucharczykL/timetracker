@@ -9,14 +9,11 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.safestring import mark_safe
-from django.views.decorators.http import require_POST
 
 from common.components import (
     A,
     AddForm,
-    ButtonGroup,
     Column,
-    ConfirmPage,
     Div,
     FormFields,
     Fragment,
@@ -26,6 +23,7 @@ from common.components import (
     Node,
     Popover,
     SearchField,
+    SessionActions,
     SessionDeviceSelector,
     SessionTimestampButtons,
     StyledButton,
@@ -34,7 +32,6 @@ from common.components import (
     make_row,
     paginated_table_content,
 )
-from common.components.primitives import Strong
 from common.layout import render_page
 from common.time import (
     dateformat,
@@ -54,49 +51,15 @@ from games.sorting import (
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
-    table. Finish is a POST form submit; reset links to a confirm page."""
-    end_url = reverse("games:list_sessions_end_session", args=[session.pk])
-    reset_url = reverse("games:list_sessions_reset_session_start", args=[session.pk])
-    actions = ButtonGroup(
-        [
-            {
-                "method": "post",
-                "action": end_url,
-                "csrf_token": csrf_token,
-                "slot": Icon("end"),
-                "title": "Finish session now",
-                "color": "green",
-            }
-            if session.timestamp_end is None
-            else {},
-            {
-                "href": reset_url,
-                "slot": Icon("reset"),
-                "title": "Reset start to now",
-                "color": "gray",
-            }
-            if session.timestamp_end is None
-            else {},
-            {
-                "href": reverse("games:edit_session", args=[session.pk]),
-                "slot": Icon("edit"),
-                "title": "Edit",
-            },
-            {
-                "href": reverse("games:delete_session", args=[session.pk]),
-                "slot": Icon("delete"),
-                "title": "Delete",
-                "color": "red",
-            },
-        ]
-    )
+    table. Finish/reset are driven by the <session-actions> custom element
+    (PATCH /api/session/<id> + client-side row swap); Edit/Delete stay links."""
     return make_row(
         NameWithIcon(session=session),
         session_time_range(session),
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
         session.created_at.strftime(dateformat),
-        actions,
+        SessionActions(session, csrf_token),
         id=f"session-row-{session.pk}",
     )
 
@@ -319,47 +282,6 @@ def new_session_from_existing_session(
         response["HX-Refresh"] = "true"
         return response
     return redirect("games:list_sessions")
-
-
-@login_required
-@require_POST
-def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
-    session.timestamp_end = timezone.now()
-    session.save()
-    messages.success(request, "Session finished.")
-    return redirect("games:list_sessions")
-
-
-@login_required
-def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
-    session = get_object_or_404(Session, id=session_id)
-    if request.method == "POST":
-        session.timestamp_start = timezone.now()
-        session.save()
-        messages.success(request, "Session start reset to now.")
-        return redirect("games:list_sessions")
-    return render_page(
-        request,
-        ConfirmPage(
-            title="Reset start time",
-            message=[
-                "Reset the start time of ",
-                Strong(
-                    children=[session.game.name if session.game else "this session"]
-                ),
-                " to now?",
-            ],
-            action_url=reverse(
-                "games:list_sessions_reset_session_start", args=[session.pk]
-            ),
-            csrf_token=get_token(request),
-            cancel_url=reverse("games:list_sessions"),
-            confirm_label="Reset to now",
-            confirm_color="gray",
-        ),
-        title="Reset start time",
-    )
 
 
 @login_required
