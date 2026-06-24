@@ -52,6 +52,15 @@ from games.sorting import (
 )
 
 
+def session_time_range(session: Session) -> str:
+    """The session's start (— end) timestamp string. Shared by every table that
+    renders a session, so the formatting cannot drift between them."""
+    start = local_strftime(session.timestamp_start)
+    if session.timestamp_end:
+        return f"{start} — {local_strftime(session.timestamp_end, timeformat)}"
+    return start
+
+
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
     """Canonical session-list row. Single source of truth shared by
     list_sessions and the htmx finish/reset fragments."""
@@ -98,8 +107,7 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
     )
     return make_row(
         NameWithIcon(session=session),
-        f"{local_strftime(session.timestamp_start)}"
-        f"{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+        session_time_range(session),
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
         session.created_at.strftime(dateformat),

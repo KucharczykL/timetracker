@@ -2,7 +2,6 @@ from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.middleware.csrf import get_token
@@ -47,9 +46,8 @@ from common.time import (
     dateformat,
     format_duration,
     local_strftime,
-    timeformat,
 )
-from common.utils import build_dynamic_filter, paginate, safe_division, truncate
+from common.utils import build_dynamic_filter, paginate, safe_division
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -62,6 +60,7 @@ from games.models import Game, GameStatusChange
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
+from games.views.session import session_time_range
 
 
 @login_required
@@ -435,9 +434,17 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
 
 
 def _game_action_buttons(game: Game) -> Node:
+    log_class = (
+        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
+        "rounded-s-lg inline-flex items-center gap-1 hover:bg-green-100 hover:text-green-700 "
+        "focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
+        "dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white "
+        "dark:hover:bg-green-700 dark:focus:ring-blue-500 dark:focus:text-white "
+        "hover:cursor-pointer"
+    )
     edit_class = (
         "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
-        "rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
+        "hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
         "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
         "dark:text-white dark:hover:text-white dark:hover:bg-gray-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
@@ -448,6 +455,16 @@ def _game_action_buttons(game: Game) -> Node:
         "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
         "dark:text-white dark:hover:text-white dark:hover:bg-red-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
+    )
+    log_link = A(
+        href=reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
+        children=[
+            Element(
+                "button",
+                attributes=[("type", "button"), ("class", log_class)],
+                children=[Icon("play"), "Log this game"],
+            )
+        ],
     )
     edit_link = A(
         href=reverse("games:edit_game", args=[game.id]),
@@ -475,7 +492,7 @@ def _game_action_buttons(game: Game) -> Node:
     )
     return Div(
         [("class", "inline-flex rounded-md shadow-xs mb-3"), ("role", "group")],
-        [edit_link, delete_link],
+        [log_link, edit_link, delete_link],
     )
 
 
@@ -716,92 +733,24 @@ def _purchases_section(game: Game) -> Node:
     )
 
 
-def _sessions_section(game: Game, request: HttpRequest) -> Node:
-    sessions_all = game.sessions.order_by("-timestamp_start")
-    session_count = sessions_all.count()
-    last_session = sessions_all.latest() if sessions_all.exists() else None
-
-    page_number = request.GET.get("page", 1)
-    page_obj = Paginator(sessions_all, 5).get_page(page_number)
-    elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
-        if session_count > 5
-        else None
-    )
-
-    header_action = Div(
-        children=[
-            A(href=reverse("games:add_session"))[
-                StyledButton(icon=True, color="blue", size="xs")[Icon("plus")]
-            ],
-            A(
-                href=reverse(
-                    "games:list_sessions_start_session_from_session",
-                    args=[last_session.pk],
-                ),
-                children=Popover(
-                    popover_content=last_session.game.name,
-                    children=[
-                        StyledButton(
-                            icon=True,
-                            color="gray",
-                            size="xs",
-                            children=[
-                                Icon("play"),
-                                truncate(f"{last_session.game.name}"),
-                            ],
-                        )
-                    ],
-                ),
-            )
-            if last_session and last_session.game
-            else "",
-        ],
-    )
+def _sessions_section(game: Game) -> Node:
+    sessions = game.sessions.order_by("-timestamp_start")
+    session_count = sessions.count()
     rows = [
         make_row(
-            NameWithIcon(session=session),
-            f"{local_strftime(session.timestamp_start)}{f' — {local_strftime(session.timestamp_end, timeformat)}' if session.timestamp_end else ''}",
+            session_time_range(session),
             session.duration_formatted_with_mark(),
-            ButtonGroup(
-                [
-                    {
-                        "href": reverse(
-                            "games:list_sessions_end_session", args=[session.pk]
-                        ),
-                        "slot": Icon("end"),
-                        "title": "Finish session now",
-                        "color": "green",
-                    }
-                    if session.timestamp_end is None
-                    else {},
-                    {
-                        "href": reverse("games:edit_session", args=[session.pk]),
-                        "slot": Icon("edit"),
-                        "color": "gray",
-                    },
-                    {
-                        "href": reverse("games:delete_session", args=[session.pk]),
-                        "slot": Icon("delete"),
-                        "color": "red",
-                    },
-                ]
-            ),
+            session.device.name if session.device else "",
         )
-        for session in page_obj.object_list
+        for session in sessions[:5]
     ]
     table = StyledTable(
         columns=[
-            Column("Game"),
             Column("Date"),
             Column("Duration"),
-            Column("Actions"),
+            Column("Device"),
         ],
         rows=rows,
-        header_action=header_action,
-        page_obj=page_obj,
-        elided_page_range=elided_page_range,
-        request=request,
     )
     return _game_section(
         "Sessions",
@@ -871,7 +820,7 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         [
             _game_header(game, request, _game_overview_metrics(game)),
             _purchases_section(game),
-            _sessions_section(game, request),
+            _sessions_section(game),
             _playevents_section(game),
             _history_section(game),
             _GET_SESSION_COUNT_SCRIPT,

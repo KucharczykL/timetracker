@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from django.urls import reverse
 from django.utils.html import escape
 
 from games.filters import (
@@ -13,6 +14,7 @@ from games.filters import (
 )
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views.game import view_game
+from games.views.session import session_time_range
 
 
 def _dt(day, hour=12):
@@ -73,6 +75,50 @@ def test_link_filters_scope_to_game(game):
 
     playevents = PlayEvent.objects.filter(PlayEventFilter.where(game=[game.id]).to_q())
     assert list(playevents) == list(game.playevents.all())
+
+
+def test_game_header_has_log_this_game_link(game, rendered):
+    """The start-session affordance lives in the game header (#55)."""
+    href = reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+    assert href in rendered
+    assert "Log this game" in rendered
+
+
+def test_sessions_section_is_read_only(game, rendered):
+    """Game-detail sessions table is plain data: no interactive row swap, no
+    per-row action buttons, no section-header add/resume buttons (#55)."""
+    session = game.sessions.first()
+    # No canonical interactive list row (id + htmx device-changed swap)
+    assert "session-row-" not in rendered
+    assert "device-changed" not in rendered
+    # No per-row edit/delete session actions
+    assert reverse("games:edit_session", args=[session.pk]) not in rendered
+    assert reverse("games:delete_session", args=[session.pk]) not in rendered
+    # No section-header resume button
+    assert "/session/add/from-list/" not in rendered
+    # Device shown as a plain column
+    assert "Device" in rendered
+
+
+def test_sessions_section_shows_last_five(db, django_user_model, rf):
+    """Only the five most-recent sessions render; the badge keeps the total."""
+    platform = Platform.objects.create(name="PC")
+    many = Game.objects.create(name="Many", platform=platform)
+    sessions = [
+        Session.objects.create(
+            game=many, timestamp_start=_dt(day), timestamp_end=_dt(day, 13)
+        )
+        for day in range(1, 7)  # six sessions, days 1..6
+    ]
+    user = django_user_model.objects.create_user(username="many", password="p")
+    request = rf.get(f"/game/{many.id}/")
+    request.user = user
+    request.session = {}
+    html = view_game(request, many.id).content.decode()
+
+    newest, oldest = sessions[-1], sessions[0]
+    assert escape(session_time_range(newest)) in html  # day 6 shown
+    assert escape(session_time_range(oldest)) not in html  # day 1 dropped (6th newest)
 
 
 def test_no_view_all_for_empty_section(db, django_user_model, rf):
