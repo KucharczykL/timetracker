@@ -1,25 +1,17 @@
-import functools
 from pathlib import Path
 
-_ICON_DIR = Path(__file__).resolve().parent.parent / "games" / "templates" / "icons"
+ICON_DIR = Path(__file__).resolve().parent.parent / "games" / "templates" / "icons"
 
 
-@functools.lru_cache(maxsize=1)
-def _load_icons() -> dict[str, str]:
-    """Load all icon HTML files into a dict.
+def iter_icon_sources() -> list[tuple[str, str]]:
+    """Return ``(name, raw_svg)`` for every icon snippet, sorted by name.
 
-    Cached so files are read once per process lifetime.
-    Delegation (e.g. nintendo-3ds -> nintendo) is handled by
-    both files containing identical SVG content.
+    The raw-source layer: used only by the ``gen_icons`` codegen command and the
+    faithfulness test. Runtime icon rendering goes through ``get_icon_node``
+    (in ``common.components.primitives``), which reads pre-built node trees and
+    never touches these files or any XML parser. Kept free of any dependency on
+    the generated module so the codegen command can run before it exists.
     """
-    icons: dict[str, str] = {}
-    for filepath in _ICON_DIR.glob("*.html"):
-        name = filepath.stem
-        icons[name] = filepath.read_text()
-    return icons
-
-
-def get_icon(name: str) -> str:
-    """Return the HTML for an icon by name. Falls back to 'unspecified'."""
-    icons = _load_icons()
-    return icons.get(name, icons.get("unspecified", ""))
+    return sorted(
+        (filepath.stem, filepath.read_text()) for filepath in ICON_DIR.glob("*.html")
+    )
