@@ -358,14 +358,19 @@ def _button_group_button(
     method: str = "",
     action: str = "",
     csrf_token: str = "",
+    button_attributes: list[HTMLAttribute] | None = None,
 ) -> Element:
     """Generate a single button-group member.
 
     Default form is a link: an inner ``<button>`` inside an ``<a href>``. When
     ``method="post"`` the member is instead a ``<form method="post">`` wrapping a
     CSRF input + a submit ``<button>`` — a state-changing action that needs no
-    JavaScript. The end-rounding is applied by ``ButtonGroup`` on the container
-    (keyed on child position), so this builder stays tag-agnostic.
+    JavaScript. When ``button_attributes`` is given the member is a bare
+    ``<button type="button">`` carrying those extra attributes (e.g. a
+    ``data-finish`` hook a custom element wires) — a JS-driven action with no
+    navigation; it is wrapped in a ``<span>`` so the container's descendant-button
+    rounding still applies. The end-rounding is applied by ``ButtonGroup`` on the
+    container (keyed on child position), so this builder stays tag-agnostic.
     """
     size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
@@ -376,6 +381,20 @@ def _button_group_button(
         f"{size_classes} {color_classes} "
         "inline-flex items-center justify-center hover:cursor-pointer"
     )
+
+    if button_attributes is not None:
+        return Span(class_="inline-flex")[
+            Element(
+                "button",
+                attributes=[
+                    ("type", "button"),
+                    ("title", title),
+                    ("class", button_classes),
+                    *button_attributes,
+                ],
+                children=[slot],
+            )
+        ]
 
     if method.lower() == "post":
         submit = Element(
@@ -456,6 +475,7 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
                 method=btn.get("method", ""),
                 action=btn.get("action", ""),
                 csrf_token=btn.get("csrf_token", ""),
+                button_attributes=btn.get("button_attributes"),
             )
         )
 
@@ -967,7 +987,12 @@ def Modal(
             ("id", modal_id),
             (
                 "class",
-                "fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
+                # z-40: above in-page positioned UI (popovers z-10, dropdown
+                # panels z-20) so the overlay dims and covers them, but below the
+                # toast container (z-50). Matters for modals rendered inline in a
+                # row (e.g. the session reset confirm) rather than portaled into
+                # the body-level #global-modal-container.
+                "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
                 "h-full w-full flex items-center justify-center",
             ),
         ],
