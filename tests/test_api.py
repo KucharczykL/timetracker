@@ -106,3 +106,66 @@ def test_session_detail_404(auth_client):
 def test_session_detail_requires_auth():
     session = _make_session()
     assert Client().get(f"/api/session/{session.id}").status_code == 401
+
+
+def test_session_list_envelope(auth_client):
+    for _ in range(3):
+        _make_session()
+    data = auth_client.get("/api/session/").json()
+    assert set(data.keys()) == {"items", "count", "page", "page_size", "num_pages"}
+    assert data["count"] == 3
+    assert data["page"] == 1
+    assert data["page_size"] == 10
+    assert data["num_pages"] == 1
+    assert len(data["items"]) == 3
+    assert "id" in data["items"][0] and "game" in data["items"][0]
+
+
+def test_session_list_pagination(auth_client):
+    for _ in range(12):
+        _make_session()
+    page1 = auth_client.get("/api/session/").json()
+    assert page1["count"] == 12
+    assert page1["num_pages"] == 2
+    assert len(page1["items"]) == 10
+    page2 = auth_client.get("/api/session/?page=2").json()
+    assert page2["page"] == 2
+    assert len(page2["items"]) == 2
+
+
+def test_session_list_sort_parity(auth_client):
+    older = _make_session(
+        timestamp_start=datetime(2020, 1, 1, tzinfo=dt_timezone.utc)
+    )
+    newer = _make_session(
+        timestamp_start=datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+    )
+    ascending = auth_client.get("/api/session/?sort=date").json()["items"]
+    ids = [row["id"] for row in ascending]
+    assert ids.index(older.id) < ids.index(newer.id)
+
+
+def test_session_list_filter_parity(auth_client):
+    import json
+
+    keep = _make_session()
+    other_platform = Platform.objects.create(name="Switch")
+    other_game = Game.objects.create(name="Celeste", platform=other_platform)
+    _make_session(game=other_game)
+    # Structured filter: sessions for the "keep" game only (game MultiCriterion INCLUDES).
+    # SessionFilter.game is MultiCriterion — JSON: {"game": {"value": [id], "modifier": "INCLUDES"}}
+    session_filter = {
+        "game": {
+            "value": [keep.game.id],
+            "modifier": "INCLUDES",
+        }
+    }
+    response = auth_client.get(
+        "/api/session/", {"filter": json.dumps(session_filter)}
+    )
+    items = response.json()["items"]
+    assert [row["id"] for row in items] == [keep.id]
+
+
+def test_session_list_requires_auth():
+    assert Client().get("/api/session/").status_code == 401
