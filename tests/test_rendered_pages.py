@@ -105,10 +105,13 @@ class RenderedPagesTest(TestCase):
                 self.assertIn("<table", html)
                 self.assertNoEscapedTags(html)
 
-    def test_session_list_keeps_inline_edit_attributes(self):
+    def test_session_list_row_has_id_and_device_selector(self):
         html = self.get("games:list_sessions").content.decode()
         self.assertIn(f"session-row-{self.session.pk}", html)
-        self.assertIn("device-changed from:body", html)
+        # The device selector stays (vanilla-fetch custom element); the htmx
+        # row-refresh wiring is gone.
+        self.assertIn(f"session-{self.session.pk}-device", html)
+        self.assertNotIn("device-changed from:body", html)
 
     # --- generic forms -------------------------------------------------------
 
@@ -253,50 +256,38 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Refund", html)
         self.assertNoEscapedTags(html)
 
-    def test_session_row_fragment_via_htmx(self):
-        # The inline "finish session" endpoint returns an in-place row swap
-        # (<tr id="session-row-{pk}">) plus an OOB navbar-playtime update.
-        resp = self.client.get(
+    def test_finish_session_posts_and_redirects(self):
+        # Finishing is now a full-page POST → redirect to the list (no row swap).
+        resp = self.client.post(
             reverse("games:list_sessions_end_session", args=[self.session.id]),
-            HTTP_HX_REQUEST="true",
-        )
-        html = resp.content.decode()
-        self.assertTrue(html.lstrip().startswith("<tr"))
-        self.assertIn(f'id="session-row-{self.session.id}"', html)
-        self.assertIn('id="navbar-playtime"', html)
-        self.assertIn('hx-swap-oob="true"', html)
-        self.assertIn(self.game.name, html)
-        self.assertNoEscapedTags(html)
-
-    def test_reset_session_start_to_now_via_htmx(self):
-        # The inline "reset start" endpoint sets timestamp_start to now and
-        # returns an in-place row swap plus an OOB navbar update.
-        running = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
-        )
-        before = timezone.now()
-        resp = self.client.get(
-            reverse("games:list_sessions_reset_session_start", args=[running.id]),
-            HTTP_HX_REQUEST="true",
-        )
-        self.assertEqual(resp.status_code, 200)
-        body = resp.content.decode()
-        self.assertIn(f'id="session-row-{running.id}"', body)
-        self.assertIn('id="navbar-playtime"', body)
-        self.assertNotIn("HX-Refresh", resp.headers)
-        running.refresh_from_db()
-        self.assertGreaterEqual(running.timestamp_start, before)
-
-    def test_reset_session_start_redirects_without_htmx(self):
-        running = Session.objects.create(
-            game=self.game,
-            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
-        )
-        resp = self.client.get(
-            reverse("games:list_sessions_reset_session_start", args=[running.id])
         )
         self.assertRedirects(resp, reverse("games:list_sessions"))
+        self.session.refresh_from_db()
+        self.assertIsNotNone(self.session.timestamp_end)
+
+    def test_reset_session_start_confirm_page_then_post(self):
+        running = Session.objects.create(
+            game=self.game,
+            timestamp_start=datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        )
+        url = reverse("games:list_sessions_reset_session_start", args=[running.id])
+        # GET renders a full confirm page that posts back to the same URL.
+        get_resp = self.client.get(url)
+        self.assertEqual(get_resp.status_code, 200)
+        get_body = get_resp.content.decode()
+        self.assertIn(f'action="{url}"', get_body)
+        self.assertNoEscapedTags(get_body)
+        running.refresh_from_db()
+        self.assertEqual(
+            running.timestamp_start,
+            datetime(2020, 1, 1, 10, 0, tzinfo=ZONEINFO),
+        )
+        # POST performs the reset and redirects.
+        before = timezone.now()
+        post_resp = self.client.post(url)
+        self.assertRedirects(post_resp, reverse("games:list_sessions"))
+        running.refresh_from_db()
+        self.assertGreaterEqual(running.timestamp_start, before)
 
     def test_reset_button_only_shown_for_running_sessions(self):
         running = Session.objects.create(

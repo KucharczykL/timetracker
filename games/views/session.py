@@ -9,12 +9,14 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.safestring import mark_safe
+from django.views.decorators.http import require_POST
 
 from common.components import (
     A,
     AddForm,
     ButtonGroup,
     Column,
+    ConfirmPage,
     Div,
     FormFields,
     Fragment,
@@ -28,13 +30,12 @@ from common.components import (
     SessionTimestampButtons,
     StyledButton,
     TableData,
-    TableRow,
     TableRowData,
     make_row,
     paginated_table_content,
 )
-from common.layout import NavbarPlaytime, render_page
-from games.views.general import model_counts
+from common.components.primitives import Strong
+from common.layout import render_page
 from common.time import (
     dateformat,
 )
@@ -52,18 +53,16 @@ from games.sorting import (
 
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
-    """Canonical session-list row. Single source of truth shared by
-    list_sessions and the htmx finish/reset fragments."""
-    row_selector = f"#session-row-{session.pk}"
+    """Canonical session-list row, the single source of truth for the list
+    table. Finish is a POST form submit; reset links to a confirm page."""
     end_url = reverse("games:list_sessions_end_session", args=[session.pk])
     reset_url = reverse("games:list_sessions_reset_session_start", args=[session.pk])
     actions = ButtonGroup(
         [
             {
-                "href": end_url,
-                "hx_get": end_url,
-                "hx_target": row_selector,
-                "hx_swap": "outerHTML",
+                "method": "post",
+                "action": end_url,
+                "csrf_token": csrf_token,
                 "slot": Icon("end"),
                 "title": "Finish session now",
                 "color": "green",
@@ -72,10 +71,6 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
             else {},
             {
                 "href": reset_url,
-                "hx_get": reset_url,
-                "hx_target": row_selector,
-                "hx_swap": "outerHTML",
-                "hx_confirm": "Reset this session's start time to now?",
                 "slot": Icon("reset"),
                 "title": "Reset start to now",
                 "color": "gray",
@@ -103,16 +98,7 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
         session.created_at.strftime(dateformat),
         actions,
         id=f"session-row-{session.pk}",
-        hx_trigger="device-changed from:body",
-        hx_select=row_selector,
-        hx_swap="outerHTML",
     )
-
-
-def session_row(session: Session, device_list, csrf_token: str) -> Node:
-    """The single-session <tr> node, rendered through the same TableRow
-    path the list table uses."""
-    return TableRow(session_row_data(session, device_list, csrf_token))
 
 
 @login_required
@@ -310,22 +296,6 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
 
 
-def _row_with_navbar(request: HttpRequest, session: Session) -> HttpResponse:
-    device_list = Device.objects.order_by("name")
-    counts = model_counts(request)
-    fragment = Fragment(
-        session_row(session, device_list, get_token(request)),
-        NavbarPlaytime(
-            counts["today_played"],
-            counts["last_7_played"],
-            today_url=counts["today_url"],
-            last_7_url=counts["last_7_url"],
-            oob=True,
-        ),
-    )
-    return HttpResponse(str(fragment))
-
-
 def clone_session_by_id(session_id: int) -> Session:
     session = get_object_or_404(Session, id=session_id)
     clone = session
@@ -352,23 +322,44 @@ def new_session_from_existing_session(
 
 
 @login_required
-def end_session(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
+@require_POST
+def end_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
     session.timestamp_end = timezone.now()
     session.save()
-    if request.htmx:
-        return _row_with_navbar(request, session)
+    messages.success(request, "Session finished.")
     return redirect("games:list_sessions")
 
 
 @login_required
-def reset_session_start(request: HtmxHttpRequest, session_id: int) -> HttpResponse:
+def reset_session_start(request: HttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
-    session.timestamp_start = timezone.now()
-    session.save()
-    if request.htmx:
-        return _row_with_navbar(request, session)
-    return redirect("games:list_sessions")
+    if request.method == "POST":
+        session.timestamp_start = timezone.now()
+        session.save()
+        messages.success(request, "Session start reset to now.")
+        return redirect("games:list_sessions")
+    return render_page(
+        request,
+        ConfirmPage(
+            title="Reset start time",
+            message=[
+                "Reset the start time of ",
+                Strong(
+                    children=[session.game.name if session.game else "this session"]
+                ),
+                " to now?",
+            ],
+            action_url=reverse(
+                "games:list_sessions_reset_session_start", args=[session.pk]
+            ),
+            csrf_token=get_token(request),
+            cancel_url=reverse("games:list_sessions"),
+            confirm_label="Reset to now",
+            confirm_color="gray",
+        ),
+        title="Reset start time",
+    )
 
 
 @login_required

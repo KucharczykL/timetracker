@@ -22,34 +22,49 @@ def running_session(db):
     )
 
 
-def test_end_session_htmx_returns_row_and_oob_navbar(auth_client, running_session):
+def test_end_session_post_redirects_and_ends(auth_client, running_session):
     url = reverse("games:list_sessions_end_session", args=[running_session.pk])
-    response = auth_client.get(url, HTTP_HX_REQUEST="true")
-    body = response.content.decode()
-    assert response.status_code == 200
-    assert f'id="session-row-{running_session.pk}"' in body
-    assert 'id="navbar-playtime"' in body
-    assert 'hx-swap-oob="true"' in body
+    response = auth_client.post(url)
+    assert response.status_code == 302
+    assert response.url == reverse("games:list_sessions")
     running_session.refresh_from_db()
     assert running_session.timestamp_end is not None
 
 
-def test_reset_session_start_htmx_returns_row_no_refresh_header(
-    auth_client, running_session
-):
+def test_end_session_get_not_allowed(auth_client, running_session):
+    url = reverse("games:list_sessions_end_session", args=[running_session.pk])
+    response = auth_client.get(url)
+    assert response.status_code == 405
+    running_session.refresh_from_db()
+    assert running_session.timestamp_end is None
+
+
+def test_reset_session_start_get_shows_confirm_page(auth_client, running_session):
     original_start = running_session.timestamp_start
     url = reverse("games:list_sessions_reset_session_start", args=[running_session.pk])
-    response = auth_client.get(url, HTTP_HX_REQUEST="true")
+    response = auth_client.get(url)
     body = response.content.decode()
     assert response.status_code == 200
-    assert f'id="session-row-{running_session.pk}"' in body
-    assert 'id="navbar-playtime"' in body
-    assert "HX-Refresh" not in response.headers
+    # A full confirm page whose form posts back to the same URL.
+    assert f'action="{url}"' in body
+    assert 'method="post"' in body
+    assert "Reset to now" in body
+    running_session.refresh_from_db()
+    assert running_session.timestamp_start == original_start
+
+
+def test_reset_session_start_post_redirects_and_resets(auth_client, running_session):
+    original_start = running_session.timestamp_start
+    url = reverse("games:list_sessions_reset_session_start", args=[running_session.pk])
+    response = auth_client.post(url)
+    assert response.status_code == 302
+    assert response.url == reverse("games:list_sessions")
     running_session.refresh_from_db()
     assert running_session.timestamp_start > original_start
 
 
 def test_clone_htmx_returns_hx_refresh(auth_client, running_session):
+    # Clone is converted in a later phase; still uses the htmx refresh for now.
     url = reverse(
         "games:list_sessions_start_session_from_session",
         args=[running_session.pk],
@@ -59,10 +74,3 @@ def test_clone_htmx_returns_hx_refresh(auth_client, running_session):
     assert response.status_code == 204
     assert response.headers.get("HX-Refresh") == "true"
     assert Session.objects.count() == before + 1
-
-
-def test_end_session_non_htmx_redirects(auth_client, running_session):
-    url = reverse("games:list_sessions_end_session", args=[running_session.pk])
-    response = auth_client.get(url)
-    assert response.status_code == 302
-    assert response.url == reverse("games:list_sessions")
