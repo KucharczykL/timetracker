@@ -712,7 +712,7 @@ def _purchases_section(game: Game) -> Node:
 
 
 def _sessions_section(game: Game) -> Node:
-    sessions = game.sessions.order_by("-timestamp_start")
+    sessions = game.sessions.select_related("device").order_by("-timestamp_start")
     session_count = sessions.count()
     rows = [
         make_row(
