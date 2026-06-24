@@ -195,6 +195,13 @@ def _child_key(child: object) -> tuple[str, bool]:
     return (str(child), False)
 
 
+# HTML "raw text" elements: their content is character data, not markup, so the
+# body is emitted verbatim. Escaping would corrupt JS/CSS (`a < b` → `a &lt; b`,
+# `'` → `&#x27;`). The caller must ensure the body contains no closing-tag
+# sequence (e.g. `</script>`) — see the `</`→`<\/` guard around the messages JSON.
+_RAW_TEXT_TAGS = frozenset({"script", "style"})
+
+
 @lru_cache(maxsize=4096)
 def _render_element(
     tag_name: str,
@@ -205,6 +212,7 @@ def _render_element(
 
     ``attrs_key`` is (name, stringified value) pairs (values always escaped);
     ``children_key`` is (text, is_safe) pairs (safe passes through, else escaped).
+    For raw-text tags (``<script>``/``<style>``) the body is emitted verbatim.
 
     Children are concatenated with no separator: in HTML, inter-element
     whitespace is significant for inline content (a newline between two inline
@@ -213,8 +221,10 @@ def _render_element(
     before the node tree, and matches ``Fragment``'s default ``separator=""``.
     For deliberate spacing, put it in an explicit child.
     """
+    raw_text = tag_name in _RAW_TEXT_TAGS
     children_blob = "".join(
-        child if is_safe else escape(child) for child, is_safe in children_key
+        child if (is_safe or raw_text) else escape(child)
+        for child, is_safe in children_key
     )
     if attrs_key:
         attributes_blob = " " + " ".join(

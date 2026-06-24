@@ -15,7 +15,6 @@ from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
-from django.utils.html import conditional_escape
 from django.utils.safestring import SafeText
 from django_htmx.jinja import django_htmx_script
 
@@ -30,7 +29,6 @@ from common.components.primitives import (
     Link,
     Meta,
     Nav,
-    Safe,
     Script,
     Span,
     Title,
@@ -41,17 +39,19 @@ if TYPE_CHECKING:
     from common.components import Node
 
 # Static head script that sets the dark/light class before paint (avoids FOUC).
-_THEME_FOUC_SCRIPT = """<script>
+# Bare JS body — emitted inside a `Script()` node (a raw-text element).
+_THEME_FOUC_SCRIPT = """
             if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.classList.add('dark');
             } else {
                 document.documentElement.classList.remove('dark')
             }
-        </script>"""
+        """
 
 # The main module script: crown icon mount + theme-toggle wiring.
-# Split around the single dynamic value (game.mastered).
-_MAIN_SCRIPT_A = """<script type="module">
+# Bare JS body (no `<script>` wrapper) — split around the single dynamic value
+# (game.mastered) and emitted inside a `Script(type="module")` node.
+_MAIN_SCRIPT_A = """
             document.addEventListener('DOMContentLoaded', () => {
                 if (window.mountCrownIcon) {
                     window.mountCrownIcon('#crown-icon-mount-point', {
@@ -97,7 +97,7 @@ _MAIN_SCRIPT_B = """
                     });
                 }
             });
-        </script>"""
+        """
 
 # Toast notification region (Alpine.js). Verbatim from the old base.html.
 _TOAST_CONTAINER = """<div x-data="toastStore()"
@@ -508,8 +508,8 @@ def Page(
             Html(lang="en")[
                 Head()[
                     [
-                        Title()[title],
-                        Meta(name="charset", content="utf-8"),
+                        Title()[f"Timetracker - {title}"],
+                        Meta(charset="utf-8"),
                         Meta(name="description", content="Self-hosted time-tracker."),
                         Meta(
                             name="keywords",
@@ -533,7 +533,7 @@ def Page(
                         Script(id="django-messages", type="application/json")[
                             messages_json
                         ],
-                        django_htmx_script(nonce=None),
+                        Safe(str(django_htmx_script(nonce=None))),
                         Link(rel="stylesheet", href=static("base.css")),
                     ]
                 ],
@@ -556,15 +556,15 @@ def Page(
                     Span(
                         class_="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600"
                     )[f"{version()} ({version_date()})"],
-                    all_scripts,
-                    _main_script(mastered),
+                    Safe(all_scripts),
+                    Script(type="module")[_main_script(mastered)],
                     Div(id="global-modal-container", hx_swap_oob="true"),
                     Safe(_TOAST_CONTAINER),
                 ],
             ],
         )
 
-    return html_document(title=f"Timetracker - {conditional_escape(title)}")
+    return html_document(title=title)
 
 
 def render_page(

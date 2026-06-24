@@ -382,6 +382,21 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertNotIn("<script>", result)
         self.assertIn("&lt;script&gt;", result)
 
+    def test_raw_text_element_body_is_not_escaped(self):
+        # <script>/<style> are HTML raw-text elements: their body is character
+        # data, so it must be emitted verbatim (escaping would corrupt JS/CSS).
+        js = "if (a < b && c) f('x');"
+        result = str(components.Element(tag_name="script", children=[js]))
+        self.assertIn(js, result)
+        self.assertNotIn("&lt;", result)
+        self.assertNotIn("&#x27;", result)
+        self.assertNotIn("&amp;", result)
+
+        css = "a > b { content: '\"'; }"
+        result = str(components.Element(tag_name="style", children=[css]))
+        self.assertIn(css, result)
+        self.assertNotIn("&gt;", result)
+
     def test_safe_node_children_pass_through(self):
         result = str(
             components.Element(

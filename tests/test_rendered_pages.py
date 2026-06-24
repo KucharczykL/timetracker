@@ -88,6 +88,21 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertIn("Timetracker - Manage play events", html)
 
+    def test_head_scripts_are_not_escaped(self):
+        """Inline <script> bodies in the head must render as real markup, not
+        HTML-escaped text (the f-string→component conversion regressed this:
+        <script> is a raw-text element, so its body is emitted verbatim)."""
+        html = self.get("games:list_playevents").content.decode()
+        # No script tag should appear escaped anywhere on the page.
+        self.assertNotIn("&lt;script", html)
+        # Inline JS keeps its quotes (escaping would yield &#x27;).
+        self.assertIn("htmx.config.scrollBehavior = 'smooth';", html)
+        self.assertNotIn("&#x27;smooth&#x27;", html)
+        # Correct charset markup, not <meta name="charset">.
+        self.assertIn('<meta charset="utf-8"', html)
+        # A single, un-escaped django-messages JSON block.
+        self.assertEqual(html.count('id="django-messages"'), 1)
+
     # --- list pages ----------------------------------------------------------
 
     def test_list_pages_render_table_unescaped(self):
