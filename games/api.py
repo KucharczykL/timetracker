@@ -2,20 +2,30 @@ from datetime import date, datetime
 from typing import List
 
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
+from ninja.security import django_auth
 
+from games.filters import parse_session_filter
 from games.models import Device, Game, Platform, PlayEvent, Session
+from games.sorting import (
+    SESSION_DEFAULT_SORT,
+    SESSION_SORTS,
+    apply_sort,
+    parse_find_filter,
+)
 
-api = NinjaAPI()
+api = NinjaAPI(auth=django_auth)
 playevent_router = Router()
 game_router = Router()
 device_router = Router()
 platform_router = Router()
 
 NOW_FACTORY = django_timezone_now
+PAGE_SIZE = 10
 
 
 class GameStatusUpdate(Schema):
@@ -154,6 +164,84 @@ api.add_router("/devices", device_router)
 api.add_router("/platforms", platform_router)
 
 session_router = Router()
+
+
+class PlatformOut(Schema):
+    name: str
+    icon: str
+
+
+class GameOut(Schema):
+    id: int
+    name: str
+    platform: PlatformOut | None = None
+
+
+class DeviceOut(Schema):
+    id: int
+    name: str
+    type: str
+
+
+class SessionOut(Schema):
+    id: int
+    game: GameOut | None = None
+    device: DeviceOut | None = None
+    timestamp_start: datetime
+    timestamp_end: datetime | None = None
+    duration_manual_seconds: int
+    is_manual: bool
+    note: str
+    emulated: bool
+    created_at: datetime
+    modified_at: datetime
+
+    @staticmethod
+    def resolve_duration_manual_seconds(obj: Session) -> int:
+        return int(obj.duration_manual.total_seconds()) if obj.duration_manual else 0
+
+    @staticmethod
+    def resolve_is_manual(obj: Session) -> bool:
+        return obj.is_manual()
+
+
+class SessionListOut(Schema):
+    items: list[SessionOut]
+    count: int
+    page: int
+    page_size: int
+    num_pages: int
+
+
+@session_router.get("/", response=SessionListOut)
+def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
+    sessions = Session.objects.select_related("game", "game__platform", "device")
+    if filter:
+        session_filter = parse_session_filter(filter)
+        if session_filter is not None:
+            sessions = sessions.filter(session_filter.to_q())
+    # `sort` is read from request.GET by parse_find_filter; declared above so it
+    # appears in the OpenAPI schema. Unknown sort keys are silently ignored.
+    sort_result = apply_sort(
+        sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
+    )
+    paginator = Paginator(sort_result.queryset, PAGE_SIZE)
+    page_obj = paginator.get_page(page)
+    return {
+        "items": list(page_obj.object_list),
+        "count": paginator.count,
+        "page": page_obj.number,
+        "page_size": PAGE_SIZE,
+        "num_pages": paginator.num_pages,
+    }
+
+
+@session_router.get("/{session_id}", response=SessionOut)
+def get_session(request, session_id: int):
+    return get_object_or_404(
+        Session.objects.select_related("game", "game__platform", "device"),
+        id=session_id,
+    )
 
 
 class SessionDeviceUpdate(Schema):
