@@ -357,7 +357,13 @@ def _button_group_button(
     """Generate a single button-group button (inner <button> inside <a>)."""
     size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
-    button_classes = f"{size_classes} {color_classes} hover:cursor-pointer"
+    # inline-flex keeps every button the same height regardless of content — an
+    # icon+text button (e.g. "Log this game") would otherwise sit taller than its
+    # text-only siblings and step the segmented group's bottom edge.
+    button_classes = (
+        f"{size_classes} {color_classes} "
+        "inline-flex items-center justify-center hover:cursor-pointer"
+    )
 
     a_attrs: list[HTMLAttribute] = [("href", href)]
     if hx_get:
