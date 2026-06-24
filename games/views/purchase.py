@@ -161,7 +161,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             Column("Purchased", "purchased"),
             Column("Refunded", "refunded"),
             Column("Created", "created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "sort_terms": sort.terms,
         "rows": [_render_purchase_row(purchase) for purchase in purchases],

@@ -46,7 +46,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             Column("Icon"),
             Column("Group"),
             Column("Created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "rows": [
             make_row(

@@ -211,7 +211,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
             Column("Duration", "duration"),
             Column("Device", "device"),
             Column("Created", "created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "sort_terms": sort.terms,
         "rows": [

@@ -8,7 +8,7 @@ Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import NamedTuple, NotRequired, TypedDict
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from django.conf import settings
 from django.http import QueryDict
@@ -404,9 +404,21 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
             )
         )
 
+    # The group right-aligns itself within its table cell (it is always the
+    # trailing "Actions" cell), so alignment is owned by the component rather
+    # than a positional CSS rule on the row. The inner group keeps the rounded
+    # shadow hugging the buttons.
     return Div(
-        attributes=[("class", "inline-flex rounded-md shadow-xs"), ("role", "group")],
-        children=children,
+        attributes=[("class", "flex justify-end")],
+        children=[
+            Div(
+                attributes=[
+                    ("class", "inline-flex rounded-md shadow-xs"),
+                    ("role", "group"),
+                ],
+                children=children,
+            )
+        ],
     )
 
 
@@ -949,13 +961,19 @@ class TableRowData(TypedDict):
     attributes: NotRequired[list[HTMLAttribute]]
 
 
+type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
+
+
 class Column(NamedTuple):
     """One table column header. ``sort_key`` (a public key in the view's
     ``*_SORTS`` map) makes the header clickable-to-sort; ``None`` → a static
-    header (e.g. an "Actions" column)."""
+    header (e.g. an "Actions" column). ``align`` aligns *the header*; the body
+    cell owns its own alignment (e.g. an Actions ``ButtonGroup`` right-aligns
+    itself), so set both to "right" together for an Actions column."""
 
     label: str
     sort_key: str | None = None
+    align: Align = "left"
 
 
 class TableData(TypedDict):
@@ -1004,7 +1022,7 @@ def TableRow(data: TableRowData) -> Element:
         "odd:bg-white dark:odd:bg-gray-900 even:bg-gray-50 "
         "dark:even:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 "
         "dark:hover:bg-gray-600 [&_a]:underline [&_a]:underline-offset-4 "
-        "[&_a]:decoration-2 [&_td:last-child]:text-right"
+        "[&_a]:decoration-2"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
@@ -1308,7 +1326,7 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
 def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
-    base_class = "px-6 py-3"
+    base_class = "px-6 py-3" + (" text-right" if column.align == "right" else "")
     if column.sort_key is None:
         return Th(
             attributes=[("scope", "col"), ("class", base_class)],

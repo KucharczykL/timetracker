@@ -1027,6 +1027,36 @@ class StyledTableColumnGuardTest(SimpleTestCase):
         self.assertIn("<td", result)
 
 
+class ColumnAlignmentTest(SimpleTestCase):
+    """First-class column alignment (replaces the legacy positional row hack):
+    the header honors ``Column.align``; the Actions ``ButtonGroup`` owns its own
+    right-alignment, so it works in list tables and single-row htmx fragments."""
+
+    @staticmethod
+    def _thead(result):
+        return result.split("<thead")[1].split("</thead>")[0]
+
+    def _render(self, columns):
+        return str(components.StyledTable(columns=columns, rows=[], request=None))
+
+    def test_right_aligned_header_is_text_right(self):
+        thead = self._thead(self._render([components.Column("Actions", align="right")]))
+        self.assertIn("text-right", thead)
+
+    def test_default_header_is_not_text_right(self):
+        thead = self._thead(self._render([components.Column("Device")]))
+        self.assertNotIn("text-right", thead)
+
+    def test_button_group_owns_its_right_alignment(self):
+        html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
+        self.assertIn("justify-end", html)
+
+    def test_row_class_has_no_positional_last_cell_alignment(self):
+        # The legacy [&_td:last-child]:text-right hack is gone from the row.
+        row = str(components.TableRow(components.make_row("a", "b")))
+        self.assertNotIn("td:last-child", row)
+
+
 class SortableHeaderTest(SimpleTestCase):
     """Clickable sortable column headers (issue #73)."""
 

@@ -116,7 +116,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             Column("Status", "status"),
             Column("Wikidata", "wikidata"),
             Column("Created", "created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "sort_terms": sort.terms,
         "rows": [
@@ -720,7 +720,7 @@ def _purchases_section(game: Game) -> Node:
             Column("Type"),
             Column("Date"),
             Column("Price"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         rows=rows,
     )

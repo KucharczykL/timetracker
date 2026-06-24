@@ -44,7 +44,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             Column("Name"),
             Column("Type"),
             Column("Created"),
-            Column("Actions"),
+            Column("Actions", align="right"),
         ],
         "rows": [
             make_row(
