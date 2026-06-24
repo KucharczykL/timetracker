@@ -126,6 +126,15 @@ Thead = _html_element("thead")
 Tbody = _html_element("tbody")
 Caption = _html_element("caption")
 Nav = _html_element("nav")
+Img = _html_element("img")
+Html = _html_element("html")
+Head = _html_element("head")
+Body = _html_element("body")
+Meta = _html_element("meta")
+Title = _html_element("title")
+Doctype = Safe("!DOCTYPE html")
+Script = _html_element("script")
+Link = _html_element("link")
 
 
 def _popover_html(
