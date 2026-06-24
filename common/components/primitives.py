@@ -306,9 +306,17 @@ def StyledButton(
     )
 
 
+# Button-group sizing is separate from color so a group can render small icon
+# buttons (default) or larger text buttons (the game-header actions). "sm"
+# reproduces the original baked-in size, so existing table groups are unchanged.
+_GROUP_BUTTON_SIZES = {
+    "sm": "px-2 py-1 text-xs",
+    "md": "px-4 py-2 text-sm",
+}
+
 _GROUP_BUTTON_COLORS = {
     "gray": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
+        "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 "
         "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
@@ -316,7 +324,7 @@ _GROUP_BUTTON_COLORS = {
         "dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "red": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
+        "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-red-500 hover:text-white focus:z-10 "
         "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
@@ -324,7 +332,7 @@ _GROUP_BUTTON_COLORS = {
         "dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "green": (
-        "px-2 py-1 text-xs font-medium text-gray-900 bg-white border "
+        "font-medium text-gray-900 bg-white border "
         "border-gray-200 hover:bg-green-500 hover:border-green-600 "
         "hover:text-white focus:z-10 focus:ring-2 focus:ring-green-700 "
         "focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
@@ -344,9 +352,12 @@ def _button_group_button(
     hx_target: str = "",
     hx_swap: str = "",
     hx_confirm: str = "",
+    size: str = "sm",
 ) -> Element:
     """Generate a single button-group button (inner <button> inside <a>)."""
+    size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
+    button_classes = f"{size_classes} {color_classes} hover:cursor-pointer"
 
     a_attrs: list[HTMLAttribute] = [("href", href)]
     if hx_get:
@@ -370,7 +381,7 @@ def _button_group_button(
         attributes=[
             ("type", "button"),
             ("title", title),
-            ("class", color_classes + " hover:cursor-pointer"),
+            ("class", button_classes),
         ],
         children=[slot],
     )
@@ -378,13 +389,15 @@ def _button_group_button(
     return Element("a", attributes=a_attrs, children=[button])
 
 
-def ButtonGroup(buttons: list[dict] | None = None) -> Element:
+def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Element:
     """Generate a button group div.
 
     Each button dict accepts: href, slot (required), color, title, hx_get,
     hx_target, hx_swap, hx_confirm.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
+    ``size`` ("sm" default for icon buttons, "md" for larger text buttons) is
+    applied to every button in the group.
     """
     buttons = buttons or []
     children: list[Node] = []
@@ -401,6 +414,7 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
                 hx_target=btn.get("hx_target", ""),
                 hx_swap=btn.get("hx_swap", ""),
                 hx_confirm=btn.get("hx_confirm", ""),
+                size=size,
             )
         )
 

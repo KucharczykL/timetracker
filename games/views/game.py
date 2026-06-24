@@ -13,7 +13,6 @@ from common.components import (
     H1,
     A,
     AddForm,
-    Button,
     ButtonGroup,
     Column,
     CsrfInput,
@@ -435,43 +434,36 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
 
 
 def _game_action_buttons(game: Game) -> Node:
-    log_class = (
-        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
-        "rounded-s-lg inline-flex items-center gap-1 hover:bg-green-100 hover:text-green-700 "
-        "focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
-        "dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white "
-        "dark:hover:bg-green-700 dark:focus:ring-blue-500 dark:focus:text-white "
-        "hover:cursor-pointer"
-    )
-    edit_class = (
-        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
-        "hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
-        "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-        "dark:text-white dark:hover:text-white dark:hover:bg-gray-700 "
-        "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
-    )
-    delete_class = (
-        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 "
-        "rounded-e-lg hover:bg-red-100 hover:text-blue-700 focus:z-10 focus:ring-2 "
-        "focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-        "dark:text-white dark:hover:text-white dark:hover:bg-red-700 "
-        "dark:focus:ring-blue-500 dark:focus:text-white hover:cursor-pointer"
-    )
-    log_link = A(
-        href=reverse("games:add_session_for_game", kwargs={"game_id": game.id})
-    )[Button(type="button", class_=log_class)[Icon("play"), "Log this game"]]
-    edit_link = A(href=reverse("games:edit_game", args=[game.id]))[
-        Button(type="button", class_=edit_class)["Edit"]
+    # A segmented button group, same component as the table Actions cells. The
+    # group owns position-based rounding and hover styling; margin is ours.
+    return Div(class_="mb-3")[
+        ButtonGroup(
+            [
+                {
+                    "href": reverse(
+                        "games:add_session_for_game", kwargs={"game_id": game.id}
+                    ),
+                    "slot": Span(class_="inline-flex items-center gap-1")[
+                        Icon("play"), "Log this game"
+                    ],
+                    "color": "green",
+                },
+                {
+                    "href": reverse("games:edit_game", args=[game.id]),
+                    "slot": "Edit",
+                    "color": "gray",
+                },
+                {
+                    "href": "#",
+                    "slot": "Delete",
+                    "color": "red",
+                    "hx_get": reverse("games:delete_game_confirmation", args=[game.id]),
+                    "hx_target": "#global-modal-container",
+                },
+            ],
+            size="md",
+        )
     ]
-    delete_link = A(
-        href="#",
-        hx_get=reverse("games:delete_game_confirmation", args=[game.id]),
-        hx_target="#global-modal-container",
-    )[Button(type="button", class_=delete_class)["Delete"]]
-    return Div(
-        [("class", "inline-flex rounded-md shadow-xs mb-3"), ("role", "group")],
-        [log_link, edit_link, delete_link],
-    )
 
 
 def _game_history(statuschanges: QuerySet[GameStatusChange]) -> Node:
