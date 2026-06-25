@@ -12,4 +12,4 @@ make init
 ```
 
 This installs the correct Python version, syncs all dependencies, and installs npm packages.
-Afterwards, you can start the development server using `make dev`.
+Afterwards, you can start the development server using `make dev` or `make server` (without Tailwind watcher).
