@@ -11,7 +11,7 @@ with AND/OR/NOT composition and typed criterion fields.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from django.db.models import Q, QuerySet
@@ -63,9 +63,9 @@ class FindFilter:
 class GameFilter(OperatorFilter):
     """Filter for the Game model."""
 
-    AND: GameFilter | None = None
-    OR: GameFilter | None = None
-    NOT: GameFilter | None = None
+    AND: list[GameFilter] = field(default_factory=list)
+    OR: list[GameFilter] = field(default_factory=list)
+    NOT: list[GameFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
     sort_name: StringCriterion | None = None
@@ -348,17 +348,8 @@ class GameFilter(OperatorFilter):
                 parent_field="platform_id",
             )
 
-        # ── AND / OR / NOT sub-filters ──
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # ── AND / OR / NOT sub-filters (n-ary; see OperatorFilter) ──
+        return self._apply_operators(q)
 
     @staticmethod
     def _playtime_to_q(c: IntCriterion) -> Q:
@@ -388,9 +379,9 @@ class GameFilter(OperatorFilter):
 class SessionFilter(OperatorFilter):
     """Filter for the Session model."""
 
-    AND: SessionFilter | None = None
-    OR: SessionFilter | None = None
-    NOT: SessionFilter | None = None
+    AND: list[SessionFilter] = field(default_factory=list)
+    OR: list[SessionFilter] = field(default_factory=list)
+    NOT: list[SessionFilter] = field(default_factory=list)
 
     game: MultiCriterion | None = None  # filters on game_id
     device: MultiCriterion | None = None  # filters on device_id
@@ -493,17 +484,8 @@ class SessionFilter(OperatorFilter):
                 parent_field="device_id",
             )
 
-        # AND / OR / NOT
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # AND / OR / NOT (n-ary; see OperatorFilter)
+        return self._apply_operators(q)
 
 
 # ── PurchaseFilter ─────────────────────────────────────────────────────────
@@ -513,9 +495,9 @@ class SessionFilter(OperatorFilter):
 class PurchaseFilter(OperatorFilter):
     """Filter for the Purchase model."""
 
-    AND: PurchaseFilter | None = None
-    OR: PurchaseFilter | None = None
-    NOT: PurchaseFilter | None = None
+    AND: list[PurchaseFilter] = field(default_factory=list)
+    OR: list[PurchaseFilter] = field(default_factory=list)
+    NOT: list[PurchaseFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
     platform: ChoiceCriterion | None = None  # platform_id
@@ -630,16 +612,8 @@ class PurchaseFilter(OperatorFilter):
                 parent_field="platform_id",
             )
 
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # AND / OR / NOT (n-ary; see OperatorFilter)
+        return self._apply_operators(q)
 
     @staticmethod
     def _games_to_q(criterion: ChoiceCriterion) -> Q:
@@ -709,9 +683,9 @@ class PurchaseFilter(OperatorFilter):
 class DeviceFilter(OperatorFilter):
     """Filter for the Device model."""
 
-    AND: DeviceFilter | None = None
-    OR: DeviceFilter | None = None
-    NOT: DeviceFilter | None = None
+    AND: list[DeviceFilter] = field(default_factory=list)
+    OR: list[DeviceFilter] = field(default_factory=list)
+    NOT: list[DeviceFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
     type: ChoiceCriterion | None = None
@@ -752,16 +726,8 @@ class DeviceFilter(OperatorFilter):
                 related_lookup="device_id",
             )
 
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # AND / OR / NOT (n-ary; see OperatorFilter)
+        return self._apply_operators(q)
 
 
 # ── PlatformFilter ─────────────────────────────────────────────────────────
@@ -771,9 +737,9 @@ class DeviceFilter(OperatorFilter):
 class PlatformFilter(OperatorFilter):
     """Filter for the Platform model."""
 
-    AND: PlatformFilter | None = None
-    OR: PlatformFilter | None = None
-    NOT: PlatformFilter | None = None
+    AND: list[PlatformFilter] = field(default_factory=list)
+    OR: list[PlatformFilter] = field(default_factory=list)
+    NOT: list[PlatformFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
     group: StringCriterion | None = None
@@ -825,16 +791,8 @@ class PlatformFilter(OperatorFilter):
                 related_lookup="platform_id",
             )
 
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # AND / OR / NOT (n-ary; see OperatorFilter)
+        return self._apply_operators(q)
 
 
 # ── PlayEventFilter ────────────────────────────────────────────────────────
@@ -844,9 +802,9 @@ class PlatformFilter(OperatorFilter):
 class PlayEventFilter(OperatorFilter):
     """Filter for the PlayEvent model."""
 
-    AND: PlayEventFilter | None = None
-    OR: PlayEventFilter | None = None
-    NOT: PlayEventFilter | None = None
+    AND: list[PlayEventFilter] = field(default_factory=list)
+    OR: list[PlayEventFilter] = field(default_factory=list)
+    NOT: list[PlayEventFilter] = field(default_factory=list)
 
     game: MultiCriterion | None = None  # filters on game_id
     started: DateCriterion | None = None  # DateField, bare lookup
@@ -897,16 +855,8 @@ class PlayEventFilter(OperatorFilter):
                 parent_field="game_id",
             )
 
-        sub = self.sub_filter()
-        if sub is not None:
-            if self.AND is not None:
-                q &= sub.to_q()
-            elif self.OR is not None:
-                q |= sub.to_q()
-            elif self.NOT is not None:
-                q &= ~sub.to_q()
-
-        return q
+        # AND / OR / NOT (n-ary; see OperatorFilter)
+        return self._apply_operators(q)
 
 
 # ── Convenience helpers ────────────────────────────────────────────────────

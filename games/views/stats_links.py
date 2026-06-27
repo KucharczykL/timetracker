@@ -118,7 +118,7 @@ def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     game_filter = GameFilter(
         status=ChoiceCriterion(value=excluded_statuses, modifier=Modifier.EXCLUDES)
     )
-    game_filter.NOT = GameFilter(playevent_filter=_ended_in_scope(year))
+    game_filter.NOT = [GameFilter(playevent_filter=_ended_in_scope(year))]
     return game_filter
 
 
@@ -130,7 +130,7 @@ def purchases_finished(year) -> PurchaseFilter:
         )
     # All-time `.finished()`: game status FINISHED *or* any ended playevent.
     game_filter = GameFilter(status=ChoiceCriterion(value=[Game.Status.FINISHED]))
-    game_filter.OR = GameFilter(playevent_filter=_ended_in_scope(year))
+    game_filter.OR = [GameFilter(playevent_filter=_ended_in_scope(year))]
     return PurchaseFilter(game_filter=game_filter)
 
 
@@ -156,7 +156,7 @@ def _abandoned_or_refunded() -> PurchaseFilter:
     purchase_filter = PurchaseFilter(
         game_filter=GameFilter(status=ChoiceCriterion(value=[Game.Status.ABANDONED]))
     )
-    purchase_filter.OR = PurchaseFilter(is_refunded=BoolCriterion(value=True))
+    purchase_filter.OR = [PurchaseFilter(is_refunded=BoolCriterion(value=True))]
     return purchase_filter
 
 
@@ -167,7 +167,7 @@ def purchases_dropped(year) -> PurchaseFilter:
         **_purchase_bounds(year),
     )
     purchase_filter.game_filter = _not_finished_game(year, [Game.Status.FINISHED])
-    purchase_filter.AND = _abandoned_or_refunded()
+    purchase_filter.AND = [_abandoned_or_refunded()]
     return purchase_filter
 
 

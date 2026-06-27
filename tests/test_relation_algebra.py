@@ -17,11 +17,12 @@ from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
     Modifier,
+    MultiCriterion,
     RelationMatch,
     StringCriterion,
 )
 from games.filters import GameFilter, PurchaseFilter, SessionFilter
-from games.models import Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase, Session
 
 
 def _dt(year=2024, month=6, day=1):
@@ -365,3 +366,243 @@ def test_two_level_match_round_trip():
     assert restored is not None and restored.session_filter is not None
     assert restored.session_filter.device_filter is not None
     assert restored.session_filter.device_filter.match == RelationMatch.NONE
+
+
+# ── n-ary boolean composition (#127): AND/OR/NOT as lists ─────────────────────
+
+
+@pytest.fixture
+def boolean_world(db):
+    """Games spanning combinations of an emulated session and a refunded purchase,
+    plus a game (``split``) whose two qualifying sessions are *distinct* rows — the
+    case only n-ary AND over one relation can express (the flat single-session
+    conjunction misses it)."""
+    pc = Platform.objects.create(name="PC")
+    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
+    desktop = Device.objects.create(name="Desktop", type=Device.PC)
+
+    both = Game.objects.create(name="Both", platform=pc)
+    emu_only = Game.objects.create(name="EmuOnly", platform=pc)
+    refund_only = Game.objects.create(name="RefundOnly", platform=pc)
+    neither = Game.objects.create(name="Neither", platform=pc)
+
+    Session.objects.create(game=both, timestamp_start=_dt(), emulated=True)
+    Session.objects.create(game=emu_only, timestamp_start=_dt(), emulated=True)
+    Session.objects.create(game=refund_only, timestamp_start=_dt(), emulated=False)
+    Session.objects.create(game=neither, timestamp_start=_dt(), emulated=False)
+
+    Purchase.objects.create(
+        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+    ).games.set([both])
+    Purchase.objects.create(date_purchased=_dt()).games.set([emu_only])
+    Purchase.objects.create(
+        date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
+    ).games.set([refund_only])
+    Purchase.objects.create(date_purchased=_dt()).games.set([neither])
+
+    # split: emulated session and deck session are two different rows.
+    split = Game.objects.create(name="Split", platform=pc)
+    Session.objects.create(
+        game=split, timestamp_start=_dt(), emulated=True, device=desktop
+    )
+    Session.objects.create(
+        game=split, timestamp_start=_dt(2024, 6, 2), emulated=False, device=deck
+    )
+    # combined: a single session that is both emulated and on the deck.
+    combined = Game.objects.create(name="Combined", platform=pc)
+    Session.objects.create(
+        game=combined, timestamp_start=_dt(), emulated=True, device=deck
+    )
+
+    return {
+        "both": both.id,
+        "emu_only": emu_only.id,
+        "refund_only": refund_only.id,
+        "neither": neither.id,
+        "split": split.id,
+        "combined": combined.id,
+        "deck": deck.id,
+    }
+
+
+def test_and_list_two_independent_subfilters_both_required(boolean_world):
+    """Two AND sub-filters over *different* relations: a game must have BOTH an
+    emulated session AND a refunded purchase."""
+    both_required = GameFilter(
+        AND=[
+            GameFilter(
+                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+            ),
+            GameFilter(
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+            ),
+        ]
+    )
+    assert _ids(both_required) == {boolean_world["both"]}
+
+
+def test_and_list_two_subfilters_same_relation(boolean_world):
+    """Two AND sub-filters over the SAME relation are two independent EXISTS, so a
+    game qualifies when *different* sessions satisfy each — the unary form could
+    not express this. The flat single-session conjunction misses ``split``."""
+    deck = boolean_world["deck"]
+    nary = GameFilter(
+        AND=[
+            GameFilter(
+                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+            ),
+            GameFilter(
+                session_filter=SessionFilter(device=MultiCriterion(value=[deck]))
+            ),
+        ]
+    )
+    nary_ids = _ids(nary)
+    assert boolean_world["split"] in nary_ids
+    assert boolean_world["combined"] in nary_ids
+
+    # One session required to be BOTH emulated AND on the deck: split is excluded.
+    single_session = GameFilter(
+        session_filter=SessionFilter(
+            emulated=BoolCriterion(value=True), device=MultiCriterion(value=[deck])
+        )
+    )
+    single_ids = _ids(single_session)
+    assert boolean_world["combined"] in single_ids
+    assert boolean_world["split"] not in single_ids
+
+
+def test_or_list_two_subfilters_union(boolean_world):
+    """Two OR sub-filters on a criteria-free node = the union of the two EXISTS
+    (Django drops the empty base ``Q()`` from the OR)."""
+    either = GameFilter(
+        OR=[
+            GameFilter(
+                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+            ),
+            GameFilter(
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+            ),
+        ]
+    )
+    assert _ids(either) == {
+        boolean_world["both"],
+        boolean_world["emu_only"],
+        boolean_world["refund_only"],
+        boolean_world["split"],
+        boolean_world["combined"],
+    }
+
+
+def test_legacy_single_object_and_is_wrapped_to_list(boolean_world):
+    """A legacy single-object AND payload (pre-#127) parses as a one-element list
+    and evaluates identically to the explicit list form."""
+    legacy = GameFilter.from_json(
+        {"AND": {"session_filter": {"emulated": {"value": True, "modifier": "EQUALS"}}}}
+    )
+    assert legacy is not None
+    assert isinstance(legacy.AND, list) and len(legacy.AND) == 1
+    explicit = GameFilter(
+        AND=[
+            GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+        ]
+    )
+    assert _ids(legacy) == _ids(explicit)
+
+
+def test_multi_element_and_list_round_trip(boolean_world):
+    """A two-element AND list survives the JSON round-trip and selects the same
+    games."""
+    original = GameFilter(
+        AND=[
+            GameFilter(
+                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+            ),
+            GameFilter(
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+            ),
+        ]
+    )
+    payload = original.to_json()
+    assert isinstance(payload["AND"], list) and len(payload["AND"]) == 2
+
+    restored = GameFilter.from_json(json.loads(json.dumps(payload)))
+    assert restored is not None
+    assert isinstance(restored.AND, list) and len(restored.AND) == 2
+    assert _ids(restored) == _ids(original)
+
+
+def test_unused_operator_list_is_not_serialized():
+    """An empty operator list stays out of the serialized form."""
+    f = GameFilter(name=StringCriterion(value="x"))
+    payload = f.to_json()
+    assert "AND" not in payload and "OR" not in payload and "NOT" not in payload
+
+
+def test_not_list_single_and_multi(boolean_world):
+    """NOT negates each sub-filter (AND'd). One element excludes emulated-session
+    games; a second element additionally excludes refunded-purchase games."""
+    emulated = GameFilter(
+        session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+    )
+    refunded = GameFilter(
+        purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+    )
+    not_emulated = GameFilter(NOT=[emulated])
+    assert _ids(not_emulated) == {
+        boolean_world["refund_only"],
+        boolean_world["neither"],
+    }
+
+    not_either = GameFilter(NOT=[emulated, refunded])
+    assert _ids(not_either) == {boolean_world["neither"]}
+
+
+def test_mixed_and_or_not_composition_order(boolean_world):
+    """A node mixing all three families composes in the documented order
+    ``(criteria & AND) | OR) & ~NOT`` — here ``(emulated | refunded) & ~has-deck``."""
+    deck = boolean_world["deck"]
+    mixed = GameFilter(
+        AND=[
+            GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+        ],
+        OR=[
+            GameFilter(
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+            )
+        ],
+        NOT=[
+            GameFilter(
+                session_filter=SessionFilter(device=MultiCriterion(value=[deck]))
+            )
+        ],
+    )
+    # (emulated ∪ refunded) = both,emu_only,refund_only,split,combined; minus
+    # has-deck-session (split, combined).
+    assert _ids(mixed) == {
+        boolean_world["both"],
+        boolean_world["emu_only"],
+        boolean_world["refund_only"],
+    }
+
+
+def test_null_operator_normalizes_to_empty_list():
+    """A JSON ``null`` operator value deserializes to ``[]`` (not None) so it can't
+    crash ``_apply_operators``' iteration — a hand-crafted ?filter= must not 500."""
+    restored = GameFilter.from_json({"AND": None})
+    assert restored is not None
+    assert restored.AND == []
+    restored.to_q()  # must not raise
+
+
+def test_from_json_drops_null_list_element():
+    """A malformed (None) element inside an operator list is filtered out."""
+    restored = GameFilter.from_json(
+        {
+            "AND": [
+                None,
+                {"session_filter": {"emulated": {"value": True, "modifier": "EQUALS"}}},
+            ]
+        }
+    )
+    assert restored is not None
+    assert isinstance(restored.AND, list) and len(restored.AND) == 1
