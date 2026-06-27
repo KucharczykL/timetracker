@@ -601,15 +601,24 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 class OperatorFilter:
     """Mixin providing AND/OR/NOT composition for entity filter types.
 
-    Subclasses should declare nullable references to themselves::
+    Each operator field is a *list* of sub-filters (n-ary boolean composition),
+    so one node can compose several independent sub-filters — the prerequisite
+    for AND-composing two uncorrelated EXISTS constraints over the same relation.
+    Subclasses declare list-valued references to themselves::
 
         @dataclass
         class GameFilter(OperatorFilter):
-            AND: "GameFilter | None" = None
-            OR:  "GameFilter | None" = None
-            NOT: "GameFilter | None" = None
+            AND: list["GameFilter"] = field(default_factory=list)
+            OR:  list["GameFilter"] = field(default_factory=list)
+            NOT: list["GameFilter"] = field(default_factory=list)
             name: StringCriterion | None = None
             ...
+
+    Application order (see ``_apply_operators``): this node's own criteria first,
+    then each ``AND`` sub-filter (``&=``), then each ``OR`` (``|=``), then each
+    ``NOT`` (``&= ~``). Mixing operator families on one node therefore composes
+    left-to-right in that order; the common case keeps a node to a single
+    operator family.
 
     ``match`` is the relation quantifier, meaningful only when this filter is
     nested as a cross-entity sub-filter (e.g. ``GameFilter.session_filter``):
@@ -619,6 +628,15 @@ class OperatorFilter:
     """
 
     match: RelationMatch = RelationMatch.ANY
+
+    # N-ary boolean composition: each operator is a list of sub-filters. Declared
+    # on the base (typed ``list[Any]``) so ``_apply_operators`` can read them and
+    # subclasses can narrow them to ``list[XFilter]`` (``list`` is invariant, so a
+    # narrower base type would reject the override). Concrete filters redeclare
+    # these with their own type — see games/filters.py.
+    AND: list[Any] = field(default_factory=list)
+    OR: list[Any] = field(default_factory=list)
+    NOT: list[Any] = field(default_factory=list)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -673,14 +691,22 @@ class OperatorFilter:
             field_criteria[field_name] = criterion_class(**criterion_arguments)
         return cls(**field_criteria)
 
-    def sub_filter(self) -> OperatorFilter | None:
-        """Return the first non-None of AND / OR / NOT."""
-        for attr in _OPERATOR_FIELDS:
-            if hasattr(self, attr):
-                v = getattr(self, attr)
-                if v is not None:
-                    return v
-        return None
+    def _apply_operators(self, q: Q) -> Q:
+        """Compose this node's sub-filters onto ``q`` (which already holds this
+        node's own criteria).
+
+        Each operator field is a list, applied in order: every ``AND`` sub-filter
+        is AND'd, every ``OR`` sub-filter is OR'd, every ``NOT`` sub-filter is
+        AND'd-negated. Mixing families on one node composes left-to-right in that
+        order (criteria → AND → OR → NOT); the common case uses one family.
+        """
+        for sub in self.AND:
+            q &= sub.to_q()
+        for sub in self.OR:
+            q |= sub.to_q()
+        for sub in self.NOT:
+            q &= ~sub.to_q()
+        return q
 
     def _criterion_fields(self) -> list[str]:
         """Return field names that hold a _Criterion instance."""
@@ -700,15 +726,7 @@ class OperatorFilter:
             c = getattr(self, field_name)
             if c is not None:
                 q &= c.to_q(field_name)
-        sub = self.sub_filter()
-        if sub is not None:
-            if getattr(self, "AND", None) is not None:
-                q &= sub.to_q()
-            elif getattr(self, "OR", None) is not None:
-                q |= sub.to_q()
-            elif getattr(self, "NOT", None) is not None:
-                q &= ~sub.to_q()
-        return q
+        return self._apply_operators(q)
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> Self | None:
@@ -728,9 +746,13 @@ class OperatorFilter:
             if raw is None:
                 kwargs[f.name] = None
                 continue
-            # Recurse into sub-filters (AND / OR / NOT)
+            # Recurse into sub-filters (AND / OR / NOT), each a list of sub-filters.
+            # A legacy single object is tolerated by wrapping it as a one-element
+            # list; None results (malformed entries) are filtered out.
             if f.name in _OPERATOR_FIELDS:
-                kwargs[f.name] = cls.from_json(raw) if isinstance(raw, dict) else None
+                items = raw if isinstance(raw, list) else [raw]
+                parsed = [cls.from_json(item) for item in items]
+                kwargs[f.name] = [sub for sub in parsed if sub is not None]
                 continue
             # Resolve criterion fields from string type annotation
             f_type = f.type
@@ -768,8 +790,11 @@ class OperatorFilter:
                 continue
             if f.name == "match":
                 continue
+            # Operator fields are lists; emit a JSON array only when non-empty so
+            # an unused operator stays out of the serialized form.
             if f.name in _OPERATOR_FIELDS:
-                result[f.name] = v.to_json()
+                if v:
+                    result[f.name] = [sub.to_json() for sub in v]
             elif isinstance(v, _Criterion):
                 j = v.to_json()
                 if j:
