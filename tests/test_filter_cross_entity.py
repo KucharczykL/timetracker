@@ -108,6 +108,36 @@ def test_purchase_type_widget_json_selects_games(purchase_world):
     assert _game_ids(filter_json) == {purchase_world["game_buyer"]}
 
 
+def test_purchase_ownership_type_widget_json_selects_games(db):
+    """Repointed ownership_type widget emits AND→purchase_filter→ownership_type."""
+    pc = Platform.objects.create(name="PC")
+    physical = Game.objects.create(name="Physical", platform=pc)
+    digital = Game.objects.create(name="Digital", platform=pc)
+    Game.objects.create(name="NoPurchase", platform=pc)
+
+    physical_purchase = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), ownership_type=Purchase.PHYSICAL
+    )
+    physical_purchase.games.set([physical])
+    digital_purchase = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), ownership_type=Purchase.DIGITAL
+    )
+    digital_purchase.games.set([digital])
+
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "purchase_filter": {
+                        "ownership_type": _set_criterion("ph", "Physical")
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(filter_json) == {physical.id}
+
+
 def test_purchase_price_any_widget_json_selects_games(purchase_world):
     filter_json = json.dumps(
         {
@@ -170,6 +200,44 @@ def test_game_finished_widget_json_selects_games(db):
         }
     )
     assert _game_ids(filter_json) == {in_range.id}
+
+
+def test_game_finished_widget_json_min_only_and_max_only(db):
+    """When only one bound is set the widget emits GREATER_THAN (min-only) or
+    LESS_THAN (max-only) instead of BETWEEN; each selects by PlayEvent.ended."""
+    pc = Platform.objects.create(name="PC")
+    early = Game.objects.create(name="Early", platform=pc)
+    middle = Game.objects.create(name="Middle", platform=pc)
+    late = Game.objects.create(name="Late", platform=pc)
+    PlayEvent.objects.create(game=early, ended=date(2023, 1, 1))
+    PlayEvent.objects.create(game=middle, ended=date(2024, 6, 15))
+    PlayEvent.objects.create(game=late, ended=date(2025, 12, 31))
+
+    min_only = json.dumps(
+        {
+            "AND": [
+                {
+                    "playevent_filter": {
+                        "ended": {"value": "2024-01-01", "modifier": "GREATER_THAN"}
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(min_only) == {middle.id, late.id}
+
+    max_only = json.dumps(
+        {
+            "AND": [
+                {
+                    "playevent_filter": {
+                        "ended": {"value": "2024-12-31", "modifier": "LESS_THAN"}
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(max_only) == {early.id, middle.id}
 
 
 # ── relation-bool: ANY (True) vs NONE (False) ────────────────────────────────
@@ -254,6 +322,46 @@ def test_purchase_infinite_true_matches_any(db):
         value=True,
     )
     assert _game_ids(filter_json) == {infinite.id}
+
+
+def test_purchase_refunded_true_matches_any(db):
+    """True → ANY: games with at least one refunded purchase."""
+    pc = Platform.objects.create(name="PC")
+    refunded = Game.objects.create(name="Refunded", platform=pc)
+    kept = Game.objects.create(name="Kept", platform=pc)
+    Game.objects.create(name="NoPurchase", platform=pc)
+    p1 = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+    )
+    p1.games.set([refunded])
+    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2.games.set([kept])
+
+    filter_json = _relation_bool_json(
+        "purchase_filter",
+        {"is_refunded": {"value": True, "modifier": "EQUALS"}},
+        value=True,
+    )
+    assert _game_ids(filter_json) == {refunded.id}
+
+
+def test_purchase_infinite_false_matches_none(db):
+    """False → NONE: games with no infinite purchase, including zero-purchase games."""
+    pc = Platform.objects.create(name="PC")
+    infinite = Game.objects.create(name="Infinite", platform=pc)
+    finite = Game.objects.create(name="Finite", platform=pc)
+    no_purchase = Game.objects.create(name="NoPurchase", platform=pc)
+    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1.games.set([infinite])
+    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2.games.set([finite])
+
+    filter_json = _relation_bool_json(
+        "purchase_filter",
+        {"infinite": {"value": True, "modifier": "EQUALS"}},
+        value=False,
+    )
+    assert _game_ids(filter_json) == {finite.id, no_purchase.id}
 
 
 # ── two widgets over one relation = independent EXISTS ────────────────────────
