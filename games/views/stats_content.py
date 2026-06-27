@@ -431,7 +431,7 @@ def stats_content(ctx: StatsData) -> Node:
             _finished_table(
                 all_finished,
                 view_all_url=filter_url(
-                    stats_links.purchases_finished(year), sort="finished"
+                    stats_links.purchases_finished(year), sort="-finished"
                 ),
                 total=ctx.get("all_finished_this_year_count"),
             ),

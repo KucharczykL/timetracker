@@ -402,6 +402,66 @@ class FilterBarRenderingTest(TestCase):
             html,
         )
 
+    def test_purchase_filter_bar_renders_finished_dates(self):
+        """PurchaseFilterBar exposes the #121 'Finished' date-range widget."""
+        html = str(
+            PurchaseFilterBar(
+                filter_json="", preset_list_url="/l", preset_save_url="/s"
+            )
+        )
+        self.assertIn('name="filter-finished-min"', html)
+        self.assertIn('name="filter-finished-max"', html)
+
+    def test_game_filter_bar_renders_finished_dates(self):
+        """The Game filter bar exposes the #121 'Finished' date-range widget."""
+        from common.components import FilterBar
+
+        html = str(FilterBar(filter_json=""))
+        self.assertIn('name="filter-finished-min"', html)
+        self.assertIn('name="filter-finished-max"', html)
+
+    def test_finished_filter_prepopulates_less_than_into_max(self):
+        """A LESS_THAN (max-only) finished filter fills the max slot, not min —
+        guards the modifier-aware _parse_range fix."""
+        filter_json = json.dumps(
+            {"finished": {"value": "2024-12-31", "modifier": "LESS_THAN"}}
+        )
+        html = str(
+            PurchaseFilterBar(
+                filter_json=filter_json,
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        self.assertIn(
+            'name="filter-finished-min" id="filter-finished-min" value=""', html
+        )
+        self.assertIn(
+            'name="filter-finished-max" id="filter-finished-max" value="2024-12-31"',
+            html,
+        )
+
+    def test_finished_filter_prepopulates_greater_than_into_min(self):
+        """A GREATER_THAN (min-only) finished filter fills the min slot — the
+        symmetric counterpart to the LESS_THAN case above."""
+        filter_json = json.dumps(
+            {"finished": {"value": "2024-01-01", "modifier": "GREATER_THAN"}}
+        )
+        html = str(
+            PurchaseFilterBar(
+                filter_json=filter_json,
+                preset_list_url="/l",
+                preset_save_url="/s",
+            )
+        )
+        self.assertIn(
+            'name="filter-finished-min" id="filter-finished-min" value="2024-01-01"',
+            html,
+        )
+        self.assertIn(
+            'name="filter-finished-max" id="filter-finished-max" value=""', html
+        )
+
     def test_boolean_fields_render_as_radio_groups(self):
         """Boolean fields must render as radio groups with True/False choices."""
         from common.components import FilterBar, SessionFilterBar, PurchaseFilterBar

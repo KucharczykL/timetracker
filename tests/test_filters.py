@@ -119,6 +119,15 @@ class TestBoolCriterion:
         c = BoolCriterion(value=True, modifier=Modifier.EQUALS)
         assert c.to_q("mastered") == Q(mastered=True)
 
+    def test_value_false_survives_to_json(self):
+        """value=False must serialize — it equals the dataclass default, so the
+        base to_json would drop it, losing e.g. is_refunded=False."""
+        assert BoolCriterion(value=False).to_json() == {"value": False}
+
+    def test_value_false_round_trip(self):
+        restored = BoolCriterion.from_json(BoolCriterion(value=False).to_json())
+        assert restored.value is False
+
 
 class TestChoiceCriterion:
     def test_includes(self):
@@ -810,6 +819,11 @@ class TestExpandedFiltersAgainstDB:
                 }
             }
         )
+        # The cross-entity sub-filters must actually deserialize — otherwise the
+        # query is unconstrained and the assertion below passes by accident on a
+        # single-device fixture (issue #120 false positive).
+        assert df.session_filter is not None
+        assert df.session_filter.game_filter is not None
         results = list(Device.objects.filter(df.to_q()))
         assert data["dev"] in results
 
@@ -1281,6 +1295,60 @@ class TestPurchaseFilterDates:
         assert out["date_purchased"]["modifier"] == Modifier.BETWEEN
         assert out["date_refunded"]["modifier"] == Modifier.NOT_NULL
 
+    @pytest.mark.django_db
+    def test_cross_entity_subfilter_json_round_trip(self):
+        """A PurchaseFilter nesting game_filter → playevent_filter survives the
+        JSON round-trip the stats links / list views perform (issue #120)."""
+        from games.filters import GameFilter, PlayEventFilter, PurchaseFilter
+
+        original = PurchaseFilter(
+            game_filter=GameFilter(
+                playevent_filter=PlayEventFilter(
+                    ended=DateCriterion(
+                        value="2024-01-01",
+                        value2="2024-12-31",
+                        modifier=Modifier.BETWEEN,
+                    )
+                )
+            )
+        )
+        out = original.to_json()
+        # The nested structure must actually be serialized, not dropped.
+        assert out["game_filter"]["playevent_filter"]["ended"]["value"] == "2024-01-01"
+
+        restored = PurchaseFilter.from_json(json.loads(json.dumps(out)))
+        assert restored.game_filter is not None
+        assert restored.game_filter.playevent_filter is not None
+        ended = restored.game_filter.playevent_filter.ended
+        assert isinstance(ended, DateCriterion)
+        assert ended.value2 == "2024-12-31"
+        assert str(restored.to_q()) == str(original.to_q())
+
+    def test_empty_subfilter_is_omitted_not_serialized_as_empty(self):
+        """An all-None sub-filter contributes no constraint, so to_json omits it
+        entirely rather than emitting `{"game_filter": {}}`."""
+        from games.filters import GameFilter, PurchaseFilter
+
+        assert PurchaseFilter(game_filter=GameFilter()).to_json() == {}
+
+    def test_flat_finished_field_round_trip(self):
+        """The flat `finished` DateCriterion on Game/Purchase filters (#121)
+        round-trips through JSON like any other criterion field."""
+        from games.filters import GameFilter, PurchaseFilter
+
+        for cls in (GameFilter, PurchaseFilter):
+            payload = {
+                "finished": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "BETWEEN",
+                }
+            }
+            obj = cls.from_json(payload)
+            assert isinstance(obj.finished, DateCriterion)
+            out = obj.to_json()
+            assert out == payload
+
 
 class TestPlayEventFilterDates:
     """End-to-end: a PlayEventFilter built from JSON narrows the queryset
@@ -1378,3 +1446,95 @@ class TestPlayEventFilterDates:
         assert out["ended"]["value2"] == "2024-12-31"
         assert out["ended"]["modifier"] == Modifier.BETWEEN
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
+
+
+class TestFinishedFilter:
+    """The flat `finished` DateCriterion (#121): a game/purchase is matched when
+    the game has a PlayEvent whose `ended` date falls in the range."""
+
+    def _seed(self):
+        import datetime
+
+        from games.models import Game, Platform, PlayEvent, Purchase
+
+        pc = Platform.objects.create(name="PC")
+        in_range = Game.objects.create(name="Done2024", platform=pc)
+        out_range = Game.objects.create(name="Done2023", platform=pc)
+        never = Game.objects.create(name="Unfinished", platform=pc)
+        PlayEvent.objects.create(game=in_range, ended=datetime.date(2024, 6, 1))
+        PlayEvent.objects.create(game=out_range, ended=datetime.date(2023, 6, 1))
+        # never: no playevent with an `ended` date
+        PlayEvent.objects.create(game=never, started=datetime.date(2024, 1, 1))
+
+        p_in = Purchase.objects.create(
+            type=Purchase.GAME, date_purchased=datetime.date(2024, 1, 1)
+        )
+        p_in.games.set([in_range])
+        p_out = Purchase.objects.create(
+            type=Purchase.GAME, date_purchased=datetime.date(2023, 1, 1)
+        )
+        p_out.games.set([out_range])
+        return {
+            "in_range": in_range,
+            "out_range": out_range,
+            "never": never,
+            "p_in": p_in,
+            "p_out": p_out,
+        }
+
+    @pytest.mark.django_db
+    def test_game_finished_in_range(self):
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._seed()
+        gf = GameFilter.where(finished__between=("2024-01-01", "2024-12-31"))
+        results = set(Game.objects.filter(gf.to_q()).distinct())
+        assert results == {data["in_range"]}
+
+    @pytest.mark.django_db
+    def test_purchase_finished_in_range(self):
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        data = self._seed()
+        pf = PurchaseFilter.where(finished__between=("2024-01-01", "2024-12-31"))
+        results = set(Purchase.objects.filter(pf.to_q()).distinct())
+        assert results == {data["p_in"]}
+
+    @pytest.mark.django_db
+    def test_game_finished_greater_than_min_only(self):
+        """A min-only (GREATER_THAN) finished bound maps to playevents__ended__gt."""
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._seed()
+        gf = GameFilter.where(finished__gt="2024-01-01")
+        results = set(Game.objects.filter(gf.to_q()).distinct())
+        assert results == {data["in_range"]}
+
+    @pytest.mark.django_db
+    def test_purchase_finished_less_than_max_only(self):
+        """A max-only (LESS_THAN) finished bound maps to playevents__ended__lt."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        data = self._seed()
+        pf = PurchaseFilter.where(finished__lt="2024-01-01")
+        results = set(Purchase.objects.filter(pf.to_q()).distinct())
+        assert results == {data["p_out"]}
+
+    @pytest.mark.django_db
+    def test_game_finished_no_duplicate_rows(self):
+        """A game with several finished playevents in range appears once."""
+        import datetime
+
+        from games.filters import GameFilter
+        from games.models import Game, Platform, PlayEvent
+
+        pc = Platform.objects.create(name="PC")
+        game = Game.objects.create(name="Multi", platform=pc)
+        PlayEvent.objects.create(game=game, ended=datetime.date(2024, 3, 1))
+        PlayEvent.objects.create(game=game, ended=datetime.date(2024, 9, 1))
+        gf = GameFilter.where(finished__between=("2024-01-01", "2024-12-31"))
+        assert Game.objects.filter(gf.to_q()).distinct().count() == 1

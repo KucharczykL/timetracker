@@ -76,6 +76,10 @@ GAME_SORTS: SortMap = {
     "playtime": SortSpec(
         "total_playtime", {"total_playtime": Sum("sessions__duration_total")}
     ),
+    # No annotate dict: list_games pre-annotates `filtered_playtime` (playtime
+    # restricted to the active session sub-filter) on the queryset, and this
+    # spec just orders by that existing alias.
+    "filtered_playtime": SortSpec("filtered_playtime"),
     "finished": SortSpec("last_finished", {"last_finished": Max("playevents__ended")}),
 }
 GAME_DEFAULT_SORT: SortString = "-created"

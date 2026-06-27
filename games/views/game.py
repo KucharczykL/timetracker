@@ -1,8 +1,9 @@
+from datetime import timedelta
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, QuerySet
+from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
@@ -59,7 +60,7 @@ from games.filters import (
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
-from games.models import Game, GameStatusChange
+from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
@@ -69,12 +70,19 @@ from games.views.playevent import create_playevent_tabledata
 def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
     games = Game.objects.select_related("platform")
 
+    # Playtime column sums only the sessions matching the active session
+    # sub-filter; an empty Q matches every session, so with no session filter the
+    # column shows total playtime.
+    session_q = Q()
+
     # ── Structured filter (Stash-style JSON) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
         game_filter = parse_game_filter(filter_json)
         if game_filter is not None:
             games = games.filter(game_filter.to_q())
+            if game_filter.session_filter is not None:
+                session_q = game_filter.session_filter.to_q()
     else:
         # ── Legacy free-text search ──
         search_string = request.GET.get("search_string", search_string)
@@ -97,6 +105,17 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     filters.append(Q(status=search_status))
             games = games.filter(build_dynamic_filter(filters, "|"))
 
+    # Per-game playtime restricted to the session sub-filter, summed in the DB.
+    # session_q stays in Session's own field namespace via the correlated
+    # subquery, so no `sessions__` path-prefixing is needed.
+    windowed_playtime = (
+        Session.objects.filter(session_q, game=OuterRef("pk"))
+        .values("game")
+        .annotate(total=Sum(F("duration_calculated") + F("duration_manual")))
+        .values("total")
+    )
+    games = games.annotate(filtered_playtime=Subquery(windowed_playtime))
+
     sort = apply_sort(games, parse_find_filter(request), GAME_SORTS, GAME_DEFAULT_SORT)
     games = sort.queryset
     for key in sort.unknown:
@@ -115,6 +134,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             Column("Name", "name"),
             Column("Sort Name", "sort_name"),
             Column("Year", "year"),
+            Column("Playtime", "filtered_playtime"),
             Column("Status", "status"),
             Column("Wikidata", "wikidata"),
             Column("Created", "created"),
@@ -130,6 +150,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     else "(identical)"
                 ),
                 str(game.year_released),
+                format_duration(game.filtered_playtime or timedelta(0), "%2.1H"),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
                 game.wikidata,
                 local_strftime(game.created_at, dateformat),
