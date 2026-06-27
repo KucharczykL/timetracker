@@ -17,6 +17,7 @@ from common.components import (
     Div,
     FormFields,
     Fragment,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
     NameWithIcon,
@@ -115,7 +116,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                             StyledButton(
                                 icon=True,
                                 size="xs",
-                            )[Icon("play"), "LOG"]
+                            )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"]
                         ],
                         A(
                             href=reverse(
@@ -130,7 +131,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
                                         color="gray",
                                         size="xs",
                                         children=[
-                                            Icon("play"),
+                                            Icon("play", size=ICON_BUTTON_SIZE_CLASS),
                                             truncate(f"{last_session.game.name}"),
                                         ],
                                     )

@@ -1221,25 +1221,14 @@ def get_icon_node(name: str) -> Element:
     return ICON_NODES.get(name) or ICON_NODES["unspecified"]
 
 
-def _merge_icon_attributes(base: Attributes, extra: Attributes) -> list[HTMLAttribute]:
-    """Merge ``extra`` onto an icon's existing attributes, returning a new list.
-
-    ``class`` *appends* to any existing class (Tailwind classes are additive, so
-    the snippet's built-in sizing survives); every other attribute *replaces* a
-    same-named one. Never mutates ``base`` (the shared node's attribute list).
-    """
-    merged: list[HTMLAttribute] = list(base)
-    for key, value in extra:
-        for index, (existing_key, existing_value) in enumerate(merged):
-            if existing_key == key:
-                merged[index] = (
-                    key,
-                    f"{existing_value} {value}" if key == "class" else value,
-                )
-                break
-        else:
-            merged.append((key, value))
-    return merged
+# Classes applied to every icon, overriding whatever each snippet baked in — no
+# need to touch the individual icon snippets. ICON_BASE_CLASS (colour) is always
+# applied; the size is ICON_SIZE_CLASS by default, or whatever a caller passes as
+# `size=`. ICON_BUTTON_SIZE_CLASS is the override for icons rendered inside
+# buttons (bigger than the small inline platform icons). Tune sizes here.
+ICON_BASE_CLASS = "text-black dark:text-white"
+ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
+ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:
@@ -1261,21 +1250,36 @@ def _with_title(children: Sequence[Child], title: str) -> list[Child]:
 def Icon(
     name: str,
     attributes: Attributes | None = None,
+    size: str | None = None,
 ) -> Node:
+    """Render an icon, overriding its snippet's baked ``class`` with the central
+    icon classes (:data:`ICON_BASE_CLASS` colour + size). Every other svg
+    attribute (``viewBox``, ``xmlns`` …) is kept — dropping ``viewBox`` would clip
+    the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
+    wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
+    the accessible ``<title>`` child; a passed ``class=`` appends as an override.
+    """
     root = get_icon_node(name)
-    if not attributes:
-        return root
     extra_attributes: list[HTMLAttribute] = []
     title: str | None = None
-    for key, value in attributes:
+    caller_class = ""
+    for key, value in attributes or []:
         if key == "title":
             title = str(value)
+        elif key == "class":
+            caller_class = str(value)
         else:
             extra_attributes.append((key, value))
     children = _with_title(root.children, title) if title is not None else root.children
+    class_value = " ".join(
+        part
+        for part in (ICON_BASE_CLASS, size or ICON_SIZE_CLASS, caller_class)
+        if part
+    )
+    preserved = [(key, value) for key, value in root.attributes if key != "class"]
     return Element(
         root.tag_name,
-        _merge_icon_attributes(root.attributes, extra_attributes),
+        [("class", class_value), *preserved, *extra_attributes],
         children,
     )
 

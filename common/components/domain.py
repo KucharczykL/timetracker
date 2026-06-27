@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from common.components.core import Children, Node, Safe, as_children
 from common.components.primitives import (
+    ICON_BUTTON_SIZE_CLASS,
     A,
     Div,
     Icon,
@@ -294,7 +295,7 @@ def SessionActions(session, csrf_token: str) -> Node:
     actions = ButtonGroup(
         [
             {
-                "slot": Icon("end"),
+                "slot": Icon("end", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Finish session now",
                 "color": "green",
                 "button_attributes": [("data-finish", "")],
@@ -302,7 +303,7 @@ def SessionActions(session, csrf_token: str) -> Node:
             if is_open
             else {},
             {
-                "slot": Icon("reset"),
+                "slot": Icon("reset", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Reset start to now",
                 "color": "gray",
                 "button_attributes": [("data-reset", "")],
@@ -311,12 +312,12 @@ def SessionActions(session, csrf_token: str) -> Node:
             else {},
             {
                 "href": reverse("games:edit_session", args=[session.pk]),
-                "slot": Icon("edit"),
+                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Edit",
             },
             {
                 "href": reverse("games:delete_session", args=[session.pk]),
-                "slot": Icon("delete"),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",
             },

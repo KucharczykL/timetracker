@@ -566,7 +566,9 @@ def ButtonDropdown(
 ) -> Node:
     """A button-styled menu dropdown; the trigger is a ``StyledButton``."""
     trigger = _as_menu_trigger(
-        StyledButton(color=color, size=size, icon=True)[label, Icon("arrowdown")]
+        StyledButton(color=color, size=size, icon=True)[
+            label, Icon("arrowdown", [("class", "h-3 w-3")])
+        ]
     )
     return Dropdown(
         trigger_element=trigger,

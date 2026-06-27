@@ -23,6 +23,7 @@ from common.components import (
     Fragment,
     GameStatus,
     GameStatusSelector,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     LinkedPurchase,
     Modal,
@@ -34,8 +35,8 @@ from common.components import (
     PurchasePrice,
     Safe,
     SearchField,
-    StyledTable,
     StyledButton,
+    StyledTable,
     TableData,
     Ul,
     make_row,
@@ -56,12 +57,12 @@ from games.filters import (
     filter_url,
     parse_game_filter,
 )
+from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
-from games.formatting import session_time_range
 
 
 @login_required
@@ -136,12 +137,12 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     [
                         {
                             "href": reverse("games:edit_game", args=[game.pk]),
-                            "slot": Icon("edit"),
+                            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
                             "href": reverse("games:delete_game", args=[game.pk]),
-                            "slot": Icon("delete"),
+                            "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
                     ]
@@ -445,7 +446,7 @@ def _game_action_buttons(game: Game) -> Node:
                         "games:add_session_for_game", kwargs={"game_id": game.id}
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
-                        Icon("play"), "Log this game"
+                        Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"
                     ],
                     "color": "green",
                 },
@@ -525,7 +526,10 @@ def _game_section(
                     color="gray",
                     size="xs",
                     title=f"View all {title.lower()} for this game",
-                    children=[Icon("arrowright"), "View all"],
+                    children=[
+                        Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
+                        "View all",
+                    ],
                 )
             ],
         )
@@ -672,12 +676,12 @@ def _purchases_section(game: Game) -> Node:
                 [
                     {
                         "href": reverse("games:edit_purchase", args=[purchase.pk]),
-                        "slot": Icon("edit"),
+                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
                         "href": reverse("games:delete_purchase", args=[purchase.pk]),
-                        "slot": Icon("delete"),
+                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
                 ]

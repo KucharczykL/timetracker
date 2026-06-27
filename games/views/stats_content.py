@@ -17,6 +17,7 @@ from common.components import (
     Element,
     Fragment,
     GameLink,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Node,
     Safe,
@@ -46,7 +47,7 @@ def _session_link(game_id, year) -> Node:
         href=filter_url(stats_links.sessions_for_game(game_id, year)),
         class_="ml-1 inline-block align-middle hover:text-heading",
         title="View sessions",
-    )[Icon("play")]
+    )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
 
 
 def _count_link(value, url: str) -> Node:
