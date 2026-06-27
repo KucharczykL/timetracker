@@ -1190,19 +1190,6 @@ class ColumnAlignmentTest(SimpleTestCase):
         self.assertNotIn("justify-end", html)
 
 
-class ButtonGroupSizeTest(SimpleTestCase):
-    """ButtonGroup size: default 'sm' (icon buttons) vs 'md' (larger text)."""
-
-    def test_default_size_is_small(self):
-        html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
-        self.assertIn("px-2 py-1 text-xs", html)
-
-    def test_md_size_is_larger(self):
-        html = str(components.ButtonGroup([{"href": "/x", "slot": "Edit"}], size="md"))
-        self.assertIn("px-4 py-2 text-sm", html)
-        self.assertNotIn("px-2 py-1 text-xs", html)
-
-
 class SortableHeaderTest(SimpleTestCase):
     """Clickable sortable column headers (issue #73)."""
 

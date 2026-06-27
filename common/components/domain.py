@@ -233,7 +233,7 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
+def GameStatusSelector(game, game_statuses, csrf_token: str, class_: str = "") -> Node:
     """Status value-selector: a listbox that PATCHes /api/games/<id>/status."""
     from common.components.custom_elements import SelectDropdown, SelectOption
 
@@ -255,6 +255,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
         body_key="status",
         event="status-changed",
         csrf=csrf_token,
+        class_=class_,
     )
 
 

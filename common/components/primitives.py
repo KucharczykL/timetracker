@@ -323,14 +323,6 @@ def StyledButton(
     )
 
 
-# Button-group sizing is separate from color so a group can render small icon
-# buttons (default) or larger text buttons (the game-header actions). "sm"
-# reproduces the original baked-in size, so existing table groups are unchanged.
-_GROUP_BUTTON_SIZES = {
-    "sm": "px-2 py-1 text-xs",
-    "md": "px-4 py-2 text-sm",
-}
-
 _GROUP_BUTTON_COLORS = {
     # Every variant uses a hover border one shade darker than its hover fill, so
     # the segmented buttons share the same "ring" look (only the hue differs).
@@ -371,7 +363,6 @@ def _button_group_button(
     hx_target: str = "",
     hx_swap: str = "",
     hx_confirm: str = "",
-    size: str = "sm",
     method: str = "",
     action: str = "",
     csrf_token: str = "",
@@ -389,13 +380,12 @@ def _button_group_button(
     rounding still applies. The end-rounding is applied by ``ButtonGroup`` on the
     container (keyed on child position), so this builder stays tag-agnostic.
     """
-    size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
     # inline-flex keeps every button the same height regardless of content — an
     # icon+text button (e.g. "Log this game") would otherwise sit taller than its
     # text-only siblings and step the segmented group's bottom edge.
     button_classes = (
-        f"{size_classes} {color_classes} "
+        f"text-xs px-2 py-1 lg:px-4 lg:py-2 lg:text-sm {color_classes} "
         "inline-flex items-center justify-center hover:cursor-pointer"
     )
 
@@ -461,7 +451,7 @@ def _button_group_button(
     return Element("a", attributes=a_attrs, children=[button])
 
 
-def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Element:
+def ButtonGroup(buttons: list[dict] | None = None) -> Element:
     """Generate a button group div.
 
     Each button dict accepts: slot (required), href, color, title, hx_get,
@@ -470,8 +460,7 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
     no-JS ``<form>`` submit button instead of a link.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
-    ``size`` ("sm" default for icon buttons, "md" for larger text buttons) is
-    applied to every button in the group.
+    Every button uses one responsive size (small on mobile, larger from ``lg``).
     """
     buttons = buttons or []
     children: list[Node] = []
@@ -488,7 +477,6 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
                 hx_target=btn.get("hx_target", ""),
                 hx_swap=btn.get("hx_swap", ""),
                 hx_confirm=btn.get("hx_confirm", ""),
-                size=size,
                 method=btn.get("method", ""),
                 action=btn.get("action", ""),
                 csrf_token=btn.get("csrf_token", ""),

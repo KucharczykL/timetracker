@@ -263,9 +263,9 @@ _Dropdown = custom_element_builder("drop-down")
 # Outlined (button-like) toggle: bordered button, no base rounding — Dropdown
 # adds rounded-lg / rounded-e-lg by shape; standalone consumers add their own.
 DROPDOWN_TOGGLE_OUTLINE = (
-    "px-4 py-2 text-sm font-medium bg-white border border-gray-200 "
+    "px-2 py-1 lg:px-4 lg:py-2 text-xs font-medium bg-white border border-gray-200 "
     "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-    "dark:hover:bg-gray-700 hover:cursor-pointer"
+    "dark:hover:bg-gray-700 hover:cursor-pointer whitespace-nowrap"
 )
 
 # Plain (menu-like) toggle: the borderless navbar nav-link look.
@@ -695,6 +695,7 @@ def SelectDropdown(
     csrf: str,
     numeric: bool = False,
     placement: str = "bottom-start",
+    class_: str = "",
 ) -> Node:
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
@@ -702,7 +703,12 @@ def SelectDropdown(
     trigger = Button(
         attributes=[
             ("type", "button"),
-            ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"),
+            (
+                "class",
+                DROPDOWN_TOGGLE_OUTLINE
+                + " rounded-lg"
+                + (f" {class_}" if class_ else ""),
+            ),
             ("aria-haspopup", "listbox"),
         ]
     )[
