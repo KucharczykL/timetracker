@@ -60,6 +60,9 @@ def test_no_selection_omits_boolean_filters(live_server, page):
     parsed = _filter_from_url(page.url)
     assert "mastered" not in parsed
     assert "purchase_refunded" not in parsed
+    # No selection means no AND element is created (purchase_refunded is now a
+    # cross-entity relation-bool composed into AND; #123 Phase 2d).
+    assert "AND" not in parsed
 
 
 @pytest.mark.django_db
@@ -67,13 +70,14 @@ def test_no_selection_omits_boolean_filters(live_server, page):
 def test_select_true_and_false_serializes_correctly(live_server, page):
     page.goto(live_server.url + "/test-boolean-filter/")
 
-    # Select "True" for Mastered
-    # Under PurchaseFilterBar: "filter-mastered" is the mastered radio name.
-    # The true radio has value="true", false radio has value="false"
+    # Select "True" for Mastered — a flat (same-entity) bool, unchanged.
+    # "filter-mastered" is the mastered radio name; true/false radios carry
+    # value="true"/value="false".
     true_radio = page.locator('input[name="filter-mastered"][value="true"]')
     true_radio.click()
 
-    # Select "False" for Refunded (filter-purchase-refunded)
+    # Select "False" for Refunded (filter-purchase-refunded) — a cross-entity
+    # relation-bool: False composes into AND as match=NONE over is_refunded=true.
     false_radio = page.locator('input[name="filter-purchase-refunded"][value="false"]')
     false_radio.click()
 
@@ -84,7 +88,14 @@ def test_select_true_and_false_serializes_correctly(live_server, page):
         )
     parsed = _filter_from_url(page.url)
     assert parsed.get("mastered") == {"value": True, "modifier": "EQUALS"}
-    assert parsed.get("purchase_refunded") == {"value": False, "modifier": "EQUALS"}
+    assert parsed.get("AND") == [
+        {
+            "purchase_filter": {
+                "match": "NONE",
+                "is_refunded": {"value": True, "modifier": "EQUALS"},
+            }
+        }
+    ]
 
 
 @pytest.mark.django_db

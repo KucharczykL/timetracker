@@ -513,7 +513,16 @@ type FilterWidgetPath = list[str]
 # The widget ``data-kind`` token a criterion advertises to the generic filter-bar
 # serializer (ts/elements/filter-bar.ts). One token per value shape; several
 # criterion types share a kind (every numeric criterion → "number").
-type FilterWidgetKind = Literal["string", "number", "date", "bool", "set"]
+#
+# ``relation-bool`` is special: it does not describe a *leaf criterion* but a
+# whole cross-entity sub-filter toggled by a boolean radio (ANY vs NONE) with a
+# fixed child criterion (e.g. ``session_filter`` with ``emulated=true``). It is
+# therefore never produced by ``criterion_kind`` / ``resolve_path_kind`` — those
+# only resolve leaf criteria — but it is a valid widget ``data-kind`` the serializer
+# dispatches on. See ``filter_widget_attributes`` and ``ts/elements/filter-bar.ts``.
+type FilterWidgetKind = Literal[
+    "string", "number", "date", "bool", "set", "relation-bool"
+]
 
 
 # Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
