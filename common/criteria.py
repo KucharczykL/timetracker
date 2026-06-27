@@ -476,6 +476,109 @@ def _criterion_class_for(
     return None
 
 
+def _filter_class_for(
+    cls: type["OperatorFilter"], field_name: str
+) -> type["OperatorFilter"] | None:
+    """Resolve the cross-entity sub-filter class declared for ``field_name`` on a
+    filter, or None if the field is absent or isn't a sub-filter field.
+
+    Mirrors ``_criterion_class_for`` but resolves the field's (string) annotation
+    through ``_FILTER_TYPES`` — e.g. ``GameFilter.session_filter`` annotated
+    ``"SessionFilter | None"`` resolves to ``SessionFilter``. The same-class
+    AND/OR/NOT operator fields are deliberately excluded: they compose a filter
+    with itself rather than crossing to another entity, and a widget path never
+    steps through them."""
+    if field_name in _OPERATOR_FIELDS:
+        return None
+    for dataclass_field in dc_fields(cls):
+        if dataclass_field.name != field_name:
+            continue
+        field_type = dataclass_field.type
+        if isinstance(field_type, str):
+            # e.g. "SessionFilter | None" → "SessionFilter"
+            field_type = field_type.split("|")[0].strip()
+            return _FILTER_TYPES.get(field_type)
+        if isinstance(field_type, type) and issubclass(field_type, OperatorFilter):
+            return field_type
+        return None
+    return None
+
+
+# A filter widget's canonical filter-JSON key chain. Length-1 today (one JSON
+# key per widget); typed as a list so nested cross-entity paths stay expressible.
+# Example: ["session_filter", "emulated"].
+type FilterWidgetPath = list[str]
+
+# The widget ``data-kind`` token a criterion advertises to the generic filter-bar
+# serializer (ts/elements/filter-bar.ts). One token per value shape; several
+# criterion types share a kind (every numeric criterion → "number").
+type FilterWidgetKind = Literal["string", "number", "date", "bool", "set"]
+
+
+# Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
+# advertises for it (see ``filter_widget_attributes``). The server↔client
+# contract: a widget's ``data-kind`` must equal the kind of the criterion its
+# ``data-path`` resolves to. Several criterion types share a kind (every numeric
+# criterion → "number"; both set criteria → "set").
+_CRITERION_KINDS: dict[type[_Criterion], FilterWidgetKind] = {
+    StringCriterion: "string",
+    IntCriterion: "number",
+    FloatCriterion: "number",
+    AggregateCriterion: "number",
+    DateCriterion: "date",
+    BoolCriterion: "bool",
+    MultiCriterion: "set",
+    ChoiceCriterion: "set",
+}
+
+
+def criterion_kind(criterion_cls: type[_Criterion]) -> FilterWidgetKind:
+    """Return the widget ``data-kind`` token for a criterion class.
+
+    Raises ``ValueError`` for a criterion type with no registered kind, so a new
+    criterion class can't silently slip past the widget-contract check."""
+    try:
+        return _CRITERION_KINDS[criterion_cls]
+    except KeyError:
+        raise ValueError(
+            f"No widget kind registered for criterion {criterion_cls.__name__}"
+        ) from None
+
+
+def resolve_path_kind(
+    filter_cls: type["OperatorFilter"], path: FilterWidgetPath
+) -> FilterWidgetKind:
+    """Resolve a filter-widget ``data-path`` against a filter dataclass tree and
+    return the expected ``data-kind``.
+
+    Walks ``path[:-1]`` through cross-entity sub-filter fields (via
+    ``_filter_class_for``), then resolves the final segment to a criterion (via
+    ``_criterion_class_for``) and maps it to a kind (via ``criterion_kind``).
+    Raises ``ValueError`` if the path is empty, a non-leaf segment isn't a
+    sub-filter, or the leaf isn't a criterion — so a widget pointing at a
+    non-existent path fails loudly. Used to guard the rendered server↔client
+    widget contract (issue #123 Phase 2)."""
+    if not path:
+        raise ValueError("resolve_path_kind requires a non-empty path")
+    current = filter_cls
+    for segment in path[:-1]:
+        sub_filter_cls = _filter_class_for(current, segment)
+        if sub_filter_cls is None:
+            raise ValueError(
+                f"{current.__name__} has no sub-filter field {segment!r} "
+                f"(resolving path {path})"
+            )
+        current = sub_filter_cls
+    leaf = path[-1]
+    criterion_cls = _criterion_class_for(current, leaf)
+    if criterion_cls is None:
+        raise ValueError(
+            f"{current.__name__} has no criterion field {leaf!r} "
+            f"(resolving path {path})"
+        )
+    return criterion_kind(criterion_cls)
+
+
 # Lookup suffix → Modifier. A missing suffix defaults per criterion type
 # (EQUALS for scalars, INCLUDES for set criteria) and is handled in where().
 _SUFFIX_MODIFIER: dict[str, Modifier] = {

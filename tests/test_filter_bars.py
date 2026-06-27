@@ -492,7 +492,9 @@ class NumberFilterRenderTest(TestCase):
     """Render-level contract for the Stash-style NumberFilter component."""
 
     def test_renders_all_eight_modifier_radios(self):
-        html = str(NumberFilter(input_name_prefix="filter-year"))
+        html = str(
+            NumberFilter(input_name_prefix="filter-year", path=["year_released"])
+        )
         for modifier in (
             "EQUALS",
             "NOT_EQUALS",
@@ -507,14 +509,18 @@ class NumberFilterRenderTest(TestCase):
         self.assertIn("data-number-modifier-radio", html)
 
     def test_renders_two_number_inputs(self):
-        html = str(NumberFilter(input_name_prefix="filter-year"))
+        html = str(
+            NumberFilter(input_name_prefix="filter-year", path=["year_released"])
+        )
         self.assertIn('type="number"', html)
         self.assertIn('name="filter-year"', html)
         self.assertIn('name="filter-year-value2"', html)
         self.assertIn("data-number-value2", html)
 
     def test_default_modifier_hides_second_input_and_enables_inputs(self):
-        html = str(NumberFilter(input_name_prefix="filter-year"))
+        html = str(
+            NumberFilter(input_name_prefix="filter-year", path=["year_released"])
+        )
         # value2 is hidden for the default EQUALS modifier.
         self.assertRegex(html, r'data-number-value2="" class="[^"]*\bhidden\b')
         # Inputs are not disabled by default.
@@ -527,6 +533,7 @@ class NumberFilterRenderTest(TestCase):
                 value="2000",
                 value2="2010",
                 modifier="BETWEEN",
+                path=["year_released"],
             )
         )
         self.assertIn('value="2000"', html)
@@ -541,6 +548,7 @@ class NumberFilterRenderTest(TestCase):
                 value="2000",
                 value2="2010",
                 modifier="IS_NULL",
+                path=["year_released"],
             )
         )
         self.assertIn("disabled", html)
@@ -550,7 +558,13 @@ class NumberFilterRenderTest(TestCase):
         self.assertNotIn('value="2010"', html)
 
     def test_invalid_modifier_falls_back_to_equals(self):
-        html = str(NumberFilter(input_name_prefix="filter-year", modifier="INCLUDES"))
+        html = str(
+            NumberFilter(
+                input_name_prefix="filter-year",
+                modifier="INCLUDES",
+                path=["year_released"],
+            )
+        )
         # EQUALS is the only checked radio when an invalid modifier is given.
         self.assertRegex(html, r'value="EQUALS"[^>]*checked="true"')
         self.assertNotRegex(html, r'value="INCLUDES"')

@@ -40,10 +40,12 @@ from common.components.custom_elements import _SearchSelect
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     Div,
+    FilterWidgetPath,
     Input,
     Pill,
     Span,
     Template,
+    filter_widget_attributes,
 )
 
 
@@ -459,6 +461,7 @@ def FilterSelect(
     placeholder: str = "Search…",
     id: str = "",
     free_text: bool = False,
+    path: FilterWidgetPath | None = None,
 ) -> Node:
     """Include/exclude filter combobox built on the shared ``_combobox_shell``.
 
@@ -567,7 +570,14 @@ def FilterSelect(
         items_visible=items_visible,
         templates=templates,
     )
+    # The self-describe root attributes for the generic filter serializer. Only
+    # filter-bar callers pass ``path``; synthetic/test callers leave it None and
+    # get no extra attributes (kind is always "set" for a FilterSelect).
+    widget_attributes = (
+        filter_widget_attributes(path, "set") if path is not None else []
+    )
     return _SearchSelect(
+        widget_attributes,
         name=field_name,
         search_url=search_url,
         multi="true",

@@ -19,7 +19,13 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 
 from common.components.core import Element, Node, Safe
 from common.components.custom_elements import _DateRangePicker
-from common.components.primitives import Div, Input, Span
+from common.components.primitives import (
+    Div,
+    FilterWidgetPath,
+    Input,
+    Span,
+    filter_widget_attributes,
+)
 from common.time import DatePartSpec, date_parts
 
 _FIELD_CONTAINER_CLASS = (
@@ -175,6 +181,7 @@ def DateRangeField(
                     ("id", min_input_id),
                     ("value", min_value),
                     ("data-date-range-hidden", "min"),
+                    ("data-range-min", ""),
                 ],
             ),
             Input(
@@ -184,6 +191,7 @@ def DateRangeField(
                     ("id", max_input_id),
                     ("value", max_value),
                     ("data-date-range-hidden", "max"),
+                    ("data-range-max", ""),
                 ],
             ),
             _segment_group(side="min", label=label, iso_value=min_value),
@@ -325,6 +333,7 @@ def DateRangePicker(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
+    path: FilterWidgetPath | None = None,
 ) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
 
@@ -332,8 +341,15 @@ def DateRangePicker(
     ``{prefix}-min`` / ``{prefix}-max`` ISO inputs, so the filter-bar
     serializer needs no changes. ``min_value`` / ``max_value`` are ISO
     ``YYYY-MM-DD`` strings used to prefill both the segments and the hidden
-    inputs."""
-    return _DateRangePicker(class_="relative")[
+    inputs.
+
+    Filter-bar callers pass ``path`` so the root self-describes for the generic
+    filter serializer; non-filter callers (e.g. a standalone date picker) leave
+    it None and the extra attributes are omitted."""
+    widget_attributes = (
+        filter_widget_attributes(path, "date") if path is not None else []
+    )
+    return _DateRangePicker(widget_attributes, class_="relative")[
         DateRangeField(
             label=label,
             input_name_prefix=input_name_prefix,
