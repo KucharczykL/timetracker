@@ -90,7 +90,7 @@ class RelationMatch(str, Enum):
 
     ANY = "ANY"  # ≥1 related row matches the sub-filter (EXISTS)
     NONE = "NONE"  # no related row matches (NOT EXISTS); includes zero-row parents
-    ALL = "ALL"  # every related row matches (reserved; not yet implemented)
+    ALL = "ALL"  # every related row matches; vacuously true for zero-row parents
 
 
 # ── Base criterion ─────────────────────────────────────────────────────────
@@ -821,26 +821,37 @@ def relation_to_q(
     related_lookup: str,
     parent_field: str = "id",
 ) -> Q:
-    """EXISTS / NOT-EXISTS subquery for a nested cross-entity sub-filter.
+    """EXISTS / NOT-EXISTS / FOR-ALL subquery for a nested cross-entity sub-filter.
 
-    Builds ``parent_field IN (<related rows matching sub>.related_lookup)``; the
-    sub-filter's ``match`` quantifier selects ANY (the EXISTS) vs NONE (its
-    negation). ALL is reserved but unimplemented. The branch is exhaustive — an
-    unexpected match raises rather than silently degrading to ANY.
+    The sub-filter's ``match`` quantifier picks the set semantics, each expressed
+    as a ``parent_field IN (...)`` membership over a subquery of related rows:
+
+    - ANY (default): ``parent_field IN (<related rows matching sub>)`` — the
+      parent has at least one matching related row (EXISTS).
+    - NONE: the negation of ANY — the parent has no matching related row (NOT
+      EXISTS). Zero-related-row parents are included.
+    - ALL: every related row matches the sub-filter. Implemented as the absence
+      of any *violating* (non-matching) related row:
+      ``~Q(parent_field IN (<related rows NOT matching sub>))``.
+
+      **Vacuous truth is INCLUDED**: a parent with zero related rows has no
+      violating row, so it matches ALL — the standard ∀ semantics. The
+      alternative (requiring ≥1 related row, i.e. ``ANY AND ALL``) was considered
+      and rejected as the default; callers wanting it can AND an ANY sub-filter.
+
+    The branch is exhaustive — an unexpected match raises rather than silently
+    degrading to ANY.
     """
-    ids = related_model.objects.filter(sub.to_q()).values_list(
-        related_lookup, flat=True
-    )
-    base = Q(**{f"{parent_field}__in": ids})
+    related = related_model.objects.all()
     if sub.match == RelationMatch.ANY:
-        return base
+        matching = related.filter(sub.to_q()).values_list(related_lookup, flat=True)
+        return Q(**{f"{parent_field}__in": matching})
     if sub.match == RelationMatch.NONE:
-        return ~base
+        matching = related.filter(sub.to_q()).values_list(related_lookup, flat=True)
+        return ~Q(**{f"{parent_field}__in": matching})
     if sub.match == RelationMatch.ALL:
-        raise NotImplementedError(
-            "ALL relation match on a nested sub-filter is not implemented yet; "
-            "see the follow-up issue (#128)."
-        )
+        violating = related.filter(~sub.to_q()).values_list(related_lookup, flat=True)
+        return ~Q(**{f"{parent_field}__in": violating})
     raise ValueError(f"Unsupported relation match {sub.match!r}")
 
 
