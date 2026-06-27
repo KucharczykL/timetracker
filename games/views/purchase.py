@@ -50,7 +50,7 @@ from common.layout import render_page
 from common.time import dateformat
 from common.utils import paginate
 from games.forms import PurchaseForm
-from games.models import Game, Purchase
+from games.models import Game, PlayEvent, Purchase
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -107,12 +107,25 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
 
 def _render_purchase_row(purchase: Purchase) -> TableRowData:
     """Return a row for simple-table rendering."""
+    # TODO: simplify if multiple purchases are no longer allowed
+    date_finished = "-"
+    try:
+        latest_play_event = PlayEvent.objects.filter(
+            game__in=purchase.games.all(),
+            ended__isnull=False,
+        ).latest("ended")
+        if latest_play_event:
+            if latest_play_event.ended:
+                date_finished = latest_play_event.ended.strftime(dateformat)
+    except PlayEvent.DoesNotExist:
+        pass
     return make_row(
         LinkedPurchase(purchase),
         purchase.get_type_display(),
         PurchasePrice(purchase),
         str(purchase.infinite),
         purchase.date_purchased.strftime(dateformat),
+        date_finished,
         (
             purchase.date_refunded.strftime(dateformat)
             if purchase.date_refunded
@@ -161,6 +174,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             Column("Price", "price"),
             Column("Infinite", "infinite"),
             Column("Purchased", "purchased"),
+            Column("Finished", "finished"),
             Column("Refunded", "refunded"),
             Column("Created", "created"),
             Column("Actions", align="right"),
