@@ -31,16 +31,10 @@ function criterion(value: unknown, value2: unknown, modifier: string): Criterion
   return result;
 }
 
-function numberValue(form: HTMLElement, name: string): number | "" {
-  const element = form.querySelector<HTMLInputElement>(`[name="${name}"]`);
+function parseNumberInputValue(element: HTMLInputElement | null): number | "" {
   if (!element || element.value === "") return "";
   const value = parseFloat(element.value);
   return isNaN(value) ? "" : value;
-}
-
-function stringValue(form: HTMLElement, name: string): string {
-  const element = form.querySelector<HTMLInputElement>(`[name="${name}"]`);
-  return element ? element.value : "";
 }
 
 function buildRangeCriterion(
@@ -86,129 +80,134 @@ function getCsrfToken(): string {
   return element ? element.value : "";
 }
 
+// Deep-merge a single leaf criterion into `target` by its JSON path. Branch
+// objects are created lazily, and only when a non-null leaf is being written —
+// never pre-create empty intermediates (an empty sub-filter would change query
+// semantics). For length-1 paths this is just `target[key] = leaf`.
+function setPath(
+  target: Record<string, unknown>,
+  path: string[],
+  leaf: unknown,
+): void {
+  let node = target;
+  for (let index = 0; index < path.length - 1; index++) {
+    const key = path[index];
+    if (node[key] == null || typeof node[key] !== "object") node[key] = {};
+    node = node[key] as Record<string, unknown>;
+  }
+  node[path[path.length - 1]] = leaf;
+}
+
+// Per-kind readers: each is scoped to a single widget element and returns a
+// criterion object, or null to omit the field entirely. The value/modifier
+// logic is a verbatim port of the former hardcoded field loops; only the
+// element lookup changed (within the widget element instead of global [name=…]).
+
+function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
+  const modifier =
+    element.querySelector<HTMLInputElement>('input[data-string-modifier-radio]:checked')
+      ?.value ?? "EQUALS";
+  if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
+    return { modifier };
+  }
+  const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
+  if (textInput && textInput.value.trim()) {
+    return { value: textInput.value.trim(), modifier };
+  }
+  return null;
+}
+
+function readNumberWidget(element: HTMLElement): Criterion | Record<string, unknown> | null {
+  const modifier =
+    element.querySelector<HTMLInputElement>('input[data-number-modifier-radio]:checked')
+      ?.value ?? "EQUALS";
+  if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
+    return { modifier };
+  }
+  const value = parseNumberInputValue(
+    element.querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])'),
+  );
+  if (modifier === "BETWEEN" || modifier === "NOT_BETWEEN") {
+    const value2Marker = element.querySelector('[data-number-value2]');
+    const value2Input =
+      value2Marker instanceof HTMLInputElement
+        ? value2Marker
+        : (value2Marker?.querySelector<HTMLInputElement>("input") ?? null);
+    const value2 = parseNumberInputValue(value2Input);
+    if (value !== "") return criterion(value, value2, modifier);
+    return null;
+  }
+  if (value !== "") return criterion(value, null, modifier);
+  return null;
+}
+
+function readDateWidget(element: HTMLElement): Criterion | null {
+  const valueMin =
+    element.querySelector<HTMLInputElement>("[data-range-min]")?.value ?? "";
+  const valueMax =
+    element.querySelector<HTMLInputElement>("[data-range-max]")?.value ?? "";
+  return buildRangeCriterion(valueMin, valueMax);
+}
+
+function readBoolWidget(element: HTMLElement): Criterion | null {
+  const checked = element.querySelector<HTMLInputElement>('input[type="radio"]:checked');
+  if (!checked) return null;
+  return criterion(checked.value === "true", null, "EQUALS");
+}
+
+function readSetWidget(element: HTMLElement): Record<string, unknown> | null {
+  const included = parseJSONAttr<PillEntry>(element, "data-included");
+  const excluded = parseJSONAttr<PillEntry>(element, "data-excluded");
+  const modifier = element.getAttribute("data-modifier");
+  const isPresence = modifier === "NOT_NULL" || modifier === "IS_NULL";
+  if (isPresence) {
+    return { modifier };
+  }
+  if (included.length > 0 || excluded.length > 0) {
+    return {
+      value: included.map((item) => ({ id: item.id, label: item.label })),
+      excludes: excluded.map((item) => ({ id: item.id, label: item.label })),
+      modifier: modifier || "INCLUDES",
+    };
+  }
+  return null;
+}
+
+function readWidget(element: HTMLElement, kind: string | null): unknown {
+  switch (kind) {
+    case "string":
+      return readStringWidget(element);
+    case "number":
+      return readNumberWidget(element);
+    case "date":
+      return readDateWidget(element);
+    case "bool":
+      return readBoolWidget(element);
+    case "set":
+      return readSetWidget(element);
+    default:
+      return null;
+  }
+}
+
 function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
 
   const searchInput = form.querySelector<HTMLInputElement>('[name="filter-search"]');
   if (searchInput && searchInput.value.trim()) {
-    filter.search = { value: searchInput.value.trim(), modifier: "INCLUDES" };
+    setPath(filter, ["search"], { value: searchInput.value.trim(), modifier: "INCLUDES" });
   }
 
+  // Serialise every search-select's state into its data-included/excluded/
+  // modifier attributes once, so the generic loop below can read set widgets
+  // uniformly with the rest.
   readSearchSelect(form);
-  const widgets = form.querySelectorAll<HTMLElement>('search-select[filter-mode="true"]');
-  widgets.forEach((widget) => {
-    const field = widget.getAttribute("name");
-    if (!field) return;
-    const included = parseJSONAttr<PillEntry>(widget, "data-included");
-    const excluded = parseJSONAttr<PillEntry>(widget, "data-excluded");
-    const modifier = widget.getAttribute("data-modifier");
-    const isPresence = modifier === "NOT_NULL" || modifier === "IS_NULL";
-    if (isPresence) {
-      filter[field] = { modifier };
-    } else if (included.length > 0 || excluded.length > 0) {
-      filter[field] = {
-        value: included.map((item) => ({ id: item.id, label: item.label })),
-        excludes: excluded.map((item) => ({ id: item.id, label: item.label })),
-        modifier: modifier || "INCLUDES",
-      };
-    }
-  });
 
-  const textFields = [
-    { name: "filter-price_currency", key: "price_currency" },
-    { name: "filter-converted_currency", key: "converted_currency" },
-    { name: "filter-name", key: "name" },
-    { name: "filter-group", key: "group" },
-    { name: "filter-playevent_note", key: "playevent_note" },
-    { name: "filter-note", key: "note" },
-  ];
-  textFields.forEach((textField) => {
-    const modifierElement = form.querySelector<HTMLInputElement>(
-      `[name="${textField.name}-modifier"]:checked`,
-    );
-    const modifier = modifierElement ? modifierElement.value : "EQUALS";
-    const isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
-    if (isPresence) {
-      filter[textField.key] = { modifier };
-    } else {
-      const element = form.querySelector<HTMLInputElement>(`[name="${textField.name}"]`);
-      if (element && element.value.trim()) {
-        filter[textField.key] = { value: element.value.trim(), modifier };
-      }
-    }
-  });
-
-  const booleanFields = [
-    { name: "filter-mastered", key: "mastered" },
-    { name: "filter-emulated", key: "emulated" },
-    { name: "filter-active", key: "is_active" },
-    { name: "filter-refunded", key: "is_refunded" },
-    { name: "filter-infinite", key: "infinite" },
-    { name: "filter-needs-price-update", key: "needs_price_update" },
-    { name: "filter-purchase-refunded", key: "purchase_refunded" },
-    { name: "filter-purchase-infinite", key: "purchase_infinite" },
-    { name: "filter-session-emulated", key: "session_emulated" },
-  ];
-  booleanFields.forEach((booleanField) => {
-    const element = form.querySelector<HTMLInputElement>(
-      `[name="${booleanField.name}"]:checked`,
-    );
-    if (element) {
-      const value = element.value === "true";
-      filter[booleanField.key] = criterion(value, null, "EQUALS");
-    }
-  });
-
-  const numberFields = [
-    { prefix: "filter-year", key: "year_released" },
-    { prefix: "filter-original-year", key: "original_year_released" },
-    { prefix: "filter-session-count", key: "session_count" },
-    { prefix: "filter-session-average", key: "session_average" },
-    { prefix: "filter-purchase-count", key: "purchase_count" },
-    { prefix: "filter-playevent-count", key: "playevent_count" },
-    { prefix: "filter-duration-total-hours", key: "duration_total_hours" },
-    { prefix: "filter-duration-manual-hours", key: "duration_manual_hours" },
-    { prefix: "filter-duration-calculated-hours", key: "duration_calculated_hours" },
-    { prefix: "filter-manual-playtime-hours", key: "manual_playtime_hours" },
-    { prefix: "filter-calculated-playtime-hours", key: "calculated_playtime_hours" },
-    { prefix: "filter-num-purchases", key: "num_purchases" },
-    { prefix: "filter-price", key: "price" },
-    { prefix: "filter-purchase-price-total", key: "purchase_price_total" },
-    { prefix: "filter-purchase-price-any", key: "purchase_price_any" },
-    { prefix: "filter-days-to-finish", key: "days_to_finish" },
-    { prefix: "filter-playtime-hours", key: "playtime_hours" },
-  ];
-
-  numberFields.forEach((numberField) => {
-    const modifierElement = form.querySelector<HTMLInputElement>(
-      `[name="${numberField.prefix}-modifier"]:checked`,
-    );
-    const modifier = modifierElement ? modifierElement.value : "EQUALS";
-    if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
-      filter[numberField.key] = { modifier };
-      return;
-    }
-    const value = numberValue(form, numberField.prefix);
-    if (modifier === "BETWEEN" || modifier === "NOT_BETWEEN") {
-      const value2 = numberValue(form, numberField.prefix + "-value2");
-      if (value !== "") filter[numberField.key] = criterion(value, value2, modifier);
-      return;
-    }
-    if (value !== "") filter[numberField.key] = criterion(value, null, modifier);
-  });
-
-  const dateRangeFields = [
-    { prefix: "filter-date-purchased", key: "date_purchased" },
-    { prefix: "filter-date-refunded", key: "date_refunded" },
-    { prefix: "filter-started", key: "started" },
-    { prefix: "filter-ended", key: "ended" },
-    { prefix: "filter-finished", key: "finished" },
-  ];
-  dateRangeFields.forEach((dateField) => {
-    const valueMin = stringValue(form, dateField.prefix + "-min");
-    const valueMax = stringValue(form, dateField.prefix + "-max");
-    const result = buildRangeCriterion(valueMin, valueMax);
-    if (result !== null) filter[dateField.key] = result;
+  form.querySelectorAll<HTMLElement>("[data-filter-widget]").forEach((widget) => {
+    const path = parseJSONAttr<string>(widget, "data-path");
+    if (path.length === 0) return;
+    const result = readWidget(widget, widget.getAttribute("data-kind"));
+    if (result !== null) setPath(filter, path, result);
   });
 
   return filter;
