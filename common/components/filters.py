@@ -13,6 +13,7 @@ from common.components.primitives import (
     Input,
     Label,
     Radio,
+    RelationChild,
     Span,
     filter_widget_attributes,
 )
@@ -48,6 +49,13 @@ class NumberValues(NamedTuple):
 
     value: str
     value2: str
+    modifier: str
+
+
+class StringValues(NamedTuple):
+    """(value, modifier) parsed from a string filter criterion."""
+
+    value: str
     modifier: str
 
 
@@ -151,11 +159,13 @@ def _parse_number(existing: dict, key: str) -> NumberValues:
     return _number_from_field(existing.get(key, {}))
 
 
-def _string_from_field(field: dict) -> tuple[str, str]:
+def _string_from_field(field: dict) -> StringValues:
     """Extract (value, modifier) from a string criterion dict."""
     if not isinstance(field, dict):
-        return "", "EQUALS"
-    return str(field.get("value", "")), str(field.get("modifier") or "EQUALS")
+        return StringValues("", "EQUALS")
+    return StringValues(
+        str(field.get("value", "")), str(field.get("modifier") or "EQUALS")
+    )
 
 
 # ── Cross-entity (nested AND) prefill (#123 Phase 2d) ────────────────────────
@@ -412,7 +422,7 @@ def _filter_boolean_radio(
     value: bool | None,
     *,
     path: FilterWidgetPath,
-    relation_child: dict | None = None,
+    relation_child: RelationChild | None = None,
 ) -> Node:
     """Renders a filter-specific boolean radio button group with 'True' and 'False' options.
 
@@ -426,10 +436,12 @@ def _filter_boolean_radio(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-1"),
+            # No ``compose=True``: the relation-bool serializer branch builds and
+            # appends its own AND element directly, returning before it ever reads
+            # ``data-compose`` — so emitting it would be inert and misleading.
             *filter_widget_attributes(
                 path,
                 kind,
-                compose=relation_child is not None,
                 relation_child=relation_child,
             ),
         ],

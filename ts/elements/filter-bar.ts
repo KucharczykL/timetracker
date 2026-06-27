@@ -273,15 +273,25 @@ function readRelationBoolWidget(
     'input[type="radio"]:checked',
   );
   if (!checked) return null;
-  let child: Record<string, unknown> = {};
+  // The child criterion is mandatory: an empty relation sub-filter would change
+  // to_q semantics to "has ANY related row" (or, for the False radio, "has NO
+  // related row"), not the intended "has a row matching the child". Bail rather
+  // than emit a meaning-altering empty relation.
   const childRaw = widget.getAttribute("data-relation-child");
-  if (childRaw) {
-    try {
-      child = JSON.parse(childRaw);
-    } catch {
-      console.warn("filter-bar: malformed data-relation-child", childRaw);
-      return null;
-    }
+  if (!childRaw) {
+    console.warn("filter-bar: relation-bool widget missing data-relation-child", widget);
+    return null;
+  }
+  let child: Record<string, unknown>;
+  try {
+    child = JSON.parse(childRaw);
+  } catch {
+    console.warn("filter-bar: malformed data-relation-child", childRaw);
+    return null;
+  }
+  if (!child || typeof child !== "object" || Object.keys(child).length === 0) {
+    console.warn("filter-bar: empty data-relation-child", childRaw);
+    return null;
   }
   const relationField = path[0];
   // true → match ANY (omit `match`); false → match NONE.

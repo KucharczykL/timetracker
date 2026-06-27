@@ -32,7 +32,7 @@ from common.components.core import (
     randomid,
 )
 from common.components.icons_generated import ICON_NODES
-from common.criteria import FilterWidgetKind, FilterWidgetPath
+from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
@@ -65,7 +65,7 @@ def filter_widget_attributes(
     kind: FilterWidgetKind,
     *,
     compose: bool = False,
-    relation_child: dict | None = None,
+    relation_child: RelationChild | None = None,
 ) -> list[HTMLAttribute]:
     """The self-describe attributes every filter-bar widget root carries.
 

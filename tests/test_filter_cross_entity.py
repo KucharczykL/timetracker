@@ -13,13 +13,31 @@ parent's n-ary ``AND`` list. This module asserts:
 """
 
 import json
+import re
 from datetime import date, datetime, timezone
 
 import pytest
 
 from common.components.filters import FilterBar, PurchaseFilterBar
-from games.filters import GameFilter, parse_game_filter, parse_purchase_filter
-from games.models import Device, Game, Platform, Purchase, Session
+from common.criteria import (
+    BoolCriterion,
+    ChoiceCriterion,
+    DateCriterion,
+    FloatCriterion,
+    Modifier,
+    MultiCriterion,
+    RelationMatch,
+    StringCriterion,
+)
+from games.filters import (
+    GameFilter,
+    PlayEventFilter,
+    PurchaseFilter,
+    SessionFilter,
+    parse_game_filter,
+    parse_purchase_filter,
+)
+from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
 
 
 def _dt(year=2024, month=6, day=1):
@@ -448,3 +466,345 @@ def test_purchase_bar_prefills_finished_from_and(db):
     html = str(PurchaseFilterBar(filter_json))
     assert "2024-01-01" in html
     assert "2024-12-31" in html
+
+
+# ── parametrized parity: each repointed widget's NESTED form selects the same
+#    rows as its still-live FLAT oracle field (#123 Phase 2d permanent guard) ──
+#
+# The 10 repointed widgets are now the canonical path; the flat GameFilter /
+# PurchaseFilter convenience fields remain as oracles. Each case builds BOTH the
+# flat and the nested filter dataclass over one shared world and asserts they
+# select the identical id set. A mismatch is a real bug (the repoint changed
+# behaviour), not a test to weaken.
+
+
+@pytest.fixture
+def parity_world(db):
+    """One world exercising every repointed widget's dimension at once.
+
+    Each repointed criterion matches a strict, non-empty subset so an equal
+    flat/nested result is a meaningful (non-vacuous) check."""
+    pc = Platform.objects.create(name="PC")
+    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
+    desktop = Device.objects.create(name="Desktop", type=Device.PC)
+
+    # session: device + emulated dimension
+    deck_game = Game.objects.create(name="DeckGame", platform=pc)
+    Session.objects.create(
+        game=deck_game, timestamp_start=_dt(), device=deck, emulated=False
+    )
+    emulated_game = Game.objects.create(name="EmulatedGame", platform=pc)
+    Session.objects.create(
+        game=emulated_game, timestamp_start=_dt(), device=desktop, emulated=True
+    )
+
+    # purchase: type / ownership / price / refunded / infinite dimension
+    game_buyer = Game.objects.create(name="GameBuyer", platform=pc)
+    cheap = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1),
+        type=Purchase.GAME,
+        ownership_type=Purchase.DIGITAL,
+        converted_price=10.0,
+        infinite=False,
+    )
+    cheap.games.set([game_buyer])
+
+    dlc_buyer = Game.objects.create(name="DlcBuyer", platform=pc)
+    pricey = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1),
+        type=Purchase.DLC,
+        related_game=dlc_buyer,
+        ownership_type=Purchase.PHYSICAL,
+        converted_price=50.0,
+        date_refunded=date(2024, 2, 1),
+        infinite=True,
+    )
+    pricey.games.set([dlc_buyer])
+
+    # playevent: note + ended dimension
+    finished_game = Game.objects.create(name="FinishedGame", platform=pc)
+    PlayEvent.objects.create(
+        game=finished_game, ended=date(2024, 6, 15), note="Completed the run"
+    )
+    started_game = Game.objects.create(name="StartedGame", platform=pc)
+    PlayEvent.objects.create(
+        game=started_game, ended=date(2023, 1, 1), note="Just started"
+    )
+
+    # a bare game touching no relation (matters for the NONE/False branches)
+    Game.objects.create(name="Bare", platform=pc)
+
+    # purchase-bar finished: a purchase of a finished game vs one of an unfinished
+    bought_finished = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_finished.games.set([finished_game])
+    bought_other = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    bought_other.games.set([started_game])
+
+    return {"deck": deck.id}
+
+
+def _ids(model, filt) -> set[int]:
+    return set(
+        model.objects.filter(filt.to_q()).distinct().values_list("id", flat=True)
+    )
+
+
+def _between_2024() -> DateCriterion:
+    return DateCriterion(
+        value="2024-01-01", value2="2024-12-31", modifier=Modifier.BETWEEN
+    )
+
+
+# Each case: (model, flat-filter builder, nested-filter builder). Builders take
+# the world dict (only the device case needs an id from it).
+PARITY_CASES = {
+    "device_set": (
+        Game,
+        lambda w: GameFilter(
+            device=MultiCriterion(value=[w["deck"]], modifier=Modifier.INCLUDES)
+        ),
+        lambda w: GameFilter(
+            session_filter=SessionFilter(
+                device=MultiCriterion(value=[w["deck"]], modifier=Modifier.INCLUDES)
+            )
+        ),
+    ),
+    "purchase_type_set": (
+        Game,
+        lambda w: GameFilter(
+            purchase_type=ChoiceCriterion(value=["game"], modifier=Modifier.INCLUDES)
+        ),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                type=ChoiceCriterion(value=["game"], modifier=Modifier.INCLUDES)
+            )
+        ),
+    ),
+    "purchase_ownership_set": (
+        Game,
+        lambda w: GameFilter(
+            purchase_ownership_type=ChoiceCriterion(
+                value=["ph"], modifier=Modifier.INCLUDES
+            )
+        ),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                ownership_type=ChoiceCriterion(value=["ph"], modifier=Modifier.INCLUDES)
+            )
+        ),
+    ),
+    "purchase_price_any_number": (
+        Game,
+        lambda w: GameFilter(
+            purchase_price_any=FloatCriterion(
+                value=20.0, modifier=Modifier.GREATER_THAN
+            )
+        ),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                converted_price=FloatCriterion(
+                    value=20.0, modifier=Modifier.GREATER_THAN
+                )
+            )
+        ),
+    ),
+    "playevent_note_string": (
+        Game,
+        lambda w: GameFilter(
+            playevent_note=StringCriterion(
+                value="Completed", modifier=Modifier.INCLUDES
+            )
+        ),
+        lambda w: GameFilter(
+            playevent_filter=PlayEventFilter(
+                note=StringCriterion(value="Completed", modifier=Modifier.INCLUDES)
+            )
+        ),
+    ),
+    "game_finished_date": (
+        Game,
+        lambda w: GameFilter(finished=_between_2024()),
+        lambda w: GameFilter(playevent_filter=PlayEventFilter(ended=_between_2024())),
+    ),
+    "session_emulated_true": (
+        Game,
+        lambda w: GameFilter(session_emulated=BoolCriterion(value=True)),
+        lambda w: GameFilter(
+            session_filter=SessionFilter(
+                match=RelationMatch.ANY, emulated=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "session_emulated_false": (
+        Game,
+        lambda w: GameFilter(session_emulated=BoolCriterion(value=False)),
+        lambda w: GameFilter(
+            session_filter=SessionFilter(
+                match=RelationMatch.NONE, emulated=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "purchase_refunded_true": (
+        Game,
+        lambda w: GameFilter(purchase_refunded=BoolCriterion(value=True)),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                match=RelationMatch.ANY, is_refunded=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "purchase_refunded_false": (
+        Game,
+        lambda w: GameFilter(purchase_refunded=BoolCriterion(value=False)),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                match=RelationMatch.NONE, is_refunded=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "purchase_infinite_true": (
+        Game,
+        lambda w: GameFilter(purchase_infinite=BoolCriterion(value=True)),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                match=RelationMatch.ANY, infinite=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "purchase_infinite_false": (
+        Game,
+        lambda w: GameFilter(purchase_infinite=BoolCriterion(value=False)),
+        lambda w: GameFilter(
+            purchase_filter=PurchaseFilter(
+                match=RelationMatch.NONE, infinite=BoolCriterion(value=True)
+            )
+        ),
+    ),
+    "purchase_bar_finished_date": (
+        Purchase,
+        lambda w: PurchaseFilter(finished=_between_2024()),
+        lambda w: PurchaseFilter(
+            game_filter=GameFilter(
+                playevent_filter=PlayEventFilter(ended=_between_2024())
+            )
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("case_id", list(PARITY_CASES), ids=list(PARITY_CASES))
+def test_repointed_widget_nested_equals_flat_oracle(parity_world, case_id):
+    model, build_flat, build_nested = PARITY_CASES[case_id]
+    flat_ids = _ids(model, build_flat(parity_world))
+    nested_ids = _ids(model, build_nested(parity_world))
+    # Non-vacuous: the criterion must actually match something in the world, so an
+    # all-empty bug can't make the equality trivially pass.
+    assert flat_ids, f"{case_id}: flat oracle matched nothing (test data too thin)"
+    assert nested_ids == flat_ids, (
+        f"{case_id}: nested form selected {nested_ids} but flat oracle {flat_ids}"
+    )
+
+
+# ── prefill coverage gaps (#123 Phase 2d hardening) ──────────────────────────
+
+
+def test_game_bar_prefills_purchase_price_any_from_and(db):
+    """Number helper: a nested converted_price criterion repopulates the widget."""
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "purchase_filter": {
+                        "converted_price": {"value": 20, "modifier": "GREATER_THAN"}
+                    }
+                }
+            ]
+        }
+    )
+    html = str(FilterBar(filter_json))
+    assert re.search(r'name="filter-purchase-price-any"[^>]*value="20"', html)
+
+
+def test_game_bar_prefills_playevent_note_from_and(db):
+    """String helper: a nested note criterion repopulates the text input."""
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "playevent_filter": {
+                        "note": {"value": "Completed", "modifier": "INCLUDES"}
+                    }
+                }
+            ]
+        }
+    )
+    html = str(FilterBar(filter_json))
+    assert re.search(r'name="filter-playevent_note"[^>]*value="Completed"', html)
+
+
+def test_game_bar_prefills_session_emulated_true_radio(db):
+    """Relation-bool TRUE branch: an ANY element checks the 'True' radio."""
+    filter_json = _relation_bool_json(
+        "session_filter",
+        {"emulated": {"value": True, "modifier": "EQUALS"}},
+        value=True,
+    )
+    html = str(FilterBar(filter_json))
+    assert re.search(
+        r'name="filter-session-emulated"[^>]*value="true"[^>]*checked', html
+    )
+
+
+def test_game_bar_prefills_purchase_type_and_ownership_independently(db):
+    """Prefill ambiguity: two purchase_filter AND elements (type + ownership) each
+    repopulate their OWN widget — the type pill shows the type value and the
+    ownership pill the ownership value, with no cross-contamination."""
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {"purchase_filter": {"type": _set_criterion("game", "Game")}},
+                {
+                    "purchase_filter": {
+                        "ownership_type": _set_criterion("ph", "Physical")
+                    }
+                },
+            ]
+        }
+    )
+    html = str(FilterBar(filter_json))
+    include_pills = re.findall(
+        r'data-pill[^>]*?data-value="([^"]+)"[^>]*?data-search-select-type="include"',
+        html,
+    )
+    # exactly one include pill per widget — no value leaked into the other widget
+    assert include_pills.count("game") == 1
+    assert include_pills.count("ph") == 1
+
+
+def test_game_bar_prefills_refunded_false_and_infinite_true_independently(db):
+    """Two relation-bool elements set together prefill each bool independently:
+    refunded NONE → 'False' checked, infinite ANY → 'True' checked."""
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "purchase_filter": {
+                        "match": "NONE",
+                        "is_refunded": {"value": True, "modifier": "EQUALS"},
+                    }
+                },
+                {
+                    "purchase_filter": {
+                        "infinite": {"value": True, "modifier": "EQUALS"}
+                    }
+                },
+            ]
+        }
+    )
+    html = str(FilterBar(filter_json))
+    assert re.search(
+        r'name="filter-purchase-refunded"[^>]*value="false"[^>]*checked', html
+    )
+    assert re.search(
+        r'name="filter-purchase-infinite"[^>]*value="true"[^>]*checked', html
+    )
