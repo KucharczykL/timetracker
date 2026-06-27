@@ -6,7 +6,6 @@ from common.components.core import BaseComponent, Element, Node, Safe
 from common.components.custom_elements import _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
-    Checkbox,
     Div,
     FilterWidgetKind,
     FilterWidgetPath,
@@ -220,14 +219,6 @@ def _cross_entity_bool(
     return None
 
 
-def _parse_bool(existing: dict, key: str) -> bool:
-    """Extract a boolean value from a filter criterion."""
-    field = existing.get(key, {})
-    if not isinstance(field, dict):
-        return False
-    return bool(field.get("value", False))
-
-
 def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
     """Extract a nullable boolean value from a filter criterion."""
     if key not in existing:
@@ -250,11 +241,6 @@ def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
 # Each list filter is a FilterSelect. Enum fields pre-render their small, fixed
 # option set; model-backed fields fetch from a search endpoint on demand, with
 # labels embedded in the filter JSON so pills render without a DB round-trip.
-
-# Presence modifiers drive the pinned (Any)/(None) pseudo-options. They are
-# mutually exclusive with value pills (selecting one clears the value set).
-# Must match JS PRESENCE_MODIFIERS in search_select.js.
-_PRESENCE_MODIFIERS = frozenset({"NOT_NULL", "IS_NULL"})
 
 # M2M-only modifiers surfaced as additional pseudo-options in the dropdown.
 # "any" (INCLUDES) is the implicit default when neither a presence nor an
@@ -284,20 +270,6 @@ def _modifier_options(
     return options
 
 
-def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
-    """Return the modifier value to surface as the modifier pill.
-
-    Presence modifiers (NOT_NULL / IS_NULL) are always surfaced.  Non-presence
-    modifiers (INCLUDES / INCLUDES_ALL / INCLUDES_ONLY) only need a pill on M2M
-    fields — otherwise the modifier is just the implicit default.
-    """
-    if modifier in _PRESENCE_MODIFIERS or not has_m2m:
-        return modifier
-    if modifier:
-        return modifier
-    return ""
-
-
 def _enum_filter(
     field_name: str,
     options,
@@ -321,7 +293,7 @@ def _enum_filter(
     excluded = [
         (value, _find_label(options_str, value)) for value, _label in choice.excluded
     ]
-    modifier = _split_modifier(choice.modifier)
+    modifier = choice.modifier
     return FilterSelect(
         field_name=field_name,
         options=options_str,
@@ -353,7 +325,7 @@ def _model_filter(
     cross-entity widget point at a nested sub-filter leaf (defaults to the flat
     ``[field_name]``).
     """
-    modifier = _split_modifier(choice.modifier, has_m2m=bool(m2m_modifiers))
+    modifier = choice.modifier
     return FilterSelect(
         field_name=field_name,
         included=[(value, label or value) for value, label in choice.selected],
@@ -365,19 +337,6 @@ def _model_filter(
         path=path if path is not None else [field_name],
         compose=compose,
     )
-
-
-def _filter_mins_to_hrs(val) -> str:
-    if val is None or val == "" or val == 0:
-        return ""
-    try:
-        mins = int(val)
-    except (TypeError, ValueError):
-        return ""
-    if mins == 0:
-        return ""
-    hrs = mins / 60
-    return str(int(hrs)) if hrs == int(hrs) else f"{hrs:.1f}"
 
 
 def _widget_id(widget) -> str:
@@ -409,11 +368,6 @@ def _filter_field(label: str, widget) -> Node:
             widget,
         ],
     )
-
-
-def _filter_checkbox(name: str, label: str, checked: bool) -> Node:
-    """Thin adapter mapping legacy checkbox filters to the generalized Checkbox primitive."""
-    return Checkbox(name=name, label=label, checked=checked)
 
 
 def _filter_boolean_radio(

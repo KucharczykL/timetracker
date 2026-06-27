@@ -161,8 +161,8 @@ class FilterBarRenderingTest(TestCase):
 
     def test_game_filter_bar_preserves_excludes_modifier(self):
         """An enum field with an EXCLUDES modifier renders data-modifier correctly
-        so the JS roundtrip preserves the modifier (regression: _split_modifier
-        silently dropped non-presence modifiers when match_modes was None)."""
+        so the JS roundtrip preserves the modifier (regression: non-presence
+        modifiers were silently dropped when match_modes was None)."""
         filter_json = json.dumps(
             {
                 "status": {
