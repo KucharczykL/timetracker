@@ -119,6 +119,15 @@ class TestBoolCriterion:
         c = BoolCriterion(value=True, modifier=Modifier.EQUALS)
         assert c.to_q("mastered") == Q(mastered=True)
 
+    def test_value_false_survives_to_json(self):
+        """value=False must serialize — it equals the dataclass default, so the
+        base to_json would drop it, losing e.g. is_refunded=False."""
+        assert BoolCriterion(value=False).to_json() == {"value": False}
+
+    def test_value_false_round_trip(self):
+        restored = BoolCriterion.from_json(BoolCriterion(value=False).to_json())
+        assert restored.value is False
+
 
 class TestChoiceCriterion:
     def test_includes(self):
@@ -1315,6 +1324,13 @@ class TestPurchaseFilterDates:
         assert ended.value2 == "2024-12-31"
         assert str(restored.to_q()) == str(original.to_q())
 
+    def test_empty_subfilter_is_omitted_not_serialized_as_empty(self):
+        """An all-None sub-filter contributes no constraint, so to_json omits it
+        entirely rather than emitting `{"game_filter": {}}`."""
+        from games.filters import GameFilter, PurchaseFilter
+
+        assert PurchaseFilter(game_filter=GameFilter()).to_json() == {}
+
     def test_flat_finished_field_round_trip(self):
         """The flat `finished` DateCriterion on Game/Purchase filters (#121)
         round-trips through JSON like any other criterion field."""
@@ -1485,6 +1501,28 @@ class TestFinishedFilter:
         pf = PurchaseFilter.where(finished__between=("2024-01-01", "2024-12-31"))
         results = set(Purchase.objects.filter(pf.to_q()).distinct())
         assert results == {data["p_in"]}
+
+    @pytest.mark.django_db
+    def test_game_finished_greater_than_min_only(self):
+        """A min-only (GREATER_THAN) finished bound maps to playevents__ended__gt."""
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._seed()
+        gf = GameFilter.where(finished__gt="2024-01-01")
+        results = set(Game.objects.filter(gf.to_q()).distinct())
+        assert results == {data["in_range"]}
+
+    @pytest.mark.django_db
+    def test_purchase_finished_less_than_max_only(self):
+        """A max-only (LESS_THAN) finished bound maps to playevents__ended__lt."""
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        data = self._seed()
+        pf = PurchaseFilter.where(finished__lt="2024-01-01")
+        results = set(Purchase.objects.filter(pf.to_q()).distinct())
+        assert results == {data["p_out"]}
 
     @pytest.mark.django_db
     def test_game_finished_no_duplicate_rows(self):

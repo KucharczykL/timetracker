@@ -262,8 +262,8 @@ _NESTED_BUILDERS = [
 @pytest.mark.parametrize("name,builder,model", _NESTED_BUILDERS)
 def test_nested_builder_survives_json_round_trip(world, name, builder, model):
     filter_obj = builder()
-    # Guard: the builder actually carries a nested cross-entity sub-filter, so
-    # this test is meaningful (a flat-only filter would round-trip trivially).
+    # Sanity check: the builder serialized to a non-empty payload (Session
+    # builders are exempt — sessions_for_platform may serialize flat-only).
     serialized = filter_obj.to_json()
     assert serialized != {} or model is Session, f"{name}: nothing serialized"
     assert _count_via_json(filter_obj, model) == _count(filter_obj, model), (

@@ -657,9 +657,10 @@ class PurchaseFilter(OperatorFilter):
         if self.finished is not None:
             from games.models import Game
 
-            # Purchases whose game has a playevent ended in range. Resolve the
-            # matching game ids first (distinct) so the reverse-relation join
-            # doesn't multiply purchase rows.
+            # Match via a game-id subquery instead of traversing
+            # games__playevents__ended directly, so the playevents join stays out
+            # of the purchase query. (The games M2M join can still duplicate
+            # rows; callers apply .distinct(), as with the game_filter block.)
             finished_game_ids: MatchingIdQuerySet = (
                 Game.objects.filter(self.finished.to_q("playevents__ended"))
                 .distinct()

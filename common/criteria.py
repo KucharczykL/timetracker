@@ -271,9 +271,8 @@ class BoolCriterion(_Criterion):
         # `value` is the whole payload here, so it must always serialize — the
         # base implementation omits fields equal to their default, which would
         # silently drop a meaningful ``value=False`` (e.g. is_refunded=False).
-        result: dict[str, Any] = {"value": self.value}
-        if self.modifier != Modifier.EQUALS:
-            result["modifier"] = self.modifier
+        result = super().to_json()
+        result["value"] = self.value
         return result
 
 
@@ -401,12 +400,16 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "ChoiceCriterion": ChoiceCriterion,
 }
 
-# Registry of OperatorFilter subclasses by name, so to_json/from_json can
-# round-trip cross-entity sub-filter fields (e.g. PurchaseFilter.game_filter,
-# GameFilter.playevent_filter). Populated by OperatorFilter.__init_subclass__
-# as each concrete filter class is defined (see games/filters.py). Mirrors
-# _CRITERION_TYPES for criterion fields.
+# Registry of OperatorFilter subclasses by name, so from_json can resolve a
+# cross-entity sub-filter field's type from its (string) annotation name — e.g.
+# PurchaseFilter.game_filter, GameFilter.playevent_filter. (to_json needs no
+# lookup; it dispatches structurally on isinstance.) Populated by
+# OperatorFilter.__init_subclass__ as each concrete filter class is defined (see
+# games/filters.py). Mirrors _CRITERION_TYPES for criterion fields.
 _FILTER_TYPES: dict[str, type["OperatorFilter"]] = {}
+
+# The three sub-filter composition fields, shared by every OperatorFilter.
+_OPERATOR_FIELDS: tuple[str, str, str] = ("AND", "OR", "NOT")
 
 
 def _criterion_class_for(
@@ -516,7 +519,7 @@ class OperatorFilter:
 
     def sub_filter(self) -> OperatorFilter | None:
         """Return the first non-None of AND / OR / NOT."""
-        for attr in ("AND", "OR", "NOT"):
+        for attr in _OPERATOR_FIELDS:
             if hasattr(self, attr):
                 v = getattr(self, attr)
                 if v is not None:
@@ -527,7 +530,7 @@ class OperatorFilter:
         """Return field names that hold a _Criterion instance."""
         names: list[str] = []
         for f in dc_fields(self):
-            if f.name in ("AND", "OR", "NOT"):
+            if f.name in _OPERATOR_FIELDS:
                 continue
             v = getattr(self, f.name)
             if isinstance(v, _Criterion):
@@ -566,7 +569,7 @@ class OperatorFilter:
                 kwargs[f.name] = None
                 continue
             # Recurse into sub-filters (AND / OR / NOT)
-            if f.name in ("AND", "OR", "NOT"):
+            if f.name in _OPERATOR_FIELDS:
                 kwargs[f.name] = cls.from_json(raw) if isinstance(raw, dict) else None
                 continue
             # Resolve criterion fields from string type annotation
@@ -598,15 +601,16 @@ class OperatorFilter:
             v = getattr(self, f.name)
             if v is None:
                 continue
-            if f.name in ("AND", "OR", "NOT"):
+            if f.name in _OPERATOR_FIELDS:
                 result[f.name] = v.to_json()
             elif isinstance(v, _Criterion):
                 j = v.to_json()
                 if j:
                     result[f.name] = j
             # Cross-entity sub-filter field (game_filter, playevent_filter, …).
-            # AND/OR/NOT are OperatorFilter too but handled above, so exclude them.
-            elif isinstance(v, OperatorFilter) and f.name not in ("AND", "OR", "NOT"):
+            # AND/OR/NOT already matched the first branch; the name guard is
+            # belt-and-suspenders against a future reordering of these branches.
+            elif isinstance(v, OperatorFilter) and f.name not in _OPERATOR_FIELDS:
                 j = v.to_json()
                 if j:
                     result[f.name] = j
