@@ -202,6 +202,7 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
     { prefix: "filter-date-refunded", key: "date_refunded" },
     { prefix: "filter-started", key: "started" },
     { prefix: "filter-ended", key: "ended" },
+    { prefix: "filter-finished", key: "finished" },
   ];
   dateRangeFields.forEach((dateField) => {
     const valueMin = stringValue(form, dateField.prefix + "-min");

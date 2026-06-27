@@ -267,6 +267,15 @@ class BoolCriterion(_Criterion):
             return ~Q(**{field_name: self.value})
         raise ValueError(f"Unsupported modifier {self.modifier} for bool field")
 
+    def to_json(self) -> dict[str, Any]:
+        # `value` is the whole payload here, so it must always serialize — the
+        # base implementation omits fields equal to their default, which would
+        # silently drop a meaningful ``value=False`` (e.g. is_refunded=False).
+        result: dict[str, Any] = {"value": self.value}
+        if self.modifier != Modifier.EQUALS:
+            result["modifier"] = self.modifier
+        return result
+
 
 @dataclass
 class _SetCriterion(_Criterion):
@@ -392,6 +401,13 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "ChoiceCriterion": ChoiceCriterion,
 }
 
+# Registry of OperatorFilter subclasses by name, so to_json/from_json can
+# round-trip cross-entity sub-filter fields (e.g. PurchaseFilter.game_filter,
+# GameFilter.playevent_filter). Populated by OperatorFilter.__init_subclass__
+# as each concrete filter class is defined (see games/filters.py). Mirrors
+# _CRITERION_TYPES for criterion fields.
+_FILTER_TYPES: dict[str, type["OperatorFilter"]] = {}
+
 
 def _criterion_class_for(
     cls: type["OperatorFilter"], field_name: str
@@ -444,6 +460,12 @@ class OperatorFilter:
             name: StringCriterion | None = None
             ...
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Register concrete filter classes so from_json can resolve a
+        # cross-entity sub-filter field's type by its annotation name.
+        _FILTER_TYPES[cls.__name__] = cls
 
     @classmethod
     def where(cls: type[F], **lookups: Any) -> F:
@@ -561,6 +583,13 @@ class OperatorFilter:
                 kwargs[f.name] = (
                     f_type.from_json(raw) if isinstance(raw, dict) else None
                 )
+            # Cross-entity sub-filter field (e.g. game_filter, playevent_filter):
+            # resolve the filter class by its annotation name and recurse.
+            elif isinstance(f_type, str) and f_type in _FILTER_TYPES:
+                filter_cls = _FILTER_TYPES[f_type]
+                kwargs[f.name] = (
+                    filter_cls.from_json(raw) if isinstance(raw, dict) else None
+                )
         return cls(**kwargs)
 
     def to_json(self) -> dict[str, Any]:
@@ -572,6 +601,12 @@ class OperatorFilter:
             if f.name in ("AND", "OR", "NOT"):
                 result[f.name] = v.to_json()
             elif isinstance(v, _Criterion):
+                j = v.to_json()
+                if j:
+                    result[f.name] = j
+            # Cross-entity sub-filter field (game_filter, playevent_filter, …).
+            # AND/OR/NOT are OperatorFilter too but handled above, so exclude them.
+            elif isinstance(v, OperatorFilter) and f.name not in ("AND", "OR", "NOT"):
                 j = v.to_json()
                 if j:
                     result[f.name] = j

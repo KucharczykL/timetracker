@@ -98,11 +98,19 @@ def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
 
 
 def _parse_range(existing: dict, key: str) -> RangeValues:
-    """Extract (min, max) from a range filter criterion, defaulting to ("", "")."""
+    """Extract (min, max) from a range filter criterion, defaulting to ("", "").
+
+    A one-sided range stores its single bound in ``value`` regardless of side
+    (GREATER_THAN → min, LESS_THAN → max), so the modifier decides which slot it
+    fills; only BETWEEN carries both ``value`` (min) and ``value2`` (max).
+    """
     field = existing.get(key, {})
     if not isinstance(field, dict):
         return RangeValues("", "")
-    return RangeValues(str(field.get("value", "")), str(field.get("value2", "")))
+    value = str(field.get("value", ""))
+    if field.get("modifier") == "LESS_THAN":
+        return RangeValues("", value)
+    return RangeValues(value, str(field.get("value2", "")))
 
 
 def _parse_number(existing: dict, key: str) -> NumberValues:
@@ -631,6 +639,7 @@ def _game_fields(
     session_avg = _parse_number(existing, "session_average")
     purchase_count = _parse_number(existing, "purchase_count")
     playevent_count = _parse_number(existing, "playevent_count")
+    finished_min, finished_max = _parse_range(existing, "finished")
     manual_pt = _parse_number(existing, "manual_playtime_hours")
     calc_pt = _parse_number(existing, "calculated_playtime_hours")
     price_total = _parse_number(existing, "purchase_price_total")
@@ -803,6 +812,15 @@ def _game_fields(
                         modifier=playevent_count.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 5",
+                    ),
+                ),
+                _filter_field(
+                    "Finished",
+                    DateRangePicker(
+                        label="Finished",
+                        input_name_prefix="filter-finished",
+                        min_value=finished_min,
+                        max_value=finished_max,
                     ),
                 ),
                 _filter_field(
@@ -985,6 +1003,7 @@ def _purchase_fields(existing: dict) -> list:
     )
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
     date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
+    finished_min, finished_max = _parse_range(existing, "finished")
     num = _parse_number(existing, "num_purchases")
 
     fields = [
@@ -1072,6 +1091,15 @@ def _purchase_fields(existing: dict) -> list:
                         input_name_prefix="filter-date-refunded",
                         min_value=date_refunded_min,
                         max_value=date_refunded_max,
+                    ),
+                ),
+                _filter_field(
+                    "Finished",
+                    DateRangePicker(
+                        label="Finished",
+                        input_name_prefix="filter-finished",
+                        min_value=finished_min,
+                        max_value=finished_max,
                     ),
                 ),
                 _filter_field(

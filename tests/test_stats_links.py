@@ -9,6 +9,7 @@ are separate single-game purchases), where the filter system's id-set semantics
 match the stats queries' M2M traversal exactly.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -78,6 +79,17 @@ def world(db):
 
 def _count(filter_obj, model):
     return model.objects.filter(filter_obj.to_q()).distinct().count()
+
+
+def _count_via_json(filter_obj, model):
+    """Count after a full JSON round-trip, mirroring what a clicked stats link
+    does: serialize to the ``?filter=`` payload and deserialize in the view.
+
+    On the pre-fix serializer this drops cross-entity sub-filters (issue #120),
+    so the count diverges from the in-memory ``_count`` for nested builders.
+    """
+    restored = type(filter_obj).from_json(json.loads(json.dumps(filter_obj.to_json())))
+    return model.objects.filter(restored.to_q()).distinct().count()
 
 
 # ── Per-row session links ────────────────────────────────────────────────────
@@ -209,4 +221,59 @@ def test_finished_alltime_matches_backlog(world):
     assert (
         _count(stats_links.purchases_backlog_decrease("Alltime"), Purchase)
         == stats["backlog_decrease_count"]
+    )
+
+
+# ── JSON round-trip parity (issue #120) ──────────────────────────────────────
+#
+# Builders that nest cross-entity sub-filters (game_filter / session_filter /
+# playevent_filter). Before the serialization fix these serialized to an empty
+# or partial `?filter=`, so a clicked link landed on an unfiltered list. Each
+# must survive the same to_json → from_json the view performs.
+
+_NESTED_BUILDERS = [
+    ("purchases_finished", lambda: stats_links.purchases_finished(YEAR), Purchase),
+    (
+        "purchases_finished_released",
+        lambda: stats_links.purchases_finished_released(YEAR),
+        Purchase,
+    ),
+    (
+        "purchases_bought_and_finished",
+        lambda: stats_links.purchases_bought_and_finished(YEAR),
+        Purchase,
+    ),
+    ("purchases_dropped", lambda: stats_links.purchases_dropped(YEAR), Purchase),
+    ("purchases_unfinished", lambda: stats_links.purchases_unfinished(YEAR), Purchase),
+    (
+        "purchases_backlog_decrease",
+        lambda: stats_links.purchases_backlog_decrease(YEAR),
+        Purchase,
+    ),
+    ("games_played", lambda: stats_links.games_played(YEAR), Game),
+    (
+        "sessions_for_platform",
+        lambda: stats_links.sessions_for_platform(1, YEAR),
+        Session,
+    ),
+]
+
+
+@pytest.mark.parametrize("name,builder,model", _NESTED_BUILDERS)
+def test_nested_builder_survives_json_round_trip(world, name, builder, model):
+    filter_obj = builder()
+    # Guard: the builder actually carries a nested cross-entity sub-filter, so
+    # this test is meaningful (a flat-only filter would round-trip trivially).
+    serialized = filter_obj.to_json()
+    assert serialized != {} or model is Session, f"{name}: nothing serialized"
+    assert _count_via_json(filter_obj, model) == _count(filter_obj, model), (
+        f"{name}: JSON round-trip changed the result set"
+    )
+
+
+def test_finished_link_round_trips_to_same_count_as_stat(world):
+    stats = compute_stats(YEAR)
+    assert (
+        _count_via_json(stats_links.purchases_finished(YEAR), Purchase)
+        == stats["all_finished_this_year_count"]
     )
