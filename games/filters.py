@@ -19,6 +19,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 
 from common.criteria import (
+    AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
@@ -28,8 +29,11 @@ from common.criteria import (
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
+    aggregate_to_q,
+    duration_hours_to_q,
     filter_from_json,
     filter_to_json,
+    relation_to_q,
 )
 
 # A queryset of object ids (from ``.values_list("id"/"pk", flat=True)``), reused
@@ -76,14 +80,17 @@ class GameFilter(OperatorFilter):
     created_at: StringCriterion | None = None  # date string
     updated_at: StringCriterion | None = None  # date string
 
-    session_count: IntCriterion | None = None
-    session_average: IntCriterion | None = None  # average in hours
-    purchase_count: IntCriterion | None = None  # distinct purchases per game
-    playevent_count: IntCriterion | None = None  # playevents per game
+    # Aggregates over the game's relations (count / sum / avg). The reducer +
+    # relation accessor + source + unit are supplied at query time via
+    # aggregate_to_q; the criterion carries only the numeric comparison.
+    session_count: AggregateCriterion | None = None
+    session_average: AggregateCriterion | None = None  # average in hours
+    purchase_count: AggregateCriterion | None = None  # distinct purchases per game
+    playevent_count: AggregateCriterion | None = None  # playevents per game
 
     # Aggregate session durations (hours), summed across the game's sessions
-    manual_playtime_hours: IntCriterion | None = None
-    calculated_playtime_hours: IntCriterion | None = None
+    manual_playtime_hours: AggregateCriterion | None = None
+    calculated_playtime_hours: AggregateCriterion | None = None
 
     # Cross-entity: any session played on these devices / matching these flags
     device: MultiCriterion | None = None  # game has session on any of these devices
@@ -92,7 +99,7 @@ class GameFilter(OperatorFilter):
     # Cross-entity: matches against the game's purchases
     purchase_refunded: BoolCriterion | None = None  # game has refunded purchase
     purchase_infinite: BoolCriterion | None = None  # game has infinite purchase
-    purchase_price_total: FloatCriterion | None = None  # sum of converted prices
+    purchase_price_total: AggregateCriterion | None = None  # sum of converted prices
     purchase_price_any: FloatCriterion | None = None  # any single purchase in range
     purchase_type: ChoiceCriterion | None = None  # game has purchase of type
     purchase_ownership_type: ChoiceCriterion | None = None  # by ownership
@@ -144,59 +151,44 @@ class GameFilter(OperatorFilter):
             q &= self.platform_group.to_q("platform__group")
 
         if self.session_count is not None:
-            from django.db.models import Count
-
             from games.models import Game
 
-            matching_ids: MatchingIdQuerySet = (
-                Game.objects.annotate(s_count=Count("sessions", distinct=True))
-                .filter(self.session_count.to_q("s_count"))
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.session_count, model=Game, reducer="count", accessor="sessions"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.session_average is not None:
-            from django.db.models import Avg
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(s_avg=Avg("sessions__duration_total"))
-                .filter(self._playtime_to_q_for_field(self.session_average, "s_avg"))
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.session_average,
+                model=Game,
+                reducer="avg",
+                accessor="sessions",
+                source="duration_total",
+                unit="duration_hours",
             )
-            q &= Q(id__in=matching_ids)
 
         if self.purchase_count is not None:
-            from django.db.models import Count
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(p_count=Count("purchases", distinct=True))
-                .filter(self.purchase_count.to_q("p_count"))
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.purchase_count, model=Game, reducer="count", accessor="purchases"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.playevent_count is not None:
-            from django.db.models import Count
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(pe_count=Count("playevents", distinct=True))
-                .filter(self.playevent_count.to_q("pe_count"))
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.playevent_count, model=Game, reducer="count", accessor="playevents"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.finished is not None:
             from games.models import Game
 
             # Games with a playevent whose `ended` date is in range. distinct()
             # collapses the row-per-playevent fan-out of the reverse relation.
-            matching_ids = (
+            matching_ids: MatchingIdQuerySet = (
                 Game.objects.filter(self.finished.to_q("playevents__ended"))
                 .distinct()
                 .values_list("id", flat=True)
@@ -204,36 +196,28 @@ class GameFilter(OperatorFilter):
             q &= Q(id__in=matching_ids)
 
         if self.manual_playtime_hours is not None:
-            from django.db.models import Sum
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(s_manual=Sum("sessions__duration_manual"))
-                .filter(
-                    self._playtime_to_q_for_field(
-                        self.manual_playtime_hours, "s_manual"
-                    )
-                )
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.manual_playtime_hours,
+                model=Game,
+                reducer="sum",
+                accessor="sessions",
+                source="duration_manual",
+                unit="duration_hours",
             )
-            q &= Q(id__in=matching_ids)
 
         if self.calculated_playtime_hours is not None:
-            from django.db.models import Sum
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(s_calc=Sum("sessions__duration_calculated"))
-                .filter(
-                    self._playtime_to_q_for_field(
-                        self.calculated_playtime_hours, "s_calc"
-                    )
-                )
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.calculated_playtime_hours,
+                model=Game,
+                reducer="sum",
+                accessor="sessions",
+                source="duration_calculated",
+                unit="duration_hours",
             )
-            q &= Q(id__in=matching_ids)
 
         if self.device is not None:
             from games.models import Session
@@ -281,16 +265,15 @@ class GameFilter(OperatorFilter):
                 q &= ~Q(id__in=infinite_ids)
 
         if self.purchase_price_total is not None:
-            from django.db.models import Sum
-
             from games.models import Game
 
-            matching_ids = (
-                Game.objects.annotate(p_total=Sum("purchases__converted_price"))
-                .filter(self.purchase_price_total.to_q("p_total"))
-                .values_list("id", flat=True)
+            q &= aggregate_to_q(
+                self.purchase_price_total,
+                model=Game,
+                reducer="sum",
+                accessor="purchases",
+                source="converted_price",
             )
-            q &= Q(id__in=matching_ids)
 
         if self.purchase_price_any is not None:
             from games.models import Purchase
@@ -333,42 +316,37 @@ class GameFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filters
+        # Cross-entity sub-filters (ANY/NONE via each sub-filter's match mode)
         if self.session_filter is not None:
             from games.models import Session
 
-            session_q = self.session_filter.to_q()
-            matching_ids = Session.objects.filter(session_q).values_list(
-                "game_id", flat=True
+            q &= relation_to_q(
+                self.session_filter, related_model=Session, related_lookup="game_id"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.purchase_filter is not None:
             from games.models import Purchase
 
-            purchase_q = self.purchase_filter.to_q()
-            matching_ids = Purchase.objects.filter(purchase_q).values_list(
-                "games__id", flat=True
+            q &= relation_to_q(
+                self.purchase_filter, related_model=Purchase, related_lookup="games__id"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.playevent_filter is not None:
             from games.models import PlayEvent
 
-            playevent_q = self.playevent_filter.to_q()
-            matching_ids = PlayEvent.objects.filter(playevent_q).values_list(
-                "game_id", flat=True
+            q &= relation_to_q(
+                self.playevent_filter, related_model=PlayEvent, related_lookup="game_id"
             )
-            q &= Q(id__in=matching_ids)
 
         if self.platform_filter is not None:
             from games.models import Platform
 
-            platform_q = self.platform_filter.to_q()
-            matching_ids = Platform.objects.filter(platform_q).values_list(
-                "id", flat=True
+            q &= relation_to_q(
+                self.platform_filter,
+                related_model=Platform,
+                related_lookup="id",
+                parent_field="platform_id",
             )
-            q &= Q(platform_id__in=matching_ids)
 
         # ── AND / OR / NOT sub-filters ──
         sub = self.sub_filter()
@@ -388,49 +366,8 @@ class GameFilter(OperatorFilter):
 
     @staticmethod
     def _playtime_to_q_for_field(c: IntCriterion, field: str) -> Q:
-        """Convert hours-based criterion to a DurationField Q object.
-
-        Django stores DurationField as microseconds in SQLite, so we convert
-        hours → timedelta(microseconds=X) and use the appropriate lookups.
-        """
-        from datetime import timedelta
-
-        from common.criteria import Modifier
-
-        m = c.modifier
-        td_val = timedelta(hours=c.value)
-
-        if m == Modifier.EQUALS:
-            return Q(
-                **{
-                    f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(hours=c.value + 1),
-                }
-            )
-        if m == Modifier.NOT_EQUALS:
-            return ~Q(
-                **{
-                    f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(hours=c.value + 1),
-                }
-            )
-        if m == Modifier.GREATER_THAN:
-            return Q(**{f"{field}__gt": td_val})
-        if m == Modifier.LESS_THAN:
-            return Q(**{f"{field}__lt": td_val})
-        if m == Modifier.BETWEEN and c.value2 is not None:
-            lo = timedelta(hours=min(c.value, c.value2))
-            hi = timedelta(hours=max(c.value, c.value2))
-            return Q(**{f"{field}__gte": lo, f"{field}__lte": hi})
-        if m == Modifier.NOT_BETWEEN and c.value2 is not None:
-            lo = timedelta(hours=min(c.value, c.value2))
-            hi = timedelta(hours=max(c.value, c.value2))
-            return Q(**{f"{field}__lt": lo}) | Q(**{f"{field}__gt": hi})
-        if m == Modifier.IS_NULL:
-            return Q(**{f"{field}": timedelta(0)})
-        if m == Modifier.NOT_NULL:
-            return ~Q(**{f"{field}": timedelta(0)})
-        return Q()
+        """Convert an hours-based criterion to a DurationField Q object."""
+        return duration_hours_to_q(c.value, c.value2, c.modifier, field)
 
     @staticmethod
     def _playevent_note_to_q(criterion: StringCriterion) -> Q:
@@ -479,42 +416,8 @@ class SessionFilter(OperatorFilter):
     device_filter: DeviceFilter | None = None
 
     def _duration_to_q(self, c: IntCriterion, field: str) -> Q:
-        from datetime import timedelta
-
-        q = Q()
-        td_val = timedelta(hours=c.value)
-        m = c.modifier
-        if m == Modifier.EQUALS:
-            q &= Q(
-                **{
-                    f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(hours=c.value + 1),
-                }
-            )
-        elif m == Modifier.NOT_EQUALS:
-            q &= ~Q(
-                **{
-                    f"{field}__gte": td_val,
-                    f"{field}__lt": timedelta(hours=c.value + 1),
-                }
-            )
-        elif m == Modifier.GREATER_THAN:
-            q &= Q(**{f"{field}__gt": td_val})
-        elif m == Modifier.LESS_THAN:
-            q &= Q(**{f"{field}__lt": td_val})
-        elif m == Modifier.BETWEEN and c.value2 is not None:
-            lo = timedelta(hours=min(c.value, c.value2))
-            hi = timedelta(hours=max(c.value, c.value2))
-            q &= Q(**{f"{field}__gte": lo, f"{field}__lte": hi})
-        elif m == Modifier.NOT_BETWEEN and c.value2 is not None:
-            lo = timedelta(hours=min(c.value, c.value2))
-            hi = timedelta(hours=max(c.value, c.value2))
-            q &= Q(**{f"{field}__lt": lo}) | Q(**{f"{field}__gt": hi})
-        elif m == Modifier.IS_NULL:
-            q &= Q(**{f"{field}": timedelta(0)})
-        elif m == Modifier.NOT_NULL:
-            q &= ~Q(**{f"{field}": timedelta(0)})
-        return q
+        """Convert an hours-based criterion to a DurationField Q object."""
+        return duration_hours_to_q(c.value, c.value2, c.modifier, field)
 
     def to_q(self) -> Q:
         from datetime import timedelta
@@ -569,23 +472,26 @@ class SessionFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filter: sessions for games matching GameFilter
+        # Cross-entity sub-filters: sessions for matching games / devices
         if self.game_filter is not None:
             from games.models import Game
 
-            game_q = self.game_filter.to_q()
-            matching_ids: MatchingIdQuerySet = Game.objects.filter(game_q).values_list(
-                "id", flat=True
+            q &= relation_to_q(
+                self.game_filter,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="game_id",
             )
-            q &= Q(game_id__in=matching_ids)
 
-        # Cross-entity filter: sessions for devices matching DeviceFilter
         if self.device_filter is not None:
             from games.models import Device
 
-            device_q = self.device_filter.to_q()
-            matching_ids = Device.objects.filter(device_q).values_list("id", flat=True)
-            q &= Q(device_id__in=matching_ids)
+            q &= relation_to_q(
+                self.device_filter,
+                related_model=Device,
+                related_lookup="id",
+                parent_field="device_id",
+            )
 
         # AND / OR / NOT
         sub = self.sub_filter()
@@ -703,25 +609,26 @@ class PurchaseFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filter
+        # Cross-entity sub-filters: purchases for matching games / platforms
         if self.game_filter is not None:
             from games.models import Game
 
-            game_q = self.game_filter.to_q()
-            matching_ids: MatchingIdQuerySet = Game.objects.filter(game_q).values_list(
-                "id", flat=True
+            q &= relation_to_q(
+                self.game_filter,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="games__id",
             )
-            q &= Q(games__id__in=matching_ids)
 
-        # Cross-entity platform filter
         if self.platform_filter is not None:
             from games.models import Platform
 
-            platform_q = self.platform_filter.to_q()
-            matching_ids = Platform.objects.filter(platform_q).values_list(
-                "id", flat=True
+            q &= relation_to_q(
+                self.platform_filter,
+                related_model=Platform,
+                related_lookup="id",
+                parent_field="platform_id",
             )
-            q &= Q(platform_id__in=matching_ids)
 
         sub = self.sub_filter()
         if sub is not None:
@@ -835,15 +742,15 @@ class DeviceFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filter: session_filter
+        # Cross-entity sub-filter: devices that have matching sessions
         if self.session_filter is not None:
             from games.models import Session
 
-            session_q = self.session_filter.to_q()
-            matching_ids = Session.objects.filter(session_q).values_list(
-                "device_id", flat=True
+            q &= relation_to_q(
+                self.session_filter,
+                related_model=Session,
+                related_lookup="device_id",
             )
-            q &= Q(id__in=matching_ids)
 
         sub = self.sub_filter()
         if sub is not None:
@@ -901,25 +808,22 @@ class PlatformFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filter: game_filter
+        # Cross-entity sub-filters: platforms with matching games / purchases
         if self.game_filter is not None:
             from games.models import Game
 
-            game_q = self.game_filter.to_q()
-            matching_ids: MatchingIdQuerySet = Game.objects.filter(game_q).values_list(
-                "platform_id", flat=True
+            q &= relation_to_q(
+                self.game_filter, related_model=Game, related_lookup="platform_id"
             )
-            q &= Q(id__in=matching_ids)
 
-        # Cross-entity filter: purchase_filter
         if self.purchase_filter is not None:
             from games.models import Purchase
 
-            purchase_q = self.purchase_filter.to_q()
-            matching_ids = Purchase.objects.filter(purchase_q).values_list(
-                "platform_id", flat=True
+            q &= relation_to_q(
+                self.purchase_filter,
+                related_model=Purchase,
+                related_lookup="platform_id",
             )
-            q &= Q(id__in=matching_ids)
 
         sub = self.sub_filter()
         if sub is not None:
@@ -982,15 +886,16 @@ class PlayEventFilter(OperatorFilter):
                 search_q = ~search_q
             q &= search_q
 
-        # Cross-entity filter: game_filter
+        # Cross-entity sub-filter: playevents for matching games
         if self.game_filter is not None:
             from games.models import Game
 
-            game_q = self.game_filter.to_q()
-            matching_ids: MatchingIdQuerySet = Game.objects.filter(game_q).values_list(
-                "id", flat=True
+            q &= relation_to_q(
+                self.game_filter,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="game_id",
             )
-            q &= Q(game_id__in=matching_ids)
 
         sub = self.sub_filter()
         if sub is not None:
