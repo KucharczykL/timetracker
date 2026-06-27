@@ -427,13 +427,15 @@ def Navbar(
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
     from common.components import A, Div, Icon, Span
 
-    logo = static("icons/tesserae-icon-full.svg")
+    logo = static("icons/tesserae-icon-animated.svg")
     brand = A(
         href=reverse("games:index"),
-        class_="flex",
+        class_="flex items-center",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
-        Span(class_="text-4xl text-accent font-alien")["TIMETRACKER"],
+        Span(class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien")[
+            "TIMETRACKER"
+        ],
     ]
     hamburger = Button(
         data_collapse_toggle="navbar-dropdown",
@@ -451,10 +453,10 @@ def Navbar(
         current_year=current_year,
         csrf_token=csrf_token,
     )
-    return Nav(class_="bg-neutral-primary-soft border-b border-default")[
+    return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
-            class_=f"{CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
-            "justify-between mx-auto p-2"
+            class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
+            "justify-between mx-auto"
         )[brand, hamburger, menu]
     ]
 
@@ -505,6 +507,25 @@ def TimetrackerDocument(
     messages_json = json.dumps(messages).replace("</", "<\\/")
 
     def html_document(title: str = "") -> Document:
+        htmx_indicator = Img(
+            id="indicator",
+            src=static("icons/loading.png"),
+            class_="absolute right-3 top-3 animate-spin htmx-indicator",
+            height="24",
+            width="24",
+            alt="loading indicator",
+        )
+
+        version_footer_note = Span(
+            class_="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600"
+        )[f"{version()} ({version_date()})"]
+
+        script_body = Safe(all_scripts)
+        global_modal_container = Div(id="global-modal-container", hx_swap_oob="true")
+        toast_container = Safe(_TOAST_CONTAINER)
+        mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
+            _main_script(mastered)
+        ]
         return Document(
             Html(lang="en")[
                 Head()[
@@ -518,7 +539,7 @@ def TimetrackerDocument(
                         ),
                         Meta(
                             name="viewport",
-                            content="width=device-width, initial-scale=1",
+                            content="width=device-width, initial-scale=1.0",
                         ),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
@@ -539,14 +560,7 @@ def TimetrackerDocument(
                     ]
                 ],
                 Body(hx_indicator="#indicator", class_="bg-neutral-primary")[
-                    Img(
-                        id="indicator",
-                        src=static("icons/loading.png"),
-                        class_="absolute right-3 top-3 animate-spin htmx-indicator",
-                        height="24",
-                        width="24",
-                        alt="loading indicator",
-                    ),
+                    htmx_indicator,
                     Div(class_="flex flex-col min-h-screen")[
                         navbar,
                         Div(
@@ -554,13 +568,11 @@ def TimetrackerDocument(
                             class_="flex flex-1 flex-col pt-8 pb-16",
                         )[content],
                     ],
-                    Span(
-                        class_="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600"
-                    )[f"{version()} ({version_date()})"],
-                    Safe(all_scripts),
-                    Script(type="module")[_main_script(mastered)],
-                    Div(id="global-modal-container", hx_swap_oob="true"),
-                    Safe(_TOAST_CONTAINER),
+                    version_footer_note,
+                    script_body,
+                    mastered_script_IS_THIS_REALLY_NEEDED,
+                    global_modal_container,
+                    toast_container,
                 ],
             ],
         )
