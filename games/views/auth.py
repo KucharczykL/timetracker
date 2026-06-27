@@ -5,7 +5,7 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 
 from common.components import (
-    CONTENT_MAX_WIDTH_CLASS,
+    FORM_MAX_WIDTH_CLASS,
     CsrfInput,
     Div,
     Element,
@@ -30,7 +30,7 @@ def _login_content(form, request) -> Node:
                 "form",
                 attributes=[
                     ("method", "post"),
-                    ("class", f"flex flex-col gap-3 w-full {CONTENT_MAX_WIDTH_CLASS}"),
+                    ("class", f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS}"),
                 ],
                 children=[
                     CsrfInput(request),
