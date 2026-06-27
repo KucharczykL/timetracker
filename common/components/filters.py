@@ -186,12 +186,16 @@ def _deep_get(value: dict, keys: FilterWidgetPath) -> object:
 
 
 def _cross_entity_criterion(existing: dict, path: FilterWidgetPath) -> dict:
-    """Find the leaf criterion a composed widget at ``path`` serialized into AND.
+    """Find the leaf criterion a composed widget at ``path`` serialized into.
 
-    Scans ``existing["AND"]`` for the element whose nested chain ``path[:-1]``
-    contains ``path[-1]`` as a dict (the leaf criterion), returning that dict (or
-    ``{}`` when no element matches). Example: ``["session_filter", "device"]``
-    finds ``{"session_filter": {"device": {...}}}`` and returns the inner dict.
+    Two producers write the cross-entity sub-filter, in different shapes (#137):
+    the bar wraps it in an ``AND`` element (``{"AND": [{"session_filter":
+    {"device": {...}}}]}``), while stats-links / ``filter_url`` emit it
+    TOP-LEVEL (``{"session_filter": {"device": {...}}}``). Both are valid for
+    ``to_q``, so prefill reads BOTH: first the ``existing["AND"]`` scan, then the
+    top-level nested ``path``. Returns the first leaf criterion dict found (AND
+    takes precedence when both are present), or ``{}`` when neither matches.
+    Example: ``["session_filter", "device"]`` returns the inner ``device`` dict.
     """
     for element in existing.get("AND", []) or []:
         if not isinstance(element, dict):
@@ -199,17 +203,23 @@ def _cross_entity_criterion(existing: dict, path: FilterWidgetPath) -> dict:
         parent = _deep_get(element, path[:-1])
         if isinstance(parent, dict) and isinstance(parent.get(path[-1]), dict):
             return parent[path[-1]]
+    top_level = _deep_get(existing, path)
+    if isinstance(top_level, dict):
+        return top_level
     return {}
 
 
 def _cross_entity_bool(
     existing: dict, relation_field: str, child_key: str
 ) -> bool | None:
-    """Read a relation-bool widget's tri-state from the AND list.
+    """Read a relation-bool widget's tri-state from either producer's shape.
 
-    Returns True when an AND element's ``[relation_field][child_key]`` exists and
-    its relation is matched ANY (no ``match`` / not NONE), False when that element
-    sets ``match: "NONE"``, and None when no such element is present.
+    Like ``_cross_entity_criterion``, the relation node can arrive wrapped in an
+    ``AND`` element (bar) or TOP-LEVEL (stats-links / ``filter_url``) (#137), so
+    both are read: first the ``existing["AND"]`` scan, then the top-level
+    ``existing[relation_field]``. Returns True when a matching relation exists and
+    is matched ANY (no ``match`` / not NONE), False when it sets ``match:
+    "NONE"``, and None when no such relation is present (AND takes precedence).
     """
     for element in existing.get("AND", []) or []:
         if not isinstance(element, dict):
@@ -217,6 +227,9 @@ def _cross_entity_bool(
         relation = element.get(relation_field)
         if isinstance(relation, dict) and child_key in relation:
             return relation.get("match") != "NONE"
+    top_level = existing.get(relation_field)
+    if isinstance(top_level, dict) and child_key in top_level:
+        return top_level.get("match") != "NONE"
     return None
 
 

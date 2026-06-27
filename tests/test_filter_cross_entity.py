@@ -651,3 +651,52 @@ def test_game_bar_prefills_refunded_false_and_infinite_true_independently(db):
     assert re.search(
         r'name="filter-purchase-infinite"[^>]*value="true"[^>]*checked', html
     )
+
+
+# ── prefill: TOP-LEVEL cross-entity shape (stats-link / filter_url) (#137) ────
+# stats_links / filter_url emit cross-entity sub-filters TOP-LEVEL (no AND
+# wrapper), e.g. {"session_filter": {"device": {...}}}. to_q honours that shape,
+# but prefill historically scanned only existing["AND"], so the matching bar
+# widget rendered BLANK — re-applying the bar silently dropped the constraint.
+# These assert the dual-read prefill repopulates the widget from the top level.
+
+
+def test_game_bar_prefills_device_from_top_level(db):
+    """Top-level (no AND) session_filter→device prefills the device pill."""
+    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
+    filter_json = json.dumps(
+        {"session_filter": {"device": _set_criterion(str(deck.id), "SteamDeck")}}
+    )
+    html = str(FilterBar(filter_json))
+    assert "SteamDeck" in html
+
+
+def test_purchase_bar_prefills_finished_from_top_level(db):
+    """Top-level game_filter→playevent_filter→ended prefills the date widget."""
+    filter_json = json.dumps(
+        {
+            "game_filter": {
+                "playevent_filter": {
+                    "ended": {
+                        "value": "2024-01-01",
+                        "value2": "2024-12-31",
+                        "modifier": "BETWEEN",
+                    }
+                }
+            }
+        }
+    )
+    html = str(PurchaseFilterBar(filter_json))
+    assert "2024-01-01" in html
+    assert "2024-12-31" in html
+
+
+def test_game_bar_prefills_session_emulated_true_radio_from_top_level(db):
+    """Top-level (no AND) relation-bool checks the 'True' radio."""
+    filter_json = json.dumps(
+        {"session_filter": {"emulated": {"value": True, "modifier": "EQUALS"}}}
+    )
+    html = str(FilterBar(filter_json))
+    assert re.search(
+        r'name="filter-session-emulated"[^>]*value="true"[^>]*checked', html
+    )
