@@ -58,11 +58,16 @@ DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
 # The single max-width every content container obeys — navbar, page bodies
-# (lists, detail, stats), forms, and modals/popovers. Only a cap: callers add
+# (lists, detail, stats), and popovers. Only a cap: callers add
 # `w-full` to fill to it and `mx-auto`/`self-center` to centre. The `w-full`
 # matters inside #main-container's flex column, where bare self-center/mx-auto
 # turn off flex `stretch` and the box would otherwise shrink to content width.
 CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
+
+# Narrower cap for form-shaped containers (add/edit forms, confirm pages,
+# modals). Forms read better constrained; the wide CONTENT_MAX_WIDTH_CLASS cap
+# is for page bodies, lists, and the navbar.
+FORM_MAX_WIDTH_CLASS = "max-w-xl"
 
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
@@ -892,7 +897,7 @@ def AddForm(
                     ("id", "add-form"),
                     (
                         "class",
-                        f"form-container w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto",
+                        f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto",
                     ),
                 ],
                 [inner_form],
@@ -1013,7 +1018,7 @@ def Modal(
                     (
                         "class",
                         f"relative mx-auto p-5 border-accent border w-full "
-                        f"{CONTENT_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
+                        f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
                         "dark:bg-gray-900",
                     ),
                 ],
@@ -1038,7 +1043,7 @@ def ConfirmPage(
     confirmation modals — reusable across delete/refund/split/reset flows.
     """
     return Div(
-        class_=f"mx-auto w-full {CONTENT_MAX_WIDTH_CLASS} p-5",
+        class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5",
     )[
         Element(
             "form",
