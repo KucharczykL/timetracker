@@ -408,7 +408,9 @@ def stats_content(ctx: StatsData) -> Node:
             ctx.get("top_10_games_by_playtime") or [],
             lambda g: Fragment(GameLink(g.id, g.name), _session_link(g.id, year)),
             lambda g: _dur(g.total_playtime),
-            view_all_url=filter_url(stats_links.games_played(year), sort="-playtime"),
+            view_all_url=filter_url(
+                stats_links.games_played(year), sort="-filtered_playtime"
+            ),
         ),
         _h1("Platforms by playtime"),
         _two_col_table(
