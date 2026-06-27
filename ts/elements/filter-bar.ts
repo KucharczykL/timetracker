@@ -53,6 +53,7 @@ function parseJSONAttr<T>(element: Element, attr: string): T[] {
   try {
     return JSON.parse(raw);
   } catch {
+    console.warn("filter-bar: malformed JSON attribute", attr, raw);
     return [];
   }
 }
@@ -81,14 +82,16 @@ function getCsrfToken(): string {
 }
 
 // Deep-merge a single leaf criterion into `target` by its JSON path. Branch
-// objects are created lazily, and only when a non-null leaf is being written —
-// never pre-create empty intermediates (an empty sub-filter would change query
-// semantics). For length-1 paths this is just `target[key] = leaf`.
+// objects are created lazily as the path is walked. setPath writes the leaf
+// unconditionally; it is the *caller's* contract to only invoke it with a
+// non-null leaf, so an empty sub-filter (which would change query semantics) is
+// never pre-created here. For length-1 paths this is just `target[key] = leaf`.
 function setPath(
   target: Record<string, unknown>,
   path: string[],
   leaf: unknown,
 ): void {
+  if (path.length === 0) return;
   let node = target;
   for (let index = 0; index < path.length - 1; index++) {
     const key = path[index];
@@ -186,6 +189,7 @@ function readWidget(element: HTMLElement, kind: string | null): unknown {
     case "set":
       return readSetWidget(element);
     default:
+      console.warn(`filter-bar: no reader for data-kind="${kind}"`, element);
       return null;
   }
 }

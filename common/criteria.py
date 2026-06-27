@@ -504,12 +504,23 @@ def _filter_class_for(
     return None
 
 
+# A filter widget's canonical filter-JSON key chain. Length-1 today (one JSON
+# key per widget); typed as a list so nested cross-entity paths stay expressible.
+# Example: ["session_filter", "emulated"].
+type FilterWidgetPath = list[str]
+
+# The widget ``data-kind`` token a criterion advertises to the generic filter-bar
+# serializer (ts/elements/filter-bar.ts). One token per value shape; several
+# criterion types share a kind (every numeric criterion → "number").
+type FilterWidgetKind = Literal["string", "number", "date", "bool", "set"]
+
+
 # Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
 # advertises for it (see ``filter_widget_attributes``). The server↔client
 # contract: a widget's ``data-kind`` must equal the kind of the criterion its
 # ``data-path`` resolves to. Several criterion types share a kind (every numeric
 # criterion → "number"; both set criteria → "set").
-_CRITERION_KINDS: dict[type[_Criterion], str] = {
+_CRITERION_KINDS: dict[type[_Criterion], FilterWidgetKind] = {
     StringCriterion: "string",
     IntCriterion: "number",
     FloatCriterion: "number",
@@ -521,7 +532,7 @@ _CRITERION_KINDS: dict[type[_Criterion], str] = {
 }
 
 
-def criterion_kind(criterion_cls: type[_Criterion]) -> str:
+def criterion_kind(criterion_cls: type[_Criterion]) -> FilterWidgetKind:
     """Return the widget ``data-kind`` token for a criterion class.
 
     Raises ``ValueError`` for a criterion type with no registered kind, so a new
@@ -534,7 +545,9 @@ def criterion_kind(criterion_cls: type[_Criterion]) -> str:
         ) from None
 
 
-def resolve_path_kind(filter_cls: type["OperatorFilter"], path: list[str]) -> str:
+def resolve_path_kind(
+    filter_cls: type["OperatorFilter"], path: FilterWidgetPath
+) -> FilterWidgetKind:
     """Resolve a filter-widget ``data-path`` against a filter dataclass tree and
     return the expected ``data-kind``.
 

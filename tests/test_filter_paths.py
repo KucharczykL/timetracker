@@ -23,7 +23,14 @@ from common.components.filters import (
     PurchaseFilterBar,
     SessionFilterBar,
 )
-from common.criteria import OperatorFilter, resolve_path_kind
+from common.criteria import (
+    _CRITERION_KINDS,
+    _CRITERION_TYPES,
+    OperatorFilter,
+    _Criterion,
+    criterion_kind,
+    resolve_path_kind,
+)
 from games.filters import (
     DeviceFilter,
     GameFilter,
@@ -69,20 +76,27 @@ def _collect_widgets(html: str) -> list[WidgetDescriptor]:
     return collector.widgets
 
 
-# Each filter bar paired with the dataclass its widget paths resolve against.
+# Each filter bar paired with the dataclass its widget paths resolve against and
+# the exact number of widgets it is expected to render.
 class _BarCase(NamedTuple):
     name: str
     bar_factory: type
     filter_cls: type[OperatorFilter]
+    widget_count: int
 
 
+# ``widget_count`` is the intended widget inventory for each bar. A forgotten
+# ``path=`` on a FilterSelect/DateRangePicker silently drops that widget (it
+# stops emitting ``data-filter-widget``), which the per-path checks below cannot
+# catch — only an exact count does. Update these numbers deliberately whenever a
+# filter field is added or removed.
 _BAR_CASES = [
-    _BarCase("game", FilterBar, GameFilter),
-    _BarCase("session", SessionFilterBar, SessionFilter),
-    _BarCase("purchase", PurchaseFilterBar, PurchaseFilter),
-    _BarCase("device", DeviceFilterBar, DeviceFilter),
-    _BarCase("platform", PlatformFilterBar, PlatformFilter),
-    _BarCase("playevent", PlayEventFilterBar, PlayEventFilter),
+    _BarCase("game", FilterBar, GameFilter, 23),
+    _BarCase("session", SessionFilterBar, SessionFilter, 8),
+    _BarCase("purchase", PurchaseFilterBar, PurchaseFilter, 14),
+    _BarCase("device", DeviceFilterBar, DeviceFilter, 1),
+    _BarCase("platform", PlatformFilterBar, PlatformFilter, 2),
+    _BarCase("playevent", PlayEventFilterBar, PlayEventFilter, 4),
 ]
 
 
@@ -91,7 +105,10 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
     """Every rendered widget's path resolves to a criterion whose kind matches."""
     html = str(case.bar_factory(""))
     widgets = _collect_widgets(html)
-    assert widgets, f"{case.name} bar rendered no filter widgets"
+    assert len(widgets) == case.widget_count, (
+        f"{case.name} bar rendered {len(widgets)} filter widgets, "
+        f"expected {case.widget_count} (a forgotten path= silently drops a widget)"
+    )
     for widget in widgets:
         resolved = resolve_path_kind(case.filter_cls, widget.path)
         assert resolved == widget.kind, (
@@ -146,3 +163,22 @@ def test_resolve_path_kind_rejects_non_subfilter_step() -> None:
 def test_resolve_path_kind_rejects_empty_path() -> None:
     with pytest.raises(ValueError):
         resolve_path_kind(GameFilter, [])
+
+
+def test_every_criterion_type_has_a_kind() -> None:
+    """Every criterion registered for from_json/where also has a widget kind.
+
+    Adding a criterion to ``_CRITERION_TYPES`` without giving it a kind in
+    ``_CRITERION_KINDS`` would let ``resolve_path_kind`` raise at render time;
+    this catches the drift loudly at test time instead."""
+    assert set(_CRITERION_KINDS) == set(_CRITERION_TYPES.values())
+
+
+def test_criterion_kind_rejects_unregistered_class() -> None:
+    """A criterion subclass with no registered kind raises ``ValueError``."""
+
+    class _UnregisteredCriterion(_Criterion):
+        pass
+
+    with pytest.raises(ValueError):
+        criterion_kind(_UnregisteredCriterion)
