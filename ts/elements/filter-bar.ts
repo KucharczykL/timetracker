@@ -228,7 +228,13 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
 
   const searchInput = form.querySelector<HTMLInputElement>('[name="filter-search"]');
   if (searchInput && searchInput.value.trim()) {
-    setPath(filter, ["search"], { value: searchInput.value.trim(), modifier: "INCLUDES" });
+    const excludeChecked = form.querySelector<HTMLInputElement>(
+      '[name="filter-search-exclude"]',
+    )?.checked;
+    setPath(filter, ["search"], {
+      value: searchInput.value.trim(),
+      modifier: excludeChecked ? "EXCLUDES" : "INCLUDES",
+    });
   }
 
   // Serialise every search-select's state into its data-included/excluded/
@@ -302,23 +308,43 @@ function readRelationBoolWidget(
 
 function injectSearchInput(form: HTMLElement): void {
   if (form.querySelector('[name="filter-search"]')) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "mb-4";
+
   const input = document.createElement("input");
   input.type = "text";
   input.name = "filter-search";
   input.placeholder = "Search…";
   input.className =
-    "block w-full rounded-base border border-default-medium bg-neutral-secondary-medium text-sm text-heading p-2 mb-4 focus:ring-brand focus:border-brand";
+    "block w-full rounded-base border border-default-medium bg-neutral-secondary-medium text-sm text-heading p-2 focus:ring-brand focus:border-brand";
+
+  // Exclude toggle: surfaces the EXCLUDES modifier every *Filter.to_q already
+  // honours for free-text search (negates the OR-of-fields). Unchecked keeps the
+  // historical INCLUDES default; checked emits {value, modifier:"EXCLUDES"}.
+  const excludeLabel = document.createElement("label");
+  excludeLabel.className =
+    "flex items-center gap-2 mt-2 text-sm text-heading cursor-pointer";
+  const excludeCheckbox = document.createElement("input");
+  excludeCheckbox.type = "checkbox";
+  excludeCheckbox.name = "filter-search-exclude";
+  excludeCheckbox.className =
+    "rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand";
+  excludeLabel.append(excludeCheckbox, document.createTextNode("Exclude matches"));
+
   const hidden = form.querySelector<HTMLInputElement>('[name="filter"]');
   if (hidden && hidden.parentNode) {
     try {
       const existing = JSON.parse(hidden.value || "{}");
       if (existing.search && existing.search.value) {
         input.value = existing.search.value;
+        excludeCheckbox.checked = existing.search.modifier === "EXCLUDES";
       }
     } catch {
       // ignore malformed existing filter JSON
     }
-    hidden.parentNode.insertBefore(input, hidden.nextSibling);
+    wrapper.append(input, excludeLabel);
+    hidden.parentNode.insertBefore(wrapper, hidden.nextSibling);
   }
 }
 
