@@ -9,6 +9,7 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import Any, Literal, Self, TypeVar
@@ -630,13 +631,14 @@ class OperatorFilter:
     match: RelationMatch = RelationMatch.ANY
 
     # N-ary boolean composition: each operator is a list of sub-filters. Declared
-    # on the base (typed ``list[Any]``) so ``_apply_operators`` can read them and
-    # subclasses can narrow them to ``list[XFilter]`` (``list`` is invariant, so a
-    # narrower base type would reject the override). Concrete filters redeclare
-    # these with their own type — see games/filters.py.
-    AND: list[Any] = field(default_factory=list)
-    OR: list[Any] = field(default_factory=list)
-    NOT: list[Any] = field(default_factory=list)
+    # on the base as ``Sequence["OperatorFilter"]`` so ``_apply_operators`` reads a
+    # typed ``.to_q()`` while subclasses narrow to ``list[XFilter]`` (``Sequence``
+    # is covariant, so the narrower override is accepted — a ``list[OperatorFilter]``
+    # base would be rejected because ``list`` is invariant). Concrete filters
+    # redeclare these with their own type — see games/filters.py.
+    AND: Sequence["OperatorFilter"] = field(default_factory=list)
+    OR: Sequence["OperatorFilter"] = field(default_factory=list)
+    NOT: Sequence["OperatorFilter"] = field(default_factory=list)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -743,16 +745,22 @@ class OperatorFilter:
             if f.name == "match":
                 kwargs["match"] = RelationMatch(raw)
                 continue
-            if raw is None:
-                kwargs[f.name] = None
-                continue
-            # Recurse into sub-filters (AND / OR / NOT), each a list of sub-filters.
-            # A legacy single object is tolerated by wrapping it as a one-element
-            # list; None results (malformed entries) are filtered out.
+            # Operator fields are list-valued; handle them before the generic
+            # ``raw is None`` guard so a JSON ``null`` (or absent) operator
+            # normalizes to ``[]`` and never violates the list invariant — leaving
+            # it as ``None`` would crash ``_apply_operators``' iteration. A legacy
+            # single object is tolerated by wrapping it as a one-element list;
+            # None results (malformed entries) are filtered out.
             if f.name in _OPERATOR_FIELDS:
+                if raw is None:
+                    kwargs[f.name] = []
+                    continue
                 items = raw if isinstance(raw, list) else [raw]
                 parsed = [cls.from_json(item) for item in items]
                 kwargs[f.name] = [sub for sub in parsed if sub is not None]
+                continue
+            if raw is None:
+                kwargs[f.name] = None
                 continue
             # Resolve criterion fields from string type annotation
             f_type = f.type

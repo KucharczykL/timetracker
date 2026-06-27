@@ -536,3 +536,73 @@ def test_unused_operator_list_is_not_serialized():
     f = GameFilter(name=StringCriterion(value="x"))
     payload = f.to_json()
     assert "AND" not in payload and "OR" not in payload and "NOT" not in payload
+
+
+def test_not_list_single_and_multi(boolean_world):
+    """NOT negates each sub-filter (AND'd). One element excludes emulated-session
+    games; a second element additionally excludes refunded-purchase games."""
+    emulated = GameFilter(
+        session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+    )
+    refunded = GameFilter(
+        purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+    )
+    not_emulated = GameFilter(NOT=[emulated])
+    assert _ids(not_emulated) == {
+        boolean_world["refund_only"],
+        boolean_world["neither"],
+    }
+
+    not_either = GameFilter(NOT=[emulated, refunded])
+    assert _ids(not_either) == {boolean_world["neither"]}
+
+
+def test_mixed_and_or_not_composition_order(boolean_world):
+    """A node mixing all three families composes in the documented order
+    ``(criteria & AND) | OR) & ~NOT`` — here ``(emulated | refunded) & ~has-deck``."""
+    deck = boolean_world["deck"]
+    mixed = GameFilter(
+        AND=[
+            GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+        ],
+        OR=[
+            GameFilter(
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
+            )
+        ],
+        NOT=[
+            GameFilter(
+                session_filter=SessionFilter(device=MultiCriterion(value=[deck]))
+            )
+        ],
+    )
+    # (emulated ∪ refunded) = both,emu_only,refund_only,split,combined; minus
+    # has-deck-session (split, combined).
+    assert _ids(mixed) == {
+        boolean_world["both"],
+        boolean_world["emu_only"],
+        boolean_world["refund_only"],
+    }
+
+
+def test_null_operator_normalizes_to_empty_list():
+    """A JSON ``null`` operator value deserializes to ``[]`` (not None) so it can't
+    crash ``_apply_operators``' iteration — a hand-crafted ?filter= must not 500."""
+    restored = GameFilter.from_json({"AND": None})
+    assert restored is not None
+    assert restored.AND == []
+    restored.to_q()  # must not raise
+
+
+def test_from_json_drops_null_list_element():
+    """A malformed (None) element inside an operator list is filtered out."""
+    restored = GameFilter.from_json(
+        {
+            "AND": [
+                None,
+                {"session_filter": {"emulated": {"value": True, "modifier": "EQUALS"}}},
+            ]
+        }
+    )
+    assert restored is not None
+    assert isinstance(restored.AND, list) and len(restored.AND) == 1
