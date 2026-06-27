@@ -61,15 +61,15 @@
   }
 }
 
-@utility min-w-20char {
+/* @utility min-w-20char {
   min-width: 20ch;
 }
 
 @utility max-w-20char {
   max-width: 20ch;
-}
+} */
 
-@utility min-w-30char {
+/* @utility min-w-30char {
   min-width: 30ch;
 }
 
@@ -83,7 +83,7 @@
 
 @utility max-w-40char {
   max-width: 40ch;
-}
+} */
 
 @layer utilities {
   @font-face {

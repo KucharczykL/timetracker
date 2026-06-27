@@ -787,7 +787,12 @@ _GET_SESSION_COUNT_SCRIPT = Safe(
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     content = Div(
-        [("class", f"dark:text-white {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
+        [
+            (
+                "class",
+                f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} self-center px-2",
+            )
+        ],
         [
             _game_header(game, request, _game_overview_metrics(game)),
             _purchases_section(game),

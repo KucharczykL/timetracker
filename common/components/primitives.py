@@ -57,18 +57,12 @@ _SIZE_CLASSES = {
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
-# Two shared content widths. Each carries no centering — every user adds its own
-# (`mx-auto` / `self-center`) so the constant stays purely about width.
-
-# The wide column for table/list pages (paginated tables, status-change list).
-TABLE_MAX_WIDTH_CLASS = (
-    "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
-    "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm)"
-)
-
-# The main content column (detail pages, stats). The navbar matches it so the
-# brand/menu line up with the content below.
-CONTENT_MAX_WIDTH_CLASS = "max-w-sm sm:max-w-xl lg:max-w-3xl"
+# The single max-width every content container obeys — navbar, page bodies
+# (lists, detail, stats), forms, and modals/popovers. Only a cap: callers add
+# `w-full` to fill to it and `mx-auto`/`self-center` to centre. The `w-full`
+# matters inside #main-container's flex column, where bare self-center/mx-auto
+# turn off flex `stretch` and the box would otherwise shrink to content width.
+CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
 
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
@@ -174,9 +168,11 @@ def _popover_html(
         # popover then expands its scroll container, producing a phantom
         # scrollbar (issue #53 / #40). Removing it from layout while hidden
         # fixes that; Flowbite drops `invisible` on show, restoring display.
-        "absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
-        "text-heading transition-opacity duration-300 bg-brand-soft border "
-        "border-brand/30 rounded-lg shadow-xs opacity-0"
+        # Shares the one content max-width as a cap only (no `w-full`): the
+        # tooltip stays inline-block and small, the cap just bounds huge content.
+        f"absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
+        f"text-heading transition-opacity duration-300 bg-brand-soft border "
+        f"border-brand/30 rounded-lg shadow-xs opacity-0 {CONTENT_MAX_WIDTH_CLASS}"
     )
 
     div = Div(
@@ -904,7 +900,13 @@ def AddForm(
         [("id", "add-form"), ("class", "max-width-container")],
         [
             Div(
-                [("id", "add-form"), ("class", "form-container max-w-xl mx-auto")],
+                [
+                    ("id", "add-form"),
+                    (
+                        "class",
+                        f"form-container w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto",
+                    ),
+                ],
                 [inner_form],
             )
         ],
@@ -1022,8 +1024,9 @@ def Modal(
                 attributes=[
                     (
                         "class",
-                        "relative mx-auto p-5 border-accent border w-full max-w-md "
-                        "shadow-lg/50 rounded-md bg-white dark:bg-gray-900",
+                        f"relative mx-auto p-5 border-accent border w-full "
+                        f"{CONTENT_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
+                        "dark:bg-gray-900",
                     ),
                 ],
                 children=as_children(children),
@@ -1047,7 +1050,7 @@ def ConfirmPage(
     confirmation modals — reusable across delete/refund/split/reset flows.
     """
     return Div(
-        class_="mx-auto w-full max-w-md p-5",
+        class_=f"mx-auto w-full {CONTENT_MAX_WIDTH_CLASS} p-5",
     )[
         Element(
             "form",
@@ -1102,7 +1105,7 @@ def TableTd(
     """Styled table cell."""
     children = children or []
     return Td(
-        attributes=[("class", "px-6 py-4 min-w-20-char max-w-20-char")],
+        attributes=[("class", "px-4 py-2")],
         children=as_children(children),
     )
 
@@ -1640,7 +1643,7 @@ def paginated_table_content(
     ``header_action`` (the same shape every list view already builds).
     """
     return Div(
-        [("class", f"{TABLE_MAX_WIDTH_CLASS} self-center")],
+        [("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")],
         [
             StyledTable(
                 columns=data["columns"],

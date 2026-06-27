@@ -361,7 +361,7 @@ class RenderedPagesTest(TestCase):
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()
         for marker in [
-            "dark:text-white max-w-sm",
+            "dark:text-white w-full",
             "font-bold font-serif",
             "Owned on",
             "Price per game:",

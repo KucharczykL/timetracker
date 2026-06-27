@@ -474,6 +474,6 @@ def stats_content(ctx: StatsData) -> Node:
         ]
 
     return Div(
-        [("class", f"dark:text-white {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
+        [("class", f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
         sections,
     )

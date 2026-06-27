@@ -4,7 +4,15 @@ registration/login.html)."""
 from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 
-from common.components import CsrfInput, Div, Element, FormFields, Node, StyledButton
+from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
+    CsrfInput,
+    Div,
+    Element,
+    FormFields,
+    Node,
+    StyledButton,
+)
 from common.layout import render_page
 from games.forms import LoginForm
 
@@ -22,7 +30,7 @@ def _login_content(form, request) -> Node:
                 "form",
                 attributes=[
                     ("method", "post"),
-                    ("class", "flex flex-col gap-3 w-full max-w-sm"),
+                    ("class", f"flex flex-col gap-3 w-full {CONTENT_MAX_WIDTH_CLASS}"),
                 ],
                 children=[
                     CsrfInput(request),
