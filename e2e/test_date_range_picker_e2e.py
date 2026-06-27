@@ -63,7 +63,10 @@ urlpatterns = [
 ]
 
 
-PICKER = "date-range-picker"
+# PurchaseFilterBar renders several date-range-pickers (Purchased, Refunded,
+# Finished); scope to the Purchased one — the only picker this module drives —
+# by the hidden input its prefix produces, so the locators stay unambiguous.
+PICKER = 'date-range-picker:has(input[name="filter-date-purchased-min"])'
 POPUP = PICKER + " [data-date-range-calendar]"
 HIDDEN_MIN = 'input[name="filter-date-purchased-min"]'
 HIDDEN_MAX = 'input[name="filter-date-purchased-max"]'
