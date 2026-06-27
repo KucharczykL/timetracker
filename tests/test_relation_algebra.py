@@ -91,23 +91,10 @@ def test_empty_none_subfilter_means_no_related_rows(emulated_world):
     assert _ids(no_sessions) == {emulated_world["no_sessions"]}
 
 
-# ── equivalence with the flat convenience fields (Phase 2 mapping) ───────────
+# ── nested NONE form: "has no refunded purchase" (incl. zero-purchase games) ──
 
 
-def test_nested_matches_flat_session_emulated(emulated_world):
-    """The flat session_emulated bool and the nested match-mode form must select
-    identical games for both True (ANY) and False (NONE)."""
-    for value, match in [(True, RelationMatch.ANY), (False, RelationMatch.NONE)]:
-        flat = GameFilter(session_emulated=BoolCriterion(value=value))
-        nested = GameFilter(
-            session_filter=SessionFilter(
-                emulated=BoolCriterion(value=True), match=match
-            )
-        )
-        assert _ids(flat) == _ids(nested), f"mismatch for value={value}"
-
-
-def test_nested_matches_flat_purchase_refunded(db):
+def test_nested_purchase_refunded_none(db):
     pc = Platform.objects.create(name="PC")
     refunded = Game.objects.create(name="Refunded", platform=pc)
     kept = Game.objects.create(name="Kept", platform=pc)
@@ -117,14 +104,12 @@ def test_nested_matches_flat_purchase_refunded(db):
     ).games.set([refunded])
     Purchase.objects.create(date_purchased=_dt()).games.set([kept])
 
-    flat_false = GameFilter(purchase_refunded=BoolCriterion(value=False))
     nested_none = GameFilter(
         purchase_filter=PurchaseFilter(
             is_refunded=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
-    assert _ids(flat_false) == _ids(nested_none)
-    assert _ids(flat_false) == {kept.id, none.id}
+    assert _ids(nested_none) == {kept.id, none.id}
 
 
 # ── match round-trip ─────────────────────────────────────────────────────────

@@ -200,10 +200,11 @@ def test_resolve_path_kind_walks_nested_path() -> None:
 
 
 def test_resolve_path_kind_resolves_leaf_kinds() -> None:
-    """Spot-check each kind on a top-level GameFilter field."""
+    """Spot-check each kind on a GameFilter field (date via a nested leaf, since
+    GameFilter has no top-level DateCriterion field)."""
     assert resolve_path_kind(GameFilter, ["name"]) == "string"
     assert resolve_path_kind(GameFilter, ["year_released"]) == "number"
-    assert resolve_path_kind(GameFilter, ["finished"]) == "date"
+    assert resolve_path_kind(GameFilter, ["playevent_filter", "ended"]) == "date"
     assert resolve_path_kind(GameFilter, ["mastered"]) == "bool"
     assert resolve_path_kind(GameFilter, ["status"]) == "set"
 
