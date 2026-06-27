@@ -5,7 +5,16 @@ from typing import NamedTuple
 from common.components.core import BaseComponent, Element, Node, Safe
 from common.components.custom_elements import _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
-from common.components.primitives import Checkbox, Div, Input, Label, Radio, Span
+from common.components.primitives import (
+    Checkbox,
+    Div,
+    FilterWidgetPath,
+    Input,
+    Label,
+    Radio,
+    Span,
+    filter_widget_attributes,
+)
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
@@ -228,6 +237,7 @@ def _enum_filter(field_name: str, options, choice: FilterChoice, *, nullable) ->
         excluded=excluded,
         modifier=modifier,
         modifier_options=_modifier_options(nullable),
+        path=[field_name],
     )
 
 
@@ -255,6 +265,7 @@ def _model_filter(
         modifier_options=_modifier_options(nullable, m2m_modifiers),
         search_url=search_url,
         prefetch=DEFAULT_PREFETCH,
+        path=[field_name],
     )
 
 
@@ -307,10 +318,15 @@ def _filter_checkbox(name: str, label: str, checked: bool) -> Node:
     return Checkbox(name=name, label=label, checked=checked)
 
 
-def _filter_boolean_radio(name: str, label: str, value: bool | None) -> Node:
+def _filter_boolean_radio(
+    name: str, label: str, value: bool | None, *, path: FilterWidgetPath
+) -> Node:
     """Renders a filter-specific boolean radio button group with 'True' and 'False' options."""
     return Div(
-        attributes=[("class", "flex flex-col gap-1")],
+        attributes=[
+            ("class", "flex flex-col gap-1"),
+            *filter_widget_attributes(path, "bool"),
+        ],
         children=[
             Span(
                 attributes=[("class", _FILTER_LABEL_CLASS)],
@@ -339,6 +355,7 @@ def DateRangeFilter(
     *,
     label: str,
     input_name_prefix: str,
+    path: FilterWidgetPath,
     min_value: str = "",
     max_value: str = "",
     min_placeholder: str = "From",
@@ -354,7 +371,10 @@ def DateRangeFilter(
     min_input_id = f"{input_name_prefix}-min"
     max_input_id = f"{input_name_prefix}-max"
     return Div(
-        attributes=[("class", "date-range-block mb-4")],
+        attributes=[
+            ("class", "date-range-block mb-4"),
+            *filter_widget_attributes(path, "date"),
+        ],
         children=[
             Div(
                 attributes=[("class", "flex items-center gap-2")],
@@ -367,6 +387,7 @@ def DateRangeFilter(
                             ("value", min_value),
                             ("placeholder", min_placeholder),
                             ("aria-label", f"{label} from"),
+                            ("data-range-min", ""),
                             ("class", _DATE_RANGE_INPUT_CLASS),
                         ],
                     ),
@@ -382,6 +403,7 @@ def DateRangeFilter(
                             ("value", max_value),
                             ("placeholder", max_placeholder),
                             ("aria-label", f"{label} to"),
+                            ("data-range-max", ""),
                             ("class", _DATE_RANGE_INPUT_CLASS),
                         ],
                     ),
@@ -713,6 +735,7 @@ def _game_fields(
                         value=playevent_note_value,
                         modifier=playevent_note_modifier,
                         placeholder="e.g. Completed, Started",
+                        path=["playevent_note"],
                     ),
                 ),
                 _filter_field(
@@ -724,6 +747,7 @@ def _game_fields(
                         modifier=year.modifier,
                         placeholder="e.g. 2020",
                         placeholder2="e.g. 2024",
+                        path=["year_released"],
                     ),
                 ),
                 _filter_field(
@@ -735,6 +759,7 @@ def _game_fields(
                         modifier=original_year.modifier,
                         placeholder="e.g. 1985",
                         placeholder2="e.g. 2010",
+                        path=["original_year_released"],
                     ),
                 ),
                 _filter_field(
@@ -746,6 +771,7 @@ def _game_fields(
                         modifier=playtime.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 100",
+                        path=["playtime_hours"],
                     ),
                 ),
                 _filter_field(
@@ -757,6 +783,7 @@ def _game_fields(
                         modifier=manual_pt.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 10",
+                        path=["manual_playtime_hours"],
                     ),
                 ),
                 _filter_field(
@@ -768,6 +795,7 @@ def _game_fields(
                         modifier=calc_pt.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 10",
+                        path=["calculated_playtime_hours"],
                     ),
                 ),
                 _filter_field(
@@ -779,6 +807,7 @@ def _game_fields(
                         modifier=session_count.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 50",
+                        path=["session_count"],
                     ),
                 ),
                 _filter_field(
@@ -790,6 +819,7 @@ def _game_fields(
                         modifier=session_avg.modifier,
                         placeholder="e.g. 10",
                         placeholder2="e.g. 120",
+                        path=["session_average"],
                     ),
                 ),
                 _filter_field(
@@ -801,6 +831,7 @@ def _game_fields(
                         modifier=purchase_count.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 5",
+                        path=["purchase_count"],
                     ),
                 ),
                 _filter_field(
@@ -812,6 +843,7 @@ def _game_fields(
                         modifier=playevent_count.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 5",
+                        path=["playevent_count"],
                     ),
                 ),
                 _filter_field(
@@ -821,6 +853,7 @@ def _game_fields(
                         input_name_prefix="filter-finished",
                         min_value=finished_min,
                         max_value=finished_max,
+                        path=["finished"],
                     ),
                 ),
                 _filter_field(
@@ -833,6 +866,7 @@ def _game_fields(
                         placeholder="0",
                         placeholder2="e.g. 100",
                         step="0.01",
+                        path=["purchase_price_total"],
                     ),
                 ),
                 _filter_field(
@@ -845,6 +879,7 @@ def _game_fields(
                         placeholder="0",
                         placeholder2="e.g. 100",
                         step="0.01",
+                        path=["purchase_price_any"],
                     ),
                 ),
             ],
@@ -852,15 +887,26 @@ def _game_fields(
         Div(
             attributes=[("class", "flex items-end gap-6 mb-4 flex-wrap")],
             children=[
-                _filter_boolean_radio("filter-mastered", "Mastered", mastered_value),
                 _filter_boolean_radio(
-                    "filter-purchase-refunded", "Refunded", purchase_refunded_value
+                    "filter-mastered", "Mastered", mastered_value, path=["mastered"]
                 ),
                 _filter_boolean_radio(
-                    "filter-purchase-infinite", "Infinite", purchase_infinite_value
+                    "filter-purchase-refunded",
+                    "Refunded",
+                    purchase_refunded_value,
+                    path=["purchase_refunded"],
                 ),
                 _filter_boolean_radio(
-                    "filter-session-emulated", "Emulated", session_emulated_value
+                    "filter-purchase-infinite",
+                    "Infinite",
+                    purchase_infinite_value,
+                    path=["purchase_infinite"],
+                ),
+                _filter_boolean_radio(
+                    "filter-session-emulated",
+                    "Emulated",
+                    session_emulated_value,
+                    path=["session_emulated"],
                 ),
             ],
         ),
@@ -925,6 +971,7 @@ def _session_fields(existing: dict) -> list:
                         value=note_value,
                         modifier=note_modifier,
                         placeholder="e.g. Boss fight, speedrun",
+                        path=["note"],
                     ),
                 ),
             ],
@@ -938,6 +985,7 @@ def _session_fields(existing: dict) -> list:
                 modifier=dur_tot.modifier,
                 placeholder="e.g. 1",
                 placeholder2="e.g. 10",
+                path=["duration_total_hours"],
             ),
         ),
         _filter_field(
@@ -949,6 +997,7 @@ def _session_fields(existing: dict) -> list:
                 modifier=dur_man.modifier,
                 placeholder="e.g. 1",
                 placeholder2="e.g. 10",
+                path=["duration_manual_hours"],
             ),
         ),
         _filter_field(
@@ -960,13 +1009,18 @@ def _session_fields(existing: dict) -> list:
                 modifier=dur_calc.modifier,
                 placeholder="e.g. 1",
                 placeholder2="e.g. 10",
+                path=["duration_calculated_hours"],
             ),
         ),
         Div(
             attributes=[("class", "flex gap-6 mb-4")],
             children=[
-                _filter_boolean_radio("filter-emulated", "Emulated", emulated_value),
-                _filter_boolean_radio("filter-active", "Active", is_active_value),
+                _filter_boolean_radio(
+                    "filter-emulated", "Emulated", emulated_value, path=["emulated"]
+                ),
+                _filter_boolean_radio(
+                    "filter-active", "Active", is_active_value, path=["is_active"]
+                ),
             ],
         ),
     ]
@@ -1062,6 +1116,7 @@ def _purchase_fields(existing: dict) -> list:
                                 value=price_currency_value,
                                 modifier=price_currency_modifier,
                                 placeholder="e.g. USD, EUR",
+                                path=["price_currency"],
                             ),
                         ),
                         _filter_field(
@@ -1071,6 +1126,7 @@ def _purchase_fields(existing: dict) -> list:
                                 value=converted_currency_value,
                                 modifier=converted_currency_modifier,
                                 placeholder="e.g. USD, EUR",
+                                path=["converted_currency"],
                             ),
                         ),
                     ],
@@ -1082,6 +1138,7 @@ def _purchase_fields(existing: dict) -> list:
                         input_name_prefix="filter-date-purchased",
                         min_value=date_purchased_min,
                         max_value=date_purchased_max,
+                        path=["date_purchased"],
                     ),
                 ),
                 _filter_field(
@@ -1091,6 +1148,7 @@ def _purchase_fields(existing: dict) -> list:
                         input_name_prefix="filter-date-refunded",
                         min_value=date_refunded_min,
                         max_value=date_refunded_max,
+                        path=["date_refunded"],
                     ),
                 ),
                 _filter_field(
@@ -1100,6 +1158,7 @@ def _purchase_fields(existing: dict) -> list:
                         input_name_prefix="filter-finished",
                         min_value=finished_min,
                         max_value=finished_max,
+                        path=["finished"],
                     ),
                 ),
                 _filter_field(
@@ -1112,6 +1171,7 @@ def _purchase_fields(existing: dict) -> list:
                         placeholder="0.00",
                         placeholder2="100.00",
                         step="0.01",
+                        path=["price"],
                     ),
                 ),
                 _filter_field(
@@ -1123,21 +1183,29 @@ def _purchase_fields(existing: dict) -> list:
                         modifier=num.modifier,
                         placeholder="e.g. 1",
                         placeholder2="e.g. 5",
+                        path=["num_purchases"],
                     ),
                 ),
                 Div(
                     attributes=[("class", "flex flex-col items-start gap-4 mb-4")],
                     children=[
                         _filter_boolean_radio(
-                            "filter-refunded", "Refunded", is_refunded_value
+                            "filter-refunded",
+                            "Refunded",
+                            is_refunded_value,
+                            path=["is_refunded"],
                         ),
                         _filter_boolean_radio(
-                            "filter-infinite", "Infinite", infinite_value
+                            "filter-infinite",
+                            "Infinite",
+                            infinite_value,
+                            path=["infinite"],
                         ),
                         _filter_boolean_radio(
                             "filter-needs-price-update",
                             "Needs Price Update",
                             needs_price_update_value,
+                            path=["needs_price_update"],
                         ),
                     ],
                 ),
@@ -1203,6 +1271,7 @@ def _platform_fields(existing: dict) -> list:
                         value=name_value,
                         modifier=name_modifier,
                         placeholder="e.g. Nintendo Switch",
+                        path=["name"],
                     ),
                 ),
                 _filter_field(
@@ -1212,6 +1281,7 @@ def _platform_fields(existing: dict) -> list:
                         value=group_value,
                         modifier=group_modifier,
                         placeholder="e.g. Nintendo",
+                        path=["group"],
                     ),
                 ),
             ],
@@ -1255,6 +1325,7 @@ def _playevent_fields(existing: dict) -> list:
                 input_name_prefix="filter-started",
                 min_value=started_min,
                 max_value=started_max,
+                path=["started"],
             ),
         ),
         _filter_field(
@@ -1264,6 +1335,7 @@ def _playevent_fields(existing: dict) -> list:
                 input_name_prefix="filter-ended",
                 min_value=ended_min,
                 max_value=ended_max,
+                path=["ended"],
             ),
         ),
         _filter_field(
@@ -1275,6 +1347,7 @@ def _playevent_fields(existing: dict) -> list:
                 modifier=days.modifier,
                 placeholder="e.g. 1",
                 placeholder2="e.g. 30",
+                path=["days_to_finish"],
             ),
         ),
     ]
@@ -1286,6 +1359,8 @@ def StringFilter(
     value: str = "",
     modifier: str = "EQUALS",
     placeholder: str = "",
+    *,
+    path: FilterWidgetPath,
 ) -> Node:
     """Renders a string filter with 8 modifier radio options and a text input."""
     from common.criteria import Modifier
@@ -1341,7 +1416,10 @@ def StringFilter(
         input_attrs.append(("disabled", "true"))
 
     return Div(
-        attributes=[("class", "flex flex-col gap-2 @container")],
+        attributes=[
+            ("class", "flex flex-col gap-2 @container"),
+            *filter_widget_attributes(path, "string"),
+        ],
         children=[
             Div(
                 attributes=[
@@ -1372,6 +1450,8 @@ def NumberFilter(
     placeholder: str = "",
     placeholder2: str = "",
     step: str = "1",
+    *,
+    path: FilterWidgetPath,
 ) -> Node:
     """Renders a numeric filter with 8 modifier radio options and two inputs.
 
@@ -1440,7 +1520,10 @@ def NumberFilter(
         value2_attrs.append(("disabled", "true"))
 
     return Div(
-        attributes=[("class", "flex flex-col gap-2 @container")],
+        attributes=[
+            ("class", "flex flex-col gap-2 @container"),
+            *filter_widget_attributes(path, "number"),
+        ],
         children=[
             Div(
                 attributes=[

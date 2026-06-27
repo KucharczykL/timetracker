@@ -7,6 +7,7 @@ classes or behaviour (``StyledButton``, ``Pill``, ``Checkbox`` …) are written 
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
@@ -56,6 +57,31 @@ _SIZE_CLASSES = {
 # SearchSelect), on the wrapper via :has() (DISABLED_WITHIN_CLASS).
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
+
+
+# A filter widget's canonical filter-JSON key chain. Length-1 today (one JSON
+# key per widget); typed as a list so nested paths stay expressible later.
+# Example: ["year_released"].
+type FilterWidgetPath = list[str]
+
+# What the future generic TS serializer reads a widget's value as.
+type FilterWidgetKind = str  # "string" | "number" | "date" | "bool" | "set"
+
+
+def filter_widget_attributes(
+    path: FilterWidgetPath, kind: FilterWidgetKind
+) -> list[HTMLAttribute]:
+    """The three self-describe attributes every filter-bar widget root carries.
+
+    A later generic TS serializer reads ``data-path`` (the widget's filter-JSON
+    key, as a JSON array) and ``data-kind`` off any ``[data-filter-widget]`` root
+    to handle all widgets uniformly. See issue #123 Phase 2. This slice only
+    emits the attributes; nothing reads them yet, so behaviour is unchanged."""
+    return [
+        ("data-filter-widget", ""),
+        ("data-path", json.dumps(path)),
+        ("data-kind", kind),
+    ]
 
 # The single max-width every content container obeys — navbar, page bodies
 # (lists, detail, stats), and popovers. Only a cap: callers add
