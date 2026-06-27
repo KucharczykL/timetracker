@@ -19,21 +19,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from common.components.filters import FilterBar, PurchaseFilterBar
-from common.criteria import (
-    BoolCriterion,
-    ChoiceCriterion,
-    DateCriterion,
-    FloatCriterion,
-    Modifier,
-    MultiCriterion,
-    RelationMatch,
-    StringCriterion,
-)
 from games.filters import (
-    GameFilter,
-    PlayEventFilter,
-    PurchaseFilter,
-    SessionFilter,
     parse_game_filter,
     parse_purchase_filter,
 )
@@ -122,6 +108,36 @@ def test_purchase_type_widget_json_selects_games(purchase_world):
     assert _game_ids(filter_json) == {purchase_world["game_buyer"]}
 
 
+def test_purchase_ownership_type_widget_json_selects_games(db):
+    """Repointed ownership_type widget emits AND→purchase_filter→ownership_type."""
+    pc = Platform.objects.create(name="PC")
+    physical = Game.objects.create(name="Physical", platform=pc)
+    digital = Game.objects.create(name="Digital", platform=pc)
+    Game.objects.create(name="NoPurchase", platform=pc)
+
+    physical_purchase = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), ownership_type=Purchase.PHYSICAL
+    )
+    physical_purchase.games.set([physical])
+    digital_purchase = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), ownership_type=Purchase.DIGITAL
+    )
+    digital_purchase.games.set([digital])
+
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "purchase_filter": {
+                        "ownership_type": _set_criterion("ph", "Physical")
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(filter_json) == {physical.id}
+
+
 def test_purchase_price_any_widget_json_selects_games(purchase_world):
     filter_json = json.dumps(
         {
@@ -141,8 +157,6 @@ def test_purchase_price_any_widget_json_selects_games(purchase_world):
 
 
 def test_playevent_note_widget_json_selects_games(db):
-    from games.models import PlayEvent
-
     pc = Platform.objects.create(name="PC")
     finished = Game.objects.create(name="Finished", platform=pc)
     started = Game.objects.create(name="Started", platform=pc)
@@ -164,8 +178,6 @@ def test_playevent_note_widget_json_selects_games(db):
 
 
 def test_game_finished_widget_json_selects_games(db):
-    from games.models import PlayEvent
-
     pc = Platform.objects.create(name="PC")
     in_range = Game.objects.create(name="InRange", platform=pc)
     out_range = Game.objects.create(name="OutRange", platform=pc)
@@ -188,6 +200,44 @@ def test_game_finished_widget_json_selects_games(db):
         }
     )
     assert _game_ids(filter_json) == {in_range.id}
+
+
+def test_game_finished_widget_json_min_only_and_max_only(db):
+    """When only one bound is set the widget emits GREATER_THAN (min-only) or
+    LESS_THAN (max-only) instead of BETWEEN; each selects by PlayEvent.ended."""
+    pc = Platform.objects.create(name="PC")
+    early = Game.objects.create(name="Early", platform=pc)
+    middle = Game.objects.create(name="Middle", platform=pc)
+    late = Game.objects.create(name="Late", platform=pc)
+    PlayEvent.objects.create(game=early, ended=date(2023, 1, 1))
+    PlayEvent.objects.create(game=middle, ended=date(2024, 6, 15))
+    PlayEvent.objects.create(game=late, ended=date(2025, 12, 31))
+
+    min_only = json.dumps(
+        {
+            "AND": [
+                {
+                    "playevent_filter": {
+                        "ended": {"value": "2024-01-01", "modifier": "GREATER_THAN"}
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(min_only) == {middle.id, late.id}
+
+    max_only = json.dumps(
+        {
+            "AND": [
+                {
+                    "playevent_filter": {
+                        "ended": {"value": "2024-12-31", "modifier": "LESS_THAN"}
+                    }
+                }
+            ]
+        }
+    )
+    assert _game_ids(max_only) == {early.id, middle.id}
 
 
 # ── relation-bool: ANY (True) vs NONE (False) ────────────────────────────────
@@ -225,21 +275,12 @@ def test_session_emulated_true_matches_any(emulated_world):
 
 
 def test_session_emulated_false_matches_none(emulated_world):
-    """False → NONE: games with no emulated session, including zero-session games.
-
-    Matches the flat ``session_emulated=False`` oracle."""
+    """False → NONE: games with no emulated session, including zero-session games."""
     filter_json = _relation_bool_json(
         "session_filter",
         {"emulated": {"value": True, "modifier": "EQUALS"}},
         value=False,
     )
-    from common.criteria import BoolCriterion
-
-    flat = GameFilter(session_emulated=BoolCriterion(value=False))
-    flat_ids = set(
-        Game.objects.filter(flat.to_q()).distinct().values_list("id", flat=True)
-    )
-    assert _game_ids(filter_json) == flat_ids
     assert _game_ids(filter_json) == {
         emulated_world["native"],
         emulated_world["no_sessions"],
@@ -281,6 +322,46 @@ def test_purchase_infinite_true_matches_any(db):
         value=True,
     )
     assert _game_ids(filter_json) == {infinite.id}
+
+
+def test_purchase_refunded_true_matches_any(db):
+    """True → ANY: games with at least one refunded purchase."""
+    pc = Platform.objects.create(name="PC")
+    refunded = Game.objects.create(name="Refunded", platform=pc)
+    kept = Game.objects.create(name="Kept", platform=pc)
+    Game.objects.create(name="NoPurchase", platform=pc)
+    p1 = Purchase.objects.create(
+        date_purchased=date(2024, 1, 1), date_refunded=date(2024, 2, 1)
+    )
+    p1.games.set([refunded])
+    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1))
+    p2.games.set([kept])
+
+    filter_json = _relation_bool_json(
+        "purchase_filter",
+        {"is_refunded": {"value": True, "modifier": "EQUALS"}},
+        value=True,
+    )
+    assert _game_ids(filter_json) == {refunded.id}
+
+
+def test_purchase_infinite_false_matches_none(db):
+    """False → NONE: games with no infinite purchase, including zero-purchase games."""
+    pc = Platform.objects.create(name="PC")
+    infinite = Game.objects.create(name="Infinite", platform=pc)
+    finite = Game.objects.create(name="Finite", platform=pc)
+    no_purchase = Game.objects.create(name="NoPurchase", platform=pc)
+    p1 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=True)
+    p1.games.set([infinite])
+    p2 = Purchase.objects.create(date_purchased=date(2024, 1, 1), infinite=False)
+    p2.games.set([finite])
+
+    filter_json = _relation_bool_json(
+        "purchase_filter",
+        {"infinite": {"value": True, "modifier": "EQUALS"}},
+        value=False,
+    )
+    assert _game_ids(filter_json) == {finite.id, no_purchase.id}
 
 
 # ── two widgets over one relation = independent EXISTS ────────────────────────
@@ -364,7 +445,6 @@ def test_merged_single_node_requires_one_matching_row(two_purchase_world):
 
 
 def test_purchase_finished_widget_json_selects_purchases(db):
-    from games.models import PlayEvent
 
     pc = Platform.objects.create(name="PC")
     finished_game = Game.objects.create(name="Finished", platform=pc)
@@ -466,243 +546,6 @@ def test_purchase_bar_prefills_finished_from_and(db):
     html = str(PurchaseFilterBar(filter_json))
     assert "2024-01-01" in html
     assert "2024-12-31" in html
-
-
-# ── parametrized parity: each repointed widget's NESTED form selects the same
-#    rows as its still-live FLAT oracle field (#123 Phase 2d permanent guard) ──
-#
-# The 10 repointed widgets are now the canonical path; the flat GameFilter /
-# PurchaseFilter convenience fields remain as oracles. Each case builds BOTH the
-# flat and the nested filter dataclass over one shared world and asserts they
-# select the identical id set. A mismatch is a real bug (the repoint changed
-# behaviour), not a test to weaken.
-
-
-@pytest.fixture
-def parity_world(db):
-    """One world exercising every repointed widget's dimension at once.
-
-    Each repointed criterion matches a strict, non-empty subset so an equal
-    flat/nested result is a meaningful (non-vacuous) check."""
-    pc = Platform.objects.create(name="PC")
-    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
-    desktop = Device.objects.create(name="Desktop", type=Device.PC)
-
-    # session: device + emulated dimension
-    deck_game = Game.objects.create(name="DeckGame", platform=pc)
-    Session.objects.create(
-        game=deck_game, timestamp_start=_dt(), device=deck, emulated=False
-    )
-    emulated_game = Game.objects.create(name="EmulatedGame", platform=pc)
-    Session.objects.create(
-        game=emulated_game, timestamp_start=_dt(), device=desktop, emulated=True
-    )
-
-    # purchase: type / ownership / price / refunded / infinite dimension
-    game_buyer = Game.objects.create(name="GameBuyer", platform=pc)
-    cheap = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.GAME,
-        ownership_type=Purchase.DIGITAL,
-        converted_price=10.0,
-        infinite=False,
-    )
-    cheap.games.set([game_buyer])
-
-    dlc_buyer = Game.objects.create(name="DlcBuyer", platform=pc)
-    pricey = Purchase.objects.create(
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.DLC,
-        related_game=dlc_buyer,
-        ownership_type=Purchase.PHYSICAL,
-        converted_price=50.0,
-        date_refunded=date(2024, 2, 1),
-        infinite=True,
-    )
-    pricey.games.set([dlc_buyer])
-
-    # playevent: note + ended dimension
-    finished_game = Game.objects.create(name="FinishedGame", platform=pc)
-    PlayEvent.objects.create(
-        game=finished_game, ended=date(2024, 6, 15), note="Completed the run"
-    )
-    started_game = Game.objects.create(name="StartedGame", platform=pc)
-    PlayEvent.objects.create(
-        game=started_game, ended=date(2023, 1, 1), note="Just started"
-    )
-
-    # a bare game touching no relation (matters for the NONE/False branches)
-    Game.objects.create(name="Bare", platform=pc)
-
-    # purchase-bar finished: a purchase of a finished game vs one of an unfinished
-    bought_finished = Purchase.objects.create(date_purchased=date(2024, 1, 1))
-    bought_finished.games.set([finished_game])
-    bought_other = Purchase.objects.create(date_purchased=date(2024, 1, 1))
-    bought_other.games.set([started_game])
-
-    return {"deck": deck.id}
-
-
-def _ids(model, filt) -> set[int]:
-    return set(
-        model.objects.filter(filt.to_q()).distinct().values_list("id", flat=True)
-    )
-
-
-def _between_2024() -> DateCriterion:
-    return DateCriterion(
-        value="2024-01-01", value2="2024-12-31", modifier=Modifier.BETWEEN
-    )
-
-
-# Each case: (model, flat-filter builder, nested-filter builder). Builders take
-# the world dict (only the device case needs an id from it).
-PARITY_CASES = {
-    "device_set": (
-        Game,
-        lambda w: GameFilter(
-            device=MultiCriterion(value=[w["deck"]], modifier=Modifier.INCLUDES)
-        ),
-        lambda w: GameFilter(
-            session_filter=SessionFilter(
-                device=MultiCriterion(value=[w["deck"]], modifier=Modifier.INCLUDES)
-            )
-        ),
-    ),
-    "purchase_type_set": (
-        Game,
-        lambda w: GameFilter(
-            purchase_type=ChoiceCriterion(value=["game"], modifier=Modifier.INCLUDES)
-        ),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                type=ChoiceCriterion(value=["game"], modifier=Modifier.INCLUDES)
-            )
-        ),
-    ),
-    "purchase_ownership_set": (
-        Game,
-        lambda w: GameFilter(
-            purchase_ownership_type=ChoiceCriterion(
-                value=["ph"], modifier=Modifier.INCLUDES
-            )
-        ),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                ownership_type=ChoiceCriterion(value=["ph"], modifier=Modifier.INCLUDES)
-            )
-        ),
-    ),
-    "purchase_price_any_number": (
-        Game,
-        lambda w: GameFilter(
-            purchase_price_any=FloatCriterion(
-                value=20.0, modifier=Modifier.GREATER_THAN
-            )
-        ),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                converted_price=FloatCriterion(
-                    value=20.0, modifier=Modifier.GREATER_THAN
-                )
-            )
-        ),
-    ),
-    "playevent_note_string": (
-        Game,
-        lambda w: GameFilter(
-            playevent_note=StringCriterion(
-                value="Completed", modifier=Modifier.INCLUDES
-            )
-        ),
-        lambda w: GameFilter(
-            playevent_filter=PlayEventFilter(
-                note=StringCriterion(value="Completed", modifier=Modifier.INCLUDES)
-            )
-        ),
-    ),
-    "game_finished_date": (
-        Game,
-        lambda w: GameFilter(finished=_between_2024()),
-        lambda w: GameFilter(playevent_filter=PlayEventFilter(ended=_between_2024())),
-    ),
-    "session_emulated_true": (
-        Game,
-        lambda w: GameFilter(session_emulated=BoolCriterion(value=True)),
-        lambda w: GameFilter(
-            session_filter=SessionFilter(
-                match=RelationMatch.ANY, emulated=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "session_emulated_false": (
-        Game,
-        lambda w: GameFilter(session_emulated=BoolCriterion(value=False)),
-        lambda w: GameFilter(
-            session_filter=SessionFilter(
-                match=RelationMatch.NONE, emulated=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "purchase_refunded_true": (
-        Game,
-        lambda w: GameFilter(purchase_refunded=BoolCriterion(value=True)),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                match=RelationMatch.ANY, is_refunded=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "purchase_refunded_false": (
-        Game,
-        lambda w: GameFilter(purchase_refunded=BoolCriterion(value=False)),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                match=RelationMatch.NONE, is_refunded=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "purchase_infinite_true": (
-        Game,
-        lambda w: GameFilter(purchase_infinite=BoolCriterion(value=True)),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                match=RelationMatch.ANY, infinite=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "purchase_infinite_false": (
-        Game,
-        lambda w: GameFilter(purchase_infinite=BoolCriterion(value=False)),
-        lambda w: GameFilter(
-            purchase_filter=PurchaseFilter(
-                match=RelationMatch.NONE, infinite=BoolCriterion(value=True)
-            )
-        ),
-    ),
-    "purchase_bar_finished_date": (
-        Purchase,
-        lambda w: PurchaseFilter(finished=_between_2024()),
-        lambda w: PurchaseFilter(
-            game_filter=GameFilter(
-                playevent_filter=PlayEventFilter(ended=_between_2024())
-            )
-        ),
-    ),
-}
-
-
-@pytest.mark.parametrize("case_id", list(PARITY_CASES), ids=list(PARITY_CASES))
-def test_repointed_widget_nested_equals_flat_oracle(parity_world, case_id):
-    model, build_flat, build_nested = PARITY_CASES[case_id]
-    flat_ids = _ids(model, build_flat(parity_world))
-    nested_ids = _ids(model, build_nested(parity_world))
-    # Non-vacuous: the criterion must actually match something in the world, so an
-    # all-empty bug can't make the equality trivially pass.
-    assert flat_ids, f"{case_id}: flat oracle matched nothing (test data too thin)"
-    assert nested_ids == flat_ids, (
-        f"{case_id}: nested form selected {nested_ids} but flat oracle {flat_ids}"
-    )
 
 
 # ── prefill coverage gaps (#123 Phase 2d hardening) ──────────────────────────

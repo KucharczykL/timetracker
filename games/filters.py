@@ -12,9 +12,8 @@ with AND/OR/NOT composition and typed criterion fields.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from django.db.models import Q, QuerySet
+from django.db.models import Q
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -35,12 +34,6 @@ from common.criteria import (
     filter_to_json,
     relation_to_q,
 )
-
-# A queryset of object ids (from ``.values_list("id"/"pk", flat=True)``), reused
-# as the cross-entity ``matching_ids`` local in the ``to_q()`` methods. The model
-# varies per branch (Game / Session / Purchase / …), so only the int row type is
-# pinned.  # e.g. Session.objects.filter(...).values_list("id", flat=True)
-type MatchingIdQuerySet = QuerySet[Any, int]
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
 
@@ -92,24 +85,8 @@ class GameFilter(OperatorFilter):
     manual_playtime_hours: AggregateCriterion | None = None
     calculated_playtime_hours: AggregateCriterion | None = None
 
-    # Cross-entity: any session played on these devices / matching these flags
-    device: MultiCriterion | None = None  # game has session on any of these devices
-    session_emulated: BoolCriterion | None = None  # game has emulated session
-
-    # Cross-entity: matches against the game's purchases
-    purchase_refunded: BoolCriterion | None = None  # game has refunded purchase
-    purchase_infinite: BoolCriterion | None = None  # game has infinite purchase
+    # Cross-entity: sum of the game's purchase prices (converted)
     purchase_price_total: AggregateCriterion | None = None  # sum of converted prices
-    purchase_price_any: FloatCriterion | None = None  # any single purchase in range
-    purchase_type: ChoiceCriterion | None = None  # game has purchase of type
-    purchase_ownership_type: ChoiceCriterion | None = None  # by ownership
-
-    # Cross-entity: substring match against the game's playevent notes
-    playevent_note: StringCriterion | None = None
-
-    # Cross-entity: game has a playevent whose `ended` date is in range
-    # (i.e. the game was finished in that window). See PlayEvent.ended.
-    finished: DateCriterion | None = None
 
     # Free-text search (combines name + sort_name + platform name)
     search: StringCriterion | None = None
@@ -183,18 +160,6 @@ class GameFilter(OperatorFilter):
                 self.playevent_count, model=Game, reducer="count", accessor="playevents"
             )
 
-        if self.finished is not None:
-            from games.models import Game
-
-            # Games with a playevent whose `ended` date is in range. distinct()
-            # collapses the row-per-playevent fan-out of the reverse relation.
-            matching_ids: MatchingIdQuerySet = (
-                Game.objects.filter(self.finished.to_q("playevents__ended"))
-                .distinct()
-                .values_list("id", flat=True)
-            )
-            q &= Q(id__in=matching_ids)
-
         if self.manual_playtime_hours is not None:
             from games.models import Game
 
@@ -219,51 +184,6 @@ class GameFilter(OperatorFilter):
                 unit="duration_hours",
             )
 
-        if self.device is not None:
-            from games.models import Session
-
-            session_q = self.device.to_q("device_id")
-            matching_ids = Session.objects.filter(session_q).values_list(
-                "game_id", flat=True
-            )
-            q &= Q(id__in=matching_ids)
-
-        if self.session_emulated is not None:
-            from games.models import Session
-
-            emulated_ids = Session.objects.filter(
-                emulated=self.session_emulated.value
-            ).values_list("game_id", flat=True)
-            if self.session_emulated.value:
-                q &= Q(id__in=emulated_ids)
-            else:
-                emulated_true_ids = Session.objects.filter(emulated=True).values_list(
-                    "game_id", flat=True
-                )
-                q &= ~Q(id__in=emulated_true_ids)
-
-        if self.purchase_refunded is not None:
-            from games.models import Purchase
-
-            refunded_ids = Purchase.objects.filter(
-                date_refunded__isnull=False
-            ).values_list("games__id", flat=True)
-            if self.purchase_refunded.value:
-                q &= Q(id__in=refunded_ids)
-            else:
-                q &= ~Q(id__in=refunded_ids)
-
-        if self.purchase_infinite is not None:
-            from games.models import Purchase
-
-            infinite_ids = Purchase.objects.filter(infinite=True).values_list(
-                "games__id", flat=True
-            )
-            if self.purchase_infinite.value:
-                q &= Q(id__in=infinite_ids)
-            else:
-                q &= ~Q(id__in=infinite_ids)
-
         if self.purchase_price_total is not None:
             from games.models import Game
 
@@ -274,36 +194,6 @@ class GameFilter(OperatorFilter):
                 accessor="purchases",
                 source="converted_price",
             )
-
-        if self.purchase_price_any is not None:
-            from games.models import Purchase
-
-            price_q = self.purchase_price_any.to_q("converted_price")
-            matching_ids = Purchase.objects.filter(price_q).values_list(
-                "games__id", flat=True
-            )
-            q &= Q(id__in=matching_ids)
-
-        if self.purchase_type is not None:
-            from games.models import Purchase
-
-            type_q = self.purchase_type.to_q("type")
-            matching_ids = Purchase.objects.filter(type_q).values_list(
-                "games__id", flat=True
-            )
-            q &= Q(id__in=matching_ids)
-
-        if self.purchase_ownership_type is not None:
-            from games.models import Purchase
-
-            ownership_q = self.purchase_ownership_type.to_q("ownership_type")
-            matching_ids = Purchase.objects.filter(ownership_q).values_list(
-                "games__id", flat=True
-            )
-            q &= Q(id__in=matching_ids)
-
-        if self.playevent_note is not None:
-            q &= self._playevent_note_to_q(self.playevent_note)
 
         # ── free-text search (OR across multiple fields) ──
         if self.search is not None and self.search.value:
@@ -359,17 +249,6 @@ class GameFilter(OperatorFilter):
     def _playtime_to_q_for_field(c: IntCriterion, field: str) -> Q:
         """Convert an hours-based criterion to a DurationField Q object."""
         return duration_hours_to_q(c.value, c.value2, c.modifier, field)
-
-    @staticmethod
-    def _playevent_note_to_q(criterion: StringCriterion) -> Q:
-        """Match games by substring / regex / null against their playevents' notes."""
-        from games.models import PlayEvent
-
-        event_q = criterion.to_q("note")
-        matching_ids = PlayEvent.objects.filter(event_q).values_list(
-            "game_id", flat=True
-        )
-        return Q(id__in=matching_ids)
 
 
 # ── SessionFilter ──────────────────────────────────────────────────────────
@@ -504,8 +383,6 @@ class PurchaseFilter(OperatorFilter):
     games: ChoiceCriterion | None = None  # games (M2M IDs)
     date_purchased: DateCriterion | None = None
     date_refunded: DateCriterion | None = None
-    # Cross-entity: purchase of a game finished in range (PlayEvent.ended).
-    finished: DateCriterion | None = None
     is_refunded: BoolCriterion | None = None  # date_refunded IS NOT NULL
     price: FloatCriterion | None = None  # on price field
     converted_price: FloatCriterion | None = None
@@ -542,19 +419,6 @@ class PurchaseFilter(OperatorFilter):
             q &= self.date_purchased.to_q("date_purchased")
         if self.date_refunded is not None:
             q &= self.date_refunded.to_q("date_refunded")
-        if self.finished is not None:
-            from games.models import Game
-
-            # Match via a game-id subquery instead of traversing
-            # games__playevents__ended directly, so the playevents join stays out
-            # of the purchase query. (The games M2M join can still duplicate
-            # rows; callers apply .distinct(), as with the game_filter block.)
-            finished_game_ids: MatchingIdQuerySet = (
-                Game.objects.filter(self.finished.to_q("playevents__ended"))
-                .distinct()
-                .values_list("id", flat=True)
-            )
-            q &= Q(games__id__in=finished_game_ids)
         if self.is_refunded is not None:
             q &= Q(date_refunded__isnull=not self.is_refunded.value)
         if self.price is not None:

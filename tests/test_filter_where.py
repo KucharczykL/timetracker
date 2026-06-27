@@ -57,8 +57,8 @@ def test_bool_field_resolves_bool_criterion():
 
 
 def test_multi_field_resolves_multi_criterion():
-    assert GameFilter.where(device=[1, 2]) == GameFilter(
-        device=MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES)
+    assert GameFilter.where(platform_group=[1, 2]) == GameFilter(
+        platform_group=MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES)
     )
 
 
