@@ -541,6 +541,11 @@ def TimetrackerDocument(
                             name="viewport",
                             content="width=device-width, initial-scale=1.0",
                         ),
+                        Link(
+                            rel="icon",
+                            type="image/svg+xml",
+                            href=static("icons/tesserae-favicon.svg"),
+                        ),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
                         Script(src=static("js/dist/htmx-redirect-toast.js")),
