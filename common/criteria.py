@@ -505,15 +505,31 @@ def _filter_class_for(
     return None
 
 
-# A filter widget's canonical filter-JSON key chain. Length-1 today (one JSON
-# key per widget); typed as a list so nested cross-entity paths stay expressible.
-# Example: ["session_filter", "emulated"].
+# A filter widget's canonical filter-JSON key chain: single-segment for a flat
+# field (e.g. ["year_released"]), multi-segment for a cross-entity widget that
+# steps through nested sub-filters (e.g. ["session_filter", "device"] or
+# ["game_filter", "playevent_filter", "ended"]).
 type FilterWidgetPath = list[str]
 
-# The widget ``data-kind`` token a criterion advertises to the generic filter-bar
-# serializer (ts/elements/filter-bar.ts). One token per value shape; several
-# criterion types share a kind (every numeric criterion → "number").
-type FilterWidgetKind = Literal["string", "number", "date", "bool", "set"]
+# The fixed child criterion of a relation-bool widget, keyed by the related field
+# name. The serializer wraps it in the relation sub-filter (adding ``match: NONE``
+# for the False radio).
+type RelationChild = dict[
+    str, dict[str, object]
+]  # {"emulated": {"value": True, "modifier": "EQUALS"}}
+
+# The widget ``data-kind`` tokens for leaf criteria — one token per value shape;
+# several criterion types share a kind (every numeric criterion → "number"). These
+# are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce.
+type LeafWidgetKind = Literal["string", "number", "date", "bool", "set"]
+
+# Every widget ``data-kind`` token the filter-bar serializer dispatches on.
+# ``relation-bool`` extends the leaf kinds: it describes not a leaf criterion but
+# a whole cross-entity sub-filter toggled by a boolean radio (ANY vs NONE) over a
+# fixed child criterion, so it is a valid widget kind yet never produced by the
+# leaf resolvers above. See ``filter_widget_attributes`` and
+# ``ts/elements/filter-bar.ts``.
+type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
 
 
 # Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
@@ -521,7 +537,7 @@ type FilterWidgetKind = Literal["string", "number", "date", "bool", "set"]
 # contract: a widget's ``data-kind`` must equal the kind of the criterion its
 # ``data-path`` resolves to. Several criterion types share a kind (every numeric
 # criterion → "number"; both set criteria → "set").
-_CRITERION_KINDS: dict[type[_Criterion], FilterWidgetKind] = {
+_CRITERION_KINDS: dict[type[_Criterion], LeafWidgetKind] = {
     StringCriterion: "string",
     IntCriterion: "number",
     FloatCriterion: "number",
@@ -533,7 +549,7 @@ _CRITERION_KINDS: dict[type[_Criterion], FilterWidgetKind] = {
 }
 
 
-def criterion_kind(criterion_cls: type[_Criterion]) -> FilterWidgetKind:
+def criterion_kind(criterion_cls: type[_Criterion]) -> LeafWidgetKind:
     """Return the widget ``data-kind`` token for a criterion class.
 
     Raises ``ValueError`` for a criterion type with no registered kind, so a new
@@ -548,7 +564,7 @@ def criterion_kind(criterion_cls: type[_Criterion]) -> FilterWidgetKind:
 
 def resolve_path_kind(
     filter_cls: type["OperatorFilter"], path: FilterWidgetPath
-) -> FilterWidgetKind:
+) -> LeafWidgetKind:
     """Resolve a filter-widget ``data-path`` against a filter dataclass tree and
     return the expected ``data-kind``.
 

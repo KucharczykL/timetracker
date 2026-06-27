@@ -422,9 +422,24 @@ class FilterBarRenderingTest(TestCase):
 
     def test_finished_filter_prepopulates_less_than_into_max(self):
         """A LESS_THAN (max-only) finished filter fills the max slot, not min —
-        guards the modifier-aware _parse_range fix."""
+        guards the modifier-aware _range_from_field fix. The purchase `finished`
+        widget is cross-entity (#123 Phase 2d), so it prefills from the nested AND
+        sub-filter form (game_filter→playevent_filter→ended), not a flat key."""
         filter_json = json.dumps(
-            {"finished": {"value": "2024-12-31", "modifier": "LESS_THAN"}}
+            {
+                "AND": [
+                    {
+                        "game_filter": {
+                            "playevent_filter": {
+                                "ended": {
+                                    "value": "2024-12-31",
+                                    "modifier": "LESS_THAN",
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
         )
         html = str(
             PurchaseFilterBar(
@@ -443,9 +458,23 @@ class FilterBarRenderingTest(TestCase):
 
     def test_finished_filter_prepopulates_greater_than_into_min(self):
         """A GREATER_THAN (min-only) finished filter fills the min slot — the
-        symmetric counterpart to the LESS_THAN case above."""
+        symmetric counterpart to the LESS_THAN case above, in the nested AND
+        cross-entity form."""
         filter_json = json.dumps(
-            {"finished": {"value": "2024-01-01", "modifier": "GREATER_THAN"}}
+            {
+                "AND": [
+                    {
+                        "game_filter": {
+                            "playevent_filter": {
+                                "ended": {
+                                    "value": "2024-01-01",
+                                    "modifier": "GREATER_THAN",
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
         )
         html = str(
             PurchaseFilterBar(

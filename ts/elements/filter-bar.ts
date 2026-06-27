@@ -101,6 +101,35 @@ function setPath(
   node[path[path.length - 1]] = leaf;
 }
 
+// Fold a key chain into a fresh nested object terminating in `leaf` —
+// nest(["session_filter", "device"], leaf) → {session_filter: {device: leaf}}.
+// Unlike setPath this never mutates a shared object: each cross-entity widget
+// builds its own standalone sub-filter element so several widgets targeting the
+// same relation compose as independent EXISTS (their own AND elements) rather
+// than merging into one shared relation node.
+function nest(path: string[], leaf: unknown): Record<string, unknown> {
+  const root: Record<string, unknown> = {};
+  let node = root;
+  for (let index = 0; index < path.length - 1; index++) {
+    const child: Record<string, unknown> = {};
+    node[path[index]] = child;
+    node = child;
+  }
+  node[path[path.length - 1]] = leaf;
+  return root;
+}
+
+// Append a sub-filter element to the parent filter's n-ary AND list, creating
+// the list on first use. Only ever called with a real selection, so an empty AND
+// element (which would change query semantics) is never appended.
+function appendAnd(
+  filter: Record<string, unknown>,
+  element: Record<string, unknown>,
+): void {
+  if (!Array.isArray(filter.AND)) filter.AND = [];
+  (filter.AND as unknown[]).push(element);
+}
+
 // Per-kind readers: each is scoped to a single widget element and returns a
 // criterion object, or null to omit the field entirely. The value/modifier
 // logic is a verbatim port of the former hardcoded field loops; only the
@@ -210,11 +239,65 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
   form.querySelectorAll<HTMLElement>("[data-filter-widget]").forEach((widget) => {
     const path = parseJSONAttr<string>(widget, "data-path");
     if (path.length === 0) return;
-    const result = readWidget(widget, widget.getAttribute("data-kind"));
-    if (result !== null) setPath(filter, path, result);
+    const kind = widget.getAttribute("data-kind");
+
+    // Relation-bool: a boolean radio toggling a whole cross-entity sub-filter
+    // (ANY vs NONE) over a fixed child criterion. data-path is the relation chain
+    // (single segment, no leaf); data-relation-child is the fixed child.
+    if (kind === "relation-bool") {
+      const element = readRelationBoolWidget(widget, path);
+      if (element !== null) appendAnd(filter, element);
+      return;
+    }
+
+    const result = readWidget(widget, kind);
+    if (result === null) return;
+    // Cross-entity leaf (data-compose="and"): nest the leaf under its relation
+    // chain and append it as its own independent EXISTS element of AND, rather
+    // than merging it into a shared top-level relation node.
+    if (widget.getAttribute("data-compose") === "and") {
+      appendAnd(filter, nest(path, result));
+    } else {
+      setPath(filter, path, result);
+    }
   });
 
   return filter;
+}
+
+function readRelationBoolWidget(
+  widget: HTMLElement,
+  path: string[],
+): Record<string, unknown> | null {
+  const checked = widget.querySelector<HTMLInputElement>(
+    'input[type="radio"]:checked',
+  );
+  if (!checked) return null;
+  // The child criterion is mandatory: an empty relation sub-filter would change
+  // to_q semantics to "has ANY related row" (or, for the False radio, "has NO
+  // related row"), not the intended "has a row matching the child". Bail rather
+  // than emit a meaning-altering empty relation.
+  const childRaw = widget.getAttribute("data-relation-child");
+  if (!childRaw) {
+    console.warn("filter-bar: relation-bool widget missing data-relation-child", widget);
+    return null;
+  }
+  let child: Record<string, unknown>;
+  try {
+    child = JSON.parse(childRaw);
+  } catch {
+    console.warn("filter-bar: malformed data-relation-child", childRaw);
+    return null;
+  }
+  if (!child || typeof child !== "object" || Object.keys(child).length === 0) {
+    console.warn("filter-bar: empty data-relation-child", childRaw);
+    return null;
+  }
+  const relationField = path[0];
+  // true → match ANY (omit `match`); false → match NONE.
+  const relationNode: Record<string, unknown> =
+    checked.value === "false" ? { match: "NONE", ...child } : { ...child };
+  return { [relationField]: relationNode };
 }
 
 function injectSearchInput(form: HTMLElement): void {

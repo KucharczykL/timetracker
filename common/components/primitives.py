@@ -32,7 +32,7 @@ from common.components.core import (
     randomid,
 )
 from common.components.icons_generated import ICON_NODES
-from common.criteria import FilterWidgetKind, FilterWidgetPath
+from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
@@ -61,21 +61,42 @@ DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-a
 
 
 def filter_widget_attributes(
-    path: FilterWidgetPath, kind: FilterWidgetKind
+    path: FilterWidgetPath,
+    kind: FilterWidgetKind,
+    *,
+    compose: bool = False,
+    relation_child: RelationChild | None = None,
 ) -> list[HTMLAttribute]:
-    """The three self-describe attributes every filter-bar widget root carries.
+    """The self-describe attributes every filter-bar widget root carries.
 
     The generic serializer in ``ts/elements/filter-bar.ts`` reads ``data-path``
     (the widget's filter-JSON key, as a JSON array) and ``data-kind`` off any
     ``[data-filter-widget]`` root to handle all widgets uniformly. See issue #123
-    Phase 2. Behaviour is unchanged because that serializer is a behaviour-
-    preserving port of the former hardcoded per-field loops, not because the
-    attributes go unread."""
-    return [
+    Phase 2.
+
+    Cross-entity widgets (issue #123 Phase 2d) add two optional markers:
+
+    - ``compose=True`` emits ``data-compose="and"``: instead of writing the leaf
+      at ``data-path`` top-level, the serializer folds ``data-path`` into a nested
+      object and appends it as its own element of the parent's n-ary ``AND`` list,
+      so several widgets targeting the same relation compose as *independent*
+      EXISTS rather than merging into one shared relation node.
+    - ``relation_child`` (with ``kind="relation-bool"``) supplies the fixed child
+      criterion of a relation toggled by a boolean radio: ``data-path`` is the
+      relation chain *without* a leaf and ``data-relation-child`` is the child
+      keyed by field, e.g. ``{"emulated": {"value": True, "modifier": "EQUALS"}}``.
+      A ``True`` radio matches ANY, ``False`` sets ``match: "NONE"``.
+    """
+    attributes: list[HTMLAttribute] = [
         ("data-filter-widget", ""),
         ("data-path", json.dumps(path)),
         ("data-kind", kind),
     ]
+    if compose:
+        attributes.append(("data-compose", "and"))
+    if relation_child is not None:
+        attributes.append(("data-relation-child", json.dumps(relation_child)))
+    return attributes
 
 
 # The single max-width every content container obeys — navbar, page bodies

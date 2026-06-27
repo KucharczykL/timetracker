@@ -8,10 +8,12 @@ from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
     Checkbox,
     Div,
+    FilterWidgetKind,
     FilterWidgetPath,
     Input,
     Label,
     Radio,
+    RelationChild,
     Span,
     filter_widget_attributes,
 )
@@ -47,6 +49,13 @@ class NumberValues(NamedTuple):
 
     value: str
     value2: str
+    modifier: str
+
+
+class StringValues(NamedTuple):
+    """(value, modifier) parsed from a string filter criterion."""
+
+    value: str
     modifier: str
 
 
@@ -95,8 +104,8 @@ def _extract_labeled(items: list) -> list[LabeledOption]:
     return pairs
 
 
-def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
-    raw = existing.get(field, {})
+def _choice_from_raw(raw: dict) -> FilterChoice:
+    """Parse a set criterion dict (value/excludes/modifier) into a FilterChoice."""
     if not isinstance(raw, dict):
         return FilterChoice([], [], "")
     return FilterChoice(
@@ -106,14 +115,12 @@ def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
     )
 
 
-def _parse_range(existing: dict, key: str) -> RangeValues:
-    """Extract (min, max) from a range filter criterion, defaulting to ("", "").
+def _filter_get_choice(existing: dict, field: str) -> FilterChoice:
+    return _choice_from_raw(existing.get(field, {}))
 
-    A one-sided range stores its single bound in ``value`` regardless of side
-    (GREATER_THAN → min, LESS_THAN → max), so the modifier decides which slot it
-    fills; only BETWEEN carries both ``value`` (min) and ``value2`` (max).
-    """
-    field = existing.get(key, {})
+
+def _range_from_field(field: dict) -> RangeValues:
+    """Extract (min, max) from a range criterion dict, defaulting to ("", "")."""
     if not isinstance(field, dict):
         return RangeValues("", "")
     value = str(field.get("value", ""))
@@ -122,13 +129,18 @@ def _parse_range(existing: dict, key: str) -> RangeValues:
     return RangeValues(value, str(field.get("value2", "")))
 
 
-def _parse_number(existing: dict, key: str) -> NumberValues:
-    """Extract (value, value2, modifier) from a numeric filter criterion.
+def _parse_range(existing: dict, key: str) -> RangeValues:
+    """Extract (min, max) from a range filter criterion, defaulting to ("", "").
 
-    Backward compatible with old RangeSlider JSON: a stored GREATER_THAN /
-    LESS_THAN / BETWEEN criterion maps straight onto value/value2/modifier.
+    A one-sided range stores its single bound in ``value`` regardless of side
+    (GREATER_THAN → min, LESS_THAN → max), so the modifier decides which slot it
+    fills; only BETWEEN carries both ``value`` (min) and ``value2`` (max).
     """
-    field = existing.get(key, {})
+    return _range_from_field(existing.get(key, {}))
+
+
+def _number_from_field(field: dict) -> NumberValues:
+    """Extract (value, value2, modifier) from a numeric criterion dict."""
     if not isinstance(field, dict):
         return NumberValues("", "", "EQUALS")
     return NumberValues(
@@ -136,6 +148,76 @@ def _parse_number(existing: dict, key: str) -> NumberValues:
         str(field.get("value2", "")),
         str(field.get("modifier") or "EQUALS"),
     )
+
+
+def _parse_number(existing: dict, key: str) -> NumberValues:
+    """Extract (value, value2, modifier) from a numeric filter criterion.
+
+    Backward compatible with old RangeSlider JSON: a stored GREATER_THAN /
+    LESS_THAN / BETWEEN criterion maps straight onto value/value2/modifier.
+    """
+    return _number_from_field(existing.get(key, {}))
+
+
+def _string_from_field(field: dict) -> StringValues:
+    """Extract (value, modifier) from a string criterion dict."""
+    if not isinstance(field, dict):
+        return StringValues("", "EQUALS")
+    return StringValues(
+        str(field.get("value", "")), str(field.get("modifier") or "EQUALS")
+    )
+
+
+# ── Cross-entity (nested AND) prefill (#123 Phase 2d) ────────────────────────
+# Repointed cross-entity widgets serialize into ``existing["AND"]`` as their own
+# sub-filter element (independent EXISTS), so prefill scans that list rather than
+# reading a flat top-level key. Each helper is matched to a widget by the same
+# ``data-path`` the widget serializes to — a single source of truth.
+
+
+def _deep_get(value: dict, keys: FilterWidgetPath) -> object:
+    """Walk ``keys`` through nested dicts, returning None if any step is absent."""
+    current: object = value
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+def _cross_entity_criterion(existing: dict, path: FilterWidgetPath) -> dict:
+    """Find the leaf criterion a composed widget at ``path`` serialized into AND.
+
+    Scans ``existing["AND"]`` for the element whose nested chain ``path[:-1]``
+    contains ``path[-1]`` as a dict (the leaf criterion), returning that dict (or
+    ``{}`` when no element matches). Example: ``["session_filter", "device"]``
+    finds ``{"session_filter": {"device": {...}}}`` and returns the inner dict.
+    """
+    for element in existing.get("AND", []) or []:
+        if not isinstance(element, dict):
+            continue
+        parent = _deep_get(element, path[:-1])
+        if isinstance(parent, dict) and isinstance(parent.get(path[-1]), dict):
+            return parent[path[-1]]
+    return {}
+
+
+def _cross_entity_bool(
+    existing: dict, relation_field: str, child_key: str
+) -> bool | None:
+    """Read a relation-bool widget's tri-state from the AND list.
+
+    Returns True when an AND element's ``[relation_field][child_key]`` exists and
+    its relation is matched ANY (no ``match`` / not NONE), False when that element
+    sets ``match: "NONE"``, and None when no such element is present.
+    """
+    for element in existing.get("AND", []) or []:
+        if not isinstance(element, dict):
+            continue
+        relation = element.get(relation_field)
+        if isinstance(relation, dict) and child_key in relation:
+            return relation.get("match") != "NONE"
+    return None
 
 
 def _parse_bool(existing: dict, key: str) -> bool:
@@ -216,11 +298,21 @@ def _split_modifier(modifier: str, has_m2m: bool = False) -> str:
     return ""
 
 
-def _enum_filter(field_name: str, options, choice: FilterChoice, *, nullable) -> Node:
+def _enum_filter(
+    field_name: str,
+    options,
+    choice: FilterChoice,
+    *,
+    nullable,
+    path: FilterWidgetPath | None = None,
+    compose: bool = False,
+) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
     Enum fields are single-valued, so no M2M modifiers (all/only are
-    meaningless); only the presence modifier is surfaced.
+    meaningless); only the presence modifier is surfaced. ``path``/``compose``
+    let a cross-entity widget point at a nested sub-filter leaf (defaults to the
+    flat ``[field_name]``).
     """
     options_str = [(str(value), label) for value, label in options]
     included = [
@@ -237,7 +329,8 @@ def _enum_filter(field_name: str, options, choice: FilterChoice, *, nullable) ->
         excluded=excluded,
         modifier=modifier,
         modifier_options=_modifier_options(nullable),
-        path=[field_name],
+        path=path if path is not None else [field_name],
+        compose=compose,
     )
 
 
@@ -248,13 +341,17 @@ def _model_filter(
     search_url,
     nullable,
     m2m_modifiers: list[LabeledOption] | None = None,
+    path: FilterWidgetPath | None = None,
+    compose: bool = False,
 ) -> Node:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
     directly from ``choice`` with no DB round-trip. Pass ``m2m_modifiers`` for
     many-to-many fields to surface ``(All)`` / ``(Only)`` pseudo-options in the
-    dropdown alongside the presence options.
+    dropdown alongside the presence options. ``path``/``compose`` let a
+    cross-entity widget point at a nested sub-filter leaf (defaults to the flat
+    ``[field_name]``).
     """
     modifier = _split_modifier(choice.modifier, has_m2m=bool(m2m_modifiers))
     return FilterSelect(
@@ -265,7 +362,8 @@ def _model_filter(
         modifier_options=_modifier_options(nullable, m2m_modifiers),
         search_url=search_url,
         prefetch=DEFAULT_PREFETCH,
-        path=[field_name],
+        path=path if path is not None else [field_name],
+        compose=compose,
     )
 
 
@@ -319,13 +417,33 @@ def _filter_checkbox(name: str, label: str, checked: bool) -> Node:
 
 
 def _filter_boolean_radio(
-    name: str, label: str, value: bool | None, *, path: FilterWidgetPath
+    name: str,
+    label: str,
+    value: bool | None,
+    *,
+    path: FilterWidgetPath,
+    relation_child: RelationChild | None = None,
 ) -> Node:
-    """Renders a filter-specific boolean radio button group with 'True' and 'False' options."""
+    """Renders a filter-specific boolean radio button group with 'True' and 'False' options.
+
+    When ``relation_child`` is given the widget becomes a cross-entity
+    relation-bool (``data-kind="relation-bool"``): ``path`` is the relation chain
+    (no leaf), the radio toggles ANY (True) vs NONE (False) over the fixed child
+    criterion, and the serializer appends it as its own AND element. See
+    ``filter_widget_attributes``.
+    """
+    kind: FilterWidgetKind = "relation-bool" if relation_child is not None else "bool"
     return Div(
         attributes=[
             ("class", "flex flex-col gap-1"),
-            *filter_widget_attributes(path, "bool"),
+            # No ``compose=True``: the relation-bool serializer branch builds and
+            # appends its own AND element directly, returning before it ever reads
+            # ``data-compose`` — so emitting it would be inert and misleading.
+            *filter_widget_attributes(
+                path,
+                kind,
+                relation_child=relation_child,
+            ),
         ],
         children=[
             Span(
@@ -645,12 +763,20 @@ def _game_fields(
     status_choice = _filter_get_choice(existing, "status")
     platform_choice = _filter_get_choice(existing, "platform")
     platform_group_choice = _filter_get_choice(existing, "platform_group")
-    device_choice = _filter_get_choice(existing, "device")
-    purchase_type_choice = _filter_get_choice(existing, "purchase_type")
-    purchase_ownership_choice = _filter_get_choice(existing, "purchase_ownership_type")
-    playevent_note_value = existing.get("playevent_note", {}).get("value", "")
-    playevent_note_modifier = existing.get("playevent_note", {}).get(
-        "modifier", "EQUALS"
+    # Cross-entity widgets serialize into existing["AND"] as independent EXISTS
+    # sub-filters (#123 Phase 2d), so prefill reads them back from that list,
+    # matched by the same data-path each widget serializes to.
+    device_choice = _choice_from_raw(
+        _cross_entity_criterion(existing, ["session_filter", "device"])
+    )
+    purchase_type_choice = _choice_from_raw(
+        _cross_entity_criterion(existing, ["purchase_filter", "type"])
+    )
+    purchase_ownership_choice = _choice_from_raw(
+        _cross_entity_criterion(existing, ["purchase_filter", "ownership_type"])
+    )
+    playevent_note_value, playevent_note_modifier = _string_from_field(
+        _cross_entity_criterion(existing, ["playevent_filter", "note"])
     )
 
     year = _parse_number(existing, "year_released")
@@ -661,14 +787,22 @@ def _game_fields(
     session_avg = _parse_number(existing, "session_average")
     purchase_count = _parse_number(existing, "purchase_count")
     playevent_count = _parse_number(existing, "playevent_count")
-    finished_min, finished_max = _parse_range(existing, "finished")
+    finished_min, finished_max = _range_from_field(
+        _cross_entity_criterion(existing, ["playevent_filter", "ended"])
+    )
     manual_pt = _parse_number(existing, "manual_playtime_hours")
     calc_pt = _parse_number(existing, "calculated_playtime_hours")
     price_total = _parse_number(existing, "purchase_price_total")
-    price_any = _parse_number(existing, "purchase_price_any")
-    purchase_refunded_value = _parse_bool_nullable(existing, "purchase_refunded")
-    purchase_infinite_value = _parse_bool_nullable(existing, "purchase_infinite")
-    session_emulated_value = _parse_bool_nullable(existing, "session_emulated")
+    price_any = _number_from_field(
+        _cross_entity_criterion(existing, ["purchase_filter", "converted_price"])
+    )
+    purchase_refunded_value = _cross_entity_bool(
+        existing, "purchase_filter", "is_refunded"
+    )
+    purchase_infinite_value = _cross_entity_bool(
+        existing, "purchase_filter", "infinite"
+    )
+    session_emulated_value = _cross_entity_bool(existing, "session_filter", "emulated")
 
     fields = [
         Div(
@@ -708,15 +842,21 @@ def _game_fields(
                         device_choice,
                         search_url="/api/devices/search",
                         nullable=False,
+                        path=["session_filter", "device"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
                     "Purchase Type",
                     _enum_filter(
+                        # Element name stays flat (a DOM identifier); the nested
+                        # leaf comes from data-path, decoupled from the name.
                         "purchase_type",
                         Purchase.TYPES,
                         purchase_type_choice,
                         nullable=False,
+                        path=["purchase_filter", "type"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -726,6 +866,8 @@ def _game_fields(
                         Purchase.OWNERSHIP_TYPES,
                         purchase_ownership_choice,
                         nullable=False,
+                        path=["purchase_filter", "ownership_type"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -735,7 +877,8 @@ def _game_fields(
                         value=playevent_note_value,
                         modifier=playevent_note_modifier,
                         placeholder="e.g. Completed, Started",
-                        path=["playevent_note"],
+                        path=["playevent_filter", "note"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -853,7 +996,8 @@ def _game_fields(
                         input_name_prefix="filter-finished",
                         min_value=finished_min,
                         max_value=finished_max,
-                        path=["finished"],
+                        path=["playevent_filter", "ended"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -879,7 +1023,8 @@ def _game_fields(
                         placeholder="0",
                         placeholder2="e.g. 100",
                         step="0.01",
-                        path=["purchase_price_any"],
+                        path=["purchase_filter", "converted_price"],
+                        compose=True,
                     ),
                 ),
             ],
@@ -894,19 +1039,24 @@ def _game_fields(
                     "filter-purchase-refunded",
                     "Refunded",
                     purchase_refunded_value,
-                    path=["purchase_refunded"],
+                    path=["purchase_filter"],
+                    relation_child={
+                        "is_refunded": {"value": True, "modifier": "EQUALS"}
+                    },
                 ),
                 _filter_boolean_radio(
                     "filter-purchase-infinite",
                     "Infinite",
                     purchase_infinite_value,
-                    path=["purchase_infinite"],
+                    path=["purchase_filter"],
+                    relation_child={"infinite": {"value": True, "modifier": "EQUALS"}},
                 ),
                 _filter_boolean_radio(
                     "filter-session-emulated",
                     "Emulated",
                     session_emulated_value,
-                    path=["session_emulated"],
+                    path=["session_filter"],
+                    relation_child={"emulated": {"value": True, "modifier": "EQUALS"}},
                 ),
             ],
         ),
@@ -1057,7 +1207,11 @@ def _purchase_fields(existing: dict) -> list:
     )
     date_purchased_min, date_purchased_max = _parse_range(existing, "date_purchased")
     date_refunded_min, date_refunded_max = _parse_range(existing, "date_refunded")
-    finished_min, finished_max = _parse_range(existing, "finished")
+    # Cross-entity: purchase of a game finished in range (#123 Phase 2d). Reads
+    # from the AND list, matched by the data-path the widget serializes to.
+    finished_min, finished_max = _range_from_field(
+        _cross_entity_criterion(existing, ["game_filter", "playevent_filter", "ended"])
+    )
     num = _parse_number(existing, "num_purchases")
 
     fields = [
@@ -1158,7 +1312,8 @@ def _purchase_fields(existing: dict) -> list:
                         input_name_prefix="filter-finished",
                         min_value=finished_min,
                         max_value=finished_max,
-                        path=["finished"],
+                        path=["game_filter", "playevent_filter", "ended"],
+                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -1361,6 +1516,7 @@ def StringFilter(
     placeholder: str = "",
     *,
     path: FilterWidgetPath,
+    compose: bool = False,
 ) -> Node:
     """Renders a string filter with 8 modifier radio options and a text input."""
     from common.criteria import Modifier
@@ -1418,7 +1574,7 @@ def StringFilter(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "string"),
+            *filter_widget_attributes(path, "string", compose=compose),
         ],
         children=[
             Div(
@@ -1452,6 +1608,7 @@ def NumberFilter(
     step: str = "1",
     *,
     path: FilterWidgetPath,
+    compose: bool = False,
 ) -> Node:
     """Renders a numeric filter with 8 modifier radio options and two inputs.
 
@@ -1522,7 +1679,7 @@ def NumberFilter(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "number"),
+            *filter_widget_attributes(path, "number", compose=compose),
         ],
         children=[
             Div(

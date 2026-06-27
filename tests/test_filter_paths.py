@@ -26,8 +26,11 @@ from common.components.filters import (
 from common.criteria import (
     _CRITERION_KINDS,
     _CRITERION_TYPES,
+    BoolCriterion,
     OperatorFilter,
     _Criterion,
+    _criterion_class_for,
+    _filter_class_for,
     criterion_kind,
     resolve_path_kind,
 )
@@ -46,13 +49,16 @@ class WidgetDescriptor(NamedTuple):
 
     path: list[str]
     kind: str
+    compose: str | None
+    relation_child: dict | None
 
 
 class _FilterWidgetCollector(HTMLParser):
-    """Collect ``(path, kind)`` from every ``[data-filter-widget]`` start tag.
+    """Collect every ``[data-filter-widget]`` start tag's contract attributes.
 
-    Pairs ``data-path``/``data-kind`` within a single element by reading the
-    start tag's own attribute list — no regex pairing across the document.
+    Pairs ``data-path``/``data-kind``/``data-compose``/``data-relation-child``
+    within a single element by reading the start tag's own attribute list — no
+    regex pairing across the document.
     """
 
     def __init__(self) -> None:
@@ -67,7 +73,15 @@ class _FilterWidgetCollector(HTMLParser):
         kind = attributes.get("data-kind")
         assert raw_path is not None, f"<{tag}> has data-filter-widget but no data-path"
         assert kind is not None, f"<{tag}> has data-filter-widget but no data-kind"
-        self.widgets.append(WidgetDescriptor(json.loads(raw_path), kind))
+        raw_child = attributes.get("data-relation-child")
+        self.widgets.append(
+            WidgetDescriptor(
+                json.loads(raw_path),
+                kind,
+                attributes.get("data-compose"),
+                json.loads(raw_child) if raw_child else None,
+            )
+        )
 
 
 def _collect_widgets(html: str) -> list[WidgetDescriptor]:
@@ -100,9 +114,44 @@ _BAR_CASES = [
 ]
 
 
+def _resolve_subfilter(
+    filter_cls: type[OperatorFilter], path: list[str]
+) -> type[OperatorFilter]:
+    """Walk a path of sub-filter segments, returning the sub-filter class it ends at."""
+    current = filter_cls
+    for segment in path:
+        sub_filter_cls = _filter_class_for(current, segment)
+        assert sub_filter_cls is not None, (
+            f"{current.__name__} has no sub-filter field {segment!r} "
+            f"(resolving relation path {path})"
+        )
+        current = sub_filter_cls
+    return current
+
+
+def _assert_relation_bool_resolves(
+    filter_cls: type[OperatorFilter], widget: WidgetDescriptor
+) -> None:
+    """A relation-bool widget's path must resolve to a sub-filter, and every
+    fixed child key must be a ``bool`` criterion on that sub-filter."""
+    sub_filter_cls = _resolve_subfilter(filter_cls, widget.path)
+    assert widget.relation_child, (
+        f"relation-bool widget {widget.path} has no data-relation-child"
+    )
+    for child_key in widget.relation_child:
+        criterion_cls = _criterion_class_for(sub_filter_cls, child_key)
+        assert criterion_cls is BoolCriterion, (
+            f"relation-bool widget {widget.path} child {child_key!r} resolves to "
+            f"{criterion_cls} on {sub_filter_cls.__name__}, expected BoolCriterion"
+        )
+
+
 @pytest.mark.parametrize("case", _BAR_CASES, ids=lambda case: case.name)
 def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
-    """Every rendered widget's path resolves to a criterion whose kind matches."""
+    """Every rendered widget's path resolves to a criterion whose kind matches.
+
+    Relation-bool widgets resolve their path to a *sub-filter* (not a leaf
+    criterion) and their fixed child key(s) to a ``bool`` criterion on it."""
     html = str(case.bar_factory(""))
     widgets = _collect_widgets(html)
     assert len(widgets) == case.widget_count, (
@@ -110,6 +159,9 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
         f"expected {case.widget_count} (a forgotten path= silently drops a widget)"
     )
     for widget in widgets:
+        if widget.kind == "relation-bool":
+            _assert_relation_bool_resolves(case.filter_cls, widget)
+            continue
         resolved = resolve_path_kind(case.filter_cls, widget.path)
         assert resolved == widget.kind, (
             f"{case.name} widget {widget.path} declares kind {widget.kind!r} "
@@ -119,12 +171,19 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
 
 @pytest.mark.parametrize("case", _BAR_CASES, ids=lambda case: case.name)
 def test_no_widget_path_is_a_prefix_of_another(case: _BarCase) -> None:
-    """No declared path may be a strict prefix of another within a bar.
+    """No top-level (setPath) widget path may be a strict prefix of another.
 
-    A leaf/branch collision (one widget targeting a sub-filter another widget
-    steps through) would make the contract ambiguous; forbid it up front."""
+    A leaf/branch collision among top-level widgets (one targeting a sub-filter
+    another steps through) would make the ``setPath`` write ambiguous; forbid it.
+    Cross-entity widgets (``data-compose="and"`` / relation-bool) are excluded:
+    they each build their own AND element (independent EXISTS), so several
+    sharing a relation prefix is intended, not a collision."""
     html = str(case.bar_factory(""))
-    paths = [widget.path for widget in _collect_widgets(html)]
+    paths = [
+        widget.path
+        for widget in _collect_widgets(html)
+        if widget.compose is None and widget.kind != "relation-bool"
+    ]
     for outer in paths:
         for inner in paths:
             if outer is inner:
