@@ -49,16 +49,15 @@ class WidgetDescriptor(NamedTuple):
 
     path: list[str]
     kind: str
-    compose: str | None
     relation_child: dict | None
 
 
 class _FilterWidgetCollector(HTMLParser):
     """Collect every ``[data-filter-widget]`` start tag's contract attributes.
 
-    Pairs ``data-path``/``data-kind``/``data-compose``/``data-relation-child``
-    within a single element by reading the start tag's own attribute list — no
-    regex pairing across the document.
+    Pairs ``data-path``/``data-kind``/``data-relation-child`` within a single
+    element by reading the start tag's own attribute list — no regex pairing
+    across the document.
     """
 
     def __init__(self) -> None:
@@ -78,7 +77,6 @@ class _FilterWidgetCollector(HTMLParser):
             WidgetDescriptor(
                 json.loads(raw_path),
                 kind,
-                attributes.get("data-compose"),
                 json.loads(raw_child) if raw_child else None,
             )
         )
@@ -175,14 +173,14 @@ def test_no_widget_path_is_a_prefix_of_another(case: _BarCase) -> None:
 
     A leaf/branch collision among top-level widgets (one targeting a sub-filter
     another steps through) would make the ``setPath`` write ambiguous; forbid it.
-    Cross-entity widgets (``data-compose="and"`` / relation-bool) are excluded:
-    they each build their own AND element (independent EXISTS), so several
-    sharing a relation prefix is intended, not a collision."""
+    Cross-entity widgets (multi-segment path / relation-bool) are excluded: they
+    each build their own AND element (independent EXISTS), so several sharing a
+    relation prefix is intended, not a collision."""
     html = str(case.bar_factory(""))
     paths = [
         widget.path
         for widget in _collect_widgets(html)
-        if widget.compose is None and widget.kind != "relation-bool"
+        if len(widget.path) == 1 and widget.kind != "relation-bool"
     ]
     for outer in paths:
         for inner in paths:

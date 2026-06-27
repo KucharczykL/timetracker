@@ -462,7 +462,6 @@ def FilterSelect(
     id: str = "",
     free_text: bool = False,
     path: FilterWidgetPath | None = None,
-    compose: bool = False,
 ) -> Node:
     """Include/exclude filter combobox built on the shared ``_combobox_shell``.
 
@@ -575,9 +574,7 @@ def FilterSelect(
     # filter-bar callers pass ``path``; synthetic/test callers leave it None and
     # get no extra attributes (kind is always "set" for a FilterSelect).
     widget_attributes = (
-        filter_widget_attributes(path, "set", compose=compose)
-        if path is not None
-        else []
+        filter_widget_attributes(path, "set") if path is not None else []
     )
     return _SearchSelect(
         widget_attributes,

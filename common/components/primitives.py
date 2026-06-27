@@ -64,7 +64,6 @@ def filter_widget_attributes(
     path: FilterWidgetPath,
     kind: FilterWidgetKind,
     *,
-    compose: bool = False,
     relation_child: RelationChild | None = None,
 ) -> list[HTMLAttribute]:
     """The self-describe attributes every filter-bar widget root carries.
@@ -74,26 +73,25 @@ def filter_widget_attributes(
     ``[data-filter-widget]`` root to handle all widgets uniformly. See issue #123
     Phase 2.
 
-    Cross-entity widgets (issue #123 Phase 2d) add two optional markers:
+    Cross-entity widgets are recognised by the serializer from their ``data-path``
+    alone: a multi-segment path is a relation chain, so instead of writing the
+    leaf at ``data-path`` top-level the serializer folds ``data-path`` into a
+    nested object and appends it as its own element of the parent's n-ary ``AND``
+    list — several widgets targeting the same relation compose as *independent*
+    EXISTS rather than merging into one shared relation node (issue #123 Phase 2d;
+    issue #138 removed the redundant ``data-compose`` marker).
 
-    - ``compose=True`` emits ``data-compose="and"``: instead of writing the leaf
-      at ``data-path`` top-level, the serializer folds ``data-path`` into a nested
-      object and appends it as its own element of the parent's n-ary ``AND`` list,
-      so several widgets targeting the same relation compose as *independent*
-      EXISTS rather than merging into one shared relation node.
-    - ``relation_child`` (with ``kind="relation-bool"``) supplies the fixed child
-      criterion of a relation toggled by a boolean radio: ``data-path`` is the
-      relation chain *without* a leaf and ``data-relation-child`` is the child
-      keyed by field, e.g. ``{"emulated": {"value": True, "modifier": "EQUALS"}}``.
-      A ``True`` radio matches ANY, ``False`` sets ``match: "NONE"``.
+    ``relation_child`` (with ``kind="relation-bool"``) supplies the fixed child
+    criterion of a relation toggled by a boolean radio: ``data-path`` is the
+    relation chain *without* a leaf and ``data-relation-child`` is the child
+    keyed by field, e.g. ``{"emulated": {"value": True, "modifier": "EQUALS"}}``.
+    A ``True`` radio matches ANY, ``False`` sets ``match: "NONE"``.
     """
     attributes: list[HTMLAttribute] = [
         ("data-filter-widget", ""),
         ("data-path", json.dumps(path)),
         ("data-kind", kind),
     ]
-    if compose:
-        attributes.append(("data-compose", "and"))
     if relation_child is not None:
         attributes.append(("data-relation-child", json.dumps(relation_child)))
     return attributes

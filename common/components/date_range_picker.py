@@ -334,7 +334,6 @@ def DateRangePicker(
     min_value: str = "",
     max_value: str = "",
     path: FilterWidgetPath | None = None,
-    compose: bool = False,
 ) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
 
@@ -348,9 +347,7 @@ def DateRangePicker(
     filter serializer; non-filter callers (e.g. a standalone date picker) leave
     it None and the extra attributes are omitted."""
     widget_attributes = (
-        filter_widget_attributes(path, "date", compose=compose)
-        if path is not None
-        else []
+        filter_widget_attributes(path, "date") if path is not None else []
     )
     return _DateRangePicker(widget_attributes, class_="relative")[
         DateRangeField(

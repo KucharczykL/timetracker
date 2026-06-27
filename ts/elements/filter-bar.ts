@@ -252,10 +252,11 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
 
     const result = readWidget(widget, kind);
     if (result === null) return;
-    // Cross-entity leaf (data-compose="and"): nest the leaf under its relation
-    // chain and append it as its own independent EXISTS element of AND, rather
-    // than merging it into a shared top-level relation node.
-    if (widget.getAttribute("data-compose") === "and") {
+    // A multi-segment path is a cross-entity leaf: nest the leaf under its
+    // relation chain and append it as its own independent EXISTS element of AND,
+    // rather than merging it into a shared top-level relation node. A single-
+    // segment path is a plain top-level field, written in place.
+    if (path.length > 1) {
       appendAnd(filter, nest(path, result));
     } else {
       setPath(filter, path, result);
