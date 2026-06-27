@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils.safestring import SafeText
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     A,
     AddForm,
     Column,
@@ -103,13 +104,7 @@ def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText
         children=[CsrfInput(request), inner],
     )
     return Div(
-        [
-            (
-                "class",
-                "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
-                "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm) self-center",
-            )
-        ],
+        [("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")],
         [form],
     )
 

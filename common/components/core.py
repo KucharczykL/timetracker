@@ -9,7 +9,7 @@ media-bearing components subclass :class:`BaseComponent` and implement
 
 Nodes are *lazy*: they hold structure and render to HTML only when asked
 (``str(node)`` / ``node.__html__()`` / :func:`render`). This is what lets
-``Page()`` walk a finished tree and collect every component's declared JS
+``TimetrackerDocument()`` walk a finished tree and collect every component's declared JS
 (:class:`Media`) instead of each view threading ``scripts=`` by hand.
 """
 
@@ -195,6 +195,34 @@ def _child_key(child: object) -> tuple[str, bool]:
     return (str(child), False)
 
 
+# HTML "raw text" elements: their content is character data, not markup, so the
+# body is emitted verbatim. Escaping would corrupt JS/CSS (`a < b` → `a &lt; b`,
+# `'` → `&#x27;`). The caller must ensure the body contains no closing-tag
+# sequence (e.g. `</script>`) — see the `</`→`<\/` guard around the messages JSON.
+_RAW_TEXT_TAGS = frozenset({"script", "style"})
+
+# HTML void elements: no closing tag, no children. The full standard set, so any
+# void tag renders correctly whether or not it has a named builder.
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+
+
 @lru_cache(maxsize=4096)
 def _render_element(
     tag_name: str,
@@ -205,6 +233,8 @@ def _render_element(
 
     ``attrs_key`` is (name, stringified value) pairs (values always escaped);
     ``children_key`` is (text, is_safe) pairs (safe passes through, else escaped).
+    For raw-text tags (``<script>``/``<style>``) the body is emitted verbatim.
+    Void tags (``<img>``, ``<br>``, …) get no closing tag and reject children.
 
     Children are concatenated with no separator: in HTML, inter-element
     whitespace is significant for inline content (a newline between two inline
@@ -213,15 +243,21 @@ def _render_element(
     before the node tree, and matches ``Fragment``'s default ``separator=""``.
     For deliberate spacing, put it in an explicit child.
     """
-    children_blob = "".join(
-        child if is_safe else escape(child) for child, is_safe in children_key
-    )
     if attrs_key:
         attributes_blob = " " + " ".join(
             f'{name}="{escape(value)}"' for name, value in attrs_key
         )
     else:
         attributes_blob = ""
+    if tag_name in _VOID_TAGS:
+        if children_key:
+            raise ValueError(f"<{tag_name}> is a void element and cannot have children")
+        return f"<{tag_name}{attributes_blob}>"
+    raw_text = tag_name in _RAW_TEXT_TAGS
+    children_blob = "".join(
+        child if (is_safe or raw_text) else escape(child)
+        for child, is_safe in children_key
+    )
     return f"<{tag_name}{attributes_blob}>{children_blob}</{tag_name}>"
 
 
@@ -316,6 +352,26 @@ class Fragment(Node):
             text, is_safe = _child_key(child)
             parts.append(text if is_safe else escape(text))
         return self.separator.join(parts)
+
+
+class Document(Node):
+    """A full HTML document: the ``<!DOCTYPE html>`` preamble plus a root
+    ``<html>`` subtree, as a single node.
+
+    DOCTYPE is a document-type declaration, not an element, so it can't be an
+    ``Element``/builder — this node owns it as a fixed preamble. Lets ``TimetrackerDocument()``
+    return one typed node instead of a ``Fragment`` of (doctype, html); media
+    still bubbles from the ``<html>`` subtree.
+    """
+
+    def __init__(self, html: Node) -> None:
+        self.html = html
+
+    def collect_media(self) -> Media:
+        return self.html.collect_media()
+
+    def _render(self) -> str:
+        return "<!DOCTYPE html>" + self.html._render()
 
 
 class BaseComponent(Node):

@@ -250,6 +250,49 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIsInstance(result, tuple)
 
 
+class SessionActionsTest(unittest.TestCase):
+    """The <session-actions> custom element: finish/reset only for an open
+    session, plus the hidden reset-confirm modal. Edit/Delete always present."""
+
+    def _session(self, *, pk=7, timestamp_end=None, game_name="Hades"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            pk=pk,
+            timestamp_end=timestamp_end,
+            game=SimpleNamespace(name=game_name),
+        )
+
+    def test_open_session_renders_finish_reset_csrf_and_modal(self):
+        from common.components.domain import SessionActions
+
+        html = str(SessionActions(self._session(), "tok123"))
+        self.assertIn("<session-actions", html)
+        self.assertIn('api-url="/api/session/7"', html)
+        self.assertIn('csrf="tok123"', html)
+        self.assertIn("data-finish", html)
+        self.assertIn("data-reset", html)
+        self.assertIn("data-reset-modal", html)
+        self.assertIn("Hades", html)  # modal copy names the game
+
+    def test_closed_session_hides_finish_reset_and_modal(self):
+        import datetime
+
+        from common.components.domain import SessionActions
+
+        ended = self._session(
+            timestamp_end=datetime.datetime(
+                2026, 6, 24, 19, 0, tzinfo=datetime.timezone.utc
+            )
+        )
+        html = str(SessionActions(ended, "tok123"))
+        self.assertIn("<session-actions", html)
+        self.assertNotIn("data-finish", html)
+        self.assertNotIn("data-reset", html)
+        self.assertNotIn("data-reset-modal", html)
+        self.assertIn("/session/7/edit", html)  # edit link still present
+
+
 class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     """Smoke test: every component that generates HTML must not double-escape."""
 
@@ -339,6 +382,47 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertNotIn("<script>", result)
         self.assertIn("&lt;script&gt;", result)
 
+    def test_raw_text_element_body_is_not_escaped(self):
+        # <script>/<style> are HTML raw-text elements: their body is character
+        # data, so it must be emitted verbatim (escaping would corrupt JS/CSS).
+        js = "if (a < b && c) f('x');"
+        result = str(components.Element(tag_name="script", children=[js]))
+        self.assertIn(js, result)
+        self.assertNotIn("&lt;", result)
+        self.assertNotIn("&#x27;", result)
+        self.assertNotIn("&amp;", result)
+
+        css = "a > b { content: '\"'; }"
+        result = str(components.Element(tag_name="style", children=[css]))
+        self.assertIn(css, result)
+        self.assertNotIn("&gt;", result)
+
+    def test_void_element_has_no_closing_tag(self):
+        # HTML void elements get no closing tag and no self-closing slash.
+        result = str(components.Element(tag_name="img", attributes=[("src", "x")]))
+        self.assertEqual(result, '<img src="x">')
+        self.assertNotIn("</img>", result)
+        self.assertEqual(str(components.Element(tag_name="br")), "<br>")
+
+    def test_void_element_with_children_raises(self):
+        with self.assertRaises(ValueError):
+            str(components.Element(tag_name="img", children=["nope"]))
+
+    def test_non_void_element_keeps_closing_tag(self):
+        result = str(components.Element(tag_name="div", children=["hi"]))
+        self.assertEqual(result, "<div>hi</div>")
+
+    def test_document_node_renders_doctype_and_bubbles_media(self):
+        # A whole document is the <!DOCTYPE html> preamble + an <html> subtree,
+        # as a single node; media still bubbles from the subtree.
+        body_child = components.Element(tag_name="div").with_media(
+            components.Media(js=("widget.js",))
+        )
+        html = components.Element(tag_name="html", children=[body_child])
+        document = components.Document(html)
+        self.assertTrue(str(document).startswith("<!DOCTYPE html><html>"))
+        self.assertIn("widget.js", components.collect_media(document).js)
+
     def test_safe_node_children_pass_through(self):
         result = str(
             components.Element(
@@ -413,10 +497,25 @@ class IconTest(unittest.TestCase):
         self.assertIn("<title>Play</title>", result)
         self.assertNotIn('title="Play"', result)
 
-    def test_icon_merges_class_with_existing(self):
-        # `arrowdownlong` ships with class="w-3 h-3"; a passed class appends.
+    def test_icon_overrides_snippet_class_and_keeps_viewbox(self):
+        # The snippet's baked class is replaced by the central icon classes (so
+        # all icons restyle in one place); a passed class appends as an override.
+        # viewBox must survive — dropping it clips the paths to a sliver.
+        from common.components.primitives import ICON_BASE_CLASS, ICON_SIZE_CLASS
+
         result = str(components.Icon("arrowdownlong", [("class", "rotate-180")]))
-        self.assertIn('class="w-3 h-3 rotate-180"', result)
+        self.assertIn(f'class="{ICON_BASE_CLASS} {ICON_SIZE_CLASS} rotate-180"', result)
+        self.assertNotIn("w-3 h-3 rotate-180", result)  # snippet size dropped
+        self.assertIn("viewBox=", result)
+
+    def test_icon_size_override_replaces_default(self):
+        # `size=` swaps the default size wholesale; colour stays, default size
+        # tokens are gone.
+        from common.components.primitives import ICON_BASE_CLASS
+
+        result = str(components.Icon("play", size="w-6 h-6"))
+        self.assertIn(f'class="{ICON_BASE_CLASS} w-6 h-6"', result)
+        self.assertNotIn("w-2", result)  # default size replaced
 
     def test_icon_escapes_title_text(self):
         result = str(components.Icon("play", [("title", 'a"<&b')]))
@@ -424,13 +523,14 @@ class IconTest(unittest.TestCase):
         self.assertIn("&amp;", result)
         self.assertNotIn("<&", result)
 
-    def test_icon_without_attributes_returns_shared_node(self):
-        from common.components.primitives import get_icon_node
+    def test_icon_without_attributes_still_overrides_class(self):
+        # Even with no attributes every icon is restyled by the central classes
+        # (overriding the snippet's baked class); viewBox is kept.
+        from common.components.primitives import ICON_BASE_CLASS, ICON_SIZE_CLASS
 
-        self.assertEqual(
-            str(components.Icon("arrowdownlong")),
-            str(get_icon_node("arrowdownlong")),
-        )
+        result = str(components.Icon("arrowdownlong"))
+        self.assertIn(f'class="{ICON_BASE_CLASS} {ICON_SIZE_CLASS}"', result)
+        self.assertIn("viewBox=", result)
 
     def test_returns_safetext(self):
         result = str(components.Icon("delete"))
@@ -944,7 +1044,8 @@ class StyledTableRenderingTest(unittest.TestCase):
 
     def test_cell_media_bubbles_through_table(self):
         """A cell component's declared Media must reach the table's collected
-        media, so Page() still emits its JS. StyledTable returns a node tree, so
+        media, so TimetrackerDocument() still emits its JS. StyledTable returns a
+        node tree, so
         this now happens via automatic bubbling rather than manual collection."""
         cell = components.Div(children=["x"]).with_media(
             components.Media(js=("test-cell.js",))
@@ -1087,19 +1188,6 @@ class ColumnAlignmentTest(SimpleTestCase):
     def test_button_group_is_alignment_agnostic(self):
         html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
         self.assertNotIn("justify-end", html)
-
-
-class ButtonGroupSizeTest(SimpleTestCase):
-    """ButtonGroup size: default 'sm' (icon buttons) vs 'md' (larger text)."""
-
-    def test_default_size_is_small(self):
-        html = str(components.ButtonGroup([{"href": "/x", "slot": "edit"}]))
-        self.assertIn("px-2 py-1 text-xs", html)
-
-    def test_md_size_is_larger(self):
-        html = str(components.ButtonGroup([{"href": "/x", "slot": "Edit"}], size="md"))
-        self.assertIn("px-4 py-2 text-sm", html)
-        self.assertNotIn("px-2 py-1 text-xs", html)
 
 
 class SortableHeaderTest(SimpleTestCase):

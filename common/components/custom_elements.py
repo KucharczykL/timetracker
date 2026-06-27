@@ -103,6 +103,17 @@ class PlayEventRowProps(TypedDict):
 register_element("play-event-row", "PlayEventRow", PlayEventRowProps)
 
 
+class SessionActionsProps(TypedDict):
+    session_id: int
+    api_url: str  # f"/api/session/{pk}"
+    csrf: str
+    game_name: str  # names the game in the reset-confirm modal copy
+    is_open: bool  # timestamp_end is None -> finish + reset are available
+
+
+register_element("session-actions", "SessionActions", SessionActionsProps)
+
+
 class SessionTimestampButtonsProps(TypedDict):
     pass
 
@@ -117,6 +128,7 @@ register_element(
 # Public ones (no domain wrapper): exported directly.
 
 _PlayEventRow = custom_element_builder("play-event-row")
+_SessionActions = custom_element_builder("session-actions")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
 
 
@@ -251,9 +263,9 @@ _Dropdown = custom_element_builder("drop-down")
 # Outlined (button-like) toggle: bordered button, no base rounding — Dropdown
 # adds rounded-lg / rounded-e-lg by shape; standalone consumers add their own.
 DROPDOWN_TOGGLE_OUTLINE = (
-    "px-4 py-2 text-sm font-medium bg-white border border-gray-200 "
+    "px-2 py-1 lg:px-4 lg:py-2 text-xs font-medium bg-white border border-gray-200 "
     "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-    "dark:hover:bg-gray-700 hover:cursor-pointer"
+    "dark:hover:bg-gray-700 hover:cursor-pointer whitespace-nowrap"
 )
 
 # Plain (menu-like) toggle: the borderless navbar nav-link look.
@@ -554,7 +566,9 @@ def ButtonDropdown(
 ) -> Node:
     """A button-styled menu dropdown; the trigger is a ``StyledButton``."""
     trigger = _as_menu_trigger(
-        StyledButton(color=color, size=size, icon=True)[label, Icon("arrowdown")]
+        StyledButton(color=color, size=size, icon=True)[
+            label, Icon("arrowdown", [("class", "h-3 w-3")])
+        ]
     )
     return Dropdown(
         trigger_element=trigger,
@@ -681,6 +695,7 @@ def SelectDropdown(
     csrf: str,
     numeric: bool = False,
     placement: str = "bottom-start",
+    class_: str = "",
 ) -> Node:
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
@@ -688,7 +703,12 @@ def SelectDropdown(
     trigger = Button(
         attributes=[
             ("type", "button"),
-            ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-lg"),
+            (
+                "class",
+                DROPDOWN_TOGGLE_OUTLINE
+                + " rounded-lg"
+                + (f" {class_}" if class_ else ""),
+            ),
             ("aria-haspopup", "listbox"),
         ]
     )[

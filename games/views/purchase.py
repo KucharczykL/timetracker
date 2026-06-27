@@ -16,6 +16,7 @@ from django.utils.safestring import SafeText, mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     A,
     AddForm,
     ButtonGroup,
@@ -27,6 +28,7 @@ from common.components import (
     FormFields,
     Fragment,
     GameLink,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Input,
     LinkedPurchase,
@@ -69,7 +71,7 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
                     args=[purchase_id],
                 ),
                 "hx_target": "#global-modal-container",
-                "slot": Icon("refund"),
+                "slot": Icon("refund", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Mark as refunded",
             }
             if not is_refunded
@@ -81,7 +83,7 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
                     args=[purchase_id],
                 ),
                 "hx_target": "#global-modal-container",
-                "slot": Icon("split"),
+                "slot": Icon("split", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Split into per-game purchases",
                 "color": "gray",
             }
@@ -89,13 +91,13 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
             else {},
             {
                 "href": reverse("games:edit_purchase", args=[purchase_id]),
-                "slot": Icon("edit"),
+                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Edit",
                 "color": "gray",
             },
             {
                 "href": reverse("games:delete_purchase", args=[purchase_id]),
-                "slot": Icon("delete"),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",
             },
@@ -399,7 +401,7 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
         ],
     )
     return Div(
-        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [("class", f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
         [inner],
     )
 

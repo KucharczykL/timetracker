@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
+from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from games.filters import parse_session_filter
@@ -257,6 +258,35 @@ def partial_update_session_device(
     session.save()
     messages.success(request, "Device updated")
     return Status(204, None)
+
+
+class SessionUpdate(Schema):
+    # All optional: a partial update only touches the fields the client sends.
+    # The client supplies its own ISO-UTC "now" for finish/reset. GeneratedFields
+    # (duration_calculated/duration_total) are intentionally absent and thus
+    # unwriteable.
+    timestamp_start: datetime | None = None
+    timestamp_end: datetime | None = None
+
+
+@session_router.patch("/{session_id}", response={200: SessionOut})
+def partial_update_session(request, session_id: int, payload: SessionUpdate):
+    # Single-user app: unscoped by user, like every other endpoint here.
+    session = get_object_or_404(
+        Session.objects.select_related("game", "game__platform", "device"),
+        id=session_id,
+    )
+    data = payload.dict(exclude_unset=True)  # omitted fields are left untouched
+    new_start = data.get("timestamp_start", session.timestamp_start)
+    new_end = data.get("timestamp_end", session.timestamp_end)
+    if new_start is not None and new_end is not None and new_end < new_start:
+        raise HttpError(422, "timestamp_end must be on or after timestamp_start")
+    for field, value in data.items():
+        setattr(session, field, value)
+    session.save()  # fires post_save Session signal -> Game.playtime recalc
+    session.refresh_from_db()  # reload DB-computed GeneratedFields + modified_at
+    messages.success(request, "Session updated.")
+    return session
 
 
 api.add_router("/session", session_router)

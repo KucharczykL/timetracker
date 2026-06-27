@@ -17,6 +17,7 @@ from common.components import (
     Column,
     Fragment,
     GameLink,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
     PlayEventFilterBar,
@@ -72,12 +73,12 @@ def create_playevent_tabledata(
                 [
                     {
                         "href": reverse("games:edit_playevent", args=[playevent.pk]),
-                        "slot": Icon("edit"),
+                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
                         "href": reverse("games:delete_playevent", args=[playevent.pk]),
-                        "slot": Icon("delete"),
+                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
                 ]

@@ -187,3 +187,80 @@ def test_session_list_malformed_filter_ignored(auth_client):
     response = auth_client.get("/api/session/?filter=not-json")
     assert response.status_code == 200
     assert response.json()["count"] == 2
+
+
+def _patch_session(client, session_id, body):
+    return client.patch(
+        f"/api/session/{session_id}",
+        data=json.dumps(body),
+        content_type="application/json",
+    )
+
+
+def test_session_patch_finish_sets_end(auth_client):
+    # Open session finished by sending the client's "now" as timestamp_end.
+    session = _make_session()  # start 2026-06-24 18:00, end None
+    response = _patch_session(
+        auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"}
+    )
+    assert response.status_code == 200
+    assert response.json()["timestamp_end"] == "2026-06-24T19:00:00Z"
+    session.refresh_from_db()
+    assert session.timestamp_end == datetime(2026, 6, 24, 19, 0, tzinfo=dt_timezone.utc)
+
+
+def test_session_patch_reset_start_keeps_end_null(auth_client):
+    # Reset overwrites timestamp_start; an omitted timestamp_end is untouched.
+    session = _make_session()
+    response = _patch_session(
+        auth_client, session.id, {"timestamp_start": "2026-06-24T20:00:00Z"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["timestamp_start"] == "2026-06-24T20:00:00Z"
+    assert body["timestamp_end"] is None
+    session.refresh_from_db()
+    assert session.timestamp_start == datetime(
+        2026, 6, 24, 20, 0, tzinfo=dt_timezone.utc
+    )
+
+
+def test_session_patch_end_before_start_rejected(auth_client):
+    session = _make_session()  # start 18:00
+    response = _patch_session(
+        auth_client, session.id, {"timestamp_end": "2026-06-24T17:00:00Z"}
+    )
+    assert response.status_code == 422
+    session.refresh_from_db()
+    assert session.timestamp_end is None  # unchanged
+
+
+def test_session_patch_recalcs_playtime_via_signal(auth_client):
+    # Finishing an open session grows duration_total; the post_save Session
+    # signal must recompute Game.playtime (we never set playtime by hand).
+    session = _make_session()
+    assert session.game.playtime == timedelta(0)
+    _patch_session(auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"})
+    session.game.refresh_from_db()
+    assert session.game.playtime == timedelta(hours=1)
+
+
+def test_session_patch_does_not_write_generatedfield(auth_client):
+    # duration_total is a DB-computed GeneratedField; after a finish PATCH it must
+    # reflect the new end without the handler ever writing it.
+    session = _make_session()
+    _patch_session(auth_client, session.id, {"timestamp_end": "2026-06-24T19:00:00Z"})
+    session.refresh_from_db()
+    assert session.duration_total == timedelta(hours=1)
+
+
+def test_session_patch_404(auth_client):
+    assert _patch_session(auth_client, 999999, {"note": "x"}).status_code == 404
+
+
+def test_session_patch_requires_auth():
+    session = _make_session()
+    response = _patch_session(
+        Client(), session.id, {"timestamp_end": "2026-06-24T19:00:00Z"}
+    )
+    assert response.status_code == 401

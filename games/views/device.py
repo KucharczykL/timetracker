@@ -10,6 +10,7 @@ from common.components import (
     Column,
     DeviceFilterBar,
     Fragment,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     StyledButton,
     TableData,
@@ -55,12 +56,12 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                     [
                         {
                             "href": reverse("games:edit_device", args=[device.pk]),
-                            "slot": Icon("edit"),
+                            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
                             "href": reverse("games:delete_device", args=[device.pk]),
-                            "slot": Icon("delete"),
+                            "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
                     ]

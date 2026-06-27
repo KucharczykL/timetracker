@@ -11,11 +11,13 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     A,
     Div,
     Element,
     Fragment,
     GameLink,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     Node,
     Safe,
@@ -45,7 +47,7 @@ def _session_link(game_id, year) -> Node:
         href=filter_url(stats_links.sessions_for_game(game_id, year)),
         class_="ml-1 inline-block align-middle hover:text-heading",
         title="View sessions",
-    )[Icon("play")]
+    )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
 
 
 def _count_link(value, url: str) -> Node:
@@ -473,6 +475,6 @@ def stats_content(ctx: StatsData) -> Node:
         ]
 
     return Div(
-        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [("class", f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
         sections,
     )

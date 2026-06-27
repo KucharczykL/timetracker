@@ -1,9 +1,9 @@
 """Browser test for the session-list "Finish session now" action (issue #53).
 
-Drives the real session list against pytest-django's ``live_server``: clicks the
-finish button on a running session and asserts the session is ended. Finishing is
-now a full-page POST → redirect (no in-place htmx row swap), so the test reloads
-to the list and checks the row reflects the ended state.
+Finishing now drives PATCH /api/session/<id> and swaps the row in place via the
+<session-actions> custom element + renderSessionRow — no full-page reload. This
+test asserts the row updates without navigation and the PATCH succeeds (200, not
+403 — the real-browser CSRF path).
 """
 
 import pytest
@@ -25,7 +25,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def test_finish_session_ends_and_reloads(authenticated_page: Page, live_server):
+def test_finish_session_swaps_row_in_place(authenticated_page: Page, live_server):
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game = Game.objects.create(name="Tunic", platform=platform)
@@ -35,19 +35,73 @@ def test_finish_session_ends_and_reloads(authenticated_page: Page, live_server):
     )
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-
     row = page.locator(f"#session-row-{session.pk}")
     expect(row).to_be_visible()
 
-    # Finish is a POST form submit → full-page redirect back to the list.
-    row.locator('button[title="Finish session now"]').click()
-    page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}")
+    # A sentinel that a full-page reload would wipe — proves the swap is in-place.
+    page.evaluate("window.__noReload = true")
 
-    # The reloaded row shows the end time (em dash separator) and the finish
-    # button is gone.
+    with page.expect_response(
+        lambda response: (
+            "/api/session/" in response.url
+            and "/device" not in response.url
+            and response.request.method == "PATCH"
+        )
+    ) as response_info:
+        row.locator("button[data-finish]").click()
+
+    assert response_info.value.status == 200, (
+        f"finish PATCH returned {response_info.value.status}; expected 200 "
+        "(403 would mean CSRF was rejected in the browser)."
+    )
+
+    # The same row (same id) now shows the end time and loses the finish/reset
+    # controls — all without navigating.
     row = page.locator(f"#session-row-{session.pk}")
     expect(row).to_contain_text("—")
-    expect(row.locator('button[title="Finish session now"]')).to_have_count(0)
+    expect(row.locator("button[data-finish]")).to_have_count(0)
+    expect(row.locator("button[data-reset]")).to_have_count(0)
+    assert page.evaluate("window.__noReload") is True, (
+        "page reloaded — expected in-place swap"
+    )
 
     session.refresh_from_db()
     assert session.timestamp_end is not None
+
+
+def test_device_selector_still_works_after_finish(
+    authenticated_page: Page, live_server
+):
+    """Guards the device-node clone: after the row is rebuilt, the cloned
+    <drop-down> must re-wire and its PATCH still succeed (204)."""
+    page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    game = Game.objects.create(name="Tunic", platform=platform)
+    desktop = Device.objects.create(name="Desktop")
+    deck = Device.objects.create(name="Deck")
+    session = Session.objects.create(
+        game=game, device=desktop, timestamp_start=timezone.now()
+    )
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    row = page.locator(f"#session-row-{session.pk}")
+    row.locator("button[data-finish]").click()
+    expect(row).to_contain_text("—")  # wait for the swap to land
+
+    # Now drive the cloned device selector and assert its PATCH succeeds.
+    host = row.locator('drop-down[behavior="select"]')
+    host.wait_for(state="attached")
+    host.locator("[data-toggle]").click()
+    host.locator("[data-menu]").wait_for(state="visible")
+    with page.expect_response(
+        lambda response: (
+            "/device" in response.url and response.request.method == "PATCH"
+        )
+    ) as response_info:
+        host.locator(f'[data-option][data-value="{deck.id}"]').click()
+    assert response_info.value.status < 400, (
+        f"device PATCH after finish returned {response_info.value.status}; "
+        "the cloned drop-down did not re-wire."
+    )
+    session.refresh_from_db()
+    assert session.device_id == deck.id

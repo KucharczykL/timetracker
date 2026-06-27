@@ -57,6 +57,13 @@ _SIZE_CLASSES = {
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
+# The single max-width every content container obeys — navbar, page bodies
+# (lists, detail, stats), forms, and modals/popovers. Only a cap: callers add
+# `w-full` to fill to it and `mx-auto`/`self-center` to centre. The `w-full`
+# matters inside #main-container's flex column, where bare self-center/mx-auto
+# turn off flex `stretch` and the box would otherwise shrink to content width.
+CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
+
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
@@ -126,6 +133,14 @@ Thead = _html_element("thead")
 Tbody = _html_element("tbody")
 Caption = _html_element("caption")
 Nav = _html_element("nav")
+Img = _html_element("img")
+Html = _html_element("html")
+Head = _html_element("head")
+Body = _html_element("body")
+Meta = _html_element("meta")
+Title = _html_element("title")
+Script = _html_element("script")
+Link = _html_element("link")
 
 
 def _popover_html(
@@ -153,9 +168,11 @@ def _popover_html(
         # popover then expands its scroll container, producing a phantom
         # scrollbar (issue #53 / #40). Removing it from layout while hidden
         # fixes that; Flowbite drops `invisible` on show, restoring display.
-        "absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
-        "text-heading transition-opacity duration-300 bg-brand-soft border "
-        "border-brand/30 rounded-lg shadow-xs opacity-0"
+        # Shares the one content max-width as a cap only (no `w-full`): the
+        # tooltip stays inline-block and small, the cap just bounds huge content.
+        f"absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
+        f"text-heading transition-opacity duration-300 bg-brand-soft border "
+        f"border-brand/30 rounded-lg shadow-xs opacity-0 {CONTENT_MAX_WIDTH_CLASS}"
     )
 
     div = Div(
@@ -306,14 +323,6 @@ def StyledButton(
     )
 
 
-# Button-group sizing is separate from color so a group can render small icon
-# buttons (default) or larger text buttons (the game-header actions). "sm"
-# reproduces the original baked-in size, so existing table groups are unchanged.
-_GROUP_BUTTON_SIZES = {
-    "sm": "px-2 py-1 text-xs",
-    "md": "px-4 py-2 text-sm",
-}
-
 _GROUP_BUTTON_COLORS = {
     # Every variant uses a hover border one shade darker than its hover fill, so
     # the segmented buttons share the same "ring" look (only the hue differs).
@@ -354,28 +363,45 @@ def _button_group_button(
     hx_target: str = "",
     hx_swap: str = "",
     hx_confirm: str = "",
-    size: str = "sm",
     method: str = "",
     action: str = "",
     csrf_token: str = "",
+    button_attributes: list[HTMLAttribute] | None = None,
 ) -> Element:
     """Generate a single button-group member.
 
     Default form is a link: an inner ``<button>`` inside an ``<a href>``. When
     ``method="post"`` the member is instead a ``<form method="post">`` wrapping a
     CSRF input + a submit ``<button>`` — a state-changing action that needs no
-    JavaScript. The end-rounding is applied by ``ButtonGroup`` on the container
-    (keyed on child position), so this builder stays tag-agnostic.
+    JavaScript. When ``button_attributes`` is given the member is a bare
+    ``<button type="button">`` carrying those extra attributes (e.g. a
+    ``data-finish`` hook a custom element wires) — a JS-driven action with no
+    navigation; it is wrapped in a ``<span>`` so the container's descendant-button
+    rounding still applies. The end-rounding is applied by ``ButtonGroup`` on the
+    container (keyed on child position), so this builder stays tag-agnostic.
     """
-    size_classes = _GROUP_BUTTON_SIZES.get(size, _GROUP_BUTTON_SIZES["sm"])
     color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
     # inline-flex keeps every button the same height regardless of content — an
     # icon+text button (e.g. "Log this game") would otherwise sit taller than its
     # text-only siblings and step the segmented group's bottom edge.
     button_classes = (
-        f"{size_classes} {color_classes} "
+        f"text-xs px-2 py-1 lg:px-4 lg:py-2 lg:text-sm {color_classes} "
         "inline-flex items-center justify-center hover:cursor-pointer"
     )
+
+    if button_attributes is not None:
+        return Span(class_="inline-flex")[
+            Element(
+                "button",
+                attributes=[
+                    ("type", "button"),
+                    ("title", title),
+                    ("class", button_classes),
+                    *button_attributes,
+                ],
+                children=[slot],
+            )
+        ]
 
     if method.lower() == "post":
         submit = Element(
@@ -425,7 +451,7 @@ def _button_group_button(
     return Element("a", attributes=a_attrs, children=[button])
 
 
-def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Element:
+def ButtonGroup(buttons: list[dict] | None = None) -> Element:
     """Generate a button group div.
 
     Each button dict accepts: slot (required), href, color, title, hx_get,
@@ -434,8 +460,7 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
     no-JS ``<form>`` submit button instead of a link.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
-    ``size`` ("sm" default for icon buttons, "md" for larger text buttons) is
-    applied to every button in the group.
+    Every button uses one responsive size (small on mobile, larger from ``lg``).
     """
     buttons = buttons or []
     children: list[Node] = []
@@ -452,10 +477,10 @@ def ButtonGroup(buttons: list[dict] | None = None, *, size: str = "sm") -> Eleme
                 hx_target=btn.get("hx_target", ""),
                 hx_swap=btn.get("hx_swap", ""),
                 hx_confirm=btn.get("hx_confirm", ""),
-                size=size,
                 method=btn.get("method", ""),
                 action=btn.get("action", ""),
                 csrf_token=btn.get("csrf_token", ""),
+                button_attributes=btn.get("button_attributes"),
             )
         )
 
@@ -705,7 +730,7 @@ def YearPicker(
 
     Behavior lives in ``ts/elements/year-picker.ts``; this renders the light
     DOM (toggle button + hidden datepicker input). The element module and the
-    Flowbite UMD bundle are declared as ``media`` on the node, so ``Page()``
+    Flowbite UMD bundle are declared as ``media`` on the node, so ``TimetrackerDocument()``
     loads both automatically.
     """
     label = str(year) if year is not None else "Choose a year"
@@ -863,7 +888,13 @@ def AddForm(
         [("id", "add-form"), ("class", "max-width-container")],
         [
             Div(
-                [("id", "add-form"), ("class", "form-container max-w-xl mx-auto")],
+                [
+                    ("id", "add-form"),
+                    (
+                        "class",
+                        f"form-container w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto",
+                    ),
+                ],
                 [inner_form],
             )
         ],
@@ -967,7 +998,12 @@ def Modal(
             ("id", modal_id),
             (
                 "class",
-                "fixed inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
+                # z-40: above in-page positioned UI (popovers z-10, dropdown
+                # panels z-20) so the overlay dims and covers them, but below the
+                # toast container (z-50). Matters for modals rendered inline in a
+                # row (e.g. the session reset confirm) rather than portaled into
+                # the body-level #global-modal-container.
+                "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
                 "h-full w-full flex items-center justify-center",
             ),
         ],
@@ -976,8 +1012,9 @@ def Modal(
                 attributes=[
                     (
                         "class",
-                        "relative mx-auto p-5 border-accent border w-full max-w-md "
-                        "shadow-lg/50 rounded-md bg-white dark:bg-gray-900",
+                        f"relative mx-auto p-5 border-accent border w-full "
+                        f"{CONTENT_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
+                        "dark:bg-gray-900",
                     ),
                 ],
                 children=as_children(children),
@@ -1001,7 +1038,7 @@ def ConfirmPage(
     confirmation modals — reusable across delete/refund/split/reset flows.
     """
     return Div(
-        class_="mx-auto w-full max-w-md p-5",
+        class_=f"mx-auto w-full {CONTENT_MAX_WIDTH_CLASS} p-5",
     )[
         Element(
             "form",
@@ -1056,7 +1093,7 @@ def TableTd(
     """Styled table cell."""
     children = children or []
     return Td(
-        attributes=[("class", "px-6 py-4 min-w-20-char max-w-20-char")],
+        attributes=[("class", "px-4 py-2")],
         children=as_children(children),
     )
 
@@ -1172,25 +1209,14 @@ def get_icon_node(name: str) -> Element:
     return ICON_NODES.get(name) or ICON_NODES["unspecified"]
 
 
-def _merge_icon_attributes(base: Attributes, extra: Attributes) -> list[HTMLAttribute]:
-    """Merge ``extra`` onto an icon's existing attributes, returning a new list.
-
-    ``class`` *appends* to any existing class (Tailwind classes are additive, so
-    the snippet's built-in sizing survives); every other attribute *replaces* a
-    same-named one. Never mutates ``base`` (the shared node's attribute list).
-    """
-    merged: list[HTMLAttribute] = list(base)
-    for key, value in extra:
-        for index, (existing_key, existing_value) in enumerate(merged):
-            if existing_key == key:
-                merged[index] = (
-                    key,
-                    f"{existing_value} {value}" if key == "class" else value,
-                )
-                break
-        else:
-            merged.append((key, value))
-    return merged
+# Classes applied to every icon, overriding whatever each snippet baked in — no
+# need to touch the individual icon snippets. ICON_BASE_CLASS (colour) is always
+# applied; the size is ICON_SIZE_CLASS by default, or whatever a caller passes as
+# `size=`. ICON_BUTTON_SIZE_CLASS is the override for icons rendered inside
+# buttons (bigger than the small inline platform icons). Tune sizes here.
+ICON_BASE_CLASS = "text-black dark:text-white"
+ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
+ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:
@@ -1212,21 +1238,36 @@ def _with_title(children: Sequence[Child], title: str) -> list[Child]:
 def Icon(
     name: str,
     attributes: Attributes | None = None,
+    size: str | None = None,
 ) -> Node:
+    """Render an icon, overriding its snippet's baked ``class`` with the central
+    icon classes (:data:`ICON_BASE_CLASS` colour + size). Every other svg
+    attribute (``viewBox``, ``xmlns`` …) is kept — dropping ``viewBox`` would clip
+    the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
+    wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
+    the accessible ``<title>`` child; a passed ``class=`` appends as an override.
+    """
     root = get_icon_node(name)
-    if not attributes:
-        return root
     extra_attributes: list[HTMLAttribute] = []
     title: str | None = None
-    for key, value in attributes:
+    caller_class = ""
+    for key, value in attributes or []:
         if key == "title":
             title = str(value)
+        elif key == "class":
+            caller_class = str(value)
         else:
             extra_attributes.append((key, value))
     children = _with_title(root.children, title) if title is not None else root.children
+    class_value = " ".join(
+        part
+        for part in (ICON_BASE_CLASS, size or ICON_SIZE_CLASS, caller_class)
+        if part
+    )
+    preserved = [(key, value) for key, value in root.attributes if key != "class"]
     return Element(
         root.tag_name,
-        _merge_icon_attributes(root.attributes, extra_attributes),
+        [("class", class_value), *preserved, *extra_attributes],
         children,
     )
 
@@ -1495,7 +1536,7 @@ def StyledTable(
     pagination nav). Python equivalent of the old simple_table.html.
 
     Returns a node tree, so each cell component's declared ``Media`` bubbles up
-    automatically via ``Page()``'s ``collect_media`` — no manual collection.
+    automatically via ``TimetrackerDocument()``'s ``collect_media`` — no manual collection.
     """
     columns = columns or []
     rows = rows or []
@@ -1594,13 +1635,7 @@ def paginated_table_content(
     ``header_action`` (the same shape every list view already builds).
     """
     return Div(
-        [
-            (
-                "class",
-                "2xl:max-w-(--breakpoint-2xl) xl:max-w-(--breakpoint-xl) "
-                "md:max-w-(--breakpoint-md) sm:max-w-(--breakpoint-sm) self-center",
-            )
-        ],
+        [("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")],
         [
             StyledTable(
                 columns=data["columns"],

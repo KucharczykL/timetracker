@@ -10,6 +10,7 @@ from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 
 from common.components import (
+    CONTENT_MAX_WIDTH_CLASS,
     H1,
     A,
     AddForm,
@@ -22,6 +23,7 @@ from common.components import (
     Fragment,
     GameStatus,
     GameStatusSelector,
+    ICON_BUTTON_SIZE_CLASS,
     Icon,
     LinkedPurchase,
     Modal,
@@ -33,8 +35,8 @@ from common.components import (
     PurchasePrice,
     Safe,
     SearchField,
-    StyledTable,
     StyledButton,
+    StyledTable,
     TableData,
     Ul,
     make_row,
@@ -55,12 +57,12 @@ from games.filters import (
     filter_url,
     parse_game_filter,
 )
+from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
-from games.formatting import session_time_range
 
 
 @login_required
@@ -135,12 +137,12 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
                     [
                         {
                             "href": reverse("games:edit_game", args=[game.pk]),
-                            "slot": Icon("edit"),
+                            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
                             "href": reverse("games:delete_game", args=[game.pk]),
-                            "slot": Icon("delete"),
+                            "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
                     ]
@@ -444,7 +446,7 @@ def _game_action_buttons(game: Game) -> Node:
                         "games:add_session_for_game", kwargs={"game_id": game.id}
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
-                        Icon("play"), "Log this game"
+                        Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"
                     ],
                     "color": "green",
                 },
@@ -461,7 +463,6 @@ def _game_action_buttons(game: Game) -> Node:
                     "hx_target": "#global-modal-container",
                 },
             ],
-            size="md",
         )
     ]
 
@@ -524,7 +525,10 @@ def _game_section(
                     color="gray",
                     size="xs",
                     title=f"View all {title.lower()} for this game",
-                    children=[Icon("arrowright"), "View all"],
+                    children=[
+                        Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
+                        "View all",
+                    ],
                 )
             ],
         )
@@ -573,7 +577,7 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
 def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> Node:
     grey_value_class = "text-black dark:text-slate-300"
     title_span = Span(
-        attributes=[("class", "text-balance max-w-120 text-4xl")],
+        attributes=[("class", "text-balance max-w-120 text-lg lg:text-4xl")],
         children=[
             Span(
                 attributes=[("class", "font-bold font-serif")],
@@ -585,7 +589,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
                 Safe("&nbsp;"),
                 Popover(
                     popover_content="Original release year",
-                    wrapped_classes="text-slate-500 text-2xl",
+                    wrapped_classes="text-slate-500 text-base lg:text-2xl",
                     id="popover-year",
                     children=[str(game.year_released)],
                 ),
@@ -595,7 +599,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
         ),
     )
     stats_row = Div(
-        [("class", "flex gap-4 dark:text-slate-400 mb-3")],
+        [("class", "flex gap-4 text-xs lg:text-lg dark:text-slate-400 mb-3")],
         [
             _stat_popover(
                 "popover-hours",
@@ -624,7 +628,12 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
         ],
     )
     metadata = Div(
-        [("class", "flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4")],
+        [
+            (
+                "class",
+                "flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-xs lg:text-base",
+            )
+        ],
         [
             _meta_row(
                 "Original year",
@@ -635,7 +644,11 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
             ),
             _meta_row(
                 "Status",
-                GameStatusSelector(game, Game.Status.choices, get_token(request)),
+                Span(class_="text-xs")[
+                    GameStatusSelector(
+                        game, Game.Status.choices, get_token(request), class_="text-xs"
+                    )
+                ],
                 "👑" if game.mastered else "",
             ),
             _played_row(game, request),
@@ -671,12 +684,12 @@ def _purchases_section(game: Game) -> Node:
                 [
                     {
                         "href": reverse("games:edit_purchase", args=[purchase.pk]),
-                        "slot": Icon("edit"),
+                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
                         "href": reverse("games:delete_purchase", args=[purchase.pk]),
-                        "slot": Icon("delete"),
+                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
                 ]
@@ -786,7 +799,12 @@ _GET_SESSION_COUNT_SCRIPT = Safe(
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     content = Div(
-        [("class", "dark:text-white max-w-sm sm:max-w-xl lg:max-w-3xl mx-auto")],
+        [
+            (
+                "class",
+                f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} self-center px-2",
+            )
+        ],
         [
             _game_header(game, request, _game_overview_metrics(game)),
             _purchases_section(game),

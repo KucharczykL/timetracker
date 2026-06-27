@@ -1,8 +1,8 @@
 """A small fast_app-style layout system.
 
 Instead of Django template inheritance (`{% extends "base.html" %}`), views
-build their page body with Python components and wrap it with `Page()` /
-`render_page()`. `Page()` is the equivalent of FastHTML's document wrapper:
+build their page body with Python components and wrap it with `TimetrackerDocument()` /
+`render_page()`. `TimetrackerDocument()` is the equivalent of FastHTML's document wrapper:
 it hoists shared `<head>` content (the `_HEADERS` block, analogous to
 `fast_app(hdrs=...)`), renders the navbar, and assembles the full document.
 """
@@ -15,27 +15,44 @@ from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
-from django.utils.html import conditional_escape
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import SafeText
 from django_htmx.jinja import django_htmx_script
 
+from common.components.core import Document, Safe
+from common.components.primitives import (
+    CONTENT_MAX_WIDTH_CLASS,
+    Body,
+    Button,
+    Div,
+    Head,
+    Html,
+    Img,
+    Link,
+    Meta,
+    Nav,
+    Script,
+    Span,
+    Title,
+)
 from games.templatetags.version import version, version_date
 
 if TYPE_CHECKING:
     from common.components import Node
 
 # Static head script that sets the dark/light class before paint (avoids FOUC).
-_THEME_FOUC_SCRIPT = """<script>
+# Bare JS body — emitted inside a `Script()` node (a raw-text element).
+_THEME_FOUC_SCRIPT = """
             if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.classList.add('dark');
             } else {
                 document.documentElement.classList.remove('dark')
             }
-        </script>"""
+        """
 
 # The main module script: crown icon mount + theme-toggle wiring.
-# Split around the single dynamic value (game.mastered).
-_MAIN_SCRIPT_A = """<script type="module">
+# Bare JS body (no `<script>` wrapper) — split around the single dynamic value
+# (game.mastered) and emitted inside a `Script(type="module")` node.
+_MAIN_SCRIPT_A = """
             document.addEventListener('DOMContentLoaded', () => {
                 if (window.mountCrownIcon) {
                     window.mountCrownIcon('#crown-icon-mount-point', {
@@ -81,7 +98,7 @@ _MAIN_SCRIPT_B = """
                     });
                 }
             });
-        </script>"""
+        """
 
 # Toast notification region (Alpine.js). Verbatim from the old base.html.
 _TOAST_CONTAINER = """<div x-data="toastStore()"
@@ -221,7 +238,7 @@ def NavbarPlaytime(
 
 
 # Theme toggle sun/moon SVGs: kept as a Safe() snippet because the FOUC script in
-# Page() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
+# TimetrackerDocument() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
 # is a plain icon, so it lives in the icon system (Icon("hamburger")).
 _THEME_TOGGLE_SVGS = (
     '<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" '
@@ -408,40 +425,26 @@ def Navbar(
     csrf_token: str,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
-    from common.components import A, Div, Element, Icon, Safe, Span
+    from common.components import A, Div, Icon, Span
 
-    logo = static("icons/schedule.png")
+    logo = static("icons/tesserae-icon-animated.svg")
     brand = A(
-        [
-            ("href", reverse("games:index")),
-            ("class", "flex items-center space-x-3 rtl:space-x-reverse"),
-        ]
+        href=reverse("games:index"),
+        class_="flex items-center",
     )[
-        Safe(
-            f'<img src="{logo}" height="48" width="48" alt="Timetracker Logo" '
-            'class="mr-4" />'
-        ),
-        Span(
-            class_="self-center text-2xl font-semibold whitespace-nowrap dark:text-white"
-        )["Timetracker"],
-    ]
-    hamburger = Element(
-        "button",
-        [
-            ("data-collapse-toggle", "navbar-dropdown"),
-            ("type", "button"),
-            (
-                "class",
-                "inline-flex items-center p-2 w-10 h-10 justify-center text-sm "
-                "text-gray-500 rounded-lg md:hidden hover:bg-gray-100 "
-                "focus:outline-hidden focus:ring-2 focus:ring-gray-200 "
-                "dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600",
-            ),
-            ("aria-controls", "navbar-dropdown"),
-            ("aria-expanded", "false"),
+        Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
+        Span(class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien")[
+            "TIMETRACKER"
         ],
-        [Span(class_="sr-only")["Open main menu"], Icon("hamburger")],
-    )
+    ]
+    hamburger = Button(
+        data_collapse_toggle="navbar-dropdown",
+        type="button",
+        aria_controls="navbar-dropdown",
+        aria_expanded="false",
+        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600",
+    )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
+
     menu = NavbarMenu(
         today_played=today_played,
         last_7_played=last_7_played,
@@ -450,24 +453,22 @@ def Navbar(
         current_year=current_year,
         csrf_token=csrf_token,
     )
-    return Element(
-        "nav",
-        [("class", "bg-neutral-primary-soft border-b border-default")],
+    return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
-            class_="max-w-(--breakpoint-xl) flex flex-wrap items-center "
-            "justify-between mx-auto p-4"
-        )[brand, hamburger, menu],
-    )
+            class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
+            "justify-between mx-auto"
+        )[brand, hamburger, menu]
+    ]
 
 
-def Page(
+def TimetrackerDocument(
     content: "Node | SafeText | str",
     *,
     request: HttpRequest,
     title: str = "",
     scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
-) -> SafeText:
+) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
 
     Scripts are collected from `content`'s component tree: every component
@@ -505,50 +506,78 @@ def Page(
     # Embed as JSON; guard against `</script>` breaking out of the tag.
     messages_json = json.dumps(messages).replace("</", "<\\/")
 
-    head = (
-        '<!DOCTYPE html>\n<html lang="en">\n    <head>\n'
-        '        <meta charset="utf-8" />\n'
-        '        <meta name="description" content="Self-hosted time-tracker." />\n'
-        '        <meta name="keywords" content="time, tracking, video games, self-hosted" />\n'
-        '        <meta name="viewport" content="width=device-width, initial-scale=1" />\n'
-        f"        <title>Timetracker - {conditional_escape(title)}</title>\n"
-        f'        <script src="{static("js/htmx.min.js")}"></script>\n'
-        "        <script>\n"
-        "            htmx.config.scrollBehavior = 'smooth';\n"
-        "            htmx.config.selfRequestsOnly = false;\n"
-        "        </script>\n"
-        f'        <script src="{static("js/dist/htmx-redirect-toast.js")}"></script>\n'
-        f"        {django_htmx_script(nonce=None)}\n"
-        f'        <link rel="stylesheet" href="{static("base.css")}" />\n'
-        # Vendored bundles (flowbite 2.4.1, alpinejs/@alpinejs/mask 3.15.12) —
-        # served locally so pages work offline (and in browser tests). The mask
-        # plugin must load before Alpine core; both stay deferred.
-        f'        <script src="{static("js/flowbite.min.js")}"></script>\n'
-        f'        <script defer src="{static("js/alpine-mask.min.js")}"></script>\n'
-        f'        <script defer src="{static("js/alpine.min.js")}"></script>\n'
-        f"        {_THEME_FOUC_SCRIPT}\n"
-        "    </head>\n"
-    )
+    def html_document(title: str = "") -> Document:
+        htmx_indicator = Img(
+            id="indicator",
+            src=static("icons/loading.png"),
+            class_="absolute right-3 top-3 animate-spin htmx-indicator",
+            height="24",
+            width="24",
+            alt="loading indicator",
+        )
 
-    body = (
-        '    <body hx-indicator="#indicator" class="bg-neutral-primary">\n'
-        f'        <script id="django-messages" type="application/json">{messages_json}</script>\n'
-        f'        <img id="indicator" src="{static("icons/loading.png")}" class="absolute right-3 top-3 animate-spin htmx-indicator" height="24" width="24" alt="loading indicator" />\n'
-        '        <div class="flex flex-col min-h-screen">\n'
-        f"            {navbar}\n"
-        f'            <div id="main-container" class="flex flex-1 flex-col pt-8 pb-16">{content}</div>\n'
-        f'            <span class="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600">{version()} ({version_date()})</span>\n'
-        "        </div>\n"
-        f"        {all_scripts}\n"
-        f"        {_main_script(mastered)}\n"
-        "        <!-- hx-swap-oob makes sure the modal gets removed upon any HTMX response -->\n"
-        '        <div id="global-modal-container" hx-swap-oob="true"></div>\n'
-        f"        {_TOAST_CONTAINER}\n"
-        f'        <script src="{static("js/dist/toast.js")}"></script>\n'
-        "    </body>\n</html>\n"
-    )
+        version_footer_note = Span(
+            class_="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600"
+        )[f"{version()} ({version_date()})"]
 
-    return mark_safe(head + body)
+        script_body = Safe(all_scripts)
+        global_modal_container = Div(id="global-modal-container", hx_swap_oob="true")
+        toast_container = Safe(_TOAST_CONTAINER)
+        mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
+            _main_script(mastered)
+        ]
+        return Document(
+            Html(lang="en")[
+                Head()[
+                    [
+                        Title()[f"Timetracker - {title}"],
+                        Meta(charset="utf-8"),
+                        Meta(name="description", content="Self-hosted time-tracker."),
+                        Meta(
+                            name="keywords",
+                            content="time, tracking, video games, self-hosted",
+                        ),
+                        Meta(
+                            name="viewport",
+                            content="width=device-width, initial-scale=1.0",
+                        ),
+                        Script(src=static("js/htmx.min.js")),
+                        Script(src=static("js/flowbite.min.js")),
+                        Script(src=static("js/dist/htmx-redirect-toast.js")),
+                        Script(src=static("js/dist/toast.js")),
+                        Script(defer=True, src=static("js/alpine-mask.min.js")),
+                        Script(defer=True, src=static("js/alpine.min.js")),
+                        Script()[
+                            "htmx.config.scrollBehavior = 'smooth';\n"
+                            "htmx.config.selfRequestsOnly = false;\n"
+                        ],
+                        Script()[_THEME_FOUC_SCRIPT],
+                        Script(id="django-messages", type="application/json")[
+                            messages_json
+                        ],
+                        Safe(str(django_htmx_script(nonce=None))),
+                        Link(rel="stylesheet", href=static("base.css")),
+                    ]
+                ],
+                Body(hx_indicator="#indicator", class_="bg-neutral-primary")[
+                    htmx_indicator,
+                    Div(class_="flex flex-col min-h-screen")[
+                        navbar,
+                        Div(
+                            id="main-container",
+                            class_="flex flex-1 flex-col pt-8 pb-16",
+                        )[content],
+                    ],
+                    version_footer_note,
+                    script_body,
+                    mastered_script_IS_THIS_REALLY_NEEDED,
+                    global_modal_container,
+                    toast_container,
+                ],
+            ],
+        )
+
+    return html_document(title=title)
 
 
 def render_page(
@@ -562,6 +591,8 @@ def render_page(
 ) -> HttpResponse:
     """`render()`-style shortcut: build a full page and return an HttpResponse."""
     return HttpResponse(
-        Page(content, request=request, title=title, scripts=scripts, mastered=mastered),
+        TimetrackerDocument(
+            content, request=request, title=title, scripts=scripts, mastered=mastered
+        ),
         status=status,
     )

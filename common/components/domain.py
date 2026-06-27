@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from common.components.core import Children, Node, Safe, as_children
 from common.components.primitives import (
+    ICON_BUTTON_SIZE_CLASS,
     A,
     Div,
     Icon,
@@ -232,7 +233,7 @@ def PurchasePrice(purchase) -> Node:
     )
 
 
-def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
+def GameStatusSelector(game, game_statuses, csrf_token: str, class_: str = "") -> Node:
     """Status value-selector: a listbox that PATCHes /api/games/<id>/status."""
     from common.components.custom_elements import SelectDropdown, SelectOption
 
@@ -254,6 +255,7 @@ def GameStatusSelector(game, game_statuses, csrf_token: str) -> Node:
         body_key="status",
         event="status-changed",
         csrf=csrf_token,
+        class_=class_,
     )
 
 
@@ -276,3 +278,87 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         csrf=csrf_token,
         numeric=True,
     )
+
+
+def SessionActions(session, csrf_token: str) -> Node:
+    """Row actions for a session: Finish + Reset (only while the session is open),
+    Edit, Delete. The finish/reset buttons drive ``PATCH /api/session/<id>`` and
+    swap the row client-side; reset opens an inline confirm modal. Edit/Delete stay
+    plain navigation links. Behavior lives in ``ts/elements/session-actions.ts``;
+    this server-renders the full light DOM so the row works on first paint."""
+    from common.components.custom_elements import _SessionActions
+    from common.components.primitives import ButtonGroup, Modal, StyledButton
+
+    is_open = session.timestamp_end is None
+    game_name = session.game.name if session.game else "this session"
+    modal_id = f"session-{session.pk}-reset-modal"
+
+    actions = ButtonGroup(
+        [
+            {
+                "slot": Icon("end", size=ICON_BUTTON_SIZE_CLASS),
+                "title": "Finish session now",
+                "color": "green",
+                "button_attributes": [("data-finish", "")],
+            }
+            if is_open
+            else {},
+            {
+                "slot": Icon("reset", size=ICON_BUTTON_SIZE_CLASS),
+                "title": "Reset start to now",
+                "color": "gray",
+                "button_attributes": [("data-reset", "")],
+            }
+            if is_open
+            else {},
+            {
+                "href": reverse("games:edit_session", args=[session.pk]),
+                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
+                "title": "Edit",
+            },
+            {
+                "href": reverse("games:delete_session", args=[session.pk]),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
+                "title": "Delete",
+                "color": "red",
+            },
+        ]
+    )
+
+    children: list[Node] = [actions]
+    if is_open:
+        children.append(
+            Div(attributes=[("data-reset-modal", ""), ("hidden", "")])[
+                Modal(
+                    modal_id,
+                    [
+                        Div(class_="text-center dark:text-white")[
+                            "Reset the start time of ",
+                            Span(class_="font-medium")[game_name],
+                            " to now?",
+                        ],
+                        Div(class_="flex gap-2 mt-6 justify-center")[
+                            # Reset overwrites the original start time (only
+                            # recoverable via Edit) -> red destructive confirm,
+                            # gray secondary cancel.
+                            StyledButton(
+                                color="red",
+                                attributes=[("data-reset-confirm", "")],
+                            )["Reset to now"],
+                            StyledButton(
+                                color="gray",
+                                attributes=[("data-reset-cancel", "")],
+                            )["Cancel"],
+                        ],
+                    ],
+                )
+            ]
+        )
+
+    return _SessionActions(
+        session_id=session.pk,
+        api_url=f"/api/session/{session.pk}",
+        csrf=csrf_token,
+        game_name=game_name,
+        is_open="true" if is_open else "false",
+    )[children]

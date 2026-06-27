@@ -26,6 +26,7 @@
   --font-condensed:
     IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-alien: 'Alien Block', ui-sans-serif, system-ui, sans-serif;
 
   --color-accent: #7c3aed;
   --color-background: #1f2937;
@@ -60,15 +61,15 @@
   }
 }
 
-@utility min-w-20char {
+/* @utility min-w-20char {
   min-width: 20ch;
 }
 
 @utility max-w-20char {
   max-width: 20ch;
-}
+} */
 
-@utility min-w-30char {
+/* @utility min-w-30char {
   min-width: 30ch;
 }
 
@@ -82,7 +83,7 @@
 
 @utility max-w-40char {
   max-width: 40ch;
-}
+} */
 
 @layer utilities {
   @font-face {
@@ -116,6 +117,13 @@
   @font-face {
     font-family: 'IBM Plex Sans Condensed';
     src: url('fonts/IBMPlexSansCondensed-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  @font-face {
+    font-family: 'Alien Block';
+    src: url('fonts/AlienBlock-Regular.woff2') format('woff2');
     font-weight: 400;
     font-style: normal;
   }
