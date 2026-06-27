@@ -287,14 +287,63 @@ def test_relation_none_on_non_game_parent(db):
     assert session_ids == {keep.id}
 
 
+# ── ALL relation match (every related row matches; vacuous truth INCLUDED) ────
+
+
+def test_relation_all_every_row_matches_included(emulated_world):
+    """ALL = every related row matches the sub-filter.
+
+    EmuOnly (one emulated session) qualifies; Both (one emulated + one not) has a
+    violating row and is excluded; NonEmu (one non-emulated) is excluded; and
+    NoSessions has no related rows, so it matches vacuously (∀ over an empty set).
+    """
+    all_emulated = GameFilter(
+        session_filter=SessionFilter(
+            emulated=BoolCriterion(value=True), match=RelationMatch.ALL
+        )
+    )
+    assert _ids(all_emulated) == {
+        emulated_world["emu_only"],
+        emulated_world["no_sessions"],
+    }
+
+
+def test_relation_all_excludes_mixed_rows(emulated_world):
+    """A parent with a mix of matching and violating rows is excluded from ALL."""
+    all_emulated = GameFilter(
+        session_filter=SessionFilter(
+            emulated=BoolCriterion(value=True), match=RelationMatch.ALL
+        )
+    )
+    assert emulated_world["both"] not in _ids(all_emulated)
+
+
+def test_relation_all_vacuous_truth_includes_zero_row_parent(emulated_world):
+    """A parent with ZERO related rows matches ALL (vacuous truth)."""
+    all_emulated = GameFilter(
+        session_filter=SessionFilter(
+            emulated=BoolCriterion(value=True), match=RelationMatch.ALL
+        )
+    )
+    assert emulated_world["no_sessions"] in _ids(all_emulated)
+
+
+def test_all_match_json_round_trip():
+    """match=ALL serializes as {"match": "ALL"} and rebuilds identically."""
+    f = GameFilter(
+        session_filter=SessionFilter(
+            emulated=BoolCriterion(value=True), match=RelationMatch.ALL
+        )
+    )
+    payload = f.to_json()
+    assert payload["session_filter"]["match"] == RelationMatch.ALL
+
+    restored = GameFilter.from_json(json.loads(json.dumps(payload)))
+    assert restored is not None and restored.session_filter is not None
+    assert restored.session_filter.match == RelationMatch.ALL
+
+
 # ── reserved/invalid quantifiers fail loud ───────────────────────────────────
-
-
-def test_all_relation_match_raises(emulated_world):
-    """ALL is reserved — building its Q must raise, not silently degrade."""
-    f = GameFilter(session_filter=SessionFilter(match=RelationMatch.ALL))
-    with pytest.raises(NotImplementedError):
-        f.to_q()
 
 
 def test_aggregate_to_q_not_callable_directly():
