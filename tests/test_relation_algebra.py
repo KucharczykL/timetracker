@@ -13,8 +13,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from common.criteria import AggregateCriterion, BoolCriterion, Modifier
-from games.filters import GameFilter, SessionFilter
+from common.criteria import (
+    AggregateCriterion,
+    BoolCriterion,
+    Modifier,
+    RelationMatch,
+    StringCriterion,
+)
+from games.filters import GameFilter, PurchaseFilter, SessionFilter
 from games.models import Game, Platform, Purchase, Session
 
 
@@ -69,7 +75,7 @@ def test_relation_none_is_not_exists(emulated_world):
     sessions (the case a positive ANY(emulated=False) would miss)."""
     no_emulated = GameFilter(
         session_filter=SessionFilter(
-            emulated=BoolCriterion(value=True), match=Modifier.EXCLUDES
+            emulated=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
     assert _ids(no_emulated) == {
@@ -80,7 +86,7 @@ def test_relation_none_is_not_exists(emulated_world):
 
 def test_empty_none_subfilter_means_no_related_rows(emulated_world):
     """A match-only NONE node (no child criteria) = "has no sessions at all"."""
-    no_sessions = GameFilter(session_filter=SessionFilter(match=Modifier.EXCLUDES))
+    no_sessions = GameFilter(session_filter=SessionFilter(match=RelationMatch.NONE))
     assert _ids(no_sessions) == {emulated_world["no_sessions"]}
 
 
@@ -90,7 +96,7 @@ def test_empty_none_subfilter_means_no_related_rows(emulated_world):
 def test_nested_matches_flat_session_emulated(emulated_world):
     """The flat session_emulated bool and the nested match-mode form must select
     identical games for both True (ANY) and False (NONE)."""
-    for value, match in [(True, Modifier.INCLUDES), (False, Modifier.EXCLUDES)]:
+    for value, match in [(True, RelationMatch.ANY), (False, RelationMatch.NONE)]:
         flat = GameFilter(session_emulated=BoolCriterion(value=value))
         nested = GameFilter(
             session_filter=SessionFilter(
@@ -110,21 +116,14 @@ def test_nested_matches_flat_purchase_refunded(db):
     ).games.set([refunded])
     Purchase.objects.create(date_purchased=_dt()).games.set([kept])
 
-    from games.filters import PurchaseFilter
-
-    def purchase_ids(f):
-        return set(
-            Game.objects.filter(f.to_q()).distinct().values_list("id", flat=True)
-        )
-
     flat_false = GameFilter(purchase_refunded=BoolCriterion(value=False))
     nested_none = GameFilter(
         purchase_filter=PurchaseFilter(
-            is_refunded=BoolCriterion(value=True), match=Modifier.EXCLUDES
+            is_refunded=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
-    assert purchase_ids(flat_false) == purchase_ids(nested_none)
-    assert purchase_ids(flat_false) == {kept.id, none.id}
+    assert _ids(flat_false) == _ids(nested_none)
+    assert _ids(flat_false) == {kept.id, none.id}
 
 
 # ── match round-trip ─────────────────────────────────────────────────────────
@@ -133,15 +132,15 @@ def test_nested_matches_flat_purchase_refunded(db):
 def test_match_json_round_trip():
     f = GameFilter(
         session_filter=SessionFilter(
-            emulated=BoolCriterion(value=True), match=Modifier.EXCLUDES
+            emulated=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
     payload = f.to_json()
-    assert payload["session_filter"]["match"] == Modifier.EXCLUDES
+    assert payload["session_filter"]["match"] == RelationMatch.NONE
 
     restored = GameFilter.from_json(json.loads(json.dumps(payload)))
     assert restored is not None and restored.session_filter is not None
-    assert restored.session_filter.match == Modifier.EXCLUDES
+    assert restored.session_filter.match == RelationMatch.NONE
 
 
 def test_default_any_match_is_not_serialized():
@@ -195,4 +194,125 @@ def test_aggregate_round_trip(aggregate_world):
         session_count=AggregateCriterion(value=2, modifier=Modifier.GREATER_THAN)
     )
     restored = GameFilter.from_json(json.loads(json.dumps(f.to_json())))
+    assert restored is not None
     assert _ids(restored) == _ids(f)
+
+
+def test_aggregate_average_duration(db):
+    """session_average uses Avg over the DurationField + duration-hours compare."""
+    pc = Platform.objects.create(name="PC")
+    high = Game.objects.create(name="High", platform=pc)
+    low = Game.objects.create(name="Low", platform=pc)
+    for day in (1, 2):
+        Session.objects.create(
+            game=high,
+            timestamp_start=_dt(2024, 6, day),
+            duration_manual=timedelta(hours=2),
+        )
+    Session.objects.create(
+        game=low, timestamp_start=_dt(), duration_manual=timedelta(hours=1)
+    )
+    over_one_hour = GameFilter(
+        session_average=AggregateCriterion(value=1, modifier=Modifier.GREATER_THAN)
+    )
+    assert _ids(over_one_hour) == {high.id}  # avg 2h vs 1h
+
+
+def test_aggregate_price_sum(db):
+    """purchase_price_total uses float Sum + numeric compare (not duration)."""
+    from decimal import Decimal
+
+    pc = Platform.objects.create(name="PC")
+    pricey = Game.objects.create(name="Pricey", platform=pc)
+    cheap = Game.objects.create(name="Cheap", platform=pc)
+    for amount in (10, 15):
+        purchase = Purchase.objects.create(
+            date_purchased=_dt(), converted_price=Decimal(amount)
+        )
+        purchase.games.set([pricey])
+    purchase = Purchase.objects.create(date_purchased=_dt(), converted_price=Decimal(5))
+    purchase.games.set([cheap])
+
+    over_twenty = GameFilter(
+        purchase_price_total=AggregateCriterion(
+            value=20, modifier=Modifier.GREATER_THAN
+        )
+    )
+    assert _ids(over_twenty) == {pricey.id}  # 25 vs 5
+
+
+# ── NONE on the M2M parent_field + non-Game parents ──────────────────────────
+
+
+def test_m2m_relation_none_excludes_partial_bundle(db):
+    """PurchaseFilter.game_filter NONE negates over the M2M parent_field
+    (`games__id`): a bundle containing the matching game must be excluded."""
+    pc = Platform.objects.create(name="PC")
+    hit = Game.objects.create(name="Hit", platform=pc)
+    miss = Game.objects.create(name="Miss", platform=pc)
+    bundle = Purchase.objects.create(date_purchased=_dt())
+    bundle.games.set([hit, miss])
+    solo = Purchase.objects.create(date_purchased=_dt())
+    solo.games.set([miss])
+    empty = Purchase.objects.create(date_purchased=_dt())
+
+    no_hit = PurchaseFilter(
+        game_filter=GameFilter(
+            name=StringCriterion(value="Hit"), match=RelationMatch.NONE
+        )
+    )
+    purchase_ids = set(
+        Purchase.objects.filter(no_hit.to_q()).distinct().values_list("id", flat=True)
+    )
+    assert purchase_ids == {solo.id, empty.id}  # bundle (contains Hit) excluded
+
+
+def test_relation_none_on_non_game_parent(db):
+    """The shared relation_to_q NONE path works for a non-Game parent
+    (SessionFilter.game_filter)."""
+    pc = Platform.objects.create(name="PC")
+    hit = Game.objects.create(name="Hit", platform=pc)
+    miss = Game.objects.create(name="Miss", platform=pc)
+    Session.objects.create(game=hit, timestamp_start=_dt())
+    keep = Session.objects.create(game=miss, timestamp_start=_dt(2024, 6, 2))
+
+    not_hit = SessionFilter(
+        game_filter=GameFilter(
+            name=StringCriterion(value="Hit"), match=RelationMatch.NONE
+        )
+    )
+    session_ids = set(
+        Session.objects.filter(not_hit.to_q()).values_list("id", flat=True)
+    )
+    assert session_ids == {keep.id}
+
+
+# ── reserved/invalid quantifiers fail loud ───────────────────────────────────
+
+
+def test_all_relation_match_raises(emulated_world):
+    """ALL is reserved — building its Q must raise, not silently degrade."""
+    f = GameFilter(session_filter=SessionFilter(match=RelationMatch.ALL))
+    with pytest.raises(NotImplementedError):
+        f.to_q()
+
+
+def test_aggregate_to_q_not_callable_directly():
+    """AggregateCriterion is evaluated via aggregate_to_q, not the base to_q."""
+    with pytest.raises(NotImplementedError):
+        AggregateCriterion(value=1).to_q("session_count")
+
+
+def test_two_level_match_round_trip():
+    """match survives a round-trip at a nested-deeper-than-one level."""
+    from games.filters import DeviceFilter
+
+    f = GameFilter(
+        session_filter=SessionFilter(
+            device_filter=DeviceFilter(match=RelationMatch.NONE)
+        )
+    )
+    restored = GameFilter.from_json(json.loads(json.dumps(f.to_json())))
+    assert restored is not None and restored.session_filter is not None
+    assert restored.session_filter.device_filter is not None
+    assert restored.session_filter.device_filter.match == RelationMatch.NONE

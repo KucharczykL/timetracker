@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
-from typing import Any, Self, TypeVar
+from typing import Any, Literal, Self, TypeVar
 
 from django.db.models import Q
 
@@ -76,6 +76,21 @@ class Modifier(str, Enum):
             cls.IS_NULL,
             cls.NOT_NULL,
         ]
+
+
+# ── Relation match-mode ──────────────────────────────────────────────────────
+
+
+class RelationMatch(str, Enum):
+    """Quantifier for a nested cross-entity sub-filter (e.g. a game's sessions).
+
+    A dedicated vocabulary (rather than reusing ``Modifier``) so only the three
+    meaningful quantifiers are representable. ``relation_to_q`` interprets it.
+    """
+
+    ANY = "ANY"  # ≥1 related row matches the sub-filter (EXISTS)
+    NONE = "NONE"  # no related row matches (NOT EXISTS); includes zero-row parents
+    ALL = "ALL"  # every related row matches (reserved; not yet implemented)
 
 
 # ── Base criterion ─────────────────────────────────────────────────────────
@@ -397,9 +412,18 @@ class AggregateCriterion(_Criterion):
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
-    # OperatorFilter | None — restricts which related rows are aggregated. Always
-    # None today; widget + JSON round-trip wiring lands with the path serializer.
-    scope: Any = None
+    # Restricts which related rows are aggregated. Always None today; honouring it
+    # needs both the path serializer (to populate it) AND aggregate_to_q (to apply
+    # it as the annotate ``filter=``) — neither is wired yet.
+    scope: "OperatorFilter | None" = None
+
+    def to_q(self, field_name: str) -> Q:
+        # Unlike sibling criteria, an aggregate is not self-contained: its meaning
+        # depends on static config (reducer/relation/source/unit) the filter holds.
+        # It is evaluated via aggregate_to_q(...), never this method.
+        raise NotImplementedError(
+            "AggregateCriterion is evaluated via aggregate_to_q(), not to_q()"
+        )
 
 
 # ── OperatorFilter base ────────────────────────────────────────────────────
@@ -486,11 +510,12 @@ class OperatorFilter:
 
     ``match`` is the relation quantifier, meaningful only when this filter is
     nested as a cross-entity sub-filter (e.g. ``GameFilter.session_filter``):
-    ANY=INCLUDES (default), NONE=EXCLUDES, ALL=INCLUDES_ALL. ``relation_to_q``
-    reads it. At the top level it is ignored.
+    ANY (default), NONE, or ALL (ALL reserved — see ``relation_to_q``).
+    ``relation_to_q`` reads it; at the top level it is ignored (``to_q`` never
+    consults ``self.match``).
     """
 
-    match: Modifier = Modifier.INCLUDES
+    match: RelationMatch = RelationMatch.ANY
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -595,7 +620,7 @@ class OperatorFilter:
             raw = data[f.name]
             # Relation quantifier (meaningful only on a nested sub-filter).
             if f.name == "match":
-                kwargs["match"] = Modifier(raw) if isinstance(raw, str) else raw
+                kwargs["match"] = RelationMatch(raw)
                 continue
             if raw is None:
                 kwargs[f.name] = None
@@ -632,7 +657,7 @@ class OperatorFilter:
         # Relation quantifier: only emit when set to a non-default (a nested
         # sub-filter asking for NONE/ALL); the default ANY stays implicit so
         # existing top-level and ANY-matched filters serialize unchanged.
-        if self.match != Modifier.INCLUDES:
+        if self.match != RelationMatch.ANY:
             result["match"] = self.match
         for f in dc_fields(self):
             v = getattr(self, f.name)
@@ -687,6 +712,8 @@ def filter_to_json(f: OperatorFilter) -> str:
 # bespoke subqueries in each to_q().
 
 Number = int | float
+type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
+type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
 
 
 def _numeric_to_q(
@@ -713,8 +740,10 @@ def _numeric_to_q(
     if modifier == Modifier.NOT_BETWEEN:
         if value2 is None:
             raise ValueError("NOT_BETWEEN requires value2")
-        lo, hi = min(value, value2), max(value, value2)
-        return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
+        lower_bound, upper_bound = min(value, value2), max(value, value2)
+        return Q(**{f"{field_name}__lt": lower_bound}) | Q(
+            **{f"{field_name}__gt": upper_bound}
+        )
     if modifier == Modifier.IS_NULL:
         return Q(**{f"{field_name}__isnull": True})
     if modifier == Modifier.NOT_NULL:
@@ -729,97 +758,118 @@ def duration_hours_to_q(
 
     Django stores DurationField as microseconds, so hours convert to
     ``timedelta``. EQUALS matches the whole hour bucket ``[h, h+1)``;
-    IS_NULL/NOT_NULL test against a zero duration. This is the single home for
-    the hours<->timedelta logic shared by the direct duration fields (playtime,
-    session durations) and the duration-unit aggregates.
+    IS_NULL/NOT_NULL test against a zero duration. BETWEEN/NOT_BETWEEN require
+    ``value2``. This is the single home for the hours<->timedelta logic shared by
+    the direct duration fields (playtime, session durations) and the
+    duration-unit aggregates. Like ``_numeric_to_q`` it raises on an unsupported
+    or incomplete modifier rather than silently matching everything.
     """
     from datetime import timedelta
 
-    td = timedelta(hours=value)
+    duration = timedelta(hours=value)
     if modifier == Modifier.EQUALS:
         return Q(
             **{
-                f"{field_name}__gte": td,
+                f"{field_name}__gte": duration,
                 f"{field_name}__lt": timedelta(hours=value + 1),
             }
         )
     if modifier == Modifier.NOT_EQUALS:
         return ~Q(
             **{
-                f"{field_name}__gte": td,
+                f"{field_name}__gte": duration,
                 f"{field_name}__lt": timedelta(hours=value + 1),
             }
         )
     if modifier == Modifier.GREATER_THAN:
-        return Q(**{f"{field_name}__gt": td})
+        return Q(**{f"{field_name}__gt": duration})
     if modifier == Modifier.LESS_THAN:
-        return Q(**{f"{field_name}__lt": td})
-    if modifier == Modifier.BETWEEN and value2 is not None:
-        lo = timedelta(hours=min(value, value2))
-        hi = timedelta(hours=max(value, value2))
-        return Q(**{f"{field_name}__gte": lo, f"{field_name}__lte": hi})
-    if modifier == Modifier.NOT_BETWEEN and value2 is not None:
-        lo = timedelta(hours=min(value, value2))
-        hi = timedelta(hours=max(value, value2))
-        return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
+        return Q(**{f"{field_name}__lt": duration})
+    if modifier == Modifier.BETWEEN:
+        if value2 is None:
+            raise ValueError("BETWEEN requires value2")
+        lower_bound = timedelta(hours=min(value, value2))
+        upper_bound = timedelta(hours=max(value, value2))
+        return Q(
+            **{f"{field_name}__gte": lower_bound, f"{field_name}__lte": upper_bound}
+        )
+    if modifier == Modifier.NOT_BETWEEN:
+        if value2 is None:
+            raise ValueError("NOT_BETWEEN requires value2")
+        lower_bound = timedelta(hours=min(value, value2))
+        upper_bound = timedelta(hours=max(value, value2))
+        return Q(**{f"{field_name}__lt": lower_bound}) | Q(
+            **{f"{field_name}__gt": upper_bound}
+        )
     if modifier == Modifier.IS_NULL:
         return Q(**{field_name: timedelta(0)})
     if modifier == Modifier.NOT_NULL:
         return ~Q(**{field_name: timedelta(0)})
-    return Q()
+    raise ValueError(f"Unsupported modifier {modifier} for duration comparison")
+
+
+# The related/parent model is the concrete Django model the filter targets.
+# Typed ``Any`` rather than ``type[Model]`` because django-stubs doesn't expose
+# ``.objects`` on the abstract base ``Model``, so ``type[Model]`` fails mypy here.
+ModelClass = Any  # a concrete Django model class, e.g. Game
 
 
 def relation_to_q(
     sub: OperatorFilter,
     *,
-    related_model: Any,
+    related_model: ModelClass,
     related_lookup: str,
     parent_field: str = "id",
 ) -> Q:
     """EXISTS / NOT-EXISTS subquery for a nested cross-entity sub-filter.
 
     Builds ``parent_field IN (<related rows matching sub>.related_lookup)``; the
-    sub-filter's ``match`` quantifier selects ANY (INCLUDES, default) vs NONE
-    (EXCLUDES, the negation). ALL (INCLUDES_ALL) is reserved but unimplemented.
+    sub-filter's ``match`` quantifier selects ANY (the EXISTS) vs NONE (its
+    negation). ALL is reserved but unimplemented. The branch is exhaustive — an
+    unexpected match raises rather than silently degrading to ANY.
     """
     ids = related_model.objects.filter(sub.to_q()).values_list(
         related_lookup, flat=True
     )
     base = Q(**{f"{parent_field}__in": ids})
-    if sub.match == Modifier.EXCLUDES:
+    if sub.match == RelationMatch.ANY:
+        return base
+    if sub.match == RelationMatch.NONE:
         return ~base
-    if sub.match == Modifier.INCLUDES_ALL:
+    if sub.match == RelationMatch.ALL:
         raise NotImplementedError(
-            "ALL relation match (INCLUDES_ALL on a nested sub-filter) is not "
-            "implemented yet; see the follow-up issue."
+            "ALL relation match on a nested sub-filter is not implemented yet; "
+            "see the follow-up issue (#128)."
         )
-    return base
+    raise ValueError(f"Unsupported relation match {sub.match!r}")
 
 
 def aggregate_to_q(
     criterion: AggregateCriterion,
     *,
-    model: Any,
-    reducer: str,
+    model: ModelClass,
+    reducer: Reducer,
     accessor: str,
     source: str | None = None,
-    unit: str | None = None,
+    unit: DurationUnit | None = None,
 ) -> Q:
     """Filter ``model`` by a reducer (count / sum / avg) over a relation.
 
     Annotates ``model`` with the aggregate, compares it against the criterion's
     value(s)/modifier, and returns ``Q(id__in=<matching ids>)``.
     ``unit="duration_hours"`` compares an hours value against a DurationField
-    aggregate; otherwise a plain numeric comparison is used.
+    aggregate; otherwise a plain numeric comparison is used. ``sum``/``avg``
+    require a ``source`` field; ``count`` aggregates whole rows.
     """
     from django.db.models import Avg, Count, Sum
 
     if reducer == "count":
-        expr: Any = Count(accessor, distinct=True)
-    elif reducer == "sum":
-        expr = Sum(f"{accessor}__{source}")
-    elif reducer == "avg":
-        expr = Avg(f"{accessor}__{source}")
+        aggregate_expression: Any = Count(accessor, distinct=True)
+    elif reducer in ("sum", "avg"):
+        if source is None:
+            raise ValueError(f"{reducer!r} aggregate requires a source field")
+        reduce = Sum if reducer == "sum" else Avg
+        aggregate_expression = reduce(f"{accessor}__{source}")
     else:
         raise ValueError(f"Unknown aggregate reducer {reducer!r}")
 
@@ -832,5 +882,9 @@ def aggregate_to_q(
             criterion.value, criterion.value2, criterion.modifier, "_agg"
         )
 
-    ids = model.objects.annotate(_agg=expr).filter(compare).values_list("id", flat=True)
+    ids = (
+        model.objects.annotate(_agg=aggregate_expression)
+        .filter(compare)
+        .values_list("id", flat=True)
+    )
     return Q(id__in=ids)
