@@ -406,17 +406,12 @@ class AggregateCriterion(_Criterion):
 
     The reducer, relation accessor, source field, and unit are *static config*
     supplied by the filter at query time (see ``aggregate_to_q``); the instance
-    carries only the user's comparison value(s)/modifier and an optional
-    ``scope`` sub-filter restricting which related rows are aggregated.
+    carries only the user's comparison value(s)/modifier.
     """
 
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
-    # Restricts which related rows are aggregated. Always None today; honouring it
-    # needs both the path serializer (to populate it) AND aggregate_to_q (to apply
-    # it as the annotate ``filter=``) — neither is wired yet.
-    scope: "OperatorFilter | None" = None
 
     def to_q(self, field_name: str) -> Q:
         # Unlike sibling criteria, an aggregate is not self-contained: its meaning
