@@ -16,6 +16,7 @@ from common.criteria import (
     DateCriterion,
     FieldComparisonCriterion,
     FilterError,
+    FilterField,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -26,7 +27,11 @@ from common.criteria import (
     _criterion_class_for,
     _field_comparison_to_q,
     _maybe_group_for,
+    bool_isnull_handler,
+    bool_nonzero_duration_handler,
     comparable_columns,
+    duration_hours_handler,
+    search_q,
 )
 from common.components import FilterBar
 from games.filters import (
@@ -2839,3 +2844,122 @@ class TestFilterFieldDescriptors:
             assert key in declared, (
                 f"{filter_cls.__name__}.fields[{key!r}] is not a criterion field"
             )
+
+
+# ── FilterField handlers (issue #161) ────────────────────────────────────────
+
+
+class TestFilterField:
+    """The descriptor's lookup/handler contract."""
+
+    def test_plain_field_defaults_lookup_to_attr_name(self):
+        assert FilterField().to_q("name", StringCriterion(value="x")) == Q(name="x")
+
+    def test_lookup_override(self):
+        assert FilterField("platform_id").to_q(
+            "platform", MultiCriterion(value=[1, 2])
+        ) == Q(platform_id__in=[1, 2])
+
+    def test_lookup_and_handler_together_rejected(self):
+        with pytest.raises(ValueError, match="lookup OR handler"):
+            FilterField("x", handler=lambda c: Q())
+
+
+class TestFilterFieldHandlers:
+    """Each handler factory's Q output, and that the right handler is wired to the
+    field it serves (a plain FilterField regression would pass the drift guard but
+    fail here)."""
+
+    def test_duration_hours_equals_bucket(self):
+        from datetime import timedelta
+
+        handler = duration_hours_handler("duration_total")
+        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS)) == Q(
+            duration_total__gte=timedelta(hours=4),
+            duration_total__lt=timedelta(hours=5),
+        )
+
+    def test_duration_hours_between_passes_value2(self):
+        # The refactor reads value2 via getattr — confirm it actually flows through.
+        from datetime import timedelta
+
+        handler = duration_hours_handler("duration_total")
+        assert handler(IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN)) == Q(
+            duration_total__gte=timedelta(hours=1),
+            duration_total__lte=timedelta(hours=5),
+        )
+
+    def test_bool_isnull_handler_direct(self):
+        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=True)) == Q(
+            timestamp_end__isnull=True
+        )
+        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=False)) == Q(
+            timestamp_end__isnull=False
+        )
+
+    def test_bool_isnull_handler_invert(self):
+        assert bool_isnull_handler("date_refunded", invert=True)(
+            BoolCriterion(value=True)
+        ) == Q(date_refunded__isnull=False)
+        assert bool_isnull_handler("date_refunded", invert=True)(
+            BoolCriterion(value=False)
+        ) == Q(date_refunded__isnull=True)
+
+    def test_bool_nonzero_duration_handler(self):
+        from datetime import timedelta
+
+        handler = bool_nonzero_duration_handler("duration_manual")
+        assert handler(BoolCriterion(value=True)) == ~Q(duration_manual=timedelta(0))
+        assert handler(BoolCriterion(value=False)) == Q(duration_manual=timedelta(0))
+
+    # ── wiring: the field maps to the intended handler via the generic to_q ──
+
+    def test_is_active_wired(self):
+        assert SessionFilter(is_active=BoolCriterion(value=True)).to_q() == Q(
+            timestamp_end__isnull=True
+        )
+
+    def test_is_manual_wired(self):
+        from datetime import timedelta
+
+        assert SessionFilter(is_manual=BoolCriterion(value=True)).to_q() == ~Q(
+            duration_manual=timedelta(0)
+        )
+
+    def test_is_refunded_wired(self):
+        # value=False must select non-refunded (date_refunded IS NULL).
+        assert PurchaseFilter(is_refunded=BoolCriterion(value=False)).to_q() == Q(
+            date_refunded__isnull=True
+        )
+
+    def test_playtime_hours_wired(self):
+        from datetime import timedelta
+
+        assert GameFilter(
+            playtime_hours=IntCriterion(value=2, modifier=Modifier.GREATER_THAN)
+        ).to_q() == Q(playtime__gt=timedelta(hours=2))
+
+
+class TestSearchQHelper:
+    """search_q: empty short-circuit, multi-column OR, EXCLUDES negation."""
+
+    def test_empty_value_no_constraint(self):
+        assert search_q(StringCriterion(value=""), "name", "note") == Q()
+
+    def test_empty_value_excludes_still_no_constraint(self):
+        # Matches the old `if search and search.value` guard: empty value never
+        # negates to zero rows, regardless of modifier.
+        assert (
+            search_q(StringCriterion(value="", modifier=Modifier.EXCLUDES), "name")
+            == Q()
+        )
+
+    def test_multi_column_or(self):
+        assert search_q(StringCriterion(value="x"), "a", "b") == (
+            Q(a__icontains="x") | Q(b__icontains="x")
+        )
+
+    def test_excludes_negates_whole_disjunction(self):
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
+        ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))

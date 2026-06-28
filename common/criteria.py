@@ -510,6 +510,9 @@ class FieldComparisonCriterion(_Criterion):
 
 # ── Field descriptors ──────────────────────────────────────────────────────
 
+type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
+type ORMLookup = str  # a Django query path, e.g. "platform__group"
+
 # A custom criterion→Q builder for a filter field whose mapping is not a plain
 # ``criterion.to_q(lookup)`` — e.g. hours→duration conversion or a bool
 # presence/zero test. Built by the factories below (see ``duration_hours_handler``).
@@ -525,13 +528,19 @@ class FilterField:
     the ORM path (defaulting to the attribute name, so a plain field needs no
     argument); ``handler`` supplies bespoke Q logic for fields whose mapping is not
     a plain ``criterion.to_q(lookup)`` — the hours→duration and bool
-    presence/zero cases.
+    presence/zero cases. The two are mutually exclusive: a handler is fully
+    self-contained, so a ``lookup`` alongside it would be silently ignored —
+    ``__post_init__`` rejects that misconfiguration at import time.
     """
 
-    lookup: str | None = None
+    lookup: ORMLookup | None = None
     handler: FieldHandler | None = None
 
-    def to_q(self, attr_name: str, criterion: _Criterion) -> Q:
+    def __post_init__(self) -> None:
+        if self.lookup is not None and self.handler is not None:
+            raise ValueError("FilterField takes lookup OR handler, not both")
+
+    def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
         if self.handler is not None:
             return self.handler(criterion)
         return criterion.to_q(self.lookup or attr_name)
@@ -814,7 +823,7 @@ class OperatorFilter:
     # single source of truth for the ORM mapping); aggregates, M2M, ``search`` and
     # relation sub-filters are absent — they live in ``_extra_q``. Declared as a
     # ClassVar so the dataclass machinery does not treat it as a field.
-    fields: ClassVar[dict[str, FilterField]] = {}
+    fields: ClassVar[dict[AttrName, FilterField]] = {}
 
     # Criterion fields deliberately handled imperatively in ``_extra_q`` rather than
     # via ``fields`` (e.g. the M2M ``games``). ``search`` is here for every filter.
@@ -928,17 +937,6 @@ class OperatorFilter:
                     )
                 q &= comparison.to_q()
         return q
-
-    def _criterion_fields(self) -> list[str]:
-        """Return field names that hold a _Criterion instance."""
-        names: list[str] = []
-        for f in dc_fields(self):
-            if f.name in _OPERATOR_FIELDS:
-                continue
-            v = getattr(self, f.name)
-            if isinstance(v, _Criterion):
-                names.append(f.name)
-        return names
 
     def to_q(self) -> Q:
         """Build a Django Q object from this filter and its sub-filters.

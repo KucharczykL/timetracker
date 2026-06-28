@@ -113,7 +113,8 @@ class GameFilter(OperatorFilter):
     playevent_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
         "name": FilterField(),
         "sort_name": FilterField(),
@@ -283,7 +284,8 @@ class SessionFilter(OperatorFilter):
     # Cross-entity: sessions for devices matching these criteria
     device_filter: DeviceFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
         "game": FilterField("game_id"),
         "device": FilterField("device_id"),
@@ -389,7 +391,8 @@ class PurchaseFilter(OperatorFilter):
     # Cross-entity: purchases for platforms matching these criteria
     platform_filter: PlatformFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     # ``games`` (M2M) and ``search`` stay imperative — see ``_IMPERATIVE_CRITERIA``
     # and ``_extra_q``.
     fields = {
@@ -425,7 +428,9 @@ class PurchaseFilter(OperatorFilter):
     def _extra_q(self) -> Q:
         q = Q()
 
-        # M2M games: applied at the field position the old to_q used (after platform).
+        # M2M games: chained subqueries for INCLUDES_ALL/_ONLY keep it out of the
+        # declarative fields table. AND-composed into the same Q, so its position
+        # relative to the simple fields does not affect results.
         if self.games is not None:
             q &= self._games_to_q(self.games)
 
@@ -543,7 +548,8 @@ class DeviceFilter(OperatorFilter):
     # Cross-entity: Devices that have sessions matching these criteria
     session_filter: SessionFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
         "name": FilterField(),
         "type": FilterField(),
@@ -598,7 +604,8 @@ class PlatformFilter(OperatorFilter):
     game_filter: GameFilter | None = None
     purchase_filter: PurchaseFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
         "name": FilterField(),
         "group": FilterField(),
@@ -662,7 +669,8 @@ class PlayEventFilter(OperatorFilter):
     # Cross-entity: PlayEvents for games matching these criteria
     game_filter: GameFilter | None = None
 
-    # Declarative attr→ORM-lookup table (order mirrors the old to_q emission).
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
         "game": FilterField("game_id"),
         "started": FilterField(),
