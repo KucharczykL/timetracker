@@ -2,6 +2,7 @@ import pytest
 from django.urls import path
 from django.http import HttpResponse
 from django.test import override_settings
+from playwright.sync_api import expect
 from common.components import SearchSelect
 
 
@@ -11,6 +12,9 @@ def e2e_test_view(request):
     <html>
     <head>
         <title>SearchSelect E2E Test</title>
+        <!-- Load the compiled CSS so tests can assert real rendered visibility
+             (the .hidden utility resolves to display:none) instead of class strings. -->
+        <link rel="stylesheet" href="/static/base.css">
         <!-- search-select is a custom element; htmx must be present for filter_bar. -->
         <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
@@ -142,14 +146,13 @@ def test_search_select_tab_closes_panel(live_server, page):
 
     search_input.focus()
     # Panel is open on focus.
-    assert "hidden" not in (options_panel.get_attribute("class") or "")
+    expect(options_panel).to_be_visible()
 
     page.keyboard.press("Tab")
-    page.wait_for_timeout(50)
 
     # Focus moved to the next field, and the panel closed with no lingering highlight.
+    expect(options_panel).to_be_hidden()
     assert page.evaluate("() => document.activeElement.id") == "next-field"
-    assert "hidden" in (options_panel.get_attribute("class") or "")
     assert page.locator("[data-search-select-highlighted]").count() == 0
 
 
@@ -165,11 +168,10 @@ def test_search_select_option_click_selects(live_server, page):
 
     search_input.focus()
     page.locator('[data-search-select-option][data-value="8"]').click()
-    page.wait_for_timeout(50)
 
-    assert search_input.input_value() == "Game B"
+    expect(search_input).to_have_value("Game B")
     assert page.locator('input[name="games"]').first.get_attribute("value") == "8"
-    assert "hidden" in (options_panel.get_attribute("class") or "")
+    expect(options_panel).to_be_hidden()
 
 
 @pytest.mark.django_db
@@ -186,9 +188,8 @@ def test_search_select_arrow_and_enter_selects(live_server, page):
     # the next visible option (Game B), and Enter commits it.
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(50)
 
-    assert search_input.input_value() == "Game B"
+    expect(search_input).to_have_value("Game B")
     hidden_input = page.locator('input[name="games"]')
     assert hidden_input.first.get_attribute("value") == "8"
 
@@ -202,11 +203,10 @@ def test_search_select_type_filters_and_highlights(live_server, page):
     search_input = page.locator("input[data-search-select-search]")
     search_input.focus()
     search_input.type("B")
-    page.wait_for_timeout(50)
 
     game_a_row = page.locator('[data-search-select-option][data-value="7"]')
     game_b_row = page.locator('[data-search-select-option][data-value="8"]')
 
-    assert game_a_row.evaluate("node => node.style.display") == "none"
-    assert game_b_row.evaluate("node => node.style.display") != "none"
+    expect(game_a_row).to_be_hidden()
+    expect(game_b_row).to_be_visible()
     assert game_b_row.get_attribute("data-search-select-highlighted") is not None
