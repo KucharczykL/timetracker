@@ -346,13 +346,12 @@ def _enum_filter(
     *,
     nullable,
     path: FilterWidgetPath | None = None,
-    compose: bool = False,
 ) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
     Enum fields are single-valued, so no M2M modifiers (all/only are
-    meaningless); only the presence modifier is surfaced. ``path``/``compose``
-    let a cross-entity widget point at a nested sub-filter leaf (defaults to the
+    meaningless); only the presence modifier is surfaced. ``path`` lets a
+    cross-entity widget point at a nested sub-filter leaf (defaults to the
     flat ``[field_name]``).
     """
     options_str = [(str(value), label) for value, label in options]
@@ -371,7 +370,6 @@ def _enum_filter(
         modifier=modifier,
         modifier_options=_modifier_options(nullable),
         path=path if path is not None else [field_name],
-        compose=compose,
     )
 
 
@@ -383,16 +381,14 @@ def _model_filter(
     nullable,
     m2m_modifiers: list[LabeledOption] | None = None,
     path: FilterWidgetPath | None = None,
-    compose: bool = False,
 ) -> Node:
     """A FilterSelect backed by a search endpoint.
 
     Labels are embedded in the filter JSON (Stash-style), so pills render
     directly from ``choice`` with no DB round-trip. Pass ``m2m_modifiers`` for
     many-to-many fields to surface ``(All)`` / ``(Only)`` pseudo-options in the
-    dropdown alongside the presence options. ``path``/``compose`` let a
-    cross-entity widget point at a nested sub-filter leaf (defaults to the flat
-    ``[field_name]``).
+    dropdown alongside the presence options. ``path`` lets a cross-entity widget
+    point at a nested sub-filter leaf (defaults to the flat ``[field_name]``).
     """
     modifier = _split_modifier(choice.modifier, has_m2m=bool(m2m_modifiers))
     return FilterSelect(
@@ -404,7 +400,6 @@ def _model_filter(
         search_url=search_url,
         prefetch=DEFAULT_PREFETCH,
         path=path if path is not None else [field_name],
-        compose=compose,
     )
 
 
@@ -477,9 +472,9 @@ def _filter_boolean_radio(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-1"),
-            # No ``compose=True``: the relation-bool serializer branch builds and
-            # appends its own AND element directly, returning before it ever reads
-            # ``data-compose`` — so emitting it would be inert and misleading.
+            # The relation-bool serializer branch builds and appends its own AND
+            # element directly from ``data-relation-child``, so the generic
+            # path-length cross-entity branch never applies here.
             *filter_widget_attributes(
                 path,
                 kind,
@@ -887,7 +882,6 @@ def _game_fields(
                         search_url="/api/devices/search",
                         nullable=False,
                         path=["session_filter", "device"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -900,7 +894,6 @@ def _game_fields(
                         purchase_type_choice,
                         nullable=False,
                         path=["purchase_filter", "type"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -911,7 +904,6 @@ def _game_fields(
                         purchase_ownership_choice,
                         nullable=False,
                         path=["purchase_filter", "ownership_type"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -922,7 +914,6 @@ def _game_fields(
                         modifier=playevent_note_modifier,
                         placeholder="e.g. Completed, Started",
                         path=["playevent_filter", "note"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -1041,7 +1032,6 @@ def _game_fields(
                         min_value=finished_min,
                         max_value=finished_max,
                         path=["playevent_filter", "ended"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -1068,7 +1058,6 @@ def _game_fields(
                         placeholder2="e.g. 100",
                         step="0.01",
                         path=["purchase_filter", "converted_price"],
-                        compose=True,
                     ),
                 ),
             ],
@@ -1357,7 +1346,6 @@ def _purchase_fields(existing: dict) -> list:
                         min_value=finished_min,
                         max_value=finished_max,
                         path=["game_filter", "playevent_filter", "ended"],
-                        compose=True,
                     ),
                 ),
                 _filter_field(
@@ -1560,7 +1548,6 @@ def StringFilter(
     placeholder: str = "",
     *,
     path: FilterWidgetPath,
-    compose: bool = False,
 ) -> Node:
     """Renders a string filter with 8 modifier radio options and a text input."""
     from common.criteria import Modifier
@@ -1618,7 +1605,7 @@ def StringFilter(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "string", compose=compose),
+            *filter_widget_attributes(path, "string"),
         ],
         children=[
             Div(
@@ -1652,7 +1639,6 @@ def NumberFilter(
     step: str = "1",
     *,
     path: FilterWidgetPath,
-    compose: bool = False,
 ) -> Node:
     """Renders a numeric filter with 8 modifier radio options and two inputs.
 
@@ -1723,7 +1709,7 @@ def NumberFilter(
     return Div(
         attributes=[
             ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "number", compose=compose),
+            *filter_widget_attributes(path, "number"),
         ],
         children=[
             Div(
