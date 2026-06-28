@@ -43,30 +43,35 @@ The UI is a **homogeneous tree** of three node kinds. The serializer always emit
 form, which kills the transitional OR-isolation wrapper and the flat `field-comparison`
 special-case (the #167 `TODO(nested-builder)` debt).
 
-- **Group** — connective ∈ {`AND`, `OR`, `NOT`} + ordered children (groups / leaves /
-  relations). → `{CONNECTIVE: [child_json, …]}`, each child its own single-key dict.
-- **Leaf (criterion)** — field + criterion (modifier + value[/value2]). →
-  `{field: {value, modifier, value2?}}`.
-- **Leaf (field comparison)** — left/right column + modifier (reuses the existing single
-  `field-comparison` row). → `{field_comparisons: [{left, right, modifier, granularity}]}`.
-- **Relation descent** — relation field + quantifier + one child group. →
+- **Group** — connective ∈ {`AND`, `OR`} + optional `¬` negate flag + ordered children (groups
+  / leaves / relations). → `{CONNECTIVE: [child_json, …]}`, wrapped in `{NOT:[…]}` when `¬` is
+  set; each child its own single-key dict.
+- **Leaf (criterion)** — field + criterion (modifier + value[/value2]) + optional `¬` flag. →
+  `{field: {value, modifier, value2?}}`, wrapped in `{NOT:[…]}` when `¬` is set.
+- **Leaf (field comparison)** — left/right column + modifier + optional `¬` (reuses the existing
+  single `field-comparison` row). → `{field_comparisons: [{left, right, modifier, granularity}]}`.
+- **Relation descent** — relation field + quantifier + one child group + optional `¬`. →
   `{rel_field: {match: Q?, …child-group-serialized}}`; `match` omitted when ANY (default).
 
-**Negation:** `NOT` is a third group connective, but in the builder a **NOT group wraps
-exactly one child** (a leaf or a single AND/OR group), so `NOT[x]` = `~x` — unambiguous. "None
-of a, b" is `NOT[ OR[a,b] ]` (= `~a AND ~b`, verified). This avoids the silent meaning-shift a
-multi-child NOT would cause (`{NOT:[a,b]}` = `~a AND ~b` per backend, which reads as "none of"
-but surprises users mid-edit). Leaf-level "is-not" stays on each criterion's own modifier; to
-negate a whole group, wrap it in NOT. Backend contract (`{NOT:[single]}`) unchanged.
+**Negation (toggle model):** negation is **not** a connective — connectives are only `AND`/`OR`.
+Every node carries an independent **`¬` toggle** that inverts it (Qui's model). `¬` on a group
+inverts the whole group; `¬` on a leaf inverts that condition. This avoids the multi-child-NOT
+ambiguity entirely (there is no NOT *group*, so no "is it `~a∧~b` or `~(a∧b)`?" question) and
+spends **zero extra nesting depth** per negation — important against the depth cap, since a
+NOT-as-connective would burn a level for every negated group. On export, a node with `¬` set
+serializes wrapped as `{NOT:[node]}` (e.g. `¬OR[a,b]` → `{NOT:[{OR:[a,b]}]}` = `~a ∧ ~b`,
+verified). Leaf-level "is-not" via the criterion's own modifier (`NOT_EQUALS`, `EXCLUDES`, …)
+remains available too — `¬` and the modifier are two harmless routes to the same result;
+guidance favors the modifier for a single criterion, `¬` for groups.
 
 **Canonical export (verified correct):** each group exports to exactly one connective key
-(`{AND:[…]}` / `{OR:[…]}` / `{NOT:[one]}`), each child a single-key dict; a leaf →
-`{field:{…}}`; a relation → `{rel_field:{match?, <one canonical group>}}`. The builder **never
-emits a mixed node** (keyed fields + operator lists at one level). A live `to_q()` check
-confirmed canonical top-level `OR` evaluates identically to the old OR-isolation-wrapper form
-(empty `Q()` is absorbed in Django ORs — no match-all poisoning), so the transitional wrapper
-is genuinely droppable. Empty operator lists are dropped on export (`{AND:[]}`→`{}`); round-trip
-is **logical equivalence**, not byte equality.
+(`{AND:[…]}` / `{OR:[…]}`), each child a single-key dict; a leaf → `{field:{…}}`; a relation →
+`{rel_field:{match?, <one canonical group>}}`; any `¬`-set node is wrapped in `{NOT:[…]}`. The
+builder **never emits a mixed node** (keyed fields + operator lists at one level). A live
+`to_q()` check confirmed canonical top-level `OR` evaluates identically to the old
+OR-isolation-wrapper form (empty `Q()` is absorbed in Django ORs — no match-all poisoning), so
+the transitional wrapper is genuinely droppable. Empty operator lists are dropped on export
+(`{AND:[]}`→`{}`); round-trip is **logical equivalence**, not byte equality.
 
 **Import normalization (prefill from arbitrary/legacy JSON):** an `OperatorFilter` dict may mix
 keyed criterion fields + `AND`/`OR`/`NOT` lists + `field_comparisons` + sub-filter fields at one
@@ -77,7 +82,10 @@ The importer must **reproduce that precedence faithfully**, not assume an implic
    entry as its own comparison leaf, each sub-filter field as a relation node, each `AND`
    sub-filter imported recursively].
 2. If `OR` present: `P` becomes `OR[ P, …each OR sub-filter imported ]`.
-3. If `NOT` present: result becomes `AND[ (P-or-OR), …NOT[each NOT sub-filter] ]` (each `&= ~`).
+3. If `NOT` present: result becomes `AND[ (P-or-OR), …(each NOT sub-filter imported as a node
+   with its `¬` flag set) ]` (each `&= ~`). A single-child `AND[…]` collapses to its child, so
+   `{NOT:[{OR:[a,b]}]}` imports as an `OR[a,b]` node with `¬` set; a multi-child `{NOT:[a,b]}`
+   imports as `AND[ a¬, b¬ ]`.
 
 So `{name, OR:[x]}` correctly imports as `OR[name, x]` (= `name OR x`), **not** `AND(name, x)`.
 Re-export canonicalizes the shape; the tree's `to_q()` equals the original's. Reuse server
@@ -85,7 +93,8 @@ metadata — `resolve_path_kind()`, `_criterion_class_for()`, `comparable_column
 client never duplicates per-field type tables.
 
 **Relation / sub-filter notes:** a relation node's child is exactly **one** canonical group, so
-its sub-filter dict carries `match` + exactly one connective key (no ambiguity). An **empty**
+its sub-filter dict carries `match` + one connective key (or a `{NOT:[…]}` wrapper when the child
+group is negated) — no ambiguity. An **empty**
 relation child is a feature: `ANY`+empty = "has ≥1 related row", `NONE`+empty = "has 0 related
 rows". Cross-model relation fields can cycle (`game→session→game`), and the backend has **no
 recursion guard** today (see Open items) — a hand-edited cyclic `?filter=` would infinite-loop,
@@ -93,9 +102,10 @@ so a parse-time depth guard is a prerequisite.
 
 ## UX / visual spec
 
-- **Group rendering:** nested bordered cards; connective chip (`[AND ▾]`) in each card
-  header; nesting = cards-within-cards with **alternating depth background** (Qui pattern,
-  ~3–4 shade cycle).
+- **Group rendering:** nested bordered cards; header carries an `AND`/`OR` connective chip
+  plus a `¬` negate toggle (lit = whole group inverted); nesting = cards-within-cards with
+  **alternating depth background** (Qui pattern, ~3–4 shade cycle). Leaves carry the same `¬`
+  toggle.
 - **Relation descent:** inline **accent block** among the group's children —
   `↳ [ANY ▾] of [sessions ▾] where` header (relation pick + quantifier) wrapping a nested
   group built from the **target model's** fields (makes the Game→Session model switch
@@ -108,9 +118,10 @@ so a parse-time depth guard is a prerequisite.
   not a cross-branch move (vanilla DOM, robust on touch; both case studies warned nested-tree DnD
   is fragile).
 - **Depth: soft cap at 5.** The cap counts **group-nesting depth**; a relation-descent's child
-  group is **+1 level**; a criterion leaf is depth-0 (terminates). `Add group`/`Add relation`
-  disabled past depth 5 with a "max nesting reached" hint. (The backend recursion guard — Open
-  items — is set higher and is the real safety bound.)
+  group is **+1 level**; a criterion leaf is depth-0 (terminates); a `¬` toggle costs **0 levels**
+  (it's a flag, not a wrapper node). `Add group`/`Add relation` disabled past depth 5 with a
+  "max nesting reached" hint. (The backend recursion guard — Open items — is set higher and is the
+  real safety bound.)
 - **Add-condition / leaf flow:** `+ condition` inserts a row `[field ▾ searchable, grouped]
   [modifier ▾ valid-for-type] [value widget]`. Field-first; on field pick the modifier list +
   value widget derive from the criterion class. **On field change:** reset modifier to the first
@@ -161,12 +172,13 @@ foundational** and the rest depend on them. Build order: **0 → 9 → 6 → (1�
    `OperatorFilter` JSON: canonical export + the faithful import normalization (above). Replaces
    the flat `filter-bar.ts` `setPath`/`appendAnd`/`data-kind`-switch glue. Must serialize a tree
    recursively (per-group, not one global form pass). TS module, contract-tested against backend
-   round-trip (`to_q()` equality across OR / NOT-as-unary / relation×quantifier / field
+   round-trip (`to_q()` equality across OR / `¬`-negated group + leaf / relation×quantifier / field
    comparison / mixed-shape import).
 1. **Recursive group shell** custom element — group card, connective chip, ordered children,
    footer buttons, depth coloring, soft cap 5, buttons-only restructuring
    (remove/duplicate/wrap/**unwrap**/↑/↓). Recursion is the core.
-2. **Connective selector** — AND/OR/NOT chip dropdown (NOT = unary wrapper).
+2. **Connective selector + negate toggle** — `AND`/`OR` chip dropdown plus a per-node `¬` toggle
+   (groups and leaves); `¬` serializes as a `{NOT:[…]}` wrapper.
 3. **Add-criterion field picker** — searchable/grouped field combobox reading component 9's
    metadata; inserts a leaf row; defines on-field-change reset behavior.
 4. **Leaf row + leaf widgets** — field/modifier/value; derives modifier list + value widget from
@@ -197,7 +209,7 @@ Exact split may merge/refine during 2b (#173) planning, but this is the componen
 ## Verification (of the eventual build, for 2b/2d — not #172)
 
 - Round-trip property test: arbitrary nested `?filter=` JSON → import → export ≡ logically
-  equivalent (`to_q()` produces identical results); cover OR, NOT-as-none-of, relation +
+  equivalent (`to_q()` produces identical results); cover OR, `¬`-negated nodes, relation +
   each quantifier, field comparison, mixed-shape import normalization.
 - Component unit tests per 2c item (render + serialize in isolation).
 - e2e (Playwright, `e2e/`): build a cross-model filter on `/games/filter`, Apply, assert the

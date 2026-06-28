@@ -39,13 +39,19 @@ canonical (single-connective nodes); only *import of arbitrary/legacy JSON* need
 reading. In practice the app never emits mixed nodes (the OR-isolation wrapper kept OR isolated),
 so this matters for hand-edited / shared URLs.
 
-### 2. NOT-group silent semantic shift → **make NOT unary in the UI** — **HIGH**
-Backend `{NOT:[a,b]}` = `~a AND ~b` ("none of"). A user adding a 2nd child to a NOT group
-silently changes its meaning with no cue.
-**Resolution:** in the builder a **NOT group wraps exactly one child** (a leaf or one AND/OR
-group), so `NOT[x]` = `~x`, unambiguous. "None of a, b" is expressed as `NOT[ OR[a,b] ]`
-(= `~a ∧ ~b`, verified). The NL summary renders it explicitly. Leaf-level "is-not" stays on the
-criterion modifier; to negate a whole group you wrap it in NOT. Backend contract unchanged.
+### 2. NOT-group silent semantic shift → **toggle-NOT model** — **HIGH**
+Backend `{NOT:[a,b]}` = `~a AND ~b` ("none of"). Modeling NOT as a *connective* (a list of
+children) makes a 2nd child silently change the group's meaning. A unary NOT group was the first
+fix considered; the chosen fix drops NOT-as-connective entirely.
+**Resolution (decided with the user):** **toggle-NOT** — connectives are only `AND`/`OR`; every
+node (group and leaf) carries an independent **`¬` flag** that inverts it (Qui's model). No NOT
+*group* exists, so the multi-child ambiguity is structurally impossible, and negation costs **0
+nesting depth** (a flag, not a wrapper node) — which also eases the depth cap. On export a `¬`-set
+node wraps as `{NOT:[node]}` (`¬OR[a,b]` → `{NOT:[{OR:[a,b]}]}` = `~a ∧ ~b`, verified). Import maps
+a backend `{NOT:[…]}` list to nodes with `¬` set (`{NOT:[{OR:[a,b]}]}` → an `OR[a,b]` node with
+`¬`; multi-child `{NOT:[a,b]}` → `AND[a¬, b¬]`). Leaf "is-not" modifier remains a harmless second
+route. Tradeoff accepted: every group shows two controls (connective + `¬`) — a tiny price vs the
+unary machinery (auto-wrap on switch, NOT-footer special-casing, extra nesting).
 
 ### 3. Missing unwrap/outdent restructuring — **MEDIUM**
 Spec listed `wrap in group` but no inverse, and `↑/↓` only reorder within a group.
@@ -121,7 +127,7 @@ Only `parse_*_filter` exist; component 8 must add per-model count views
 
 The design's spine — homogeneous tree + canonical single-connective serializer — is **verified
 sound** (the headline "breaks" was disproven empirically). The review's real yield: a corrected
-import rule, NOT-as-unary, an unwrap control, defined depth/field-change/staleness semantics, an
+import rule, toggle-NOT, an unwrap control, defined depth/field-change/staleness semantics, an
 honest component build-order (metadata + serializer are foundational; FilterSelect & the
 comparison row need rework), and one genuinely important new backend prereq — the recursion/cycle
 guard. All folded into the updated spec.
