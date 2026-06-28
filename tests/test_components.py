@@ -591,6 +591,72 @@ class InputTest(unittest.TestCase):
         self.assertIn('class="form-input"', result)
 
 
+class NormalizeAttributesTest(unittest.TestCase):
+    """The node-layer attribute algebra: class/style accumulate, scalars first-wins."""
+
+    def test_duplicate_class_accumulates(self):
+        result = components.normalize_attributes(
+            [("class", "a"), ("class", "b"), ("class", "c")]
+        )
+        self.assertEqual(result, [("class", "a b c")])
+
+    def test_duplicate_scalar_first_wins(self):
+        result = components.normalize_attributes([("id", "first"), ("id", "second")])
+        self.assertEqual(result, [("id", "first")])
+
+    def test_style_accumulates_with_semicolon(self):
+        result = components.normalize_attributes(
+            [("style", "color: red"), ("style", "margin: 0")]
+        )
+        self.assertEqual(result, [("style", "color: red; margin: 0")])
+
+    def test_empty_class_contribution_dropped(self):
+        result = components.normalize_attributes(
+            [("class", ""), ("class", "real"), ("class", "")]
+        )
+        self.assertEqual(result, [("class", "real")])
+
+    def test_all_empty_class_omits_attribute(self):
+        result = components.normalize_attributes([("class", "")])
+        self.assertEqual(result, [])
+
+    def test_class_emitted_at_first_position(self):
+        result = components.normalize_attributes(
+            [("class", "a"), ("id", "x"), ("class", "b")]
+        )
+        self.assertEqual(result, [("class", "a b"), ("id", "x")])
+
+    def test_order_preserved_for_scalars(self):
+        result = components.normalize_attributes(
+            [("name", "n"), ("value", "v"), ("type", "text")]
+        )
+        self.assertEqual(result, [("name", "n"), ("value", "v"), ("type", "text")])
+
+    def test_non_string_scalar_value_preserved(self):
+        result = components.normalize_attributes([("tabindex", 0), ("checked", True)])
+        self.assertEqual(result, [("tabindex", 0), ("checked", True)])
+
+    def test_idempotent(self):
+        once = components.normalize_attributes(
+            [("class", "a"), ("class", "b"), ("id", "x"), ("id", "y")]
+        )
+        twice = components.normalize_attributes(once)
+        self.assertEqual(once, twice)
+
+    def test_no_duplicate_input_unchanged(self):
+        attrs = [("class", "btn"), ("id", "x"), ("name", "n")]
+        self.assertEqual(components.normalize_attributes(attrs), attrs)
+
+    def test_element_collapses_duplicate_class_in_render(self):
+        # The root-fix regression guard: duplicate-attribute HTML is impossible.
+        result = str(components.Element("div", [("class", "a"), ("class", "b")], "hi"))
+        self.assertEqual(result, '<div class="a b">hi</div>')
+
+    def test_element_duplicate_scalar_collapsed_in_render(self):
+        result = str(components.Element("div", [("id", "a"), ("id", "b")]))
+        self.assertEqual(result, '<div id="a"></div>')
+
+
 class PopoverTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated() component function."""
 

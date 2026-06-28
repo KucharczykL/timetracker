@@ -16,6 +16,7 @@ from common.components.core import (
     Safe,
     _render_element,
     collect_media,
+    normalize_attributes,
     randomid,
     render,
 )
@@ -163,6 +164,7 @@ __all__ = [
     "HTMLAttribute",
     "HTMLTag",
     "_render_element",
+    "normalize_attributes",
     "randomid",
     "A",
     "AddForm",
