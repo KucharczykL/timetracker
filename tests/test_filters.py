@@ -1860,3 +1860,98 @@ class TestFieldComparisonWiring:
         assert parsed is not None
         with pytest.raises(FilterError):
             parsed.to_q()
+
+
+# ── T4 — per-filter _comparison_model overrides ───────────────────────────────
+
+
+class TestFilterComparisonModels:
+    """T4: each real filter overrides _comparison_model() to return its model."""
+
+    def test_all_six_filters_return_their_model(self):
+        from games.filters import (
+            DeviceFilter,
+            GameFilter,
+            PlayEventFilter,
+            PlatformFilter,
+            PurchaseFilter,
+            SessionFilter,
+        )
+        from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+
+        assert GameFilter()._comparison_model() is Game
+        assert SessionFilter()._comparison_model() is Session
+        assert PurchaseFilter()._comparison_model() is Purchase
+        assert DeviceFilter()._comparison_model() is Device
+        assert PlatformFilter()._comparison_model() is Platform
+        assert PlayEventFilter()._comparison_model() is PlayEvent
+
+    @pytest.mark.django_db
+    def test_purchase_filter_happy_path_to_q(self):
+        from games.filters import PurchaseFilter
+
+        pf = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert pf.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    @pytest.mark.django_db
+    def test_purchase_filter_json_parse_roundtrip(self):
+        from common.criteria import filter_to_json
+        from games.filters import PurchaseFilter, parse_purchase_filter
+
+        pf = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        parsed = parse_purchase_filter(filter_to_json(pf))
+        assert parsed is not None
+        assert len(parsed.field_comparisons) == 1
+        assert parsed.field_comparisons[0].left == "date_refunded"
+        assert parsed.field_comparisons[0].right == "date_purchased"
+        assert parsed.field_comparisons[0].modifier == Modifier.LESS_THAN
+        parsed.to_q()  # does not raise
+
+    @pytest.mark.django_db
+    def test_cross_group_pair_raises_filter_error_via_parse(self):
+        from games.filters import parse_purchase_filter
+
+        bad = json.dumps(
+            {
+                "field_comparisons": [
+                    {
+                        "left": "date_refunded",
+                        "right": "price",
+                        "modifier": "LESS_THAN",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(FilterError):
+            parse_purchase_filter(bad)
+
+    @pytest.mark.django_db
+    def test_session_filter_comparison_resolves(self):
+        from games.filters import SessionFilter
+
+        sf = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_end",
+                    right="timestamp_start",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start"))

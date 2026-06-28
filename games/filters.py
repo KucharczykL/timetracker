@@ -12,6 +12,17 @@ with AND/OR/NOT composition and typed criterion fields.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Type
+
+if TYPE_CHECKING:
+    from games.models import (
+        Device,
+        Game,
+        PlayEvent,
+        Platform,
+        Purchase,
+        Session,
+    )
 
 from django.db.models import Q
 from django.urls import reverse
@@ -97,6 +108,11 @@ class GameFilter(OperatorFilter):
     purchase_filter: PurchaseFilter | None = None
     playevent_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
+
+    def _comparison_model(self) -> Type[Game]:
+        from games.models import Game
+
+        return Game
 
     def to_q(self) -> Q:
         q = Q()
@@ -285,6 +301,11 @@ class SessionFilter(OperatorFilter):
     # Cross-entity: sessions for devices matching these criteria
     device_filter: DeviceFilter | None = None
 
+    def _comparison_model(self) -> Type[Session]:
+        from games.models import Session
+
+        return Session
+
     def _duration_to_q(self, c: IntCriterion, field: str) -> Q:
         """Convert an hours-based criterion to a DurationField Q object."""
         return duration_hours_to_q(c.value, c.value2, c.modifier, field)
@@ -403,6 +424,11 @@ class PurchaseFilter(OperatorFilter):
 
     # Cross-entity: purchases for platforms matching these criteria
     platform_filter: PlatformFilter | None = None
+
+    def _comparison_model(self) -> Type[Purchase]:
+        from games.models import Purchase
+
+        return Purchase
 
     def to_q(self) -> Q:
         q = Q()
@@ -564,6 +590,11 @@ class DeviceFilter(OperatorFilter):
     # Cross-entity: Devices that have sessions matching these criteria
     session_filter: SessionFilter | None = None
 
+    def _comparison_model(self) -> Type[Device]:
+        from games.models import Device
+
+        return Device
+
     def to_q(self) -> Q:
         q = Q()
 
@@ -619,6 +650,11 @@ class PlatformFilter(OperatorFilter):
     # Cross-entity
     game_filter: GameFilter | None = None
     purchase_filter: PurchaseFilter | None = None
+
+    def _comparison_model(self) -> Type[Platform]:
+        from games.models import Platform
+
+        return Platform
 
     def to_q(self) -> Q:
         q = Q()
@@ -685,6 +721,11 @@ class PlayEventFilter(OperatorFilter):
 
     # Cross-entity: PlayEvents for games matching these criteria
     game_filter: GameFilter | None = None
+
+    def _comparison_model(self) -> Type[PlayEvent]:
+        from games.models import PlayEvent
+
+        return PlayEvent
 
     def to_q(self) -> Q:
         q = Q()
