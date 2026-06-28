@@ -313,8 +313,8 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             ),
             ("SearchField", str(components.SearchField())),
             ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
-            ("H1", str(components.H1(["Title"]))),
-            ("H1 with badge", str(components.H1(["Title"], badge="3"))),
+            ("PageHeading", str(components.PageHeading(["Title"]))),
+            ("PageHeading with badge", str(components.PageHeading(["Title"], badge="3"))),
         ]:
             with self.subTest(component=label):
                 self.assertTrue(

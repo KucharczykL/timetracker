@@ -29,18 +29,12 @@ def GameLink(
     display = as_children(children) or [name]
     link = reverse("games:view_game", args=[game_id])
 
-    return Span(
-        attributes=[("class", "truncate-container")],
-        children=[
-            A(
-                href=link,
-                attributes=[
-                    ("class", "underline decoration-slate-500 sm:decoration-2"),
-                ],
-                children=display,
-            ),
-        ],
-    )
+    return Span(class_="truncate-container")[
+        A(
+            href=link,
+            class_="underline decoration-slate-500 sm:decoration-2",
+        )[*display],
+    ]
 
 
 _STATUS_COLORS = {
@@ -89,14 +83,14 @@ def GameStatus(
         outer_class = "flex gap-2 items-center"
         if class_:
             outer_class += f" {class_}"
-        dot = Span(attributes=[("class", dot_base)])
-        return Span(class_=outer_class, children=[dot] + as_children(children))
+        dot = Span(class_=dot_base)
+        return Span(class_=outer_class)[dot, *as_children(children)]
 
-    dot = Span(attributes=[("class", f"mr-[0.28em] {dot_base}")])
+    dot = Span(class_=f"mr-[0.28em] {dot_base}")
     outer_class = "mx-[0.45em] whitespace-nowrap"
     if class_:
         outer_class += f" {class_}"
-    return Span(class_=outer_class, children=[dot] + as_children(children))
+    return Span(class_=outer_class)[dot, *as_children(children)]
 
 
 def PriceConverted(
@@ -105,12 +99,9 @@ def PriceConverted(
     """Wrap content in a span that indicates the price was converted."""
     children = children or []
     return Span(
-        attributes=[
-            ("title", "Price is a result of conversion and rounding."),
-            ("class", "decoration-dotted underline"),
-        ],
-        children=as_children(children),
-    )
+        title="Price is a result of conversion and rounding.",
+        class_="decoration-dotted underline",
+    )[*as_children(children)]
 
 
 def LinkedPurchase(purchase: Purchase) -> Node:
@@ -143,21 +134,18 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     )
     if link_content == "":
         raise ValueError("link_content is empty!!")
-    a_content = Div(
-        [("class", "inline-flex gap-2 items-center")],
-        [
-            Icon(
-                icon,
-                [("title", "Multiple")],
-            ),
-            PopoverTruncated(
-                input_string=link_content,
-                popover_content=Safe(popover_content),
-                popover_if_not_truncated=popover_if_not_truncated,
-            ),
-        ],
-    )
-    return A(href=link, children=[a_content])
+    a_content = Div(class_="inline-flex gap-2 items-center")[
+        Icon(
+            icon,
+            [("title", "Multiple")],
+        ),
+        PopoverTruncated(
+            input_string=link_content,
+            popover_content=Safe(popover_content),
+            popover_if_not_truncated=popover_if_not_truncated,
+        ),
+    ]
+    return A(href=link)[a_content]
 
 
 def NameWithIcon(
@@ -171,28 +159,18 @@ def NameWithIcon(
         name, game, session, linkify
     )
 
-    content = Div(
-        [("class", "inline-flex gap-2 items-center")],
-        [
-            Icon(
-                platform.icon,
-                [("title", platform.name)],
-            )
-            if platform
-            else "",
-            Icon("emulated", [("title", "Emulated")]) if final_emulated else "",
-            PopoverTruncated(_name),
-        ],
-    )
-
-    return (
-        A(
-            href=link,
-            children=[content],
+    content = Div(class_="inline-flex gap-2 items-center")[
+        Icon(
+            platform.icon,
+            [("title", platform.name)],
         )
-        if create_link
-        else content
-    )
+        if platform
+        else "",
+        Icon("emulated", [("title", "Emulated")]) if final_emulated else "",
+        PopoverTruncated(_name),
+    ]
+
+    return A(href=link)[content] if create_link else content
 
 
 def _resolve_name_with_icon(
@@ -240,14 +218,14 @@ def GameStatusSelector(game, game_statuses, csrf_token: str, class_: str = "") -
     options: list[SelectOption] = [
         SelectOption(
             value,
-            GameStatus(status=value, children=[label], display="flex"),
+            GameStatus([label], status=value, display="flex"),
             value == game.status,
         )
         for value, label in game_statuses
     ]
     return SelectDropdown(
         current_label=GameStatus(
-            status=game.status, children=[game.get_status_display()], display="flex"
+            [game.get_status_display()], status=game.status, display="flex"
         ),
         options=options,
         id=f"game-{game.id}-status",
@@ -328,7 +306,7 @@ def SessionActions(session, csrf_token: str) -> Node:
     children: list[Node] = [actions]
     if is_open:
         children.append(
-            Div(attributes=[("data-reset-modal", ""), ("hidden", "")])[
+            Div(data_reset_modal="", hidden="")[
                 Modal(
                     modal_id,
                     [
@@ -343,11 +321,11 @@ def SessionActions(session, csrf_token: str) -> Node:
                             # gray secondary cancel.
                             StyledButton(
                                 color="red",
-                                attributes=[("data-reset-confirm", "")],
+                                data_reset_confirm="",
                             )["Reset to now"],
                             StyledButton(
                                 color="gray",
-                                attributes=[("data-reset-cancel", "")],
+                                data_reset_cancel="",
                             )["Cancel"],
                         ],
                     ],

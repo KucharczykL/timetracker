@@ -8,8 +8,9 @@ from common.components import (
     FORM_MAX_WIDTH_CLASS,
     CsrfInput,
     Div,
-    Element,
+    Form,
     FormFields,
+    H2,
     Node,
     StyledButton,
 )
@@ -18,28 +19,16 @@ from games.forms import LoginForm
 
 
 def _login_content(form, request) -> Node:
-    return Div(
-        [("class", "flex items-center flex-col")],
-        [
-            Element(
-                "h2",
-                attributes=[("class", "text-3xl text-white mb-8")],
-                children=["Please log in to continue"],
-            ),
-            Element(
-                "form",
-                attributes=[
-                    ("method", "post"),
-                    ("class", f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS}"),
-                ],
-                children=[
-                    CsrfInput(request),
-                    FormFields(form),
-                    StyledButton([], "Login", type="submit"),
-                ],
-            ),
+    return Div(class_="flex items-center flex-col")[
+        H2(class_="text-3xl text-white mb-8")["Please log in to continue"],
+        Form(
+            method="post", class_=f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS}"
+        )[
+            CsrfInput(request),
+            FormFields(form),
+            StyledButton(type="submit")["Login"],
         ],
-    )
+    ]
 
 
 class LoginView(auth_views.LoginView):

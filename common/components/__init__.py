@@ -69,6 +69,8 @@ from common.components.filters import (
 )
 from common.components.primitives import (
     H1,
+    H2,
+    H3,
     A,
     AddForm,
     Badge,
@@ -96,6 +98,7 @@ from common.components.primitives import (
     ModuleScript,
     Nav,
     Option,
+    PageHeading,
     Pill,
     Popover,
     Column,
@@ -186,6 +189,9 @@ __all__ = [
     "Div",
     "ExternalScript",
     "H1",
+    "H2",
+    "H3",
+    "PageHeading",
     "ICON_BUTTON_SIZE_CLASS",
     "Icon",
     "Input",

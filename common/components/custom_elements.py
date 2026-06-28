@@ -226,10 +226,10 @@ def SelectionFields(
     light DOM (an empty rows container + a row ``<template>``). Inputs inherit
     the global ``#add-form`` styling, so the markup stays minimal.
     """
-    row_template = Template(attributes=[("data-selection-fields-row", "")])[
-        Div(attributes=[("data-selection-fields-row-item", "")])[
-            Label(attributes=[("data-selection-fields-label", "")]),
-            Input(type=field_type, attributes=list(input_attributes or [])),
+    row_template = Template(data_selection_fields_row="")[
+        Div(data_selection_fields_row_item="")[
+            Label(data_selection_fields_label=""),
+            Input(list(input_attributes or []), type=field_type),
         ]
     ]
     return _SelectionFields(
@@ -239,7 +239,7 @@ def SelectionFields(
         min_items=min_items,
         active="true" if active else "false",
     )[
-        Div(attributes=[("data-selection-fields-rows", "")]),
+        Div(data_selection_fields_rows=""),
         row_template,
     ]
 
@@ -420,7 +420,7 @@ def DropdownActionItem(
     if disabled:
         item_attributes += [("disabled", ""), ("aria-disabled", "true")]
     item_attributes += list(attributes or [])
-    return Li(role="presentation")[Element("button", item_attributes, [label])]
+    return Li(role="presentation")[Button(item_attributes)[label]]
 
 
 def DropdownCheckItem(
@@ -440,14 +440,10 @@ def DropdownCheckItem(
     ]
     item_attributes += list(attributes or [])
     return Li(role="presentation")[
-        Element(
-            "button",
-            item_attributes,
-            [
-                Span(class_="opacity-0 group-aria-[checked=true]:opacity-100")["✓"],
-                Span()[label],
-            ],
-        )
+        Button(item_attributes)[
+            Span(class_="opacity-0 group-aria-[checked=true]:opacity-100")["✓"],
+            Span()[label],
+        ]
     ]
 
 
@@ -538,7 +534,7 @@ def DropdownMenuPanel(*, items: list[Node], aria_label: str = "") -> Element:
         attributes.append(("aria-label", aria_label))
     # role="presentation" on the list wrappers so the implicit list/listitem roles
     # don't break the menu→menuitem ownership the role="menu" panel declares.
-    return Element("div", attributes, [Ul(role="presentation")[*items]])
+    return Div(attributes)[Ul(role="presentation")[*items]]
 
 
 def MenuDropdown(
@@ -551,7 +547,7 @@ def MenuDropdown(
 ) -> Node:
     """A borderless, navbar-style menu dropdown (the old non-outline look)."""
     trigger = _as_menu_trigger(
-        Button(attributes=[("type", "button"), ("class", _DROPDOWN_TOGGLE_PLAIN)])[
+        Button(type="button", class_=_DROPDOWN_TOGGLE_PLAIN)[
             Span(class_="flex items-center gap-1")[label, Icon("arrowdown")]
         ]
     )
@@ -599,12 +595,9 @@ def SplitButtonDropdown(
     that opens the menu. The Dropdown attaches to the caret only — ``primary`` is
     a plain sibling, so the core never needs to know it exists."""
     caret = _as_menu_trigger(
-        Button(
-            attributes=[
-                ("type", "button"),
-                ("class", DROPDOWN_TOGGLE_OUTLINE + " rounded-e-lg"),
-            ]
-        )[Icon("arrowdown")]
+        Button(type="button", class_=DROPDOWN_TOGGLE_OUTLINE + " rounded-e-lg")[
+            Icon("arrowdown")
+        ]
     )
     dropdown = Dropdown(
         trigger_element=caret,
@@ -628,15 +621,10 @@ def DropdownSubmenu(
     + ArrowRight/Left); only ``placement`` is tunable."""
     trigger = _as_menu_trigger(
         Button(
-            attributes=[
-                ("type", "button"),
-                ("role", "menuitem"),
-                ("tabindex", "-1"),
-                (
-                    "class",
-                    DROPDOWN_ITEM_CLASS + " flex items-center justify-between gap-2",
-                ),
-            ]
+            type="button",
+            role="menuitem",
+            tabindex="-1",
+            class_=DROPDOWN_ITEM_CLASS + " flex items-center justify-between gap-2",
         )[Span()[label], Icon("arrowright")]
     )
     return Li(role="presentation")[
@@ -672,25 +660,21 @@ def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Elemen
         attributes.append(("aria-label", aria_label))
     option_nodes = [
         Li(role="presentation")[
-            Element(
-                "button",
-                [
-                    ("type", "button"),
-                    ("role", "option"),
-                    ("data-option", ""),
-                    ("data-value", value),
-                    ("aria-selected", "true" if selected else "false"),
-                    ("tabindex", "-1"),
-                    ("class", DROPDOWN_ITEM_CLASS),
-                ],
-                [label],
-            )
+            Button(
+                type="button",
+                role="option",
+                data_option="",
+                data_value=value,
+                aria_selected="true" if selected else "false",
+                tabindex="-1",
+                class_=DROPDOWN_ITEM_CLASS,
+            )[label]
         ]
         for value, label, selected in options
     ]
     # role="presentation" on the list wrappers keeps the listbox→option ownership
     # intact (the implicit list/listitem roles would otherwise interrupt it).
-    return Element("div", attributes, [Ul(role="presentation")[*option_nodes]])
+    return Div(attributes)[Ul(role="presentation")[*option_nodes]]
 
 
 def SelectDropdown(
@@ -710,16 +694,11 @@ def SelectDropdown(
     PATCH the server (via the client `select` behavior). The per-entity specifics
     (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
     trigger = Button(
-        attributes=[
-            ("type", "button"),
-            (
-                "class",
-                DROPDOWN_TOGGLE_OUTLINE
-                + " rounded-lg"
-                + (f" {class_}" if class_ else ""),
-            ),
-            ("aria-haspopup", "listbox"),
-        ]
+        type="button",
+        class_=(
+            DROPDOWN_TOGGLE_OUTLINE + " rounded-lg" + (f" {class_}" if class_ else "")
+        ),
+        aria_haspopup="listbox",
     )[
         Span(class_="flex flex-row gap-4 justify-between items-center")[
             Span(data_label="")[current_label], Icon("arrowdown")

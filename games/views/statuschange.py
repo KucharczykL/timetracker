@@ -11,7 +11,7 @@ from common.components import (
     Column,
     CsrfInput,
     Div,
-    Element,
+    Form,
     StyledButton,
     TableData,
     make_row,
@@ -82,31 +82,15 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
 
 def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText:
-    inner = Div(
-        [],
-        [
-            P(
-                children=["Are you sure you want to delete this status change?"],
-            ),
-            StyledButton(
-                [("class", "w-full")], "Delete", color="red", type="submit", size="lg"
-            ),
-            A(
-                [("class", "")],
-                StyledButton([("class", "w-full")], "Cancel", color="gray"),
-                href=reverse("games:view_game", args=[statuschange.game.id]),
-            ),
+    inner = Div()[
+        P()["Are you sure you want to delete this status change?"],
+        StyledButton(color="red", type="submit", size="lg", class_="w-full")["Delete"],
+        A(href=reverse("games:view_game", args=[statuschange.game.id]))[
+            StyledButton(color="gray", class_="w-full")["Cancel"]
         ],
-    )
-    form = Element(
-        "form",
-        attributes=[("method", "post"), ("class", "dark:text-white")],
-        children=[CsrfInput(request), inner],
-    )
-    return Div(
-        [("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")],
-        [form],
-    )
+    ]
+    form = Form(method="post", class_="dark:text-white")[CsrfInput(request), inner]
+    return Div(class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")[form]
 
 
 @login_required

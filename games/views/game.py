@@ -12,15 +12,15 @@ from django.urls import reverse
 
 from common.components import (
     CONTENT_MAX_WIDTH_CLASS,
-    H1,
+    PageHeading,
     A,
     AddForm,
     ButtonGroup,
     Column,
     CsrfInput,
     Div,
-    Element,
     FilterBar,
+    Form,
     Fragment,
     GameStatus,
     GameStatusSelector,
@@ -246,100 +246,64 @@ def _delete_game_confirmation_modal(
 ) -> Node:
     data_items = []
     if session_count:
-        data_items.append(Li(children=[f"{session_count} session(s)"]))
+        data_items.append(Li()[f"{session_count} session(s)"])
     if purchase_count:
-        data_items.append(Li(children=[f"{purchase_count} purchase(s)"]))
+        data_items.append(Li()[f"{purchase_count} purchase(s)"])
     if playevent_count:
-        data_items.append(Li(children=[f"{playevent_count} play event(s)"]))
+        data_items.append(Li()[f"{playevent_count} play event(s)"])
     if not (session_count or purchase_count or playevent_count):
-        data_items.append(Li(children=["No associated data"]))
+        data_items.append(Li()["No associated data"])
 
-    form = Element(
-        "form",
-        attributes=[
-            ("hx-post", reverse("games:delete_game", args=[game.id])),
-            ("hx-replace-url", "true"),
-            ("hx-target", "#main-container"),
-            ("hx-select", "#main-container"),
-            ("hx-swap", "outerHTML"),
-        ],
-        children=[
-            CsrfInput(request),
-            P(
-                attributes=[
-                    (
-                        "class",
-                        "dark:text-white text-center mt-3 text-sm text-gray-600 "
-                        "dark:text-gray-400",
-                    )
-                ],
-                children=[
-                    "This will permanently delete this game and all associated data:"
-                ],
+    form = Form(
+        hx_post=reverse("games:delete_game", args=[game.id]),
+        hx_replace_url="true",
+        hx_target="#main-container",
+        hx_select="#main-container",
+        hx_swap="outerHTML",
+    )[
+        CsrfInput(request),
+        P(
+            class_="dark:text-white text-center mt-3 text-sm text-gray-600 "
+            "dark:text-gray-400",
+        )["This will permanently delete this game and all associated data:"],
+        Ul(
+            class_="dark:text-white text-center mt-1 text-sm text-gray-600 "
+            "dark:text-gray-400 list-disc list-inside",
+        )[*data_items],
+        P(
+            class_="dark:text-white text-center mt-3 text-sm font-medium "
+            "text-red-600 dark:text-red-400",
+        )["This action cannot be undone."],
+        Div(class_="items-center mt-5")[
+            StyledButton(
+                [("class", "w-full")],
+                "Delete",
+                color="red",
+                size="lg",
+                type="submit",
             ),
-            Ul(
-                attributes=[
-                    (
-                        "class",
-                        "dark:text-white text-center mt-1 text-sm text-gray-600 "
-                        "dark:text-gray-400 list-disc list-inside",
-                    )
-                ],
-                children=data_items,
-            ),
-            P(
-                attributes=[
-                    (
-                        "class",
-                        "dark:text-white text-center mt-3 text-sm font-medium "
-                        "text-red-600 dark:text-red-400",
-                    )
-                ],
-                children=["This action cannot be undone."],
-            ),
-            Div(
-                [("class", "items-center mt-5")],
-                [
-                    StyledButton(
-                        [("class", "w-full")],
-                        "Delete",
-                        color="red",
-                        size="lg",
-                        type="submit",
-                    ),
-                    StyledButton(
-                        [("class", "mt-0 w-full")],
-                        "Cancel",
-                        color="gray",
-                        size="base",
-                        onclick=(
-                            "this.closest('#delete-game-confirmation-modal').remove()"
-                        ),
-                    ),
-                ],
+            StyledButton(
+                [("class", "mt-0 w-full")],
+                "Cancel",
+                color="gray",
+                size="base",
+                onclick=("this.closest('#delete-game-confirmation-modal').remove()"),
             ),
         ],
-    )
+    ]
     return Modal(
         "delete-game-confirmation-modal",
         children=[
             P(
-                attributes=[
-                    (
-                        "class",
-                        "text-2xl leading-6 font-medium dark:text-white text-center",
-                    )
-                ],
-                children=["Delete Game"],
-            ),
+                class_="text-2xl leading-6 font-medium dark:text-white text-center",
+            )["Delete Game"],
             P(
-                attributes=[("class", "dark:text-white text-center mt-5")],
-                children=[
-                    "Are you sure you want to delete ",
-                    Strong(children=[game.name]),
-                    "?",
-                ],
-            ),
+                class_="dark:text-white text-center mt-5",
+            )[
+                "Are you sure you want to delete ",
+                Strong()[game.name],
+                "?",
+            ],
             form,
         ],
     )
@@ -449,12 +413,12 @@ def _stat_popover(popover_id: str, tooltip: str, svg_key: str, value: str) -> No
 
 def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     children: list[Node | str] = [
-        Span(attributes=[("class", "uppercase")], children=[label]),
+        Span(class_="uppercase")[label],
         value,
     ]
     if extra:
         children.append(extra)
-    return Div([("class", "flex gap-2 items-center")], children)
+    return Div(class_="flex gap-2 items-center")[*children]
 
 
 def _game_action_buttons(game: Game) -> Node:
@@ -504,31 +468,24 @@ def _game_history(statuschanges: QuerySet[GameStatusChange]) -> Node:
             status=change.new_status,
             children=[change.get_new_status_display()],
         )
-        edit = A(
-            href=reverse("games:edit_statuschange", args=[change.id]),
-            children=["Edit"],
-        )
-        delete = A(
-            href=reverse("games:delete_statuschange", args=[change.id]),
-            children=["Delete"],
-        )
+        edit = A(href=reverse("games:edit_statuschange", args=[change.id]))["Edit"]
+        delete = A(href=reverse("games:delete_statuschange", args=[change.id]))[
+            "Delete"
+        ]
         items.append(
-            Li(
-                attributes=[("class", "text-slate-500")],
-                children=[
-                    f"{prefix} status from",
-                    old_status,
-                    "to",
-                    new_status,
-                    "(",
-                    edit,
-                    ", ",
-                    delete,
-                    ")",
-                ],
-            )
+            Li(class_="text-slate-500")[
+                f"{prefix} status from",
+                old_status,
+                "to",
+                new_status,
+                "(",
+                edit,
+                ", ",
+                delete,
+                ")",
+            ]
         )
-    return Ul(class_="list-disc list-inside", children=items)
+    return Ul(class_="list-disc list-inside")[*items]
 
 
 def _game_section(
@@ -539,34 +496,27 @@ def _game_section(
     view_all_url: str | None = None,
 ) -> Node:
     if view_all_url and count:
-        view_all_link = A(
-            href=view_all_url,
-            children=[
-                StyledButton(
-                    icon=True,
-                    color="gray",
-                    size="xs",
-                    title=f"View all {title.lower()} for this game",
-                    children=[
-                        Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
-                        "View all",
-                    ],
-                )
-            ],
-        )
-        header = Div(
-            [("class", "flex items-center justify-between")],
-            [H1(children=[title], badge=str(count) if count else ""), view_all_link],
-        )
+        view_all_link = A(href=view_all_url)[
+            StyledButton(
+                icon=True,
+                color="gray",
+                size="xs",
+                title=f"View all {title.lower()} for this game",
+            )[
+                Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
+                "View all",
+            ]
+        ]
+        header = Div(class_="flex items-center justify-between")[
+            PageHeading(children=[title], badge=str(count) if count else ""),
+            view_all_link,
+        ]
     else:
-        header = H1(children=[title], badge=str(count) if count else "")
-    return Div(
-        [("class", "mb-6")],
-        [
-            header,
-            table if count else empty_message,
-        ],
-    )
+        header = PageHeading(children=[title], badge=str(count) if count else "")
+    return Div(class_="mb-6")[
+        header,
+        table if count else empty_message,
+    ]
 
 
 def _game_overview_metrics(game: Game) -> dict[str, Any]:
@@ -598,100 +548,80 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
 
 def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> Node:
     grey_value_class = "text-black dark:text-slate-300"
-    title_span = Span(
-        attributes=[("class", "text-balance max-w-120 text-lg lg:text-4xl")],
-        children=[
-            Span(
-                attributes=[("class", "font-bold font-serif")],
-                children=[game.name],
-            ),
-        ]
-        + (
+    title_span = Span(class_="text-balance max-w-120 text-lg lg:text-4xl")[
+        *(
             [
-                Safe("&nbsp;"),
-                Popover(
-                    popover_content="Original release year",
-                    wrapped_classes="text-slate-500 text-base lg:text-2xl",
-                    id="popover-year",
-                    children=[str(game.year_released)],
-                ),
+                Span(class_="font-bold font-serif")[game.name],
             ]
-            if game.year_released
-            else []
-        ),
-    )
-    stats_row = Div(
-        [("class", "flex gap-4 text-xs lg:text-lg dark:text-slate-400 mb-3")],
-        [
-            _stat_popover(
-                "popover-hours",
-                "Total hours played",
-                "hours",
-                game.playtime_formatted(),
-            ),
-            _stat_popover(
-                "popover-sessions",
-                "Number of sessions",
-                "sessions",
-                metrics["session_count"],
-            ),
-            _stat_popover(
-                "popover-average",
-                "Average playtime per session",
-                "average",
-                metrics["session_average_without_manual"],
-            ),
-            _stat_popover(
-                "popover-playrange",
-                "Earliest and latest dates played",
-                "playrange",
-                metrics["playrange"],
-            ),
-        ],
-    )
-    metadata = Div(
-        [
-            (
-                "class",
-                "flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-xs lg:text-base",
+            + (
+                [
+                    Safe("&nbsp;"),
+                    Popover(
+                        popover_content="Original release year",
+                        wrapped_classes="text-slate-500 text-base lg:text-2xl",
+                        id="popover-year",
+                        children=[str(game.year_released)],
+                    ),
+                ]
+                if game.year_released
+                else []
             )
-        ],
-        [
-            _meta_row(
-                "Original year",
-                Span(
-                    attributes=[("class", grey_value_class)],
-                    children=[str(game.original_year_released)],
-                ),
-            ),
-            _meta_row(
-                "Status",
-                Span(class_="text-xs")[
-                    GameStatusSelector(
-                        game, Game.Status.choices, get_token(request), class_="text-xs"
-                    )
-                ],
-                "👑" if game.mastered else "",
-            ),
-            _played_row(game, request),
-            _meta_row(
-                "Platform",
-                Span(
-                    attributes=[("class", grey_value_class)],
-                    children=[str(game.platform)],
-                ),
-            ),
-        ],
-    )
-    return Div(
-        [("id", "game-info"), ("class", "mb-10")],
-        [
-            Div([("class", "flex gap-5 mb-3")], [title_span]),
-            stats_row,
-            metadata,
-            _game_action_buttons(game),
-        ],
-    )
+        )
+    ]
+    stats_row = Div(class_="flex gap-4 text-xs lg:text-lg dark:text-slate-400 mb-3")[
+        _stat_popover(
+            "popover-hours",
+            "Total hours played",
+            "hours",
+            game.playtime_formatted(),
+        ),
+        _stat_popover(
+            "popover-sessions",
+            "Number of sessions",
+            "sessions",
+            metrics["session_count"],
+        ),
+        _stat_popover(
+            "popover-average",
+            "Average playtime per session",
+            "average",
+            metrics["session_average_without_manual"],
+        ),
+        _stat_popover(
+            "popover-playrange",
+            "Earliest and latest dates played",
+            "playrange",
+            metrics["playrange"],
+        ),
+    ]
+    metadata = Div(
+        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-xs lg:text-base",
+    )[
+        _meta_row(
+            "Original year",
+            Span(class_=grey_value_class)[str(game.original_year_released)],
+        ),
+        _meta_row(
+            "Status",
+            Span(class_="text-xs")[
+                GameStatusSelector(
+                    game, Game.Status.choices, get_token(request), class_="text-xs"
+                )
+            ],
+            "👑" if game.mastered else "",
+        ),
+        _played_row(game, request),
+        _meta_row(
+            "Platform",
+            Span(class_=grey_value_class)[str(game.platform)],
+        ),
+    ]
+    return Div(id_="game-info", class_="mb-10")[
+        Div(class_="flex gap-5 mb-3")[title_span],
+        stats_row,
+        metadata,
+        _game_action_buttons(game),
+    ]
 
 
 def _purchases_section(game: Game) -> Node:
@@ -781,15 +711,12 @@ def _playevents_section(game: Game) -> Node:
     # control records a play, so it updates without a full reload. Mirrors the
     # history section's status-changed refresh.
     return Div(
-        [
-            ("id", "playevents-container"),
-            ("hx-get", ""),
-            ("hx-trigger", "play-added from:body"),
-            ("hx-select", "#playevents-container"),
-            ("hx-swap", "outerHTML"),
-        ],
-        [section],
-    )
+        id_="playevents-container",
+        hx_get="",
+        hx_trigger="play-added from:body",
+        hx_select="#playevents-container",
+        hx_swap="outerHTML",
+    )[section]
 
 
 def _history_section(game: Game) -> Node:
@@ -802,7 +729,7 @@ def _history_section(game: Game) -> Node:
         hx_select="#history-container",
         hx_swap="outerHTML",
     )[
-        H1(children=["History"], badge=str(count) if count else ""),
+        PageHeading(children=["History"], badge=str(count) if count else ""),
         _game_history(statuschanges),
     ]
 
@@ -821,21 +748,15 @@ _GET_SESSION_COUNT_SCRIPT = Safe(
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     content = Div(
-        [
-            (
-                "class",
-                f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} self-center px-2",
-            )
-        ],
-        [
-            _game_header(game, request, _game_overview_metrics(game)),
-            _purchases_section(game),
-            _sessions_section(game),
-            _playevents_section(game),
-            _history_section(game),
-            _GET_SESSION_COUNT_SCRIPT,
-        ],
-    )
+        class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} self-center px-2",
+    )[
+        _game_header(game, request, _game_overview_metrics(game)),
+        _purchases_section(game),
+        _sessions_section(game),
+        _playevents_section(game),
+        _history_section(game),
+        _GET_SESSION_COUNT_SCRIPT,
+    ]
     request.session["return_path"] = request.path
     return render_page(
         request,

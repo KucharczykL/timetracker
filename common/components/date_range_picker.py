@@ -17,9 +17,10 @@ widget into a ``DateCriterion`` unchanged. All behaviour is wired by
 ``ts/date_range_picker.ts`` (compiled to ``dist/date_range_picker.js``).
 """
 
-from common.components.core import Element, Node, Safe
+from common.components.core import Node, Safe
 from common.components.custom_elements import _DateRangePicker
 from common.components.primitives import (
+    Button,
     Div,
     FilterWidgetPath,
     Input,
@@ -107,21 +108,18 @@ def _iso_part_values(iso_value: str, parts: list[DatePartSpec]) -> dict[str, str
 def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> Node:
     side_label = "from" if side == "min" else "to"
     return Input(
-        attributes=[
-            ("inputmode", "numeric"),
-            ("autocomplete", "off"),
-            ("maxlength", str(part.length)),
-            ("placeholder", part.placeholder),
-            ("value", value),
-            ("data-date-part", part.name),
-            ("data-date-side", side),
-            ("aria-label", f"{label} {side_label} {part.name}"),
-            (
-                "class",
-                f"{_SEGMENT_INPUT_CLASS} "
-                f"{_SEGMENT_WIDTH_CLASSES.get(part.length, 'w-[4.5ch]')}",
-            ),
-        ],
+        inputmode="numeric",
+        autocomplete="off",
+        maxlength=str(part.length),
+        placeholder=part.placeholder,
+        value=value,
+        data_date_part=part.name,
+        data_date_side=side,
+        aria_label=f"{label} {side_label} {part.name}",
+        class_=(
+            f"{_SEGMENT_INPUT_CLASS} "
+            f"{_SEGMENT_WIDTH_CLASSES.get(part.length, 'w-[4.5ch]')}"
+        ),
     )
 
 
@@ -132,12 +130,7 @@ def _segment_group(*, side: str, label: str, iso_value: str) -> Node:
     children: list[Node] = []
     for index, part in enumerate(parts):
         if index > 0:
-            children.append(
-                Span(
-                    attributes=[("class", "text-body select-none")],
-                    children=["-"],
-                )
-            )
+            children.append(Span(class_="text-body select-none")["-"])
         children.append(
             _segment_input(
                 part=part,
@@ -146,13 +139,9 @@ def _segment_group(*, side: str, label: str, iso_value: str) -> Node:
                 value=initial_values.get(part.name, ""),
             )
         )
-    return Span(
-        attributes=[
-            ("class", "flex items-center gap-0.5"),
-            ("data-date-range-side", side),
-        ],
-        children=children,
-    )
+    return Span(class_="flex items-center gap-0.5", data_date_range_side=side)[
+        *children
+    ]
 
 
 def DateRangeField(
@@ -168,79 +157,51 @@ def DateRangeField(
     committed value to ``filter_bar.js``."""
     min_input_id = f"{input_name_prefix}-min"
     max_input_id = f"{input_name_prefix}-max"
-    return Div(
-        attributes=[
-            ("class", _FIELD_CONTAINER_CLASS),
-            ("data-date-range-field", ""),
-        ],
-        children=[
-            Input(
-                type="hidden",
-                attributes=[
-                    ("name", min_input_id),
-                    ("id", min_input_id),
-                    ("value", min_value),
-                    ("data-date-range-hidden", "min"),
-                    ("data-range-min", ""),
-                ],
+    return Div(class_=_FIELD_CONTAINER_CLASS, data_date_range_field="")[
+        Input(
+            type="hidden",
+            name=min_input_id,
+            id_=min_input_id,
+            value=min_value,
+            data_date_range_hidden="min",
+            data_range_min="",
+        ),
+        Input(
+            type="hidden",
+            name=max_input_id,
+            id_=max_input_id,
+            value=max_value,
+            data_date_range_hidden="max",
+            data_range_max="",
+        ),
+        _segment_group(side="min", label=label, iso_value=min_value),
+        Span(class_="text-body select-none px-0.5")["–"],
+        _segment_group(side="max", label=label, iso_value=max_value),
+        Button(
+            type="button",
+            data_date_range_calendar_toggle="",
+            aria_label=f"Open {label} calendar",
+            class_=(
+                "ms-auto p-1 text-body hover:text-heading rounded "
+                "cursor-pointer shrink-0"
             ),
-            Input(
-                type="hidden",
-                attributes=[
-                    ("name", max_input_id),
-                    ("id", max_input_id),
-                    ("value", max_value),
-                    ("data-date-range-hidden", "max"),
-                    ("data-range-max", ""),
-                ],
-            ),
-            _segment_group(side="min", label=label, iso_value=min_value),
-            Span(
-                attributes=[("class", "text-body select-none px-0.5")],
-                children=["–"],
-            ),
-            _segment_group(side="max", label=label, iso_value=max_value),
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-date-range-calendar-toggle", ""),
-                    ("aria-label", f"Open {label} calendar"),
-                    (
-                        "class",
-                        "ms-auto p-1 text-body hover:text-heading rounded "
-                        "cursor-pointer shrink-0",
-                    ),
-                ],
-                children=[Safe(_CALENDAR_ICON_SVG)],
-            ),
-        ],
-    )
+        )[Safe(_CALENDAR_ICON_SVG)],
+    ]
 
 
 def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
-    return Element(
-        "button",
-        attributes=[
-            ("type", "button"),
-            (f"data-date-range-{direction}", ""),
-            ("aria-label", label),
-            ("class", _NAV_BUTTON_CLASS),
-        ],
-        children=[arrow],
-    )
+    return Button(
+        [("type", "button"), (f"data-date-range-{direction}", "")],
+        aria_label=label,
+        class_=_NAV_BUTTON_CLASS,
+    )[arrow]
 
 
 def _footer_button(action: str, label: str, button_class: str) -> Node:
-    return Element(
-        "button",
-        attributes=[
-            ("type", "button"),
-            (f"data-date-range-{action}", ""),
-            ("class", button_class),
-        ],
-        children=[label],
-    )
+    return Button(
+        [("type", "button"), (f"data-date-range-{action}", "")],
+        class_=button_class,
+    )[label]
 
 
 def DateRangeCalendar(*, input_name_prefix: str) -> Node:
@@ -248,83 +209,50 @@ def DateRangeCalendar(*, input_name_prefix: str) -> Node:
     (filled client-side into ``[data-date-range-grid]``), and the
     Cancel / Clear / Select footer. Hidden until the calendar toggle opens it."""
     preset_buttons = [
-        Element(
-            "button",
-            attributes=[
-                ("type", "button"),
-                ("data-date-range-preset", preset_value),
-                ("class", _PRESET_BUTTON_CLASS),
-            ],
-            children=[preset_label],
-        )
+        Button(
+            type="button",
+            data_date_range_preset=preset_value,
+            class_=_PRESET_BUTTON_CLASS,
+        )[preset_label]
         for preset_value, preset_label in _PRESET_OPTIONS
     ]
     return Div(
-        attributes=[
-            (
-                "class",
-                "hidden absolute z-20 top-full start-0 mt-1 flex "
-                "rounded-base border border-default-medium "
-                "bg-neutral-secondary-medium shadow-lg",
-            ),
-            ("data-date-range-calendar", ""),
-            ("data-input-name-prefix", input_name_prefix),
-        ],
-        children=[
+        class_=(
+            "hidden absolute z-20 top-full start-0 mt-1 flex "
+            "rounded-base border border-default-medium "
+            "bg-neutral-secondary-medium shadow-lg"
+        ),
+        data_date_range_calendar="",
+        data_input_name_prefix=input_name_prefix,
+    )[
+        Div(
+            class_="flex flex-col gap-0.5 p-2 border-e border-default-medium",
+            data_date_range_presets="",
+        )[*preset_buttons],
+        Div(class_="p-2")[
+            Div(class_="flex items-center justify-between gap-2")[
+                _calendar_nav_button("prev", "‹", "Previous month"),
+                Span(
+                    class_="text-sm font-medium text-heading",
+                    data_date_range_month_label="",
+                ),
+                _calendar_nav_button("next", "›", "Next month"),
+            ],
             Div(
-                attributes=[
-                    (
-                        "class",
-                        "flex flex-col gap-0.5 p-2 border-e border-default-medium",
-                    ),
-                    ("data-date-range-presets", ""),
-                ],
-                children=preset_buttons,
+                class_="grid grid-cols-7 gap-y-0.5 mt-1",
+                data_date_range_grid="",
             ),
             Div(
-                attributes=[("class", "p-2")],
-                children=[
-                    Div(
-                        attributes=[
-                            ("class", "flex items-center justify-between gap-2"),
-                        ],
-                        children=[
-                            _calendar_nav_button("prev", "‹", "Previous month"),
-                            Span(
-                                attributes=[
-                                    ("class", "text-sm font-medium text-heading"),
-                                    ("data-date-range-month-label", ""),
-                                ],
-                            ),
-                            _calendar_nav_button("next", "›", "Next month"),
-                        ],
-                    ),
-                    Div(
-                        attributes=[
-                            ("class", "grid grid-cols-7 gap-y-0.5 mt-1"),
-                            ("data-date-range-grid", ""),
-                        ],
-                    ),
-                    Div(
-                        attributes=[
-                            (
-                                "class",
-                                "flex justify-end gap-2 mt-2 pt-2 border-t "
-                                "border-default-medium",
-                            ),
-                        ],
-                        children=[
-                            _footer_button("cancel", "Cancel", _FOOTER_BUTTON_CLASS),
-                            _footer_button("clear", "Clear", _FOOTER_BUTTON_CLASS),
-                            _footer_button(
-                                "select", "Select", _FOOTER_SELECT_BUTTON_CLASS
-                            ),
-                        ],
-                    ),
-                ],
-            ),
+                class_=(
+                    "flex justify-end gap-2 mt-2 pt-2 border-t border-default-medium"
+                ),
+            )[
+                _footer_button("cancel", "Cancel", _FOOTER_BUTTON_CLASS),
+                _footer_button("clear", "Clear", _FOOTER_BUTTON_CLASS),
+                _footer_button("select", "Select", _FOOTER_SELECT_BUTTON_CLASS),
+            ],
         ],
-    )
+    ]
 
 
 def DateRangePicker(
