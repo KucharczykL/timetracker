@@ -173,6 +173,47 @@ def _string_from_field(field: dict) -> StringValues:
 # sub-filter element (independent EXISTS), so prefill scans that list rather than
 # reading a flat top-level key. Each helper is matched to a widget by the same
 # ``data-path`` the widget serializes to — a single source of truth.
+#
+# Two producers write cross-entity sub-filters in DIFFERENT shapes (#137): the
+# filter bar wraps each in its own ``AND`` element, while stats-links /
+# ``filter_url`` emit them TOP-LEVEL (e.g. ``{"session_filter": {...}}``). Both
+# are valid for ``to_q``, but the helpers below read only ``existing["AND"]``.
+# ``_canonicalize_cross_entity`` folds the top-level shape into ``AND`` once (in
+# ``_FilterBarBase.__init__``) so the helpers have a single canonical shape to
+# read — the fix is concentrated in one place instead of every read helper.
+
+
+def _canonicalize_cross_entity(existing: dict) -> dict:
+    """Fold TOP-LEVEL cross-entity sub-filters into ``existing["AND"]`` (#137).
+
+    Cross-entity relation sub-filters are the OperatorFilter ``*_filter`` fields
+    (``session_filter``, ``purchase_filter``, ``game_filter``, …). When they
+    arrive at the top level (stats-links / ``filter_url``) rather than wrapped in
+    ``AND`` (the bar), the prefill helpers — which scan only ``existing["AND"]``
+    — would miss them and render the matching widget blank, silently dropping the
+    constraint on re-Apply. Each such top-level key is moved into its own ``AND``
+    element (mirroring the bar's per-widget serialization), appended after any
+    existing ``AND`` elements.
+
+    Operator lists (``AND`` / ``OR`` / ``NOT``) and flat criterion keys are left
+    untouched. Returns a shallow copy when anything moves; the raw ``filter_json``
+    (re-serialized on Apply) is never touched, so ``to_q`` semantics are
+    unchanged — only what prefill reads.
+    """
+    relation_keys = [
+        key
+        for key, value in existing.items()
+        if key.endswith("_filter") and isinstance(value, dict)
+    ]
+    if not relation_keys:
+        return existing
+    canonical = {
+        key: value for key, value in existing.items() if key not in relation_keys
+    }
+    and_elements = list(canonical.get("AND") or [])
+    and_elements.extend({key: existing[key]} for key in relation_keys)
+    canonical["AND"] = and_elements
+    return canonical
 
 
 def _deep_get(value: dict, keys: FilterWidgetPath) -> object:
@@ -683,7 +724,10 @@ class _FilterBarBase(BaseComponent):
         self.filter_json = filter_json
         self.preset_list_url = preset_list_url
         self.preset_save_url = preset_save_url
-        self.existing = _filter_parse(filter_json)
+        # Canonicalize TOP-LEVEL cross-entity sub-filters (stats-links /
+        # filter_url) into the bar's AND shape so prefill reads a single shape
+        # and stats-link landings pre-fill their widgets (#137).
+        self.existing = _canonicalize_cross_entity(_filter_parse(filter_json))
 
     def build_fields(self) -> list:
         """Return the per-entity filter body. Implemented by each subclass."""
