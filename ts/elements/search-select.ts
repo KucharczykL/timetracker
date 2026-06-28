@@ -657,6 +657,19 @@ const initWidget = (containerElement: Element) => {
     if (!container.contains(event.relatedTarget as Node)) {
       hidePanel();
       clearHighlight();
+      // The search box is a transient query buffer; pills hold the committed
+      // values. Drop any uncommitted query on exit so it matches single-select
+      // (whose blur handler already clears/restores the box). Reset row
+      // visibility without reopening the panel — never call runSearch() here.
+      if (multi && search.value !== "") {
+        search.value = "";
+        if (freeText) {
+          rebuildFreeTextRow("");
+        } else {
+          filterRows("");
+          setNoResults(false);
+        }
+      }
     }
   });
 

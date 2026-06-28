@@ -32,6 +32,17 @@ def e2e_test_view(request):
             multi_select=False,
         )
     }
+            {
+        SearchSelect(
+            name="tags",
+            options=[
+                {"value": "1", "label": "Apple", "data": {}},
+                {"value": "2", "label": "Banana", "data": {}},
+            ],
+            multi_select=True,
+            id="multi-search",
+        )
+    }
             <input type="text" id="next-field" />
         </div>
     </body>
@@ -63,7 +74,9 @@ def test_search_select_backspace_clears_single_select(live_server, page):
         s.addEventListener('keydown', (e) => console.log('JS-EVENT: keydown ' + e.key + ', dirty=' + c._searchSelectDirty + ', value="' + s.value + '"'));
     }""")
 
-    search_input = page.locator("input[data-search-select-search]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
 
     assert search_input.input_value() == "Game A"
 
@@ -96,7 +109,9 @@ def test_search_select_backspace_clears_single_select(live_server, page):
 def test_search_select_typing_replaces_single_select(live_server, page):
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
 
     search_input.focus()
     assert search_input.input_value() == ""
@@ -120,7 +135,9 @@ def test_search_select_tab_does_not_enter_panel(live_server, page):
     on the overflowing options scroller (which Chrome makes keyboard-focusable)."""
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
     search_input.focus()
 
     page.keyboard.press("Tab")
@@ -141,8 +158,12 @@ def test_search_select_tab_closes_panel(live_server, page):
     and clear any highlight (it previously stayed open over the next field)."""
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
-    options_panel = page.locator("[data-search-select-options]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
+    options_panel = page.locator(
+        'search-select[name="games"] [data-search-select-options]'
+    )
 
     search_input.focus()
     # Panel is open on focus.
@@ -150,10 +171,17 @@ def test_search_select_tab_closes_panel(live_server, page):
 
     page.keyboard.press("Tab")
 
-    # Focus moved to the next field, and the panel closed with no lingering highlight.
+    # Focus left the widget, and the panel closed with no lingering highlight.
     expect(options_panel).to_be_hidden()
-    assert page.evaluate("() => document.activeElement.id") == "next-field"
-    assert page.locator("[data-search-select-highlighted]").count() == 0
+    assert page.evaluate(
+        "() => !document.activeElement.closest('search-select[name=\"games\"]')"
+    )
+    assert (
+        page.locator(
+            'search-select[name="games"] [data-search-select-highlighted]'
+        ).count()
+        == 0
+    )
 
 
 @pytest.mark.django_db
@@ -163,8 +191,12 @@ def test_search_select_option_click_selects(live_server, page):
     close the panel before the click lands — guarded by options mousedown)."""
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
-    options_panel = page.locator("[data-search-select-options]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
+    options_panel = page.locator(
+        'search-select[name="games"] [data-search-select-options]'
+    )
 
     search_input.focus()
     page.locator('[data-search-select-option][data-value="8"]').click()
@@ -180,7 +212,9 @@ def test_search_select_arrow_and_enter_selects(live_server, page):
     """Arrow navigation moves the highlight and Enter commits the selection."""
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
     search_input.focus()
     assert search_input.input_value() == ""
 
@@ -200,7 +234,9 @@ def test_search_select_type_filters_and_highlights(live_server, page):
     """Typing filters out non-matching rows and auto-highlights a match."""
     page.goto(live_server.url + "/test-search-select/")
 
-    search_input = page.locator("input[data-search-select-search]")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
     search_input.focus()
     search_input.type("B")
 
@@ -210,3 +246,27 @@ def test_search_select_type_filters_and_highlights(live_server, page):
     expect(game_a_row).to_be_hidden()
     expect(game_b_row).to_be_visible()
     assert game_b_row.get_attribute("data-search-select-highlighted") is not None
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_multi_select_clears_query_on_tab_out(live_server, page):
+    """Issue #119 follow-up: multi-select used to keep an uncommitted query in the
+    box after tabbing out (single-select cleared it). Both must clear now."""
+    multi_search = page.locator("#multi-search")
+    banana_row = page.locator('[data-search-select-option][data-value="2"]')
+
+    page.goto(live_server.url + "/test-search-select/")
+
+    multi_search.focus()
+    multi_search.type("App")
+    # Filtering is active: the non-matching row is hidden while the panel is open.
+    expect(banana_row).to_be_hidden()
+
+    page.keyboard.press("Tab")
+
+    # The transient query is dropped, matching single-select behavior.
+    expect(multi_search).to_have_value("")
+    # Re-opening shows the full, un-filtered list again.
+    multi_search.focus()
+    expect(banana_row).to_be_visible()
