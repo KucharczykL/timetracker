@@ -574,7 +574,10 @@ type RelationChild = dict[
 
 # The widget ``data-kind`` tokens for leaf criteria — one token per value shape;
 # several criterion types share a kind (every numeric criterion → "number"). These
-# are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce.
+# are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce, with
+# one exception: ``"field-comparison"`` is registered to satisfy the
+# _CRITERION_TYPES/_CRITERION_KINDS parity invariant but is never path-reachable —
+# ``field_comparisons`` is a list field, so no path resolves to it (no widget yet).
 type LeafWidgetKind = Literal["string", "number", "date", "bool", "set", "field-comparison"]
 
 # Every widget ``data-kind`` token the filter-bar serializer dispatches on.
