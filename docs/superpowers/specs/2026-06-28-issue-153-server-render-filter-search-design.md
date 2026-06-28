@@ -53,8 +53,13 @@ holding two primitive controls:
 
 - Text input: `Input(type="text", name="filter-search", value=value,
   placeholder="Search…", class_=INPUT_CLASS)`.
-  - `INPUT_CLASS` imported from `games.forms` (canonical app-wide text-input
-    look; same import precedent as `SELECT_CLASS` used by `FieldComparisonSet`).
+  - `INPUT_CLASS` imported from `games.forms` via a **deferred (in-function)
+    import** — `from games.forms import INPUT_CLASS` inside `_filter_search_field`,
+    NOT at module top. `games.forms` ↔ `common.components` is an import cycle;
+    `FieldComparisonSet` defers `SELECT_CLASS` the same way for the same reason. A
+    module-top import would crash on load.
+  - Wrap the labelled field's outer `Div` with `mb-4` (the injected wrapper had
+    it) so the search field keeps visual separation from the body grid below.
 - Exclude toggle: `Checkbox(name="filter-search-exclude",
   label="Exclude matches", checked=(modifier == "EXCLUDES"))` — carries the
   canonical checkbox classes including `DISABLED_CONTROL_CLASS`, closing the
@@ -82,9 +87,16 @@ Form(id_=_FILTER_FORM_ID)[
 ]
 ```
 
-Same DOM position as today's injection (top of form, inside `#filter-bar-body`)
-→ identical collapse/visibility behavior. Applies to all six bars
-(Game / Session / Purchase / Device / Platform / PlayEvent) automatically.
+Same DOM position as today's injection (top of form, inside `#filter-bar-body`).
+Applies to all six bars (Game / Session / Purchase / Device / Platform /
+PlayEvent) automatically.
+
+Note on e2e visibility: `test_search_defaults_to_includes` asserts the input is
+visible even though `#filter-bar-body` carries `hidden`. This passes because the
+synthetic `_bar_page` test harness loads **no stylesheet** (no base.css), so the
+`hidden` Tailwind class is inert there — visibility is independent of nesting
+depth. The real-app test (`test_excluded_search_term_filters_game_list`) clicks
+the collapse toggle before interacting. The move preserves both behaviors.
 
 ### 3. TS reduction — `ts/elements/filter-bar.ts`
 
@@ -93,6 +105,7 @@ Same DOM position as today's injection (top of form, inside `#filter-bar-body`)
 - **Keep** the `buildFilterJSON` search block unchanged (reads the now
   server-rendered controls by name).
 - Recompile: `make ts` so `dist/` and e2e/local serving see the trimmed module.
+- Confirm cleanup: `grep -rn injectSearchInput ts/` returns nothing.
 
 ## Testing
 
