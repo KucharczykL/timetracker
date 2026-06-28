@@ -199,8 +199,41 @@ automatically; no view changes (`scripts=`) needed.
   - `Purchase.date_refunded` `<` `date_purchased`
   - `Game.name` `contains` `sort_name`
 
-## Out of scope / follow-ups to file
+## Out of scope / follow-ups
 
-- **Nested AND/OR groups (full boolean query builder)** — generalize the single mode toggle into
-  parenthesizable AND/OR groups, i.e. the app's general filter-tree UI. File as a GitHub issue.
+- **Nested AND/OR/NOT filter builder (full boolean query UI)** — generalize the single mode
+  toggle into parenthesizable groups, i.e. the app's general filter-tree UI. Filed as
+  [#168](https://github.com/KucharczykL/timetracker/issues/168). See §11 for the
+  transitional/permanent split.
 - Independent of #162 (numeric/date `>=` / `<=` operators).
+
+## 11. Relationship to the nested-builder follow-up (#168)
+
+The nested builder (#168) **replaces** the flat serializer model, it does not extend it. A
+recursive tree serializer (group node → filter JSON) subsumes the current `setPath` / `appendAnd`
+/ `readWidget`-switch glue. So part of this design is a deliberate stepping stone and part is
+permanent infrastructure. Be explicit about which, so #168 knows what to delete vs reuse.
+
+**Transitional — #168 makes these obsolete.** Mark each in code with `TODO(nested-builder)`
+(Python `#`, TS `//`):
+
+- the AND/OR **mode toggle** on the set (superseded by the surrounding group's connective);
+- the OR-isolation **wrapper** `{"AND":[{"OR":[{"field_comparisons":[c]}, …]}]}` (the tree nests
+  naturally — a comparison sits in an OR group node like any leaf, no wrapper);
+- the **flat-serializer `field-comparison` special-case branch** in `filter-bar.ts` (replaced by
+  the recursive tree serializer).
+
+**Permanent — #168 reuses verbatim; build these clean, not as glue:**
+
+- server: `comparable_columns()` + `_maybe_group_for` (the builder needs the same column-options
+  source and group classification);
+- client: the **single comparison row** in `field-comparison-set.ts` (left/op/right + dependent
+  repopulation). One row is identical inside a nested group; only the multi-row set container +
+  its flat serialization is transitional.
+
+**Design constraint for this issue:** keep the single-row logic in `field-comparison-set.ts`
+(option building, group-dependent repopulation) **separable** from the set/mode/serialization
+glue, so #168 can lift the row module directly. Costs nothing now.
+
+**Do NOT** speculatively generalize `filter-bar.ts` into a tree serializer now — #168 is
+unscheduled and separately designed; building its plumbing blind is YAGNI.
