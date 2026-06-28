@@ -30,6 +30,15 @@ def apply_structured_filter(
     filter is invalid. On invalid input a ``messages.warning`` is queued, matching
     the existing unknown-sort-field treatment, so the page still renders the
     unfiltered list.
+
+    SECURITY: returning ``None`` makes a bad filter fail *open* — the view drops
+    the filter and renders the full list. This is safe **only** because the user
+    filter is AND-composed onto a base queryset and can therefore only *narrow*
+    it: any authorization scoping (e.g. ``owner=request.user``) must live on that
+    base queryset, applied server-side, and must **never** be carried in the
+    attacker-controllable ``?filter=`` payload. If an ownership constraint were
+    ever expressed through the filter, dropping it here would leak other users'
+    rows. Keep scoping out of the filter, or this fail-open becomes a fail-leak.
     """
     if not filter_json:
         return None
