@@ -101,12 +101,18 @@ surface as `FilterError`.
 `FilterError` at parse time and is caught by the view layer (warn-and-ignore) or
 the API layer (HTTP 400) before any queryset is evaluated.
 
-### 2.7 NULL operand matches no rows
+### 2.7 NULL operand semantics
 
-If either `left` or `right` column is `NULL` on a row, the SQL comparison yields
-`UNKNOWN`, which Django excludes. `NOT_EQUALS` via `~Q(...)` likewise excludes
-NULLs (standard SQL three-valued-logic behaviour). This is documented, expected,
-and the correct default for data-quality queries.
+For the ordered comparisons (`<`, `>`) and `EQUALS`, if either `left` or `right`
+is `NULL` on a row the SQL comparison yields `UNKNOWN`, which Django excludes —
+the correct default for data-quality queries.
+
+`NOT_EQUALS` is the exception: Django emits `~Q(left=F(right))` as
+`NOT (left = right AND left IS NOT NULL)`, i.e. `left != right OR left IS NULL`,
+so it **includes** rows where `left` is `NULL`. This is Django's documented
+negation behaviour (not SQL's bare three-valued logic); it is verified by a DB
+test and called out in the `FieldComparisonCriterion` docstring so callers are
+not surprised.
 
 ### 2.8 Surface: JSON filter + saved presets + API; no filter-bar UI widget this round
 
