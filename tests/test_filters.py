@@ -1354,7 +1354,7 @@ class TestFilterErrorBoundary:
             parse_session_filter(bad)
 
     def test_between_without_value2_duration(self):
-        bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
+        bad = json.dumps({"duration_total_hours": {"modifier": "BETWEEN", "value": 1}})
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_session_filter(bad)
 
@@ -1398,7 +1398,11 @@ class TestFilterErrorBoundary:
         """An invalid criterion inside a cross-entity sub-filter must raise —
         relation_to_q exercises sub.to_q() during the eager build."""
         bad = json.dumps(
-            {"session_filter": {"duration_hours": {"modifier": "BETWEEN", "value": 1}}}
+            {
+                "session_filter": {
+                    "duration_total_hours": {"modifier": "BETWEEN", "value": 1}
+                }
+            }
         )
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_game_filter(bad)
@@ -1425,7 +1429,9 @@ class TestFilterErrorBoundary:
     def test_non_numeric_duration_value(self):
         """A non-numeric duration value makes timedelta() raise TypeError during
         the eager build; the boundary reclassifies it to FilterError."""
-        bad = json.dumps({"duration_hours": {"modifier": "GREATER_THAN", "value": "x"}})
+        bad = json.dumps(
+            {"duration_total_hours": {"modifier": "GREATER_THAN", "value": "x"}}
+        )
         with pytest.raises(FilterError):
             parse_session_filter(bad)
 
@@ -1443,7 +1449,7 @@ class TestFilterErrorBoundary:
             {
                 "session_filter": {
                     "match": "ALL",
-                    "duration_hours": {"modifier": "BETWEEN", "value": 1},
+                    "duration_total_hours": {"modifier": "BETWEEN", "value": 1},
                 }
             }
         )

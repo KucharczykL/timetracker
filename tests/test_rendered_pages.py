@@ -593,7 +593,7 @@ class GameListSessionFilterBoundaryTest(TestCase):
             json.dumps(
                 {
                     "session_filter": {
-                        "duration_hours": {"modifier": "BETWEEN", "value": 1}
+                        "duration_total_hours": {"modifier": "BETWEEN", "value": 1}
                     }
                 }
             )
