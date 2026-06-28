@@ -24,6 +24,7 @@ from common.criteria import (
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
+    _ScalarCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
     _criterion_class_for,
@@ -1567,6 +1568,92 @@ class TestValueTypeBoundaryMatrix:
         # Guard against the derivation silently yielding nothing (e.g. annotation
         # format change), which would make the parametrized test vacuously pass.
         assert _coercible_field_cases()
+
+
+class TestValueTypeBoundaryEdges:
+    """Coercion paths the EQUALS/value-only matrix doesn't exercise (issue #157
+    review): value2/BETWEEN bounds, the excludes channel, an omitted date value,
+    silent-accept inputs (bool/non-integral float), nested criteria, and the
+    id-less set element. Each must raise FilterError at parse, not 500 at eval."""
+
+    def test_bad_value2_between_bound_raises(self):
+        # The upper BETWEEN bound goes through a separate coercion-loop iteration.
+        bad = json.dumps(
+            {"year_released": {"modifier": "BETWEEN", "value": 2000, "value2": "x"}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bad_excludes_element_raises(self):
+        # The excludes channel is coerced too, not just the include value list.
+        bad = json.dumps({"platform": {"modifier": "INCLUDES", "excludes": ["xyz"]}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_omitted_date_value_with_value_using_modifier_raises(self):
+        # Finding #157: DateCriterion's "" default must still be rejected when the
+        # value key is absent (else Q(field='') 500s at eval, bypassing the
+        # boundary with a non-ValueError ValidationError).
+        bad = json.dumps({"created_at": {"modifier": "EQUALS"}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bool_value_rejected_for_int_field(self):
+        # int(True) == 1 would silently accept wrong-typed input; reject instead.
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": True}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_non_integral_float_rejected_for_int_field(self):
+        # int(3.9) == 3 would silently truncate; reject instead.
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": 3.9}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_integral_float_accepted_for_int_field(self):
+        good = json.dumps({"year_released": {"modifier": "EQUALS", "value": 2000.0}})
+        result = parse_game_filter(good)
+        assert result is not None and result.year_released is not None
+        assert result.year_released.value == 2000
+
+    def test_decimal_string_accepted_for_float_field(self):
+        good = json.dumps({"price": {"modifier": "EQUALS", "value": "3.5"}})
+        result = parse_purchase_filter(good)
+        assert result is not None and result.price is not None
+        assert result.price.value == 3.5
+
+    def test_bad_value_nested_in_operator_raises(self):
+        # The fix lives in criterion from_json, so it must hold under AND/OR/NOT.
+        bad = json.dumps(
+            {"AND": [{"year_released": {"modifier": "EQUALS", "value": "nope"}}]}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bad_value_nested_in_relation_subfilter_raises(self):
+        bad = json.dumps(
+            {"session_filter": {"created_at": {"modifier": "EQUALS", "value": "nope"}}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_set_element_dict_without_id_raises(self):
+        # A hand-edited {label-only} element must be a clean FilterError, not a
+        # boundary-bypassing KeyError.
+        bad = json.dumps(
+            {"platform": {"modifier": "INCLUDES", "value": [{"label": "PC"}]}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_scalar_subclass_without_coercer_is_rejected_at_definition(self):
+        # _ScalarCriterion enforces that every scalar criterion declares a _coerce,
+        # so a future field type can't silently revert to the pre-#157 500 vector.
+        with pytest.raises(TypeError, match="_coerce"):
+
+            @dataclass
+            class _NoCoercer(_ScalarCriterion):
+                value: int = 0
 
 
 class TestFieldComparisonCriterion:
@@ -3270,3 +3357,23 @@ class TestValueTypeBoundaryIntegration:
         bad = json.dumps({"timestamp_start": {"modifier": "EQUALS", "value": "nope"}})
         response = auth_client.get("/api/session/", {"filter": bad})
         assert response.status_code == 400
+
+    @pytest.mark.django_db
+    def test_created_at_filter_is_date_granular(self):
+        # The temporal StringCriterion → DateCriterion + __date reclass must match
+        # a non-midnight created_at datetime by its calendar date (a regression
+        # dropping __date would make equality silently never match).
+        from datetime import datetime, timezone
+
+        from games.models import Game, Platform
+
+        platform = Platform.objects.create(name="PC")
+        game = Game.objects.create(name="Hades", platform=platform)
+        # auto_now_add can't be set on create; stamp an afternoon time directly.
+        moment = datetime(2024, 3, 14, 15, 9, 0, tzinfo=timezone.utc)
+        Game.objects.filter(pk=game.pk).update(created_at=moment)
+
+        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})
+        parsed = parse_game_filter(good)
+        assert parsed is not None
+        assert Game.objects.filter(parsed.to_q()).filter(pk=game.pk).exists()

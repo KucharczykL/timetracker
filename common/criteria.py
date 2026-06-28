@@ -146,7 +146,17 @@ class RelationMatch(str, Enum):
 # caught by the boundary).
 
 
+# An ``int``/``float``/ISO-date coercer for a criterion's value (raises
+# ``FilterError`` on mismatch). Used as a criterion's ``_coerce`` hook.
+type Coercer = Callable[[Any], Any]  # e.g. _coerce_int
+
+
 def _coerce_int(raw: Any) -> int:
+    # Reject what ``int()`` would silently *accept and rewrite* rather than flag as
+    # the wrong type: a JSON bool (``int(True) == 1``) and a non-integral float
+    # (``int(3.9) == 3``). Both are wrong-typed input #157 means to surface.
+    if isinstance(raw, bool) or (isinstance(raw, float) and not raw.is_integer()):
+        raise FilterError(f"expected an integer, got {raw!r}")
     try:
         return int(raw)
     except (ValueError, TypeError) as exc:
@@ -154,10 +164,24 @@ def _coerce_int(raw: Any) -> int:
 
 
 def _coerce_float(raw: Any) -> float:
+    # Reject JSON bool (``float(True) == 1.0``); a boolean is not a numeric bound.
+    if isinstance(raw, bool):
+        raise FilterError(f"expected a number, got {raw!r}")
     try:
         return float(raw)
     except (ValueError, TypeError) as exc:
         raise FilterError(f"expected a number, got {raw!r}") from exc
+
+
+def _strip_set_label(item: Any) -> Any:
+    """Reduce a set-criterion element to its bare id. Widgets send ``{id, label}``
+    dicts (label is display-only); a hand-edited dict missing ``id`` is bad input
+    and raises ``FilterError`` rather than a boundary-bypassing ``KeyError``."""
+    if not isinstance(item, dict):
+        return item
+    if "id" not in item:
+        raise FilterError(f"set filter element is missing an id: {item!r}")
+    return item["id"]
 
 
 def _coerce_date(raw: Any) -> str:
@@ -189,7 +213,8 @@ class _Criterion:
     # has a field-column type (int/float/date) set one of the ``_coerce_*``
     # helpers; ``from_json`` applies it so a wrong-typed hand-edited value raises
     # ``FilterError`` at parse instead of escaping to a query-execution 500.
-    _coerce: ClassVar[Callable[[Any], Any] | None] = None
+    # ``_ScalarCriterion`` enforces that its scalar subclasses set one.
+    _coerce: ClassVar[Coercer | None] = None
 
     def to_q(self, field_name: str) -> Q:
         raise NotImplementedError
@@ -234,22 +259,32 @@ class _ScalarCriterion(_Criterion):
 
     value2: Any = None
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # The whole point of a scalar criterion is that its value has a column type
+        # to validate. A subclass that forgets ``_coerce`` silently reverts to the
+        # pre-#157 500 vector, so fail at class-definition time instead.
+        super().__init_subclass__(**kwargs)
+        if cls._coerce is None:
+            raise TypeError(f"{cls.__name__} must set a _coerce validator (issue #157)")
+
     @classmethod
     def from_json(cls, data: dict | None) -> Self | None:
         result = super().from_json(data)
         # ``result`` is non-None only when ``data`` was a dict (base contract).
-        if result is None or cls._coerce is None or data is None:
+        if result is None or cls._coerce is None:
             return result
-        # Presence tests ignore the value entirely, and widgets emit a placeholder
-        # (``value: ""``) for them — so don't coerce it (an empty string is not a
-        # valid date/number). For value-using modifiers a bad value still raises.
+        # Presence tests ignore the value entirely (and widgets emit a placeholder
+        # ``value: ""`` for them), so skip coercion — the value never reaches to_q.
         if result.modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
             return result
         coerce = cls._coerce
-        # Coerce only keys the user actually supplied and that aren't null, so a
-        # defaulted ``value``/``value2`` is never coerced.
+        # Coerce every non-None value/value2: ``None`` is the DB-safe sentinel (an
+        # explicit null or a missing BETWEEN bound — compiled to IS NULL or caught
+        # by the BETWEEN guard), but a non-None default *can* be invalid (the
+        # DateCriterion ``""`` default with a value-using modifier), so it must be
+        # validated too rather than gated on user-supplied-ness. (Finding #157.)
         for key in ("value", "value2"):
-            if data.get(key) is not None:
+            if getattr(result, key) is not None:
                 setattr(result, key, coerce(getattr(result, key)))
         return result
 
@@ -486,17 +521,18 @@ class _SetCriterion(_Criterion):
         if result is None:
             return None
         # Labels embedded as {id, label} dicts are display-only; strip to bare ids
-        # so the querying layer stays clean and typed.
-        result.value = [
-            item["id"] if isinstance(item, dict) else item for item in result.value
-        ]
-        result.excludes = [
-            item["id"] if isinstance(item, dict) else item for item in result.excludes
-        ]
+        # so the querying layer stays clean and typed. A hand-edited dict without
+        # an ``id`` is bad input — raise FilterError (not a bare KeyError, which
+        # would bypass the boundary and 500).
+        result.value = [_strip_set_label(item) for item in result.value]
+        result.excludes = [_strip_set_label(item) for item in result.excludes]
         # Coerce each element against the field-column type (issue #157), so an
         # int-set field (MultiCriterion) rejects a wrong-typed id at parse rather
         # than letting ``field__in=["xyz"]`` 500 at query execution. ChoiceCriterion
-        # leaves ``_coerce`` None (string codes against char columns never 500).
+        # leaves ``_coerce`` None: its string-code fields (status, ownership_type,
+        # group, …) run against char columns and never 500. The one id-bearing
+        # ChoiceCriterion, PurchaseFilter.games (M2M int ids), is made 500-safe
+        # separately by _games_to_q's explicit int() coercion, not here.
         if cls._coerce is not None:
             coerce = cls._coerce
             result.value = [coerce(item) for item in result.value]
