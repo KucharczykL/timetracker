@@ -2,6 +2,7 @@
 
 **Status:** implemented (T1–T5 merged on `issue-129-field-comparison`)
 **Date:** 2026-06-28
+**Adversarial Review & Edge Cases:** [Adversarial Review](./2026-06-28-field-comparison-criterion-adversarial-review.md)
 
 ---
 
