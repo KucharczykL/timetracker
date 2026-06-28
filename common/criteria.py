@@ -12,7 +12,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
-from typing import Any, Literal, Self, TypeVar
+from typing import Any, Literal, Self, TypedDict, TypeVar
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
@@ -1159,12 +1159,46 @@ def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
+def _maybe_group_for(
+    model: type[models.Model], column: str
+) -> ComparisonGroup | None:
+    """Classify a model column into a comparison group, or None if non-comparable.
+
+    Returns None — never raises — for every column that has no comparison group:
+    the column does not exist, is a relation (FK/M2M/reverse), is a GeneratedField
+    with no resolvable output type, or is of a type absent from
+    ``_GROUP_BY_INTERNAL_TYPE`` (e.g. AutoField pk, JSONField).
+
+    This is the single source of truth for the classification; the raising
+    ``_comparison_group_for`` wraps it, and ``comparable_columns`` enumerates with
+    it (so enumeration never has to drive off exceptions).
+    """
+    try:
+        model_field = model._meta.get_field(column)
+    except FieldDoesNotExist:
+        return None
+
+    if model_field.is_relation:
+        return None
+
+    if isinstance(model_field, models.GeneratedField):
+        output_field = model_field.output_field
+        if output_field is None:
+            return None
+        internal_type = output_field.get_internal_type()
+    else:
+        internal_type = model_field.get_internal_type()
+
+    return _GROUP_BY_INTERNAL_TYPE.get(internal_type)
+
+
 def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonGroup:
     """Resolve a model column's comparison group by DB type, or raise FilterError.
 
-    Raises FilterError if the column does not exist, is a relation (FK/M2M/reverse),
-    is a GeneratedField with no resolvable output type, or is of a type with no
-    comparison group (e.g. AutoField pk, JSONField).
+    Thin raising wrapper over ``_maybe_group_for``: where that returns None, this
+    raises FilterError with a message describing why the column is not comparable
+    (does not exist, is a relation, is a GeneratedField with no output type, or is
+    of a type with no comparison group such as AutoField pk / JSONField).
     """
     try:
         model_field = model._meta.get_field(column)
@@ -1176,23 +1210,55 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
             f"{model.__name__}.{column!r} is a relation and is not comparable"
         )
 
-    if isinstance(model_field, models.GeneratedField):
-        output_field = model_field.output_field
-        if output_field is None:
-            raise FilterError(
-                f"{model.__name__}.{column!r} is a generated field with no output type"
-            )
-        internal_type = output_field.get_internal_type()
-    else:
-        internal_type = model_field.get_internal_type()
+    if (
+        isinstance(model_field, models.GeneratedField)
+        and model_field.output_field is None
+    ):
+        raise FilterError(
+            f"{model.__name__}.{column!r} is a generated field with no output type"
+        )
 
-    group = _GROUP_BY_INTERNAL_TYPE.get(internal_type)
+    group = _maybe_group_for(model, column)
     if group is None:
+        internal_type = model_field.get_internal_type()
         raise FilterError(
             f"{model.__name__}.{column!r} is not a comparable type ({internal_type})"
         )
 
     return group
+
+
+class ComparableColumn(TypedDict):
+    """A model column that can take part in a field-to-field comparison, ready for
+    a picker: its field name, a human label, and its comparison group."""
+
+    value: str  # column name, e.g. "timestamp_end"
+    label: str  # field verbose_name, title-cased, e.g. "Timestamp End"
+    group: ComparisonGroup
+
+
+def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
+    """Every column of ``model`` with a comparison group, labelled and grouped,
+    sorted by label (case-insensitive).
+
+    Iterates ``model._meta.get_fields()`` and keeps the columns that
+    ``_maybe_group_for`` classifies into a group; relations, reverse relations,
+    M2M, the pk/AutoField, generated-without-output, and JSONField all classify to
+    None and so fall out. The label is the field's ``verbose_name`` title-cased to
+    match how Django presents it.
+    """
+    columns: list[ComparableColumn] = []
+    for model_field in model._meta.get_fields():
+        column = model_field.name
+        group = _maybe_group_for(model, column)
+        if group is None:
+            continue
+        verbose_name = getattr(model_field, "verbose_name", column)
+        columns.append(
+            ComparableColumn(value=column, label=verbose_name.title(), group=group)
+        )
+    columns.sort(key=lambda entry: entry["label"].lower())
+    return columns
 
 
 def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:

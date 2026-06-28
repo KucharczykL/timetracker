@@ -21,6 +21,8 @@ from common.criteria import (
     _allowed_comparison_modifiers,
     _comparison_group_for,
     _field_comparison_to_q,
+    _maybe_group_for,
+    comparable_columns,
 )
 from common.components import FilterBar
 from games.filters import (
@@ -1706,6 +1708,135 @@ class TestComparisonGroupResolver:
         # string keeps lexicographic ordering too
         assert Modifier.GREATER_THAN in allowed
         assert Modifier.LESS_THAN in allowed
+
+
+class TestMaybeGroupFor:
+    """_maybe_group_for mirrors _comparison_group_for but returns None instead of
+    raising for non-comparable columns."""
+
+    # ── comparable columns → group (parity with _comparison_group_for) ───────
+
+    def test_date_field(self):
+        from games.models import Purchase
+
+        assert _maybe_group_for(Purchase, "date_purchased") == "date"
+
+    def test_datetime_field(self):
+        from games.models import Session
+
+        assert _maybe_group_for(Session, "timestamp_start") == "datetime"
+
+    def test_generated_field_duration(self):
+        from games.models import Session
+
+        assert _maybe_group_for(Session, "duration_total") == "duration"
+
+    def test_integer_field(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "year_released") == "number"
+
+    def test_char_field(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "name") == "string"
+
+    def test_bool_field(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "mastered") == "bool"
+
+    # ── non-comparable columns → None (where _comparison_group_for raises) ───
+
+    def test_nonexistent_column_returns_none(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "nonexistent") is None
+
+    def test_fk_relation_returns_none(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "platform") is None
+
+    def test_m2m_relation_returns_none(self):
+        from games.models import Purchase
+
+        assert _maybe_group_for(Purchase, "games") is None
+
+    def test_auto_pk_returns_none(self):
+        from games.models import Game
+
+        assert _maybe_group_for(Game, "id") is None
+
+    def test_contract_parity_with_raising_wrapper(self):
+        """Every column that makes _comparison_group_for raise must return None
+        from _maybe_group_for, and vice-versa for comparable ones."""
+        from games.models import Game
+
+        for column in ("nonexistent", "platform", "id"):
+            assert _maybe_group_for(Game, column) is None
+            with pytest.raises(FilterError):
+                _comparison_group_for(Game, column)
+        for column in ("name", "year_released", "mastered"):
+            assert _maybe_group_for(Game, column) is not None
+            assert _comparison_group_for(Game, column) == _maybe_group_for(Game, column)
+
+
+class TestComparableColumns:
+    """comparable_columns enumerates a model's comparable columns, labelled and
+    grouped, sorted by label."""
+
+    def _by_value(self, model):
+        return {entry["value"]: entry for entry in comparable_columns(model)}
+
+    def test_entries_have_value_label_group_keys(self):
+        from games.models import Game
+
+        for entry in comparable_columns(Game):
+            assert set(entry.keys()) == {"value", "label", "group"}
+
+    def test_known_game_columns(self):
+        from games.models import Game
+
+        columns = self._by_value(Game)
+        assert columns["name"]["group"] == "string"
+        assert columns["year_released"]["group"] == "number"
+        assert columns["mastered"]["group"] == "bool"
+
+    def test_session_datetime_column(self):
+        from games.models import Session
+
+        columns = self._by_value(Session)
+        assert columns["timestamp_end"]["group"] == "datetime"
+        assert columns["timestamp_start"]["group"] == "datetime"
+
+    def test_purchase_date_columns(self):
+        from games.models import Purchase
+
+        columns = self._by_value(Purchase)
+        assert columns["date_purchased"]["group"] == "date"
+        assert columns["date_refunded"]["group"] == "date"
+
+    def test_relations_and_pk_absent(self):
+        from games.models import Game, Purchase
+
+        game_columns = self._by_value(Game)
+        assert "platform" not in game_columns
+        assert "id" not in game_columns
+        assert "games" not in self._by_value(Purchase)
+
+    def test_labels_are_title_cased_verbose_names(self):
+        from games.models import Game
+
+        columns = self._by_value(Game)
+        assert columns["name"]["label"] == "Name"
+        assert columns["year_released"]["label"] == "Year Released"
+
+    def test_sorted_by_label_case_insensitive(self):
+        from games.models import Session
+
+        labels = [entry["label"] for entry in comparable_columns(Session)]
+        assert labels == sorted(labels, key=str.lower)
 
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
