@@ -28,6 +28,7 @@ def e2e_test_view(request):
             multi_select=False,
         )
     }
+            <input type="text" id="next-field" />
         </div>
     </body>
     </html>
@@ -127,6 +128,29 @@ def test_search_select_tab_does_not_enter_panel(live_server, page):
         }"""
     )
     assert focus_inside_panel is False
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_tab_closes_panel(live_server, page):
+    """Issue #119 follow-up: Tabbing out of the widget must close the dropdown
+    and clear any highlight (it previously stayed open over the next field)."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator("input[data-search-select-search]")
+    options_panel = page.locator("[data-search-select-options]")
+
+    search_input.focus()
+    # Panel is open on focus.
+    assert "hidden" not in (options_panel.get_attribute("class") or "")
+
+    page.keyboard.press("Tab")
+    page.wait_for_timeout(50)
+
+    # Focus moved to the next field, and the panel closed with no lingering highlight.
+    assert page.evaluate("() => document.activeElement.id") == "next-field"
+    assert "hidden" in (options_panel.get_attribute("class") or "")
+    assert page.locator("[data-search-select-highlighted]").count() == 0
 
 
 @pytest.mark.django_db

@@ -641,6 +641,17 @@ const initWidget = (containerElement: Element) => {
     });
   }
 
+  // ── Close panel when focus leaves the widget (e.g. Tab away) ──
+  // focusout bubbles, so the container catches the input losing focus in every
+  // mode. Option mousedown preventDefault keeps the input focused during a
+  // click, so this only fires on a genuine exit.
+  container.addEventListener("focusout", (event) => {
+    if (!container.contains(event.relatedTarget as Node)) {
+      hidePanel();
+      clearHighlight();
+    }
+  });
+
   // ── Close panel on outside click ──
   const onDocumentClick = (event: MouseEvent) => {
     if (!container.contains(event.target as Node)) hidePanel();
