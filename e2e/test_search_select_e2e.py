@@ -155,6 +155,25 @@ def test_search_select_tab_closes_panel(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_option_click_selects(live_server, page):
+    """Clicking an option still selects it (the new focusout handler must not
+    close the panel before the click lands — guarded by options mousedown)."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator("input[data-search-select-search]")
+    options_panel = page.locator("[data-search-select-options]")
+
+    search_input.focus()
+    page.locator('[data-search-select-option][data-value="8"]').click()
+    page.wait_for_timeout(50)
+
+    assert search_input.input_value() == "Game B"
+    assert page.locator('input[name="games"]').first.get_attribute("value") == "8"
+    assert "hidden" in (options_panel.get_attribute("class") or "")
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
 def test_search_select_arrow_and_enter_selects(live_server, page):
     """Arrow navigation moves the highlight and Enter commits the selection."""
     page.goto(live_server.url + "/test-search-select/")

@@ -407,8 +407,9 @@ def _filter_action_button(action: str, symbol: str, title: str) -> Node:
         "button",
         attributes=[
             ("type", "button"),
-            # Reachable via row highlight + Enter or mouse; keep every per-row
-            # +/− button out of the sequential tab order (issue #119).
+            # Include (+) is reachable via row highlight + Enter; both +/− are
+            # reachable by mouse. Keep every per-row button out of the
+            # sequential tab order (issue #119).
             ("tabindex", "-1"),
             ("data-search-select-action", action),
             ("class", _FILTER_ACTION_BUTTON_CLASS),

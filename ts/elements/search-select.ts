@@ -428,6 +428,14 @@ const initWidget = (containerElement: Element) => {
     event.preventDefault();
   });
 
+  // Same guard for the pills region: clicking a pill's remove (×) button must
+  // not move focus out of the widget. Without this, browsers that don't focus a
+  // <button> on click (Firefox, Safari) fire focusout with relatedTarget=null,
+  // which would close the panel even though focus stayed in the widget.
+  pills.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+
   // ── Option click → select (form mode) or include/exclude (filter mode) ──
   options.addEventListener("click", (event) => {
     if (isFilter) {

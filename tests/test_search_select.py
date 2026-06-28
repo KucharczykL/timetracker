@@ -193,6 +193,17 @@ class FilterSelectComponentTest(unittest.TestCase):
         self.assertIn('data-search-select-action="exclude"', html)
         self.assertIn('data-value="g"', html)
 
+    def test_action_buttons_and_options_panel_are_out_of_tab_order(self):
+        # Issue #119: the per-row +/- buttons and the overflowing options
+        # scroller must carry tabindex="-1" so Tab doesn't land focus on them.
+        html = str(FilterSelect(field_name="type", options=[("g", "Game")]))
+        # Each +/- button is a <button ... tabindex="-1">.
+        self.assertEqual(
+            html.count('tabindex="-1"'),
+            3,  # the options panel + the two (+/-) action buttons
+        )
+        self.assertIn("data-search-select-options", html)
+
     def test_included_renders_check_pill_excluded_renders_cross_pill(self):
         html = str(
             FilterSelect(
