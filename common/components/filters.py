@@ -799,8 +799,8 @@ def _filter_search_field(existing: dict) -> Node:
     Shared chrome rendered once at the top of every bar (see
     ``_FilterBarBase.render``). ``filter-bar.ts`` reads ``filter-search`` /
     ``filter-search-exclude`` by name into the search criterion; this is the
-    server-rendered source of those controls (formerly built imperatively by
-    the deleted ``injectSearchInput``). ``INPUT_CLASS`` is imported here, not at
+    server-rendered source of those controls (it replaces what was formerly
+    imperative TypeScript DOM construction). ``INPUT_CLASS`` is imported here, not at
     module top, because ``games.forms`` imports ``common.components`` — a module
     import would be circular.
     """

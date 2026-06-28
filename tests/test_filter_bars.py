@@ -536,7 +536,35 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('name="filter-search"', html)
         self.assertIn('name="filter-search-exclude"', html)
         self.assertIn("Exclude matches", html)
+        # With no stored filter the exclude box must default to unchecked.
+        self.assertNotIn("checked", _exclude_input_tag(html))
         self.assertNoEscapedTags(html)
+
+    def test_search_controls_present_in_every_bar(self):
+        """The search field is shared chrome rendered by _FilterBarBase, so all
+        six bars carry both controls — guards against a render() override
+        dropping it (mirrors FieldComparisonWidgetTest.test_widget_present_in_every_bar)."""
+        from common.components import (
+            DeviceFilterBar,
+            FilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+            PurchaseFilterBar,
+            SessionFilterBar,
+        )
+
+        bars = [
+            FilterBar,
+            SessionFilterBar,
+            PurchaseFilterBar,
+            DeviceFilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+        ]
+        for bar in bars:
+            html = str(bar(filter_json=""))
+            self.assertIn('name="filter-search"', html, bar.__name__)
+            self.assertIn('name="filter-search-exclude"', html, bar.__name__)
 
     def test_filter_bar_search_prefills_value_and_exclude(self):
         """A stored EXCLUDES search prefills the input value and checks the box."""
