@@ -1622,6 +1622,21 @@ class TestValueTypeBoundaryEdges:
         assert result is not None and result.price is not None
         assert result.price.value == 3.5
 
+    def test_aggregate_integral_value_round_trips_as_int(self):
+        # A count bound stays int (5, not 5.0) so saved-filter JSON stays clean;
+        # a fractional sum/avg bound keeps its float.
+        result = parse_game_filter(
+            json.dumps({"session_count": {"modifier": "GREATER_THAN", "value": 5}})
+        )
+        assert result is not None and result.session_count is not None
+        assert result.session_count.value == 5
+        assert isinstance(result.session_count.value, int)
+        fractional = parse_game_filter(
+            json.dumps({"session_average": {"modifier": "GREATER_THAN", "value": 3.5}})
+        )
+        assert fractional is not None and fractional.session_average is not None
+        assert fractional.session_average.value == 3.5
+
     def test_bad_value_nested_in_operator_raises(self):
         # The fix lives in criterion from_json, so it must hold under AND/OR/NOT.
         bad = json.dumps(

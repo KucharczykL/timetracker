@@ -173,6 +173,14 @@ def _coerce_float(raw: Any) -> float:
         raise FilterError(f"expected a number, got {raw!r}") from exc
 
 
+def _coerce_number(raw: Any) -> int | float:
+    # For fields that may be integer (a count) or fractional (a sum/avg): validate
+    # numerically but keep an integral value an ``int`` so a count round-trips as
+    # ``5`` rather than ``5.0`` in serialized filter JSON. Querying is unaffected.
+    number = _coerce_float(raw)
+    return int(number) if number.is_integer() else number
+
+
 def _strip_set_label(item: Any) -> Any:
     """Reduce a set-criterion element to its bare id. Widgets send ``{id, label}``
     dicts (label is display-only); a hand-edited dict missing ``id`` is bad input
@@ -320,7 +328,7 @@ class IntCriterion(_ScalarCriterion):
     value: int = 0
     value2: int | None = None
     modifier: Modifier = Modifier.EQUALS
-    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_int)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -358,7 +366,7 @@ class FloatCriterion(_ScalarCriterion):
     value: float = 0.0
     value2: float | None = None
     modifier: Modifier = Modifier.EQUALS
-    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_float)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -396,7 +404,7 @@ class DateCriterion(_ScalarCriterion):
     value: str = ""
     value2: str | None = None
     modifier: Modifier = Modifier.EQUALS
-    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_date)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_date)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -550,7 +558,7 @@ class MultiCriterion(_SetCriterion):
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
-    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_int)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
 
 @dataclass
@@ -579,10 +587,11 @@ class AggregateCriterion(_ScalarCriterion):
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
-    # Aggregates compare numerically; coerce to float so a wrong-typed bound is
-    # caught at parse rather than surfacing as a query-execution 500. The eager
-    # build can't catch it: ``aggregate_to_q`` feeds the value straight into Q.
-    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_float)
+    # Aggregates compare numerically; coerce so a wrong-typed bound is caught at
+    # parse rather than surfacing as a query-execution 500 (the eager build can't
+    # catch it: ``aggregate_to_q`` feeds the value straight into Q). ``_coerce_number``
+    # keeps an integral count an int so it round-trips as ``5``, not ``5.0``.
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_number)
 
     def to_q(self, field_name: str) -> Q:
         # Unlike sibling criteria, an aggregate is not self-contained: its meaning
