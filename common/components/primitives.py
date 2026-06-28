@@ -186,6 +186,8 @@ Meta = _html_element("meta")
 Title = _html_element("title")
 Script = _html_element("script")
 Link = _html_element("link")
+Select = _html_element("select")
+Option = _html_element("option")
 
 
 def _popover_html(

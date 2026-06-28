@@ -1,0 +1,169 @@
+/**
+ * FieldComparisonSet — build "left <op> right" field-to-field comparison rows.
+ *
+ * Drives common/components/filters.py FieldComparisonSet. Each row's left column
+ * is server-rendered with the full column option set; this module fills the
+ * operator and right-column selects from the chosen left column's comparison
+ * group (mirroring the server's _allowed_comparison_modifiers / same-group rule),
+ * restoring any saved value stashed in data-selected. The set's rows + AND/OR
+ * mode are read back by filter-bar.ts on Apply (see readFieldComparisonSet).
+ *
+ * The single-row logic (refreshRow) is intentionally separable from the set
+ * container so the nested boolean builder (#168) can reuse it inside a group.
+ */
+import { readFieldComparisonSetProps } from "../generated/props.js";
+
+interface Column {
+  value: string;
+  label: string;
+  group: string;
+}
+
+export interface ComparisonRow {
+  left: string;
+  right: string;
+  modifier: string;
+}
+
+// Operator labels by Modifier value — must match the modifiers the server
+// accepts per group (common/criteria.py _allowed_comparison_modifiers).
+const OPERATOR_LABELS: Record<string, string> = {
+  EQUALS: "=",
+  NOT_EQUALS: "≠",
+  GREATER_THAN: ">",
+  LESS_THAN: "<",
+  INCLUDES: "contains",
+  EXCLUDES: "doesn't contain",
+};
+
+function operatorsForGroup(group: string): string[] {
+  if (group === "bool") return ["EQUALS", "NOT_EQUALS"];
+  if (group === "string") {
+    return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN", "INCLUDES", "EXCLUDES"];
+  }
+  return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN"];
+}
+
+function groupOf(columns: Column[], value: string): string | null {
+  const column = columns.find((candidate) => candidate.value === value);
+  return column ? column.group : null;
+}
+
+function fillSelect(
+  select: HTMLSelectElement,
+  options: [string, string][],
+  selected: string,
+  placeholder: string,
+): void {
+  select.textContent = "";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = placeholder;
+  select.appendChild(blank);
+  for (const [value, label] of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    if (value === selected) option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+/** Rebuild a row's operator + right-column options from its left column. The
+ * reusable single-row unit (see file header). */
+function refreshRow(row: HTMLElement, columns: Column[]): void {
+  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]");
+  const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
+  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]");
+  if (!left || !operator || !right) return;
+
+  // Saved values: data-selected on first paint, then the live value afterwards.
+  const operatorSaved = operator.getAttribute("data-selected") ?? operator.value;
+  const rightSaved = right.getAttribute("data-selected") ?? right.value;
+  operator.removeAttribute("data-selected");
+  right.removeAttribute("data-selected");
+
+  const group = groupOf(columns, left.value);
+  if (!group) {
+    fillSelect(operator, [], "", "—");
+    fillSelect(right, [], "", "column…");
+    operator.disabled = true;
+    right.disabled = true;
+    return;
+  }
+  operator.disabled = false;
+  right.disabled = false;
+  fillSelect(
+    operator,
+    operatorsForGroup(group).map((modifier) => [modifier, OPERATOR_LABELS[modifier]]),
+    operatorSaved,
+    "—",
+  );
+  fillSelect(
+    right,
+    columns
+      .filter((column) => column.group === group && column.value !== left.value)
+      .map((column) => [column.value, column.label]),
+    rightSaved,
+    "column…",
+  );
+}
+
+function wireRow(row: HTMLElement, columns: Column[]): void {
+  refreshRow(row, columns);
+  row
+    .querySelector<HTMLSelectElement>("[data-fc-left]")
+    ?.addEventListener("change", () => refreshRow(row, columns));
+  row
+    .querySelector<HTMLElement>("[data-fc-remove]")
+    ?.addEventListener("click", () => row.remove());
+}
+
+/** Read the set's mode + complete rows for filter-bar.ts serialization. */
+export function readFieldComparisonSet(element: HTMLElement): {
+  mode: string;
+  comparisons: ComparisonRow[];
+} {
+  const mode =
+    element.querySelector<HTMLInputElement>("[data-fc-mode]:checked")?.value === "OR"
+      ? "OR"
+      : "AND";
+  const comparisons: ComparisonRow[] = [];
+  element.querySelectorAll<HTMLElement>("[data-fc-row]").forEach((row) => {
+    const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
+    const modifier = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
+    const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+    if (left && right && modifier && left !== right) {
+      comparisons.push({ left, right, modifier });
+    }
+  });
+  return { mode, comparisons };
+}
+
+class FieldComparisonSetElement extends HTMLElement {
+  connectedCallback(): void {
+    const { columns: columnsJson } = readFieldComparisonSetProps(this);
+    let columns: Column[] = [];
+    try {
+      columns = JSON.parse(columnsJson || "[]");
+    } catch {
+      console.warn("field-comparison-set: malformed columns prop", columnsJson);
+    }
+    const rowsContainer = this.querySelector<HTMLElement>("[data-fc-rows]");
+    const template = this.querySelector<HTMLTemplateElement>("[data-fc-row-template]");
+    if (!rowsContainer || !template) return;
+
+    rowsContainer
+      .querySelectorAll<HTMLElement>("[data-fc-row]")
+      .forEach((row) => wireRow(row, columns));
+
+    this.querySelector<HTMLElement>("[data-fc-add]")?.addEventListener("click", () => {
+      const clone = template.content.firstElementChild?.cloneNode(true) as HTMLElement | null;
+      if (!clone) return;
+      rowsContainer.appendChild(clone);
+      wireRow(clone, columns);
+    });
+  }
+}
+
+customElements.define("field-comparison-set", FieldComparisonSetElement);

@@ -102,13 +102,18 @@ class _BarCase(NamedTuple):
 # stops emitting ``data-filter-widget``), which the per-path checks below cannot
 # catch — only an exact count does. Update these numbers deliberately whenever a
 # filter field is added or removed.
+# Each count includes the field-comparison widget (#167), present in every bar
+# whose model has >=2 columns in one comparison group. Unlike the other widgets
+# its ``["field_comparisons"]`` path does NOT resolve through resolve_path_kind
+# (it's a list field, serialized by filter-bar.ts's special-case branch), so the
+# resolution check below skips kind=="field-comparison".
 _BAR_CASES = [
-    _BarCase("game", FilterBar, GameFilter, 23),
-    _BarCase("session", SessionFilterBar, SessionFilter, 8),
-    _BarCase("purchase", PurchaseFilterBar, PurchaseFilter, 14),
-    _BarCase("device", DeviceFilterBar, DeviceFilter, 1),
-    _BarCase("platform", PlatformFilterBar, PlatformFilter, 2),
-    _BarCase("playevent", PlayEventFilterBar, PlayEventFilter, 4),
+    _BarCase("game", FilterBar, GameFilter, 24),
+    _BarCase("session", SessionFilterBar, SessionFilter, 9),
+    _BarCase("purchase", PurchaseFilterBar, PurchaseFilter, 15),
+    _BarCase("device", DeviceFilterBar, DeviceFilter, 2),
+    _BarCase("platform", PlatformFilterBar, PlatformFilter, 3),
+    _BarCase("playevent", PlayEventFilterBar, PlayEventFilter, 5),
 ]
 
 
@@ -160,6 +165,15 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
         if widget.kind == "relation-bool":
             _assert_relation_bool_resolves(case.filter_cls, widget)
             continue
+        # field_comparisons is a list field handled by filter-bar.ts's
+        # special-case branch, not the generic path resolver — resolve_path_kind
+        # cannot (and need not) resolve it. See the LeafWidgetKind note in
+        # common/criteria.py and the #167 design (§4 path note).
+        if widget.kind == "field-comparison":
+            assert widget.path == ["field_comparisons"], (
+                f"{case.name} field-comparison widget has unexpected path {widget.path}"
+            )
+            continue
         resolved = resolve_path_kind(case.filter_cls, widget.path)
         assert resolved == widget.kind, (
             f"{case.name} widget {widget.path} declares kind {widget.kind!r} "
@@ -180,7 +194,8 @@ def test_no_widget_path_is_a_prefix_of_another(case: _BarCase) -> None:
     paths = [
         widget.path
         for widget in _collect_widgets(html)
-        if len(widget.path) == 1 and widget.kind != "relation-bool"
+        if len(widget.path) == 1
+        and widget.kind not in ("relation-bool", "field-comparison")
     ]
     for outer in paths:
         for inner in paths:
