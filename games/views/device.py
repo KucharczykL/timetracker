@@ -22,6 +22,7 @@ from common.time import dateformat, local_strftime
 from common.utils import paginate
 from games.filters import parse_device_filter
 from games.forms import DeviceForm
+from games.views.filtering import apply_structured_filter
 from games.models import Device
 
 
@@ -31,7 +32,9 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        device_filter = parse_device_filter(filter_json)
+        device_filter = apply_structured_filter(
+            request, parse_device_filter, filter_json
+        )
         if device_filter is not None:
             devices = devices.filter(device_filter.to_q())
 

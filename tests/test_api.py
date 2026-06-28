@@ -179,14 +179,22 @@ def test_session_list_page_overshoot_clamps(auth_client):
     assert len(data["items"]) == 3
 
 
-def test_session_list_malformed_filter_ignored(auth_client):
-    # parse_session_filter returns None on malformed JSON; the handler skips
-    # filtering rather than 500-ing, returning the unfiltered list.
+def test_session_list_malformed_filter_rejected(auth_client):
+    # An invalid ?filter= (malformed JSON or a semantically-invalid filter) makes
+    # parse_session_filter raise FilterError; the API turns that into a 400 rather
+    # than 500-ing or silently returning the unfiltered list.
     for _ in range(2):
         _make_session()
     response = auth_client.get("/api/session/?filter=not-json")
-    assert response.status_code == 200
-    assert response.json()["count"] == 2
+    assert response.status_code == 400
+
+
+def test_session_list_invalid_filter_semantics_rejected(auth_client):
+    # Parseable JSON but a build-time-invalid filter (BETWEEN without value2) must
+    # also be a 400, not a 500.
+    bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
+    response = auth_client.get(f"/api/session/?filter={bad}")
+    assert response.status_code == 400
 
 
 def _patch_session(client, session_id, body):

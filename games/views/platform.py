@@ -21,6 +21,7 @@ from common.time import dateformat, local_strftime
 from common.utils import paginate
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
+from games.views.filtering import apply_structured_filter
 from games.models import Platform
 from games.views.general import use_custom_redirect
 
@@ -31,7 +32,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        platform_filter = parse_platform_filter(filter_json)
+        platform_filter = apply_structured_filter(
+            request, parse_platform_filter, filter_json
+        )
         if platform_filter is not None:
             platforms = platforms.filter(platform_filter.to_q())
 

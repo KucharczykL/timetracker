@@ -9,13 +9,14 @@ from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
+    FilterError,
     IntCriterion,
     Modifier,
     MultiCriterion,
     StringCriterion,
 )
 from common.components import FilterBar
-from games.filters import GameFilter
+from games.filters import GameFilter, parse_game_filter, parse_session_filter
 
 
 class TestModifier:
@@ -197,7 +198,9 @@ class TestChoiceCriterion:
         layer — they require a filter-level Q builder (see
         PurchaseFilter._games_to_q)."""
         c = ChoiceCriterion(value=["f", "p"], modifier=modifier)
-        with pytest.raises(AssertionError, match="requires a filter-level"):
+        # Must raise FilterError (catchable user-input error), NOT AssertionError
+        # (which vanishes under `python -O` and would re-open the 500 path).
+        with pytest.raises(FilterError, match="requires a filter-level"):
             c.to_q("status")
 
     def test_not_equals(self):
@@ -238,7 +241,9 @@ class TestMultiCriterion:
         layer — they require a filter-level Q builder (see
         PurchaseFilter._games_to_q)."""
         c = MultiCriterion(value=[1, 2], modifier=modifier)
-        with pytest.raises(AssertionError, match="requires a filter-level"):
+        # Must raise FilterError (catchable user-input error), NOT AssertionError
+        # (which vanishes under `python -O` and would re-open the 500 path).
+        with pytest.raises(FilterError, match="requires a filter-level"):
             c.to_q("games")
 
     def test_is_null(self):
@@ -1312,3 +1317,89 @@ class TestPlayEventFilterDates:
         assert out["ended"]["value2"] == "2024-12-31"
         assert out["ended"]["modifier"] == Modifier.BETWEEN
         assert out["started"]["modifier"] == Modifier.GREATER_THAN
+
+
+class TestFilterErrorBoundary:
+    """Issue #131: a parseable-but-invalid ``?filter=`` must raise FilterError
+    (a catchable user-input error) at parse time, never escape as an uncaught
+    ValueError/AssertionError that 500s the list views. ``filter_from_json``
+    validates eagerly by building the whole Q once, so every nested criterion
+    precondition is exercised."""
+
+    def test_bad_modifier_enum(self):
+        bad = json.dumps({"name": {"modifier": "BOGUS", "value": "x"}})
+        with pytest.raises(FilterError, match="Unknown filter modifier"):
+            parse_game_filter(bad)
+
+    def test_bad_relation_match(self):
+        bad = json.dumps({"session_filter": {"match": "MOST", "note": {"value": "x"}}})
+        with pytest.raises(FilterError, match="Unknown relation match"):
+            parse_game_filter(bad)
+
+    def test_between_without_value2_int(self):
+        bad = json.dumps({"year_released": {"modifier": "BETWEEN", "value": 2000}})
+        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+            parse_game_filter(bad)
+
+    def test_between_without_value2_date(self):
+        bad = json.dumps(
+            {"timestamp_start": {"modifier": "BETWEEN", "value": "2024-01-01"}}
+        )
+        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+            parse_session_filter(bad)
+
+    def test_between_without_value2_duration(self):
+        bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
+        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+            parse_session_filter(bad)
+
+    def test_unsupported_modifier_for_bool(self):
+        bad = json.dumps({"mastered": {"modifier": "GREATER_THAN", "value": True}})
+        with pytest.raises(FilterError, match="for bool field"):
+            parse_game_filter(bad)
+
+    def test_unsupported_modifier_for_string(self):
+        bad = json.dumps({"name": {"modifier": "BETWEEN", "value": "a"}})
+        with pytest.raises(FilterError, match="for string field"):
+            parse_game_filter(bad)
+
+    def test_m2m_only_modifier_on_generic_layer(self):
+        """INCLUDES_ALL on a non-M2M-routed field hits the generic _SetCriterion
+        path: now FilterError (formerly a bare AssertionError)."""
+        bad = json.dumps({"platform_group": {"modifier": "INCLUDES_ALL", "value": [1]}})
+        with pytest.raises(FilterError, match="requires a filter-level"):
+            parse_game_filter(bad)
+
+    def test_malformed_json(self):
+        with pytest.raises(FilterError, match="not valid JSON"):
+            parse_game_filter("{not json")
+
+    def test_empty_returns_none(self):
+        assert parse_game_filter("") is None
+
+    def test_json_null_returns_none(self):
+        assert parse_game_filter("null") is None
+
+    def test_invalid_criterion_nested_in_operator_raises(self):
+        """An invalid criterion buried inside AND must still raise — proves the
+        eager validation walks sub-filters, not just the top level."""
+        bad = json.dumps(
+            {"AND": [{"year_released": {"modifier": "BETWEEN", "value": 2000}}]}
+        )
+        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+            parse_game_filter(bad)
+
+    def test_invalid_criterion_nested_in_relation_raises(self):
+        """An invalid criterion inside a cross-entity sub-filter must raise —
+        relation_to_q exercises sub.to_q() during the eager build."""
+        bad = json.dumps(
+            {"session_filter": {"duration_hours": {"modifier": "BETWEEN", "value": 1}}}
+        )
+        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+            parse_game_filter(bad)
+
+    def test_valid_filter_still_parses(self):
+        good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise

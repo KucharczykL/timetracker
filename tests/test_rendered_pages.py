@@ -510,9 +510,9 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertIn("MID-MARKER", html)
         self.assertNotIn("LATE-MARKER", html)
 
-    def test_malformed_json_filter_falls_back_to_unfiltered(self):
-        """parse_purchase_filter returns None on bad JSON → view ignores
-        the filter and renders the full list (no 500)."""
+    def test_malformed_json_filter_warns_and_falls_back_to_unfiltered(self):
+        """Bad JSON raises FilterError; the view warns-and-ignores → full list,
+        a warning toast, and no 500."""
         response = self._get(raw_filter="this is not json")
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
@@ -520,3 +520,18 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertIn("EARLY-MARKER", html)
         self.assertIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
+        # A warning toast is queued (rendered into the django-messages blob).
+        self.assertIn("Ignored invalid filter", html)
+
+    def test_semantically_invalid_filter_warns_and_falls_back(self):
+        """Parseable JSON but a build-time-invalid filter (BETWEEN without value2)
+        must warn-and-ignore, not 500."""
+        response = self._get(
+            {"date_purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertIn("LATE-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)

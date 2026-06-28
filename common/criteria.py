@@ -16,6 +16,25 @@ from typing import Any, Literal, Self, TypeVar
 
 from django.db.models import Q
 
+# ── Errors ─────────────────────────────────────────────────────────────────
+
+
+class FilterError(ValueError):
+    """A syntactically-parseable filter that is semantically invalid.
+
+    Raised for user-controllable bad input reachable from a hand-edited
+    ``?filter=``: an unknown modifier/match enum, a missing ``BETWEEN`` bound,
+    an unsupported modifier for a field type, an M2M-only modifier on the
+    generic layer, or malformed JSON. The view layer catches this to
+    warn-and-ignore; the API layer turns it into a 400 — neither should 500.
+
+    Subclasses ``ValueError`` so it stays catchable as one. Internal invariants
+    that can only fail through a programmer error (e.g. ``aggregate_to_q``'s
+    hard-coded reducer/source) deliberately keep raising plain ``ValueError`` so
+    a real bug still surfaces instead of being masked as bad user input.
+    """
+
+
 # ── Modifier ──────────────────────────────────────────────────────────────
 
 
@@ -119,7 +138,10 @@ class _Criterion:
                 val = data[f.name]
                 # Coerce string modifier to Modifier enum
                 if f.name == "modifier" and isinstance(val, str):
-                    val = Modifier(val)
+                    try:
+                        val = Modifier(val)
+                    except ValueError as exc:
+                        raise FilterError(f"Unknown filter modifier {val!r}") from exc
                 kwargs[f.name] = val
         return cls(**kwargs)
 
@@ -158,7 +180,7 @@ class StringCriterion(_Criterion):
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for string field")
+        raise FilterError(f"Unsupported modifier {m} for string field")
 
 
 @dataclass
@@ -179,7 +201,7 @@ class IntCriterion(_Criterion):
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
             if self.value2 is None:
-                raise ValueError("BETWEEN requires value2")
+                raise FilterError("BETWEEN requires value2")
             return Q(
                 **{
                     f"{field_name}__gte": min(self.value, self.value2),
@@ -188,14 +210,14 @@ class IntCriterion(_Criterion):
             )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
-                raise ValueError("NOT_BETWEEN requires value2")
+                raise FilterError("NOT_BETWEEN requires value2")
             lo, hi = min(self.value, self.value2), max(self.value, self.value2)
             return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
         if m == Modifier.IS_NULL:
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for int field")
+        raise FilterError(f"Unsupported modifier {m} for int field")
 
 
 @dataclass
@@ -216,7 +238,7 @@ class FloatCriterion(_Criterion):
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
             if self.value2 is None:
-                raise ValueError("BETWEEN requires value2")
+                raise FilterError("BETWEEN requires value2")
             return Q(
                 **{
                     f"{field_name}__gte": min(self.value, self.value2),
@@ -225,14 +247,14 @@ class FloatCriterion(_Criterion):
             )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
-                raise ValueError("NOT_BETWEEN requires value2")
+                raise FilterError("NOT_BETWEEN requires value2")
             lo, hi = min(self.value, self.value2), max(self.value, self.value2)
             return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
         if m == Modifier.IS_NULL:
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for float field")
+        raise FilterError(f"Unsupported modifier {m} for float field")
 
 
 @dataclass
@@ -253,13 +275,13 @@ class DateCriterion(_Criterion):
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
             if self.value2 is None:
-                raise ValueError("BETWEEN requires value2")
+                raise FilterError("BETWEEN requires value2")
             return Q(
                 **{f"{field_name}__gte": self.value, f"{field_name}__lte": self.value2}
             )
         if m == Modifier.NOT_BETWEEN:
             if self.value2 is None:
-                raise ValueError("NOT_BETWEEN requires value2")
+                raise FilterError("NOT_BETWEEN requires value2")
             return Q(**{f"{field_name}__lt": self.value}) | Q(
                 **{f"{field_name}__gt": self.value2}
             )
@@ -267,7 +289,7 @@ class DateCriterion(_Criterion):
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
-        raise ValueError(f"Unsupported modifier {m} for date field")
+        raise FilterError(f"Unsupported modifier {m} for date field")
 
 
 @dataclass
@@ -281,7 +303,7 @@ class BoolCriterion(_Criterion):
             return Q(**{field_name: self.value})
         if self.modifier == Modifier.NOT_EQUALS:
             return ~Q(**{field_name: self.value})
-        raise ValueError(f"Unsupported modifier {self.modifier} for bool field")
+        raise FilterError(f"Unsupported modifier {self.modifier} for bool field")
 
     def to_json(self) -> dict[str, Any]:
         # `value` is the whole payload here, so it must always serialize — the
@@ -352,11 +374,11 @@ class _SetCriterion(_Criterion):
             # build a correct Q.  M2M callers must supply their own Q builder
             # at the filter level — see PurchaseFilter._games_to_q for the
             # chained-subquery pattern.
-            assert False, (
+            raise FilterError(
                 f"{modifier} requires a filter-level Q builder for M2M fields. "
                 "See PurchaseFilter._games_to_q for the chained-subquery pattern."
             )
-        raise ValueError(f"Unsupported modifier {modifier} for {type(self).__name__}")
+        raise FilterError(f"Unsupported modifier {modifier} for {type(self).__name__}")
 
     @classmethod
     def from_json(cls, data: dict | None) -> Self | None:
@@ -759,7 +781,10 @@ class OperatorFilter:
             raw = data[f.name]
             # Relation quantifier (meaningful only on a nested sub-filter).
             if f.name == "match":
-                kwargs["match"] = RelationMatch(raw)
+                try:
+                    kwargs["match"] = RelationMatch(raw)
+                except ValueError as exc:
+                    raise FilterError(f"Unknown relation match {raw!r}") from exc
                 continue
             # Operator fields are list-valued; handle them before the generic
             # ``raw is None`` guard so a JSON ``null`` (or absent) operator
@@ -837,19 +862,35 @@ class OperatorFilter:
 
 
 def filter_from_json(cls: type[F], json_str: str) -> F | None:
-    """Deserialize a filter from a JSON string.
+    """Deserialize and fully validate a filter from a JSON string.
 
     Usage:
         f = filter_from_json(GameFilter, request.GET.get("filter", ""))
         games = Game.objects.filter(f.to_q())
+
+    Returns ``None`` for genuinely-empty input (missing param or JSON ``null``).
+    Raises ``FilterError`` for any malformed or semantically-invalid filter —
+    malformed JSON, an unknown modifier/match enum, a missing ``BETWEEN`` bound,
+    etc. Callers (views/API) catch ``FilterError`` to degrade gracefully instead
+    of 500-ing.
+
+    Validation is eager and exhaustive: building the Q once here recurses through
+    every AND/OR/NOT and cross-entity sub-filter (``relation_to_q`` calls each
+    ``sub.to_q()``), so every criterion precondition is exercised. The builder
+    *is* the validator, so it cannot drift from it — if this returns, no later
+    ``to_q()`` call on the result can raise.
     """
     if not json_str:
         return None
     try:
         data = json.loads(json_str)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        raise FilterError(f"Filter is not valid JSON: {exc}") from exc
+    result = cls.from_json(data)
+    if result is None:
         return None
-    return cls.from_json(data)
+    result.to_q()  # eager full-tree validation; discard the Q
+    return result
 
 
 def filter_to_json(f: OperatorFilter) -> str:
@@ -882,7 +923,7 @@ def _numeric_to_q(
         return Q(**{f"{field_name}__lt": value})
     if modifier == Modifier.BETWEEN:
         if value2 is None:
-            raise ValueError("BETWEEN requires value2")
+            raise FilterError("BETWEEN requires value2")
         return Q(
             **{
                 f"{field_name}__gte": min(value, value2),
@@ -891,7 +932,7 @@ def _numeric_to_q(
         )
     if modifier == Modifier.NOT_BETWEEN:
         if value2 is None:
-            raise ValueError("NOT_BETWEEN requires value2")
+            raise FilterError("NOT_BETWEEN requires value2")
         lower_bound, upper_bound = min(value, value2), max(value, value2)
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
             **{f"{field_name}__gt": upper_bound}
@@ -900,7 +941,7 @@ def _numeric_to_q(
         return Q(**{f"{field_name}__isnull": True})
     if modifier == Modifier.NOT_NULL:
         return Q(**{f"{field_name}__isnull": False})
-    raise ValueError(f"Unsupported modifier {modifier} for numeric comparison")
+    raise FilterError(f"Unsupported modifier {modifier} for numeric comparison")
 
 
 def duration_hours_to_q(
@@ -939,7 +980,7 @@ def duration_hours_to_q(
         return Q(**{f"{field_name}__lt": duration})
     if modifier == Modifier.BETWEEN:
         if value2 is None:
-            raise ValueError("BETWEEN requires value2")
+            raise FilterError("BETWEEN requires value2")
         lower_bound = timedelta(hours=min(value, value2))
         upper_bound = timedelta(hours=max(value, value2))
         return Q(
@@ -947,7 +988,7 @@ def duration_hours_to_q(
         )
     if modifier == Modifier.NOT_BETWEEN:
         if value2 is None:
-            raise ValueError("NOT_BETWEEN requires value2")
+            raise FilterError("NOT_BETWEEN requires value2")
         lower_bound = timedelta(hours=min(value, value2))
         upper_bound = timedelta(hours=max(value, value2))
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
@@ -957,7 +998,7 @@ def duration_hours_to_q(
         return Q(**{field_name: timedelta(0)})
     if modifier == Modifier.NOT_NULL:
         return ~Q(**{field_name: timedelta(0)})
-    raise ValueError(f"Unsupported modifier {modifier} for duration comparison")
+    raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
 
 
 # The related/parent model is the concrete Django model the filter targets.
@@ -1004,7 +1045,7 @@ def relation_to_q(
     if sub.match == RelationMatch.ALL:
         violating = related.filter(~sub.to_q()).values_list(related_lookup, flat=True)
         return ~Q(**{f"{parent_field}__in": violating})
-    raise ValueError(f"Unsupported relation match {sub.match!r}")
+    raise FilterError(f"Unsupported relation match {sub.match!r}")
 
 
 def aggregate_to_q(
