@@ -1,5 +1,6 @@
 """Tests for the filtering system."""
 
+import dataclasses
 import json
 from dataclasses import dataclass
 from dataclasses import field as dc_field
@@ -9,6 +10,7 @@ from django.db.models import F, Q
 from django.test import SimpleTestCase as TestCase
 
 from common.criteria import (
+    AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
@@ -21,13 +23,19 @@ from common.criteria import (
     StringCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
+    _criterion_class_for,
     _field_comparison_to_q,
     _maybe_group_for,
     comparable_columns,
 )
 from common.components import FilterBar
 from games.filters import (
+    DeviceFilter,
     GameFilter,
+    PlatformFilter,
+    PlayEventFilter,
+    PurchaseFilter,
+    SessionFilter,
     parse_game_filter,
     parse_purchase_filter,
     parse_session_filter,
@@ -2758,3 +2766,76 @@ class FieldComparisonPrefillTest(TestCase):
         node = _field_comparison_section({}, Session)
         self.assertIsNotNone(node)
         self.assertIn("field-comparison-set", str(node))
+
+
+# ── Descriptor drift guard (issue #161) ──────────────────────────────────────
+
+
+class TestFilterFieldDescriptors:
+    """Guard the declarative ``fields`` table against drift from the dataclass.
+
+    Each concrete filter's generic ``to_q`` walks ``fields`` for its simple
+    criteria and delegates the rest to ``_extra_q``. These tests assert that
+    every declared criterion field is accounted for exactly once — in ``fields``,
+    as an aggregate, or in ``_IMPERATIVE_CRITERIA`` — so a newly added field can't
+    silently fall through (and thus be ignored by ``to_q``).
+    """
+
+    ALL_FILTERS = [
+        GameFilter,
+        SessionFilter,
+        PurchaseFilter,
+        DeviceFilter,
+        PlatformFilter,
+        PlayEventFilter,
+    ]
+
+    @staticmethod
+    def _declared_criterion_fields(filter_cls) -> set[str]:
+        """Every dataclass field whose annotation resolves to a criterion type."""
+        return {
+            f.name
+            for f in dataclasses.fields(filter_cls)
+            if _criterion_class_for(filter_cls, f.name) is not None
+        }
+
+    @classmethod
+    def _aggregate_fields(cls, filter_cls) -> set[str]:
+        result: set[str] = set()
+        for name in cls._declared_criterion_fields(filter_cls):
+            criterion_cls = _criterion_class_for(filter_cls, name)
+            if criterion_cls is not None and issubclass(
+                criterion_cls, AggregateCriterion
+            ):
+                result.add(name)
+        return result
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_partition_covers_every_criterion_field(self, filter_cls):
+        declared = self._declared_criterion_fields(filter_cls)
+        descriptor_keys = set(filter_cls.fields)
+        aggregates = self._aggregate_fields(filter_cls)
+        imperative = set(filter_cls._IMPERATIVE_CRITERIA)
+        covered = descriptor_keys | aggregates | imperative
+        assert covered == declared, (
+            f"{filter_cls.__name__}: fields∪aggregates∪imperative != declared "
+            f"criterion fields; missing={declared - covered}, "
+            f"extra={covered - declared}"
+        )
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_partition_has_no_overlap(self, filter_cls):
+        descriptor_keys = set(filter_cls.fields)
+        aggregates = self._aggregate_fields(filter_cls)
+        imperative = set(filter_cls._IMPERATIVE_CRITERIA)
+        assert descriptor_keys.isdisjoint(aggregates)
+        assert descriptor_keys.isdisjoint(imperative)
+        assert aggregates.isdisjoint(imperative)
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_descriptor_keys_are_real_criterion_fields(self, filter_cls):
+        declared = self._declared_criterion_fields(filter_cls)
+        for key in filter_cls.fields:
+            assert key in declared, (
+                f"{filter_cls.__name__}.fields[{key!r}] is not a criterion field"
+            )
