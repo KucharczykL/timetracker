@@ -122,22 +122,37 @@ Registered behaviour follows the project's custom-element convention (native lif
 
 ### 4. Serialization contract (`ts/elements/filter-bar.ts`)
 
-The generic serializer special-cases `data-kind="field-comparison"`. It reads the set's rows and
-mode and emits, into the filter JSON being built:
+**This requires NEW code, not the generic path.** The current serializer's `readWidget()` switch
+has no `field-comparison` case (unknown kinds hit `default` → `null` → the widget is silently
+skipped), and `setPath()` only assigns a single value at a single key — it cannot build a
+top-level array nor the nested `AND`/`OR` tree. So a new branch is added, **modelled on the
+existing `relation-bool` special-case** (which already sidesteps the generic path and calls
+`appendAnd(filter, …)`):
 
-- **AND mode** → top-level `field_comparisons: [ {left, right, modifier}, … ]`. Each entry is
-  AND-combined by the existing `field_comparisons` loop in `_apply_operators`.
-- **OR mode** → a single isolated wrapper:
-  ```json
-  { "AND": [ { "OR": [ {"field_comparisons": [c1]}, {"field_comparisons": [c2]}, … ] } ] }
-  ```
-  Each comparison sits alone in its own node under one `OR` list, wrapped in a single `AND`
-  sub-filter. This is required because top-level `OR` uses `q |= sub.to_q()` in
-  `_apply_operators` and would otherwise OR the comparison group against every other top-level
-  criterion (platform, status, …). The AND-wrapper isolates the OR group so it composes as
-  `(other filters) AND (c1 OR c2 OR …)`.
+- Add a `readFieldComparisonSet(element)` reader that returns the rows (`{left, right, modifier}`)
+  plus the mode.
+- Add an explicit branch in the per-widget loop (before the generic `readWidget` fallback, like
+  the `kind === "relation-bool"` early-return) that emits:
+  - **AND mode** → assign `filter["field_comparisons"] = [ {left, right, modifier}, … ]` (build
+    the array directly; do not route through `setPath`'s scalar assignment). Each entry is
+    AND-combined by the existing `field_comparisons` loop in `_apply_operators`.
+  - **OR mode** → `appendAnd(filter, …)` a single isolated wrapper:
+    ```json
+    { "AND": [ { "OR": [ {"field_comparisons": [c1]}, {"field_comparisons": [c2]}, … ] } ] }
+    ```
+    Each comparison sits alone in its own node under one `OR` list, wrapped in a single `AND`
+    sub-filter. This is required because top-level `OR` uses `q |= sub.to_q()` in
+    `_apply_operators` and would otherwise OR the comparison group against every other top-level
+    criterion (platform, status, …). The AND-wrapper isolates the OR group so it composes as
+    `(other filters) AND (c1 OR c2 OR …)`.
 
 Rows with any of left / operator / right unset are dropped silently (incomplete, not an error).
+
+**Path note:** `data-path=["field_comparisons"]` is informational only for this widget (kept for
+consistency with the self-describe contract). The field-comparison branch is handled entirely by
+the special-case above and does **not** go through `resolve_path_kind` / `_criterion_class_for`,
+which cannot resolve a list field (`field_comparisons` is `list[FieldComparisonCriterion]`, not a
+single `_Criterion`) and would raise. No change to the path-resolution machinery is needed.
 
 ### 5. Validation parity
 
@@ -160,7 +175,9 @@ are merged; this is a degenerate case, not a supported authoring path.
 ### 7. Wiring into the bars
 
 Render the set from the shared `_FilterBarBase` so it appears uniformly in every bar whose
-filter declares a `_comparison_model()` and whose model has ≥2 comparable columns. Each bar
+filter declares a `_comparison_model()` and whose model has **≥2 comparable columns within at
+least one group** (the same-exact-group rule means two columns in different groups can never be
+compared; all six models satisfy this today). Each bar
 subclass declares its model (a class attribute) so the base can call `comparable_columns(model)`.
 This covers `FilterBar` (Game), `SessionFilterBar`, `PurchaseFilterBar`, `DeviceFilterBar`,
 `PlatformFilterBar`, `PlayEventFilterBar` in one place. Widget `Media` bubbles up the node tree
