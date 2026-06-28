@@ -15,14 +15,14 @@ from collections.abc import Callable
 from django.contrib import messages
 from django.http import HttpRequest
 
-from common.criteria import F, FilterError
+from common.criteria import FilterError, FilterType
 
 
 def apply_structured_filter(
     request: HttpRequest,
-    parse: Callable[[str], F | None],
+    parse: Callable[[str], FilterType | None],
     filter_json: str,
-) -> F | None:
+) -> FilterType | None:
     """Parse + validate a ``?filter=`` blob; warn-and-ignore invalid input.
 
     Returns a fully-renderable filter (its ``to_q()`` cannot raise — eager

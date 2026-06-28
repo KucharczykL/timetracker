@@ -3,17 +3,19 @@
 import json
 
 import pytest
-from django.db.models import Q
+from django.db.models import F, Q
 
 from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
+    FieldComparisonCriterion,
     FilterError,
     IntCriterion,
     Modifier,
     MultiCriterion,
     StringCriterion,
+    _field_comparison_to_q,
 )
 from common.components import FilterBar
 from games.filters import (
@@ -1477,4 +1479,92 @@ class TestFilterErrorBoundary:
         assert result is not None
         result.to_q()  # does not raise
         assert result.session_filter is not None
-        result.session_filter.to_q()  # the exact second call game.py makes
+
+
+class TestFieldComparisonCriterion:
+    """Tests for FieldComparisonCriterion and _field_comparison_to_q."""
+
+    # ── _field_comparison_to_q helper ────────────────────────────────────────
+
+    def test_helper_equals(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.EQUALS
+        ) == Q(date_refunded=F("date_purchased"))
+
+    def test_helper_not_equals(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.NOT_EQUALS
+        ) == ~Q(date_refunded=F("date_purchased"))
+
+    def test_helper_greater_than(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.GREATER_THAN
+        ) == Q(date_refunded__gt=F("date_purchased"))
+
+    def test_helper_less_than(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.LESS_THAN
+        ) == Q(date_refunded__lt=F("date_purchased"))
+
+    def test_helper_unsupported_modifier_raises(self):
+        with pytest.raises(FilterError, match="Unsupported modifier"):
+            _field_comparison_to_q("date_refunded", "date_purchased", Modifier.BETWEEN)
+
+    # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
+
+    def test_to_q_delegates_to_helper(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_q() == Q(a__lt=F("b"))
+
+    def test_to_q_ignores_field_name_argument(self):
+        """field_name is ignored; operands are self-contained in left/right."""
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_q("ignored_field") == Q(a__lt=F("b"))
+
+    # ── JSON roundtrip ───────────────────────────────────────────────────────
+
+    def test_to_json_emits_left_right_and_modifier(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_json() == {
+            "left": "a",
+            "right": "b",
+            "modifier": Modifier.LESS_THAN,
+        }
+
+    def test_to_json_always_emits_left_right_even_when_empty(self):
+        """left/right default to '' — to_json must force-emit them even at default."""
+        criterion = FieldComparisonCriterion()
+        serialized = criterion.to_json()
+        assert "left" in serialized
+        assert "right" in serialized
+        assert serialized["left"] == ""
+        assert serialized["right"] == ""
+
+    def test_roundtrip_less_than(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert FieldComparisonCriterion.from_json(criterion.to_json()) == criterion
+
+    def test_roundtrip_default_equals_modifier(self):
+        """Default modifier (EQUALS) must also survive a roundtrip."""
+        criterion = FieldComparisonCriterion(left="x", right="y")
+        restored = FieldComparisonCriterion.from_json(criterion.to_json())
+        assert restored == criterion
+        assert restored.modifier == Modifier.EQUALS
+
+    # ── Modifier.for_field_comparisons ───────────────────────────────────────
+
+    def test_for_field_comparisons(self):
+        assert Modifier.for_field_comparisons() == [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+            Modifier.GREATER_THAN,
+            Modifier.LESS_THAN,
+        ]
