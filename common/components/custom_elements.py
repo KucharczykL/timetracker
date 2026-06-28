@@ -12,7 +12,15 @@ import warnings
 from dataclasses import dataclass
 from typing import Literal, NamedTuple, TypedDict, get_type_hints
 
-from common.components.core import Child, Element, Fragment, Node
+from common.components.core import (
+    BaseComponent,
+    Child,
+    Children,
+    Element,
+    Fragment,
+    Node,
+    as_children,
+)
 from common.components.primitives import (
     A,
     Button,
@@ -403,24 +411,39 @@ def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
     return Li(role="presentation")[A(attributes)[label]]
 
 
-def DropdownActionItem(
-    label: str,
-    *,
-    attributes: list[tuple[str, str]] | None = None,
-    disabled: bool = False,
-) -> Node:
-    """An action menu item (a ``<button>``). ``attributes`` carries the caller's
-    data hooks (e.g. ``[("data-add-play", "")]``) wiring its own JS behavior."""
-    item_attributes: list[tuple[str, str]] = [
-        ("type", "button"),
-        ("role", "menuitem"),
-        ("tabindex", "-1"),
-        ("class", DROPDOWN_ITEM_CLASS),
-    ]
-    if disabled:
-        item_attributes += [("disabled", ""), ("aria-disabled", "true")]
-    item_attributes += list(attributes or [])
-    return Li(role="presentation")[Button(item_attributes)[label]]
+class DropdownActionItem(BaseComponent):
+    """An action menu item (a ``<button>``). The label is the htpy ``[]`` slot —
+    ``DropdownActionItem(data_add_play="")["Played +1"]`` — and htpy attribute
+    kwargs become the button's data hooks wiring its own JS behavior."""
+
+    def __init__(
+        self,
+        _children: Children = None,
+        *,
+        disabled: bool = False,
+        **attrs: object,
+    ) -> None:
+        self._children = as_children(_children)
+        self.disabled = disabled
+        self._attrs = attrs
+
+    def __getitem__(self, children: "Children | Node") -> "DropdownActionItem":
+        return DropdownActionItem(
+            as_children(children), disabled=self.disabled, **self._attrs
+        )
+
+    def render(self) -> Node:
+        item_attributes: list[tuple[str, str]] = [
+            ("type", "button"),
+            ("role", "menuitem"),
+            ("tabindex", "-1"),
+            ("class", DROPDOWN_ITEM_CLASS),
+        ]
+        if self.disabled:
+            item_attributes += [("disabled", ""), ("aria-disabled", "true")]
+        return Li(role="presentation")[
+            Button(item_attributes, **self._attrs)[*self._children]
+        ]
 
 
 def DropdownCheckItem(

@@ -20,6 +20,7 @@ from django.utils.safestring import SafeText, mark_safe
 from common.components.core import (
     Attributes,
     AttrsArg,
+    BaseComponent,
     Child,
     Children,
     Element,
@@ -1031,32 +1032,38 @@ def PageHeading(
     ]
 
 
-def Modal(
-    modal_id: str,
-    children: Children = None,
-) -> Node:
-    """Modal overlay with container. Content (form, buttons) goes in children."""
-    children = children or []
-    return Div(
-        id_=modal_id,
-        # z-40: above in-page positioned UI (popovers z-10, dropdown
-        # panels z-20) so the overlay dims and covers them, but below the
-        # toast container (z-50). Matters for modals rendered inline in a
-        # row (e.g. the session reset confirm) rather than portaled into
-        # the body-level #global-modal-container.
-        class_=(
-            "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
-            "h-full w-full flex items-center justify-center"
-        ),
-    )[
-        Div(
+class Modal(BaseComponent):
+    """Modal overlay with container. Content goes via the htpy ``[]`` slot —
+    ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps."""
+
+    def __init__(self, modal_id: str, _children: Children = None) -> None:
+        self.modal_id = modal_id
+        self._children = as_children(_children)
+
+    def __getitem__(self, children: "Children | Node") -> "Modal":
+        return Modal(self.modal_id, as_children(children))
+
+    def render(self) -> Node:
+        return Div(
+            id_=self.modal_id,
+            # z-40: above in-page positioned UI (popovers z-10, dropdown
+            # panels z-20) so the overlay dims and covers them, but below the
+            # toast container (z-50). Matters for modals rendered inline in a
+            # row (e.g. the session reset confirm) rather than portaled into
+            # the body-level #global-modal-container.
             class_=(
-                f"relative mx-auto p-5 border-accent border w-full "
-                f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
-                "dark:bg-gray-900"
+                "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
+                "h-full w-full flex items-center justify-center"
             ),
-        )[*as_children(children)],
-    ]
+        )[
+            Div(
+                class_=(
+                    f"relative mx-auto p-5 border-accent border w-full "
+                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
+                    "dark:bg-gray-900"
+                ),
+            )[*self._children]
+        ]
 
 
 def ConfirmPage(

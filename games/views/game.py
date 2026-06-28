@@ -291,22 +291,19 @@ def _delete_game_confirmation_modal(
             ),
         ],
     ]
-    return Modal(
-        "delete-game-confirmation-modal",
-        children=[
-            P(
-                class_="text-2xl leading-6 font-medium dark:text-white text-center",
-            )["Delete Game"],
-            P(
-                class_="dark:text-white text-center mt-5",
-            )[
-                "Are you sure you want to delete ",
-                Strong()[game.name],
-                "?",
-            ],
-            form,
+    return Modal("delete-game-confirmation-modal")[
+        P(
+            class_="text-2xl leading-6 font-medium dark:text-white text-center",
+        )["Delete Game"],
+        P(
+            class_="dark:text-white text-center mt-5",
+        )[
+            "Are you sure you want to delete ",
+            Strong()[game.name],
+            "?",
         ],
-    )
+        form,
+    ]
 
 
 @login_required
@@ -385,10 +382,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
                 reverse("games:add_playevent_for_game", args=[game.id]),
                 "Add playthrough...",
             ),
-            DropdownActionItem(
-                "Played times +1",
-                attributes=[("data-add-play", "")],
-            ),
+            DropdownActionItem(data_add_play="")["Played times +1"],
         ],
     )
     return _PlayEventRow(

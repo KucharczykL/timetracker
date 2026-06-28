@@ -195,7 +195,7 @@ class DropdownWrapperTest(unittest.TestCase):
                 aria_label="Playthrough actions",
                 items=[
                     DropdownLinkItem("/add/", "Add playthrough…"),
-                    DropdownActionItem("Played +1", attributes=[("data-add-play", "")]),
+                    DropdownActionItem(data_add_play="")["Played +1"],
                 ],
             )
         )

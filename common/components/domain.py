@@ -307,29 +307,26 @@ def SessionActions(session, csrf_token: str) -> Node:
     if is_open:
         children.append(
             Div(data_reset_modal="", hidden="")[
-                Modal(
-                    modal_id,
-                    [
-                        Div(class_="text-center dark:text-white")[
-                            "Reset the start time of ",
-                            Span(class_="font-medium")[game_name],
-                            " to now?",
-                        ],
-                        Div(class_="flex gap-2 mt-6 justify-center")[
-                            # Reset overwrites the original start time (only
-                            # recoverable via Edit) -> red destructive confirm,
-                            # gray secondary cancel.
-                            StyledButton(
-                                color="red",
-                                data_reset_confirm="",
-                            )["Reset to now"],
-                            StyledButton(
-                                color="gray",
-                                data_reset_cancel="",
-                            )["Cancel"],
-                        ],
+                Modal(modal_id)[
+                    Div(class_="text-center dark:text-white")[
+                        "Reset the start time of ",
+                        Span(class_="font-medium")[game_name],
+                        " to now?",
                     ],
-                )
+                    Div(class_="flex gap-2 mt-6 justify-center")[
+                        # Reset overwrites the original start time (only
+                        # recoverable via Edit) -> red destructive confirm,
+                        # gray secondary cancel.
+                        StyledButton(
+                            color="red",
+                            data_reset_confirm="",
+                        )["Reset to now"],
+                        StyledButton(
+                            color="gray",
+                            data_reset_cancel="",
+                        )["Cancel"],
+                    ],
+                ]
             ]
         )
 
