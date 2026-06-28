@@ -30,8 +30,9 @@ class FilterError(ValueError):
 
     Subclasses ``ValueError`` so it stays catchable as one. Internal invariants
     that can only fail through a programmer error (e.g. ``aggregate_to_q``'s
-    hard-coded reducer/source) deliberately keep raising plain ``ValueError`` so
-    a real bug still surfaces instead of being masked as bad user input.
+    hard-coded reducer/source) deliberately raise ``RuntimeError`` instead, so a
+    real bug still surfaces as a 500 rather than being masked as bad user input
+    by ``filter_from_json``'s eager-validation catch.
     """
 
 
@@ -200,8 +201,8 @@ class IntCriterion(_Criterion):
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
-            if self.value2 is None:
-                raise FilterError("BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("BETWEEN requires two bounds (value and value2)")
             return Q(
                 **{
                     f"{field_name}__gte": min(self.value, self.value2),
@@ -209,8 +210,8 @@ class IntCriterion(_Criterion):
                 }
             )
         if m == Modifier.NOT_BETWEEN:
-            if self.value2 is None:
-                raise FilterError("NOT_BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
             lo, hi = min(self.value, self.value2), max(self.value, self.value2)
             return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
         if m == Modifier.IS_NULL:
@@ -237,8 +238,8 @@ class FloatCriterion(_Criterion):
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
-            if self.value2 is None:
-                raise FilterError("BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("BETWEEN requires two bounds (value and value2)")
             return Q(
                 **{
                     f"{field_name}__gte": min(self.value, self.value2),
@@ -246,8 +247,8 @@ class FloatCriterion(_Criterion):
                 }
             )
         if m == Modifier.NOT_BETWEEN:
-            if self.value2 is None:
-                raise FilterError("NOT_BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
             lo, hi = min(self.value, self.value2), max(self.value, self.value2)
             return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
         if m == Modifier.IS_NULL:
@@ -274,14 +275,14 @@ class DateCriterion(_Criterion):
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
         if m == Modifier.BETWEEN:
-            if self.value2 is None:
-                raise FilterError("BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("BETWEEN requires two bounds (value and value2)")
             return Q(
                 **{f"{field_name}__gte": self.value, f"{field_name}__lte": self.value2}
             )
         if m == Modifier.NOT_BETWEEN:
-            if self.value2 is None:
-                raise FilterError("NOT_BETWEEN requires value2")
+            if self.value is None or self.value2 is None:
+                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
             return Q(**{f"{field_name}__lt": self.value}) | Q(
                 **{f"{field_name}__gt": self.value2}
             )
@@ -868,17 +869,26 @@ def filter_from_json(cls: type[F], json_str: str) -> F | None:
         f = filter_from_json(GameFilter, request.GET.get("filter", ""))
         games = Game.objects.filter(f.to_q())
 
-    Returns ``None`` for genuinely-empty input (missing param or JSON ``null``).
-    Raises ``FilterError`` for any malformed or semantically-invalid filter —
-    malformed JSON, an unknown modifier/match enum, a missing ``BETWEEN`` bound,
-    etc. Callers (views/API) catch ``FilterError`` to degrade gracefully instead
-    of 500-ing.
+    Returns ``None`` for input that carries no filter: a missing param, JSON
+    ``null``, or any non-object JSON value (``from_json`` rejects non-dicts).
+    Raises ``FilterError`` for a filter that is present but invalid — malformed
+    JSON, an unknown modifier/match enum, a missing/``null`` ``BETWEEN`` bound, a
+    value of the wrong type for its field, etc. Callers (views/API) catch
+    ``FilterError`` to degrade gracefully instead of 500-ing.
 
-    Validation is eager and exhaustive: building the Q once here recurses through
-    every AND/OR/NOT and cross-entity sub-filter (``relation_to_q`` calls each
-    ``sub.to_q()``), so every criterion precondition is exercised. The builder
-    *is* the validator, so it cannot drift from it — if this returns, no later
-    ``to_q()`` call on the result can raise.
+    Validation is eager: building the Q once here recurses through every
+    AND/OR/NOT and cross-entity sub-filter (``relation_to_q`` calls each
+    ``sub.to_q()``), so every criterion precondition and value-to-Q conversion is
+    exercised. A ``ValueError``/``TypeError`` surfacing from a user value during
+    that build (e.g. a non-integer game id, a non-numeric duration) is
+    reclassified to ``FilterError`` — so if this returns, no later ``to_q()`` call
+    on the result can raise. (A genuine wiring bug raises a non-``ValueError`` —
+    see ``aggregate_to_q`` — and is intentionally *not* caught, so it still 500s.)
+
+    Note: this guarantee is scoped to ``to_q()`` itself. A wrong-typed value that
+    the database only rejects at query-execution time (e.g. a non-numeric
+    ``year_released``) is not caught here — tracked in issue #157
+    (parse-time value-type validation).
     """
     if not json_str:
         return None
@@ -889,7 +899,17 @@ def filter_from_json(cls: type[F], json_str: str) -> F | None:
     result = cls.from_json(data)
     if result is None:
         return None
-    result.to_q()  # eager full-tree validation; discard the Q
+    # Eager full-tree validation; discard the Q. A bad user *value* can make a
+    # value-to-Q conversion raise ValueError/TypeError (int("x"), timedelta on a
+    # str, min() against None); reclassify those to FilterError so the boundary
+    # catches them. FilterError already re-raises as itself; non-ValueError
+    # wiring bugs propagate untouched.
+    try:
+        result.to_q()
+    except FilterError:
+        raise
+    except (ValueError, TypeError) as exc:
+        raise FilterError(f"Invalid filter: {exc}") from exc
     return result
 
 
@@ -922,8 +942,8 @@ def _numeric_to_q(
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{field_name}__lt": value})
     if modifier == Modifier.BETWEEN:
-        if value2 is None:
-            raise FilterError("BETWEEN requires value2")
+        if value is None or value2 is None:
+            raise FilterError("BETWEEN requires two bounds (value and value2)")
         return Q(
             **{
                 f"{field_name}__gte": min(value, value2),
@@ -931,8 +951,8 @@ def _numeric_to_q(
             }
         )
     if modifier == Modifier.NOT_BETWEEN:
-        if value2 is None:
-            raise FilterError("NOT_BETWEEN requires value2")
+        if value is None or value2 is None:
+            raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
         lower_bound, upper_bound = min(value, value2), max(value, value2)
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
             **{f"{field_name}__gt": upper_bound}
@@ -979,16 +999,16 @@ def duration_hours_to_q(
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{field_name}__lt": duration})
     if modifier == Modifier.BETWEEN:
-        if value2 is None:
-            raise FilterError("BETWEEN requires value2")
+        if value is None or value2 is None:
+            raise FilterError("BETWEEN requires two bounds (value and value2)")
         lower_bound = timedelta(hours=min(value, value2))
         upper_bound = timedelta(hours=max(value, value2))
         return Q(
             **{f"{field_name}__gte": lower_bound, f"{field_name}__lte": upper_bound}
         )
     if modifier == Modifier.NOT_BETWEEN:
-        if value2 is None:
-            raise FilterError("NOT_BETWEEN requires value2")
+        if value is None or value2 is None:
+            raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
         lower_bound = timedelta(hours=min(value, value2))
         upper_bound = timedelta(hours=max(value, value2))
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
@@ -1067,15 +1087,19 @@ def aggregate_to_q(
     """
     from django.db.models import Avg, Count, Sum
 
+    # ``reducer``/``source`` are hard-coded by each filter's own to_q(), never
+    # user input — a failure here is a wiring bug. Raise RuntimeError (not
+    # ValueError) so filter_from_json's eager-validation catch does NOT reclassify
+    # it to FilterError: a real bug must still 500, not masquerade as bad input.
     if reducer == "count":
         aggregate_expression: Any = Count(accessor, distinct=True)
     elif reducer in ("sum", "avg"):
         if source is None:
-            raise ValueError(f"{reducer!r} aggregate requires a source field")
+            raise RuntimeError(f"{reducer!r} aggregate requires a source field")
         reduce = Sum if reducer == "sum" else Avg
         aggregate_expression = reduce(f"{accessor}__{source}")
     else:
-        raise ValueError(f"Unknown aggregate reducer {reducer!r}")
+        raise RuntimeError(f"Unknown aggregate reducer {reducer!r}")
 
     if unit == "duration_hours":
         compare = duration_hours_to_q(

@@ -535,3 +535,71 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
         self.assertIn("Ignored invalid filter", html)
+
+
+class GameListSessionFilterBoundaryTest(TestCase):
+    """The games list is the only view that calls to_q() a SECOND time, on the
+    nested session_filter (games/views/game.py). These tests drive that path at
+    the view level: a valid session_filter narrows and renders 200; an invalid
+    one warns-and-ignores rather than 500-ing."""
+
+    def setUp(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self.user = User.objects.create_superuser(
+            username="gamefilter", email="gf@example.com", password="testpass"
+        )
+        self.client.force_login(self.user)
+        self.platform = Platform.objects.create(name="GFP", icon="gfp")
+        self.played = Game.objects.create(name="PLAYED-MARKER", platform=self.platform)
+        self.unplayed = Game.objects.create(
+            name="UNPLAYED-MARKER", platform=self.platform
+        )
+        start = timezone.now()
+        Session.objects.create(
+            game=self.played,
+            timestamp_start=start,
+            timestamp_end=start + timedelta(hours=2),
+            note="BOSS fight",
+        )
+
+    def _get(self, raw_filter):
+        from django.urls import reverse
+
+        return self.client.get(reverse("games:list_games"), {"filter": raw_filter})
+
+    def test_valid_session_filter_narrows_at_view(self):
+        """A valid session_filter renders 200 and narrows to games with a
+        matching session — exercises game.py's second session_filter.to_q()."""
+        import json
+
+        response = self._get(
+            json.dumps(
+                {"session_filter": {"note": {"modifier": "INCLUDES", "value": "boss"}}}
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("PLAYED-MARKER", html)
+        self.assertNotIn("UNPLAYED-MARKER", html)
+
+    def test_invalid_session_filter_warns_and_falls_back(self):
+        """An invalid nested session_filter warns-and-ignores, not 500."""
+        import json
+
+        response = self._get(
+            json.dumps(
+                {
+                    "session_filter": {
+                        "duration_hours": {"modifier": "BETWEEN", "value": 1}
+                    }
+                }
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("PLAYED-MARKER", html)
+        self.assertIn("UNPLAYED-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)

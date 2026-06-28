@@ -22,6 +22,7 @@ from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
+    FilterError,
     FloatCriterion,
     IntCriterion,
     Modifier,
@@ -501,8 +502,13 @@ class PurchaseFilter(OperatorFilter):
         to the criterion.
         """
         # Criterion values arrive as strings; the M2M lookups want game PKs.
-        game_ids = [int(game_id) for game_id in criterion.value]
-        exclude_ids = [int(game_id) for game_id in criterion.excludes]
+        # A hand-edited filter can carry a non-integer id — raise FilterError so
+        # the boundary catches it instead of a bare ValueError escaping.
+        try:
+            game_ids = [int(game_id) for game_id in criterion.value]
+            exclude_ids = [int(game_id) for game_id in criterion.excludes]
+        except (ValueError, TypeError) as exc:
+            raise FilterError(f"games filter values must be integers: {exc}") from exc
 
         # Empty value means no constraint; still apply excludes if any
         if not game_ids:

@@ -16,7 +16,12 @@ from common.criteria import (
     StringCriterion,
 )
 from common.components import FilterBar
-from games.filters import GameFilter, parse_game_filter, parse_session_filter
+from games.filters import (
+    GameFilter,
+    parse_game_filter,
+    parse_purchase_filter,
+    parse_session_filter,
+)
 
 
 class TestModifier:
@@ -1004,7 +1009,7 @@ class TestDateCriterion:
 
     def test_between_missing_value2_raises(self):
         c = DateCriterion(value="2025-01-01", modifier=Modifier.BETWEEN)
-        with pytest.raises(ValueError, match="BETWEEN requires value2"):
+        with pytest.raises(ValueError, match="BETWEEN requires"):
             c.to_q("date_purchased")
 
     def test_not_between(self):
@@ -1017,7 +1022,7 @@ class TestDateCriterion:
 
     def test_not_between_missing_value2_raises(self):
         c = DateCriterion(value="2025-01-01", modifier=Modifier.NOT_BETWEEN)
-        with pytest.raises(ValueError, match="NOT_BETWEEN requires value2"):
+        with pytest.raises(ValueError, match="NOT_BETWEEN requires"):
             c.to_q("date_purchased")
 
     def test_is_null(self):
@@ -1338,19 +1343,19 @@ class TestFilterErrorBoundary:
 
     def test_between_without_value2_int(self):
         bad = json.dumps({"year_released": {"modifier": "BETWEEN", "value": 2000}})
-        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+        with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_game_filter(bad)
 
     def test_between_without_value2_date(self):
         bad = json.dumps(
             {"timestamp_start": {"modifier": "BETWEEN", "value": "2024-01-01"}}
         )
-        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+        with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_session_filter(bad)
 
     def test_between_without_value2_duration(self):
         bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
-        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+        with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_session_filter(bad)
 
     def test_unsupported_modifier_for_bool(self):
@@ -1386,7 +1391,7 @@ class TestFilterErrorBoundary:
         bad = json.dumps(
             {"AND": [{"year_released": {"modifier": "BETWEEN", "value": 2000}}]}
         )
-        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+        with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_game_filter(bad)
 
     def test_invalid_criterion_nested_in_relation_raises(self):
@@ -1395,11 +1400,75 @@ class TestFilterErrorBoundary:
         bad = json.dumps(
             {"session_filter": {"duration_hours": {"modifier": "BETWEEN", "value": 1}}}
         )
-        with pytest.raises(FilterError, match="BETWEEN requires value2"):
+        with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_game_filter(bad)
+
+    def test_not_between_without_value2(self):
+        bad = json.dumps({"year_released": {"modifier": "NOT_BETWEEN", "value": 2000}})
+        with pytest.raises(FilterError, match="NOT_BETWEEN requires"):
+            parse_game_filter(bad)
+
+    def test_between_without_value2_float(self):
+        bad = json.dumps({"price": {"modifier": "BETWEEN", "value": 1.0}})
+        with pytest.raises(FilterError, match="BETWEEN requires"):
+            parse_purchase_filter(bad)
+
+    def test_between_with_null_value(self):
+        """value explicitly null (not just value2) must be a clean FilterError,
+        not a TypeError from min(None, x)."""
+        bad = json.dumps(
+            {"year_released": {"modifier": "BETWEEN", "value": None, "value2": 2000}}
+        )
+        with pytest.raises(FilterError, match="BETWEEN requires"):
+            parse_game_filter(bad)
+
+    def test_non_numeric_duration_value(self):
+        """A non-numeric duration value makes timedelta() raise TypeError during
+        the eager build; the boundary reclassifies it to FilterError."""
+        bad = json.dumps({"duration_hours": {"modifier": "GREATER_THAN", "value": "x"}})
+        with pytest.raises(FilterError):
+            parse_session_filter(bad)
+
+    def test_non_integer_games_id(self):
+        """A hand-edited non-integer game id must raise FilterError, not let a
+        bare ValueError from int() escape the boundary."""
+        bad = json.dumps({"games": {"modifier": "INCLUDES", "value": ["not-a-number"]}})
+        with pytest.raises(FilterError, match="games filter values must be integers"):
+            parse_purchase_filter(bad)
+
+    def test_invalid_criterion_nested_in_all_match_relation(self):
+        """ALL match drives a distinct relation_to_q branch (~sub.to_q()); an
+        invalid nested criterion under it must still raise."""
+        bad = json.dumps(
+            {
+                "session_filter": {
+                    "match": "ALL",
+                    "duration_hours": {"modifier": "BETWEEN", "value": 1},
+                }
+            }
+        )
+        with pytest.raises(FilterError, match="BETWEEN requires"):
+            parse_game_filter(bad)
+
+    def test_non_object_json_returns_none(self):
+        """Valid JSON that isn't an object carries no filter → None, not raise."""
+        assert parse_game_filter("5") is None
+        assert parse_game_filter("[1, 2]") is None
 
     def test_valid_filter_still_parses(self):
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
         result = parse_game_filter(good)
         assert result is not None
         result.to_q()  # does not raise
+
+    def test_valid_nested_relation_filter_parses_and_reusable(self):
+        """A valid cross-entity sub-filter survives eager validation and its
+        to_q() is reusable afterward (guards game.py's session_filter path)."""
+        good = json.dumps(
+            {"session_filter": {"note": {"modifier": "INCLUDES", "value": "boss"}}}
+        )
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+        assert result.session_filter is not None
+        result.session_filter.to_q()  # the exact second call game.py makes
