@@ -35,10 +35,11 @@ from collections.abc import Callable, Iterable, Sequence
 from typing import TypedDict
 
 
-from common.components.core import Attributes, Element, HTMLAttribute, Node
+from common.components.core import Attributes, HTMLAttribute, Node
 from common.components.custom_elements import _SearchSelect
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
+    Button,
     Div,
     FilterWidgetPath,
     Input,
@@ -189,10 +190,7 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
     """A ``<span data-search-select-label>`` holding a row/pill's visible label. JS fills this
     one node when cloning the shape from a ``<template>``, so labels are the only
     thing the JS sets — all classes and structure stay server-side."""
-    attributes: list[HTMLAttribute] = [("data-search-select-label", "")]
-    if extra_class:
-        attributes.append(("class", extra_class))
-    return Span(attributes=attributes, children=[text])
+    return Span(data_search_select_label="", class_=extra_class or None)[text]
 
 
 # A placeholder option for rendering template prototypes (JS overwrites it).
@@ -201,15 +199,12 @@ _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 def _option_row(option: SearchSelectOption) -> Node:
     return Div(
-        attributes=[
-            ("data-search-select-option", ""),
-            ("data-value", str(option["value"])),
-            ("data-label", option["label"]),
-            ("class", _OPTION_ROW_CLASS),
-            *_data_attributes(option["data"]),
-        ],
-        children=[_label_slot(option["label"])],
-    )
+        attributes=_data_attributes(option["data"]),
+        data_search_select_option="",
+        data_value=str(option["value"]),
+        data_label=option["label"],
+        class_=_OPTION_ROW_CLASS,
+    )[_label_slot(option["label"])]
 
 
 def _combobox_children(
@@ -229,26 +224,19 @@ def _combobox_children(
     """
     search = Input(attributes=search_attributes)
 
-    no_results = Div(
-        attributes=[
-            ("data-search-select-no-results", ""),
-            ("class", _NO_RESULTS_CLASS),
-        ],
-        children=["No results"],
-    )
+    no_results = Div(data_search_select_no_results="", class_=_NO_RESULTS_CLASS)[
+        "No results"
+    ]
     options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
     options_panel = Div(
-        attributes=[
-            ("data-search-select-options", ""),
-            # Keep the scroller out of the sequential tab order. Chrome makes any
-            # overflowing scroll container keyboard-focusable by default, which
-            # would steal focus from the search input on Tab (issue #119).
-            ("tabindex", "-1"),
-            ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
-            ("class", options_class),
-        ],
-        children=[*options_children, no_results],
-    )
+        data_search_select_options="",
+        # Keep the scroller out of the sequential tab order. Chrome makes any
+        # overflowing scroll container keyboard-focusable by default, which
+        # would steal focus from the search input on Tab (issue #119).
+        tabindex="-1",
+        style=f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem",
+        class_=options_class,
+    )[*options_children, no_results]
 
     return [pills, search, options_panel, *(templates or [])]
 
@@ -297,10 +285,7 @@ def SearchSelect(
         pills_children.append(_hidden_input(name, option["value"]))
         search_value = option["label"]
 
-    pills = Div(
-        attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
-        children=pills_children,
-    )
+    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pills_children]
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attrs: list[HTMLAttribute] = [
@@ -324,17 +309,13 @@ def SearchSelect(
     templates: list[Node] = []
     if search_url:
         templates.append(
-            Template(
-                attributes=[("data-search-select-template", "row")],
-                children=[_option_row(_BLANK_OPTION)],
-            )
+            Template(data_search_select_template="row")[_option_row(_BLANK_OPTION)]
         )
     if multi_select:
         templates.append(
-            Template(
-                attributes=[("data-search-select-template", "pill")],
-                children=[Pill("", value="", removable=True, label_slot=True)],
-            )
+            Template(data_search_select_template="pill")[
+                Pill("", value="", removable=True, label_slot=True)
+            ]
         )
 
     children = _combobox_children(
@@ -359,16 +340,12 @@ def SearchSelect(
 
 
 def _filter_remove_button() -> Node:
-    return Element(
-        "button",
-        attributes=[
-            ("type", "button"),
-            ("data-pill-remove", ""),
-            ("class", _FILTER_PILL_REMOVE_CLASS),
-            ("aria-label", "Remove"),
-        ],
-        children=["×"],
-    )
+    return Button(
+        type="button",
+        data_pill_remove="",
+        class_=_FILTER_PILL_REMOVE_CLASS,
+        aria_label="Remove",
+    )["×"]
 
 
 def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
@@ -378,80 +355,61 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
         _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
     )
     return Span(
-        attributes=[
-            ("class", css),
-            ("data-pill", ""),
-            ("data-value", str(option["value"])),
-            ("data-label", option["label"]),
-            ("data-search-select-type", kind),
-            *_data_attributes(option["data"]),
-        ],
-        children=[f"{symbol} ", _label_slot(option["label"]), _filter_remove_button()],
-    )
+        attributes=_data_attributes(option["data"]),
+        class_=css,
+        data_pill="",
+        data_value=str(option["value"]),
+        data_label=option["label"],
+        data_search_select_type=kind,
+    )[f"{symbol} ", _label_slot(option["label"]), _filter_remove_button()]
 
 
 def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
     return Span(
-        attributes=[
-            ("class", _FILTER_MODIFIER_PILL_CLASS),
-            ("data-pill", ""),
-            ("data-search-select-modifier", modifier_value),
-        ],
-        children=[_label_slot(label), _filter_remove_button()],
-    )
+        class_=_FILTER_MODIFIER_PILL_CLASS,
+        data_pill="",
+        data_search_select_modifier=modifier_value,
+    )[_label_slot(label), _filter_remove_button()]
 
 
 def _filter_action_button(action: str, symbol: str, title: str) -> Node:
-    return Element(
-        "button",
-        attributes=[
-            ("type", "button"),
-            # Include (+) is reachable via row highlight + Enter; both +/− are
-            # reachable by mouse. Keep every per-row button out of the
-            # sequential tab order (issue #119).
-            ("tabindex", "-1"),
-            ("data-search-select-action", action),
-            ("class", _FILTER_ACTION_BUTTON_CLASS),
-            ("title", title),
-        ],
-        children=[symbol],
-    )
+    return Button(
+        type="button",
+        # Include (+) is reachable via row highlight + Enter; both +/− are
+        # reachable by mouse. Keep every per-row button out of the
+        # sequential tab order (issue #119).
+        tabindex="-1",
+        data_search_select_action=action,
+        class_=_FILTER_ACTION_BUTTON_CLASS,
+        title=title,
+    )[symbol]
 
 
 def _filter_option_row(value: str | int, label: str) -> Node:
     """A value row with include (+) and exclude (−) buttons."""
     return Div(
-        attributes=[
-            ("data-search-select-option", ""),
-            ("data-value", str(value)),
-            ("data-label", label),
-            ("class", _FILTER_OPTION_ROW_CLASS),
+        data_search_select_option="",
+        data_value=str(value),
+        data_label=label,
+        class_=_FILTER_OPTION_ROW_CLASS,
+    )[
+        _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
+        Span(class_=_FILTER_OPTION_BUTTONS_CLASS)[
+            _filter_action_button("include", "+", "Include"),
+            _filter_action_button("exclude", "−", "Exclude"),
         ],
-        children=[
-            _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
-            Span(
-                attributes=[("class", _FILTER_OPTION_BUTTONS_CLASS)],
-                children=[
-                    _filter_action_button("include", "+", "Include"),
-                    _filter_action_button("exclude", "−", "Exclude"),
-                ],
-            ),
-        ],
-    )
+    ]
 
 
 def _filter_modifier_row(modifier_value: str, label: str) -> Node:
     """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
     filter never hides it — modifiers stay visible at the top of the panel."""
     return Div(
-        attributes=[
-            ("data-search-select-modifier-option", modifier_value),
-            ("data-label", label),
-            ("class", _FILTER_MODIFIER_ROW_CLASS),
-        ],
-        children=[label],
-    )
+        data_search_select_modifier_option=modifier_value,
+        data_label=label,
+        class_=_FILTER_MODIFIER_ROW_CLASS,
+    )[label]
 
 
 def FilterSelect(
@@ -516,10 +474,7 @@ def FilterSelect(
     for option in normalized_excluded:
         pills_children.append(_filter_value_pill(option, "exclude"))
 
-    pills = Div(
-        attributes=[("data-search-select-pills", ""), ("class", _PILLS_CLASS)],
-        children=pills_children,
-    )
+    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pills_children]
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
@@ -546,28 +501,22 @@ def FilterSelect(
     # ── Templates the JS clones: include/exclude pills (added on click), the
     #    modifier pill (when modifiers exist), and a value row (when fetched). ──
     templates: list[Node] = [
-        Template(
-            attributes=[("data-search-select-template", "pill-include")],
-            children=[_filter_value_pill(_BLANK_OPTION, "include")],
-        ),
-        Template(
-            attributes=[("data-search-select-template", "pill-exclude")],
-            children=[_filter_value_pill(_BLANK_OPTION, "exclude")],
-        ),
+        Template(data_search_select_template="pill-include")[
+            _filter_value_pill(_BLANK_OPTION, "include")
+        ],
+        Template(data_search_select_template="pill-exclude")[
+            _filter_value_pill(_BLANK_OPTION, "exclude")
+        ],
     ]
     if modifier_options:
         templates.append(
-            Template(
-                attributes=[("data-search-select-template", "pill-modifier")],
-                children=[_filter_modifier_pill("", "")],
-            )
+            Template(data_search_select_template="pill-modifier")[
+                _filter_modifier_pill("", "")
+            ]
         )
     if search_url or free_text:
         templates.append(
-            Template(
-                attributes=[("data-search-select-template", "row")],
-                children=[_filter_option_row("", "")],
-            )
+            Template(data_search_select_template="row")[_filter_option_row("", "")]
         )
 
     children = _combobox_children(
