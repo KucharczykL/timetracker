@@ -1955,3 +1955,215 @@ class TestFilterComparisonModels:
             ]
         )
         assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start"))
+
+
+# ── T5 — end-to-end DB + integration tests ───────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestFieldComparisonEndToEnd:
+    """T5: DB-backed field-comparison tests through the full parse → to_q → filter path.
+
+    Covers: NULL-operand exclusion, raw-datetime comparison (same calendar day),
+    GeneratedField as a comparison operand, and JSON round-trip through the parser.
+    """
+
+    def _make_platform_and_game(self):
+        """Create a minimal Platform + Game for Session-based tests."""
+        from games.models import Game, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+        game, _ = Game.objects.get_or_create(
+            name="FieldCmpGame", defaults={"platform": platform}
+        )
+        return platform, game
+
+    def test_purchase_refund_before_purchase(self):
+        """date_refunded < date_purchased finds only A.
+
+        B (refund after purchase) and C (NULL date_refunded) are excluded,
+        proving both the comparison and NULL-operand exclusion semantics.
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund BEFORE purchase — the data-error case; must be returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 3, 1),
+            date_refunded=datetime.date(2024, 1, 1),
+        )
+        # B: refund AFTER purchase — normal order; must NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # C: no refund (NULL operand) — SQL comparison against NULL yields no match
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a}
+
+    def test_session_end_before_start_same_day(self):
+        """timestamp_end < timestamp_start finds X (same calendar day, end 22:00 < start 23:00).
+
+        Y (normal order) is excluded. Proves raw-datetime comparison, not date-truncated:
+        __date truncation would make both timestamps equal on the same day and miss X.
+        """
+        import datetime
+
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        _, game = self._make_platform_and_game()
+
+        # X: end BEFORE start on the same calendar day — must be returned
+        session_x = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 1, 23, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 1, 22, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+        # Y: normal session (end after start) — must NOT be returned
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+
+        session_filter = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_end",
+                    right="timestamp_start",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        result = set(Session.objects.filter(session_filter.to_q()))
+        assert result == {session_x}
+
+    def test_generated_field_as_comparison_operand(self):
+        """duration_total > duration_manual finds only P.
+
+        P has timestamp_start/end 1 hour apart and duration_manual=0, so
+        duration_total (1 h) > duration_manual (0). Q has no timestamp_end
+        (duration_calculated=0) and duration_manual=2 h, so duration_total
+        equals duration_manual and is NOT strictly greater.
+        """
+        import datetime
+        from datetime import timedelta
+
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        _, game = self._make_platform_and_game()
+
+        # P: 1-hour calc, 0 manual → duration_total=1h > duration_manual=0
+        session_p = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 7, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 7, 1, 11, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+        # Q: no timestamp_end (calculated=0), 2h manual → duration_total=2h == duration_manual=2h
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 7, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            duration_manual=timedelta(hours=2),
+        )
+
+        session_filter = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="duration_total",
+                    right="duration_manual",
+                    modifier=Modifier.GREATER_THAN,
+                )
+            ]
+        )
+        result = set(Session.objects.filter(session_filter.to_q()))
+        assert result == {session_p}
+
+    def test_json_round_trip_purchase_comparison(self):
+        """Serializing and re-parsing the purchase filter queries identically.
+
+        Takes the PurchaseFilter from test_purchase_refund_before_purchase,
+        round-trips it through filter_to_json → parse_purchase_filter, then
+        confirms the parsed filter returns the same single purchase A.
+        """
+        import datetime
+
+        from common.criteria import filter_to_json
+        from games.filters import PurchaseFilter, parse_purchase_filter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund BEFORE purchase — should be returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 3, 1),
+            date_refunded=datetime.date(2024, 1, 1),
+        )
+        # B: refund AFTER purchase — should NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # C: NULL date_refunded — should NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        json_string = filter_to_json(purchase_filter)
+        parsed_filter = parse_purchase_filter(json_string)
+        assert parsed_filter is not None
+        result = set(Purchase.objects.filter(parsed_filter.to_q()))
+        assert result == {purchase_a}
