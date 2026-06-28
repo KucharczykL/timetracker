@@ -266,7 +266,6 @@ class SessionFilter(OperatorFilter):
     device: MultiCriterion | None = None  # filters on device_id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
-    duration_hours: IntCriterion | None = None  # on duration_total (legacy alias)
     duration_total_hours: IntCriterion | None = None
     duration_manual_hours: IntCriterion | None = None
     duration_calculated_hours: IntCriterion | None = None
@@ -302,8 +301,6 @@ class SessionFilter(OperatorFilter):
             q &= self.emulated.to_q("emulated")
         if self.note is not None:
             q &= self.note.to_q("note")
-        if self.duration_hours is not None:
-            q &= self._duration_to_q(self.duration_hours, "duration_total")
         if self.duration_total_hours is not None:
             q &= self._duration_to_q(self.duration_total_hours, "duration_total")
         if self.duration_manual_hours is not None:
