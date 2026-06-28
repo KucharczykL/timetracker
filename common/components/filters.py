@@ -675,6 +675,7 @@ class FieldComparisonRow(NamedTuple):
     left: str  # left column name, e.g. "timestamp_end"
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
+    granularity: str  # "raw" or "date" (day-granular datetime compare)
 
 
 def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
@@ -682,6 +683,7 @@ def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
         left=str(raw.get("left", "")),
         right=str(raw.get("right", "")),
         modifier=str(raw.get("modifier") or "EQUALS"),
+        granularity="date" if raw.get("granularity") == "date" else "raw",
     )
 
 
@@ -740,12 +742,14 @@ def _field_comparison_row(
     left_value = row.left if row else ""
     operator_value = row.modifier if row else ""
     right_value = row.right if row else ""
+    granularity_date = bool(row and row.granularity == "date")
     return Div(
         attributes=[
             ("data-fc-row", ""),
             (
                 "class",
-                "grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]",
+                "grid grid-cols-1 gap-2 items-center"
+                " md:grid-cols-[1fr_auto_1fr_auto_auto]",
             ),
         ],
         children=[
@@ -765,6 +769,38 @@ def _field_comparison_row(
                     ("data-fc-right", ""),
                     ("data-selected", right_value),
                     ("class", select_class),
+                ],
+            ),
+            # Day-granular toggle — only meaningful for datetime operands, so
+            # field-comparison-set.ts shows/hides it based on the chosen left
+            # column. Hand-rolled (not Checkbox()) because the wrapper Label must
+            # carry data-fc-granularity-wrap + hidden; the input reuses Checkbox's
+            # utility classes so it matches every other checkbox in the app.
+            Label(
+                attributes=[
+                    ("data-fc-granularity-wrap", ""),
+                    (
+                        "class",
+                        "flex items-center gap-1 text-sm text-body cursor-pointer",
+                    ),
+                    *([] if granularity_date else [("hidden", "")]),
+                ],
+                children=[
+                    Element(
+                        "input",
+                        attributes=[
+                            ("type", "checkbox"),
+                            ("data-fc-granularity", ""),
+                            (
+                                "class",
+                                "rounded border-default-medium"
+                                " bg-neutral-secondary-medium text-brand"
+                                " focus:ring-brand cursor-pointer",
+                            ),
+                            *([("checked", "")] if granularity_date else []),
+                        ],
+                    ),
+                    "by day",
                 ],
             ),
             Element(
