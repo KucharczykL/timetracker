@@ -21,6 +21,15 @@ from games.models import Device, Game, Platform
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input", "&lt;a"]
 
 
+def _exclude_input_tag(html: str) -> str:
+    """Extract the <input> tag for the free-text exclude checkbox."""
+    marker = 'name="filter-search-exclude"'
+    position = html.index(marker)
+    start = html.rindex("<input", 0, position)
+    end = html.index(">", position)
+    return html[start : end + 1]
+
+
 class FilterBarRenderingTest(TestCase):
     def setUp(self):
         self.platform = Platform.objects.create(name="PC", icon="pc")
@@ -515,6 +524,68 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('name="filter-refunded"', purchase_html)
         self.assertIn('value="true"', purchase_html)
         self.assertIn('value="false"', purchase_html)
+
+    def test_filter_bar_renders_search_controls(self):
+        """The free-text search input + exclude toggle are server-rendered."""
+        html = str(
+            FilterBar(
+                preset_list_url="/presets/list",
+                preset_save_url="/presets/save",
+            )
+        )
+        self.assertIn('name="filter-search"', html)
+        self.assertIn('name="filter-search-exclude"', html)
+        self.assertIn("Exclude matches", html)
+        # With no stored filter the exclude box must default to unchecked.
+        self.assertNotIn("checked", _exclude_input_tag(html))
+        self.assertNoEscapedTags(html)
+
+    def test_search_controls_present_in_every_bar(self):
+        """The search field is shared chrome rendered by _FilterBarBase, so all
+        six bars carry both controls — guards against a render() override
+        dropping it (mirrors FieldComparisonWidgetTest.test_widget_present_in_every_bar)."""
+        from common.components import (
+            DeviceFilterBar,
+            FilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+            PurchaseFilterBar,
+            SessionFilterBar,
+        )
+
+        bars = [
+            FilterBar,
+            SessionFilterBar,
+            PurchaseFilterBar,
+            DeviceFilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+        ]
+        for bar in bars:
+            html = str(bar(filter_json=""))
+            self.assertIn('name="filter-search"', html, bar.__name__)
+            self.assertIn('name="filter-search-exclude"', html, bar.__name__)
+
+    def test_filter_bar_search_prefills_value_and_exclude(self):
+        """A stored EXCLUDES search prefills the input value and checks the box."""
+        filter_json = json.dumps(
+            {"search": {"value": "Witcher", "modifier": "EXCLUDES"}}
+        )
+        html = str(FilterBar(filter_json=filter_json))
+        self.assertIn('value="Witcher"', html)
+        # The checkbox renders with a checked attribute (Checkbox uses checked="true").
+        self.assertIn('name="filter-search-exclude"', html)
+        self.assertIn("checked", _exclude_input_tag(html))
+
+    def test_filter_bar_search_includes_leaves_box_unchecked(self):
+        """An INCLUDES search prefills the value but does not check exclude."""
+        filter_json = json.dumps(
+            {"search": {"value": "Witcher", "modifier": "INCLUDES"}}
+        )
+        html = str(FilterBar(filter_json=filter_json))
+        self.assertIn('value="Witcher"', html)
+        # Isolate the exclude checkbox's own markup and assert it is unchecked.
+        self.assertNotIn("checked", _exclude_input_tag(html))
 
 
 class NumberFilterRenderTest(TestCase):

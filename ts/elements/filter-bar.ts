@@ -329,47 +329,6 @@ function readRelationBoolWidget(
   return { [relationField]: relationNode };
 }
 
-function injectSearchInput(form: HTMLElement): void {
-  if (form.querySelector('[name="filter-search"]')) return;
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "mb-4";
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.name = "filter-search";
-  input.placeholder = "Search…";
-  input.className =
-    "block w-full rounded-base border border-default-medium bg-neutral-secondary-medium text-sm text-heading p-2 focus:ring-brand focus:border-brand";
-
-  // Exclude toggle: surfaces the EXCLUDES modifier every *Filter.to_q already
-  // honours for free-text search (negates the OR-of-fields). Unchecked keeps the
-  // historical INCLUDES default; checked emits {value, modifier:"EXCLUDES"}.
-  const excludeLabel = document.createElement("label");
-  excludeLabel.className =
-    "flex items-center gap-2 mt-2 text-sm text-heading cursor-pointer";
-  const excludeCheckbox = document.createElement("input");
-  excludeCheckbox.type = "checkbox";
-  excludeCheckbox.name = "filter-search-exclude";
-  excludeCheckbox.className =
-    "rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand";
-  excludeLabel.append(excludeCheckbox, document.createTextNode("Exclude matches"));
-
-  const hidden = form.querySelector<HTMLInputElement>('[name="filter"]');
-  if (hidden && hidden.parentNode) {
-    try {
-      const existing = JSON.parse(hidden.value || "{}");
-      if (existing.search && existing.search.value) {
-        input.value = existing.search.value;
-        excludeCheckbox.checked = existing.search.modifier === "EXCLUDES";
-      }
-    } catch {
-      // ignore malformed existing filter JSON
-    }
-    wrapper.append(input, excludeLabel);
-    hidden.parentNode.insertBefore(wrapper, hidden.nextSibling);
-  }
-}
 
 function setupDeselectableRadios(root: HTMLElement): void {
   root.querySelectorAll<DeselectableRadio>('input[type="radio"]').forEach((radio) => {
@@ -609,7 +568,6 @@ class FilterBarElement extends HTMLElement {
       savePreset(form, presetSaveUrl, presetListUrl, this);
     });
 
-    injectSearchInput(form);
     setupDeselectableRadios(this);
     setupStringFilters(this);
     setupNumberFilters(this);
