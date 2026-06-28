@@ -745,8 +745,7 @@ def _field_comparison_row(
             ("data-fc-row", ""),
             (
                 "class",
-                "grid grid-cols-1 gap-2 items-center "
-                "@md:grid-cols-[1fr_auto_1fr_auto]",
+                "grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]",
             ),
         ],
         children=[

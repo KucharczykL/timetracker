@@ -2703,8 +2703,16 @@ class FieldComparisonPrefillTest(TestCase):
                 "AND": [
                     {
                         "OR": [
-                            {"field_comparisons": [{"left": "a", "right": "b", "modifier": "EQUALS"}]},
-                            {"field_comparisons": [{"left": "c", "right": "d", "modifier": "INCLUDES"}]},
+                            {
+                                "field_comparisons": [
+                                    {"left": "a", "right": "b", "modifier": "EQUALS"}
+                                ]
+                            },
+                            {
+                                "field_comparisons": [
+                                    {"left": "c", "right": "d", "modifier": "INCLUDES"}
+                                ]
+                            },
                         ]
                     }
                 ]
@@ -2719,8 +2727,20 @@ class FieldComparisonPrefillTest(TestCase):
 
         rows, mode = _field_comparison_rows(
             {
-                "field_comparisons": [{"left": "a", "right": "b", "modifier": "EQUALS"}],
-                "AND": [{"OR": [{"field_comparisons": [{"left": "c", "right": "d", "modifier": "EQUALS"}]}]}],
+                "field_comparisons": [
+                    {"left": "a", "right": "b", "modifier": "EQUALS"}
+                ],
+                "AND": [
+                    {
+                        "OR": [
+                            {
+                                "field_comparisons": [
+                                    {"left": "c", "right": "d", "modifier": "EQUALS"}
+                                ]
+                            }
+                        ]
+                    }
+                ],
             }
         )
         self.assertEqual(mode, "AND")

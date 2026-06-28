@@ -1159,9 +1159,7 @@ def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
-def _maybe_group_for(
-    model: type[models.Model], column: str
-) -> ComparisonGroup | None:
+def _maybe_group_for(model: type[models.Model], column: str) -> ComparisonGroup | None:
     """Classify a model column into a comparison group, or None if non-comparable.
 
     Returns None — never raises — for every column that has no comparison group:
