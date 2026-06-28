@@ -108,12 +108,15 @@ For the ordered comparisons (`<`, `>`) and `EQUALS`, if either `left` or `right`
 is `NULL` on a row the SQL comparison yields `UNKNOWN`, which Django excludes —
 the correct default for data-quality queries.
 
-`NOT_EQUALS` is the exception: Django emits `~Q(left=F(right))` as
-`NOT (left = right AND left IS NOT NULL)`, i.e. `left != right OR left IS NULL`,
-so it **includes** rows where `left` is `NULL`. This is Django's documented
-negation behaviour (not SQL's bare three-valued logic); it is verified by a DB
-test and called out in the `FieldComparisonCriterion` docstring so callers are
-not surprised.
+`NOT_EQUALS` is the exception: Django 6 emits `~Q(left=F(right))` as
+`NOT (left = right AND left IS NOT NULL AND right IS NOT NULL)`, i.e.
+`left != right OR left IS NULL OR right IS NULL`, so it **includes** rows where
+**either** operand is `NULL` — the inclusion is **symmetric** (a NULL on the left
+or the right both cause inclusion). This is Django's documented negation behaviour
+(it null-guards both sides of the F() comparison, not SQL's bare three-valued
+logic); it is verified by DB tests (`test_not_equals_null_semantics` for the
+left-NULL branch, `test_not_equals_null_symmetric` for the right-NULL branch) and
+called out in the `FieldComparisonCriterion` docstring so callers are not surprised.
 
 ### 2.8 Surface: JSON filter + saved presets + API; no filter-bar UI widget this round
 

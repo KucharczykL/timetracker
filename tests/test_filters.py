@@ -1623,6 +1623,13 @@ class TestComparisonGroupResolver:
 
         assert _comparison_group_for(Game, "mastered") == "bool"
 
+    def test_slug_field_is_string(self):
+        """SlugField.get_internal_type() is "SlugField" (not "CharField"); it must
+        still resolve to the string group so e.g. Platform.icon is comparable."""
+        from games.models import Platform
+
+        assert _comparison_group_for(Platform, "icon") == "string"
+
     # ── excluded columns ────────────────────────────────────────────────────
 
     def test_fk_relation_raises(self):
@@ -2185,11 +2192,15 @@ class TestFieldComparisonEndToEnd:
     def test_not_equals_null_semantics(self):
         """date_refunded NOT_EQUALS date_purchased:
         - equal row (B) is excluded by NOT_EQUALS.
-        - NULL row (C) is INCLUDED: Django's ~Q on a nullable field generates
-          NOT (date_refunded = date_purchased AND date_refunded IS NOT NULL),
-          which expands to date_refunded != date_purchased OR date_refunded IS NULL.
+        - NULL row (C) is INCLUDED: Django 6's ~Q on nullable operands generates
+          NOT (date_refunded = date_purchased AND date_refunded IS NOT NULL
+               AND date_purchased IS NOT NULL),
+          i.e. date_refunded != date_purchased OR date_refunded IS NULL
+               OR date_purchased IS NULL.
         So NOT_EQUALS returns rows A (different dates) and C (NULL date_refunded),
-        but not B (equal dates). Documents actual Django ~Q NULL semantics.
+        but not B (equal dates). This Purchase case only exercises the left-NULL
+        branch because date_purchased is non-nullable; the symmetric right-NULL
+        branch is covered by test_not_equals_null_symmetric (PlayEvent).
         """
         import datetime
 
@@ -2229,6 +2240,53 @@ class TestFieldComparisonEndToEnd:
         )
         result = set(Purchase.objects.filter(purchase_filter.to_q()))
         assert result == {purchase_a, purchase_c}
+
+    def test_not_equals_null_symmetric(self):
+        """NOT_EQUALS NULL inclusion is symmetric across BOTH operands.
+
+        Django 6 null-guards both sides of the F() comparison, so ~Q includes a
+        row when EITHER operand is NULL — not just the left one. PlayEvent has two
+        nullable date columns (started, ended), letting us exercise the right-NULL
+        branch that the Purchase test cannot (its date_purchased is non-nullable).
+        """
+        import datetime
+
+        from games.filters import PlayEventFilter
+        from games.models import Game, PlayEvent, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="PESym", icon="pesym"
+        )
+        game = Game.objects.create(name="PESymGame", platform=platform)
+
+        # different (both set) → included
+        differ = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 1, 1),
+            ended=datetime.date(2024, 2, 1),
+        )
+        # equal (both set) → excluded
+        PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 3, 1),
+            ended=datetime.date(2024, 3, 1),
+        )
+        # left NULL → included
+        left_null = PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
+        # right NULL → included (the symmetric branch)
+        right_null = PlayEvent.objects.create(
+            game=game, started=datetime.date(2024, 5, 1)
+        )
+
+        play_filter = PlayEventFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="started", right="ended", modifier=Modifier.NOT_EQUALS
+                )
+            ]
+        )
+        result = set(PlayEvent.objects.filter(play_filter.to_q()))
+        assert result == {differ, left_null, right_null}
 
     def test_two_comparisons_both_must_hold(self):
         """Two field comparisons in one filter AND-accumulate:

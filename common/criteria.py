@@ -461,11 +461,13 @@ class FieldComparisonCriterion(_Criterion):
     the filter's model by the base OperatorFilter before to_q runs). Operands are
     self-contained, so to_q ignores the inherited ``field_name`` argument.
 
-    Null semantics: Django's ``~Q(left=F(right))`` (used for NOT_EQUALS) on a
-    nullable field generates ``NOT (left = right AND left IS NOT NULL)``, which
-    expands to ``left != right OR left IS NULL``.  Consequently NOT_EQUALS *includes*
-    rows where ``left`` is NULL, unlike ordered comparisons (``<``, ``>``) which
-    exclude NULLs because the SQL expression is NULL when either operand is NULL.
+    Null semantics: Django 6's ``~Q(left=F(right))`` (used for NOT_EQUALS)
+    generates ``NOT (left = right AND left IS NOT NULL AND right IS NOT NULL)``,
+    which expands to ``left != right OR left IS NULL OR right IS NULL``.
+    Consequently NOT_EQUALS *includes* rows where *either* operand is NULL — the
+    inclusion is symmetric (a NULL on the left or the right both cause inclusion).
+    Ordered comparisons (``<``, ``>``) and EQUALS instead *exclude* NULL rows,
+    because the SQL expression is NULL (unknown) when either operand is NULL.
     """
 
     # Shadow the inherited `value` field: FieldComparisonCriterion has no
@@ -617,6 +619,7 @@ _GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
     "DecimalField": "number",
     "CharField": "string",
     "TextField": "string",
+    "SlugField": "string",  # SlugField.get_internal_type() is "SlugField", not "CharField"
     "BooleanField": "bool",
 }
 
