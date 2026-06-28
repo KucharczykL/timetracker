@@ -1538,9 +1538,82 @@ class TestFieldComparisonCriterion:
             name__icontains=F("sort_name")
         )
 
+    def test_helper_greater_than_or_equal(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.GREATER_THAN_OR_EQUAL
+        ) == Q(date_refunded__gte=F("date_purchased"))
+
+    def test_helper_less_than_or_equal(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.LESS_THAN_OR_EQUAL
+        ) == Q(date_refunded__lte=F("date_purchased"))
+
     def test_helper_unsupported_modifier_raises(self):
         with pytest.raises(FilterError, match="Unsupported modifier"):
             _field_comparison_to_q("date_refunded", "date_purchased", Modifier.BETWEEN)
+
+    # ── date-granular comparison (granularity="date") ────────────────────────
+
+    def test_helper_date_granular_equals(self):
+        from django.db.models.functions import TruncDate
+
+        assert _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.EQUALS, "date"
+        ) == Q(timestamp_start__date=TruncDate(F("timestamp_end")))
+
+    def test_helper_date_granular_gte(self):
+        from django.db.models.functions import TruncDate
+
+        assert _field_comparison_to_q(
+            "timestamp_start",
+            "timestamp_end",
+            Modifier.GREATER_THAN_OR_EQUAL,
+            "date",
+        ) == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end")))
+
+    def test_helper_date_granular_not_equals(self):
+        from django.db.models.functions import TruncDate
+
+        assert _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "date"
+        ) == ~Q(timestamp_start__date=TruncDate(F("timestamp_end")))
+
+    def test_to_q_passes_granularity(self):
+        from django.db.models.functions import TruncDate
+
+        criterion = FieldComparisonCriterion(
+            left="timestamp_start",
+            right="timestamp_end",
+            modifier=Modifier.LESS_THAN_OR_EQUAL,
+            granularity="date",
+        )
+        assert criterion.to_q() == Q(
+            timestamp_start__date__lte=TruncDate(F("timestamp_end"))
+        )
+
+    def test_to_json_emits_granularity_only_when_date(self):
+        raw = FieldComparisonCriterion(left="a", right="b")
+        assert "granularity" not in raw.to_json()
+        dated = FieldComparisonCriterion(
+            left="timestamp_start", right="timestamp_end", granularity="date"
+        )
+        assert dated.to_json()["granularity"] == "date"
+
+    def test_roundtrip_granularity_date(self):
+        criterion = FieldComparisonCriterion(
+            left="timestamp_start",
+            right="timestamp_end",
+            modifier=Modifier.EQUALS,
+            granularity="date",
+        )
+        assert FieldComparisonCriterion.from_json(criterion.to_json()) == criterion
+
+    def test_from_json_defaults_granularity_to_raw(self):
+        restored = FieldComparisonCriterion.from_json(
+            {"left": "a", "right": "b", "modifier": "EQUALS"}
+        )
+        assert restored is not None
+        assert restored.granularity == "raw"
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
 
@@ -1599,6 +1672,8 @@ class TestFieldComparisonCriterion:
             Modifier.NOT_EQUALS,
             Modifier.GREATER_THAN,
             Modifier.LESS_THAN,
+            Modifier.GREATER_THAN_OR_EQUAL,
+            Modifier.LESS_THAN_OR_EQUAL,
         ]
 
     def test_for_field_comparisons(self):
@@ -1608,6 +1683,8 @@ class TestFieldComparisonCriterion:
             Modifier.NOT_EQUALS,
             Modifier.GREATER_THAN,
             Modifier.LESS_THAN,
+            Modifier.GREATER_THAN_OR_EQUAL,
+            Modifier.LESS_THAN_OR_EQUAL,
             Modifier.INCLUDES,
             Modifier.EXCLUDES,
         ]
@@ -1877,6 +1954,18 @@ class _NoModelStub(OperatorFilter):
     NOT: list["_NoModelStub"] = dc_field(default_factory=list)
 
 
+@dataclass
+class _SessionStub(OperatorFilter):
+    AND: list["_SessionStub"] = dc_field(default_factory=list)
+    OR: list["_SessionStub"] = dc_field(default_factory=list)
+    NOT: list["_SessionStub"] = dc_field(default_factory=list)
+
+    def _comparison_model(self):
+        from games.models import Session
+
+        return Session
+
+
 @pytest.mark.django_db
 class TestFieldComparisonWiring:
     # 1. Happy path — to_q produces the expected Q
@@ -1918,6 +2007,39 @@ class TestFieldComparisonWiring:
     def test_empty_field_comparisons_omitted_from_json(self):
         stub = _PurchaseStub()
         assert "field_comparisons" not in stub.to_json()
+
+    # granularity="date" — valid on datetime operands, rejected elsewhere
+
+    def test_date_granularity_on_datetime_ok(self):
+        from django.db.models.functions import TruncDate
+
+        stub = _SessionStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_start",
+                    right="timestamp_end",
+                    modifier=Modifier.LESS_THAN_OR_EQUAL,
+                    granularity="date",
+                )
+            ]
+        )
+        assert stub.to_q() == Q(
+            timestamp_start__date__lte=TruncDate(F("timestamp_end"))
+        )
+
+    def test_date_granularity_on_non_datetime_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                    granularity="date",
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="datetime operands"):
+            stub.to_q()
 
     def test_roundtrip_restores_equal_object(self):
         stub = _PurchaseStub(

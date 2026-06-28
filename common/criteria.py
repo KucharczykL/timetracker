@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Literal, Self, TypedDict, TypeVar
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import F, Q
+from django.db.models.functions import TruncDate
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,8 @@ class Modifier(str, Enum):
     NOT_EQUALS = "NOT_EQUALS"
     GREATER_THAN = "GREATER_THAN"
     LESS_THAN = "LESS_THAN"
+    GREATER_THAN_OR_EQUAL = "GREATER_THAN_OR_EQUAL"
+    LESS_THAN_OR_EQUAL = "LESS_THAN_OR_EQUAL"
     BETWEEN = "BETWEEN"
     NOT_BETWEEN = "NOT_BETWEEN"
     INCLUDES = "INCLUDES"
@@ -103,7 +106,14 @@ class Modifier(str, Enum):
     @classmethod
     def for_ordered_field_comparisons(cls) -> list[Self]:
         """Equality + ordering — valid for every comparable group (numeric/date/string)."""
-        return [cls.EQUALS, cls.NOT_EQUALS, cls.GREATER_THAN, cls.LESS_THAN]
+        return [
+            cls.EQUALS,
+            cls.NOT_EQUALS,
+            cls.GREATER_THAN,
+            cls.LESS_THAN,
+            cls.GREATER_THAN_OR_EQUAL,
+            cls.LESS_THAN_OR_EQUAL,
+        ]
 
     @classmethod
     def for_field_comparisons(cls) -> list[Self]:
@@ -459,6 +469,9 @@ class AggregateCriterion(_Criterion):
         )
 
 
+type ComparisonGranularity = Literal["raw", "date"]  # e.g. "date"
+
+
 @dataclass
 class FieldComparisonCriterion(_Criterion):
     """Compare one model column to another (``left <op> right``) via F() expressions.
@@ -487,6 +500,11 @@ class FieldComparisonCriterion(_Criterion):
     *includes* the row (symmetric when both are nullable). Empty-string note: an
     empty ``right`` (``""``, not NULL) is a substring of every non-NULL ``left``,
     so INCLUDES then matches all rows with a non-NULL ``left``.
+
+    Granularity: ``granularity="date"`` truncates *both* operands to calendar day
+    at query time (``left__date <op> TruncDate(F(right))``) using the active
+    timezone — only valid when both operands are the ``datetime`` group (validated
+    by the base OperatorFilter). ``"raw"`` (the default) compares the columns as-is.
     """
 
     # Shadow the inherited `value` field: FieldComparisonCriterion has no
@@ -497,15 +515,26 @@ class FieldComparisonCriterion(_Criterion):
     left: str = ""
     right: str = ""
     modifier: Modifier = Modifier.EQUALS
+    granularity: ComparisonGranularity = "raw"
 
     def to_q(
         self, field_name: str = ""
     ) -> Q:  # field_name ignored; operands self-contained
-        return _field_comparison_to_q(self.left, self.right, self.modifier)
+        return _field_comparison_to_q(
+            self.left, self.right, self.modifier, self.granularity
+        )
 
     def to_json(self) -> dict[str, Any]:
         # left/right default to "" — the base to_json would drop them. Force-emit, like BoolCriterion.
-        return {"left": self.left, "right": self.right, "modifier": self.modifier}
+        payload: dict[str, Any] = {
+            "left": self.left,
+            "right": self.right,
+            "modifier": self.modifier,
+        }
+        # Emit granularity only when non-default to keep existing filter JSON byte-compatible.
+        if self.granularity != "raw":
+            payload["granularity"] = self.granularity
+        return payload
 
 
 # ── Field descriptors ──────────────────────────────────────────────────────
@@ -935,6 +964,11 @@ class OperatorFilter:
                         f"modifier {comparison.modifier} not allowed"
                         f" for {left_group} comparison"
                     )
+                if comparison.granularity == "date" and left_group != "datetime":
+                    raise FilterError(
+                        f"date-granular comparison needs datetime operands"
+                        f" (got {left_group})"
+                    )
                 q &= comparison.to_q()
         return q
 
@@ -1189,29 +1223,49 @@ def _numeric_to_q(
     raise FilterError(f"Unsupported modifier {modifier} for numeric comparison")
 
 
-def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
+def _field_comparison_to_q(
+    left: str,
+    right: str,
+    modifier: Modifier,
+    granularity: ComparisonGranularity = "raw",
+) -> Q:
     """Build a Q comparing two model columns: ``left <op> F(right)``.
 
-    Used by field-to-field comparison criteria. Six modifiers are supported: the
-    four ordered/equality ones (EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN) plus
-    case-insensitive string containment (INCLUDES, EXCLUDES) — the latter two are
-    gated to string operands by ``_allowed_comparison_modifiers``. Anything else
-    raises FilterError. The ``_apply_operators`` caller pre-validates the modifier
-    against the operand group before calling this function, so the final
-    ``raise FilterError`` is a defensive guard not reached in normal use.
+    Used by field-to-field comparison criteria. Eight modifiers are supported: the
+    six ordered/equality ones (EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN,
+    GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL) plus case-insensitive string
+    containment (INCLUDES, EXCLUDES) — the latter two are gated to string operands
+    by ``_allowed_comparison_modifiers``. Anything else raises FilterError. The
+    ``_apply_operators`` caller pre-validates the modifier against the operand
+    group before calling this function, so the final ``raise FilterError`` is a
+    defensive guard not reached in normal use.
+
+    With ``granularity="date"`` both operands are truncated to calendar day at
+    query time (``left__date <op> TruncDate(F(right))``) using the active timezone;
+    ``_apply_operators`` gates this to the datetime group.
     """
+    if granularity == "date":
+        left_base = f"{left}__date"
+        right_expr: F | TruncDate = TruncDate(F(right))
+    else:
+        left_base = left
+        right_expr = F(right)
     if modifier == Modifier.EQUALS:
-        return Q(**{left: F(right)})
+        return Q(**{left_base: right_expr})
     if modifier == Modifier.NOT_EQUALS:
-        return ~Q(**{left: F(right)})
+        return ~Q(**{left_base: right_expr})
     if modifier == Modifier.GREATER_THAN:
-        return Q(**{f"{left}__gt": F(right)})
+        return Q(**{f"{left_base}__gt": right_expr})
     if modifier == Modifier.LESS_THAN:
-        return Q(**{f"{left}__lt": F(right)})
+        return Q(**{f"{left_base}__lt": right_expr})
+    if modifier == Modifier.GREATER_THAN_OR_EQUAL:
+        return Q(**{f"{left_base}__gte": right_expr})
+    if modifier == Modifier.LESS_THAN_OR_EQUAL:
+        return Q(**{f"{left_base}__lte": right_expr})
     if modifier == Modifier.INCLUDES:
-        return Q(**{f"{left}__icontains": F(right)})
+        return Q(**{f"{left_base}__icontains": right_expr})
     if modifier == Modifier.EXCLUDES:
-        return ~Q(**{f"{left}__icontains": F(right)})
+        return ~Q(**{f"{left_base}__icontains": right_expr})
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 

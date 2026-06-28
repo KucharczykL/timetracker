@@ -23,6 +23,7 @@ export interface ComparisonRow {
   left: string;
   right: string;
   modifier: string;
+  granularity?: string; // omitted when "raw" to keep filter JSON compact
 }
 
 // Operator labels by Modifier value — must match the modifiers the server
@@ -32,16 +33,25 @@ const OPERATOR_LABELS: Record<string, string> = {
   NOT_EQUALS: "≠",
   GREATER_THAN: ">",
   LESS_THAN: "<",
+  GREATER_THAN_OR_EQUAL: "≥",
+  LESS_THAN_OR_EQUAL: "≤",
   INCLUDES: "contains",
   EXCLUDES: "doesn't contain",
 };
 
+const ORDERED = [
+  "EQUALS",
+  "NOT_EQUALS",
+  "GREATER_THAN",
+  "LESS_THAN",
+  "GREATER_THAN_OR_EQUAL",
+  "LESS_THAN_OR_EQUAL",
+];
+
 function operatorsForGroup(group: string): string[] {
   if (group === "bool") return ["EQUALS", "NOT_EQUALS"];
-  if (group === "string") {
-    return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN", "INCLUDES", "EXCLUDES"];
-  }
-  return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN"];
+  if (group === "string") return [...ORDERED, "INCLUDES", "EXCLUDES"];
+  return ORDERED;
 }
 
 function groupOf(columns: Column[], value: string): string | null {
@@ -84,6 +94,14 @@ function refreshRow(row: HTMLElement, columns: Column[]): void {
   right.removeAttribute("data-selected");
 
   const group = groupOf(columns, left.value);
+
+  // Day-granular toggle is only meaningful for datetime operands.
+  const granularityWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
+  const granularityInput = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
+  const isDatetime = group === "datetime";
+  if (granularityWrap) granularityWrap.hidden = !isDatetime;
+  if (granularityInput && !isDatetime) granularityInput.checked = false;
+
   if (!group) {
     fillSelect(operator, [], "", "—");
     fillSelect(right, [], "", "column…");
@@ -133,8 +151,13 @@ export function readFieldComparisonSet(element: HTMLElement): {
     const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
     const modifier = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
     const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+    const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
+    const byDayWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
+    const isDate = Boolean(byDay?.checked && byDayWrap && !byDayWrap.hidden);
     if (left && right && modifier && left !== right) {
-      comparisons.push({ left, right, modifier });
+      const entry: ComparisonRow = { left, right, modifier };
+      if (isDate) entry.granularity = "date";
+      comparisons.push(entry);
     }
   });
   return { mode, comparisons };
