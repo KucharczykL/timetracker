@@ -12,7 +12,7 @@ with AND/OR/NOT composition and typed criterion fields.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Type  # noqa: UP035 — see _comparison_model below
 
 if TYPE_CHECKING:
     from games.models import (
@@ -109,6 +109,11 @@ class GameFilter(OperatorFilter):
     playevent_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
 
+    # Uppercase ``Type[...]`` (not the modern ``type[...]``) is deliberate: two
+    # filters below (PurchaseFilter, DeviceFilter) declare a field named ``type``
+    # that shadows the builtin in annotation scope, so ``type[Purchase]`` fails
+    # mypy ("Variable ... .type is not valid as a type"). Uniform ``Type`` keeps
+    # all six overrides consistent.
     def _comparison_model(self) -> Type[Game]:
         from games.models import Game
 

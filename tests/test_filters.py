@@ -2096,6 +2096,7 @@ class TestFieldComparisonEndToEnd:
             timestamp_end=datetime.datetime(
                 2024, 7, 1, 11, 0, 0, tzinfo=datetime.timezone.utc
             ),
+            duration_manual=timedelta(0),
         )
         # Q: no timestamp_end (calculated=0), 2h manual → duration_total=2h == duration_manual=2h
         Session.objects.create(

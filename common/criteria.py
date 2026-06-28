@@ -1107,24 +1107,24 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     or is of a type with no comparison group (e.g. AutoField pk, JSONField).
     """
     try:
-        field = model._meta.get_field(column)
+        model_field = model._meta.get_field(column)
     except FieldDoesNotExist:
         raise FilterError(f"{model.__name__} has no field {column!r}")
 
-    if field.is_relation:
+    if model_field.is_relation:
         raise FilterError(
             f"{model.__name__}.{column!r} is a relation and is not comparable"
         )
 
-    if isinstance(field, models.GeneratedField):
-        output_field = field.output_field
+    if isinstance(model_field, models.GeneratedField):
+        output_field = model_field.output_field
         if output_field is None:
             raise FilterError(
                 f"{model.__name__}.{column!r} is a generated field with no output type"
             )
         internal_type = output_field.get_internal_type()
     else:
-        internal_type = field.get_internal_type()
+        internal_type = model_field.get_internal_type()
 
     group = _GROUP_BY_INTERNAL_TYPE.get(internal_type)
     if group is None:
