@@ -711,6 +711,69 @@ class GenericBuilderContractTest(SimpleTestCase):
             _attrs_from_kwargs({"children": "oops"})
 
 
+class StyledBuilderContractTest(SimpleTestCase):
+    """The six styled builders accept htpy kwargs, positional attrs, and merge
+    class via the node algebra (caller class appends; baked semantic attrs win)."""
+
+    def test_input_htpy_kwargs(self):
+        result = str(components.Input(type="hidden", name="n", value="v"))
+        self.assertIn('type="hidden"', result)
+        self.assertIn('name="n"', result)
+        self.assertIn('value="v"', result)
+
+    def test_input_positional_dynamic_attrs(self):
+        result = str(components.Input([("name", "n"), ("value", "v")]))
+        self.assertIn('name="n"', result)
+        self.assertIn('value="v"', result)
+        self.assertIn('type="text"', result)
+
+    def test_input_explicit_type_in_attrs_wins_over_default(self):
+        result = str(components.Input([("type", "date")]))
+        self.assertIn('type="date"', result)
+        self.assertNotIn('type="text"', result)
+
+    def test_checkbox_class_appends_to_baked(self):
+        result = str(components.Checkbox(name="x", class_="ml-2"))
+        self.assertIn("ml-2", result)
+        self.assertIn("rounded", result)  # baked class still present
+        # single class attribute, not two
+        self.assertEqual(result.count("class="), 1)
+
+    def test_checkbox_extra_attr_via_kwargs(self):
+        result = str(components.Checkbox(name="x", data_foo="bar"))
+        self.assertIn('data-foo="bar"', result)
+
+    def test_radio_class_appends(self):
+        result = str(components.Radio(name="x", class_="mr-1"))
+        self.assertIn("mr-1", result)
+        self.assertIn("rounded-full", result)
+
+    def test_pill_class_appends_to_base(self):
+        result = str(components.Pill(label="hi", class_="ring-1"))
+        self.assertIn("ring-1", result)
+        self.assertIn("inline-flex", result)  # base pill class
+
+    def test_pill_extra_class(self):
+        result = str(components.Pill(label="hi", extra_class="opacity-50"))
+        self.assertIn("opacity-50", result)
+
+    def test_styledbutton_class_appends_and_kwargs_passthrough(self):
+        result = str(
+            components.StyledButton(class_="w-full", aria_label="Go", color="red")["Go"]
+        )
+        self.assertIn("w-full", result)
+        self.assertIn('aria-label="Go"', result)
+        self.assertEqual(result.count("class="), 1)
+
+    def test_styledbutton_baked_type_wins_over_default_but_kwarg_sets(self):
+        self.assertIn('type="submit"', str(components.StyledButton(type="submit")["x"]))
+
+    def test_searchfield_kwargs_merge_onto_form(self):
+        result = str(components.SearchField(class_="w-80"))
+        self.assertIn("w-80", result)
+        self.assertIn("max-w-md", result)  # base form class retained
+
+
 class PopoverTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated() component function."""
 

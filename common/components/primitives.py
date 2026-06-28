@@ -219,6 +219,7 @@ Caption = _html_element("caption")
 Nav = _html_element("nav")
 Img = _html_element("img")
 Html = _html_element("html")
+Form = _html_element("form")
 Head = _html_element("head")
 Body = _html_element("body")
 Meta = _html_element("meta")
@@ -344,8 +345,10 @@ def PopoverTruncated(
 
 
 def StyledButton(
-    attributes: Attributes | None = None,
+    attrs: "AttrsArg | None" = None,
     children: Children = None,
+    *,
+    attributes: Attributes | None = None,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
@@ -356,57 +359,43 @@ def StyledButton(
     title: str = "",
     onclick: str = "",
     name: str = "",
-    **attrs: object,
+    **kwargs: object,
 ) -> Element:
-    attributes = as_attributes(attributes) + _attrs_from_kwargs(attrs)
-    children = children or []
-
-    # Separate custom class from other generic attributes
-    custom_class = ""
-    other_attrs: list[HTMLAttribute] = []
-    for attr_name, attr_value in attributes:
-        if attr_name == "class":
-            custom_class = str(attr_value)
-        else:
-            other_attrs.append((attr_name, attr_value))
-
-    # Build class string: custom class first, then base, color, size, icon
-    class_parts: list[str] = []
-    if custom_class:
-        class_parts.append(custom_class)
-    class_parts.append(
-        "hover:cursor-pointer leading-5 focus:outline-hidden focus:ring-4 "
-        "font-medium mb-2 me-2 rounded-base"
-    )
-    class_parts.append(_COLOR_CLASSES.get(color, _COLOR_CLASSES["blue"]))
-    class_parts.append(_SIZE_CLASSES.get(size, _SIZE_CLASSES["base"]))
-    if icon:
-        class_parts.append("inline-flex text-center items-center gap-2")
-
-    # Build the full attribute list for the button tag
-    button_attrs: list[HTMLAttribute] = [
+    # Baked semantic attrs come first so the node algebra resolves them with
+    # first-wins precedence (a caller can't override `type`); the several baked
+    # `class` entries accumulate with any caller `class` into one attribute.
+    baked: list[HTMLAttribute] = [
         ("type", type),
-        ("class", " ".join(class_parts)),
+        (
+            "class",
+            "hover:cursor-pointer leading-5 focus:outline-hidden focus:ring-4 "
+            "font-medium mb-2 me-2 rounded-base",
+        ),
+        ("class", _COLOR_CLASSES.get(color, _COLOR_CLASSES["blue"])),
+        ("class", _SIZE_CLASSES.get(size, _SIZE_CLASSES["base"])),
     ]
+    if icon:
+        baked.append(("class", "inline-flex text-center items-center gap-2"))
     if hx_get:
-        button_attrs.append(("hx-get", hx_get))
+        baked.append(("hx-get", hx_get))
     if hx_target:
-        button_attrs.append(("hx-target", hx_target))
+        baked.append(("hx-target", hx_target))
     if hx_swap:
-        button_attrs.append(("hx-swap", hx_swap))
+        baked.append(("hx-swap", hx_swap))
     if title:
-        button_attrs.append(("title", title))
+        baked.append(("title", title))
     if onclick:
-        button_attrs.append(("onclick", onclick))
+        baked.append(("onclick", onclick))
     if name:
-        button_attrs.append(("name", name))
-    button_attrs.extend(other_attrs)
+        baked.append(("name", name))
 
-    return Element(
-        "button",
-        attributes=button_attrs,
-        children=children,
+    merged = (
+        baked
+        + _coerce_attrs(attributes)
+        + _coerce_attrs(attrs)
+        + _attrs_from_kwargs(kwargs)
     )
+    return Element("button", merged, children or [])
 
 
 _GROUP_BUTTON_COLORS = {
@@ -586,25 +575,34 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
 
 
 def Input(
+    attrs: "AttrsArg | None" = None,
+    *,
     type: str = "text",
     attributes: Attributes | None = None,
-    children: Children = None,
+    **kwargs: object,
 ) -> Element:
-    attributes = as_attributes(attributes)
-    children = children or []
-    return Element("input", attributes=attributes + [("type", type)], children=children)
+    merged = (
+        _coerce_attrs(attributes) + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+    )
+    # ``type`` is a default: an explicit ``type`` already in the merged attrs
+    # wins (first-wins), so append the default only when no caller supplied one.
+    if not any(name == "type" for name, _ in merged):
+        merged = merged + [("type", type)]
+    return Element("input", merged)
 
 
 def Checkbox(
+    attrs: "AttrsArg | None" = None,
+    *,
     name: str,
     label: str | None = None,
     checked: bool = False,
     value: str = "1",
     attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A filter-agnostic Checkbox component."""
-    attributes = as_attributes(attributes)
-    input_attrs = [
+    baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
         (
@@ -612,52 +610,60 @@ def Checkbox(
             "rounded border-default-medium bg-neutral-secondary-medium "
             f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
         ),
-    ] + attributes
+    ]
     if checked:
-        input_attrs.append(("checked", "true"))
+        baked.append(("checked", "true"))
+    input_attrs = (
+        baked
+        + _coerce_attrs(attributes)
+        + _coerce_attrs(attrs)
+        + _attrs_from_kwargs(kwargs)
+    )
 
     input_el = Input(type="checkbox", attributes=input_attrs)
     if label is None:
         return input_el
 
-    return Label(
-        attributes=[
-            ("class", "flex items-center gap-2 text-sm text-heading cursor-pointer")
-        ],
-        children=[input_el, label],
-    )
+    return Label(class_="flex items-center gap-2 text-sm text-heading cursor-pointer")[
+        input_el, label
+    ]
 
 
 def Radio(
+    attrs: "AttrsArg | None" = None,
+    *,
     name: str,
     label: str | None = None,
     checked: bool = False,
     value: str = "",
     attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A filter-agnostic Radio component."""
-    attributes = as_attributes(attributes)
-    input_attrs = [
+    baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
         (
             "class",
             "rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
         ),
-    ] + attributes
+    ]
     if checked:
-        input_attrs.append(("checked", "true"))
+        baked.append(("checked", "true"))
+    input_attrs = (
+        baked
+        + _coerce_attrs(attributes)
+        + _coerce_attrs(attrs)
+        + _attrs_from_kwargs(kwargs)
+    )
 
     input_el = Input(type="radio", attributes=input_attrs)
     if label is None:
         return input_el
 
-    return Label(
-        attributes=[
-            ("class", "flex items-center gap-1 text-sm text-heading cursor-pointer")
-        ],
-        children=[input_el, label],
-    )
+    return Label(class_="flex items-center gap-1 text-sm text-heading cursor-pointer")[
+        input_el, label
+    ]
 
 
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
@@ -672,52 +678,56 @@ _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer
 
 
 def Pill(
-    label: str,
+    attrs: "AttrsArg | None" = None,
     *,
+    label: str = "",
     value: str = "",
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
     attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A small label pill, optionally removable (× button).
 
     Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
     are JS hooks only (no CSS attached). ``value`` (when set) becomes
-    ``data-value``; extra ``attributes`` are appended to the outer span.
+    ``data-value``; ``extra_class`` and any caller ``class`` accumulate onto the
+    pill's base class; extra dynamic ``attrs`` / kwargs land on the outer span.
 
     ``label_slot=True`` wraps the label in a ``<span data-search-select-label>`` so JS can
     fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
     markup single-sourced — see ``search_select.py``).
     """
-    attributes = as_attributes(attributes)
-    pill_class = f"{_PILL_CLASS} {extra_class}".strip()
-    pill_attrs: list[HTMLAttribute] = [("class", pill_class), ("data-pill", "")]
+    baked: list[HTMLAttribute] = [
+        ("class", _PILL_CLASS),
+        ("class", extra_class),
+        ("data-pill", ""),
+    ]
     if value != "":
-        pill_attrs.append(("data-value", str(value)))
-    pill_attrs.extend(attributes)
+        baked.append(("data-value", str(value)))
+    pill_attrs = (
+        baked
+        + _coerce_attrs(attributes)
+        + _coerce_attrs(attrs)
+        + _attrs_from_kwargs(kwargs)
+    )
 
     label_child: "Node | str" = (
-        Span(attributes=[("data-search-select-label", "")], children=[label])
-        if label_slot
-        else label
+        Span(data_search_select_label="")[label] if label_slot else label
     )
     children: list["Node | str"] = [label_child]
     if removable:
         children.append(
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-pill-remove", ""),
-                    ("class", _PILL_REMOVE_CLASS),
-                    ("aria-label", "Remove"),
-                ],
-                children=["×"],
-            )
+            Button(
+                type="button",
+                data_pill_remove="",
+                class_=_PILL_REMOVE_CLASS,
+                aria_label="Remove",
+            )["×"]
         )
 
-    return Span(attributes=pill_attrs, children=children)
+    return Span(pill_attrs)[*children]
 
 
 # A small count/label badge (the brand-soft pill historically inlined in H1).
@@ -988,69 +998,65 @@ def AddForm(
 
 
 def SearchField(
+    attrs: "AttrsArg | None" = None,
+    *,
     search_string: str = "",
     id: str = "search_string",
     placeholder: str = "Search",
+    attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Element:
-    """Generate a search form with icon, input field, and submit button."""
-    return Element(
-        "form",
-        attributes=[("class", "max-w-md")],
-        children=[
-            Label(
-                attributes=[
-                    ("for", "search"),
-                    ("class", "block mb-2.5 text-sm font-medium text-heading sr-only"),
-                ],
-                children=["Search"],
-            ),
-            Div(
-                attributes=[("class", "relative")],
-                children=[
-                    Safe(
-                        '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
-                        '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
-                        'fill="none" viewBox="0 0 24 24">'
-                        '<path stroke="currentColor" stroke-linecap="round" stroke-width="2" '
-                        'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
-                        "</svg></div>"
-                    ),
-                    Input(
-                        type="search",
-                        attributes=[
-                            ("id", id),
-                            ("name", id),
-                            ("value", search_string),
-                            (
-                                "class",
-                                "block w-full p-3 ps-9 bg-neutral-secondary-medium "
-                                "border border-default-medium text-heading text-sm "
-                                "rounded-base focus:ring-brand focus:border-brand "
-                                "shadow-xs placeholder:text-body",
-                            ),
-                            ("placeholder", placeholder),
-                            ("required", ""),
-                        ],
-                    ),
-                    Element(
-                        "button",
-                        attributes=[
-                            ("type", "submit"),
-                            (
-                                "class",
-                                "absolute end-1.5 bottom-1.5 text-white bg-brand "
-                                "hover:bg-brand-strong box-border border border-transparent "
-                                "focus:ring-4 focus:ring-brand-medium shadow-xs font-medium "
-                                "leading-5 rounded text-xs px-3 py-1.5 focus:outline-none "
-                                "cursor-pointer",
-                            ),
-                        ],
-                        children=["Search"],
-                    ),
-                ],
-            ),
-        ],
+    """Generate a search form with icon, input field, and submit button.
+
+    Extra ``attrs`` / kwargs land on the outer ``<form>`` (e.g. a caller adding
+    ``class_`` accumulates onto the base ``max-w-md``).
+    """
+    form_attrs = (
+        [("class", "max-w-md")]
+        + _coerce_attrs(attributes)
+        + _coerce_attrs(attrs)
+        + _attrs_from_kwargs(kwargs)
     )
+    return Form(form_attrs)[
+        Label(
+            for_="search",
+            class_="block mb-2.5 text-sm font-medium text-heading sr-only",
+        )["Search"],
+        Div(class_="relative")[
+            Safe(
+                '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
+                '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
+                'fill="none" viewBox="0 0 24 24">'
+                '<path stroke="currentColor" stroke-linecap="round" stroke-width="2" '
+                'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
+                "</svg></div>"
+            ),
+            Input(
+                type="search",
+                id=id,
+                name=id,
+                value=search_string,
+                class_=(
+                    "block w-full p-3 ps-9 bg-neutral-secondary-medium "
+                    "border border-default-medium text-heading text-sm "
+                    "rounded-base focus:ring-brand focus:border-brand "
+                    "shadow-xs placeholder:text-body"
+                ),
+                placeholder=placeholder,
+                required="",
+            ),
+            Button(
+                type="submit",
+                class_=(
+                    "absolute end-1.5 bottom-1.5 text-white bg-brand "
+                    "hover:bg-brand-strong box-border border border-transparent "
+                    "focus:ring-4 focus:ring-brand-medium shadow-xs font-medium "
+                    "leading-5 rounded text-xs px-3 py-1.5 focus:outline-none "
+                    "cursor-pointer"
+                ),
+            )["Search"],
+        ],
+    ]
 
 
 def H1(

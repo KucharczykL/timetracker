@@ -20,32 +20,32 @@ from games.models import Game, Platform
 
 class PillTest(unittest.TestCase):
     def test_returns_safetext(self):
-        self.assertIsInstance(str(Pill("hi")), SafeText)
+        self.assertIsInstance(str(Pill(label="hi")), SafeText)
 
     def test_plain_pill_has_data_pill_no_remove(self):
-        html = str(Pill("hi"))
+        html = str(Pill(label="hi"))
         self.assertIn("data-pill", html)
         self.assertNotIn("data-pill-remove", html)
 
     def test_removable_adds_remove_button(self):
-        html = str(Pill("hi", removable=True))
+        html = str(Pill(label="hi", removable=True))
         self.assertIn("data-pill-remove", html)
         self.assertIn('aria-label="Remove"', html)
 
     def test_value_becomes_data_value(self):
-        html = str(Pill("hi", value="42"))
+        html = str(Pill(label="hi", value="42"))
         self.assertIn('data-value="42"', html)
 
     def test_no_value_omits_data_value(self):
-        self.assertNotIn("data-value", str(Pill("hi")))
+        self.assertNotIn("data-value", str(Pill(label="hi")))
 
     def test_label_is_escaped(self):
-        html = str(Pill("<b>x</b>"))
+        html = str(Pill(label="<b>x</b>"))
         self.assertIn("&lt;b&gt;", html)
         self.assertNotIn("<b>x</b>", html)
 
     def test_extra_data_attributes(self):
-        html = str(Pill("hi", attributes=[("data-platform", "3")]))
+        html = str(Pill(label="hi", attributes=[("data-platform", "3")]))
         self.assertIn('data-platform="3"', html)
 
 
