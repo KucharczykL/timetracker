@@ -81,13 +81,13 @@ class GameFilter(OperatorFilter):
     year_released: IntCriterion | None = None
     original_year_released: IntCriterion | None = None
     wikidata: StringCriterion | None = None
-    platform: ChoiceCriterion | None = None  # selectable filter widget
-    platform_group: MultiCriterion | None = None  # platform__group__in
+    platform: MultiCriterion | None = None  # platform_id (int FK)
+    platform_group: ChoiceCriterion | None = None  # platform__group (str)
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
     playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
-    created_at: StringCriterion | None = None  # date string
-    updated_at: StringCriterion | None = None  # date string
+    created_at: DateCriterion | None = None  # compared via __date
+    updated_at: DateCriterion | None = None  # compared via __date
 
     # Aggregates over the game's relations (count / sum / avg). The reducer +
     # relation accessor + source + unit are supplied at query time via
@@ -125,8 +125,8 @@ class GameFilter(OperatorFilter):
         "status": FilterField(),
         "mastered": FilterField(),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
-        "created_at": FilterField(),
-        "updated_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
+        "updated_at": FilterField("updated_at__date"),
         "platform_group": FilterField("platform__group"),
     }
 
@@ -273,7 +273,7 @@ class SessionFilter(OperatorFilter):
     timestamp_start: DateCriterion | None = None  # date, compared via __date
     timestamp_end: DateCriterion | None = None  # date, compared via __date
     is_manual: BoolCriterion | None = None  # duration_manual > 0
-    created_at: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
     search: StringCriterion | None = None
@@ -307,7 +307,7 @@ class SessionFilter(OperatorFilter):
         "is_manual": FilterField(
             handler=bool_nonzero_duration_handler("duration_manual")
         ),
-        "created_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
     }
 
     def _comparison_model(self) -> Type[Session]:
@@ -364,7 +364,7 @@ class PurchaseFilter(OperatorFilter):
     NOT: list[PurchaseFilter] = field(default_factory=list)
 
     name: StringCriterion | None = None
-    platform: ChoiceCriterion | None = None  # platform_id
+    platform: MultiCriterion | None = None  # platform_id (int FK)
     games: ChoiceCriterion | None = None  # games (M2M IDs)
     date_purchased: DateCriterion | None = None
     date_refunded: DateCriterion | None = None
@@ -375,8 +375,8 @@ class PurchaseFilter(OperatorFilter):
     num_purchases: IntCriterion | None = None
     ownership_type: ChoiceCriterion | None = None  # ph/di/du/re/bo/tr/de/pi
     type: ChoiceCriterion | None = None  # game/dlc/season_pass/battle_pass
-    created_at: StringCriterion | None = None
-    updated_at: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
+    updated_at: DateCriterion | None = None  # compared via __date
 
     infinite: BoolCriterion | None = None
     needs_price_update: BoolCriterion | None = None
@@ -409,8 +409,8 @@ class PurchaseFilter(OperatorFilter):
         "num_purchases": FilterField(),
         "ownership_type": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField(),
-        "updated_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
+        "updated_at": FilterField("updated_at__date"),
         "infinite": FilterField(),
         "needs_price_update": FilterField(),
         "converted_currency": FilterField(),
@@ -540,7 +540,7 @@ class DeviceFilter(OperatorFilter):
 
     name: StringCriterion | None = None
     type: ChoiceCriterion | None = None
-    created_at: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
     search: StringCriterion | None = None
@@ -553,7 +553,7 @@ class DeviceFilter(OperatorFilter):
     fields = {
         "name": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
     }
 
     def _comparison_model(self) -> Type[Device]:
@@ -595,7 +595,7 @@ class PlatformFilter(OperatorFilter):
     name: StringCriterion | None = None
     group: StringCriterion | None = None
     icon: StringCriterion | None = None
-    created_at: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
     search: StringCriterion | None = None
@@ -610,7 +610,7 @@ class PlatformFilter(OperatorFilter):
         "name": FilterField(),
         "group": FilterField(),
         "icon": FilterField(),
-        "created_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
     }
 
     def _comparison_model(self) -> Type[Platform]:
@@ -661,7 +661,7 @@ class PlayEventFilter(OperatorFilter):
     ended: DateCriterion | None = None  # DateField, bare lookup
     days_to_finish: IntCriterion | None = None
     note: StringCriterion | None = None
-    created_at: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
     search: StringCriterion | None = None
@@ -677,7 +677,7 @@ class PlayEventFilter(OperatorFilter):
         "ended": FilterField(),
         "days_to_finish": FilterField(),
         "note": FilterField(),
-        "created_at": FilterField(),
+        "created_at": FilterField("created_at__date"),
     }
 
     def _comparison_model(self) -> Type[PlayEvent]:

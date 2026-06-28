@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
+from datetime import date
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import Any, ClassVar, Literal, Self, TypedDict, TypeVar
@@ -136,6 +137,41 @@ class RelationMatch(str, Enum):
     ALL = "ALL"  # every related row matches; vacuously true for zero-row parents
 
 
+# ── Value coercers ───────────────────────────────────────────────────────────
+# Parse-time value validators (issue #157). A criterion declares one via its
+# ``_coerce`` hook; ``from_json`` applies it so a wrong-typed hand-edited
+# ``?filter=`` value raises ``FilterError`` at parse rather than escaping the
+# error boundary and 500-ing when the DB rejects it at query-execution time.
+# Each returns the coerced value or raises ``FilterError`` (a ``ValueError``,
+# caught by the boundary).
+
+
+def _coerce_int(raw: Any) -> int:
+    try:
+        return int(raw)
+    except (ValueError, TypeError) as exc:
+        raise FilterError(f"expected an integer, got {raw!r}") from exc
+
+
+def _coerce_float(raw: Any) -> float:
+    try:
+        return float(raw)
+    except (ValueError, TypeError) as exc:
+        raise FilterError(f"expected a number, got {raw!r}") from exc
+
+
+def _coerce_date(raw: Any) -> str:
+    # Keep the ISO string (``to_q`` passes it to ``Q``; the DB parses it); only
+    # validate that it is one, so a bad date is rejected here, not at eval.
+    if not isinstance(raw, str):
+        raise FilterError(f"expected an ISO date string, got {raw!r}")
+    try:
+        date.fromisoformat(raw)
+    except ValueError as exc:
+        raise FilterError(f"expected an ISO date string, got {raw!r}") from exc
+    return raw
+
+
 # ── Base criterion ─────────────────────────────────────────────────────────
 
 T = TypeVar("T")
@@ -147,6 +183,13 @@ class _Criterion:
 
     value: Any = None
     modifier: Modifier = Modifier.EQUALS
+
+    # Parse-time value validator (issue #157); ``None`` accepts the value as-is
+    # (string/bool/choice — never a 500 vector). Concrete classes whose value
+    # has a field-column type (int/float/date) set one of the ``_coerce_*``
+    # helpers; ``from_json`` applies it so a wrong-typed hand-edited value raises
+    # ``FilterError`` at parse instead of escaping to a query-execution 500.
+    _coerce: ClassVar[Callable[[Any], Any] | None] = None
 
     def to_q(self, field_name: str) -> Q:
         raise NotImplementedError
@@ -183,6 +226,35 @@ class _Criterion:
 
 
 @dataclass
+class _ScalarCriterion(_Criterion):
+    """Base for criteria whose ``value``/``value2`` are single field-column values
+    (int / float / date). Applies the class ``_coerce`` validator at parse so a
+    wrong-typed hand-edited value raises ``FilterError`` here, not as a 500 when
+    the DB rejects it at query-execution time (issue #157)."""
+
+    value2: Any = None
+
+    @classmethod
+    def from_json(cls, data: dict | None) -> Self | None:
+        result = super().from_json(data)
+        # ``result`` is non-None only when ``data`` was a dict (base contract).
+        if result is None or cls._coerce is None or data is None:
+            return result
+        # Presence tests ignore the value entirely, and widgets emit a placeholder
+        # (``value: ""``) for them — so don't coerce it (an empty string is not a
+        # valid date/number). For value-using modifiers a bad value still raises.
+        if result.modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+            return result
+        coerce = cls._coerce
+        # Coerce only keys the user actually supplied and that aren't null, so a
+        # defaulted ``value``/``value2`` is never coerced.
+        for key in ("value", "value2"):
+            if data.get(key) is not None:
+                setattr(result, key, coerce(getattr(result, key)))
+        return result
+
+
+@dataclass
 class StringCriterion(_Criterion):
     value: str = ""
     modifier: Modifier = Modifier.EQUALS
@@ -209,10 +281,11 @@ class StringCriterion(_Criterion):
 
 
 @dataclass
-class IntCriterion(_Criterion):
+class IntCriterion(_ScalarCriterion):
     value: int = 0
     value2: int | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_int)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -246,10 +319,11 @@ class IntCriterion(_Criterion):
 
 
 @dataclass
-class FloatCriterion(_Criterion):
+class FloatCriterion(_ScalarCriterion):
     value: float = 0.0
     value2: float | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -283,10 +357,11 @@ class FloatCriterion(_Criterion):
 
 
 @dataclass
-class DateCriterion(_Criterion):
+class DateCriterion(_ScalarCriterion):
     value: str = ""
     value2: str | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_date)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -418,6 +493,14 @@ class _SetCriterion(_Criterion):
         result.excludes = [
             item["id"] if isinstance(item, dict) else item for item in result.excludes
         ]
+        # Coerce each element against the field-column type (issue #157), so an
+        # int-set field (MultiCriterion) rejects a wrong-typed id at parse rather
+        # than letting ``field__in=["xyz"]`` 500 at query execution. ChoiceCriterion
+        # leaves ``_coerce`` None (string codes against char columns never 500).
+        if cls._coerce is not None:
+            coerce = cls._coerce
+            result.value = [coerce(item) for item in result.value]
+            result.excludes = [coerce(item) for item in result.excludes]
         return result
 
 
@@ -431,6 +514,7 @@ class MultiCriterion(_SetCriterion):
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
+    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_int)
 
 
 @dataclass
@@ -446,7 +530,7 @@ class ChoiceCriterion(_SetCriterion):
 
 
 @dataclass
-class AggregateCriterion(_Criterion):
+class AggregateCriterion(_ScalarCriterion):
     """Filter a parent entity by a reducer (count / sum / avg) over one of its
     relations, compared numerically — e.g. "games with > 5 sessions" or "sum of
     a game's purchase prices between X and Y".
@@ -459,6 +543,10 @@ class AggregateCriterion(_Criterion):
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
+    # Aggregates compare numerically; coerce to float so a wrong-typed bound is
+    # caught at parse rather than surfacing as a query-execution 500. The eager
+    # build can't catch it: ``aggregate_to_q`` feeds the value straight into Q.
+    _coerce: ClassVar[Callable[[Any], Any] | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
         # Unlike sibling criteria, an aggregate is not self-contained: its meaning
@@ -1154,10 +1242,13 @@ def filter_from_json(cls: type[FilterType], json_str: str) -> FilterType | None:
     on the result can raise. (A genuine wiring bug raises a non-``ValueError`` —
     see ``aggregate_to_q`` — and is intentionally *not* caught, so it still 500s.)
 
-    Note: this guarantee is scoped to ``to_q()`` itself. A wrong-typed value that
-    the database only rejects at query-execution time (e.g. a non-numeric
-    ``year_released``) is not caught here — tracked in issue #157
-    (parse-time value-type validation).
+    Wrong-typed *values* are caught even earlier (issue #157): each criterion's
+    ``from_json`` coerces/validates its value against the field-column type (int /
+    float / ISO date / int-id set), raising ``FilterError`` at parse — so a value
+    the database would only reject at query-execution time (e.g. a non-numeric
+    ``year_released``) never reaches the DB. The eager ``to_q()`` build below then
+    covers the remaining structural conversions (BETWEEN bounds, M2M id coercion
+    in ``_games_to_q``, hours→timedelta).
     """
     if not json_str:
         return None

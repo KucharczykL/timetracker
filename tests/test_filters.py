@@ -18,6 +18,7 @@ from common.criteria import (
     FieldComparisonCriterion,
     FilterError,
     FilterField,
+    FloatCriterion,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -32,6 +33,7 @@ from common.criteria import (
     bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
+    filter_from_json,
     search_q,
 )
 from common.components import FilterBar
@@ -597,13 +599,15 @@ class TestGameFilterFromJson:
         assert gf.status is not None
         assert gf.status.modifier == Modifier.NOT_NULL
 
-    def test_platform_choice_criterion(self):
+    def test_platform_criterion_coerces_ids_to_int(self):
+        # platform is a MultiCriterion over the int FK platform_id; string ids
+        # from the widget are coerced to int at parse (issue #157).
         gf = GameFilter.from_json(
             {"platform": {"value": ["1", "3"], "modifier": "INCLUDES"}}
         )
         assert gf is not None
         assert gf.platform is not None
-        assert gf.platform.value == ["1", "3"]
+        assert gf.platform.value == [1, 3]
 
     def test_round_trip(self):
         data = {
@@ -1502,6 +1506,67 @@ class TestFilterErrorBoundary:
         result.to_q()  # does not raise
         assert result.session_filter is not None
         result.session_filter.to_q()  # the exact second call game.py makes
+
+
+# Wrong-typed value per coercible criterion class (issue #157). Criteria whose
+# value is a free string against a char column (String/Choice) or a bool never
+# 500 at the DB, so they are not in this map and are skipped by the matrix below.
+_WRONG_VALUE_BY_CRITERION = {
+    IntCriterion: "not-a-number",
+    FloatCriterion: "not-a-number",
+    AggregateCriterion: "not-a-number",
+    DateCriterion: "garbage",
+    MultiCriterion: ["not-an-int"],
+}
+
+_ALL_FILTERS = [
+    GameFilter,
+    SessionFilter,
+    PurchaseFilter,
+    DeviceFilter,
+    PlatformFilter,
+    PlayEventFilter,
+]
+
+
+def _coercible_field_cases():
+    """Every (filter, criterion field) whose value type the DB would reject at
+    query execution — derived from the criterion class via _criterion_class_for so
+    the matrix grows automatically as new fields/filters are added (e.g. #168)."""
+    cases = []
+    for filter_cls in _ALL_FILTERS:
+        for dataclass_field in dataclasses.fields(filter_cls):
+            criterion_cls = _criterion_class_for(filter_cls, dataclass_field.name)
+            if criterion_cls in _WRONG_VALUE_BY_CRITERION:
+                cases.append((filter_cls, dataclass_field.name, criterion_cls))
+    return cases
+
+
+class TestValueTypeBoundaryMatrix:
+    """Issue #157: a hand-edited ``?filter=`` carrying a value of the wrong type
+    for its column must raise ``FilterError`` at parse (caught by the web/API
+    boundary) rather than escaping to a query-execution 500. Covers every
+    coercible criterion field across every filter, so the boundary promise holds
+    as fields are added."""
+
+    @pytest.mark.parametrize(
+        "filter_cls,field_name,criterion_cls",
+        _coercible_field_cases(),
+        ids=lambda value: getattr(value, "__name__", value),
+    )
+    def test_wrong_typed_value_raises_filter_error(
+        self, filter_cls, field_name, criterion_cls
+    ):
+        bad_value = _WRONG_VALUE_BY_CRITERION[criterion_cls]
+        modifier = "INCLUDES" if criterion_cls is MultiCriterion else "EQUALS"
+        payload = json.dumps({field_name: {"value": bad_value, "modifier": modifier}})
+        with pytest.raises(FilterError):
+            filter_from_json(filter_cls, payload)
+
+    def test_matrix_is_non_empty(self):
+        # Guard against the derivation silently yielding nothing (e.g. annotation
+        # format change), which would make the parametrized test vacuously pass.
+        assert _coercible_field_cases()
 
 
 class TestFieldComparisonCriterion:
@@ -3178,3 +3243,30 @@ class TestSearchQHelper:
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
+
+
+class TestValueTypeBoundaryIntegration:
+    """End-to-end: a wrong-typed ``?filter=`` reaches a real list view / API
+    endpoint and degrades gracefully instead of 500-ing at query execution
+    (issue #157). Pre-fix these payloads built a Q fine and raised at eval."""
+
+    @pytest.fixture
+    def auth_client(self, client, django_user_model):
+        user = django_user_model.objects.create_user(username="u", password="p")
+        client.force_login(user)
+        return client
+
+    @pytest.mark.django_db
+    def test_web_list_view_warn_ignores_bad_value(self, auth_client):
+        from django.urls import reverse
+
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": "nope"}})
+        response = auth_client.get(reverse("games:list_games"), {"filter": bad})
+        # Boundary warns and ignores → the page still renders, never a 500.
+        assert response.status_code == 200
+
+    @pytest.mark.django_db
+    def test_api_list_returns_400_on_bad_value(self, auth_client):
+        bad = json.dumps({"timestamp_start": {"modifier": "EQUALS", "value": "nope"}})
+        response = auth_client.get("/api/session/", {"filter": bad})
+        assert response.status_code == 400
