@@ -101,8 +101,14 @@ class Modifier(str, Enum):
         ]
 
     @classmethod
-    def for_field_comparisons(cls) -> list[Self]:
+    def for_ordered_field_comparisons(cls) -> list[Self]:
+        """Equality + ordering — valid for every comparable group (numeric/date/string)."""
         return [cls.EQUALS, cls.NOT_EQUALS, cls.GREATER_THAN, cls.LESS_THAN]
+
+    @classmethod
+    def for_field_comparisons(cls) -> list[Self]:
+        """Full field-comparison vocabulary: ordering + string containment (string-only)."""
+        return [*cls.for_ordered_field_comparisons(), cls.INCLUDES, cls.EXCLUDES]
 
 
 # ── Relation match-mode ──────────────────────────────────────────────────────
@@ -472,6 +478,15 @@ class FieldComparisonCriterion(_Criterion):
     column is NULL only under schema drift / raw inserts). Ordered comparisons
     (``<``, ``>``) and EQUALS instead *exclude* NULL rows, because the SQL
     expression is NULL (unknown) when either operand is NULL.
+
+    String containment (string operands only, case-insensitive ``__icontains``):
+    INCLUDES (``left__icontains=F(right)``) excludes NULL rows like EQUALS/ordered
+    — the ``LIKE`` is NULL/unknown when either operand is NULL. EXCLUDES
+    (``~Q(left__icontains=F(right))``) mirrors NOT_EQUALS: Django appends an
+    ``IS NOT NULL`` guard per *nullable* operand, so a NULL on a nullable side
+    *includes* the row (symmetric when both are nullable). Empty-string note: an
+    empty ``right`` (``""``, not NULL) is a substring of every non-NULL ``left``,
+    so INCLUDES then matches all rows with a non-NULL ``left``.
     """
 
     # Shadow the inherited `value` field: FieldComparisonCriterion has no
@@ -483,7 +498,9 @@ class FieldComparisonCriterion(_Criterion):
     right: str = ""
     modifier: Modifier = Modifier.EQUALS
 
-    def to_q(self, field_name: str = "") -> Q:  # field_name ignored; operands self-contained
+    def to_q(
+        self, field_name: str = ""
+    ) -> Q:  # field_name ignored; operands self-contained
         return _field_comparison_to_q(self.left, self.right, self.modifier)
 
     def to_json(self) -> dict[str, Any]:
@@ -594,7 +611,9 @@ type RelationChild = dict[
 # one exception: ``"field-comparison"`` is registered to satisfy the
 # _CRITERION_TYPES/_CRITERION_KINDS parity invariant but is never path-reachable —
 # ``field_comparisons`` is a list field, so no path resolves to it (no widget yet).
-type LeafWidgetKind = Literal["string", "number", "date", "bool", "set", "field-comparison"]
+type LeafWidgetKind = Literal[
+    "string", "number", "date", "bool", "set", "field-comparison"
+]
 
 # Every widget ``data-kind`` token the filter-bar serializer dispatches on.
 # ``relation-bool`` extends the leaf kinds: it describes not a leaf criterion but
@@ -607,7 +626,9 @@ type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
 # The DB type "bucket" used to verify that two columns being compared
 # field-to-field share the same kind (e.g. both "date", both "number").
 # date and datetime are intentionally SEPARATE groups.
-type ComparisonGroup = Literal["date", "datetime", "duration", "number", "string", "bool"]
+type ComparisonGroup = Literal[
+    "date", "datetime", "duration", "number", "string", "bool"
+]
 
 _GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
     "DateField": "date",
@@ -1115,11 +1136,13 @@ def _numeric_to_q(
 def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
     """Build a Q comparing two model columns: ``left <op> F(right)``.
 
-    Used by field-to-field comparison criteria. Only the four ordered/equality
-    modifiers are supported; anything else raises FilterError. The
-    ``_apply_operators`` caller pre-validates the modifier via
-    ``_allowed_comparison_modifiers`` before calling this function, so the
-    final ``raise FilterError`` is a defensive guard not reached in normal use.
+    Used by field-to-field comparison criteria. Six modifiers are supported: the
+    four ordered/equality ones (EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN) plus
+    case-insensitive string containment (INCLUDES, EXCLUDES) — the latter two are
+    gated to string operands by ``_allowed_comparison_modifiers``. Anything else
+    raises FilterError. The ``_apply_operators`` caller pre-validates the modifier
+    against the operand group before calling this function, so the final
+    ``raise FilterError`` is a defensive guard not reached in normal use.
     """
     if modifier == Modifier.EQUALS:
         return Q(**{left: F(right)})
@@ -1129,6 +1152,10 @@ def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
         return Q(**{f"{left}__gt": F(right)})
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{left}__lt": F(right)})
+    if modifier == Modifier.INCLUDES:
+        return Q(**{f"{left}__icontains": F(right)})
+    if modifier == Modifier.EXCLUDES:
+        return ~Q(**{f"{left}__icontains": F(right)})
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
@@ -1169,10 +1196,16 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
 
 
 def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:
-    """Modifiers valid for a comparison group: bool is equality-only; all others ordered."""
+    """Modifiers valid for a comparison group.
+
+    bool is equality-only; string adds case-insensitive containment
+    (INCLUDES/EXCLUDES) on top of ordering; all other groups are ordered-only.
+    """
     if group == "bool":
         return [Modifier.EQUALS, Modifier.NOT_EQUALS]
-    return Modifier.for_field_comparisons()
+    if group == "string":
+        return Modifier.for_field_comparisons()
+    return Modifier.for_ordered_field_comparisons()
 
 
 def duration_hours_to_q(

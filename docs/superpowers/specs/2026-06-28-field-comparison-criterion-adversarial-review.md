@@ -97,8 +97,8 @@ For the current scale of the application, full table scans are extremely fast (S
 
 ## 4. Future Extensions
 
-### 4.1 String Substring Containment Modifiers
-The initial implementation supports `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, and `LESS_THAN`. 
+### 4.1 String Substring Containment Modifiers — ✅ implemented (#164)
+The initial implementation supports `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, and `LESS_THAN`. `INCLUDES`/`EXCLUDES` for string operands were added in #164 — see `docs/superpowers/specs/2026-06-28-string-field-comparison-design.md`.
 
 Because Django supports `F()` expressions inside string containment lookups (verified — `name__icontains=F("sort_name")` compiles to valid `LIKE` SQL on SQLite), future iterations could support:
 * `INCLUDES` -> `Q(**{f"{left}__icontains": F(right)})`

@@ -1512,6 +1512,16 @@ class TestFieldComparisonCriterion:
             "date_refunded", "date_purchased", Modifier.LESS_THAN
         ) == Q(date_refunded__lt=F("date_purchased"))
 
+    def test_helper_includes(self):
+        assert _field_comparison_to_q("name", "sort_name", Modifier.INCLUDES) == Q(
+            name__icontains=F("sort_name")
+        )
+
+    def test_helper_excludes(self):
+        assert _field_comparison_to_q("name", "sort_name", Modifier.EXCLUDES) == ~Q(
+            name__icontains=F("sort_name")
+        )
+
     def test_helper_unsupported_modifier_raises(self):
         with pytest.raises(FilterError, match="Unsupported modifier"):
             _field_comparison_to_q("date_refunded", "date_purchased", Modifier.BETWEEN)
@@ -1567,12 +1577,23 @@ class TestFieldComparisonCriterion:
 
     # ── Modifier.for_field_comparisons ───────────────────────────────────────
 
+    def test_for_ordered_field_comparisons(self):
+        assert Modifier.for_ordered_field_comparisons() == [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+            Modifier.GREATER_THAN,
+            Modifier.LESS_THAN,
+        ]
+
     def test_for_field_comparisons(self):
+        """Full set = ordered subset plus string containment (INCLUDES/EXCLUDES)."""
         assert Modifier.for_field_comparisons() == [
             Modifier.EQUALS,
             Modifier.NOT_EQUALS,
             Modifier.GREATER_THAN,
             Modifier.LESS_THAN,
+            Modifier.INCLUDES,
+            Modifier.EXCLUDES,
         ]
 
 
@@ -1666,7 +1687,25 @@ class TestComparisonGroupResolver:
         ]
 
     def test_date_group_is_ordered(self):
-        assert _allowed_comparison_modifiers("date") == Modifier.for_field_comparisons()
+        assert (
+            _allowed_comparison_modifiers("date")
+            == Modifier.for_ordered_field_comparisons()
+        )
+
+    def test_number_group_excludes_containment(self):
+        allowed = _allowed_comparison_modifiers("number")
+        assert allowed == Modifier.for_ordered_field_comparisons()
+        assert Modifier.INCLUDES not in allowed
+        assert Modifier.EXCLUDES not in allowed
+
+    def test_string_group_adds_containment(self):
+        allowed = _allowed_comparison_modifiers("string")
+        assert allowed == Modifier.for_field_comparisons()
+        assert Modifier.INCLUDES in allowed
+        assert Modifier.EXCLUDES in allowed
+        # string keeps lexicographic ordering too
+        assert Modifier.GREATER_THAN in allowed
+        assert Modifier.LESS_THAN in allowed
 
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
@@ -1724,7 +1763,11 @@ class TestFieldComparisonWiring:
         serialized = stub.to_json()
         assert "field_comparisons" in serialized
         assert serialized["field_comparisons"] == [
-            {"left": "date_refunded", "right": "date_purchased", "modifier": Modifier.LESS_THAN}
+            {
+                "left": "date_refunded",
+                "right": "date_purchased",
+                "modifier": Modifier.LESS_THAN,
+            }
         ]
 
     def test_empty_field_comparisons_omitted_from_json(self):
@@ -1798,6 +1841,31 @@ class TestFieldComparisonWiring:
         with pytest.raises(FilterError):
             stub.to_q()
 
+    def test_includes_on_string_group_ok(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="price_currency",
+                    right="converted_currency",
+                    modifier=Modifier.INCLUDES,
+                )
+            ]
+        )
+        assert stub.to_q() == Q(price_currency__icontains=F("converted_currency"))
+
+    def test_includes_on_number_group_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="price",
+                    right="converted_price",
+                    modifier=Modifier.INCLUDES,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
     def test_relation_column_raises(self):
         stub = _PurchaseStub(
             field_comparisons=[
@@ -1859,7 +1927,11 @@ class TestFieldComparisonWiring:
     def test_integration_bad_column_raises_on_to_q(self):
         bad_json = {
             "field_comparisons": [
-                {"left": "nonexistent", "right": "date_purchased", "modifier": "LESS_THAN"}
+                {
+                    "left": "nonexistent",
+                    "right": "date_purchased",
+                    "modifier": "LESS_THAN",
+                }
             ]
         }
         parsed = _PurchaseStub.from_json(bad_json)
@@ -2254,9 +2326,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import PlayEventFilter
         from games.models import Game, PlayEvent, Platform
 
-        platform, _ = Platform.objects.get_or_create(
-            name="PESym", icon="pesym"
-        )
+        platform, _ = Platform.objects.get_or_create(name="PESym", icon="pesym")
         game = Game.objects.create(name="PESymGame", platform=platform)
 
         # different (both set) → included
@@ -2395,3 +2465,74 @@ class TestFieldComparisonEndToEnd:
         assert parsed_filter is not None
         result = set(Purchase.objects.filter(parsed_filter.to_q()))
         assert result == {purchase_a}
+
+    def test_string_includes_excludes_end_to_end(self):
+        """Game.name INCLUDES/EXCLUDES Game.sort_name, case-insensitively.
+
+        - M (name contains sort_name) matches INCLUDES, not EXCLUDES.
+        - N (name does not contain sort_name) matches EXCLUDES, not INCLUDES.
+        - P (different case) matches INCLUDES — __icontains is case-insensitive.
+        - O (empty sort_name) matches INCLUDES — "" is a substring of every name.
+        Both operands are non-nullable, so EXCLUDES is the exact complement.
+        """
+        from games.filters import GameFilter
+        from games.models import Game, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="StrCmpTest", icon="strcmptest"
+        )
+        match = Game.objects.create(
+            name="The Legend of Zelda", sort_name="Zelda", platform=platform
+        )
+        no_match = Game.objects.create(name="Halo", sort_name="Doom", platform=platform)
+        case_insensitive = Game.objects.create(
+            name="DARK SOULS", sort_name="dark", platform=platform
+        )
+        empty_sort = Game.objects.create(name="Tetris", sort_name="", platform=platform)
+
+        includes = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="name", right="sort_name", modifier=Modifier.INCLUDES
+                )
+            ]
+        )
+        assert set(Game.objects.filter(includes.to_q())) == {
+            match,
+            case_insensitive,
+            empty_sort,
+        }
+
+        excludes = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="name", right="sort_name", modifier=Modifier.EXCLUDES
+                )
+            ]
+        )
+        assert set(Game.objects.filter(excludes.to_q())) == {no_match}
+
+    def test_json_round_trip_game_string_includes(self):
+        """A string INCLUDES field comparison survives JSON serialization."""
+        from common.criteria import filter_to_json
+        from games.filters import GameFilter, parse_game_filter
+        from games.models import Game, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="StrCmpTest", icon="strcmptest"
+        )
+        match = Game.objects.create(
+            name="Super Mario Bros", sort_name="Mario", platform=platform
+        )
+        Game.objects.create(name="Pong", sort_name="Snake", platform=platform)
+
+        game_filter = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="name", right="sort_name", modifier=Modifier.INCLUDES
+                )
+            ]
+        )
+        parsed_filter = parse_game_filter(filter_to_json(game_filter))
+        assert parsed_filter is not None
+        assert set(Game.objects.filter(parsed_filter.to_q())) == {match}
