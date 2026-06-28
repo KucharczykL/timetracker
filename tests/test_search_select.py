@@ -45,7 +45,7 @@ class PillTest(unittest.TestCase):
         self.assertNotIn("<b>x</b>", html)
 
     def test_extra_data_attributes(self):
-        html = str(Pill(label="hi", attributes=[("data-platform", "3")]))
+        html = str(Pill([("data-platform", "3")], label="hi"))
         self.assertIn('data-platform="3"', html)
 
 

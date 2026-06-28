@@ -202,30 +202,30 @@ class ComponentReturnTypeTest(unittest.TestCase):
     """Test that component functions return SafeText and render correctly."""
 
     def test_div_returns_safe_text(self):
-        result = str(components.Div([("class", "x")], "hello"))
+        result = str(components.Div([("class", "x")])["hello"])
         self.assertIsInstance(result, SafeText)
 
     def test_div_deterministic(self):
-        r1 = str(components.Div([("class", "x")], "hello"))
-        r2 = str(components.Div([("class", "x")], "hello"))
+        r1 = str(components.Div([("class", "x")])["hello"])
+        r2 = str(components.Div([("class", "x")])["hello"])
         self.assertEqual(r1, r2)
         self.assertIn('<div class="x">hello</div>', r1)
 
     def test_div_no_args(self):
-        result = str(components.Div(children="test"))
+        result = str(components.Div()["test"])
         self.assertIsInstance(result, SafeText)
         self.assertIn("<div>test</div>", result)
 
     def test_a_returns_safe_text(self):
-        result = str(components.A([], "link"))
+        result = str(components.A()["link"])
         self.assertIsInstance(result, SafeText)
 
     def test_a_literal_href(self):
-        result = str(components.A([], "x", href="/literal/path"))
+        result = str(components.A(href="/literal/path")["x"])
         self.assertIn('href="/literal/path"', result)
 
     def test_a_no_url_or_href(self):
-        result = str(components.A([], "link"))
+        result = str(components.A()["link"])
         self.assertIn("<a>link</a>", result)
         self.assertNotIn("href=", result)
 
@@ -298,9 +298,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_component_output_starts_with_tag(self):
         for label, html in [
-            ("A", str(components.A(href="/foo", children=["link"]))),
-            ("Button", str(components.StyledButton([], "click"))),
-            ("Div", str(components.Div([], ["hello"]))),
+            ("A", str(components.A(href="/foo")["link"])),
+            ("Button", str(components.StyledButton()["click"])),
+            ("Div", str(components.Div()["hello"])),
             ("Input", str(components.Input())),
             ("ButtonGroup", str(components.ButtonGroup([]))),
             (
@@ -314,7 +314,10 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             ("SearchField", str(components.SearchField())),
             ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
             ("PageHeading", str(components.PageHeading(["Title"]))),
-            ("PageHeading with badge", str(components.PageHeading(["Title"], badge="3"))),
+            (
+                "PageHeading with badge",
+                str(components.PageHeading(["Title"], badge="3")),
+            ),
         ]:
             with self.subTest(component=label):
                 self.assertTrue(
@@ -324,11 +327,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_button_with_icon_children_not_escaped(self):
         result = str(
-            components.StyledButton(
-                icon=True,
-                size="xs",
-                children=[components.Icon("play"), "LOG"],
-            )
+            components.StyledButton(icon=True, size="xs")[
+                components.Icon("play"), "LOG"
+            ]
         )
         self.assertTrue(str(result).startswith("<button"))
 
@@ -337,12 +338,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             components.Popover(
                 popover_content="test tooltip",
                 children=[
-                    components.StyledButton(
-                        icon=True,
-                        color="gray",
-                        size="xs",
-                        children=[components.Icon("play"), "test"],
-                    ),
+                    components.StyledButton(icon=True, color="gray", size="xs")[
+                        components.Icon("play"), "test"
+                    ],
                 ],
             )
         )
@@ -582,9 +580,7 @@ class InputTest(unittest.TestCase):
 
     def test_input_attributes_merged_with_type(self):
         result = str(
-            components.Input(
-                type="email", attributes=[("id", "email"), ("class", "form-input")]
-            )
+            components.Input([("id", "email"), ("class", "form-input")], type="email")
         )
         self.assertIn('type="email"', result)
         self.assertIn('id="email"', result)
@@ -658,8 +654,8 @@ class NormalizeAttributesTest(unittest.TestCase):
 
 
 class GenericBuilderContractTest(SimpleTestCase):
-    """The transitional generic builder contract: positional attrs (list or
-    Mapping), legacy attributes=/children=, htpy kwargs, [] children."""
+    """The generic builder contract: positional attrs (list or Mapping), htpy
+    kwargs, and `[]` children only. Legacy attributes=/children= are rejected."""
 
     def test_positional_attrs_list(self):
         result = str(components.Div([("id", "x")]))
@@ -677,17 +673,13 @@ class GenericBuilderContractTest(SimpleTestCase):
         result = str(components.Div([("class", "dyn")], class_="static"))
         self.assertEqual(result, '<div class="dyn static"></div>')
 
-    def test_legacy_attributes_keyword_still_works(self):
-        result = str(components.Div(attributes=[("id", "x")]))
-        self.assertEqual(result, '<div id="x"></div>')
+    def test_legacy_attributes_keyword_rejected(self):
+        with self.assertRaises(TypeError):
+            components.Div(attributes=[("id", "x")])
 
-    def test_legacy_children_keyword_still_works(self):
-        result = str(components.Div(children=["hi"]))
-        self.assertEqual(result, "<div>hi</div>")
-
-    def test_positional_children_still_works(self):
-        result = str(components.Div([("id", "x")], ["hi"]))
-        self.assertEqual(result, '<div id="x">hi</div>')
+    def test_legacy_children_keyword_rejected(self):
+        with self.assertRaises(TypeError):
+            components.Div(children=["hi"])
 
     def test_getitem_children(self):
         result = str(components.Div(class_="x")["hi"])
@@ -1230,9 +1222,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         media, so TimetrackerDocument() still emits its JS. StyledTable returns a
         node tree, so
         this now happens via automatic bubbling rather than manual collection."""
-        cell = components.Div(children=["x"]).with_media(
-            components.Media(js=("test-cell.js",))
-        )
+        cell = components.Div()["x"].with_media(components.Media(js=("test-cell.js",)))
         table = components.StyledTable(
             columns=[components.Column("Only")],
             rows=[components.make_row(cell)],

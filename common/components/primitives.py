@@ -178,20 +178,13 @@ def _html_element(tag_name: str, media: Media | None = None):
 
     def element(
         attrs: "AttrsArg | None" = None,
-        children: Children = None,
-        *,
-        attributes: Attributes | None = None,
         **kwargs: object,
     ) -> Element:
         # Merge order is priority order — first contributor wins per the node
-        # algebra: legacy ``attributes=`` and positional ``attrs`` (dynamic),
-        # then htpy ``kwargs`` (static). ``class`` accumulates across all.
-        merged = (
-            _coerce_attrs(attributes)
-            + _coerce_attrs(attrs)
-            + _attrs_from_kwargs(kwargs)
-        )
-        node = Element(tag_name, merged, children)
+        # algebra: positional ``attrs`` (dynamic) then htpy ``kwargs`` (static);
+        # ``class`` accumulates across both. Children come via ``[]``.
+        merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+        node = Element(tag_name, merged)
         return node.with_media(media) if media else node
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
