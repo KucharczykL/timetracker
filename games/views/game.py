@@ -62,6 +62,7 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.views.filtering import apply_structured_filter
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
 
@@ -78,7 +79,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
     # ── Structured filter (Stash-style JSON) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        game_filter = parse_game_filter(filter_json)
+        game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
         if game_filter is not None:
             games = games.filter(game_filter.to_q())
             if game_filter.session_filter is not None:

@@ -510,9 +510,9 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertIn("MID-MARKER", html)
         self.assertNotIn("LATE-MARKER", html)
 
-    def test_malformed_json_filter_falls_back_to_unfiltered(self):
-        """parse_purchase_filter returns None on bad JSON → view ignores
-        the filter and renders the full list (no 500)."""
+    def test_malformed_json_filter_warns_and_falls_back_to_unfiltered(self):
+        """Bad JSON raises FilterError; the view warns-and-ignores → full list,
+        a warning toast, and no 500."""
         response = self._get(raw_filter="this is not json")
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
@@ -520,3 +520,86 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertIn("EARLY-MARKER", html)
         self.assertIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
+        # A warning toast is queued (rendered into the django-messages blob).
+        self.assertIn("Ignored invalid filter", html)
+
+    def test_semantically_invalid_filter_warns_and_falls_back(self):
+        """Parseable JSON but a build-time-invalid filter (BETWEEN without value2)
+        must warn-and-ignore, not 500."""
+        response = self._get(
+            {"date_purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("MID-MARKER", html)
+        self.assertIn("LATE-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)
+
+
+class GameListSessionFilterBoundaryTest(TestCase):
+    """The games list is the only view that calls to_q() a SECOND time, on the
+    nested session_filter (games/views/game.py). These tests drive that path at
+    the view level: a valid session_filter narrows and renders 200; an invalid
+    one warns-and-ignores rather than 500-ing."""
+
+    def setUp(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self.user = User.objects.create_superuser(
+            username="gamefilter", email="gf@example.com", password="testpass"
+        )
+        self.client.force_login(self.user)
+        self.platform = Platform.objects.create(name="GFP", icon="gfp")
+        self.played = Game.objects.create(name="PLAYED-MARKER", platform=self.platform)
+        self.unplayed = Game.objects.create(
+            name="UNPLAYED-MARKER", platform=self.platform
+        )
+        start = timezone.now()
+        Session.objects.create(
+            game=self.played,
+            timestamp_start=start,
+            timestamp_end=start + timedelta(hours=2),
+            note="BOSS fight",
+        )
+
+    def _get(self, raw_filter):
+        from django.urls import reverse
+
+        return self.client.get(reverse("games:list_games"), {"filter": raw_filter})
+
+    def test_valid_session_filter_narrows_at_view(self):
+        """A valid session_filter renders 200 and narrows to games with a
+        matching session — exercises game.py's second session_filter.to_q()."""
+        import json
+
+        response = self._get(
+            json.dumps(
+                {"session_filter": {"note": {"modifier": "INCLUDES", "value": "boss"}}}
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("PLAYED-MARKER", html)
+        self.assertNotIn("UNPLAYED-MARKER", html)
+
+    def test_invalid_session_filter_warns_and_falls_back(self):
+        """An invalid nested session_filter warns-and-ignores, not 500."""
+        import json
+
+        response = self._get(
+            json.dumps(
+                {
+                    "session_filter": {
+                        "duration_hours": {"modifier": "BETWEEN", "value": 1}
+                    }
+                }
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("PLAYED-MARKER", html)
+        self.assertIn("UNPLAYED-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)

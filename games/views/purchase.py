@@ -150,10 +150,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     filter_json = request.GET.get("filter", "")
     if filter_json:
         from games.filters import parse_purchase_filter
+        from games.views.filtering import apply_structured_filter
 
-        pf = parse_purchase_filter(filter_json)
-        if pf is not None:
-            purchases = purchases.filter(pf.to_q())
+        purchase_filter = apply_structured_filter(
+            request, parse_purchase_filter, filter_json
+        )
+        if purchase_filter is not None:
+            purchases = purchases.filter(purchase_filter.to_q())
 
     sort = apply_sort(
         purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT

@@ -10,6 +10,7 @@ from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
 
+from common.criteria import FilterError
 from games.filters import parse_session_filter
 from games.models import Device, Game, Platform, PlayEvent, Session
 from games.sorting import (
@@ -218,7 +219,10 @@ class SessionListOut(Schema):
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
     sessions = Session.objects.select_related("game", "game__platform", "device")
     if filter:
-        session_filter = parse_session_filter(filter)
+        try:
+            session_filter = parse_session_filter(filter)
+        except FilterError as exc:
+            raise HttpError(400, f"Invalid filter: {exc}") from exc
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())
     # `sort` is read from request.GET by parse_find_filter; declared above so it

@@ -76,8 +76,11 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     filter_json = request.GET.get("filter", "")
     if filter_json:
         from games.filters import parse_session_filter
+        from games.views.filtering import apply_structured_filter
 
-        session_filter = parse_session_filter(filter_json)
+        session_filter = apply_structured_filter(
+            request, parse_session_filter, filter_json
+        )
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())
     else:

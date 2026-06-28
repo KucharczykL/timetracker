@@ -31,6 +31,7 @@ from common.time import dateformat, format_duration, local_strftime
 from common.utils import paginate
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
+from games.views.filtering import apply_structured_filter
 from games.models import Game, PlayEvent, Session
 
 logger = logging.getLogger("games")
@@ -138,7 +139,9 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        playevent_filter = parse_playevent_filter(filter_json)
+        playevent_filter = apply_structured_filter(
+            request, parse_playevent_filter, filter_json
+        )
         if playevent_filter is not None:
             playevents = playevents.filter(playevent_filter.to_q())
 
