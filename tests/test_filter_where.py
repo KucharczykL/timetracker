@@ -57,8 +57,16 @@ def test_bool_field_resolves_bool_criterion():
 
 
 def test_multi_field_resolves_multi_criterion():
-    assert GameFilter.where(platform_group=[1, 2]) == GameFilter(
-        platform_group=MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES)
+    # platform is a MultiCriterion over the int FK platform_id.
+    assert GameFilter.where(platform=[1, 2]) == GameFilter(
+        platform=MultiCriterion(value=[1, 2], modifier=Modifier.INCLUDES)
+    )
+
+
+def test_choice_field_resolves_choice_criterion():
+    # platform_group is a ChoiceCriterion over the str column platform__group.
+    assert GameFilter.where(platform_group=["Nintendo"]) == GameFilter(
+        platform_group=ChoiceCriterion(value=["Nintendo"], modifier=Modifier.INCLUDES)
     )
 
 

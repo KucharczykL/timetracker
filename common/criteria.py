@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
+from datetime import date
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import Any, ClassVar, Literal, Self, TypedDict, TypeVar
@@ -136,6 +137,73 @@ class RelationMatch(str, Enum):
     ALL = "ALL"  # every related row matches; vacuously true for zero-row parents
 
 
+# ── Value coercers ───────────────────────────────────────────────────────────
+# Parse-time value validators (issue #157). A criterion declares one via its
+# ``_coerce`` hook; ``from_json`` applies it so a wrong-typed hand-edited
+# ``?filter=`` value raises ``FilterError`` at parse rather than escaping the
+# error boundary and 500-ing when the DB rejects it at query-execution time.
+# Each returns the coerced value or raises ``FilterError`` (a ``ValueError``,
+# caught by the boundary).
+
+
+# An ``int``/``float``/ISO-date coercer for a criterion's value (raises
+# ``FilterError`` on mismatch). Used as a criterion's ``_coerce`` hook.
+type Coercer = Callable[[Any], Any]  # e.g. _coerce_int
+
+
+def _coerce_int(raw: Any) -> int:
+    # Reject what ``int()`` would silently *accept and rewrite* rather than flag as
+    # the wrong type: a JSON bool (``int(True) == 1``) and a non-integral float
+    # (``int(3.9) == 3``). Both are wrong-typed input #157 means to surface.
+    if isinstance(raw, bool) or (isinstance(raw, float) and not raw.is_integer()):
+        raise FilterError(f"expected an integer, got {raw!r}")
+    try:
+        return int(raw)
+    except (ValueError, TypeError) as exc:
+        raise FilterError(f"expected an integer, got {raw!r}") from exc
+
+
+def _coerce_float(raw: Any) -> float:
+    # Reject JSON bool (``float(True) == 1.0``); a boolean is not a numeric bound.
+    if isinstance(raw, bool):
+        raise FilterError(f"expected a number, got {raw!r}")
+    try:
+        return float(raw)
+    except (ValueError, TypeError) as exc:
+        raise FilterError(f"expected a number, got {raw!r}") from exc
+
+
+def _coerce_number(raw: Any) -> int | float:
+    # For fields that may be integer (a count) or fractional (a sum/avg): validate
+    # numerically but keep an integral value an ``int`` so a count round-trips as
+    # ``5`` rather than ``5.0`` in serialized filter JSON. Querying is unaffected.
+    number = _coerce_float(raw)
+    return int(number) if number.is_integer() else number
+
+
+def _strip_set_label(item: Any) -> Any:
+    """Reduce a set-criterion element to its bare id. Widgets send ``{id, label}``
+    dicts (label is display-only); a hand-edited dict missing ``id`` is bad input
+    and raises ``FilterError`` rather than a boundary-bypassing ``KeyError``."""
+    if not isinstance(item, dict):
+        return item
+    if "id" not in item:
+        raise FilterError(f"set filter element is missing an id: {item!r}")
+    return item["id"]
+
+
+def _coerce_date(raw: Any) -> str:
+    # Keep the ISO string (``to_q`` passes it to ``Q``; the DB parses it); only
+    # validate that it is one, so a bad date is rejected here, not at eval.
+    if not isinstance(raw, str):
+        raise FilterError(f"expected an ISO date string, got {raw!r}")
+    try:
+        date.fromisoformat(raw)
+    except ValueError as exc:
+        raise FilterError(f"expected an ISO date string, got {raw!r}") from exc
+    return raw
+
+
 # ── Base criterion ─────────────────────────────────────────────────────────
 
 T = TypeVar("T")
@@ -147,6 +215,14 @@ class _Criterion:
 
     value: Any = None
     modifier: Modifier = Modifier.EQUALS
+
+    # Parse-time value validator (issue #157); ``None`` accepts the value as-is
+    # (string/bool/choice — never a 500 vector). Concrete classes whose value
+    # has a field-column type (int/float/date) set one of the ``_coerce_*``
+    # helpers; ``from_json`` applies it so a wrong-typed hand-edited value raises
+    # ``FilterError`` at parse instead of escaping to a query-execution 500.
+    # ``_ScalarCriterion`` enforces that its scalar subclasses set one.
+    _coerce: ClassVar[Coercer | None] = None
 
     def to_q(self, field_name: str) -> Q:
         raise NotImplementedError
@@ -183,6 +259,45 @@ class _Criterion:
 
 
 @dataclass
+class _ScalarCriterion(_Criterion):
+    """Base for criteria whose ``value``/``value2`` are single field-column values
+    (int / float / date). Applies the class ``_coerce`` validator at parse so a
+    wrong-typed hand-edited value raises ``FilterError`` here, not as a 500 when
+    the DB rejects it at query-execution time (issue #157)."""
+
+    value2: Any = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # The whole point of a scalar criterion is that its value has a column type
+        # to validate. A subclass that forgets ``_coerce`` silently reverts to the
+        # pre-#157 500 vector, so fail at class-definition time instead.
+        super().__init_subclass__(**kwargs)
+        if cls._coerce is None:
+            raise TypeError(f"{cls.__name__} must set a _coerce validator (issue #157)")
+
+    @classmethod
+    def from_json(cls, data: dict | None) -> Self | None:
+        result = super().from_json(data)
+        # ``result`` is non-None only when ``data`` was a dict (base contract).
+        if result is None or cls._coerce is None:
+            return result
+        # Presence tests ignore the value entirely (and widgets emit a placeholder
+        # ``value: ""`` for them), so skip coercion — the value never reaches to_q.
+        if result.modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+            return result
+        coerce = cls._coerce
+        # Coerce every non-None value/value2: ``None`` is the DB-safe sentinel (an
+        # explicit null or a missing BETWEEN bound — compiled to IS NULL or caught
+        # by the BETWEEN guard), but a non-None default *can* be invalid (the
+        # DateCriterion ``""`` default with a value-using modifier), so it must be
+        # validated too rather than gated on user-supplied-ness. (Finding #157.)
+        for key in ("value", "value2"):
+            if getattr(result, key) is not None:
+                setattr(result, key, coerce(getattr(result, key)))
+        return result
+
+
+@dataclass
 class StringCriterion(_Criterion):
     value: str = ""
     modifier: Modifier = Modifier.EQUALS
@@ -209,10 +324,11 @@ class StringCriterion(_Criterion):
 
 
 @dataclass
-class IntCriterion(_Criterion):
+class IntCriterion(_ScalarCriterion):
     value: int = 0
     value2: int | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -246,10 +362,11 @@ class IntCriterion(_Criterion):
 
 
 @dataclass
-class FloatCriterion(_Criterion):
+class FloatCriterion(_ScalarCriterion):
     value: float = 0.0
     value2: float | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -283,10 +400,11 @@ class FloatCriterion(_Criterion):
 
 
 @dataclass
-class DateCriterion(_Criterion):
+class DateCriterion(_ScalarCriterion):
     value: str = ""
     value2: str | None = None
     modifier: Modifier = Modifier.EQUALS
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_date)
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
@@ -411,13 +529,22 @@ class _SetCriterion(_Criterion):
         if result is None:
             return None
         # Labels embedded as {id, label} dicts are display-only; strip to bare ids
-        # so the querying layer stays clean and typed.
-        result.value = [
-            item["id"] if isinstance(item, dict) else item for item in result.value
-        ]
-        result.excludes = [
-            item["id"] if isinstance(item, dict) else item for item in result.excludes
-        ]
+        # so the querying layer stays clean and typed. A hand-edited dict without
+        # an ``id`` is bad input — raise FilterError (not a bare KeyError, which
+        # would bypass the boundary and 500).
+        result.value = [_strip_set_label(item) for item in result.value]
+        result.excludes = [_strip_set_label(item) for item in result.excludes]
+        # Coerce each element against the field-column type (issue #157), so an
+        # int-set field (MultiCriterion) rejects a wrong-typed id at parse rather
+        # than letting ``field__in=["xyz"]`` 500 at query execution. ChoiceCriterion
+        # leaves ``_coerce`` None: its string-code fields (status, ownership_type,
+        # group, …) run against char columns and never 500. The one id-bearing
+        # ChoiceCriterion, PurchaseFilter.games (M2M int ids), is made 500-safe
+        # separately by _games_to_q's explicit int() coercion, not here.
+        if cls._coerce is not None:
+            coerce = cls._coerce
+            result.value = [coerce(item) for item in result.value]
+            result.excludes = [coerce(item) for item in result.excludes]
         return result
 
 
@@ -431,6 +558,7 @@ class MultiCriterion(_SetCriterion):
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
 
 @dataclass
@@ -446,7 +574,7 @@ class ChoiceCriterion(_SetCriterion):
 
 
 @dataclass
-class AggregateCriterion(_Criterion):
+class AggregateCriterion(_ScalarCriterion):
     """Filter a parent entity by a reducer (count / sum / avg) over one of its
     relations, compared numerically — e.g. "games with > 5 sessions" or "sum of
     a game's purchase prices between X and Y".
@@ -459,6 +587,11 @@ class AggregateCriterion(_Criterion):
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
+    # Aggregates compare numerically; coerce so a wrong-typed bound is caught at
+    # parse rather than surfacing as a query-execution 500 (the eager build can't
+    # catch it: ``aggregate_to_q`` feeds the value straight into Q). ``_coerce_number``
+    # keeps an integral count an int so it round-trips as ``5``, not ``5.0``.
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_number)
 
     def to_q(self, field_name: str) -> Q:
         # Unlike sibling criteria, an aggregate is not self-contained: its meaning
@@ -1154,10 +1287,13 @@ def filter_from_json(cls: type[FilterType], json_str: str) -> FilterType | None:
     on the result can raise. (A genuine wiring bug raises a non-``ValueError`` —
     see ``aggregate_to_q`` — and is intentionally *not* caught, so it still 500s.)
 
-    Note: this guarantee is scoped to ``to_q()`` itself. A wrong-typed value that
-    the database only rejects at query-execution time (e.g. a non-numeric
-    ``year_released``) is not caught here — tracked in issue #157
-    (parse-time value-type validation).
+    Wrong-typed *values* are caught even earlier (issue #157): each criterion's
+    ``from_json`` coerces/validates its value against the field-column type (int /
+    float / ISO date / int-id set), raising ``FilterError`` at parse — so a value
+    the database would only reject at query-execution time (e.g. a non-numeric
+    ``year_released``) never reaches the DB. The eager ``to_q()`` build below then
+    covers the remaining structural conversions (BETWEEN bounds, M2M id coercion
+    in ``_games_to_q``, hours→timedelta).
     """
     if not json_str:
         return None

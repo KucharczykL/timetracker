@@ -18,11 +18,13 @@ from common.criteria import (
     FieldComparisonCriterion,
     FilterError,
     FilterField,
+    FloatCriterion,
     IntCriterion,
     Modifier,
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
+    _ScalarCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
     _criterion_class_for,
@@ -32,6 +34,7 @@ from common.criteria import (
     bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
+    filter_from_json,
     search_q,
 )
 from common.components import FilterBar
@@ -597,13 +600,15 @@ class TestGameFilterFromJson:
         assert gf.status is not None
         assert gf.status.modifier == Modifier.NOT_NULL
 
-    def test_platform_choice_criterion(self):
+    def test_platform_criterion_coerces_ids_to_int(self):
+        # platform is a MultiCriterion over the int FK platform_id; string ids
+        # from the widget are coerced to int at parse (issue #157).
         gf = GameFilter.from_json(
             {"platform": {"value": ["1", "3"], "modifier": "INCLUDES"}}
         )
         assert gf is not None
         assert gf.platform is not None
-        assert gf.platform.value == ["1", "3"]
+        assert gf.platform.value == [1, 3]
 
     def test_round_trip(self):
         data = {
@@ -1502,6 +1507,168 @@ class TestFilterErrorBoundary:
         result.to_q()  # does not raise
         assert result.session_filter is not None
         result.session_filter.to_q()  # the exact second call game.py makes
+
+
+# Wrong-typed value per coercible criterion class (issue #157). Criteria whose
+# value is a free string against a char column (String/Choice) or a bool never
+# 500 at the DB, so they are not in this map and are skipped by the matrix below.
+_WRONG_VALUE_BY_CRITERION = {
+    IntCriterion: "not-a-number",
+    FloatCriterion: "not-a-number",
+    AggregateCriterion: "not-a-number",
+    DateCriterion: "garbage",
+    MultiCriterion: ["not-an-int"],
+}
+
+_ALL_FILTERS = [
+    GameFilter,
+    SessionFilter,
+    PurchaseFilter,
+    DeviceFilter,
+    PlatformFilter,
+    PlayEventFilter,
+]
+
+
+def _coercible_field_cases():
+    """Every (filter, criterion field) whose value type the DB would reject at
+    query execution — derived from the criterion class via _criterion_class_for so
+    the matrix grows automatically as new fields/filters are added (e.g. #168)."""
+    cases = []
+    for filter_cls in _ALL_FILTERS:
+        for dataclass_field in dataclasses.fields(filter_cls):
+            criterion_cls = _criterion_class_for(filter_cls, dataclass_field.name)
+            if criterion_cls in _WRONG_VALUE_BY_CRITERION:
+                cases.append((filter_cls, dataclass_field.name, criterion_cls))
+    return cases
+
+
+class TestValueTypeBoundaryMatrix:
+    """Issue #157: a hand-edited ``?filter=`` carrying a value of the wrong type
+    for its column must raise ``FilterError`` at parse (caught by the web/API
+    boundary) rather than escaping to a query-execution 500. Covers every
+    coercible criterion field across every filter, so the boundary promise holds
+    as fields are added."""
+
+    @pytest.mark.parametrize(
+        "filter_cls,field_name,criterion_cls",
+        _coercible_field_cases(),
+        ids=lambda value: getattr(value, "__name__", value),
+    )
+    def test_wrong_typed_value_raises_filter_error(
+        self, filter_cls, field_name, criterion_cls
+    ):
+        bad_value = _WRONG_VALUE_BY_CRITERION[criterion_cls]
+        modifier = "INCLUDES" if criterion_cls is MultiCriterion else "EQUALS"
+        payload = json.dumps({field_name: {"value": bad_value, "modifier": modifier}})
+        with pytest.raises(FilterError):
+            filter_from_json(filter_cls, payload)
+
+    def test_matrix_is_non_empty(self):
+        # Guard against the derivation silently yielding nothing (e.g. annotation
+        # format change), which would make the parametrized test vacuously pass.
+        assert _coercible_field_cases()
+
+
+class TestValueTypeBoundaryEdges:
+    """Coercion paths the EQUALS/value-only matrix doesn't exercise (issue #157
+    review): value2/BETWEEN bounds, the excludes channel, an omitted date value,
+    silent-accept inputs (bool/non-integral float), nested criteria, and the
+    id-less set element. Each must raise FilterError at parse, not 500 at eval."""
+
+    def test_bad_value2_between_bound_raises(self):
+        # The upper BETWEEN bound goes through a separate coercion-loop iteration.
+        bad = json.dumps(
+            {"year_released": {"modifier": "BETWEEN", "value": 2000, "value2": "x"}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bad_excludes_element_raises(self):
+        # The excludes channel is coerced too, not just the include value list.
+        bad = json.dumps({"platform": {"modifier": "INCLUDES", "excludes": ["xyz"]}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_omitted_date_value_with_value_using_modifier_raises(self):
+        # Finding #157: DateCriterion's "" default must still be rejected when the
+        # value key is absent (else Q(field='') 500s at eval, bypassing the
+        # boundary with a non-ValueError ValidationError).
+        bad = json.dumps({"created_at": {"modifier": "EQUALS"}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bool_value_rejected_for_int_field(self):
+        # int(True) == 1 would silently accept wrong-typed input; reject instead.
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": True}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_non_integral_float_rejected_for_int_field(self):
+        # int(3.9) == 3 would silently truncate; reject instead.
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": 3.9}})
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_integral_float_accepted_for_int_field(self):
+        good = json.dumps({"year_released": {"modifier": "EQUALS", "value": 2000.0}})
+        result = parse_game_filter(good)
+        assert result is not None and result.year_released is not None
+        assert result.year_released.value == 2000
+
+    def test_decimal_string_accepted_for_float_field(self):
+        good = json.dumps({"price": {"modifier": "EQUALS", "value": "3.5"}})
+        result = parse_purchase_filter(good)
+        assert result is not None and result.price is not None
+        assert result.price.value == 3.5
+
+    def test_aggregate_integral_value_round_trips_as_int(self):
+        # A count bound stays int (5, not 5.0) so saved-filter JSON stays clean;
+        # a fractional sum/avg bound keeps its float.
+        result = parse_game_filter(
+            json.dumps({"session_count": {"modifier": "GREATER_THAN", "value": 5}})
+        )
+        assert result is not None and result.session_count is not None
+        assert result.session_count.value == 5
+        assert isinstance(result.session_count.value, int)
+        fractional = parse_game_filter(
+            json.dumps({"session_average": {"modifier": "GREATER_THAN", "value": 3.5}})
+        )
+        assert fractional is not None and fractional.session_average is not None
+        assert fractional.session_average.value == 3.5
+
+    def test_bad_value_nested_in_operator_raises(self):
+        # The fix lives in criterion from_json, so it must hold under AND/OR/NOT.
+        bad = json.dumps(
+            {"AND": [{"year_released": {"modifier": "EQUALS", "value": "nope"}}]}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_bad_value_nested_in_relation_subfilter_raises(self):
+        bad = json.dumps(
+            {"session_filter": {"created_at": {"modifier": "EQUALS", "value": "nope"}}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_set_element_dict_without_id_raises(self):
+        # A hand-edited {label-only} element must be a clean FilterError, not a
+        # boundary-bypassing KeyError.
+        bad = json.dumps(
+            {"platform": {"modifier": "INCLUDES", "value": [{"label": "PC"}]}}
+        )
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_scalar_subclass_without_coercer_is_rejected_at_definition(self):
+        # _ScalarCriterion enforces that every scalar criterion declares a _coerce,
+        # so a future field type can't silently revert to the pre-#157 500 vector.
+        with pytest.raises(TypeError, match="_coerce"):
+
+            @dataclass
+            class _NoCoercer(_ScalarCriterion):
+                value: int = 0
 
 
 class TestFieldComparisonCriterion:
@@ -3178,3 +3345,50 @@ class TestSearchQHelper:
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
+
+
+class TestValueTypeBoundaryIntegration:
+    """End-to-end: a wrong-typed ``?filter=`` reaches a real list view / API
+    endpoint and degrades gracefully instead of 500-ing at query execution
+    (issue #157). Pre-fix these payloads built a Q fine and raised at eval."""
+
+    @pytest.fixture
+    def auth_client(self, client, django_user_model):
+        user = django_user_model.objects.create_user(username="u", password="p")
+        client.force_login(user)
+        return client
+
+    @pytest.mark.django_db
+    def test_web_list_view_warn_ignores_bad_value(self, auth_client):
+        from django.urls import reverse
+
+        bad = json.dumps({"year_released": {"modifier": "EQUALS", "value": "nope"}})
+        response = auth_client.get(reverse("games:list_games"), {"filter": bad})
+        # Boundary warns and ignores → the page still renders, never a 500.
+        assert response.status_code == 200
+
+    @pytest.mark.django_db
+    def test_api_list_returns_400_on_bad_value(self, auth_client):
+        bad = json.dumps({"timestamp_start": {"modifier": "EQUALS", "value": "nope"}})
+        response = auth_client.get("/api/session/", {"filter": bad})
+        assert response.status_code == 400
+
+    @pytest.mark.django_db
+    def test_created_at_filter_is_date_granular(self):
+        # The temporal StringCriterion → DateCriterion + __date reclass must match
+        # a non-midnight created_at datetime by its calendar date (a regression
+        # dropping __date would make equality silently never match).
+        from datetime import datetime, timezone
+
+        from games.models import Game, Platform
+
+        platform = Platform.objects.create(name="PC")
+        game = Game.objects.create(name="Hades", platform=platform)
+        # auto_now_add can't be set on create; stamp an afternoon time directly.
+        moment = datetime(2024, 3, 14, 15, 9, 0, tzinfo=timezone.utc)
+        Game.objects.filter(pk=game.pk).update(created_at=moment)
+
+        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})
+        parsed = parse_game_filter(good)
+        assert parsed is not None
+        assert Game.objects.filter(parsed.to_q()).filter(pk=game.pk).exists()
