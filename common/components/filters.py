@@ -9,6 +9,7 @@ from common.components.custom_elements import _FieldComparisonSet, _FilterBarEle
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
     Button,
+    Checkbox,
     Div,
     FilterWidgetKind,
     FilterWidgetPath,
@@ -792,6 +793,37 @@ def _field_comparison_section(
     )
 
 
+def _filter_search_field(existing: dict) -> Node:
+    """The free-text search field: a text input plus an EXCLUDES toggle.
+
+    Shared chrome rendered once at the top of every bar (see
+    ``_FilterBarBase.render``). ``filter-bar.ts`` reads ``filter-search`` /
+    ``filter-search-exclude`` by name into the search criterion; this is the
+    server-rendered source of those controls (formerly built imperatively by
+    the deleted ``injectSearchInput``). ``INPUT_CLASS`` is imported here, not at
+    module top, because ``games.forms`` imports ``common.components`` — a module
+    import would be circular.
+    """
+    from games.forms import INPUT_CLASS
+
+    value, modifier = _string_from_field(existing.get("search", {}))
+    widget = Div(class_="mb-4")[
+        Input(
+            type="text",
+            name="filter-search",
+            value=value,
+            placeholder="Search…",
+            class_=INPUT_CLASS,
+        ),
+        Checkbox(
+            name="filter-search-exclude",
+            label="Exclude matches",
+            checked=(modifier == "EXCLUDES"),
+        ),
+    ]
+    return _filter_field("Search", widget)
+
+
 class _FilterBarBase(BaseComponent):
     """Shared collapsible filter-bar chrome.
 
@@ -859,6 +891,7 @@ class _FilterBarBase(BaseComponent):
                             # raw JSON passes through (no double-escape).
                             value=self.filter_json,
                         ),
+                        _filter_search_field(self.existing),
                         *self._body_fields(),
                         _filter_action_row(),
                     ],

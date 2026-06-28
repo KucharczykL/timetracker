@@ -517,6 +517,44 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('value="false"', purchase_html)
 
 
+    def test_filter_bar_renders_search_controls(self):
+        """The free-text search input + exclude toggle are server-rendered."""
+        html = str(
+            FilterBar(
+                preset_list_url="/presets/list",
+                preset_save_url="/presets/save",
+            )
+        )
+        self.assertIn('name="filter-search"', html)
+        self.assertIn('name="filter-search-exclude"', html)
+        self.assertIn("Exclude matches", html)
+        self.assertNoEscapedTags(html)
+
+    def test_filter_bar_search_prefills_value_and_exclude(self):
+        """A stored EXCLUDES search prefills the input value and checks the box."""
+        filter_json = json.dumps(
+            {"search": {"value": "Witcher", "modifier": "EXCLUDES"}}
+        )
+        html = str(FilterBar(filter_json=filter_json))
+        self.assertIn('value="Witcher"', html)
+        # The checkbox renders with a checked attribute (Checkbox uses checked="true").
+        self.assertIn('name="filter-search-exclude"', html)
+        self.assertIn('checked', html)
+
+    def test_filter_bar_search_includes_leaves_box_unchecked(self):
+        """An INCLUDES search prefills the value but does not check exclude."""
+        filter_json = json.dumps(
+            {"search": {"value": "Witcher", "modifier": "INCLUDES"}}
+        )
+        html = str(FilterBar(filter_json=filter_json))
+        self.assertIn('value="Witcher"', html)
+        # Isolate the exclude checkbox's own markup and assert it is unchecked.
+        marker = 'name="filter-search-exclude"'
+        start = html.index(marker)
+        fragment = html[start - 120 : start + 120]
+        self.assertNotIn("checked", fragment)
+
+
 class NumberFilterRenderTest(TestCase):
     """Render-level contract for the Stash-style NumberFilter component."""
 
