@@ -192,7 +192,7 @@ def test_session_list_malformed_filter_rejected(auth_client):
 def test_session_list_invalid_filter_semantics_rejected(auth_client):
     # Parseable JSON but a build-time-invalid filter (BETWEEN without value2) must
     # also be a 400, not a 500.
-    bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
+    bad = json.dumps({"duration_total_hours": {"modifier": "BETWEEN", "value": 1}})
     response = auth_client.get(f"/api/session/?filter={bad}")
     assert response.status_code == 400
 
