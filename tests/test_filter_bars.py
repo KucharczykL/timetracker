@@ -21,6 +21,15 @@ from games.models import Device, Game, Platform
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input", "&lt;a"]
 
 
+def _exclude_input_tag(html: str) -> str:
+    """Extract the <input> tag for the free-text exclude checkbox."""
+    marker = 'name="filter-search-exclude"'
+    position = html.index(marker)
+    start = html.rindex("<input", 0, position)
+    end = html.index(">", position)
+    return html[start : end + 1]
+
+
 class FilterBarRenderingTest(TestCase):
     def setUp(self):
         self.platform = Platform.objects.create(name="PC", icon="pc")
@@ -538,7 +547,7 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('value="Witcher"', html)
         # The checkbox renders with a checked attribute (Checkbox uses checked="true").
         self.assertIn('name="filter-search-exclude"', html)
-        self.assertIn("checked", html)
+        self.assertIn("checked", _exclude_input_tag(html))
 
     def test_filter_bar_search_includes_leaves_box_unchecked(self):
         """An INCLUDES search prefills the value but does not check exclude."""
@@ -548,10 +557,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(FilterBar(filter_json=filter_json))
         self.assertIn('value="Witcher"', html)
         # Isolate the exclude checkbox's own markup and assert it is unchecked.
-        marker = 'name="filter-search-exclude"'
-        start = html.index(marker)
-        fragment = html[start - 120 : start + 120]
-        self.assertNotIn("checked", fragment)
+        self.assertNotIn("checked", _exclude_input_tag(html))
 
 
 class NumberFilterRenderTest(TestCase):
