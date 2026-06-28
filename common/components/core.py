@@ -14,7 +14,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 """
 
 import hashlib
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from functools import lru_cache
 from typing import Self
 
@@ -30,6 +30,13 @@ HTMLAttribute = tuple[str, str | int | bool]
 # would be invariant and reject it). Locals that get ``.append()``-ed should
 # stay a concrete ``list[HTMLAttribute]``.
 Attributes = Sequence[HTMLAttribute]
+
+
+# A builder's *dynamic* attributes argument (the positional ``attrs`` slot): a
+# sequence of ``(name, value)`` pairs or a ``Mapping`` of them, coerced to a
+# concrete ``list[HTMLAttribute]`` by ``_coerce_attrs``.
+# Example: ``[("data-x", "1")]`` or ``{"data-x": 1}``.
+type AttrsArg = Attributes | Mapping[str, str | int | bool]
 
 
 HTMLTag = str
@@ -172,6 +179,53 @@ def as_attributes(attributes: "Attributes | None") -> list[HTMLAttribute]:
     return list(attributes) if attributes else []
 
 
+# Attributes whose contributions accumulate rather than overwrite, with the
+# separator each is joined by. ``class`` is space-separated tokens; ``style`` is
+# semicolon-separated declarations. Every other attribute is single-valued.
+_ACCUMULATING_ATTRS: dict[str, str] = {"class": " ", "style": "; "}
+
+
+def normalize_attributes(attributes: "Attributes") -> list[HTMLAttribute]:
+    """Collapse an attribute list into canonical, render-ready form.
+
+    The single source of truth for how attribute contributions merge:
+
+    - ``class`` / ``style`` **accumulate** — every non-empty contribution is
+      joined (space for ``class``, ``"; "`` for ``style``) and emitted once, at
+      the position of the first contribution. Empty contributions are dropped.
+    - every other attribute is **single-valued, first-wins** — a later duplicate
+      name is discarded.
+
+    This makes duplicate-attribute HTML unrepresentable and lets builders
+    concatenate their attribute sources in priority order (baked semantic attrs
+    first, then caller ``attrs``, then kwargs): the first contributor wins for
+    scalars, while ``class`` from a caller appends to a builder's baked class.
+    Idempotent — normalising already-canonical attributes is a no-op.
+    """
+    order: list[str] = []
+    scalars: dict[str, HTMLAttribute] = {}
+    accumulated: dict[str, list[str]] = {}
+    for name, value in attributes:
+        if name in _ACCUMULATING_ATTRS:
+            text = str(value)
+            if not text:
+                continue
+            if name not in accumulated:
+                accumulated[name] = []
+                order.append(name)
+            accumulated[name].append(text)
+        elif name not in scalars:
+            scalars[name] = (name, value)
+            order.append(name)
+    result: list[HTMLAttribute] = []
+    for name in order:
+        if name in accumulated:
+            result.append((name, _ACCUMULATING_ATTRS[name].join(accumulated[name])))
+        else:
+            result.append(scalars[name])
+    return result
+
+
 def _child_key(child: object) -> tuple[str, bool]:
     """Normalise a child to a ``(text, is_safe)`` pair.
 
@@ -277,7 +331,7 @@ class Element(Node):
         if not tag_name:
             raise ValueError("tag_name is required.")
         self.tag_name = tag_name
-        self.attributes = attributes or []
+        self.attributes = normalize_attributes(attributes) if attributes else []
         if children is None:
             children = []
         elif isinstance(children, (str, Node)):

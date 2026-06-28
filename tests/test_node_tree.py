@@ -244,9 +244,7 @@ class HtpyStyleSugarTest(unittest.TestCase):
     def test_scalar_child_still_renders(self):
         """A bare scalar child keeps the str() fallback (decision A): only
         iterables raise, so int/Decimal/timedelta children render as before."""
-        from common.components import Span
-
-        self.assertEqual(render(Span(children=[42])), "<span>42</span>")
+        self.assertEqual(render(Element("span", children=[42])), "<span>42</span>")
 
 
 if __name__ == "__main__":

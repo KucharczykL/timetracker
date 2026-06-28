@@ -14,15 +14,18 @@ from common.components import (
     CONTENT_MAX_WIDTH_CLASS,
     A,
     Div,
-    Element,
     Fragment,
+    H1,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     Node,
     Safe,
+    Table,
+    Tbody,
     Td,
     Th,
+    Thead,
     Tr,
     YearPicker,
 )
@@ -57,14 +60,11 @@ def _count_link(value, url: str) -> Node:
 def _view_all_row(count: int, url: str) -> Node:
     return _tr(
         [
-            Td(
-                attributes=[("class", _CELL), ("colspan", "3")],
-                children=[
-                    A(href=url, class_="underline decoration-dotted")[
-                        f"View all ({count}) →"
-                    ]
-                ],
-            )
+            Td(class_=_CELL, colspan="3")[
+                A(href=url, class_="underline decoration-dotted")[
+                    f"View all ({count}) →"
+                ]
+            ]
         ]
     )
 
@@ -72,15 +72,15 @@ def _view_all_row(count: int, url: str) -> Node:
 def _td(children, cls: str = _CELL_MONO) -> Node:
     if not isinstance(children, list):
         children = [children]
-    return Td(attributes=[("class", cls)], children=children)
+    return Td(class_=cls)[*children]
 
 
 def _th(text: str, cls: str = _CELL) -> Node:
-    return Th(attributes=[("class", cls)], children=[text])
+    return Th(class_=cls)[text]
 
 
 def _tr(cells: list) -> Node:
-    return Tr(children=cells)
+    return Tr()[*cells]
 
 
 def _kv(label, value) -> Node:
@@ -89,23 +89,15 @@ def _kv(label, value) -> Node:
 
 
 def _h1(title: str) -> Node:
-    return Element(
-        "h1",
-        attributes=[("class", "text-3xl text-heading text-center my-6")],
-        children=[title],
-    )
+    return H1(class_="text-3xl text-heading text-center my-6")[title]
 
 
 def _table(rows: list, thead: Node | None = None) -> Node:
     children = []
     if thead is not None:
         children.append(thead)
-    children.append(Element("tbody", children=rows))
-    return Element(
-        "table",
-        attributes=[("class", "responsive-table")],
-        children=children,
-    )
+    children.append(Tbody()[*rows])
+    return Table(class_="responsive-table")[*children]
 
 
 def _dur(value) -> str:
@@ -149,10 +141,7 @@ def _year_nav(year, year_range, url_template) -> Node:
         available_years=tuple(year_range or []),
         url_template=url_template,
     )
-    return Div(
-        [("class", "flex justify-center items-center mb-12")],
-        [alltime_btn, picker],
-    )
+    return Div(class_="flex justify-center items-center mb-12")[alltime_btn, picker]
 
 
 def _playtime_table(ctx) -> Node:
@@ -308,10 +297,7 @@ def _purchases_table(ctx) -> Node:
 
 
 def _two_col_table(header: str, items, name_key, value_fn, view_all_url=None) -> Node:
-    thead = Element(
-        "thead",
-        children=[_tr([_th(header), _th("Playtime")])],
-    )
+    thead = Thead()[_tr([_th(header), _th("Playtime")])]
     items = list(items)
     display = items[:_LIST_CAP] if view_all_url else items
     rows = [_tr([_td(name_key(item)), _td(value_fn(item))]) for item in display]
@@ -321,10 +307,7 @@ def _two_col_table(header: str, items, name_key, value_fn, view_all_url=None) ->
 
 
 def _finished_table(purchases, view_all_url=None, total=None) -> Node:
-    thead = Element(
-        "thead",
-        children=[_tr([_th("Name", _NAME_TH), _th("Date")])],
-    )
+    thead = Thead()[_tr([_th("Name", _NAME_TH), _th("Date")])]
     purchases = list(purchases)
     display = purchases[:_LIST_CAP] if view_all_url else purchases
     rows = [
@@ -338,12 +321,9 @@ def _finished_table(purchases, view_all_url=None, total=None) -> Node:
 
 
 def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
-    thead = Element(
-        "thead",
-        children=[
-            _tr([_th("Name", _NAME_TH), _th(f"Price ({currency})"), _th("Date")])
-        ],
-    )
+    thead = Thead()[
+        _tr([_th("Name", _NAME_TH), _th(f"Price ({currency})"), _th("Date")])
+    ]
     purchases = list(purchases)
     display = purchases[:_LIST_CAP] if view_all_url else purchases
     rows = [
@@ -476,7 +456,6 @@ def stats_content(ctx: StatsData) -> Node:
             ),
         ]
 
-    return Div(
-        [("class", f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
-        sections,
-    )
+    return Div(class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")[
+        *sections
+    ]

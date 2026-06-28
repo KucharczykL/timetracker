@@ -202,40 +202,40 @@ class ComponentReturnTypeTest(unittest.TestCase):
     """Test that component functions return SafeText and render correctly."""
 
     def test_div_returns_safe_text(self):
-        result = str(components.Div([("class", "x")], "hello"))
+        result = str(components.Div([("class", "x")])["hello"])
         self.assertIsInstance(result, SafeText)
 
     def test_div_deterministic(self):
-        r1 = str(components.Div([("class", "x")], "hello"))
-        r2 = str(components.Div([("class", "x")], "hello"))
+        r1 = str(components.Div([("class", "x")])["hello"])
+        r2 = str(components.Div([("class", "x")])["hello"])
         self.assertEqual(r1, r2)
         self.assertIn('<div class="x">hello</div>', r1)
 
     def test_div_no_args(self):
-        result = str(components.Div(children="test"))
+        result = str(components.Div()["test"])
         self.assertIsInstance(result, SafeText)
         self.assertIn("<div>test</div>", result)
 
     def test_a_returns_safe_text(self):
-        result = str(components.A([], "link"))
+        result = str(components.A()["link"])
         self.assertIsInstance(result, SafeText)
 
     def test_a_literal_href(self):
-        result = str(components.A([], "x", href="/literal/path"))
+        result = str(components.A(href="/literal/path")["x"])
         self.assertIn('href="/literal/path"', result)
 
     def test_a_no_url_or_href(self):
-        result = str(components.A([], "link"))
+        result = str(components.A()["link"])
         self.assertIn("<a>link</a>", result)
         self.assertNotIn("href=", result)
 
     def test_button_returns_safe_text(self):
-        result = str(components.StyledButton([], "click"))
+        result = str(components.StyledButton()["click"])
         self.assertIsInstance(result, SafeText)
         self.assertIn("<button", result)
 
     def test_button_default_colors(self):
-        result = str(components.StyledButton([], "click"))
+        result = str(components.StyledButton()["click"])
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
@@ -298,9 +298,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_component_output_starts_with_tag(self):
         for label, html in [
-            ("A", str(components.A(href="/foo", children=["link"]))),
-            ("Button", str(components.StyledButton([], "click"))),
-            ("Div", str(components.Div([], ["hello"]))),
+            ("A", str(components.A(href="/foo")["link"])),
+            ("Button", str(components.StyledButton()["click"])),
+            ("Div", str(components.Div()["hello"])),
             ("Input", str(components.Input())),
             ("ButtonGroup", str(components.ButtonGroup([]))),
             (
@@ -313,8 +313,11 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             ),
             ("SearchField", str(components.SearchField())),
             ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
-            ("H1", str(components.H1(["Title"]))),
-            ("H1 with badge", str(components.H1(["Title"], badge="3"))),
+            ("PageHeading", str(components.PageHeading(["Title"]))),
+            (
+                "PageHeading with badge",
+                str(components.PageHeading(["Title"], badge="3")),
+            ),
         ]:
             with self.subTest(component=label):
                 self.assertTrue(
@@ -324,11 +327,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_button_with_icon_children_not_escaped(self):
         result = str(
-            components.StyledButton(
-                icon=True,
-                size="xs",
-                children=[components.Icon("play"), "LOG"],
-            )
+            components.StyledButton(icon=True, size="xs")[
+                components.Icon("play"), "LOG"
+            ]
         )
         self.assertTrue(str(result).startswith("<button"))
 
@@ -337,12 +338,9 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             components.Popover(
                 popover_content="test tooltip",
                 children=[
-                    components.StyledButton(
-                        icon=True,
-                        color="gray",
-                        size="xs",
-                        children=[components.Icon("play"), "test"],
-                    ),
+                    components.StyledButton(icon=True, color="gray", size="xs")[
+                        components.Icon("play"), "test"
+                    ],
                 ],
             )
         )
@@ -582,13 +580,265 @@ class InputTest(unittest.TestCase):
 
     def test_input_attributes_merged_with_type(self):
         result = str(
-            components.Input(
-                type="email", attributes=[("id", "email"), ("class", "form-input")]
-            )
+            components.Input([("id", "email"), ("class", "form-input")], type="email")
         )
         self.assertIn('type="email"', result)
         self.assertIn('id="email"', result)
         self.assertIn('class="form-input"', result)
+
+
+class NormalizeAttributesTest(unittest.TestCase):
+    """The node-layer attribute algebra: class/style accumulate, scalars first-wins."""
+
+    def test_duplicate_class_accumulates(self):
+        result = components.normalize_attributes(
+            [("class", "a"), ("class", "b"), ("class", "c")]
+        )
+        self.assertEqual(result, [("class", "a b c")])
+
+    def test_duplicate_scalar_first_wins(self):
+        result = components.normalize_attributes([("id", "first"), ("id", "second")])
+        self.assertEqual(result, [("id", "first")])
+
+    def test_style_accumulates_with_semicolon(self):
+        result = components.normalize_attributes(
+            [("style", "color: red"), ("style", "margin: 0")]
+        )
+        self.assertEqual(result, [("style", "color: red; margin: 0")])
+
+    def test_empty_class_contribution_dropped(self):
+        result = components.normalize_attributes(
+            [("class", ""), ("class", "real"), ("class", "")]
+        )
+        self.assertEqual(result, [("class", "real")])
+
+    def test_all_empty_class_omits_attribute(self):
+        result = components.normalize_attributes([("class", "")])
+        self.assertEqual(result, [])
+
+    def test_class_emitted_at_first_position(self):
+        result = components.normalize_attributes(
+            [("class", "a"), ("id", "x"), ("class", "b")]
+        )
+        self.assertEqual(result, [("class", "a b"), ("id", "x")])
+
+    def test_order_preserved_for_scalars(self):
+        result = components.normalize_attributes(
+            [("name", "n"), ("value", "v"), ("type", "text")]
+        )
+        self.assertEqual(result, [("name", "n"), ("value", "v"), ("type", "text")])
+
+    def test_non_string_scalar_value_preserved(self):
+        result = components.normalize_attributes([("tabindex", 0), ("checked", True)])
+        self.assertEqual(result, [("tabindex", 0), ("checked", True)])
+
+    def test_idempotent(self):
+        once = components.normalize_attributes(
+            [("class", "a"), ("class", "b"), ("id", "x"), ("id", "y")]
+        )
+        twice = components.normalize_attributes(once)
+        self.assertEqual(once, twice)
+
+    def test_no_duplicate_input_unchanged(self):
+        attrs = [("class", "btn"), ("id", "x"), ("name", "n")]
+        self.assertEqual(components.normalize_attributes(attrs), attrs)
+
+    def test_element_collapses_duplicate_class_in_render(self):
+        # The root-fix regression guard: duplicate-attribute HTML is impossible.
+        result = str(components.Element("div", [("class", "a"), ("class", "b")], "hi"))
+        self.assertEqual(result, '<div class="a b">hi</div>')
+
+    def test_element_duplicate_scalar_collapsed_in_render(self):
+        result = str(components.Element("div", [("id", "a"), ("id", "b")]))
+        self.assertEqual(result, '<div id="a"></div>')
+
+
+class GenericBuilderContractTest(SimpleTestCase):
+    """The generic builder contract: positional attrs (list or Mapping), htpy
+    kwargs, and `[]` children only. Legacy attributes=/children= are rejected."""
+
+    def test_positional_attrs_list(self):
+        result = str(components.Div([("id", "x")]))
+        self.assertEqual(result, '<div id="x"></div>')
+
+    def test_positional_attrs_mapping(self):
+        result = str(components.Div({"data-x": "y"}))
+        self.assertEqual(result, '<div data-x="y"></div>')
+
+    def test_kwargs_static(self):
+        result = str(components.Div(class_="a", data_foo="b"))
+        self.assertEqual(result, '<div class="a" data-foo="b"></div>')
+
+    def test_mixed_dynamic_and_static_class_accumulates(self):
+        result = str(components.Div([("class", "dyn")], class_="static"))
+        self.assertEqual(result, '<div class="dyn static"></div>')
+
+    def test_legacy_attributes_keyword_rejected(self):
+        with self.assertRaises(TypeError):
+            components.Div(attributes=[("id", "x")])
+
+    def test_legacy_children_keyword_rejected(self):
+        with self.assertRaises(TypeError):
+            components.Div(children=["hi"])
+
+    def test_getitem_children(self):
+        result = str(components.Div(class_="x")["hi"])
+        self.assertEqual(result, '<div class="x">hi</div>')
+
+    def test_reserved_attributes_kwarg_raises(self):
+        # The footgun guard: 'attributes'/'children' as htpy kwargs are rejected
+        # rather than silently rendered as bogus HTML attributes.
+        from common.components.primitives import _attrs_from_kwargs
+
+        with self.assertRaises(TypeError) as ctx:
+            _attrs_from_kwargs({"attributes": "oops"})
+        self.assertIn("htpy", str(ctx.exception))
+
+    def test_reserved_children_kwarg_raises(self):
+        from common.components.primitives import _attrs_from_kwargs
+
+        with self.assertRaises(TypeError):
+            _attrs_from_kwargs({"children": "oops"})
+
+    def test_styled_builders_reject_legacy_attributes_kwarg(self):
+        # The guard fires on the styled builders too — they no longer have an
+        # `attributes=` param, so it lands in **kwargs and is rejected.
+        with self.assertRaises(TypeError):
+            components.StyledButton(attributes=[("data-x", "y")])
+        with self.assertRaises(TypeError):
+            components.Input(attributes=[("data-x", "y")])
+        with self.assertRaises(TypeError):
+            components.Pill(label="x", attributes=[("data-x", "y")])
+
+    def test_no_class_token_dedup(self):
+        # class accumulation joins verbatim — it does NOT de-duplicate tokens
+        # (JS-cloned pills rely on byte-for-byte class strings).
+        result = components.normalize_attributes([("class", "a"), ("class", "a")])
+        self.assertEqual(result, [("class", "a a")])
+
+    def test_mapping_attrs_class_accumulates_through_builder(self):
+        result = str(components.Div({"class": "dyn"}, class_="static"))
+        self.assertEqual(result, '<div class="dyn static"></div>')
+
+
+class StyledBuilderContractTest(SimpleTestCase):
+    """The six styled builders accept htpy kwargs, positional attrs, and merge
+    class via the node algebra (caller class appends; baked semantic attrs win)."""
+
+    def test_input_htpy_kwargs(self):
+        result = str(components.Input(type="hidden", name="n", value="v"))
+        self.assertIn('type="hidden"', result)
+        self.assertIn('name="n"', result)
+        self.assertIn('value="v"', result)
+
+    def test_input_positional_dynamic_attrs(self):
+        result = str(components.Input([("name", "n"), ("value", "v")]))
+        self.assertIn('name="n"', result)
+        self.assertIn('value="v"', result)
+        self.assertIn('type="text"', result)
+
+    def test_input_explicit_type_in_attrs_wins_over_default(self):
+        result = str(components.Input([("type", "date")]))
+        self.assertIn('type="date"', result)
+        self.assertNotIn('type="text"', result)
+
+    def test_checkbox_class_appends_to_baked(self):
+        result = str(components.Checkbox(name="x", class_="ml-2"))
+        self.assertIn("ml-2", result)
+        self.assertIn("rounded", result)  # baked class still present
+        # single class attribute, not two
+        self.assertEqual(result.count("class="), 1)
+
+    def test_checkbox_extra_attr_via_kwargs(self):
+        result = str(components.Checkbox(name="x", data_foo="bar"))
+        self.assertIn('data-foo="bar"', result)
+
+    def test_radio_class_appends(self):
+        result = str(components.Radio(name="x", class_="mr-1"))
+        self.assertIn("mr-1", result)
+        self.assertIn("rounded-full", result)
+
+    def test_pill_class_appends_to_base(self):
+        result = str(components.Pill(label="hi", class_="ring-1"))
+        self.assertIn("ring-1", result)
+        self.assertIn("inline-flex", result)  # base pill class
+
+    def test_pill_extra_class(self):
+        result = str(components.Pill(label="hi", extra_class="opacity-50"))
+        self.assertIn("opacity-50", result)
+
+    def test_styledbutton_class_appends_and_kwargs_passthrough(self):
+        result = str(
+            components.StyledButton(class_="w-full", aria_label="Go", color="red")["Go"]
+        )
+        self.assertIn("w-full", result)
+        self.assertIn('aria-label="Go"', result)
+        self.assertEqual(result.count("class="), 1)
+
+    def test_styledbutton_baked_type_wins_over_default_but_kwarg_sets(self):
+        self.assertIn('type="submit"', str(components.StyledButton(type="submit")["x"]))
+
+    def test_styledbutton_baked_type_wins_over_caller_attrs(self):
+        # baked attrs come first -> first-wins -> a caller can't override `type`
+        result = str(components.StyledButton([("type", "reset")])["x"])
+        self.assertIn('type="button"', result)
+        self.assertNotIn('type="reset"', result)
+
+    def test_checkbox_baked_name_wins_over_caller_attrs(self):
+        result = str(components.Checkbox(name="real", attrs=[("name", "spoof")]))
+        self.assertIn('name="real"', result)
+        self.assertNotIn('name="spoof"', result)
+        self.assertEqual(result.count("name="), 1)
+
+    def test_searchfield_kwargs_merge_onto_form(self):
+        result = str(components.SearchField(class_="w-80"))
+        self.assertIn("w-80", result)
+        self.assertIn("max-w-md", result)  # base form class retained
+
+
+class ModalContractTest(SimpleTestCase):
+    """Modal injects [] children into the inner panel, not the outer backdrop."""
+
+    def test_id_on_backdrop_content_in_panel(self):
+        html = str(components.Modal("m1")[components.Div(class_="body-marker")["BODY"]])
+        # id sits on the outer backdrop (before the panel's max-w-xl class)
+        self.assertIn('id="m1"', html)
+        self.assertLess(html.index('id="m1"'), html.index("max-w-xl"))
+        # children land after the panel class, i.e. inside the panel
+        self.assertLess(html.index("max-w-xl"), html.index("body-marker"))
+        self.assertIn("BODY", html)
+
+    def test_getitem_is_immutable_and_bubbles_media(self):
+        base = components.Modal("m2")
+        filled = base[components.Div().with_media(components.Media(js=("modal-c.js",)))]
+        self.assertIsNot(base, filled)
+        self.assertIn("modal-c.js", components.collect_media(filled).js)
+        # the original, unsubscripted modal has no child media
+        self.assertNotIn("modal-c.js", components.collect_media(base).js)
+
+
+class DropdownActionItemContractTest(SimpleTestCase):
+    """DropdownActionItem: label is the [] slot; htpy kwargs are button hooks."""
+
+    def test_label_and_data_hook_on_button(self):
+        html = str(components.DropdownActionItem(data_add_play="")["Played +1"])
+        self.assertIn("Played +1", html)
+        # the data hook and the label both live on the <button>, not the <li>
+        button = html[html.index("<button") : html.index("</button>")]
+        self.assertIn("data-add-play", button)
+        self.assertIn("Played +1", button)
+        self.assertNotIn("data-add-play", html[: html.index("<button")])
+
+    def test_disabled_branch(self):
+        html = str(components.DropdownActionItem(disabled=True)["x"])
+        self.assertIn("disabled", html)
+        self.assertIn('aria-disabled="true"', html)
+
+    def test_bubbles_media(self):
+        item = components.DropdownActionItem()[
+            components.Div().with_media(components.Media(js=("ddi.js",)))
+        ]
+        self.assertIn("ddi.js", components.collect_media(item).js)
 
 
 class PopoverTruncatedTest(unittest.TestCase):
@@ -1047,9 +1297,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         media, so TimetrackerDocument() still emits its JS. StyledTable returns a
         node tree, so
         this now happens via automatic bubbling rather than manual collection."""
-        cell = components.Div(children=["x"]).with_media(
-            components.Media(js=("test-cell.js",))
-        )
+        cell = components.Div()["x"].with_media(components.Media(js=("test-cell.js",)))
         table = components.StyledTable(
             columns=[components.Column("Only")],
             rows=[components.make_row(cell)],

@@ -66,11 +66,11 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         # render() returns a safe string (Django widgets must not be autoescaped).
         return render(
             Checkbox(
+                attributes,
                 name=name,
                 label=None,
                 checked=checked,
                 value=str(value) if value else "1",
-                attributes=attributes,
             )
         )
 

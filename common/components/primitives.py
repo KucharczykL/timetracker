@@ -19,6 +19,8 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
     Attributes,
+    AttrsArg,
+    BaseComponent,
     Child,
     Children,
     Element,
@@ -115,12 +117,26 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 # tag name is data, not a separate class/function body. Add a tag = one line.
 
 
+# Builder param names that must never arrive as htpy attribute kwargs. After the
+# legacy ``attributes=`` / ``children=`` params are removed, a stray one would be
+# silently swallowed by ``**kwargs`` and rendered as a bogus ``attributes="…"``
+# HTML attribute — so we reject them with a pointer to the htpy form instead.
+_RESERVED_ATTR_KWARGS = frozenset({"attributes", "children"})
+
+
 def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     """Translate htpy-style attribute kwargs to (name, value) pairs.
 
     ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
-    ``hx-get`` (inner underscores to hyphens); ``True`` -> bare attribute;
-    ``False`` / ``None`` -> omitted."""
+    ``hx-get`` (inner underscores to hyphens); ``True`` -> ``name="name"``
+    (boolean-attribute form); ``False`` / ``None`` -> omitted."""
+    for reserved in _RESERVED_ATTR_KWARGS:
+        if reserved in attrs:
+            raise TypeError(
+                f"{reserved!r} is not an htpy attribute kwarg. Pass dynamic "
+                "attributes positionally — Builder(attrs) — and children via "
+                "Builder(...)[...]."
+            )
     result: list[HTMLAttribute] = []
     for key, value in attrs.items():
         if value is None or value is False:
@@ -128,6 +144,21 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
         name = key.rstrip("_").replace("_", "-")
         result.append((name, name if value is True else value))  # type: ignore[arg-type]
     return result
+
+
+def _coerce_attrs(attrs: "AttrsArg | None") -> list[HTMLAttribute]:
+    """Normalise a dynamic-attributes argument to ``list[HTMLAttribute]``.
+
+    Accepts an ``Attributes`` sequence of ``(name, value)`` pairs **or** a
+    ``Mapping`` (``{"data-x": "y"}``), so callers can build dynamic attributes
+    as whichever is convenient and pass them through the single positional
+    ``attrs`` slot. ``None`` -> empty list.
+    """
+    if attrs is None:
+        return []
+    if isinstance(attrs, Mapping):
+        return list(attrs.items())
+    return list(attrs)
 
 
 def custom_element_builder(tag_name: str):
@@ -147,12 +178,14 @@ def _html_element(tag_name: str, media: Media | None = None):
     """
 
     def element(
-        attributes: Attributes | None = None,
-        children: Children = None,
-        **attrs: object,
+        attrs: "AttrsArg | None" = None,
+        **kwargs: object,
     ) -> Element:
-        merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
-        node = Element(tag_name, merged, children)
+        # Merge order is priority order — first contributor wins per the node
+        # algebra: positional ``attrs`` (dynamic) then htpy ``kwargs`` (static);
+        # ``class`` accumulates across both. Children come via ``[]``.
+        merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+        node = Element(tag_name, merged)
         return node.with_media(media) if media else node
 
     element.__name__ = element.__qualname__ = tag_name[:1].upper() + tag_name[1:]
@@ -180,6 +213,7 @@ Caption = _html_element("caption")
 Nav = _html_element("nav")
 Img = _html_element("img")
 Html = _html_element("html")
+Form = _html_element("form")
 Head = _html_element("head")
 Body = _html_element("body")
 Meta = _html_element("meta")
@@ -188,6 +222,9 @@ Script = _html_element("script")
 Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
+H1 = _html_element("h1")
+H2 = _html_element("h2")
+H3 = _html_element("h3")
 
 
 def _popover_html(
@@ -201,12 +238,11 @@ def _popover_html(
     display_content = wrapped_content if wrapped_content else slot
 
     span = Span(
-        attributes=[
+        [
             ("data-popover-target", id),
             ("class", wrapped_classes),
-        ],
-        children=[display_content] if display_content else [],
-    )
+        ]
+    )[*([display_content] if display_content else [])]
 
     popover_tooltip_class = (
         # `[&.invisible]:hidden`: while Flowbite keeps the popover hidden it
@@ -223,27 +259,21 @@ def _popover_html(
     )
 
     div = Div(
-        attributes=[
+        [
             ("data-popover", ""),
             ("id", id),
             ("role", "tooltip"),
             ("class", popover_tooltip_class),
-        ],
-        children=[
-            Div(
-                attributes=[("class", "px-3 py-2")],
-                children=[popover_content],
-            ),
-            Div(attributes=[("data-popper-arrow", "")]),
-            Safe(  # nosec — intentional HTML comment for Tailwind JIT
-                "<!-- for Tailwind CSS to generate decoration-dotted CSS "
-                "from Python component -->"
-            ),
-            Span(
-                attributes=[("class", "hidden decoration-dotted")],
-            ),
-        ],
-    )
+        ]
+    )[
+        Div(class_="px-3 py-2")[popover_content],
+        Div(data_popper_arrow=""),
+        Safe(  # nosec — intentional HTML comment for Tailwind JIT
+            "<!-- for Tailwind CSS to generate decoration-dotted CSS "
+            "from Python component -->"
+        ),
+        Span(class_="hidden decoration-dotted"),
+    ]
 
     return Fragment(span, div, separator="\n")
 
@@ -305,8 +335,8 @@ def PopoverTruncated(
 
 
 def StyledButton(
-    attributes: Attributes | None = None,
-    children: Children = None,
+    attrs: "AttrsArg | None" = None,
+    *,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
@@ -317,57 +347,38 @@ def StyledButton(
     title: str = "",
     onclick: str = "",
     name: str = "",
-    **attrs: object,
+    **kwargs: object,
 ) -> Element:
-    attributes = as_attributes(attributes) + _attrs_from_kwargs(attrs)
-    children = children or []
-
-    # Separate custom class from other generic attributes
-    custom_class = ""
-    other_attrs: list[HTMLAttribute] = []
-    for attr_name, attr_value in attributes:
-        if attr_name == "class":
-            custom_class = str(attr_value)
-        else:
-            other_attrs.append((attr_name, attr_value))
-
-    # Build class string: custom class first, then base, color, size, icon
-    class_parts: list[str] = []
-    if custom_class:
-        class_parts.append(custom_class)
-    class_parts.append(
-        "hover:cursor-pointer leading-5 focus:outline-hidden focus:ring-4 "
-        "font-medium mb-2 me-2 rounded-base"
-    )
-    class_parts.append(_COLOR_CLASSES.get(color, _COLOR_CLASSES["blue"]))
-    class_parts.append(_SIZE_CLASSES.get(size, _SIZE_CLASSES["base"]))
-    if icon:
-        class_parts.append("inline-flex text-center items-center gap-2")
-
-    # Build the full attribute list for the button tag
-    button_attrs: list[HTMLAttribute] = [
+    # Baked semantic attrs come first so the node algebra resolves them with
+    # first-wins precedence (a caller can't override `type`); the several baked
+    # `class` entries accumulate with any caller `class` into one attribute.
+    baked: list[HTMLAttribute] = [
         ("type", type),
-        ("class", " ".join(class_parts)),
+        (
+            "class",
+            "hover:cursor-pointer leading-5 focus:outline-hidden focus:ring-4 "
+            "font-medium mb-2 me-2 rounded-base",
+        ),
+        ("class", _COLOR_CLASSES.get(color, _COLOR_CLASSES["blue"])),
+        ("class", _SIZE_CLASSES.get(size, _SIZE_CLASSES["base"])),
     ]
+    if icon:
+        baked.append(("class", "inline-flex text-center items-center gap-2"))
     if hx_get:
-        button_attrs.append(("hx-get", hx_get))
+        baked.append(("hx-get", hx_get))
     if hx_target:
-        button_attrs.append(("hx-target", hx_target))
+        baked.append(("hx-target", hx_target))
     if hx_swap:
-        button_attrs.append(("hx-swap", hx_swap))
+        baked.append(("hx-swap", hx_swap))
     if title:
-        button_attrs.append(("title", title))
+        baked.append(("title", title))
     if onclick:
-        button_attrs.append(("onclick", onclick))
+        baked.append(("onclick", onclick))
     if name:
-        button_attrs.append(("name", name))
-    button_attrs.extend(other_attrs)
+        baked.append(("name", name))
 
-    return Element(
-        "button",
-        attributes=button_attrs,
-        children=children,
-    )
+    merged = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+    return Element("button", merged)
 
 
 _GROUP_BUTTON_COLORS = {
@@ -438,28 +449,24 @@ def _button_group_button(
 
     if button_attributes is not None:
         return Span(class_="inline-flex")[
-            Element(
-                "button",
-                attributes=[
+            Button(
+                [
                     ("type", "button"),
                     ("title", title),
                     ("class", button_classes),
                     *button_attributes,
-                ],
-                children=[slot],
-            )
+                ]
+            )[slot]
         ]
 
     if method.lower() == "post":
-        submit = Element(
-            "button",
-            attributes=[
+        submit = Button(
+            [
                 ("type", "submit"),
                 ("title", title),
                 ("class", button_classes),
-            ],
-            children=[slot],
-        )
+            ]
+        )[slot]
         form_children: list[Node] = []
         if csrf_token:
             form_children.append(
@@ -469,11 +476,7 @@ def _button_group_button(
                 )
             )
         form_children.append(submit)
-        return Element(
-            "form",
-            attributes=[("method", "post"), ("action", action or href)],
-            children=form_children,
-        )
+        return Form([("method", "post"), ("action", action or href)])[*form_children]
 
     a_attrs: list[HTMLAttribute] = [("href", href)]
     if hx_get:
@@ -485,17 +488,15 @@ def _button_group_button(
     if hx_confirm:
         a_attrs.append(("hx-confirm", hx_confirm))
 
-    button = Element(
-        "button",
-        attributes=[
+    button = Button(
+        [
             ("type", "button"),
             ("title", title),
             ("class", button_classes),
-        ],
-        children=[slot],
-    )
+        ]
+    )[slot]
 
-    return Element("a", attributes=a_attrs, children=[button])
+    return A(a_attrs)[button]
 
 
 def ButtonGroup(buttons: list[dict] | None = None) -> Element:
@@ -547,25 +548,30 @@ def ButtonGroup(buttons: list[dict] | None = None) -> Element:
 
 
 def Input(
+    attrs: "AttrsArg | None" = None,
+    *,
     type: str = "text",
-    attributes: Attributes | None = None,
-    children: Children = None,
+    **kwargs: object,
 ) -> Element:
-    attributes = as_attributes(attributes)
-    children = children or []
-    return Element("input", attributes=attributes + [("type", type)], children=children)
+    merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+    # ``type`` is a default: an explicit ``type`` already in the merged attrs
+    # wins (first-wins), so append the default only when no caller supplied one.
+    if not any(name == "type" for name, _ in merged):
+        merged = merged + [("type", type)]
+    return Element("input", merged)
 
 
 def Checkbox(
+    attrs: "AttrsArg | None" = None,
+    *,
     name: str,
     label: str | None = None,
     checked: bool = False,
     value: str = "1",
-    attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A filter-agnostic Checkbox component."""
-    attributes = as_attributes(attributes)
-    input_attrs = [
+    baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
         (
@@ -573,52 +579,49 @@ def Checkbox(
             "rounded border-default-medium bg-neutral-secondary-medium "
             f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
         ),
-    ] + attributes
+    ]
     if checked:
-        input_attrs.append(("checked", "true"))
+        baked.append(("checked", "true"))
+    input_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
-    input_el = Input(type="checkbox", attributes=input_attrs)
+    input_el = Input(input_attrs, type="checkbox")
     if label is None:
         return input_el
 
-    return Label(
-        attributes=[
-            ("class", "flex items-center gap-2 text-sm text-heading cursor-pointer")
-        ],
-        children=[input_el, label],
-    )
+    return Label(class_="flex items-center gap-2 text-sm text-heading cursor-pointer")[
+        input_el, label
+    ]
 
 
 def Radio(
+    attrs: "AttrsArg | None" = None,
+    *,
     name: str,
     label: str | None = None,
     checked: bool = False,
     value: str = "",
-    attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A filter-agnostic Radio component."""
-    attributes = as_attributes(attributes)
-    input_attrs = [
+    baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
         (
             "class",
             "rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand",
         ),
-    ] + attributes
+    ]
     if checked:
-        input_attrs.append(("checked", "true"))
+        baked.append(("checked", "true"))
+    input_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
-    input_el = Input(type="radio", attributes=input_attrs)
+    input_el = Input(input_attrs, type="radio")
     if label is None:
         return input_el
 
-    return Label(
-        attributes=[
-            ("class", "flex items-center gap-1 text-sm text-heading cursor-pointer")
-        ],
-        children=[input_el, label],
-    )
+    return Label(class_="flex items-center gap-1 text-sm text-heading cursor-pointer")[
+        input_el, label
+    ]
 
 
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
@@ -633,52 +636,50 @@ _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer
 
 
 def Pill(
-    label: str,
+    attrs: "AttrsArg | None" = None,
     *,
+    label: str = "",
     value: str = "",
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
-    attributes: Attributes | None = None,
+    **kwargs: object,
 ) -> Node:
     """A small label pill, optionally removable (× button).
 
     Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
     are JS hooks only (no CSS attached). ``value`` (when set) becomes
-    ``data-value``; extra ``attributes`` are appended to the outer span.
+    ``data-value``; ``extra_class`` and any caller ``class`` accumulate onto the
+    pill's base class; extra dynamic ``attrs`` / kwargs land on the outer span.
 
     ``label_slot=True`` wraps the label in a ``<span data-search-select-label>`` so JS can
     fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
     markup single-sourced — see ``search_select.py``).
     """
-    attributes = as_attributes(attributes)
-    pill_class = f"{_PILL_CLASS} {extra_class}".strip()
-    pill_attrs: list[HTMLAttribute] = [("class", pill_class), ("data-pill", "")]
+    baked: list[HTMLAttribute] = [
+        ("class", _PILL_CLASS),
+        ("class", extra_class),
+        ("data-pill", ""),
+    ]
     if value != "":
-        pill_attrs.append(("data-value", str(value)))
-    pill_attrs.extend(attributes)
+        baked.append(("data-value", str(value)))
+    pill_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
     label_child: "Node | str" = (
-        Span(attributes=[("data-search-select-label", "")], children=[label])
-        if label_slot
-        else label
+        Span(data_search_select_label="")[label] if label_slot else label
     )
     children: list["Node | str"] = [label_child]
     if removable:
         children.append(
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-pill-remove", ""),
-                    ("class", _PILL_REMOVE_CLASS),
-                    ("aria-label", "Remove"),
-                ],
-                children=["×"],
-            )
+            Button(
+                type="button",
+                data_pill_remove="",
+                class_=_PILL_REMOVE_CLASS,
+                aria_label="Remove",
+            )["×"]
         )
 
-    return Span(attributes=pill_attrs, children=children)
+    return Span(pill_attrs)[*children]
 
 
 # A small count/label badge (the brand-soft pill historically inlined in H1).
@@ -715,7 +716,7 @@ def Badge(
     classes = " ".join(
         part for part in (_BADGE_BASE_CLASS, size_class, extra_class) if part
     )
-    return Span(attributes=[("class", classes), *attributes], children=[content])
+    return Span([("class", classes), *attributes])[content]
 
 
 def CsrfInput(request) -> Node:
@@ -790,39 +791,33 @@ def YearPicker(
     )
     years_csv = ",".join(str(y) for y in available_years)
     return _YearPicker(
-        attributes=[
+        [
             ("selected-year", selected),
             ("available-years", years_csv),
             ("url-template", url_template),
             ("class", "relative inline-block"),
-        ],
-        children=[
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-year-picker-toggle", ""),
-                    (
-                        "class",
-                        "inline-flex items-center rounded-base px-4 py-2 "
-                        f"text-sm font-medium {classes}",
-                    ),
-                ],
-                children=[label, _YEAR_PICKER_CHEVRON],
+        ]
+    )[
+        Button(
+            [
+                ("type", "button"),
+                ("data-year-picker-toggle", ""),
+                (
+                    "class",
+                    "inline-flex items-center rounded-base px-4 py-2 "
+                    f"text-sm font-medium {classes}",
+                ),
+            ]
+        )[label, _YEAR_PICKER_CHEVRON],
+        Input(
+            id_="year-picker-input",
+            class_="absolute opacity-0 pointer-events-none",
+            style=(
+                "width: 1px; height: 1px; padding: 0; margin: -1px; "
+                "overflow: hidden; clip: rect(0,0,0,0); border: 0;"
             ),
-            Input(
-                attributes=[
-                    ("id", "year-picker-input"),
-                    ("class", "absolute opacity-0 pointer-events-none"),
-                    (
-                        "style",
-                        "width: 1px; height: 1px; padding: 0; margin: -1px; "
-                        "overflow: hidden; clip: rect(0,0,0,0); border: 0;",
-                    ),
-                ],
-            ),
-        ],
-    ).with_media(_DATEPICKER_MEDIA)
+        ),
+    ].with_media(_DATEPICKER_MEDIA)
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the
@@ -836,10 +831,10 @@ _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 
 def _field_errors(errors) -> Node | None:
     """Render a form/field ErrorList as a styled <ul>, or None if empty."""
-    items = [Li(children=[str(error)]) for error in errors]
+    items = [Li()[str(error)] for error in errors]
     if not items:
         return None
-    return Ul(attributes=[("class", _FIELD_ERROR_CLASS)], children=items)
+    return Ul(class_=_FIELD_ERROR_CLASS)[*items]
 
 
 def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
@@ -864,10 +859,7 @@ def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
             continue
 
         is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
-        label = Label(
-            attributes=[("for", field.id_for_label), ("class", _LABEL_CLASS)],
-            children=[str(field.label)],
-        )
+        label = Label(for_=field.id_for_label, class_=_LABEL_CLASS)[str(field.label)]
         control = Safe(str(field))
         errors = _field_errors(field.errors)
         extra = extras.get(field.name)
@@ -878,9 +870,7 @@ def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
                 children.append(errors)
             if extra:
                 children.append(extra)
-            rows.append(
-                Div(attributes=[("class", _CHECKBOX_ROW_CLASS)], children=children)
-            )
+            rows.append(Div(class_=_CHECKBOX_ROW_CLASS)[*children])
         else:
             children = []
             if errors:
@@ -888,7 +878,7 @@ def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
             children.extend([label, control])
             if extra:
                 children.append(extra)
-            rows.append(Div(children=children))
+            rows.append(Div()[*children])
 
     return Fragment(*rows, separator="\n")
 
@@ -912,113 +902,91 @@ def AddForm(
     field_markup = fields if fields is not None else FormFields(form)
     submit_attrs = [("class", submit_class)] if submit_class else []
 
-    inner_form = Element(
-        "form",
-        attributes=[
-            ("method", "post"),
-            ("enctype", "multipart/form-data"),
-            # Form owns its row layout (was the #add-form form{} rule in input.css).
-            ("class", "flex flex-col gap-3"),
+    inner_form = Form(
+        method="post",
+        enctype="multipart/form-data",
+        # Form owns its row layout (was the #add-form form{} rule in input.css).
+        class_="flex flex-col gap-3",
+    )[
+        CsrfInput(request),
+        field_markup,
+        Div()[StyledButton(submit_attrs, type="submit")["Submit"]],
+        Div(class_="submit-button-container")[
+            *([additional_row] if additional_row else [])
         ],
-        children=[
-            CsrfInput(request),
-            field_markup,
-            Div(children=[StyledButton(submit_attrs, "Submit", type="submit")]),
-            Div(
-                [("class", "submit-button-container")],
-                [additional_row] if additional_row else [],
-            ),
-        ],
-    )
+    ]
 
-    return Div(
-        [("id", "add-form"), ("class", "max-width-container")],
-        [
-            Div(
-                [
-                    ("id", "add-form"),
-                    (
-                        "class",
-                        f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto",
-                    ),
-                ],
-                [inner_form],
-            )
-        ],
-    )
+    return Div(id_="add-form", class_="max-width-container")[
+        Div(
+            id_="add-form",
+            class_=f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto",
+        )[inner_form]
+    ]
 
 
 def SearchField(
+    attrs: "AttrsArg | None" = None,
+    *,
     search_string: str = "",
     id: str = "search_string",
     placeholder: str = "Search",
+    **kwargs: object,
 ) -> Element:
-    """Generate a search form with icon, input field, and submit button."""
-    return Element(
-        "form",
-        attributes=[("class", "max-w-md")],
-        children=[
-            Label(
-                attributes=[
-                    ("for", "search"),
-                    ("class", "block mb-2.5 text-sm font-medium text-heading sr-only"),
-                ],
-                children=["Search"],
-            ),
-            Div(
-                attributes=[("class", "relative")],
-                children=[
-                    Safe(
-                        '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
-                        '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
-                        'fill="none" viewBox="0 0 24 24">'
-                        '<path stroke="currentColor" stroke-linecap="round" stroke-width="2" '
-                        'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
-                        "</svg></div>"
-                    ),
-                    Input(
-                        type="search",
-                        attributes=[
-                            ("id", id),
-                            ("name", id),
-                            ("value", search_string),
-                            (
-                                "class",
-                                "block w-full p-3 ps-9 bg-neutral-secondary-medium "
-                                "border border-default-medium text-heading text-sm "
-                                "rounded-base focus:ring-brand focus:border-brand "
-                                "shadow-xs placeholder:text-body",
-                            ),
-                            ("placeholder", placeholder),
-                            ("required", ""),
-                        ],
-                    ),
-                    Element(
-                        "button",
-                        attributes=[
-                            ("type", "submit"),
-                            (
-                                "class",
-                                "absolute end-1.5 bottom-1.5 text-white bg-brand "
-                                "hover:bg-brand-strong box-border border border-transparent "
-                                "focus:ring-4 focus:ring-brand-medium shadow-xs font-medium "
-                                "leading-5 rounded text-xs px-3 py-1.5 focus:outline-none "
-                                "cursor-pointer",
-                            ),
-                        ],
-                        children=["Search"],
-                    ),
-                ],
-            ),
-        ],
+    """Generate a search form with icon, input field, and submit button.
+
+    Extra ``attrs`` / kwargs land on the outer ``<form>`` (e.g. a caller adding
+    ``class_`` accumulates onto the base ``max-w-md``).
+    """
+    form_attrs = (
+        [("class", "max-w-md")] + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
     )
+    return Form(form_attrs)[
+        Label(
+            for_="search",
+            class_="block mb-2.5 text-sm font-medium text-heading sr-only",
+        )["Search"],
+        Div(class_="relative")[
+            Safe(
+                '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
+                '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
+                'fill="none" viewBox="0 0 24 24">'
+                '<path stroke="currentColor" stroke-linecap="round" stroke-width="2" '
+                'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
+                "</svg></div>"
+            ),
+            Input(
+                type="search",
+                id=id,
+                name=id,
+                value=search_string,
+                class_=(
+                    "block w-full p-3 ps-9 bg-neutral-secondary-medium "
+                    "border border-default-medium text-heading text-sm "
+                    "rounded-base focus:ring-brand focus:border-brand "
+                    "shadow-xs placeholder:text-body"
+                ),
+                placeholder=placeholder,
+                required="",
+            ),
+            Button(
+                type="submit",
+                class_=(
+                    "absolute end-1.5 bottom-1.5 text-white bg-brand "
+                    "hover:bg-brand-strong box-border border border-transparent "
+                    "focus:ring-4 focus:ring-brand-medium shadow-xs font-medium "
+                    "leading-5 rounded text-xs px-3 py-1.5 focus:outline-none "
+                    "cursor-pointer"
+                ),
+            )["Search"],
+        ],
+    ]
 
 
-def H1(
+def PageHeading(
     children: Children = None,
     badge: str = "",
 ) -> Element:
-    """Heading with optional badge count."""
+    """Page heading (``<h1>``) with optional badge count."""
     children = children or []
     heading_class = "mb-4 text-3xl font-extrabold leading-none tracking-tight text-gray-900 dark:text-white"
     badge_html: Node | str = ""
@@ -1027,47 +995,43 @@ def H1(
         heading_class = "flex items-center " + heading_class
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
-    return Element(
-        "h1",
-        attributes=[("class", heading_class)],
-        children=as_children(children) + ([badge_html] if badge_html else []),
-    )
+    return H1(class_=heading_class)[
+        *as_children(children), *([badge_html] if badge_html else [])
+    ]
 
 
-def Modal(
-    modal_id: str,
-    children: Children = None,
-) -> Node:
-    """Modal overlay with container. Content (form, buttons) goes in children."""
-    children = children or []
-    return Div(
-        attributes=[
-            ("id", modal_id),
-            (
-                "class",
-                # z-40: above in-page positioned UI (popovers z-10, dropdown
-                # panels z-20) so the overlay dims and covers them, but below the
-                # toast container (z-50). Matters for modals rendered inline in a
-                # row (e.g. the session reset confirm) rather than portaled into
-                # the body-level #global-modal-container.
+class Modal(BaseComponent):
+    """Modal overlay with container. Content goes via the htpy ``[]`` slot —
+    ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps."""
+
+    def __init__(self, modal_id: str, _children: Children = None) -> None:
+        self.modal_id = modal_id
+        self._children = as_children(_children)
+
+    def __getitem__(self, children: Children) -> "Modal":
+        return Modal(self.modal_id, as_children(children))
+
+    def render(self) -> Node:
+        return Div(
+            id_=self.modal_id,
+            # z-40: above in-page positioned UI (popovers z-10, dropdown
+            # panels z-20) so the overlay dims and covers them, but below the
+            # toast container (z-50). Matters for modals rendered inline in a
+            # row (e.g. the session reset confirm) rather than portaled into
+            # the body-level #global-modal-container.
+            class_=(
                 "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
-                "h-full w-full flex items-center justify-center",
+                "h-full w-full flex items-center justify-center"
             ),
-        ],
-        children=[
+        )[
             Div(
-                attributes=[
-                    (
-                        "class",
-                        f"relative mx-auto p-5 border-accent border w-full "
-                        f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
-                        "dark:bg-gray-900",
-                    ),
-                ],
-                children=as_children(children),
-            ),
-        ],
-    )
+                class_=(
+                    f"relative mx-auto p-5 border-accent border w-full "
+                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
+                    "dark:bg-gray-900"
+                ),
+            )[*self._children]
+        ]
 
 
 def ConfirmPage(
@@ -1087,50 +1051,30 @@ def ConfirmPage(
     return Div(
         class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5",
     )[
-        Element(
-            "form",
-            attributes=[("method", "post"), ("action", action_url)],
-            children=[
-                Safe(
-                    '<input type="hidden" name="csrfmiddlewaretoken" '
-                    f'value="{csrf_token}">'
-                ),
-                P(
-                    attributes=[
-                        (
-                            "class",
-                            "text-2xl leading-6 font-medium dark:text-white "
-                            "text-center",
-                        )
-                    ],
-                    children=[title],
-                ),
-                P(
-                    attributes=[("class", "dark:text-white text-center mt-5")],
-                    children=as_children(message),
-                ),
-                Div(
-                    [("class", "items-center mt-6")],
-                    [
-                        StyledButton(
-                            [("class", "w-full")],
-                            confirm_label,
-                            color=confirm_color,
-                            size="lg",
-                            type="submit",
-                        ),
-                        A(href=cancel_url)[
-                            StyledButton(
-                                [("class", "mt-0 w-full")],
-                                "Cancel",
-                                color="gray",
-                                size="base",
-                            )
-                        ],
-                    ],
-                ),
+        Form(method="post", action=action_url)[
+            Safe(
+                f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
+            ),
+            P(
+                class_="text-2xl leading-6 font-medium dark:text-white text-center",
+            )[title],
+            P(class_="dark:text-white text-center mt-5")[*as_children(message)],
+            Div(class_="items-center mt-6")[
+                StyledButton(
+                    class_="w-full",
+                    color=confirm_color,
+                    size="lg",
+                    type="submit",
+                )[confirm_label],
+                A(href=cancel_url)[
+                    StyledButton(
+                        class_="mt-0 w-full",
+                        color="gray",
+                        size="base",
+                    )["Cancel"]
+                ],
             ],
-        )
+        ]
     ]
 
 
@@ -1139,10 +1083,7 @@ def TableTd(
 ) -> Element:
     """Styled table cell."""
     children = children or []
-    return Td(
-        attributes=[("class", "px-4 py-2")],
-        children=as_children(children),
-    )
+    return Td(class_="px-4 py-2")[*as_children(children)]
 
 
 type Cell = Child  # one table cell, e.g. NameWithIcon(game=game) or "2024"
@@ -1231,21 +1172,17 @@ def TableRow(data: TableRowData) -> Element:
         if i == 0:
             cell_elements.append(
                 Th(
-                    attributes=[
-                        ("scope", "row"),
-                        (
-                            "class",
-                            "px-6 py-4 font-medium text-gray-900 "
-                            "whitespace-nowrap dark:text-white",
-                        ),
-                    ],
-                    children=[cell],
-                )
+                    scope="row",
+                    class_=(
+                        "px-6 py-4 font-medium text-gray-900 "
+                        "whitespace-nowrap dark:text-white"
+                    ),
+                )[cell]
             )
         else:
-            cell_elements.append(TableTd(children=[cell]))
+            cell_elements.append(TableTd()[cell])
 
-    return Tr(attributes=tr_attrs, children=cell_elements)
+    return Tr(tr_attrs)[*cell_elements]
 
 
 def get_icon_node(name: str) -> Element:
@@ -1273,7 +1210,7 @@ def _with_title(children: Sequence[Child], title: str) -> list[Child]:
     else prepends one. Titles baked deeper in the tree (e.g. inside a ``<path>``)
     are left untouched; this sets the icon's accessible name / native tooltip.
     """
-    title_node = Element("title", [], [title])
+    title_node = Title()[title]
     result = list(children)
     for index, child in enumerate(result):
         if isinstance(child, Element) and child.tag_name == "title":
@@ -1325,15 +1262,11 @@ def TableHeader(
     """Table caption."""
     children = children or []
     return Caption(
-        attributes=[
-            (
-                "class",
-                "p-2 text-lg font-semibold rtl:text-left text-right "
-                "text-gray-900 bg-white dark:text-white dark:bg-gray-900",
-            ),
-        ],
-        children=as_children(children),
-    )
+        class_=(
+            "p-2 text-lg font-semibold rtl:text-left text-right "
+            "text-gray-900 bg-white dark:text-white dark:bg-gray-900"
+        ),
+    )[*as_children(children)]
 
 
 def _replace_query(
@@ -1386,123 +1319,78 @@ def _pagination_nav(page_obj, elided_page_range, request) -> Node:
     page_items: list[Node] = []
     for page in elided_page_range:
         if page != page_obj.number:
-            link = A(
-                attributes=[
-                    ("href", _page_url(request, page)),
-                    ("class", page_link_class),
-                ],
-                children=[str(page)],
-            )
+            link = A(href=_page_url(request, page), class_=page_link_class)[str(page)]
         else:
-            link = A(
-                attributes=[("aria-current", "page"), ("class", current_link_class)],
-                children=[str(page)],
-            )
-        page_items.append(Li(children=[link]))
+            link = A(aria_current="page", class_=current_link_class)[str(page)]
+        page_items.append(Li()[link])
 
     if page_obj.has_previous():
         prev_link = A(
-            attributes=[
-                ("href", _page_url(request, page_obj.previous_page_number())),
-                (
-                    "class",
-                    "flex items-center justify-center px-3 h-8 ms-0 leading-tight "
-                    "text-gray-500 bg-white border border-gray-300 rounded-s-lg "
-                    "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
-                    "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-                    "dark:hover:text-white",
-                ),
-            ],
-            children=["Previous"],
-        )
+            href=_page_url(request, page_obj.previous_page_number()),
+            class_=(
+                "flex items-center justify-center px-3 h-8 ms-0 leading-tight "
+                "text-gray-500 bg-white border border-gray-300 rounded-s-lg "
+                "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
+                "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+                "dark:hover:text-white"
+            ),
+        )["Previous"]
     else:
         prev_link = A(
-            attributes=[
-                ("aria-current", "page"),
-                (
-                    "class",
-                    "cursor-not-allowed flex items-center justify-center px-3 h-8 "
-                    "leading-tight text-gray-300 bg-white border border-gray-300 "
-                    "rounded-s-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600",
-                ),
-            ],
-            children=["Previous"],
-        )
+            aria_current="page",
+            class_=(
+                "cursor-not-allowed flex items-center justify-center px-3 h-8 "
+                "leading-tight text-gray-300 bg-white border border-gray-300 "
+                "rounded-s-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
+            ),
+        )["Previous"]
 
     if page_obj.has_next():
         next_link = A(
-            attributes=[
-                ("href", _page_url(request, page_obj.next_page_number())),
-                (
-                    "class",
-                    "flex items-center justify-center px-3 h-8 leading-tight "
-                    "text-gray-500 bg-white border border-gray-300 rounded-e-lg "
-                    "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
-                    "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-                    "dark:hover:text-white",
-                ),
-            ],
-            children=["Next"],
-        )
+            href=_page_url(request, page_obj.next_page_number()),
+            class_=(
+                "flex items-center justify-center px-3 h-8 leading-tight "
+                "text-gray-500 bg-white border border-gray-300 rounded-e-lg "
+                "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
+                "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
+                "dark:hover:text-white"
+            ),
+        )["Next"]
     else:
         next_link = A(
-            attributes=[
-                ("aria-current", "page"),
-                (
-                    "class",
-                    "cursor-not-allowed flex items-center justify-center px-3 h-8 "
-                    "leading-tight text-gray-300 bg-white border border-gray-300 "
-                    "rounded-e-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600",
-                ),
-            ],
-            children=["Next"],
-        )
+            aria_current="page",
+            class_=(
+                "cursor-not-allowed flex items-center justify-center px-3 h-8 "
+                "leading-tight text-gray-300 bg-white border border-gray-300 "
+                "rounded-e-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
+            ),
+        )["Next"]
 
     number_class = "font-semibold text-gray-900 dark:text-white"
     summary = Span(
-        attributes=[
-            (
-                "class",
-                "text-sm text-center font-normal text-gray-500 dark:text-gray-400 "
-                "mb-4 md:mb-0 block w-full md:inline md:w-auto",
-            ),
-        ],
-        children=[
-            # Element joins children with "", so the em-dash and " of " hug the
-            # number spans inline — "1—10 of 50", not "1 — 10 of 50".
-            Span(
-                attributes=[("class", number_class)],
-                children=[str(page_obj.start_index())],
-            ),
-            "—",
-            Span(
-                attributes=[("class", number_class)],
-                children=[str(page_obj.end_index())],
-            ),
-            " of ",
-            Span(
-                attributes=[("class", number_class)],
-                children=[str(page_obj.paginator.count)],
-            ),
-        ],
-    )
-    pages = Ul(
-        attributes=[
-            ("class", "inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")
-        ],
-        children=[Li(children=[prev_link, *page_items, next_link])],
-    )
+        class_=(
+            "text-sm text-center font-normal text-gray-500 dark:text-gray-400 "
+            "mb-4 md:mb-0 block w-full md:inline md:w-auto"
+        ),
+    )[
+        # Element joins children with "", so the em-dash and " of " hug the
+        # number spans inline — "1—10 of 50", not "1 — 10 of 50".
+        Span(class_=number_class)[str(page_obj.start_index())],
+        "—",
+        Span(class_=number_class)[str(page_obj.end_index())],
+        " of ",
+        Span(class_=number_class)[str(page_obj.paginator.count)],
+    ]
+    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")[
+        Li()[prev_link, *page_items, next_link]
+    ]
     return Nav(
-        attributes=[
-            (
-                "class",
-                "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
-                "dark:bg-gray-900 sm:rounded-b-lg",
-            ),
-            ("aria-label", "Table navigation"),
-        ],
-        children=[summary, pages],
-    )
+        class_=(
+            "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
+            "dark:bg-gray-900 sm:rounded-b-lg"
+        ),
+        aria_label="Table navigation",
+    )[summary, pages]
 
 
 # <sort-header> wraps a header anchor; its TS intercepts shift-click to navigate
@@ -1532,10 +1420,7 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
     base_class = "px-6 py-3" + (" text-right" if column.align == "right" else "")
     if column.sort_key is None:
-        return Th(
-            attributes=[("scope", "col"), ("class", base_class)],
-            children=[column.label],
-        )
+        return Th(scope="col", class_=base_class)[column.label]
 
     active = next(
         (
@@ -1553,20 +1438,11 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
         indicator = _sort_indicator(index, term.descending, len(sort_terms))
 
     link = A(
-        attributes=[
-            ("href", _sort_href(request, collapse_sort(sort_terms, column.sort_key))),
-            (
-                "data-shift-href",
-                _sort_href(request, cycle_sort(sort_terms, column.sort_key)),
-            ),
-            ("class", _SORT_HEADER_LINK_CLASS),
-        ],
-        children=[column.label, indicator],
-    )
-    return Th(
-        attributes=[("scope", "col"), ("class", base_class), ("aria-sort", aria_sort)],
-        children=[_SortHeader(children=[link])],
-    )
+        href=_sort_href(request, collapse_sort(sort_terms, column.sort_key)),
+        data_shift_href=_sort_href(request, cycle_sort(sort_terms, column.sort_key)),
+        class_=_SORT_HEADER_LINK_CLASS,
+    )[column.label, indicator]
+    return Th(scope="col", class_=base_class, aria_sort=aria_sort)[_SortHeader()[link]]
 
 
 def StyledTable(
@@ -1604,23 +1480,17 @@ def StyledTable(
 
     table_children: list[Node] = []
     if header_action:
-        table_children.append(TableHeader(children=[header_action]))
+        table_children.append(TableHeader()[header_action])
 
-    header_row = Tr(
-        children=[_header_cell(column, sort_terms, request) for column in columns]
-    )
+    header_row = Tr()[[_header_cell(column, sort_terms, request) for column in columns]]
     table_children.append(
         Thead(
-            attributes=[
-                (
-                    "class",
-                    "text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 "
-                    "dark:text-gray-400 "
-                    "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden",
-                ),
-            ],
-            children=[header_row],
-        )
+            class_=(
+                "text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 "
+                "dark:text-gray-400 "
+                "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
+            ),
+        )[header_row]
     )
     # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
     # <tr> aligns from the live <tbody> it lands in — the fragment row stays
@@ -1638,35 +1508,22 @@ def StyledTable(
     if align_rules:
         tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
-        Tbody(
-            attributes=[("class", tbody_class)],
-            children=[TableRow(data=row) for row in rows],
-        )
+        Tbody(class_=tbody_class)[[TableRow(data=row) for row in rows]]
     )
 
     table = Table(
-        attributes=[
-            (
-                "class",
-                "w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400",
-            ),
-        ],
-        children=table_children,
-    )
+        class_=(
+            "w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400"
+        ),
+    )[*table_children]
 
     inner_children: list[Node] = [
-        Div(
-            attributes=[("class", "relative overflow-x-auto sm:rounded-t-lg")],
-            children=[table],
-        )
+        Div(class_="relative overflow-x-auto sm:rounded-t-lg")[table]
     ]
     if page_obj and elided_page_range:
         inner_children.append(_pagination_nav(page_obj, elided_page_range, request))
 
-    return Div(
-        attributes=[("class", "shadow-md"), ("hx-boost", "false")],
-        children=inner_children,
-    )
+    return Div(class_="shadow-md", hx_boost="false")[*inner_children]
 
 
 def paginated_table_content(
@@ -1681,17 +1538,14 @@ def paginated_table_content(
     `data` is the table dict with keys ``columns``, ``rows`` and
     ``header_action`` (the same shape every list view already builds).
     """
-    return Div(
-        [("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")],
-        [
-            StyledTable(
-                columns=data["columns"],
-                rows=data["rows"],
-                header_action=data["header_action"],
-                page_obj=page_obj,
-                elided_page_range=elided_page_range,
-                request=request,
-                sort_terms=data.get("sort_terms"),
-            )
-        ],
-    )
+    return Div(class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")[
+        StyledTable(
+            columns=data["columns"],
+            rows=data["rows"],
+            header_action=data["header_action"],
+            page_obj=page_obj,
+            elided_page_range=elided_page_range,
+            request=request,
+            sort_terms=data.get("sort_terms"),
+        )
+    ]

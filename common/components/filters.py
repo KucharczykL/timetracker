@@ -4,13 +4,15 @@ from typing import NamedTuple
 
 from django.db import models
 
-from common.components.core import BaseComponent, Element, Node, Safe
+from common.components.core import BaseComponent, Node, Safe
 from common.components.custom_elements import _FieldComparisonSet, _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
+    Button,
     Div,
     FilterWidgetKind,
     FilterWidgetPath,
+    Form,
     Input,
     Label,
     Option,
@@ -404,13 +406,10 @@ def _filter_field(label: str, widget) -> Node:
     widget_id = _widget_id(widget)
     if widget_id:
         label_attributes.append(("for", widget_id))
-    return Div(
-        attributes=[("class", "flex flex-col gap-1")],
-        children=[
-            Label(attributes=label_attributes, children=[label]),
-            widget,
-        ],
-    )
+    return Div(class_="flex flex-col gap-1")[
+        Label(label_attributes)[label],
+        widget,
+    ]
 
 
 def _filter_boolean_radio(
@@ -430,34 +429,23 @@ def _filter_boolean_radio(
     ``filter_widget_attributes``.
     """
     kind: FilterWidgetKind = "relation-bool" if relation_child is not None else "bool"
+    # The relation-bool serializer branch builds and appends its own AND
+    # element directly from ``data-relation-child``, so the generic
+    # path-length cross-entity branch never applies here.
     return Div(
-        attributes=[
-            ("class", "flex flex-col gap-1"),
-            # The relation-bool serializer branch builds and appends its own AND
-            # element directly from ``data-relation-child``, so the generic
-            # path-length cross-entity branch never applies here.
-            *filter_widget_attributes(
-                path,
-                kind,
-                relation_child=relation_child,
-            ),
+        filter_widget_attributes(
+            path,
+            kind,
+            relation_child=relation_child,
+        ),
+        class_="flex flex-col gap-1",
+    )[
+        Span(class_=_FILTER_LABEL_CLASS)[label],
+        Div(class_="flex items-center gap-4 h-9")[
+            Radio(name=name, label="True", checked=value is True, value="true"),
+            Radio(name=name, label="False", checked=value is False, value="false"),
         ],
-        children=[
-            Span(
-                attributes=[("class", _FILTER_LABEL_CLASS)],
-                children=[label],
-            ),
-            Div(
-                attributes=[("class", "flex items-center gap-4 h-9")],
-                children=[
-                    Radio(name=name, label="True", checked=value is True, value="true"),
-                    Radio(
-                        name=name, label="False", checked=value is False, value="false"
-                    ),
-                ],
-            ),
-        ],
-    )
+    ]
 
 
 _DATE_RANGE_INPUT_CLASS = (
@@ -486,46 +474,33 @@ def DateRangeFilter(
     min_input_id = f"{input_name_prefix}-min"
     max_input_id = f"{input_name_prefix}-max"
     return Div(
-        attributes=[
-            ("class", "date-range-block mb-4"),
-            *filter_widget_attributes(path, "date"),
-        ],
-        children=[
-            Div(
-                attributes=[("class", "flex items-center gap-2")],
-                children=[
-                    Input(
-                        attributes=[
-                            ("type", "date"),
-                            ("name", min_input_id),
-                            ("id", min_input_id),
-                            ("value", min_value),
-                            ("placeholder", min_placeholder),
-                            ("aria-label", f"{label} from"),
-                            ("data-range-min", ""),
-                            ("class", _DATE_RANGE_INPUT_CLASS),
-                        ],
-                    ),
-                    Span(
-                        attributes=[("class", "text-body text-sm")],
-                        children=["–"],
-                    ),
-                    Input(
-                        attributes=[
-                            ("type", "date"),
-                            ("name", max_input_id),
-                            ("id", max_input_id),
-                            ("value", max_value),
-                            ("placeholder", max_placeholder),
-                            ("aria-label", f"{label} to"),
-                            ("data-range-max", ""),
-                            ("class", _DATE_RANGE_INPUT_CLASS),
-                        ],
-                    ),
-                ],
+        filter_widget_attributes(path, "date"),
+        class_="date-range-block mb-4",
+    )[
+        Div(class_="flex items-center gap-2")[
+            Input(
+                type="date",
+                name=min_input_id,
+                id_=min_input_id,
+                value=min_value,
+                placeholder=min_placeholder,
+                aria_label=f"{label} from",
+                data_range_min="",
+                class_=_DATE_RANGE_INPUT_CLASS,
+            ),
+            Span(class_="text-body text-sm")["–"],
+            Input(
+                type="date",
+                name=max_input_id,
+                id_=max_input_id,
+                value=max_value,
+                placeholder=max_placeholder,
+                aria_label=f"{label} to",
+                data_range_max="",
+                class_=_DATE_RANGE_INPUT_CLASS,
             ),
         ],
-    )
+    ]
 
 
 _FILTER_FORM_ID = "filter-bar-form"
@@ -535,129 +510,83 @@ _FILTER_INPUT_ID = "filter-json-input"
 
 
 def _filter_collapse_button() -> Node:
-    return Element(
-        "button",
-        attributes=[
-            ("type", "button"),
-            # Slider handles are positioned in percentages, so initializing
-            # them while the body is hidden is safe — no re-init on reveal.
-            # Click is wired by filter-bar.ts (no inline handler).
-            ("data-filter-bar-toggle", ""),
-            (
-                "class",
-                "flex items-center gap-2 text-sm font-medium text-body "
-                "hover:text-heading mb-2",
-            ),
-        ],
-        children=[
-            Safe(
-                '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>'
-            ),
-            "Filters",
-        ],
-    )
+    # Slider handles are positioned in percentages, so initializing
+    # them while the body is hidden is safe — no re-init on reveal.
+    # Click is wired by filter-bar.ts (no inline handler).
+    return Button(
+        type="button",
+        data_filter_bar_toggle="",
+        class_=(
+            "flex items-center gap-2 text-sm font-medium text-body "
+            "hover:text-heading mb-2"
+        ),
+    )[
+        Safe(
+            '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>'
+        ),
+        "Filters",
+    ]
 
 
 def _filter_action_row() -> Node:
-    return Div(
-        attributes=[("class", "flex gap-3 items-center")],
-        children=[
-            Element(
-                "button",
-                attributes=[
-                    ("type", "submit"),
-                    (
-                        "class",
-                        "px-4 py-2 text-sm font-medium text-white bg-brand "
-                        "rounded-lg hover:bg-brand-strong focus:ring-4 "
-                        "focus:ring-brand-medium",
-                    ),
-                ],
-                children=["Apply"],
+    return Div(class_="flex gap-3 items-center")[
+        Button(
+            type="submit",
+            class_=(
+                "px-4 py-2 text-sm font-medium text-white bg-brand "
+                "rounded-lg hover:bg-brand-strong focus:ring-4 "
+                "focus:ring-brand-medium"
             ),
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-filter-bar-clear", ""),
-                    (
-                        "class",
-                        "px-4 py-2 text-sm font-medium text-gray-900 bg-white "
-                        "border border-gray-200 rounded-lg hover:bg-gray-100 "
-                        "dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 "
-                        "dark:hover:bg-gray-700 dark:hover:text-white",
-                    ),
-                ],
-                children=["Clear"],
+        )["Apply"],
+        Button(
+            type="button",
+            data_filter_bar_clear="",
+            class_=(
+                "px-4 py-2 text-sm font-medium text-gray-900 bg-white "
+                "border border-gray-200 rounded-lg hover:bg-gray-100 "
+                "dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 "
+                "dark:hover:bg-gray-700 dark:hover:text-white"
             ),
-            Span(
-                attributes=[
-                    ("class", "flex gap-2 items-center"),
-                    ("id", "save-preset-area"),
-                ],
-                children=[
-                    Input(
-                        attributes=[
-                            ("type", "text"),
-                            ("id", "preset-name-input"),
-                            ("data-filter-bar-preset-name", ""),
-                            ("placeholder", "Preset name..."),
-                            (
-                                "class",
-                                "hidden px-3 py-2 text-sm rounded-lg border "
-                                "border-default-medium bg-neutral-secondary-medium "
-                                "text-heading focus:ring-brand focus:border-brand",
-                            ),
-                        ],
-                    ),
-                    Element(
-                        "button",
-                        attributes=[
-                            ("type", "button"),
-                            ("id", "save-preset-btn"),
-                            ("data-filter-bar-save", ""),
-                            (
-                                "class",
-                                "px-4 py-2 text-sm font-medium text-gray-900 "
-                                "bg-white border border-gray-200 rounded-lg "
-                                "hover:bg-gray-100 dark:bg-gray-800 "
-                                "dark:border-gray-600 dark:text-gray-400 "
-                                "dark:hover:bg-gray-700 dark:hover:text-white",
-                            ),
-                        ],
-                        children=["Save Preset"],
-                    ),
-                    Element(
-                        "button",
-                        attributes=[
-                            ("type", "button"),
-                            ("id", "confirm-save-preset-btn"),
-                            ("data-filter-bar-confirm-save", ""),
-                            (
-                                "class",
-                                "hidden px-4 py-2 text-sm font-medium text-white "
-                                "bg-green-700 rounded-lg hover:bg-green-800 "
-                                "focus:ring-4 focus:ring-green-300",
-                            ),
-                        ],
-                        children=["Save"],
-                    ),
-                ],
+        )["Clear"],
+        Span(class_="flex gap-2 items-center", id_="save-preset-area")[
+            Input(
+                type="text",
+                id_="preset-name-input",
+                data_filter_bar_preset_name="",
+                placeholder="Preset name...",
+                class_=(
+                    "hidden px-3 py-2 text-sm rounded-lg border "
+                    "border-default-medium bg-neutral-secondary-medium "
+                    "text-heading focus:ring-brand focus:border-brand"
+                ),
             ),
-            Div(
-                attributes=[
-                    ("id", "preset-dropdown"),
-                    ("class", "relative"),
-                ],
-                children=[
-                    Span(
-                        attributes=[("class", "text-sm text-body")],
-                        children=["Loading presets..."],
-                    ),
-                ],
-            ),
+            Button(
+                type="button",
+                id_="save-preset-btn",
+                data_filter_bar_save="",
+                class_=(
+                    "px-4 py-2 text-sm font-medium text-gray-900 "
+                    "bg-white border border-gray-200 rounded-lg "
+                    "hover:bg-gray-100 dark:bg-gray-800 "
+                    "dark:border-gray-600 dark:text-gray-400 "
+                    "dark:hover:bg-gray-700 dark:hover:text-white"
+                ),
+            )["Save Preset"],
+            Button(
+                type="button",
+                id_="confirm-save-preset-btn",
+                data_filter_bar_confirm_save="",
+                class_=(
+                    "hidden px-4 py-2 text-sm font-medium text-white "
+                    "bg-green-700 rounded-lg hover:bg-green-800 "
+                    "focus:ring-4 focus:ring-green-300"
+                ),
+            )["Save"],
         ],
-    )
+        Div(id_="preset-dropdown", class_="relative")[
+            Span(class_="text-sm text-body")["Loading presets..."],
+        ],
+    ]
 
 
 # ── Field-to-field comparison widget (#167) ──────────────────────────────────
@@ -718,12 +647,12 @@ def _field_comparison_rows(existing: dict) -> tuple[list[FieldComparisonRow], st
 
 def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[Node]:
     """The shared left-column ``<option>`` set (right/operator are TS-built)."""
-    options: list[Node] = [Option(attributes=[("value", "")], children=["column…"])]
+    options: list[Node] = [Option(value="")["column…"]]
     for column in columns:
         attributes = [("value", column["value"]), ("data-group", column["group"])]
         if column["value"] == selected:
             attributes.append(("selected", ""))
-        options.append(Option(attributes=attributes, children=[column["label"]]))
+        options.append(Option(attributes)[column["label"]])
     return options
 
 
@@ -744,100 +673,65 @@ def _field_comparison_row(
     right_value = row.right if row else ""
     granularity_date = bool(row and row.granularity == "date")
     return Div(
-        attributes=[
-            ("data-fc-row", ""),
-            (
-                "class",
-                "grid grid-cols-1 gap-2 items-center"
-                " md:grid-cols-[1fr_auto_1fr_auto_auto]",
-            ),
+        data_fc_row="",
+        class_=(
+            "grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto_auto]"
+        ),
+    )[
+        Select(data_fc_left="", class_=select_class)[
+            *_fc_column_options(columns, left_value)
         ],
-        children=[
-            Select(
-                attributes=[("data-fc-left", ""), ("class", select_class)],
-                children=_fc_column_options(columns, left_value),
+        Select(data_fc_op="", data_selected=operator_value, class_=select_class),
+        Select(data_fc_right="", data_selected=right_value, class_=select_class),
+        # Day-granular toggle — only meaningful for datetime operands, so
+        # field-comparison-set.ts shows/hides it based on the chosen left
+        # column. Hand-rolled (not Checkbox()) because the wrapper Label must
+        # carry data-fc-granularity-wrap + hidden; the input reuses Checkbox's
+        # utility classes so it matches every other checkbox in the app.
+        Label(
+            [] if granularity_date else [("hidden", "")],
+            data_fc_granularity_wrap="",
+            class_="flex items-center gap-1 text-sm text-body cursor-pointer",
+        )[
+            Input(
+                [("checked", "")] if granularity_date else [],
+                type="checkbox",
+                data_fc_granularity="",
+                class_=(
+                    "rounded border-default-medium"
+                    " bg-neutral-secondary-medium text-brand"
+                    " focus:ring-brand cursor-pointer"
+                ),
             ),
-            Select(
-                attributes=[
-                    ("data-fc-op", ""),
-                    ("data-selected", operator_value),
-                    ("class", select_class),
-                ],
-            ),
-            Select(
-                attributes=[
-                    ("data-fc-right", ""),
-                    ("data-selected", right_value),
-                    ("class", select_class),
-                ],
-            ),
-            # Day-granular toggle — only meaningful for datetime operands, so
-            # field-comparison-set.ts shows/hides it based on the chosen left
-            # column. Hand-rolled (not Checkbox()) because the wrapper Label must
-            # carry data-fc-granularity-wrap + hidden; the input reuses Checkbox's
-            # utility classes so it matches every other checkbox in the app.
-            Label(
-                attributes=[
-                    ("data-fc-granularity-wrap", ""),
-                    (
-                        "class",
-                        "flex items-center gap-1 text-sm text-body cursor-pointer",
-                    ),
-                    *([] if granularity_date else [("hidden", "")]),
-                ],
-                children=[
-                    Element(
-                        "input",
-                        attributes=[
-                            ("type", "checkbox"),
-                            ("data-fc-granularity", ""),
-                            (
-                                "class",
-                                "rounded border-default-medium"
-                                " bg-neutral-secondary-medium text-brand"
-                                " focus:ring-brand cursor-pointer",
-                            ),
-                            *([("checked", "")] if granularity_date else []),
-                        ],
-                    ),
-                    "by day",
-                ],
-            ),
-            Element(
-                "button",
-                attributes=[
-                    ("type", "button"),
-                    ("data-fc-remove", ""),
-                    ("aria-label", "Remove comparison"),
-                    ("class", "p-2 text-body hover:text-red-500 cursor-pointer"),
-                ],
-                children=["✕"],
-            ),
+            "by day",
         ],
-    )
+        Button(
+            type="button",
+            data_fc_remove="",
+            aria_label="Remove comparison",
+            class_="p-2 text-body hover:text-red-500 cursor-pointer",
+        )["✕"],
+    ]
 
 
 def _fc_mode_toggle(mode: str) -> Node:
-    return Div(
-        attributes=[("class", "flex items-center gap-3")],
-        children=[
-            Span(attributes=[("class", _FILTER_LABEL_CLASS)], children=["Match"]),
-            Radio(
-                name="field-comparison-mode",
-                label="All",
-                value="AND",
-                checked=(mode != "OR"),
-                attributes=[("data-fc-mode", "")],
-            ),
-            Radio(
-                name="field-comparison-mode",
-                label="Any",
-                value="OR",
-                checked=(mode == "OR"),
-                attributes=[("data-fc-mode", "")],
-            ),
-        ],
-    )
+    return Div(class_="flex items-center gap-3")[
+        Span(class_=_FILTER_LABEL_CLASS)["Match"],
+        Radio(
+            name="field-comparison-mode",
+            label="All",
+            value="AND",
+            checked=(mode != "OR"),
+            data_fc_mode="",
+        ),
+        Radio(
+            name="field-comparison-mode",
+            label="Any",
+            value="OR",
+            checked=(mode == "OR"),
+            data_fc_mode="",
+        ),
+    ]
 
 
 def FieldComparisonSet(
@@ -863,20 +757,15 @@ def FieldComparisonSet(
         mode=safe_mode,
     )[
         _fc_mode_toggle(safe_mode),
-        Div(
-            attributes=[("data-fc-rows", ""), ("class", "flex flex-col gap-2")],
-            children=[
-                _field_comparison_row(columns, row, SELECT_CLASS) for row in rows
-            ],
-        ),
-        Template(
-            attributes=[("data-fc-row-template", "")],
-            children=[_field_comparison_row(columns, None, SELECT_CLASS)],
-        ),
-        StyledButton(
-            color="gray",
-            attributes=[("data-fc-add", ""), ("class", "self-start")],
-        )["+ Add comparison"],
+        Div(data_fc_rows="", class_="flex flex-col gap-2")[
+            [_field_comparison_row(columns, row, SELECT_CLASS) for row in rows]
+        ],
+        Template(data_fc_row_template="")[
+            _field_comparison_row(columns, None, SELECT_CLASS)
+        ],
+        StyledButton(color="gray", data_fc_add="", class_="self-start")[
+            "+ Add comparison"
+        ],
     ]
 
 
@@ -952,44 +841,29 @@ class _FilterBarBase(BaseComponent):
             preset_list_url=self.preset_list_url,
             preset_save_url=self.preset_save_url,
         )[
-            Div(
-                attributes=[("id", "filter-bar"), ("class", "mb-6")],
-                children=[
-                    _filter_collapse_button(),
-                    Div(
-                        attributes=[
-                            ("id", "filter-bar-body"),
-                            (
-                                "class",
-                                "hidden border border-default-medium rounded-base p-4 "
-                                "bg-neutral-secondary-medium/50",
-                            ),
-                        ],
-                        children=[
-                            Element(
-                                "form",
-                                attributes=[
-                                    ("id", _FILTER_FORM_ID),
-                                ],
-                                children=[
-                                    Input(
-                                        attributes=[
-                                            ("type", "hidden"),
-                                            ("id", _FILTER_INPUT_ID),
-                                            ("name", "filter"),
-                                            # NB: attribute values are escaped, so the
-                                            # raw JSON passes through (no double-escape).
-                                            ("value", self.filter_json),
-                                        ],
-                                    ),
-                                    *self._body_fields(),
-                                    _filter_action_row(),
-                                ],
-                            ),
-                        ],
+            Div(id_="filter-bar", class_="mb-6")[
+                _filter_collapse_button(),
+                Div(
+                    id_="filter-bar-body",
+                    class_=(
+                        "hidden border border-default-medium rounded-base p-4 "
+                        "bg-neutral-secondary-medium/50"
                     ),
+                )[
+                    Form(id_=_FILTER_FORM_ID)[
+                        Input(
+                            type="hidden",
+                            id_=_FILTER_INPUT_ID,
+                            name="filter",
+                            # NB: attribute values are escaped, so the
+                            # raw JSON passes through (no double-escape).
+                            value=self.filter_json,
+                        ),
+                        *self._body_fields(),
+                        _filter_action_row(),
+                    ],
                 ],
-            )
+            ]
         ]
 
 
@@ -1068,255 +942,247 @@ def _game_fields(
     session_emulated_value = _cross_entity_bool(existing, "session_filter", "emulated")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Status",
-                    _enum_filter(
-                        "status",
-                        status_options,
-                        status_choice,
-                        nullable=not Game._meta.get_field("status").has_default(),
-                    ),
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Status",
+                _enum_filter(
+                    "status",
+                    status_options,
+                    status_choice,
+                    nullable=not Game._meta.get_field("status").has_default(),
                 ),
-                _filter_field(
-                    "Platform",
-                    _model_filter(
-                        "platform",
-                        platform_choice,
-                        search_url="/api/platforms/search",
-                        nullable=Game._meta.get_field("platform").null,
-                    ),
+            ),
+            _filter_field(
+                "Platform",
+                _model_filter(
+                    "platform",
+                    platform_choice,
+                    search_url="/api/platforms/search",
+                    nullable=Game._meta.get_field("platform").null,
                 ),
-                _filter_field(
-                    "Platform Group",
-                    _model_filter(
-                        "platform_group",
-                        platform_group_choice,
-                        search_url="/api/platforms/groups",
-                        nullable=False,
-                    ),
+            ),
+            _filter_field(
+                "Platform Group",
+                _model_filter(
+                    "platform_group",
+                    platform_group_choice,
+                    search_url="/api/platforms/groups",
+                    nullable=False,
                 ),
-                _filter_field(
-                    "Device",
-                    _model_filter(
-                        "device",
-                        device_choice,
-                        search_url="/api/devices/search",
-                        nullable=False,
-                        path=["session_filter", "device"],
-                    ),
+            ),
+            _filter_field(
+                "Device",
+                _model_filter(
+                    "device",
+                    device_choice,
+                    search_url="/api/devices/search",
+                    nullable=False,
+                    path=["session_filter", "device"],
                 ),
-                _filter_field(
-                    "Purchase Type",
-                    _enum_filter(
-                        # Element name stays flat (a DOM identifier); the nested
-                        # leaf comes from data-path, decoupled from the name.
-                        "purchase_type",
-                        Purchase.TYPES,
-                        purchase_type_choice,
-                        nullable=False,
-                        path=["purchase_filter", "type"],
-                    ),
+            ),
+            _filter_field(
+                "Purchase Type",
+                _enum_filter(
+                    # Element name stays flat (a DOM identifier); the nested
+                    # leaf comes from data-path, decoupled from the name.
+                    "purchase_type",
+                    Purchase.TYPES,
+                    purchase_type_choice,
+                    nullable=False,
+                    path=["purchase_filter", "type"],
                 ),
-                _filter_field(
-                    "Purchase Ownership",
-                    _enum_filter(
-                        "purchase_ownership_type",
-                        Purchase.OWNERSHIP_TYPES,
-                        purchase_ownership_choice,
-                        nullable=False,
-                        path=["purchase_filter", "ownership_type"],
-                    ),
+            ),
+            _filter_field(
+                "Purchase Ownership",
+                _enum_filter(
+                    "purchase_ownership_type",
+                    Purchase.OWNERSHIP_TYPES,
+                    purchase_ownership_choice,
+                    nullable=False,
+                    path=["purchase_filter", "ownership_type"],
                 ),
-                _filter_field(
-                    "Playevent Note",
-                    StringFilter(
-                        input_name_prefix="filter-playevent_note",
-                        value=playevent_note_value,
-                        modifier=playevent_note_modifier,
-                        placeholder="e.g. Completed, Started",
-                        path=["playevent_filter", "note"],
-                    ),
+            ),
+            _filter_field(
+                "Playevent Note",
+                StringFilter(
+                    input_name_prefix="filter-playevent_note",
+                    value=playevent_note_value,
+                    modifier=playevent_note_modifier,
+                    placeholder="e.g. Completed, Started",
+                    path=["playevent_filter", "note"],
                 ),
-                _filter_field(
-                    "Year",
-                    NumberFilter(
-                        input_name_prefix="filter-year",
-                        value=year.value,
-                        value2=year.value2,
-                        modifier=year.modifier,
-                        placeholder="e.g. 2020",
-                        placeholder2="e.g. 2024",
-                        path=["year_released"],
-                    ),
+            ),
+            _filter_field(
+                "Year",
+                NumberFilter(
+                    input_name_prefix="filter-year",
+                    value=year.value,
+                    value2=year.value2,
+                    modifier=year.modifier,
+                    placeholder="e.g. 2020",
+                    placeholder2="e.g. 2024",
+                    path=["year_released"],
                 ),
-                _filter_field(
-                    "Original Year",
-                    NumberFilter(
-                        input_name_prefix="filter-original-year",
-                        value=original_year.value,
-                        value2=original_year.value2,
-                        modifier=original_year.modifier,
-                        placeholder="e.g. 1985",
-                        placeholder2="e.g. 2010",
-                        path=["original_year_released"],
-                    ),
+            ),
+            _filter_field(
+                "Original Year",
+                NumberFilter(
+                    input_name_prefix="filter-original-year",
+                    value=original_year.value,
+                    value2=original_year.value2,
+                    modifier=original_year.modifier,
+                    placeholder="e.g. 1985",
+                    placeholder2="e.g. 2010",
+                    path=["original_year_released"],
                 ),
-                _filter_field(
-                    "Total playtime",
-                    NumberFilter(
-                        input_name_prefix="filter-playtime-hours",
-                        value=playtime.value,
-                        value2=playtime.value2,
-                        modifier=playtime.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 100",
-                        path=["playtime_hours"],
-                    ),
+            ),
+            _filter_field(
+                "Total playtime",
+                NumberFilter(
+                    input_name_prefix="filter-playtime-hours",
+                    value=playtime.value,
+                    value2=playtime.value2,
+                    modifier=playtime.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 100",
+                    path=["playtime_hours"],
                 ),
-                _filter_field(
-                    "Manual Playtime (hrs)",
-                    NumberFilter(
-                        input_name_prefix="filter-manual-playtime-hours",
-                        value=manual_pt.value,
-                        value2=manual_pt.value2,
-                        modifier=manual_pt.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 10",
-                        path=["manual_playtime_hours"],
-                    ),
+            ),
+            _filter_field(
+                "Manual Playtime (hrs)",
+                NumberFilter(
+                    input_name_prefix="filter-manual-playtime-hours",
+                    value=manual_pt.value,
+                    value2=manual_pt.value2,
+                    modifier=manual_pt.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 10",
+                    path=["manual_playtime_hours"],
                 ),
-                _filter_field(
-                    "Calculated Playtime (hrs)",
-                    NumberFilter(
-                        input_name_prefix="filter-calculated-playtime-hours",
-                        value=calc_pt.value,
-                        value2=calc_pt.value2,
-                        modifier=calc_pt.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 10",
-                        path=["calculated_playtime_hours"],
-                    ),
+            ),
+            _filter_field(
+                "Calculated Playtime (hrs)",
+                NumberFilter(
+                    input_name_prefix="filter-calculated-playtime-hours",
+                    value=calc_pt.value,
+                    value2=calc_pt.value2,
+                    modifier=calc_pt.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 10",
+                    path=["calculated_playtime_hours"],
                 ),
-                _filter_field(
-                    "Session Count",
-                    NumberFilter(
-                        input_name_prefix="filter-session-count",
-                        value=session_count.value,
-                        value2=session_count.value2,
-                        modifier=session_count.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 50",
-                        path=["session_count"],
-                    ),
+            ),
+            _filter_field(
+                "Session Count",
+                NumberFilter(
+                    input_name_prefix="filter-session-count",
+                    value=session_count.value,
+                    value2=session_count.value2,
+                    modifier=session_count.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 50",
+                    path=["session_count"],
                 ),
-                _filter_field(
-                    "Average Session Duration (mins)",
-                    NumberFilter(
-                        input_name_prefix="filter-session-average",
-                        value=session_avg.value,
-                        value2=session_avg.value2,
-                        modifier=session_avg.modifier,
-                        placeholder="e.g. 10",
-                        placeholder2="e.g. 120",
-                        path=["session_average"],
-                    ),
+            ),
+            _filter_field(
+                "Average Session Duration (mins)",
+                NumberFilter(
+                    input_name_prefix="filter-session-average",
+                    value=session_avg.value,
+                    value2=session_avg.value2,
+                    modifier=session_avg.modifier,
+                    placeholder="e.g. 10",
+                    placeholder2="e.g. 120",
+                    path=["session_average"],
                 ),
-                _filter_field(
-                    "Number of Purchases",
-                    NumberFilter(
-                        input_name_prefix="filter-purchase-count",
-                        value=purchase_count.value,
-                        value2=purchase_count.value2,
-                        modifier=purchase_count.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 5",
-                        path=["purchase_count"],
-                    ),
+            ),
+            _filter_field(
+                "Number of Purchases",
+                NumberFilter(
+                    input_name_prefix="filter-purchase-count",
+                    value=purchase_count.value,
+                    value2=purchase_count.value2,
+                    modifier=purchase_count.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 5",
+                    path=["purchase_count"],
                 ),
-                _filter_field(
-                    "Number of Play Events",
-                    NumberFilter(
-                        input_name_prefix="filter-playevent-count",
-                        value=playevent_count.value,
-                        value2=playevent_count.value2,
-                        modifier=playevent_count.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 5",
-                        path=["playevent_count"],
-                    ),
+            ),
+            _filter_field(
+                "Number of Play Events",
+                NumberFilter(
+                    input_name_prefix="filter-playevent-count",
+                    value=playevent_count.value,
+                    value2=playevent_count.value2,
+                    modifier=playevent_count.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 5",
+                    path=["playevent_count"],
                 ),
-                _filter_field(
-                    "Finished",
-                    DateRangePicker(
-                        label="Finished",
-                        input_name_prefix="filter-finished",
-                        min_value=finished_min,
-                        max_value=finished_max,
-                        path=["playevent_filter", "ended"],
-                    ),
+            ),
+            _filter_field(
+                "Finished",
+                DateRangePicker(
+                    label="Finished",
+                    input_name_prefix="filter-finished",
+                    min_value=finished_min,
+                    max_value=finished_max,
+                    path=["playevent_filter", "ended"],
                 ),
-                _filter_field(
-                    "Total Purchase Price",
-                    NumberFilter(
-                        input_name_prefix="filter-purchase-price-total",
-                        value=price_total.value,
-                        value2=price_total.value2,
-                        modifier=price_total.modifier,
-                        placeholder="0",
-                        placeholder2="e.g. 100",
-                        step="0.01",
-                        path=["purchase_price_total"],
-                    ),
+            ),
+            _filter_field(
+                "Total Purchase Price",
+                NumberFilter(
+                    input_name_prefix="filter-purchase-price-total",
+                    value=price_total.value,
+                    value2=price_total.value2,
+                    modifier=price_total.modifier,
+                    placeholder="0",
+                    placeholder2="e.g. 100",
+                    step="0.01",
+                    path=["purchase_price_total"],
                 ),
-                _filter_field(
-                    "Any Purchase Price",
-                    NumberFilter(
-                        input_name_prefix="filter-purchase-price-any",
-                        value=price_any.value,
-                        value2=price_any.value2,
-                        modifier=price_any.modifier,
-                        placeholder="0",
-                        placeholder2="e.g. 100",
-                        step="0.01",
-                        path=["purchase_filter", "converted_price"],
-                    ),
+            ),
+            _filter_field(
+                "Any Purchase Price",
+                NumberFilter(
+                    input_name_prefix="filter-purchase-price-any",
+                    value=price_any.value,
+                    value2=price_any.value2,
+                    modifier=price_any.modifier,
+                    placeholder="0",
+                    placeholder2="e.g. 100",
+                    step="0.01",
+                    path=["purchase_filter", "converted_price"],
                 ),
-            ],
-        ),
-        Div(
-            attributes=[("class", "flex items-end gap-6 mb-4 flex-wrap")],
-            children=[
-                _filter_boolean_radio(
-                    "filter-mastered", "Mastered", mastered_value, path=["mastered"]
-                ),
-                _filter_boolean_radio(
-                    "filter-purchase-refunded",
-                    "Refunded",
-                    purchase_refunded_value,
-                    path=["purchase_filter"],
-                    relation_child={
-                        "is_refunded": {"value": True, "modifier": "EQUALS"}
-                    },
-                ),
-                _filter_boolean_radio(
-                    "filter-purchase-infinite",
-                    "Infinite",
-                    purchase_infinite_value,
-                    path=["purchase_filter"],
-                    relation_child={"infinite": {"value": True, "modifier": "EQUALS"}},
-                ),
-                _filter_boolean_radio(
-                    "filter-session-emulated",
-                    "Emulated",
-                    session_emulated_value,
-                    path=["session_filter"],
-                    relation_child={"emulated": {"value": True, "modifier": "EQUALS"}},
-                ),
-            ],
-        ),
+            ),
+        ],
+        Div(class_="flex items-end gap-6 mb-4 flex-wrap")[
+            _filter_boolean_radio(
+                "filter-mastered", "Mastered", mastered_value, path=["mastered"]
+            ),
+            _filter_boolean_radio(
+                "filter-purchase-refunded",
+                "Refunded",
+                purchase_refunded_value,
+                path=["purchase_filter"],
+                relation_child={"is_refunded": {"value": True, "modifier": "EQUALS"}},
+            ),
+            _filter_boolean_radio(
+                "filter-purchase-infinite",
+                "Infinite",
+                purchase_infinite_value,
+                path=["purchase_filter"],
+                relation_child={"infinite": {"value": True, "modifier": "EQUALS"}},
+            ),
+            _filter_boolean_radio(
+                "filter-session-emulated",
+                "Emulated",
+                session_emulated_value,
+                path=["session_filter"],
+                relation_child={"emulated": {"value": True, "modifier": "EQUALS"}},
+            ),
+        ],
     ]
     return fields
 
@@ -1355,39 +1221,36 @@ def _session_fields(existing: dict) -> list:
     is_active_value = _parse_bool_nullable(existing, "is_active")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Game",
-                    _model_filter(
-                        "game",
-                        game_choice,
-                        search_url="/api/games/search",
-                        nullable=not Game._meta.get_field("name").has_default(),
-                    ),
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Game",
+                _model_filter(
+                    "game",
+                    game_choice,
+                    search_url="/api/games/search",
+                    nullable=not Game._meta.get_field("name").has_default(),
                 ),
-                _filter_field(
-                    "Device",
-                    _model_filter(
-                        "device",
-                        device_choice,
-                        search_url="/api/devices/search",
-                        nullable=Session._meta.get_field("device").null,
-                    ),
+            ),
+            _filter_field(
+                "Device",
+                _model_filter(
+                    "device",
+                    device_choice,
+                    search_url="/api/devices/search",
+                    nullable=Session._meta.get_field("device").null,
                 ),
-                _filter_field(
-                    "Session Note",
-                    StringFilter(
-                        input_name_prefix="filter-note",
-                        value=note_value,
-                        modifier=note_modifier,
-                        placeholder="e.g. Boss fight, speedrun",
-                        path=["note"],
-                    ),
+            ),
+            _filter_field(
+                "Session Note",
+                StringFilter(
+                    input_name_prefix="filter-note",
+                    value=note_value,
+                    modifier=note_modifier,
+                    placeholder="e.g. Boss fight, speedrun",
+                    path=["note"],
                 ),
-            ],
-        ),
+            ),
+        ],
         _filter_field(
             "Total Duration (hrs)",
             NumberFilter(
@@ -1424,17 +1287,14 @@ def _session_fields(existing: dict) -> list:
                 path=["duration_calculated_hours"],
             ),
         ),
-        Div(
-            attributes=[("class", "flex gap-6 mb-4")],
-            children=[
-                _filter_boolean_radio(
-                    "filter-emulated", "Emulated", emulated_value, path=["emulated"]
-                ),
-                _filter_boolean_radio(
-                    "filter-active", "Active", is_active_value, path=["is_active"]
-                ),
-            ],
-        ),
+        Div(class_="flex gap-6 mb-4")[
+            _filter_boolean_radio(
+                "filter-emulated", "Emulated", emulated_value, path=["emulated"]
+            ),
+            _filter_boolean_radio(
+                "filter-active", "Active", is_active_value, path=["is_active"]
+            ),
+        ],
     ]
     return fields
 
@@ -1482,156 +1342,147 @@ def _purchase_fields(existing: dict) -> list:
     num = _parse_number(existing, "num_purchases")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Game",
+                _model_filter(
+                    "games",
+                    game_choice,
+                    search_url="/api/games/search",
+                    nullable=False,
+                    # games is many-to-many on Purchase: (All) means
+                    # INCLUDES_ALL ("purchase linked to every selected
+                    # game"); (Only) means INCLUDES_ONLY.
+                    m2m_modifiers=_M2M_MODIFIERS,
+                ),
+            ),
+            _filter_field(
+                "Platform",
+                _model_filter(
+                    "platform",
+                    platform_choice,
+                    search_url="/api/platforms/search",
+                    nullable=Purchase._meta.get_field("platform").null,
+                ),
+            ),
+            _filter_field(
+                "Type",
+                _enum_filter(
+                    "type",
+                    type_options,
+                    type_choice,
+                    nullable=not Purchase._meta.get_field("type").has_default(),
+                ),
+            ),
+            _filter_field(
+                "Ownership",
+                _enum_filter(
+                    "ownership_type",
+                    ownership_options,
+                    ownership_choice,
+                    nullable=not Purchase._meta.get_field(
+                        "ownership_type"
+                    ).has_default(),
+                ),
+            ),
+            Div(class_=_FILTER_GRID_CLASS)[
                 _filter_field(
-                    "Game",
-                    _model_filter(
-                        "games",
-                        game_choice,
-                        search_url="/api/games/search",
-                        nullable=False,
-                        # games is many-to-many on Purchase: (All) means
-                        # INCLUDES_ALL ("purchase linked to every selected
-                        # game"); (Only) means INCLUDES_ONLY.
-                        m2m_modifiers=_M2M_MODIFIERS,
+                    "Original Currency",
+                    StringFilter(
+                        input_name_prefix="filter-price_currency",
+                        value=price_currency_value,
+                        modifier=price_currency_modifier,
+                        placeholder="e.g. USD, EUR",
+                        path=["price_currency"],
                     ),
                 ),
                 _filter_field(
-                    "Platform",
-                    _model_filter(
-                        "platform",
-                        platform_choice,
-                        search_url="/api/platforms/search",
-                        nullable=Purchase._meta.get_field("platform").null,
+                    "Converted Currency",
+                    StringFilter(
+                        input_name_prefix="filter-converted_currency",
+                        value=converted_currency_value,
+                        modifier=converted_currency_modifier,
+                        placeholder="e.g. USD, EUR",
+                        path=["converted_currency"],
                     ),
-                ),
-                _filter_field(
-                    "Type",
-                    _enum_filter(
-                        "type",
-                        type_options,
-                        type_choice,
-                        nullable=not Purchase._meta.get_field("type").has_default(),
-                    ),
-                ),
-                _filter_field(
-                    "Ownership",
-                    _enum_filter(
-                        "ownership_type",
-                        ownership_options,
-                        ownership_choice,
-                        nullable=not Purchase._meta.get_field(
-                            "ownership_type"
-                        ).has_default(),
-                    ),
-                ),
-                Div(
-                    attributes=[("class", _FILTER_GRID_CLASS)],
-                    children=[
-                        _filter_field(
-                            "Original Currency",
-                            StringFilter(
-                                input_name_prefix="filter-price_currency",
-                                value=price_currency_value,
-                                modifier=price_currency_modifier,
-                                placeholder="e.g. USD, EUR",
-                                path=["price_currency"],
-                            ),
-                        ),
-                        _filter_field(
-                            "Converted Currency",
-                            StringFilter(
-                                input_name_prefix="filter-converted_currency",
-                                value=converted_currency_value,
-                                modifier=converted_currency_modifier,
-                                placeholder="e.g. USD, EUR",
-                                path=["converted_currency"],
-                            ),
-                        ),
-                    ],
-                ),
-                _filter_field(
-                    "Purchased",
-                    DateRangePicker(
-                        label="Purchased",
-                        input_name_prefix="filter-date-purchased",
-                        min_value=date_purchased_min,
-                        max_value=date_purchased_max,
-                        path=["date_purchased"],
-                    ),
-                ),
-                _filter_field(
-                    "Refunded",
-                    DateRangeFilter(
-                        label="Refunded",
-                        input_name_prefix="filter-date-refunded",
-                        min_value=date_refunded_min,
-                        max_value=date_refunded_max,
-                        path=["date_refunded"],
-                    ),
-                ),
-                _filter_field(
-                    "Finished",
-                    DateRangePicker(
-                        label="Finished",
-                        input_name_prefix="filter-finished",
-                        min_value=finished_min,
-                        max_value=finished_max,
-                        path=["game_filter", "playevent_filter", "ended"],
-                    ),
-                ),
-                _filter_field(
-                    "Price",
-                    NumberFilter(
-                        input_name_prefix="filter-price",
-                        value=price.value,
-                        value2=price.value2,
-                        modifier=price.modifier,
-                        placeholder="0.00",
-                        placeholder2="100.00",
-                        step="0.01",
-                        path=["price"],
-                    ),
-                ),
-                _filter_field(
-                    "Games in purchase",
-                    NumberFilter(
-                        input_name_prefix="filter-num-purchases",
-                        value=num.value,
-                        value2=num.value2,
-                        modifier=num.modifier,
-                        placeholder="e.g. 1",
-                        placeholder2="e.g. 5",
-                        path=["num_purchases"],
-                    ),
-                ),
-                Div(
-                    attributes=[("class", "flex flex-col items-start gap-4 mb-4")],
-                    children=[
-                        _filter_boolean_radio(
-                            "filter-refunded",
-                            "Refunded",
-                            is_refunded_value,
-                            path=["is_refunded"],
-                        ),
-                        _filter_boolean_radio(
-                            "filter-infinite",
-                            "Infinite",
-                            infinite_value,
-                            path=["infinite"],
-                        ),
-                        _filter_boolean_radio(
-                            "filter-needs-price-update",
-                            "Needs Price Update",
-                            needs_price_update_value,
-                            path=["needs_price_update"],
-                        ),
-                    ],
                 ),
             ],
-        ),
+            _filter_field(
+                "Purchased",
+                DateRangePicker(
+                    label="Purchased",
+                    input_name_prefix="filter-date-purchased",
+                    min_value=date_purchased_min,
+                    max_value=date_purchased_max,
+                    path=["date_purchased"],
+                ),
+            ),
+            _filter_field(
+                "Refunded",
+                DateRangeFilter(
+                    label="Refunded",
+                    input_name_prefix="filter-date-refunded",
+                    min_value=date_refunded_min,
+                    max_value=date_refunded_max,
+                    path=["date_refunded"],
+                ),
+            ),
+            _filter_field(
+                "Finished",
+                DateRangePicker(
+                    label="Finished",
+                    input_name_prefix="filter-finished",
+                    min_value=finished_min,
+                    max_value=finished_max,
+                    path=["game_filter", "playevent_filter", "ended"],
+                ),
+            ),
+            _filter_field(
+                "Price",
+                NumberFilter(
+                    input_name_prefix="filter-price",
+                    value=price.value,
+                    value2=price.value2,
+                    modifier=price.modifier,
+                    placeholder="0.00",
+                    placeholder2="100.00",
+                    step="0.01",
+                    path=["price"],
+                ),
+            ),
+            _filter_field(
+                "Games in purchase",
+                NumberFilter(
+                    input_name_prefix="filter-num-purchases",
+                    value=num.value,
+                    value2=num.value2,
+                    modifier=num.modifier,
+                    placeholder="e.g. 1",
+                    placeholder2="e.g. 5",
+                    path=["num_purchases"],
+                ),
+            ),
+            Div(class_="flex flex-col items-start gap-4 mb-4")[
+                _filter_boolean_radio(
+                    "filter-refunded",
+                    "Refunded",
+                    is_refunded_value,
+                    path=["is_refunded"],
+                ),
+                _filter_boolean_radio(
+                    "filter-infinite",
+                    "Infinite",
+                    infinite_value,
+                    path=["infinite"],
+                ),
+                _filter_boolean_radio(
+                    "filter-needs-price-update",
+                    "Needs Price Update",
+                    needs_price_update_value,
+                    path=["needs_price_update"],
+                ),
+            ],
+        ],
     ]
     return fields
 
@@ -1655,20 +1506,17 @@ def _device_fields(existing: dict) -> list:
     type_choice = _filter_get_choice(existing, "type")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Device Type",
-                    _enum_filter(
-                        "type",
-                        type_options,
-                        type_choice,
-                        nullable=True,
-                    ),
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Device Type",
+                _enum_filter(
+                    "type",
+                    type_options,
+                    type_choice,
+                    nullable=True,
                 ),
-            ],
-        ),
+            ),
+        ],
     ]
     return fields
 
@@ -1692,31 +1540,28 @@ def _platform_fields(existing: dict) -> list:
     group_modifier = existing.get("group", {}).get("modifier", "EQUALS")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Platform Name",
-                    StringFilter(
-                        input_name_prefix="filter-name",
-                        value=name_value,
-                        modifier=name_modifier,
-                        placeholder="e.g. Nintendo Switch",
-                        path=["name"],
-                    ),
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Platform Name",
+                StringFilter(
+                    input_name_prefix="filter-name",
+                    value=name_value,
+                    modifier=name_modifier,
+                    placeholder="e.g. Nintendo Switch",
+                    path=["name"],
                 ),
-                _filter_field(
-                    "Platform Group",
-                    StringFilter(
-                        input_name_prefix="filter-group",
-                        value=group_value,
-                        modifier=group_modifier,
-                        placeholder="e.g. Nintendo",
-                        path=["group"],
-                    ),
+            ),
+            _filter_field(
+                "Platform Group",
+                StringFilter(
+                    input_name_prefix="filter-group",
+                    value=group_value,
+                    modifier=group_modifier,
+                    placeholder="e.g. Nintendo",
+                    path=["group"],
                 ),
-            ],
-        ),
+            ),
+        ],
     ]
     return fields
 
@@ -1740,20 +1585,17 @@ def _playevent_fields(existing: dict) -> list:
     ended_min, ended_max = _parse_range(existing, "ended")
 
     fields = [
-        Div(
-            attributes=[("class", _FILTER_GRID_CLASS)],
-            children=[
-                _filter_field(
-                    "Game",
-                    _model_filter(
-                        "game",
-                        game_choice,
-                        search_url="/api/games/search",
-                        nullable=False,
-                    ),
+        Div(class_=_FILTER_GRID_CLASS)[
+            _filter_field(
+                "Game",
+                _model_filter(
+                    "game",
+                    game_choice,
+                    search_url="/api/games/search",
+                    nullable=False,
                 ),
-            ],
-        ),
+            ),
+        ],
         _filter_field(
             "Started",
             DateRangePicker(
@@ -1822,9 +1664,7 @@ def StringFilter(
             label=lbl,
             checked=(modifier == mod_val),
             value=mod_val,
-            attributes=[
-                ("data-string-modifier-radio", ""),
-            ],
+            data_string_modifier_radio="",
         )
         for mod_val, lbl in options
     ]
@@ -1852,23 +1692,12 @@ def StringFilter(
         input_attrs.append(("disabled", "true"))
 
     return Div(
-        attributes=[
-            ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "string"),
-        ],
-        children=[
-            Div(
-                attributes=[
-                    (
-                        "class",
-                        "grid grid-cols-2 @md:grid-cols-4 gap-2 py-1",
-                    )
-                ],
-                children=radio_buttons,
-            ),
-            Input(attributes=input_attrs),
-        ],
-    )
+        filter_widget_attributes(path, "string"),
+        class_="flex flex-col gap-2 @container",
+    )[
+        Div(class_="grid grid-cols-2 @md:grid-cols-4 gap-2 py-1")[*radio_buttons],
+        Input(input_attrs),
+    ]
 
 
 # text-sm + px-3 py-2.5 match every other input (canonical size).
@@ -1918,9 +1747,7 @@ def NumberFilter(
             label=lbl,
             checked=(modifier == mod_val),
             value=mod_val,
-            attributes=[
-                ("data-number-modifier-radio", ""),
-            ],
+            data_number_modifier_radio="",
         )
         for mod_val, lbl in options
     ]
@@ -1956,26 +1783,12 @@ def NumberFilter(
         value2_attrs.append(("disabled", "true"))
 
     return Div(
-        attributes=[
-            ("class", "flex flex-col gap-2 @container"),
-            *filter_widget_attributes(path, "number"),
+        filter_widget_attributes(path, "number"),
+        class_="flex flex-col gap-2 @container",
+    )[
+        Div(class_="grid grid-cols-2 @md:grid-cols-4 gap-2 py-1")[*radio_buttons],
+        Div(class_="flex items-center gap-2")[
+            Input(value_attrs, type="number"),
+            Input(value2_attrs, type="number"),
         ],
-        children=[
-            Div(
-                attributes=[
-                    (
-                        "class",
-                        "grid grid-cols-2 @md:grid-cols-4 gap-2 py-1",
-                    )
-                ],
-                children=radio_buttons,
-            ),
-            Div(
-                attributes=[("class", "flex items-center gap-2")],
-                children=[
-                    Input(type="number", attributes=value_attrs),
-                    Input(type="number", attributes=value2_attrs),
-                ],
-            ),
-        ],
-    )
+    ]

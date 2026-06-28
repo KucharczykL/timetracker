@@ -279,10 +279,12 @@ def NavbarMenu(
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
         A,
+        Button,
         Div,
         DropdownLinkItem,
         DropdownSubmenu,
-        Element,
+        Form,
+        Input,
         Li,
         MenuDropdown,
         Safe,
@@ -300,35 +302,23 @@ def NavbarMenu(
         )
 
     theme_toggle = Li(class_="flex items-center")[
-        Element(
-            "button",
-            [
-                ("id", "theme-toggle"),
-                ("type", "button"),
-                (
-                    "class",
-                    "p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 "
-                    "dark:hover:bg-gray-700 focus:outline-hidden focus:ring-4 "
-                    "focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg "
-                    "text-sm hover:cursor-pointer",
-                ),
-            ],
-            Safe(_THEME_TOGGLE_SVGS),
-        )
+        Button(
+            id_="theme-toggle",
+            type="button",
+            class_="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 "
+            "dark:hover:bg-gray-700 focus:outline-hidden focus:ring-4 "
+            "focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg "
+            "text-sm hover:cursor-pointer",
+        )[Safe(_THEME_TOGGLE_SVGS)]
     ]
 
     home = Li()[
         A(
-            [
-                ("href", reverse("games:index")),
-                (
-                    "class",
-                    "block py-2 px-3 text-white bg-blue-700 rounded-sm "
-                    "md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 "
-                    "dark:bg-blue-600 md:dark:bg-transparent",
-                ),
-                ("aria-current", "page"),
-            ]
+            href=reverse("games:index"),
+            class_="block py-2 px-3 text-white bg-blue-700 rounded-sm "
+            "md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 "
+            "dark:bg-blue-600 md:dark:bg-transparent",
+            aria_current="page",
         )["Home"]
     ]
 
@@ -364,33 +354,20 @@ def NavbarMenu(
 
     stats = Li()[
         A(
-            [
-                ("href", reverse("games:stats_by_year", args=[current_year])),
-                ("class", _NAV_LINK_CLASS),
-            ]
+            href=reverse("games:stats_by_year", args=[current_year]),
+            class_=_NAV_LINK_CLASS,
         )["Stats"]
     ]
 
     logout = Li()[
-        Element(
-            "form",
-            [("method", "post"), ("action", reverse("logout"))],
-            [
-                Element(
-                    "input",
-                    [
-                        ("type", "hidden"),
-                        ("name", "csrfmiddlewaretoken"),
-                        ("value", csrf_token),
-                    ],
-                ),
-                Element(
-                    "button",
-                    [("type", "submit"), ("class", _NAV_LINK_CLASS)],
-                    ["Log out"],
-                ),
-            ],
-        )
+        Form(method="post", action=reverse("logout"))[
+            Input(
+                type="hidden",
+                name="csrfmiddlewaretoken",
+                value=csrf_token,
+            ),
+            Button(type="submit", class_=_NAV_LINK_CLASS)["Log out"],
+        ]
     ]
 
     return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[

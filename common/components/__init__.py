@@ -5,6 +5,7 @@ re-exports the public API so ``from common.components import X`` keeps working.
 """
 
 from common.components.core import (
+    AttrsArg,
     BaseComponent,
     Document,
     Element,
@@ -16,6 +17,7 @@ from common.components.core import (
     Safe,
     _render_element,
     collect_media,
+    normalize_attributes,
     randomid,
     render,
 )
@@ -67,6 +69,8 @@ from common.components.filters import (
 )
 from common.components.primitives import (
     H1,
+    H2,
+    H3,
     A,
     AddForm,
     Badge,
@@ -85,6 +89,7 @@ from common.components.primitives import (
     Div,
     ExternalScript,
     ICON_BUTTON_SIZE_CLASS,
+    Form,
     Icon,
     Input,
     Label,
@@ -93,6 +98,7 @@ from common.components.primitives import (
     ModuleScript,
     Nav,
     Option,
+    PageHeading,
     Pill,
     Popover,
     Column,
@@ -160,9 +166,11 @@ __all__ = [
     "Safe",
     "collect_media",
     "render",
+    "AttrsArg",
     "HTMLAttribute",
     "HTMLTag",
     "_render_element",
+    "normalize_attributes",
     "randomid",
     "A",
     "AddForm",
@@ -181,6 +189,9 @@ __all__ = [
     "Div",
     "ExternalScript",
     "H1",
+    "H2",
+    "H3",
+    "PageHeading",
     "ICON_BUTTON_SIZE_CLASS",
     "Icon",
     "Input",
@@ -203,6 +214,7 @@ __all__ = [
     "Label",
     "Li",
     "Caption",
+    "Form",
     "Nav",
     "Table",
     "Tbody",

@@ -108,46 +108,41 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     csrf_token = get_token(request)
 
     data: TableData = {
-        "header_action": Div(
-            children=[
-                SearchField(search_string=search_string),
-                Div(
-                    children=[
-                        A(
-                            href=reverse("games:add_session"),
-                        )[
+        "header_action": Div(class_="flex justify-between")[
+            SearchField(search_string=search_string),
+            Div()[
+                A(
+                    href=reverse("games:add_session"),
+                )[
+                    StyledButton(
+                        icon=True,
+                        size="xs",
+                    )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"]
+                ],
+                A(
+                    href=reverse(
+                        "games:list_sessions_start_session_from_session",
+                        args=[last_session.pk],
+                    ),
+                )[
+                    Popover(
+                        popover_content=last_session.game.name,
+                        children=[
                             StyledButton(
                                 icon=True,
+                                color="gray",
                                 size="xs",
-                            )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"]
+                            )[
+                                Icon("play", size=ICON_BUTTON_SIZE_CLASS),
+                                truncate(f"{last_session.game.name}"),
+                            ]
                         ],
-                        A(
-                            href=reverse(
-                                "games:list_sessions_start_session_from_session",
-                                args=[last_session.pk],
-                            ),
-                            children=Popover(
-                                popover_content=last_session.game.name,
-                                children=[
-                                    StyledButton(
-                                        icon=True,
-                                        color="gray",
-                                        size="xs",
-                                        children=[
-                                            Icon("play", size=ICON_BUTTON_SIZE_CLASS),
-                                            truncate(f"{last_session.game.name}"),
-                                        ],
-                                    )
-                                ],
-                            ),
-                        )
-                        if last_session and last_session.game
-                        else "",
-                    ]
-                ),
+                    )
+                ]
+                if last_session and last_session.game
+                else "",
             ],
-            attributes=[("class", "flex justify-between")],
-        ),
+        ],
         "columns": [
             Column("Name", "name"),
             Column("Date", "date"),

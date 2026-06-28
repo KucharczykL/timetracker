@@ -24,8 +24,9 @@ from common.components import (
     Column,
     CsrfInput,
     Div,
-    Element,
+    Form,
     FormFields,
+    H1,
     Fragment,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
@@ -208,22 +209,16 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
 def _purchase_additional_row() -> SafeText:
     """The 'Submit & Create Session' row shown below the main Submit button."""
-    return Tr(
-        children=[
-            Td(),
-            Td(
-                children=[
-                    StyledButton(
-                        [],
-                        "Submit & Create Session",
-                        color="gray",
-                        type="submit",
-                        name="submit_and_redirect",
-                    )
-                ],
-            ),
+    return Tr()[
+        Td(),
+        Td()[
+            StyledButton(
+                color="gray",
+                type="submit",
+                name="submit_and_redirect",
+            )["Submit & Create Session"]
         ],
-    )
+    ]
 
 
 def _pricing_controls() -> Node:
@@ -235,21 +230,19 @@ def _pricing_controls() -> Node:
     Price is hidden. Toggle/visibility wiring lives in ts/add_purchase.ts; the
     hidden ``pricing_mode`` tells the view which path to take.
     """
-    return Div(attributes=[("id", "pricing-controls")])[
-        Div(attributes=[("id", "separate-prices-row"), ("class", "hidden")])[
+    return Div(id_="pricing-controls")[
+        Div(id_="separate-prices-row", class_="hidden")[
             Checkbox(
                 name="separate_prices",
                 label="Separate price per game",
-                attributes=[("id", "id_separate_prices")],
+                id_="id_separate_prices",
             ),
         ],
         Input(
             type="hidden",
-            attributes=[
-                ("name", "pricing_mode"),
-                ("id", "id_pricing_mode"),
-                ("value", "combined"),
-            ],
+            name="pricing_mode",
+            id_="id_pricing_mode",
+            value="combined",
         ),
         SelectionFields(
             source="games",
@@ -378,49 +371,26 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
         owned += f" (refunded {date_filter(purchase.date_refunded, 'd/m/Y')})"
 
     row_class = "text-slate-500 text-xl"
-    inner = Div(
-        [("class", "flex flex-col gap-5 mb-3")],
-        [
-            Div(
-                [("class", "font-bold font-serif text-slate-500 text-2xl")],
-                [
-                    A(
-                        [],
-                        first_game.name,
-                        href=reverse("games:view_game", args=[first_game.id]),
-                    )
-                ],
-            ),
-            Div([("class", row_class)], [purchase.get_type_display()]),
-            Div([("class", row_class)], [owned]),
-            Div(
-                [("class", row_class)], [PriceConverted([purchase.standardized_price])]
-            ),
-            Div(
-                [("class", row_class)],
-                [
-                    P(
-                        children=[
-                            "Price per game: ",
-                            PriceConverted([floatformat(purchase.price_per_game, 0)]),
-                            f" {purchase.converted_currency}",
-                        ],
-                    )
-                ],
-            ),
-            Div([("class", row_class)], ["Games included in this purchase:"]),
-            Ul(
-                children=[
-                    Li(children=[GameLink(game.id, game.name)])
-                    for game in purchase.games.all()
-                ],
-            ),
+    inner = Div(class_="flex flex-col gap-5 mb-3")[
+        Div(class_="font-bold font-serif text-slate-500 text-2xl")[
+            A(href=reverse("games:view_game", args=[first_game.id]))[first_game.name]
         ],
-    )
-    return Div(
-        [("class", f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")],
-        [inner],
-    )
+        Div(class_=row_class)[purchase.get_type_display()],
+        Div(class_=row_class)[owned],
+        Div(class_=row_class)[PriceConverted([purchase.standardized_price])],
+        Div(class_=row_class)[
+            P()[
+                "Price per game: ",
+                PriceConverted([floatformat(purchase.price_per_game, 0)]),
+                f" {purchase.converted_currency}",
+            ]
+        ],
+        Div(class_=row_class)["Games included in this purchase:"],
+        Ul()[[Li()[GameLink(game.id, game.name)] for game in purchase.games.all()]],
+    ]
+    return Div(class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")[
+        inner
+    ]
 
 
 @login_required
@@ -443,60 +413,39 @@ def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 
 def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
-    form = Element(
-        "form",
-        attributes=[
-            ("hx-post", reverse("games:refund_purchase", args=[purchase_id])),
-            ("hx-target", f"#purchase-row-{purchase_id}"),
-            ("hx-swap", "outerHTML"),
+    form = Form(
+        hx_post=reverse("games:refund_purchase", args=[purchase_id]),
+        hx_target=f"#purchase-row-{purchase_id}",
+        hx_swap="outerHTML",
+    )[
+        CsrfInput(request),
+        P(class_="dark:text-white text-center mt-3 text-sm")[
+            "Games will be marked as abandoned."
         ],
-        children=[
-            CsrfInput(request),
-            P(
-                attributes=[("class", "dark:text-white text-center mt-3 text-sm")],
-                children=["Games will be marked as abandoned."],
-            ),
-            Div(
-                [("class", "items-center mt-5")],
-                [
-                    StyledButton(
-                        [("class", "w-full")],
-                        "Refund",
-                        color="blue",
-                        size="lg",
-                        type="submit",
-                    ),
-                    StyledButton(
-                        [("class", "mt-0 w-full")],
-                        "Cancel",
-                        color="gray",
-                        size="base",
-                        onclick="this.closest('#refund-confirmation-modal').remove()",
-                    ),
-                ],
-            ),
+        Div(class_="items-center mt-5")[
+            StyledButton(
+                class_="w-full",
+                color="blue",
+                size="lg",
+                type="submit",
+            )["Refund"],
+            StyledButton(
+                class_="mt-0 w-full",
+                color="gray",
+                size="base",
+                onclick="this.closest('#refund-confirmation-modal').remove()",
+            )["Cancel"],
         ],
-    )
-    return Modal(
-        "refund-confirmation-modal",
-        children=[
-            Element(
-                "h1",
-                attributes=[
-                    (
-                        "class",
-                        "text-2xl leading-6 font-medium dark:text-white text-center",
-                    )
-                ],
-                children=["Confirm Refund"],
-            ),
-            P(
-                attributes=[("class", "dark:text-white text-center mt-5")],
-                children=["Are you sure you want to mark this purchase as refunded?"],
-            ),
-            form,
+    ]
+    return Modal("refund-confirmation-modal")[
+        H1(class_="text-2xl leading-6 font-medium dark:text-white text-center")[
+            "Confirm Refund"
         ],
-    )
+        P(class_="dark:text-white text-center mt-5")[
+            "Are you sure you want to mark this purchase as refunded?"
+        ],
+        form,
+    ]
 
 
 @login_required
@@ -528,62 +477,39 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
 def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
     count = purchase.num_purchases
-    form = Element(
-        "form",
-        attributes=[("hx-post", reverse("games:split_purchase", args=[purchase.id]))],
-        children=[
-            CsrfInput(request),
-            P(
-                attributes=[("class", "dark:text-white text-center mt-3 text-sm")],
-                children=[
-                    f"Creates {count} separate purchases, one per game, with the "
-                    "price split evenly. Each can then be priced and refunded "
-                    "independently."
-                ],
-            ),
-            Div(
-                [("class", "items-center mt-5")],
-                [
-                    StyledButton(
-                        [("class", "w-full")],
-                        "Split",
-                        color="blue",
-                        size="lg",
-                        type="submit",
-                    ),
-                    StyledButton(
-                        [("class", "mt-0 w-full")],
-                        "Cancel",
-                        color="gray",
-                        size="base",
-                        onclick="this.closest('#split-confirmation-modal').remove()",
-                    ),
-                ],
-            ),
+    form = Form(
+        hx_post=reverse("games:split_purchase", args=[purchase.id]),
+    )[
+        CsrfInput(request),
+        P(class_="dark:text-white text-center mt-3 text-sm")[
+            f"Creates {count} separate purchases, one per game, with the "
+            "price split evenly. Each can then be priced and refunded "
+            "independently."
         ],
-    )
-    return Modal(
-        "split-confirmation-modal",
-        children=[
-            Element(
-                "h1",
-                attributes=[
-                    (
-                        "class",
-                        "text-2xl leading-6 font-medium dark:text-white text-center",
-                    )
-                ],
-                children=["Split purchase"],
-            ),
-            P(
-                attributes=[("class", "dark:text-white text-center mt-5")],
-                children=[
-                    f"Split “{purchase.standardized_name}” into per-game purchases?"
-                ],
-            ),
-            form,
+        Div(class_="items-center mt-5")[
+            StyledButton(
+                class_="w-full",
+                color="blue",
+                size="lg",
+                type="submit",
+            )["Split"],
+            StyledButton(
+                class_="mt-0 w-full",
+                color="gray",
+                size="base",
+                onclick="this.closest('#split-confirmation-modal').remove()",
+            )["Cancel"],
         ],
-    )
+    ]
+    return Modal("split-confirmation-modal")[
+        H1(class_="text-2xl leading-6 font-medium dark:text-white text-center")[
+            "Split purchase"
+        ],
+        P(class_="dark:text-white text-center mt-5")[
+            f"Split “{purchase.standardized_name}” into per-game purchases?"
+        ],
+        form,
+    ]
 
 
 @login_required

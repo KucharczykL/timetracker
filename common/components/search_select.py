@@ -183,7 +183,7 @@ def _data_attributes(data: dict[str, str | int]) -> list[HTMLAttribute]:
 
 
 def _hidden_input(name: str, value) -> Node:
-    return Input(type="hidden", attributes=[("name", name), ("value", str(value))])
+    return Input(type="hidden", name=name, value=str(value))
 
 
 def _label_slot(text: str, *, extra_class: str = "") -> Node:
@@ -199,7 +199,7 @@ _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 def _option_row(option: SearchSelectOption) -> Node:
     return Div(
-        attributes=_data_attributes(option["data"]),
+        _data_attributes(option["data"]),
         data_search_select_option="",
         data_value=str(option["value"]),
         data_label=option["label"],
@@ -222,7 +222,7 @@ def _combobox_children(
     any templates — ready to be placed as children of the caller's container
     element. The shell knows nothing about how individual rows or pills look.
     """
-    search = Input(attributes=search_attributes)
+    search = Input(search_attributes)
 
     no_results = Div(data_search_select_no_results="", class_=_NO_RESULTS_CLASS)[
         "No results"
@@ -272,11 +272,11 @@ def SearchSelect(
         for option in selected:
             pills_children.append(
                 Pill(
-                    option["label"],
+                    _data_attributes(option["data"]),
+                    label=option["label"],
                     value=str(option["value"]),
                     removable=True,
                     label_slot=True,
-                    attributes=_data_attributes(option["data"]),
                 )
             )
             pills_children.append(_hidden_input(name, option["value"]))
@@ -314,7 +314,7 @@ def SearchSelect(
     if multi_select:
         templates.append(
             Template(data_search_select_template="pill")[
-                Pill("", value="", removable=True, label_slot=True)
+                Pill(label="", value="", removable=True, label_slot=True)
             ]
         )
 
@@ -355,7 +355,7 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
         _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
     )
     return Span(
-        attributes=_data_attributes(option["data"]),
+        _data_attributes(option["data"]),
         class_=css,
         data_pill="",
         data_value=str(option["value"]),
