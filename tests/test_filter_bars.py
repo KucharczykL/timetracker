@@ -516,7 +516,6 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('value="true"', purchase_html)
         self.assertIn('value="false"', purchase_html)
 
-
     def test_filter_bar_renders_search_controls(self):
         """The free-text search input + exclude toggle are server-rendered."""
         html = str(
@@ -539,7 +538,7 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('value="Witcher"', html)
         # The checkbox renders with a checked attribute (Checkbox uses checked="true").
         self.assertIn('name="filter-search-exclude"', html)
-        self.assertIn('checked', html)
+        self.assertIn("checked", html)
 
     def test_filter_bar_search_includes_leaves_box_unchecked(self):
         """An INCLUDES search prefills the value but does not check exclude."""
