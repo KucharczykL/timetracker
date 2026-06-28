@@ -2,8 +2,10 @@
 
 from typing import NamedTuple
 
+from django.db import models
+
 from common.components.core import BaseComponent, Element, Node, Safe
-from common.components.custom_elements import _FilterBarElement
+from common.components.custom_elements import _FieldComparisonSet, _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
     Div,
@@ -11,11 +13,16 @@ from common.components.primitives import (
     FilterWidgetPath,
     Input,
     Label,
+    Option,
     Radio,
     RelationChild,
+    Select,
     Span,
+    StyledButton,
+    Template,
     filter_widget_attributes,
 )
+from common.criteria import ComparableColumn, comparable_columns
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
@@ -653,6 +660,214 @@ def _filter_action_row() -> Node:
     )
 
 
+# ── Field-to-field comparison widget (#167) ──────────────────────────────────
+# A set of "left <op> right" rows comparing two columns of the bar's own model,
+# combined by a single AND/OR mode toggle.  The dependent option lists (operator
+# + right column react to the left column's group) and the row serialization live
+# client-side in ts/elements/field-comparison-set.ts and filter-bar.ts.
+#
+# TODO(nested-builder, #168): the AND/OR mode toggle and the single-mode shapes
+# are a stepping stone the nested boolean builder subsumes; the single-row markup
+# (_field_comparison_row) is the permanent part it reuses inside a group node.
+
+
+class FieldComparisonRow(NamedTuple):
+    left: str  # left column name, e.g. "timestamp_end"
+    right: str  # right column name, e.g. "timestamp_start"
+    modifier: str  # a Modifier value, e.g. "LESS_THAN"
+
+
+def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
+    return FieldComparisonRow(
+        left=str(raw.get("left", "")),
+        right=str(raw.get("right", "")),
+        modifier=str(raw.get("modifier") or "EQUALS"),
+    )
+
+
+def _field_comparison_rows(existing: dict) -> tuple[list[FieldComparisonRow], str]:
+    """Read saved comparison rows + mode from a parsed filter.
+
+    Recognises the two shapes the widget emits (see filter-bar.ts): a top-level
+    ``field_comparisons`` list (AND mode), or a single ``{"OR": [...]}`` element
+    in the ``AND`` list whose entries each hold one ``field_comparisons`` (OR
+    mode). AND wins if both are somehow present (a hand-edited degenerate case).
+    Returns ``([], "AND")`` when neither is found.
+    """
+    raw_and = existing.get("field_comparisons")
+    if isinstance(raw_and, list) and raw_and:
+        rows = [_fc_row_from_dict(item) for item in raw_and if isinstance(item, dict)]
+        if rows:
+            return rows, "AND"
+    for element in existing.get("AND", []) or []:
+        if not isinstance(element, dict) or not isinstance(element.get("OR"), list):
+            continue
+        or_rows: list[FieldComparisonRow] = []
+        for node in element["OR"]:
+            if not isinstance(node, dict):
+                continue
+            inner = node.get("field_comparisons")
+            if isinstance(inner, list) and inner and isinstance(inner[0], dict):
+                or_rows.append(_fc_row_from_dict(inner[0]))
+        if or_rows:
+            return or_rows, "OR"
+    return [], "AND"
+
+
+def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[Node]:
+    """The shared left-column ``<option>`` set (right/operator are TS-built)."""
+    options: list[Node] = [Option(attributes=[("value", "")], children=["column…"])]
+    for column in columns:
+        attributes = [("value", column["value"]), ("data-group", column["group"])]
+        if column["value"] == selected:
+            attributes.append(("selected", ""))
+        options.append(Option(attributes=attributes, children=[column["label"]]))
+    return options
+
+
+def _field_comparison_row(
+    columns: list[ComparableColumn],
+    row: FieldComparisonRow | None,
+    select_class: str,
+) -> Node:
+    """One ``left <op> right ✕`` row. ``row=None`` is the blank template row.
+
+    The left column carries the full option set; the operator and right-column
+    selects are rendered empty with the saved value stashed in ``data-selected``
+    — ts/elements/field-comparison-set.ts builds their options from the left
+    column's group and restores the selection. This is the reusable single-row
+    unit (see TODO(nested-builder) above)."""
+    left_value = row.left if row else ""
+    operator_value = row.modifier if row else ""
+    right_value = row.right if row else ""
+    return Div(
+        attributes=[
+            ("data-fc-row", ""),
+            (
+                "class",
+                "grid grid-cols-1 gap-2 items-center "
+                "@md:grid-cols-[1fr_auto_1fr_auto]",
+            ),
+        ],
+        children=[
+            Select(
+                attributes=[("data-fc-left", ""), ("class", select_class)],
+                children=_fc_column_options(columns, left_value),
+            ),
+            Select(
+                attributes=[
+                    ("data-fc-op", ""),
+                    ("data-selected", operator_value),
+                    ("class", select_class),
+                ],
+            ),
+            Select(
+                attributes=[
+                    ("data-fc-right", ""),
+                    ("data-selected", right_value),
+                    ("class", select_class),
+                ],
+            ),
+            Element(
+                "button",
+                attributes=[
+                    ("type", "button"),
+                    ("data-fc-remove", ""),
+                    ("aria-label", "Remove comparison"),
+                    ("class", "p-2 text-body hover:text-red-500 cursor-pointer"),
+                ],
+                children=["✕"],
+            ),
+        ],
+    )
+
+
+def _fc_mode_toggle(mode: str) -> Node:
+    return Div(
+        attributes=[("class", "flex items-center gap-3")],
+        children=[
+            Span(attributes=[("class", _FILTER_LABEL_CLASS)], children=["Match"]),
+            Radio(
+                name="field-comparison-mode",
+                label="All",
+                value="AND",
+                checked=(mode != "OR"),
+                attributes=[("data-fc-mode", "")],
+            ),
+            Radio(
+                name="field-comparison-mode",
+                label="Any",
+                value="OR",
+                checked=(mode == "OR"),
+                attributes=[("data-fc-mode", "")],
+            ),
+        ],
+    )
+
+
+def FieldComparisonSet(
+    *,
+    columns: list[ComparableColumn],
+    rows: list[FieldComparisonRow],
+    mode: str,
+) -> Node:
+    """The field-comparison custom element: a mode toggle, the saved rows, a blank
+    template row for client cloning, and an add button. ``columns`` is embedded as
+    a JSON prop so the TS can build the dependent operator/right options."""
+    import json
+
+    from games.forms import SELECT_CLASS
+
+    safe_mode = mode if mode in ("AND", "OR") else "AND"
+    return _FieldComparisonSet(
+        [
+            *filter_widget_attributes(["field_comparisons"], "field-comparison"),
+            ("class", "flex flex-col gap-3 mt-2"),
+        ],
+        columns=json.dumps(columns),
+        mode=safe_mode,
+    )[
+        _fc_mode_toggle(safe_mode),
+        Div(
+            attributes=[("data-fc-rows", ""), ("class", "flex flex-col gap-2")],
+            children=[
+                _field_comparison_row(columns, row, SELECT_CLASS) for row in rows
+            ],
+        ),
+        Template(
+            attributes=[("data-fc-row-template", "")],
+            children=[_field_comparison_row(columns, None, SELECT_CLASS)],
+        ),
+        StyledButton(
+            color="gray",
+            attributes=[("data-fc-add", ""), ("class", "self-start")],
+        )["+ Add comparison"],
+    ]
+
+
+def _field_comparison_section(
+    existing: dict, model: type[models.Model] | None
+) -> Node | None:
+    """The labelled field-comparison field for a bar, or None when unavailable.
+
+    Omitted when the bar's filter has no comparison model, or when no comparison
+    group has at least two columns (a comparison needs two columns of the SAME
+    group, so otherwise no valid row could be built)."""
+    if model is None:
+        return None
+    columns = comparable_columns(model)
+    group_counts: dict[str, int] = {}
+    for column in columns:
+        group_counts[column["group"]] = group_counts.get(column["group"], 0) + 1
+    if not any(count >= 2 for count in group_counts.values()):
+        return None
+    rows, mode = _field_comparison_rows(existing)
+    return _filter_field(
+        "Field comparisons",
+        FieldComparisonSet(columns=columns, rows=rows, mode=mode),
+    )
+
+
 class _FilterBarBase(BaseComponent):
     """Shared collapsible filter-bar chrome.
 
@@ -681,6 +896,21 @@ class _FilterBarBase(BaseComponent):
     def build_fields(self) -> list:
         """Return the per-entity filter body. Implemented by each subclass."""
         raise NotImplementedError
+
+    def comparison_model(self) -> type[models.Model] | None:
+        """The model whose columns the field-comparison widget compares.
+
+        None (the default) hides the widget; concrete bars override it to return
+        their entity model, mirroring ``OperatorFilter._comparison_model``."""
+        return None
+
+    def _body_fields(self) -> list:
+        """The per-entity fields plus the optional field-comparison section."""
+        fields = list(self.build_fields())
+        section = _field_comparison_section(self.existing, self.comparison_model())
+        if section is not None:
+            fields.append(section)
+        return fields
 
     def render(self) -> Node:
         return _FilterBarElement(
@@ -717,7 +947,7 @@ class _FilterBarBase(BaseComponent):
                                             ("value", self.filter_json),
                                         ],
                                     ),
-                                    *self.build_fields(),
+                                    *self._body_fields(),
                                     _filter_action_row(),
                                 ],
                             ),
@@ -743,6 +973,11 @@ class FilterBar(_FilterBarBase):
 
     def build_fields(self) -> list:
         return _game_fields(self.existing, self.status_options)
+
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import Game
+
+        return Game
 
 
 def _game_fields(
@@ -1064,6 +1299,11 @@ class SessionFilterBar(_FilterBarBase):
     def build_fields(self) -> list:
         return _session_fields(self.existing)
 
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import Session
+
+        return Session
+
 
 def _session_fields(existing: dict) -> list:
     from games.models import Game, Session
@@ -1169,6 +1409,11 @@ class PurchaseFilterBar(_FilterBarBase):
 
     def build_fields(self) -> list:
         return _purchase_fields(self.existing)
+
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import Purchase
+
+        return Purchase
 
 
 def _purchase_fields(existing: dict) -> list:
@@ -1362,6 +1607,11 @@ class DeviceFilterBar(_FilterBarBase):
     def build_fields(self) -> list:
         return _device_fields(self.existing)
 
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import Device
+
+        return Device
+
 
 def _device_fields(existing: dict) -> list:
     from games.models import Device
@@ -1393,6 +1643,11 @@ class PlatformFilterBar(_FilterBarBase):
 
     def build_fields(self) -> list:
         return _platform_fields(self.existing)
+
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import Platform
+
+        return Platform
 
 
 def _platform_fields(existing: dict) -> list:
@@ -1436,6 +1691,11 @@ class PlayEventFilterBar(_FilterBarBase):
 
     def build_fields(self) -> list:
         return _playevent_fields(self.existing)
+
+    def comparison_model(self) -> type[models.Model]:
+        from games.models import PlayEvent
+
+        return PlayEvent
 
 
 def _playevent_fields(existing: dict) -> list:

@@ -597,3 +597,96 @@ class NumberFilterRenderTest(TestCase):
         # EQUALS is the only checked radio when an invalid modifier is given.
         self.assertRegex(html, r'value="EQUALS"[^>]*checked="true"')
         self.assertNotRegex(html, r'value="INCLUDES"')
+
+
+class FieldComparisonWidgetTest(TestCase):
+    """The field-to-field comparison widget (#167): presence in every bar, the
+    embedded column options, and AND/OR prefill round-trip shapes."""
+
+    def _bars(self):
+        from common.components import (
+            DeviceFilterBar,
+            FilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+            PurchaseFilterBar,
+            SessionFilterBar,
+        )
+
+        return [
+            FilterBar,
+            SessionFilterBar,
+            PurchaseFilterBar,
+            DeviceFilterBar,
+            PlatformFilterBar,
+            PlayEventFilterBar,
+        ]
+
+    def test_widget_present_in_every_bar(self):
+        for bar in self._bars():
+            html = str(bar(filter_json=""))
+            self.assertIn("<field-comparison-set", html, bar.__name__)
+            self.assertIn('data-kind="field-comparison"', html, bar.__name__)
+            self.assertIn("data-fc-row-template", html, bar.__name__)
+            self.assertIn("data-fc-add", html, bar.__name__)
+
+    def test_columns_prop_embedded(self):
+        html = str(SessionFilterBar(filter_json=""))
+        # The element's columns prop carries the model's comparable columns as
+        # JSON (escaped into the attribute); the datetime pair is what the issue's
+        # use case compares.
+        self.assertIn("timestamp_end", html)
+        self.assertIn("timestamp_start", html)
+        self.assertIn('mode="AND"', html)
+
+    def test_no_double_escaped_markup(self):
+        # The columns JSON attribute must not introduce escaped element markup.
+        html = str(SessionFilterBar(filter_json=""))
+        for marker in _ESCAPED_TAG_MARKERS:
+            self.assertNotIn(marker, html)
+
+    def test_and_prefill_renders_row(self):
+        filter_json = json.dumps(
+            {
+                "field_comparisons": [
+                    {
+                        "left": "timestamp_end",
+                        "right": "timestamp_start",
+                        "modifier": "LESS_THAN",
+                    }
+                ]
+            }
+        )
+        html = str(SessionFilterBar(filter_json=filter_json))
+        # Template row + the prefilled row.
+        self.assertGreaterEqual(html.count("data-fc-row"), 2)
+        # Saved operator + right column stashed for the TS to restore.
+        self.assertIn('data-selected="LESS_THAN"', html)
+        self.assertIn('data-selected="timestamp_start"', html)
+        # AND mode is the checked toggle.
+        self.assertRegex(html, r'value="AND"[^>]*checked="true"')
+        self.assertNotRegex(html, r'value="OR"[^>]*checked="true"')
+
+    def test_or_prefill_selects_or_mode(self):
+        filter_json = json.dumps(
+            {
+                "AND": [
+                    {
+                        "OR": [
+                            {
+                                "field_comparisons": [
+                                    {
+                                        "left": "timestamp_end",
+                                        "right": "timestamp_start",
+                                        "modifier": "LESS_THAN",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+        html = str(SessionFilterBar(filter_json=filter_json))
+        self.assertRegex(html, r'value="OR"[^>]*checked="true"')
+        self.assertIn('data-selected="LESS_THAN"', html)

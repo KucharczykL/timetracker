@@ -6,6 +6,7 @@
  * preset_save_url) are read from the element's typed attributes via codegen.
  */
 import { readFilterBarProps } from "../generated/props.js";
+import { readFieldComparisonSet } from "./field-comparison-set.js";
 import { readSearchSelect } from "./search-select.js";
 
 interface Criterion {
@@ -253,6 +254,27 @@ function buildFilterJSON(form: HTMLElement): Record<string, unknown> {
     if (kind === "relation-bool") {
       const element = readRelationBoolWidget(widget, path);
       if (element !== null) appendAnd(filter, element);
+      return;
+    }
+
+    // Field-to-field comparison set: a list-valued widget, so it cannot use the
+    // single-leaf setPath model. AND mode writes the top-level field_comparisons
+    // array (each entry AND'd by _apply_operators); OR mode appends one isolated
+    // AND wrapper holding an OR of single-comparison nodes, so the OR never leaks
+    // onto the other top-level criteria.
+    // TODO(nested-builder, #168): the mode toggle + these two shapes are a
+    // stepping stone the recursive tree serializer replaces.
+    if (kind === "field-comparison") {
+      const { mode, comparisons } = readFieldComparisonSet(widget);
+      if (comparisons.length > 0) {
+        if (mode === "OR") {
+          appendAnd(filter, {
+            OR: comparisons.map((comparison) => ({ field_comparisons: [comparison] })),
+          });
+        } else {
+          filter.field_comparisons = comparisons;
+        }
+      }
       return;
     }
 

@@ -56,6 +56,7 @@ from common.components.domain import (
 )
 from common.components.filters import (
     DeviceFilterBar,
+    FieldComparisonSet,
     FilterBar,
     NumberFilter,
     PlatformFilterBar,
@@ -91,12 +92,14 @@ from common.components.primitives import (
     Modal,
     ModuleScript,
     Nav,
+    Option,
     Pill,
     Popover,
     Column,
     PopoverTruncated,
     Radio,
     SearchField,
+    Select,
     Span,
     StaticScript,
     StyledButton,
@@ -240,4 +243,7 @@ __all__ = [
     "PlayEventFilterBar",
     "StringFilter",
     "NumberFilter",
+    "FieldComparisonSet",
+    "Option",
+    "Select",
 ]

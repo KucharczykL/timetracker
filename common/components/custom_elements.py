@@ -153,6 +153,15 @@ register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
 _DateRangePicker = custom_element_builder("date-range-picker")
 
 
+class FieldComparisonSetProps(TypedDict):
+    columns: str  # JSON of list[ComparableColumn] — drives client option building
+    mode: str  # "AND" | "OR" — how the comparison rows combine
+
+
+register_element("field-comparison-set", "FieldComparisonSet", FieldComparisonSetProps)
+_FieldComparisonSet = custom_element_builder("field-comparison-set")
+
+
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which
 # renders it). Its whole contract is two plain attributes already on the anchor
 # (href + data-shift-href), so the props are empty; registration here is

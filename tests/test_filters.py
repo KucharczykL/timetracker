@@ -6,6 +6,7 @@ from dataclasses import field as dc_field
 
 import pytest
 from django.db.models import F, Q
+from django.test import SimpleTestCase as TestCase
 
 from common.criteria import (
     BoolCriterion,
@@ -2667,3 +2668,73 @@ class TestFieldComparisonEndToEnd:
         parsed_filter = parse_game_filter(filter_to_json(game_filter))
         assert parsed_filter is not None
         assert set(Game.objects.filter(parsed_filter.to_q())) == {match}
+
+
+class FieldComparisonPrefillTest(TestCase):
+    """_field_comparison_rows: the two on-disk shapes the widget round-trips."""
+
+    def test_empty(self):
+        from common.components.filters import _field_comparison_rows
+
+        rows, mode = _field_comparison_rows({})
+        self.assertEqual(rows, [])
+        self.assertEqual(mode, "AND")
+
+    def test_and_shape(self):
+        from common.components.filters import _field_comparison_rows
+
+        rows, mode = _field_comparison_rows(
+            {
+                "field_comparisons": [
+                    {"left": "a", "right": "b", "modifier": "LESS_THAN"},
+                    {"left": "c", "right": "d", "modifier": "EQUALS"},
+                ]
+            }
+        )
+        self.assertEqual(mode, "AND")
+        self.assertEqual([r.left for r in rows], ["a", "c"])
+        self.assertEqual(rows[0].modifier, "LESS_THAN")
+
+    def test_or_shape(self):
+        from common.components.filters import _field_comparison_rows
+
+        rows, mode = _field_comparison_rows(
+            {
+                "AND": [
+                    {
+                        "OR": [
+                            {"field_comparisons": [{"left": "a", "right": "b", "modifier": "EQUALS"}]},
+                            {"field_comparisons": [{"left": "c", "right": "d", "modifier": "INCLUDES"}]},
+                        ]
+                    }
+                ]
+            }
+        )
+        self.assertEqual(mode, "OR")
+        self.assertEqual([(r.left, r.right) for r in rows], [("a", "b"), ("c", "d")])
+        self.assertEqual(rows[1].modifier, "INCLUDES")
+
+    def test_and_wins_over_or(self):
+        from common.components.filters import _field_comparison_rows
+
+        rows, mode = _field_comparison_rows(
+            {
+                "field_comparisons": [{"left": "a", "right": "b", "modifier": "EQUALS"}],
+                "AND": [{"OR": [{"field_comparisons": [{"left": "c", "right": "d", "modifier": "EQUALS"}]}]}],
+            }
+        )
+        self.assertEqual(mode, "AND")
+        self.assertEqual(rows[0].left, "a")
+
+    def test_section_none_without_model(self):
+        from common.components.filters import _field_comparison_section
+
+        self.assertIsNone(_field_comparison_section({}, None))
+
+    def test_section_present_for_real_model(self):
+        from common.components.filters import _field_comparison_section
+        from games.models import Session
+
+        node = _field_comparison_section({}, Session)
+        self.assertIsNotNone(node)
+        self.assertIn("field-comparison-set", str(node))
