@@ -230,12 +230,12 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIn("href=", result)
 
     def test_button_returns_safe_text(self):
-        result = str(components.StyledButton([], "click"))
+        result = str(components.StyledButton()["click"])
         self.assertIsInstance(result, SafeText)
         self.assertIn("<button", result)
 
     def test_button_default_colors(self):
-        result = str(components.StyledButton([], "click"))
+        result = str(components.StyledButton()["click"])
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
@@ -686,10 +686,8 @@ class GenericBuilderContractTest(SimpleTestCase):
         self.assertEqual(result, '<div class="x">hi</div>')
 
     def test_reserved_attributes_kwarg_raises(self):
-        # The footgun guard: once the legacy named params are gone (Stage D),
-        # 'attributes'/'children' arriving via **kwargs are rejected rather than
-        # silently rendered as bogus HTML attributes. Tested at the helper now
-        # because the names are still legitimate params during the transition.
+        # The footgun guard: 'attributes'/'children' as htpy kwargs are rejected
+        # rather than silently rendered as bogus HTML attributes.
         from common.components.primitives import _attrs_from_kwargs
 
         with self.assertRaises(TypeError) as ctx:
@@ -701,6 +699,26 @@ class GenericBuilderContractTest(SimpleTestCase):
 
         with self.assertRaises(TypeError):
             _attrs_from_kwargs({"children": "oops"})
+
+    def test_styled_builders_reject_legacy_attributes_kwarg(self):
+        # The guard fires on the styled builders too — they no longer have an
+        # `attributes=` param, so it lands in **kwargs and is rejected.
+        with self.assertRaises(TypeError):
+            components.StyledButton(attributes=[("data-x", "y")])
+        with self.assertRaises(TypeError):
+            components.Input(attributes=[("data-x", "y")])
+        with self.assertRaises(TypeError):
+            components.Pill(label="x", attributes=[("data-x", "y")])
+
+    def test_no_class_token_dedup(self):
+        # class accumulation joins verbatim — it does NOT de-duplicate tokens
+        # (JS-cloned pills rely on byte-for-byte class strings).
+        result = components.normalize_attributes([("class", "a"), ("class", "a")])
+        self.assertEqual(result, [("class", "a a")])
+
+    def test_mapping_attrs_class_accumulates_through_builder(self):
+        result = str(components.Div({"class": "dyn"}, class_="static"))
+        self.assertEqual(result, '<div class="dyn static"></div>')
 
 
 class StyledBuilderContractTest(SimpleTestCase):
@@ -760,10 +778,67 @@ class StyledBuilderContractTest(SimpleTestCase):
     def test_styledbutton_baked_type_wins_over_default_but_kwarg_sets(self):
         self.assertIn('type="submit"', str(components.StyledButton(type="submit")["x"]))
 
+    def test_styledbutton_baked_type_wins_over_caller_attrs(self):
+        # baked attrs come first -> first-wins -> a caller can't override `type`
+        result = str(components.StyledButton([("type", "reset")])["x"])
+        self.assertIn('type="button"', result)
+        self.assertNotIn('type="reset"', result)
+
+    def test_checkbox_baked_name_wins_over_caller_attrs(self):
+        result = str(components.Checkbox(name="real", attrs=[("name", "spoof")]))
+        self.assertIn('name="real"', result)
+        self.assertNotIn('name="spoof"', result)
+        self.assertEqual(result.count("name="), 1)
+
     def test_searchfield_kwargs_merge_onto_form(self):
         result = str(components.SearchField(class_="w-80"))
         self.assertIn("w-80", result)
         self.assertIn("max-w-md", result)  # base form class retained
+
+
+class ModalContractTest(SimpleTestCase):
+    """Modal injects [] children into the inner panel, not the outer backdrop."""
+
+    def test_id_on_backdrop_content_in_panel(self):
+        html = str(components.Modal("m1")[components.Div(class_="body-marker")["BODY"]])
+        # id sits on the outer backdrop (before the panel's max-w-xl class)
+        self.assertIn('id="m1"', html)
+        self.assertLess(html.index('id="m1"'), html.index("max-w-xl"))
+        # children land after the panel class, i.e. inside the panel
+        self.assertLess(html.index("max-w-xl"), html.index("body-marker"))
+        self.assertIn("BODY", html)
+
+    def test_getitem_is_immutable_and_bubbles_media(self):
+        base = components.Modal("m2")
+        filled = base[components.Div().with_media(components.Media(js=("modal-c.js",)))]
+        self.assertIsNot(base, filled)
+        self.assertIn("modal-c.js", components.collect_media(filled).js)
+        # the original, unsubscripted modal has no child media
+        self.assertNotIn("modal-c.js", components.collect_media(base).js)
+
+
+class DropdownActionItemContractTest(SimpleTestCase):
+    """DropdownActionItem: label is the [] slot; htpy kwargs are button hooks."""
+
+    def test_label_and_data_hook_on_button(self):
+        html = str(components.DropdownActionItem(data_add_play="")["Played +1"])
+        self.assertIn("Played +1", html)
+        # the data hook and the label both live on the <button>, not the <li>
+        button = html[html.index("<button") : html.index("</button>")]
+        self.assertIn("data-add-play", button)
+        self.assertIn("Played +1", button)
+        self.assertNotIn("data-add-play", html[: html.index("<button")])
+
+    def test_disabled_branch(self):
+        html = str(components.DropdownActionItem(disabled=True)["x"])
+        self.assertIn("disabled", html)
+        self.assertIn('aria-disabled="true"', html)
+
+    def test_bubbles_media(self):
+        item = components.DropdownActionItem()[
+            components.Div().with_media(components.Media(js=("ddi.js",)))
+        ]
+        self.assertIn("ddi.js", components.collect_media(item).js)
 
 
 class PopoverTruncatedTest(unittest.TestCase):

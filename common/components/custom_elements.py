@@ -427,7 +427,7 @@ class DropdownActionItem(BaseComponent):
         self.disabled = disabled
         self._attrs = attrs
 
-    def __getitem__(self, children: "Children | Node") -> "DropdownActionItem":
+    def __getitem__(self, children: Children) -> "DropdownActionItem":
         return DropdownActionItem(
             as_children(children), disabled=self.disabled, **self._attrs
         )

@@ -216,19 +216,15 @@ def add_game(request: HttpRequest) -> HttpResponse:
             request=request,
             additional_row=Fragment(
                 StyledButton(
-                    [],
-                    "Submit & Create Purchase",
                     color="gray",
                     type="submit",
                     name="submit_and_redirect",
-                ),
+                )["Submit & Create Purchase"],
                 StyledButton(
-                    [],
-                    "Submit & Create Session",
                     color="gray",
                     type="submit",
                     name="submit_and_create_session",
-                ),
+                )["Submit & Create Session"],
             ),
         ),
         title="Add New Game",
@@ -276,19 +272,17 @@ def _delete_game_confirmation_modal(
         )["This action cannot be undone."],
         Div(class_="items-center mt-5")[
             StyledButton(
-                [("class", "w-full")],
-                "Delete",
+                class_="w-full",
                 color="red",
                 size="lg",
                 type="submit",
-            ),
+            )["Delete"],
             StyledButton(
-                [("class", "mt-0 w-full")],
-                "Cancel",
+                class_="mt-0 w-full",
                 color="gray",
                 size="base",
                 onclick=("this.closest('#delete-game-confirmation-modal').remove()"),
-            ),
+            )["Cancel"],
         ],
     ]
     return Modal("delete-game-confirmation-modal")[

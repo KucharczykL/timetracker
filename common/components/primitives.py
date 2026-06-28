@@ -128,8 +128,8 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     """Translate htpy-style attribute kwargs to (name, value) pairs.
 
     ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
-    ``hx-get`` (inner underscores to hyphens); ``True`` -> bare attribute;
-    ``False`` / ``None`` -> omitted."""
+    ``hx-get`` (inner underscores to hyphens); ``True`` -> ``name="name"``
+    (boolean-attribute form); ``False`` / ``None`` -> omitted."""
     for reserved in _RESERVED_ATTR_KWARGS:
         if reserved in attrs:
             raise TypeError(
@@ -336,9 +336,7 @@ def PopoverTruncated(
 
 def StyledButton(
     attrs: "AttrsArg | None" = None,
-    children: Children = None,
     *,
-    attributes: Attributes | None = None,
     size: str = "base",
     icon: bool = False,
     color: str = "blue",
@@ -379,13 +377,8 @@ def StyledButton(
     if name:
         baked.append(("name", name))
 
-    merged = (
-        baked
-        + _coerce_attrs(attributes)
-        + _coerce_attrs(attrs)
-        + _attrs_from_kwargs(kwargs)
-    )
-    return Element("button", merged, children or [])
+    merged = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+    return Element("button", merged)
 
 
 _GROUP_BUTTON_COLORS = {
@@ -558,12 +551,9 @@ def Input(
     attrs: "AttrsArg | None" = None,
     *,
     type: str = "text",
-    attributes: Attributes | None = None,
     **kwargs: object,
 ) -> Element:
-    merged = (
-        _coerce_attrs(attributes) + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
-    )
+    merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
     # ``type`` is a default: an explicit ``type`` already in the merged attrs
     # wins (first-wins), so append the default only when no caller supplied one.
     if not any(name == "type" for name, _ in merged):
@@ -578,7 +568,6 @@ def Checkbox(
     label: str | None = None,
     checked: bool = False,
     value: str = "1",
-    attributes: Attributes | None = None,
     **kwargs: object,
 ) -> Node:
     """A filter-agnostic Checkbox component."""
@@ -593,12 +582,7 @@ def Checkbox(
     ]
     if checked:
         baked.append(("checked", "true"))
-    input_attrs = (
-        baked
-        + _coerce_attrs(attributes)
-        + _coerce_attrs(attrs)
-        + _attrs_from_kwargs(kwargs)
-    )
+    input_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
     input_el = Input(input_attrs, type="checkbox")
     if label is None:
@@ -616,7 +600,6 @@ def Radio(
     label: str | None = None,
     checked: bool = False,
     value: str = "",
-    attributes: Attributes | None = None,
     **kwargs: object,
 ) -> Node:
     """A filter-agnostic Radio component."""
@@ -630,12 +613,7 @@ def Radio(
     ]
     if checked:
         baked.append(("checked", "true"))
-    input_attrs = (
-        baked
-        + _coerce_attrs(attributes)
-        + _coerce_attrs(attrs)
-        + _attrs_from_kwargs(kwargs)
-    )
+    input_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
     input_el = Input(input_attrs, type="radio")
     if label is None:
@@ -665,7 +643,6 @@ def Pill(
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
-    attributes: Attributes | None = None,
     **kwargs: object,
 ) -> Node:
     """A small label pill, optionally removable (× button).
@@ -686,12 +663,7 @@ def Pill(
     ]
     if value != "":
         baked.append(("data-value", str(value)))
-    pill_attrs = (
-        baked
-        + _coerce_attrs(attributes)
-        + _coerce_attrs(attrs)
-        + _attrs_from_kwargs(kwargs)
-    )
+    pill_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
     label_child: "Node | str" = (
         Span(data_search_select_label="")[label] if label_slot else label
@@ -958,7 +930,6 @@ def SearchField(
     search_string: str = "",
     id: str = "search_string",
     placeholder: str = "Search",
-    attributes: Attributes | None = None,
     **kwargs: object,
 ) -> Element:
     """Generate a search form with icon, input field, and submit button.
@@ -967,10 +938,7 @@ def SearchField(
     ``class_`` accumulates onto the base ``max-w-md``).
     """
     form_attrs = (
-        [("class", "max-w-md")]
-        + _coerce_attrs(attributes)
-        + _coerce_attrs(attrs)
-        + _attrs_from_kwargs(kwargs)
+        [("class", "max-w-md")] + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
     )
     return Form(form_attrs)[
         Label(
@@ -1040,7 +1008,7 @@ class Modal(BaseComponent):
         self.modal_id = modal_id
         self._children = as_children(_children)
 
-    def __getitem__(self, children: "Children | Node") -> "Modal":
+    def __getitem__(self, children: Children) -> "Modal":
         return Modal(self.modal_id, as_children(children))
 
     def render(self) -> Node:
