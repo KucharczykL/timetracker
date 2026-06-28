@@ -272,7 +272,7 @@ def SearchSelect(
         for option in selected:
             pills_children.append(
                 Pill(
-                    option["label"],
+                    label=option["label"],
                     value=str(option["value"]),
                     removable=True,
                     label_slot=True,
@@ -314,7 +314,7 @@ def SearchSelect(
     if multi_select:
         templates.append(
             Template(data_search_select_template="pill")[
-                Pill("", value="", removable=True, label_slot=True)
+                Pill(label="", value="", removable=True, label_slot=True)
             ]
         )
 
