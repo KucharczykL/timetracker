@@ -240,6 +240,10 @@ def _combobox_children(
     options_panel = Div(
         attributes=[
             ("data-search-select-options", ""),
+            # Keep the scroller out of the sequential tab order. Chrome makes any
+            # overflowing scroll container keyboard-focusable by default, which
+            # would steal focus from the search input on Tab (issue #119).
+            ("tabindex", "-1"),
             ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
             ("class", options_class),
         ],
@@ -403,6 +407,9 @@ def _filter_action_button(action: str, symbol: str, title: str) -> Node:
         "button",
         attributes=[
             ("type", "button"),
+            # Reachable via row highlight + Enter or mouse; keep every per-row
+            # +/− button out of the sequential tab order (issue #119).
+            ("tabindex", "-1"),
             ("data-search-select-action", action),
             ("class", _FILTER_ACTION_BUTTON_CLASS),
             ("title", title),

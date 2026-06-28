@@ -106,3 +106,64 @@ def test_search_select_typing_replaces_single_select(live_server, page):
 
     hidden_input = page.locator('input[name="games"]')
     assert hidden_input.first.get_attribute("value") == "7"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_tab_does_not_enter_panel(live_server, page):
+    """Regression guard for issue #119: Tab must leave the widget, not land focus
+    on the overflowing options scroller (which Chrome makes keyboard-focusable)."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator("input[data-search-select-search]")
+    search_input.focus()
+
+    page.keyboard.press("Tab")
+
+    focus_inside_panel = page.evaluate(
+        """() => {
+            const active = document.activeElement;
+            return !!(active && active.closest('[data-search-select-options]'));
+        }"""
+    )
+    assert focus_inside_panel is False
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_arrow_and_enter_selects(live_server, page):
+    """Arrow navigation moves the highlight and Enter commits the selection."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator("input[data-search-select-search]")
+    search_input.focus()
+    assert search_input.input_value() == ""
+
+    # On focus the first option (Game A) is auto-highlighted; ArrowDown moves to
+    # the next visible option (Game B), and Enter commits it.
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(50)
+
+    assert search_input.input_value() == "Game B"
+    hidden_input = page.locator('input[name="games"]')
+    assert hidden_input.first.get_attribute("value") == "8"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_type_filters_and_highlights(live_server, page):
+    """Typing filters out non-matching rows and auto-highlights a match."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator("input[data-search-select-search]")
+    search_input.focus()
+    search_input.type("B")
+    page.wait_for_timeout(50)
+
+    game_a_row = page.locator('[data-search-select-option][data-value="7"]')
+    game_b_row = page.locator('[data-search-select-option][data-value="8"]')
+
+    assert game_a_row.evaluate("node => node.style.display") == "none"
+    assert game_b_row.evaluate("node => node.style.display") != "none"
+    assert game_b_row.get_attribute("data-search-select-highlighted") is not None
