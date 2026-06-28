@@ -14,7 +14,9 @@ from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import Any, Literal, Self, TypeVar
 
-from django.db.models import Q
+from django.core.exceptions import FieldDoesNotExist
+from django.db import models
+from django.db.models import F, Q
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -98,6 +100,10 @@ class Modifier(str, Enum):
             cls.NOT_NULL,
         ]
 
+    @classmethod
+    def for_field_comparisons(cls) -> list[Self]:
+        return [cls.EQUALS, cls.NOT_EQUALS, cls.GREATER_THAN, cls.LESS_THAN]
+
 
 # ── Relation match-mode ──────────────────────────────────────────────────────
 
@@ -135,6 +141,8 @@ class _Criterion:
             return None
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
+            if not f.init:
+                continue
             if f.name in data:
                 val = data[f.name]
                 # Coerce string modifier to Modifier enum
@@ -445,9 +453,47 @@ class AggregateCriterion(_Criterion):
         )
 
 
+@dataclass
+class FieldComparisonCriterion(_Criterion):
+    """Compare one model column to another (``left <op> right``) via F() expressions.
+
+    ``left`` and ``right`` are model column names (resolved + type-checked against
+    the filter's model by the base OperatorFilter before to_q runs). Operands are
+    self-contained, so to_q ignores the inherited ``field_name`` argument.
+
+    Null semantics: for NOT_EQUALS, Django compiles ``~Q(left=F(right))`` to
+    ``NOT (left = right AND <IS NOT NULL guard per nullable operand>)``, appending
+    ``left IS NOT NULL`` and/or ``right IS NOT NULL`` *only* for operands declared
+    ``null=True`` (it omits the guard for a non-nullable column as an optimization).
+    So when both operands are nullable the result is symmetric —
+    ``left != right OR left IS NULL OR right IS NULL`` — and a NULL on *either* side
+    *includes* the row. When an operand is declared non-nullable its guard is
+    omitted, so only a NULL on the nullable side includes the row (the non-nullable
+    column is NULL only under schema drift / raw inserts). Ordered comparisons
+    (``<``, ``>``) and EQUALS instead *exclude* NULL rows, because the SQL
+    expression is NULL (unknown) when either operand is NULL.
+    """
+
+    # Shadow the inherited `value` field: FieldComparisonCriterion has no
+    # user-supplied value (operands are `left`/`right`).  init=False keeps
+    # it out of __init__ and from_json iteration, preventing a stray JSON
+    # "value" key from being accepted and creating a roundtrip asymmetry.
+    value: Any = field(default=None, init=False, repr=False)
+    left: str = ""
+    right: str = ""
+    modifier: Modifier = Modifier.EQUALS
+
+    def to_q(self, field_name: str = "") -> Q:  # field_name ignored; operands self-contained
+        return _field_comparison_to_q(self.left, self.right, self.modifier)
+
+    def to_json(self) -> dict[str, Any]:
+        # left/right default to "" — the base to_json would drop them. Force-emit, like BoolCriterion.
+        return {"left": self.left, "right": self.right, "modifier": self.modifier}
+
+
 # ── OperatorFilter base ────────────────────────────────────────────────────
 
-F = TypeVar("F", bound="OperatorFilter")
+FilterType = TypeVar("FilterType", bound="OperatorFilter")
 
 
 # Maps criterion class names (as they appear in dataclass annotations) to the
@@ -462,6 +508,7 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "MultiCriterion": MultiCriterion,
     "ChoiceCriterion": ChoiceCriterion,
     "AggregateCriterion": AggregateCriterion,
+    "FieldComparisonCriterion": FieldComparisonCriterion,
 }
 
 # Registry of OperatorFilter subclasses by name, so from_json can resolve a
@@ -474,6 +521,11 @@ _FILTER_TYPES: dict[str, type["OperatorFilter"]] = {}
 
 # The three sub-filter composition fields, shared by every OperatorFilter.
 _OPERATOR_FIELDS: tuple[str, str, str] = ("AND", "OR", "NOT")
+
+# The dedicated field for field-to-field comparisons on every OperatorFilter.
+# Kept separate from _OPERATOR_FIELDS (a fixed 3-tuple) so the operator-resolution
+# logic is untouched; the from_json/to_json/apply paths branch on this name.
+_COMPARISON_FIELD = "field_comparisons"
 
 
 def _criterion_class_for(
@@ -538,8 +590,11 @@ type RelationChild = dict[
 
 # The widget ``data-kind`` tokens for leaf criteria — one token per value shape;
 # several criterion types share a kind (every numeric criterion → "number"). These
-# are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce.
-type LeafWidgetKind = Literal["string", "number", "date", "bool", "set"]
+# are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce, with
+# one exception: ``"field-comparison"`` is registered to satisfy the
+# _CRITERION_TYPES/_CRITERION_KINDS parity invariant but is never path-reachable —
+# ``field_comparisons`` is a list field, so no path resolves to it (no widget yet).
+type LeafWidgetKind = Literal["string", "number", "date", "bool", "set", "field-comparison"]
 
 # Every widget ``data-kind`` token the filter-bar serializer dispatches on.
 # ``relation-bool`` extends the leaf kinds: it describes not a leaf criterion but
@@ -548,6 +603,29 @@ type LeafWidgetKind = Literal["string", "number", "date", "bool", "set"]
 # leaf resolvers above. See ``filter_widget_attributes`` and
 # ``ts/elements/filter-bar.ts``.
 type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
+
+# The DB type "bucket" used to verify that two columns being compared
+# field-to-field share the same kind (e.g. both "date", both "number").
+# date and datetime are intentionally SEPARATE groups.
+type ComparisonGroup = Literal["date", "datetime", "duration", "number", "string", "bool"]
+
+_GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
+    "DateField": "date",
+    "DateTimeField": "datetime",
+    "DurationField": "duration",
+    "IntegerField": "number",
+    "PositiveIntegerField": "number",
+    "PositiveSmallIntegerField": "number",
+    "PositiveBigIntegerField": "number",
+    "SmallIntegerField": "number",
+    "BigIntegerField": "number",
+    "FloatField": "number",
+    "DecimalField": "number",
+    "CharField": "string",
+    "TextField": "string",
+    "SlugField": "string",  # SlugField.get_internal_type() is "SlugField", not "CharField"
+    "BooleanField": "bool",
+}
 
 
 # Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
@@ -564,6 +642,7 @@ _CRITERION_KINDS: dict[type[_Criterion], LeafWidgetKind] = {
     BoolCriterion: "bool",
     MultiCriterion: "set",
     ChoiceCriterion: "set",
+    FieldComparisonCriterion: "field-comparison",
 }
 
 
@@ -674,6 +753,12 @@ class OperatorFilter:
     OR: Sequence["OperatorFilter"] = field(default_factory=list)
     NOT: Sequence["OperatorFilter"] = field(default_factory=list)
 
+    # Field-to-field comparisons: compare two columns of the filter's own model
+    # (e.g. date_refunded < date_purchased).  Validated at to_q() time via
+    # _comparison_model(); subclasses override that hook (T4).  Inherited by every
+    # concrete filter with no re-declaration needed.
+    field_comparisons: list[FieldComparisonCriterion] = field(default_factory=list)
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Register concrete filter classes so from_json can resolve a
@@ -681,7 +766,7 @@ class OperatorFilter:
         _FILTER_TYPES[cls.__name__] = cls
 
     @classmethod
-    def where(cls: type[F], **lookups: Any) -> F:
+    def where(cls: type[FilterType], **lookups: Any) -> FilterType:
         """Build a filter from Django-``QuerySet.filter()``-style lookups.
 
         Each keyword is ``field__suffix=value`` (or ``field=value`` for the
@@ -727,6 +812,14 @@ class OperatorFilter:
             field_criteria[field_name] = criterion_class(**criterion_arguments)
         return cls(**field_criteria)
 
+    def _comparison_model(self) -> type[models.Model] | None:
+        """The Django model whose columns ``field_comparisons`` reference.
+
+        Returns None (this filter does not support field comparisons). Concrete
+        filter subclasses override this to return their primary model — see T4.
+        """
+        return None
+
     def _apply_operators(self, q: Q) -> Q:
         """Compose this node's sub-filters onto ``q`` (which already holds this
         node's own criteria).
@@ -735,6 +828,10 @@ class OperatorFilter:
         is AND'd, every ``OR`` sub-filter is OR'd, every ``NOT`` sub-filter is
         AND'd-negated. Mixing families on one node composes left-to-right in that
         order (criteria → AND → OR → NOT); the common case uses one family.
+
+        Field comparisons (``field_comparisons``) are validated here so errors
+        surface on the ``to_q()`` path — preserving the "if it parses, to_q won't
+        raise" guarantee when used via ``filter_from_json``.
         """
         for sub in self.AND:
             q &= sub.to_q()
@@ -742,6 +839,31 @@ class OperatorFilter:
             q |= sub.to_q()
         for sub in self.NOT:
             q &= ~sub.to_q()
+        if self.field_comparisons:
+            model = self._comparison_model()
+            if model is None:
+                raise FilterError(
+                    f"{type(self).__name__} does not support field comparisons"
+                )
+            for comparison in self.field_comparisons:
+                if comparison.left == comparison.right:
+                    raise FilterError(
+                        f"field comparison needs two different columns"
+                        f" (got {comparison.left!r} twice)"
+                    )
+                left_group = _comparison_group_for(model, comparison.left)
+                right_group = _comparison_group_for(model, comparison.right)
+                if left_group != right_group:
+                    raise FilterError(
+                        f"cannot compare {comparison.left!r} ({left_group})"
+                        f" to {comparison.right!r} ({right_group})"
+                    )
+                if comparison.modifier not in _allowed_comparison_modifiers(left_group):
+                    raise FilterError(
+                        f"modifier {comparison.modifier} not allowed"
+                        f" for {left_group} comparison"
+                    )
+                q &= comparison.to_q()
         return q
 
     def _criterion_fields(self) -> list[str]:
@@ -781,6 +903,32 @@ class OperatorFilter:
                     kwargs["match"] = RelationMatch(raw)
                 except ValueError as exc:
                     raise FilterError(f"Unknown relation match {raw!r}") from exc
+                continue
+            # Field-comparison list: parse each entry with FieldComparisonCriterion.
+            # null/absent → [], single dict wrapped to list.  Unlike AND/OR/NOT
+            # sub-filters (where a silently-dropped entry tightens the filter),
+            # a dropped *leaf* comparison silently weakens it — returning MORE rows
+            # than intended.  So non-dict entries and unparseable dicts raise
+            # FilterError rather than being silently dropped.
+            if f.name == _COMPARISON_FIELD:
+                if raw is None:
+                    kwargs[f.name] = []
+                else:
+                    items = raw if isinstance(raw, list) else [raw]
+                    parsed_comparisons: list[FieldComparisonCriterion] = []
+                    for item in items:
+                        if not isinstance(item, dict):
+                            raise FilterError(
+                                f"field_comparisons entries must be dicts,"
+                                f" got {type(item).__name__!r}"
+                            )
+                        comparison = FieldComparisonCriterion.from_json(item)
+                        if comparison is None:
+                            raise FilterError(
+                                f"field_comparisons entry could not be parsed: {item!r}"
+                            )
+                        parsed_comparisons.append(comparison)
+                    kwargs[f.name] = parsed_comparisons
                 continue
             # Operator fields are list-valued; handle them before the generic
             # ``raw is None`` guard so a JSON ``null`` (or absent) operator
@@ -835,6 +983,11 @@ class OperatorFilter:
                 continue
             if f.name == "match":
                 continue
+            # Field-comparison list: emit only when non-empty (mirrors operator fields).
+            if f.name == _COMPARISON_FIELD:
+                if v:
+                    result[f.name] = [comparison.to_json() for comparison in v]
+                continue
             # Operator fields are lists; emit a JSON array only when non-empty so
             # an unused operator stays out of the serialized form.
             if f.name in _OPERATOR_FIELDS:
@@ -857,7 +1010,7 @@ class OperatorFilter:
 # ── JSON helpers ───────────────────────────────────────────────────────────
 
 
-def filter_from_json(cls: type[F], json_str: str) -> F | None:
+def filter_from_json(cls: type[FilterType], json_str: str) -> FilterType | None:
     """Deserialize and fully validate a filter from a JSON string.
 
     Usage:
@@ -957,6 +1110,69 @@ def _numeric_to_q(
     if modifier == Modifier.NOT_NULL:
         return Q(**{f"{field_name}__isnull": False})
     raise FilterError(f"Unsupported modifier {modifier} for numeric comparison")
+
+
+def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
+    """Build a Q comparing two model columns: ``left <op> F(right)``.
+
+    Used by field-to-field comparison criteria. Only the four ordered/equality
+    modifiers are supported; anything else raises FilterError. The
+    ``_apply_operators`` caller pre-validates the modifier via
+    ``_allowed_comparison_modifiers`` before calling this function, so the
+    final ``raise FilterError`` is a defensive guard not reached in normal use.
+    """
+    if modifier == Modifier.EQUALS:
+        return Q(**{left: F(right)})
+    if modifier == Modifier.NOT_EQUALS:
+        return ~Q(**{left: F(right)})
+    if modifier == Modifier.GREATER_THAN:
+        return Q(**{f"{left}__gt": F(right)})
+    if modifier == Modifier.LESS_THAN:
+        return Q(**{f"{left}__lt": F(right)})
+    raise FilterError(f"Unsupported modifier {modifier} for field comparison")
+
+
+def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonGroup:
+    """Resolve a model column's comparison group by DB type, or raise FilterError.
+
+    Raises FilterError if the column does not exist, is a relation (FK/M2M/reverse),
+    is a GeneratedField with no resolvable output type, or is of a type with no
+    comparison group (e.g. AutoField pk, JSONField).
+    """
+    try:
+        model_field = model._meta.get_field(column)
+    except FieldDoesNotExist as exc:
+        raise FilterError(f"{model.__name__} has no field {column!r}") from exc
+
+    if model_field.is_relation:
+        raise FilterError(
+            f"{model.__name__}.{column!r} is a relation and is not comparable"
+        )
+
+    if isinstance(model_field, models.GeneratedField):
+        output_field = model_field.output_field
+        if output_field is None:
+            raise FilterError(
+                f"{model.__name__}.{column!r} is a generated field with no output type"
+            )
+        internal_type = output_field.get_internal_type()
+    else:
+        internal_type = model_field.get_internal_type()
+
+    group = _GROUP_BY_INTERNAL_TYPE.get(internal_type)
+    if group is None:
+        raise FilterError(
+            f"{model.__name__}.{column!r} is not a comparable type ({internal_type})"
+        )
+
+    return group
+
+
+def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:
+    """Modifiers valid for a comparison group: bool is equality-only; all others ordered."""
+    if group == "bool":
+        return [Modifier.EQUALS, Modifier.NOT_EQUALS]
+    return Modifier.for_field_comparisons()
 
 
 def duration_hours_to_q(

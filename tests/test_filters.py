@@ -1,19 +1,26 @@
 """Tests for the filtering system."""
 
 import json
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 
 import pytest
-from django.db.models import Q
+from django.db.models import F, Q
 
 from common.criteria import (
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
+    FieldComparisonCriterion,
     FilterError,
     IntCriterion,
     Modifier,
     MultiCriterion,
+    OperatorFilter,
     StringCriterion,
+    _allowed_comparison_modifiers,
+    _comparison_group_for,
+    _field_comparison_to_q,
 )
 from common.components import FilterBar
 from games.filters import (
@@ -1478,3 +1485,913 @@ class TestFilterErrorBoundary:
         result.to_q()  # does not raise
         assert result.session_filter is not None
         result.session_filter.to_q()  # the exact second call game.py makes
+
+
+class TestFieldComparisonCriterion:
+    """Tests for FieldComparisonCriterion and _field_comparison_to_q."""
+
+    # ── _field_comparison_to_q helper ────────────────────────────────────────
+
+    def test_helper_equals(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.EQUALS
+        ) == Q(date_refunded=F("date_purchased"))
+
+    def test_helper_not_equals(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.NOT_EQUALS
+        ) == ~Q(date_refunded=F("date_purchased"))
+
+    def test_helper_greater_than(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.GREATER_THAN
+        ) == Q(date_refunded__gt=F("date_purchased"))
+
+    def test_helper_less_than(self):
+        assert _field_comparison_to_q(
+            "date_refunded", "date_purchased", Modifier.LESS_THAN
+        ) == Q(date_refunded__lt=F("date_purchased"))
+
+    def test_helper_unsupported_modifier_raises(self):
+        with pytest.raises(FilterError, match="Unsupported modifier"):
+            _field_comparison_to_q("date_refunded", "date_purchased", Modifier.BETWEEN)
+
+    # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
+
+    def test_to_q_delegates_to_helper(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_q() == Q(a__lt=F("b"))
+
+    def test_to_q_ignores_field_name_argument(self):
+        """field_name is ignored; operands are self-contained in left/right."""
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_q("ignored_field") == Q(a__lt=F("b"))
+
+    # ── JSON roundtrip ───────────────────────────────────────────────────────
+
+    def test_to_json_emits_left_right_and_modifier(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert criterion.to_json() == {
+            "left": "a",
+            "right": "b",
+            "modifier": Modifier.LESS_THAN,
+        }
+
+    def test_to_json_always_emits_left_right_even_when_empty(self):
+        """left/right default to '' — to_json must force-emit them even at default."""
+        criterion = FieldComparisonCriterion()
+        serialized = criterion.to_json()
+        assert "left" in serialized
+        assert "right" in serialized
+        assert serialized["left"] == ""
+        assert serialized["right"] == ""
+
+    def test_roundtrip_less_than(self):
+        criterion = FieldComparisonCriterion(
+            left="a", right="b", modifier=Modifier.LESS_THAN
+        )
+        assert FieldComparisonCriterion.from_json(criterion.to_json()) == criterion
+
+    def test_roundtrip_default_equals_modifier(self):
+        """Default modifier (EQUALS) must also survive a roundtrip."""
+        criterion = FieldComparisonCriterion(left="x", right="y")
+        restored = FieldComparisonCriterion.from_json(criterion.to_json())
+        assert restored == criterion
+        assert restored.modifier == Modifier.EQUALS
+
+    # ── Modifier.for_field_comparisons ───────────────────────────────────────
+
+    def test_for_field_comparisons(self):
+        assert Modifier.for_field_comparisons() == [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+            Modifier.GREATER_THAN,
+            Modifier.LESS_THAN,
+        ]
+
+
+class TestComparisonGroupResolver:
+    """Tests for _comparison_group_for and _allowed_comparison_modifiers."""
+
+    # ── concrete field → group ───────────────────────────────────────────────
+
+    def test_date_field(self):
+        from games.models import Purchase
+
+        assert _comparison_group_for(Purchase, "date_purchased") == "date"
+
+    def test_datetime_field(self):
+        from games.models import Session
+
+        assert _comparison_group_for(Session, "timestamp_start") == "datetime"
+
+    def test_generated_field_duration(self):
+        """GeneratedField (duration_total) resolves via output_field to 'duration'."""
+        from games.models import Session
+
+        assert _comparison_group_for(Session, "duration_total") == "duration"
+
+    def test_generated_field_number(self):
+        """GeneratedField (days_to_finish) resolves via output_field to 'number'."""
+        from games.models import PlayEvent
+
+        assert _comparison_group_for(PlayEvent, "days_to_finish") == "number"
+
+    def test_float_field(self):
+        from games.models import Purchase
+
+        assert _comparison_group_for(Purchase, "price") == "number"
+
+    def test_integer_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "year_released") == "number"
+
+    def test_char_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "name") == "string"
+
+    def test_bool_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "mastered") == "bool"
+
+    def test_slug_field_is_string(self):
+        """SlugField.get_internal_type() is "SlugField" (not "CharField"); it must
+        still resolve to the string group so e.g. Platform.icon is comparable."""
+        from games.models import Platform
+
+        assert _comparison_group_for(Platform, "icon") == "string"
+
+    # ── excluded columns ────────────────────────────────────────────────────
+
+    def test_fk_relation_raises(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Session, "game")
+
+    def test_m2m_relation_raises(self):
+        from games.models import Purchase
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Purchase, "games")
+
+    def test_auto_pk_raises(self):
+        """AutoField / BigAutoField has no comparison group."""
+        from games.models import Game
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Game, "id")
+
+    def test_nonexistent_column_raises(self):
+        from games.models import Game
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Game, "nonexistent")
+
+    # ── _allowed_comparison_modifiers ────────────────────────────────────────
+
+    def test_bool_group_is_equality_only(self):
+        assert _allowed_comparison_modifiers("bool") == [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+        ]
+
+    def test_date_group_is_ordered(self):
+        assert _allowed_comparison_modifiers("date") == Modifier.for_field_comparisons()
+
+
+# ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
+
+
+@dataclass
+class _PurchaseStub(OperatorFilter):
+    AND: list["_PurchaseStub"] = dc_field(default_factory=list)
+    OR: list["_PurchaseStub"] = dc_field(default_factory=list)
+    NOT: list["_PurchaseStub"] = dc_field(default_factory=list)
+
+    def _comparison_model(self):
+        from games.models import Purchase
+
+        return Purchase
+
+
+@dataclass
+class _NoModelStub(OperatorFilter):
+    """Stub that does NOT override _comparison_model — base returns None."""
+
+    AND: list["_NoModelStub"] = dc_field(default_factory=list)
+    OR: list["_NoModelStub"] = dc_field(default_factory=list)
+    NOT: list["_NoModelStub"] = dc_field(default_factory=list)
+
+
+@pytest.mark.django_db
+class TestFieldComparisonWiring:
+    # 1. Happy path — to_q produces the expected Q
+
+    def test_happy_path_to_q(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert stub.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    # 2. Serialization roundtrip
+
+    def test_to_json_includes_field_comparisons(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        serialized = stub.to_json()
+        assert "field_comparisons" in serialized
+        assert serialized["field_comparisons"] == [
+            {"left": "date_refunded", "right": "date_purchased", "modifier": Modifier.LESS_THAN}
+        ]
+
+    def test_empty_field_comparisons_omitted_from_json(self):
+        stub = _PurchaseStub()
+        assert "field_comparisons" not in stub.to_json()
+
+    def test_roundtrip_restores_equal_object(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        restored = _PurchaseStub.from_json(stub.to_json())
+        assert restored == stub
+
+    # 3. Validation → FilterError via to_q()
+
+    def test_unknown_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="nonexistent",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_cross_group_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="price",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_disallowed_modifier_for_bool_group_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="infinite",
+                    right="needs_price_update",
+                    modifier=Modifier.GREATER_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_self_compare_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_purchased",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_relation_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="games",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_relation_fk_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="platform",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    # 4. No model — base default returns None → FilterError
+
+    def test_no_model_raises(self):
+        stub = _NoModelStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="does not support field comparisons"):
+            stub.to_q()
+
+    # 5. Integration — serialize to JSON, parse back, eager to_q validation
+
+    def test_integration_valid_roundtrip_via_json(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        json_data = stub.to_json()
+        restored = _PurchaseStub.from_json(json_data)
+        assert restored is not None
+        assert restored.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    def test_integration_bad_column_raises_on_to_q(self):
+        bad_json = {
+            "field_comparisons": [
+                {"left": "nonexistent", "right": "date_purchased", "modifier": "LESS_THAN"}
+            ]
+        }
+        parsed = _PurchaseStub.from_json(bad_json)
+        assert parsed is not None
+        with pytest.raises(FilterError):
+            parsed.to_q()
+
+    # 6. Malformed field_comparisons entries — Finding 1 (fail-open robustness)
+
+    def test_null_entry_in_field_comparisons_raises(self):
+        """[null] in field_comparisons raises FilterError instead of silently dropping."""
+        with pytest.raises(FilterError):
+            _PurchaseStub.from_json({"field_comparisons": [None]})
+
+    def test_non_dict_string_entry_raises(self):
+        """A string entry in field_comparisons raises FilterError."""
+        with pytest.raises(FilterError):
+            _PurchaseStub.from_json({"field_comparisons": ["oops"]})
+
+    def test_single_dict_not_wrapped_parses_as_one_comparison(self):
+        """A single dict (not in a list) is wrapped to a one-entry list."""
+        data = {
+            "field_comparisons": {
+                "left": "date_refunded",
+                "right": "date_purchased",
+                "modifier": "LESS_THAN",
+            }
+        }
+        stub = _PurchaseStub.from_json(data)
+        assert stub is not None
+        assert len(stub.field_comparisons) == 1
+        assert stub.field_comparisons[0].left == "date_refunded"
+        assert stub.field_comparisons[0].right == "date_purchased"
+
+    def test_null_field_comparisons_key_parses_to_empty_list(self):
+        """field_comparisons: null → empty list (not an error)."""
+        stub = _PurchaseStub.from_json({"field_comparisons": None})
+        assert stub is not None
+        assert stub.field_comparisons == []
+
+    # 7. Inherited value field shadowed — Finding 3
+
+    def test_stray_value_key_is_not_stored_and_not_re_emitted(self):
+        """A stray 'value' key in JSON is ignored: not stored and not in to_json()."""
+        instance = FieldComparisonCriterion.from_json(
+            {"left": "a", "right": "b", "modifier": "EQUALS", "value": "x"}
+        )
+        assert instance is not None
+        assert "value" not in instance.to_json()
+
+    def test_constructing_with_value_is_rejected(self):
+        """init=False means FieldComparisonCriterion(value=...) raises TypeError."""
+        with pytest.raises(TypeError):
+            FieldComparisonCriterion(value="x")  # type: ignore[call-arg]
+
+
+# ── T4 — per-filter _comparison_model overrides ───────────────────────────────
+
+
+class TestFilterComparisonModels:
+    """T4: each real filter overrides _comparison_model() to return its model."""
+
+    def test_all_six_filters_return_their_model(self):
+        from games.filters import (
+            DeviceFilter,
+            GameFilter,
+            PlayEventFilter,
+            PlatformFilter,
+            PurchaseFilter,
+            SessionFilter,
+        )
+        from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+
+        assert GameFilter()._comparison_model() is Game
+        assert SessionFilter()._comparison_model() is Session
+        assert PurchaseFilter()._comparison_model() is Purchase
+        assert DeviceFilter()._comparison_model() is Device
+        assert PlatformFilter()._comparison_model() is Platform
+        assert PlayEventFilter()._comparison_model() is PlayEvent
+
+    @pytest.mark.django_db
+    def test_purchase_filter_happy_path_to_q(self):
+        from games.filters import PurchaseFilter
+
+        pf = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert pf.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    @pytest.mark.django_db
+    def test_purchase_filter_json_parse_roundtrip(self):
+        from common.criteria import filter_to_json
+        from games.filters import PurchaseFilter, parse_purchase_filter
+
+        pf = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        parsed = parse_purchase_filter(filter_to_json(pf))
+        assert parsed is not None
+        assert len(parsed.field_comparisons) == 1
+        assert parsed.field_comparisons[0].left == "date_refunded"
+        assert parsed.field_comparisons[0].right == "date_purchased"
+        assert parsed.field_comparisons[0].modifier == Modifier.LESS_THAN
+        assert parsed.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    @pytest.mark.django_db
+    def test_cross_group_pair_raises_filter_error_via_parse(self):
+        from games.filters import parse_purchase_filter
+
+        bad = json.dumps(
+            {
+                "field_comparisons": [
+                    {
+                        "left": "date_refunded",
+                        "right": "price",
+                        "modifier": "LESS_THAN",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(FilterError):
+            parse_purchase_filter(bad)
+
+    @pytest.mark.django_db
+    def test_session_filter_comparison_resolves(self):
+        from games.filters import SessionFilter
+
+        sf = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_end",
+                    right="timestamp_start",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start"))
+
+
+# ── T5 — end-to-end DB + integration tests ───────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestFieldComparisonEndToEnd:
+    """T5: DB-backed field-comparison tests through the full parse → to_q → filter path.
+
+    Covers: NULL-operand exclusion, raw-datetime comparison (same calendar day),
+    GeneratedField as a comparison operand, and JSON round-trip through the parser.
+    """
+
+    def _make_platform_and_game(self):
+        """Create a minimal Platform + Game for Session-based tests."""
+        from games.models import Game, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+        game, _ = Game.objects.get_or_create(
+            name="FieldCmpGame", defaults={"platform": platform}
+        )
+        return platform, game
+
+    def test_purchase_refund_before_purchase(self):
+        """date_refunded < date_purchased finds only A.
+
+        B (refund after purchase) and C (NULL date_refunded) are excluded,
+        proving both the comparison and NULL-operand exclusion semantics.
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund BEFORE purchase — the data-error case; must be returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 3, 1),
+            date_refunded=datetime.date(2024, 1, 1),
+        )
+        # B: refund AFTER purchase — normal order; must NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # C: no refund (NULL operand) — SQL comparison against NULL yields no match
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a}
+
+    def test_session_end_before_start_same_day(self):
+        """timestamp_end < timestamp_start finds X (same calendar day, end 22:00 < start 23:00).
+
+        Y (normal order) is excluded. Proves raw-datetime comparison, not date-truncated:
+        __date truncation would make both timestamps equal on the same day and miss X.
+        """
+        import datetime
+
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        _, game = self._make_platform_and_game()
+
+        # X: end BEFORE start on the same calendar day — must be returned
+        session_x = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 1, 23, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 1, 22, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+        # Y: normal session (end after start) — must NOT be returned
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 2, 12, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+
+        session_filter = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_end",
+                    right="timestamp_start",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        result = set(Session.objects.filter(session_filter.to_q()))
+        assert result == {session_x}
+
+    def test_generated_field_as_comparison_operand(self):
+        """duration_total > duration_manual finds only P.
+
+        P has timestamp_start/end 1 hour apart and duration_manual=0, so
+        duration_total (1 h) > duration_manual (0). Q has no timestamp_end
+        (duration_calculated=0) and duration_manual=2 h, so duration_total
+        equals duration_manual and is NOT strictly greater.
+        """
+        import datetime
+        from datetime import timedelta
+
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        _, game = self._make_platform_and_game()
+
+        # P: 1-hour calc, 0 manual → duration_total=1h > duration_manual=0
+        session_p = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 7, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 7, 1, 11, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            duration_manual=timedelta(0),
+        )
+        # Q: no timestamp_end (calculated=0), 2h manual → duration_total=2h == duration_manual=2h
+        Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 7, 2, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            duration_manual=timedelta(hours=2),
+        )
+
+        session_filter = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="duration_total",
+                    right="duration_manual",
+                    modifier=Modifier.GREATER_THAN,
+                )
+            ]
+        )
+        result = set(Session.objects.filter(session_filter.to_q()))
+        assert result == {session_p}
+
+    def test_unknown_right_column_raises(self):
+        """An unknown right-operand raises FilterError via to_q()."""
+        from games.filters import PurchaseFilter
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="nonexistent",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            purchase_filter.to_q()
+
+    def test_not_equals_null_semantics(self):
+        """date_refunded NOT_EQUALS date_purchased:
+        - equal row (B) is excluded by NOT_EQUALS.
+        - NULL row (C) is INCLUDED: Django 6's ~Q on nullable operands generates
+          NOT (date_refunded = date_purchased AND date_refunded IS NOT NULL
+               AND date_purchased IS NOT NULL),
+          i.e. date_refunded != date_purchased OR date_refunded IS NULL
+               OR date_purchased IS NULL.
+        So NOT_EQUALS returns rows A (different dates) and C (NULL date_refunded),
+        but not B (equal dates). This Purchase case only exercises the left-NULL
+        branch because date_purchased is non-nullable; the symmetric right-NULL
+        branch is covered by test_not_equals_null_symmetric (PlayEvent).
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: date_refunded differs from date_purchased → returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # B: date_refunded equals date_purchased → excluded (NOT FALSE = FALSE)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 2, 1),
+            date_refunded=datetime.date(2024, 2, 1),
+        )
+        # C: date_refunded is NULL → included (IS NULL branch of Django's ~Q)
+        purchase_c = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.NOT_EQUALS,
+                )
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a, purchase_c}
+
+    def test_not_equals_null_symmetric(self):
+        """NOT_EQUALS NULL inclusion is symmetric across BOTH operands.
+
+        Django 6 null-guards both sides of the F() comparison, so ~Q includes a
+        row when EITHER operand is NULL — not just the left one. PlayEvent has two
+        nullable date columns (started, ended), letting us exercise the right-NULL
+        branch that the Purchase test cannot (its date_purchased is non-nullable).
+        """
+        import datetime
+
+        from games.filters import PlayEventFilter
+        from games.models import Game, PlayEvent, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="PESym", icon="pesym"
+        )
+        game = Game.objects.create(name="PESymGame", platform=platform)
+
+        # different (both set) → included
+        differ = PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 1, 1),
+            ended=datetime.date(2024, 2, 1),
+        )
+        # equal (both set) → excluded
+        PlayEvent.objects.create(
+            game=game,
+            started=datetime.date(2024, 3, 1),
+            ended=datetime.date(2024, 3, 1),
+        )
+        # left NULL → included
+        left_null = PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
+        # right NULL → included (the symmetric branch)
+        right_null = PlayEvent.objects.create(
+            game=game, started=datetime.date(2024, 5, 1)
+        )
+
+        play_filter = PlayEventFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="started", right="ended", modifier=Modifier.NOT_EQUALS
+                )
+            ]
+        )
+        result = set(PlayEvent.objects.filter(play_filter.to_q()))
+        assert result == {differ, left_null, right_null}
+
+    def test_two_comparisons_both_must_hold(self):
+        """Two field comparisons in one filter AND-accumulate:
+        a row must satisfy BOTH to be returned; satisfying only one is not enough.
+        Proves _apply_operators ANDs rather than replaces.
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund after purchase AND price > converted_price → returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+            price=50.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+        # B: refund after purchase BUT price < converted_price → excluded (fails comparison 2)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+            price=30.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+        # C: price > converted_price BUT no refund (NULL) → excluded (fails comparison 1)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            price=50.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.GREATER_THAN,
+                ),
+                FieldComparisonCriterion(
+                    left="price",
+                    right="converted_price",
+                    modifier=Modifier.GREATER_THAN,
+                ),
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a}
+
+    def test_json_round_trip_purchase_comparison(self):
+        """Serializing and re-parsing the purchase filter queries identically.
+
+        Takes the PurchaseFilter from test_purchase_refund_before_purchase,
+        round-trips it through filter_to_json → parse_purchase_filter, then
+        confirms the parsed filter returns the same single purchase A.
+        """
+        import datetime
+
+        from common.criteria import filter_to_json
+        from games.filters import PurchaseFilter, parse_purchase_filter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund BEFORE purchase — should be returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 3, 1),
+            date_refunded=datetime.date(2024, 1, 1),
+        )
+        # B: refund AFTER purchase — should NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # C: NULL date_refunded — should NOT be returned
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        json_string = filter_to_json(purchase_filter)
+        parsed_filter = parse_purchase_filter(json_string)
+        assert parsed_filter is not None
+        result = set(Purchase.objects.filter(parsed_filter.to_q()))
+        assert result == {purchase_a}
