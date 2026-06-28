@@ -1479,6 +1479,7 @@ class TestFilterErrorBoundary:
         assert result is not None
         result.to_q()  # does not raise
         assert result.session_filter is not None
+        result.session_filter.to_q()  # the exact second call game.py makes
 
 
 class TestFieldComparisonCriterion:
