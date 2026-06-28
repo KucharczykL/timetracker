@@ -34,6 +34,7 @@ from common.criteria import (
     ChoiceCriterion,
     DateCriterion,
     FilterError,
+    FilterField,
     FloatCriterion,
     IntCriterion,
     Modifier,
@@ -41,10 +42,13 @@ from common.criteria import (
     OperatorFilter,
     StringCriterion,
     aggregate_to_q,
-    duration_hours_to_q,
+    bool_isnull_handler,
+    bool_nonzero_duration_handler,
+    duration_hours_handler,
     filter_from_json,
     filter_to_json,
     relation_to_q,
+    search_q,
 )
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
@@ -109,6 +113,23 @@ class GameFilter(OperatorFilter):
     playevent_filter: PlayEventFilter | None = None
     platform_filter: PlatformFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    fields = {
+        "name": FilterField(),
+        "sort_name": FilterField(),
+        "year_released": FilterField(),
+        "original_year_released": FilterField(),
+        "wikidata": FilterField(),
+        "platform": FilterField("platform_id"),
+        "status": FilterField(),
+        "mastered": FilterField(),
+        "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
+        "created_at": FilterField(),
+        "updated_at": FilterField(),
+        "platform_group": FilterField("platform__group"),
+    }
+
     # Uppercase ``Type[...]`` (not the modern ``type[...]``) is deliberate: two
     # filters below (PurchaseFilter, DeviceFilter) declare a field named ``type``
     # that shadows the builtin in annotation scope, so ``type[Purchase]`` fails
@@ -119,36 +140,10 @@ class GameFilter(OperatorFilter):
 
         return Game
 
-    def to_q(self) -> Q:
+    def _extra_q(self) -> Q:
         q = Q()
 
-        # ── individual criteria ──
-        if self.name is not None:
-            q &= self.name.to_q("name")
-        if self.sort_name is not None:
-            q &= self.sort_name.to_q("sort_name")
-        if self.year_released is not None:
-            q &= self.year_released.to_q("year_released")
-        if self.original_year_released is not None:
-            q &= self.original_year_released.to_q("original_year_released")
-        if self.wikidata is not None:
-            q &= self.wikidata.to_q("wikidata")
-        if self.platform is not None:
-            q &= self.platform.to_q("platform_id")
-        if self.status is not None:
-            q &= self.status.to_q("status")
-        if self.mastered is not None:
-            q &= self.mastered.to_q("mastered")
-        if self.playtime_hours is not None:
-            q &= self._playtime_to_q(self.playtime_hours)
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-        if self.updated_at is not None:
-            q &= self.updated_at.to_q("updated_at")
-
-        if self.platform_group is not None:
-            q &= self.platform_group.to_q("platform__group")
-
+        # ── aggregates over the game's relations ──
         if self.session_count is not None:
             from games.models import Game
 
@@ -218,15 +213,8 @@ class GameFilter(OperatorFilter):
             )
 
         # ── free-text search (OR across multiple fields) ──
-        if self.search is not None and self.search.value:
-            search_q = (
-                Q(name__icontains=self.search.value)
-                | Q(sort_name__icontains=self.search.value)
-                | Q(platform__name__icontains=self.search.value)
-            )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
+        if self.search is not None:
+            q &= search_q(self.search, "name", "sort_name", "platform__name")
 
         # Cross-entity sub-filters (ANY/NONE via each sub-filter's match mode)
         if self.session_filter is not None:
@@ -260,17 +248,7 @@ class GameFilter(OperatorFilter):
                 parent_field="platform_id",
             )
 
-        # ── AND / OR / NOT sub-filters (n-ary; see OperatorFilter) ──
-        return self._apply_operators(q)
-
-    @staticmethod
-    def _playtime_to_q(c: IntCriterion) -> Q:
-        return GameFilter._playtime_to_q_for_field(c, "playtime")
-
-    @staticmethod
-    def _playtime_to_q_for_field(c: IntCriterion, field: str) -> Q:
-        """Convert an hours-based criterion to a DurationField Q object."""
-        return duration_hours_to_q(c.value, c.value2, c.modifier, field)
+        return q
 
 
 # ── SessionFilter ──────────────────────────────────────────────────────────
@@ -306,65 +284,49 @@ class SessionFilter(OperatorFilter):
     # Cross-entity: sessions for devices matching these criteria
     device_filter: DeviceFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    fields = {
+        "game": FilterField("game_id"),
+        "device": FilterField("device_id"),
+        "emulated": FilterField(),
+        "note": FilterField(),
+        "duration_total_hours": FilterField(
+            handler=duration_hours_handler("duration_total")
+        ),
+        "duration_manual_hours": FilterField(
+            handler=duration_hours_handler("duration_manual")
+        ),
+        "duration_calculated_hours": FilterField(
+            handler=duration_hours_handler("duration_calculated")
+        ),
+        "is_active": FilterField(handler=bool_isnull_handler("timestamp_end")),
+        # Compare the date portion so a date matches the datetime column.
+        "timestamp_start": FilterField("timestamp_start__date"),
+        "timestamp_end": FilterField("timestamp_end__date"),
+        "is_manual": FilterField(
+            handler=bool_nonzero_duration_handler("duration_manual")
+        ),
+        "created_at": FilterField(),
+    }
+
     def _comparison_model(self) -> Type[Session]:
         from games.models import Session
 
         return Session
 
-    def _duration_to_q(self, c: IntCriterion, field: str) -> Q:
-        """Convert an hours-based criterion to a DurationField Q object."""
-        return duration_hours_to_q(c.value, c.value2, c.modifier, field)
-
-    def to_q(self) -> Q:
-        from datetime import timedelta
-
+    def _extra_q(self) -> Q:
         q = Q()
 
-        if self.game is not None:
-            q &= self.game.to_q("game_id")
-        if self.device is not None:
-            q &= self.device.to_q("device_id")
-        if self.emulated is not None:
-            q &= self.emulated.to_q("emulated")
-        if self.note is not None:
-            q &= self.note.to_q("note")
-        if self.duration_total_hours is not None:
-            q &= self._duration_to_q(self.duration_total_hours, "duration_total")
-        if self.duration_manual_hours is not None:
-            q &= self._duration_to_q(self.duration_manual_hours, "duration_manual")
-        if self.duration_calculated_hours is not None:
-            q &= self._duration_to_q(
-                self.duration_calculated_hours, "duration_calculated"
-            )
-        if self.is_active is not None:
-            if self.is_active.value:
-                q &= Q(timestamp_end__isnull=True)
-            else:
-                q &= Q(timestamp_end__isnull=False)
-        if self.timestamp_start is not None:
-            # Compare the date portion so a date matches the datetime column.
-            q &= self.timestamp_start.to_q("timestamp_start__date")
-        if self.timestamp_end is not None:
-            q &= self.timestamp_end.to_q("timestamp_end__date")
-        if self.is_manual is not None:
-            if self.is_manual.value:
-                q &= ~Q(duration_manual=timedelta(0))
-            else:
-                q &= Q(duration_manual=timedelta(0))
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-
         # Free-text search
-        if self.search is not None and self.search.value:
-            search_q = (
-                Q(game__name__icontains=self.search.value)
-                | Q(game__platform__name__icontains=self.search.value)
-                | Q(device__name__icontains=self.search.value)
-                | Q(device__type__icontains=self.search.value)
+        if self.search is not None:
+            q &= search_q(
+                self.search,
+                "game__name",
+                "game__platform__name",
+                "device__name",
+                "device__type",
             )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
 
         # Cross-entity sub-filters: sessions for matching games / devices
         if self.game_filter is not None:
@@ -387,8 +349,7 @@ class SessionFilter(OperatorFilter):
                 parent_field="device_id",
             )
 
-        # AND / OR / NOT (n-ary; see OperatorFilter)
-        return self._apply_operators(q)
+        return q
 
 
 # ── PurchaseFilter ─────────────────────────────────────────────────────────
@@ -430,59 +391,52 @@ class PurchaseFilter(OperatorFilter):
     # Cross-entity: purchases for platforms matching these criteria
     platform_filter: PlatformFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    # ``games`` (M2M) and ``search`` stay imperative — see ``_IMPERATIVE_CRITERIA``
+    # and ``_extra_q``.
+    fields = {
+        "name": FilterField(),
+        "platform": FilterField("platform_id"),
+        "date_purchased": FilterField(),
+        "date_refunded": FilterField(),
+        "is_refunded": FilterField(
+            handler=bool_isnull_handler("date_refunded", invert=True)
+        ),
+        "price": FilterField(),
+        "converted_price": FilterField(),
+        "price_currency": FilterField(),
+        "num_purchases": FilterField(),
+        "ownership_type": FilterField(),
+        "type": FilterField(),
+        "created_at": FilterField(),
+        "updated_at": FilterField(),
+        "infinite": FilterField(),
+        "needs_price_update": FilterField(),
+        "converted_currency": FilterField(),
+    }
+
+    # ``games`` is a many-to-many handled by ``_games_to_q`` (INCLUDES_ALL/_ONLY
+    # need chained subqueries), so it stays out of ``fields``.
+    _IMPERATIVE_CRITERIA = {"search", "games"}
+
     def _comparison_model(self) -> Type[Purchase]:
         from games.models import Purchase
 
         return Purchase
 
-    def to_q(self) -> Q:
+    def _extra_q(self) -> Q:
         q = Q()
 
-        if self.name is not None:
-            q &= self.name.to_q("name")
-        if self.platform is not None:
-            q &= self.platform.to_q("platform_id")
+        # M2M games: chained subqueries for INCLUDES_ALL/_ONLY keep it out of the
+        # declarative fields table. AND-composed into the same Q, so its position
+        # relative to the simple fields does not affect results.
         if self.games is not None:
             q &= self._games_to_q(self.games)
-        if self.date_purchased is not None:
-            q &= self.date_purchased.to_q("date_purchased")
-        if self.date_refunded is not None:
-            q &= self.date_refunded.to_q("date_refunded")
-        if self.is_refunded is not None:
-            q &= Q(date_refunded__isnull=not self.is_refunded.value)
-        if self.price is not None:
-            q &= self.price.to_q("price")
-        if self.converted_price is not None:
-            q &= self.converted_price.to_q("converted_price")
-        if self.price_currency is not None:
-            q &= self.price_currency.to_q("price_currency")
-        if self.num_purchases is not None:
-            q &= self.num_purchases.to_q("num_purchases")
-        if self.ownership_type is not None:
-            q &= self.ownership_type.to_q("ownership_type")
-        if self.type is not None:
-            q &= self.type.to_q("type")
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-        if self.updated_at is not None:
-            q &= self.updated_at.to_q("updated_at")
-        if self.infinite is not None:
-            q &= self.infinite.to_q("infinite")
-        if self.needs_price_update is not None:
-            q &= self.needs_price_update.to_q("needs_price_update")
-        if self.converted_currency is not None:
-            q &= self.converted_currency.to_q("converted_currency")
 
         # Free-text search
-        if self.search is not None and self.search.value:
-            search_q = (
-                Q(name__icontains=self.search.value)
-                | Q(games__name__icontains=self.search.value)
-                | Q(platform__name__icontains=self.search.value)
-            )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
+        if self.search is not None:
+            q &= search_q(self.search, "name", "games__name", "platform__name")
 
         # Cross-entity sub-filters: purchases for matching games / platforms
         if self.game_filter is not None:
@@ -505,8 +459,7 @@ class PurchaseFilter(OperatorFilter):
                 parent_field="platform_id",
             )
 
-        # AND / OR / NOT (n-ary; see OperatorFilter)
-        return self._apply_operators(q)
+        return q
 
     @staticmethod
     def _games_to_q(criterion: ChoiceCriterion) -> Q:
@@ -595,29 +548,25 @@ class DeviceFilter(OperatorFilter):
     # Cross-entity: Devices that have sessions matching these criteria
     session_filter: SessionFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    fields = {
+        "name": FilterField(),
+        "type": FilterField(),
+        "created_at": FilterField(),
+    }
+
     def _comparison_model(self) -> Type[Device]:
         from games.models import Device
 
         return Device
 
-    def to_q(self) -> Q:
+    def _extra_q(self) -> Q:
         q = Q()
 
-        if self.name is not None:
-            q &= self.name.to_q("name")
-        if self.type is not None:
-            q &= self.type.to_q("type")
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-
         # Free-text search
-        if self.search is not None and self.search.value:
-            search_q = Q(name__icontains=self.search.value) | Q(
-                type__icontains=self.search.value
-            )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
+        if self.search is not None:
+            q &= search_q(self.search, "name", "type")
 
         # Cross-entity sub-filter: devices that have matching sessions
         if self.session_filter is not None:
@@ -629,8 +578,7 @@ class DeviceFilter(OperatorFilter):
                 related_lookup="device_id",
             )
 
-        # AND / OR / NOT (n-ary; see OperatorFilter)
-        return self._apply_operators(q)
+        return q
 
 
 # ── PlatformFilter ─────────────────────────────────────────────────────────
@@ -656,31 +604,26 @@ class PlatformFilter(OperatorFilter):
     game_filter: GameFilter | None = None
     purchase_filter: PurchaseFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    fields = {
+        "name": FilterField(),
+        "group": FilterField(),
+        "icon": FilterField(),
+        "created_at": FilterField(),
+    }
+
     def _comparison_model(self) -> Type[Platform]:
         from games.models import Platform
 
         return Platform
 
-    def to_q(self) -> Q:
+    def _extra_q(self) -> Q:
         q = Q()
 
-        if self.name is not None:
-            q &= self.name.to_q("name")
-        if self.group is not None:
-            q &= self.group.to_q("group")
-        if self.icon is not None:
-            q &= self.icon.to_q("icon")
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-
         # Free-text search
-        if self.search is not None and self.search.value:
-            search_q = Q(name__icontains=self.search.value) | Q(
-                group__icontains=self.search.value
-            )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
+        if self.search is not None:
+            q &= search_q(self.search, "name", "group")
 
         # Cross-entity sub-filters: platforms with matching games / purchases
         if self.game_filter is not None:
@@ -699,8 +642,7 @@ class PlatformFilter(OperatorFilter):
                 related_lookup="platform_id",
             )
 
-        # AND / OR / NOT (n-ary; see OperatorFilter)
-        return self._apply_operators(q)
+        return q
 
 
 # ── PlayEventFilter ────────────────────────────────────────────────────────
@@ -727,35 +669,28 @@ class PlayEventFilter(OperatorFilter):
     # Cross-entity: PlayEvents for games matching these criteria
     game_filter: GameFilter | None = None
 
+    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
+    # reviewable diff (AND-composition makes the order semantically irrelevant).
+    fields = {
+        "game": FilterField("game_id"),
+        "started": FilterField(),
+        "ended": FilterField(),
+        "days_to_finish": FilterField(),
+        "note": FilterField(),
+        "created_at": FilterField(),
+    }
+
     def _comparison_model(self) -> Type[PlayEvent]:
         from games.models import PlayEvent
 
         return PlayEvent
 
-    def to_q(self) -> Q:
+    def _extra_q(self) -> Q:
         q = Q()
 
-        if self.game is not None:
-            q &= self.game.to_q("game_id")
-        if self.started is not None:
-            q &= self.started.to_q("started")
-        if self.ended is not None:
-            q &= self.ended.to_q("ended")
-        if self.days_to_finish is not None:
-            q &= self.days_to_finish.to_q("days_to_finish")
-        if self.note is not None:
-            q &= self.note.to_q("note")
-        if self.created_at is not None:
-            q &= self.created_at.to_q("created_at")
-
         # Free-text search
-        if self.search is not None and self.search.value:
-            search_q = Q(game__name__icontains=self.search.value) | Q(
-                note__icontains=self.search.value
-            )
-            if self.search.modifier == Modifier.EXCLUDES:
-                search_q = ~search_q
-            q &= search_q
+        if self.search is not None:
+            q &= search_q(self.search, "game__name", "note")
 
         # Cross-entity sub-filter: playevents for matching games
         if self.game_filter is not None:
@@ -768,8 +703,7 @@ class PlayEventFilter(OperatorFilter):
                 parent_field="game_id",
             )
 
-        # AND / OR / NOT (n-ary; see OperatorFilter)
-        return self._apply_operators(q)
+        return q
 
 
 # ── Convenience helpers ────────────────────────────────────────────────────

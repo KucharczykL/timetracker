@@ -1,5 +1,6 @@
 """Tests for the filtering system."""
 
+import dataclasses
 import json
 from dataclasses import dataclass
 from dataclasses import field as dc_field
@@ -9,11 +10,13 @@ from django.db.models import F, Q
 from django.test import SimpleTestCase as TestCase
 
 from common.criteria import (
+    AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
     FieldComparisonCriterion,
     FilterError,
+    FilterField,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -21,13 +24,23 @@ from common.criteria import (
     StringCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
+    _criterion_class_for,
     _field_comparison_to_q,
     _maybe_group_for,
+    bool_isnull_handler,
+    bool_nonzero_duration_handler,
     comparable_columns,
+    duration_hours_handler,
+    search_q,
 )
 from common.components import FilterBar
 from games.filters import (
+    DeviceFilter,
     GameFilter,
+    PlatformFilter,
+    PlayEventFilter,
+    PurchaseFilter,
+    SessionFilter,
     parse_game_filter,
     parse_purchase_filter,
     parse_session_filter,
@@ -2758,3 +2771,195 @@ class FieldComparisonPrefillTest(TestCase):
         node = _field_comparison_section({}, Session)
         self.assertIsNotNone(node)
         self.assertIn("field-comparison-set", str(node))
+
+
+# ── Descriptor drift guard (issue #161) ──────────────────────────────────────
+
+
+class TestFilterFieldDescriptors:
+    """Guard the declarative ``fields`` table against drift from the dataclass.
+
+    Each concrete filter's generic ``to_q`` walks ``fields`` for its simple
+    criteria and delegates the rest to ``_extra_q``. These tests assert that
+    every declared criterion field is accounted for exactly once — in ``fields``,
+    as an aggregate, or in ``_IMPERATIVE_CRITERIA`` — so a newly added field can't
+    silently fall through (and thus be ignored by ``to_q``).
+    """
+
+    ALL_FILTERS = [
+        GameFilter,
+        SessionFilter,
+        PurchaseFilter,
+        DeviceFilter,
+        PlatformFilter,
+        PlayEventFilter,
+    ]
+
+    @staticmethod
+    def _declared_criterion_fields(filter_cls) -> set[str]:
+        """Every dataclass field whose annotation resolves to a criterion type."""
+        return {
+            f.name
+            for f in dataclasses.fields(filter_cls)
+            if _criterion_class_for(filter_cls, f.name) is not None
+        }
+
+    @classmethod
+    def _aggregate_fields(cls, filter_cls) -> set[str]:
+        result: set[str] = set()
+        for name in cls._declared_criterion_fields(filter_cls):
+            criterion_cls = _criterion_class_for(filter_cls, name)
+            if criterion_cls is not None and issubclass(
+                criterion_cls, AggregateCriterion
+            ):
+                result.add(name)
+        return result
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_partition_covers_every_criterion_field(self, filter_cls):
+        declared = self._declared_criterion_fields(filter_cls)
+        descriptor_keys = set(filter_cls.fields)
+        aggregates = self._aggregate_fields(filter_cls)
+        imperative = set(filter_cls._IMPERATIVE_CRITERIA)
+        covered = descriptor_keys | aggregates | imperative
+        assert covered == declared, (
+            f"{filter_cls.__name__}: fields∪aggregates∪imperative != declared "
+            f"criterion fields; missing={declared - covered}, "
+            f"extra={covered - declared}"
+        )
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_partition_has_no_overlap(self, filter_cls):
+        descriptor_keys = set(filter_cls.fields)
+        aggregates = self._aggregate_fields(filter_cls)
+        imperative = set(filter_cls._IMPERATIVE_CRITERIA)
+        assert descriptor_keys.isdisjoint(aggregates)
+        assert descriptor_keys.isdisjoint(imperative)
+        assert aggregates.isdisjoint(imperative)
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_descriptor_keys_are_real_criterion_fields(self, filter_cls):
+        declared = self._declared_criterion_fields(filter_cls)
+        for key in filter_cls.fields:
+            assert key in declared, (
+                f"{filter_cls.__name__}.fields[{key!r}] is not a criterion field"
+            )
+
+
+# ── FilterField handlers (issue #161) ────────────────────────────────────────
+
+
+class TestFilterField:
+    """The descriptor's lookup/handler contract."""
+
+    def test_plain_field_defaults_lookup_to_attr_name(self):
+        assert FilterField().to_q("name", StringCriterion(value="x")) == Q(name="x")
+
+    def test_lookup_override(self):
+        assert FilterField("platform_id").to_q(
+            "platform", MultiCriterion(value=[1, 2])
+        ) == Q(platform_id__in=[1, 2])
+
+    def test_lookup_and_handler_together_rejected(self):
+        with pytest.raises(ValueError, match="lookup OR handler"):
+            FilterField("x", handler=lambda c: Q())
+
+
+class TestFilterFieldHandlers:
+    """Each handler factory's Q output, and that the right handler is wired to the
+    field it serves (a plain FilterField regression would pass the drift guard but
+    fail here)."""
+
+    def test_duration_hours_equals_bucket(self):
+        from datetime import timedelta
+
+        handler = duration_hours_handler("duration_total")
+        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS)) == Q(
+            duration_total__gte=timedelta(hours=4),
+            duration_total__lt=timedelta(hours=5),
+        )
+
+    def test_duration_hours_between_passes_value2(self):
+        # The refactor reads value2 via getattr — confirm it actually flows through.
+        from datetime import timedelta
+
+        handler = duration_hours_handler("duration_total")
+        assert handler(IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN)) == Q(
+            duration_total__gte=timedelta(hours=1),
+            duration_total__lte=timedelta(hours=5),
+        )
+
+    def test_bool_isnull_handler_direct(self):
+        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=True)) == Q(
+            timestamp_end__isnull=True
+        )
+        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=False)) == Q(
+            timestamp_end__isnull=False
+        )
+
+    def test_bool_isnull_handler_invert(self):
+        assert bool_isnull_handler("date_refunded", invert=True)(
+            BoolCriterion(value=True)
+        ) == Q(date_refunded__isnull=False)
+        assert bool_isnull_handler("date_refunded", invert=True)(
+            BoolCriterion(value=False)
+        ) == Q(date_refunded__isnull=True)
+
+    def test_bool_nonzero_duration_handler(self):
+        from datetime import timedelta
+
+        handler = bool_nonzero_duration_handler("duration_manual")
+        assert handler(BoolCriterion(value=True)) == ~Q(duration_manual=timedelta(0))
+        assert handler(BoolCriterion(value=False)) == Q(duration_manual=timedelta(0))
+
+    # ── wiring: the field maps to the intended handler via the generic to_q ──
+
+    def test_is_active_wired(self):
+        assert SessionFilter(is_active=BoolCriterion(value=True)).to_q() == Q(
+            timestamp_end__isnull=True
+        )
+
+    def test_is_manual_wired(self):
+        from datetime import timedelta
+
+        assert SessionFilter(is_manual=BoolCriterion(value=True)).to_q() == ~Q(
+            duration_manual=timedelta(0)
+        )
+
+    def test_is_refunded_wired(self):
+        # value=False must select non-refunded (date_refunded IS NULL).
+        assert PurchaseFilter(is_refunded=BoolCriterion(value=False)).to_q() == Q(
+            date_refunded__isnull=True
+        )
+
+    def test_playtime_hours_wired(self):
+        from datetime import timedelta
+
+        assert GameFilter(
+            playtime_hours=IntCriterion(value=2, modifier=Modifier.GREATER_THAN)
+        ).to_q() == Q(playtime__gt=timedelta(hours=2))
+
+
+class TestSearchQHelper:
+    """search_q: empty short-circuit, multi-column OR, EXCLUDES negation."""
+
+    def test_empty_value_no_constraint(self):
+        assert search_q(StringCriterion(value=""), "name", "note") == Q()
+
+    def test_empty_value_excludes_still_no_constraint(self):
+        # Matches the old `if search and search.value` guard: empty value never
+        # negates to zero rows, regardless of modifier.
+        assert (
+            search_q(StringCriterion(value="", modifier=Modifier.EXCLUDES), "name")
+            == Q()
+        )
+
+    def test_multi_column_or(self):
+        assert search_q(StringCriterion(value="x"), "a", "b") == (
+            Q(a__icontains="x") | Q(b__icontains="x")
+        )
+
+    def test_excludes_negates_whole_disjunction(self):
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
+        ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))

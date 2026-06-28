@@ -9,10 +9,10 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
-from typing import Any, Literal, Self, TypedDict, TypeVar
+from typing import Any, ClassVar, Literal, Self, TypedDict, TypeVar
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
@@ -508,6 +508,44 @@ class FieldComparisonCriterion(_Criterion):
         return {"left": self.left, "right": self.right, "modifier": self.modifier}
 
 
+# ── Field descriptors ──────────────────────────────────────────────────────
+
+type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
+type ORMLookup = str  # a Django query path, e.g. "platform__group"
+
+# A custom criterion→Q builder for a filter field whose mapping is not a plain
+# ``criterion.to_q(lookup)`` — e.g. hours→duration conversion or a bool
+# presence/zero test. Built by the factories below (see ``duration_hours_handler``).
+type FieldHandler = Callable[[_Criterion], Q]
+
+
+@dataclass(frozen=True)
+class FilterField:
+    """Declarative attr→ORM-lookup mapping for one filter field.
+
+    Lifts the per-field mapping a filter's ``to_q`` used to do imperatively into a
+    single declarative table (see ``OperatorFilter.fields``). ``lookup`` overrides
+    the ORM path (defaulting to the attribute name, so a plain field needs no
+    argument); ``handler`` supplies bespoke Q logic for fields whose mapping is not
+    a plain ``criterion.to_q(lookup)`` — the hours→duration and bool
+    presence/zero cases. The two are mutually exclusive: a handler is fully
+    self-contained, so a ``lookup`` alongside it would be silently ignored —
+    ``__post_init__`` rejects that misconfiguration at import time.
+    """
+
+    lookup: ORMLookup | None = None
+    handler: FieldHandler | None = None
+
+    def __post_init__(self) -> None:
+        if self.lookup is not None and self.handler is not None:
+            raise ValueError("FilterField takes lookup OR handler, not both")
+
+    def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
+        if self.handler is not None:
+            return self.handler(criterion)
+        return criterion.to_q(self.lookup or attr_name)
+
+
 # ── OperatorFilter base ────────────────────────────────────────────────────
 
 FilterType = TypeVar("FilterType", bound="OperatorFilter")
@@ -780,6 +818,19 @@ class OperatorFilter:
     # concrete filter with no re-declaration needed.
     field_comparisons: list[FieldComparisonCriterion] = field(default_factory=list)
 
+    # Declarative attr→lookup table consumed by the generic ``to_q``. Each concrete
+    # filter overrides this with a ``FilterField`` per simple criterion field (the
+    # single source of truth for the ORM mapping); aggregates, M2M, ``search`` and
+    # relation sub-filters are absent — they live in ``_extra_q``. Declared as a
+    # ClassVar so the dataclass machinery does not treat it as a field.
+    fields: ClassVar[dict[AttrName, FilterField]] = {}
+
+    # Criterion fields deliberately handled imperatively in ``_extra_q`` rather than
+    # via ``fields`` (e.g. the M2M ``games``). ``search`` is here for every filter.
+    # The drift-guard test (tests/test_filters.py) asserts ``fields`` plus this set
+    # plus the aggregate-typed fields partitions every criterion field.
+    _IMPERATIVE_CRITERIA: ClassVar[set[str]] = {"search"}
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Register concrete filter classes so from_json can resolve a
@@ -887,25 +938,30 @@ class OperatorFilter:
                 q &= comparison.to_q()
         return q
 
-    def _criterion_fields(self) -> list[str]:
-        """Return field names that hold a _Criterion instance."""
-        names: list[str] = []
-        for f in dc_fields(self):
-            if f.name in _OPERATOR_FIELDS:
-                continue
-            v = getattr(self, f.name)
-            if isinstance(v, _Criterion):
-                names.append(f.name)
-        return names
-
     def to_q(self) -> Q:
-        """Build a Django Q object from this filter and its sub-filters."""
+        """Build a Django Q object from this filter and its sub-filters.
+
+        Generic for every concrete filter: walk the declarative ``fields`` table
+        (each set criterion mapped to its ORM lookup/handler), then fold in the
+        imperative tail (``_extra_q``: aggregates, M2M, free-text search, relation
+        sub-filters), then the AND/OR/NOT operators and field comparisons.
+        """
         q = Q()
-        for field_name in self._criterion_fields():
-            c = getattr(self, field_name)
-            if c is not None:
-                q &= c.to_q(field_name)
+        for attr_name, descriptor in self.fields.items():
+            criterion = getattr(self, attr_name)
+            if criterion is not None:
+                q &= descriptor.to_q(attr_name, criterion)
+        q &= self._extra_q()
         return self._apply_operators(q)
+
+    def _extra_q(self) -> Q:
+        """Q for criterion fields handled imperatively rather than via ``fields``.
+
+        Default is empty; concrete filters override to add aggregates, the M2M
+        ``games`` handler, free-text ``search``, and relation sub-filters. Kept a
+        separate hook so the generic ``to_q`` never needs overriding.
+        """
+        return Q()
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> Self | None:
@@ -1327,6 +1383,68 @@ def duration_hours_to_q(
     if modifier == Modifier.NOT_NULL:
         return ~Q(**{field_name: timedelta(0)})
     raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
+
+
+# ── Field-handler factories ──────────────────────────────────────────────────
+# Reusable criterion→Q builders for the non-plain ``FilterField`` mappings, so a
+# filter's descriptor table can express hours→duration and bool presence/zero
+# fields declaratively instead of in an imperative ``to_q`` block.
+
+
+def duration_hours_handler(field_name: str) -> FieldHandler:
+    """Map an hours-based ``IntCriterion`` onto a DurationField via timedelta."""
+
+    def handler(c: _Criterion) -> Q:
+        # ``value2`` is the optional upper bound (BETWEEN); only numeric criteria
+        # declare it, so read it None-tolerantly off the base-typed criterion.
+        value2 = getattr(c, "value2", None)
+        return duration_hours_to_q(c.value, value2, c.modifier, field_name)
+
+    return handler
+
+
+def bool_isnull_handler(field_name: str, *, invert: bool = False) -> FieldHandler:
+    """Map a ``BoolCriterion`` onto a ``__isnull`` presence test.
+
+    ``invert=False``: True means the column IS NULL (e.g. is_active → an open
+    session has ``timestamp_end IS NULL``).  ``invert=True``: True means the
+    column IS NOT NULL (e.g. is_refunded → ``date_refunded IS NOT NULL``).
+    """
+    return lambda c: Q(
+        **{f"{field_name}__isnull": (not c.value) if invert else c.value}
+    )
+
+
+def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
+    """Map a ``BoolCriterion`` onto a non-zero DurationField test.
+
+    True selects rows whose duration differs from ``timedelta(0)`` (e.g. is_manual
+    → ``duration_manual`` was entered by hand); False selects the zero rows.
+    """
+    from datetime import timedelta
+
+    return lambda c: (
+        (~Q(**{field_name: timedelta(0)}))
+        if c.value
+        else Q(**{field_name: timedelta(0)})
+    )
+
+
+def search_q(criterion: StringCriterion, *field_names: str) -> Q:
+    """Free-text OR across several ``__icontains`` columns, negated on EXCLUDES.
+
+    Mirrors the per-filter free-text ``search`` block: an empty value contributes
+    no constraint; otherwise each column is OR'd, and ``EXCLUDES`` negates the
+    whole disjunction. ``field_names`` must be non-empty.
+    """
+    if not criterion.value:
+        return Q()
+    combined = Q(**{f"{field_names[0]}__icontains": criterion.value})
+    for field_name in field_names[1:]:
+        combined |= Q(**{f"{field_name}__icontains": criterion.value})
+    if criterion.modifier == Modifier.EXCLUDES:
+        combined = ~combined
+    return combined
 
 
 # The related/parent model is the concrete Django model the filter targets.
