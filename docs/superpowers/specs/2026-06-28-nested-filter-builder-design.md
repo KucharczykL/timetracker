@@ -52,20 +52,44 @@ special-case (the #167 `TODO(nested-builder)` debt).
 - **Relation descent** — relation field + quantifier + one child group. →
   `{rel_field: {match: Q?, …child-group-serialized}}`; `match` omitted when ANY (default).
 
-**Negation:** `NOT` is a third group connective, not a per-node toggle. A `NOT` group with
-multiple children means "none of these" (`~a AND ~b`, backend's existing list semantics);
-`NOT(a AND b)` is a `NOT` group wrapping one `AND` group. Leaf-level "is-not" stays on each
-criterion's own modifier (orthogonal).
+**Negation:** `NOT` is a third group connective, but in the builder a **NOT group wraps
+exactly one child** (a leaf or a single AND/OR group), so `NOT[x]` = `~x` — unambiguous. "None
+of a, b" is `NOT[ OR[a,b] ]` (= `~a AND ~b`, verified). This avoids the silent meaning-shift a
+multi-child NOT would cause (`{NOT:[a,b]}` = `~a AND ~b` per backend, which reads as "none of"
+but surprises users mid-edit). Leaf-level "is-not" stays on each criterion's own modifier; to
+negate a whole group, wrap it in NOT. Backend contract (`{NOT:[single]}`) unchanged.
 
-**Import normalization (the crux of prefill round-trip):** an `OperatorFilter` dict may mix
-keyed criterion fields + `AND`/`OR`/`NOT` lists + `field_comparisons` + sub-filter fields at
-one level. The importer treats each dict as an **implicit AND group** whose children are:
-each keyed criterion → a criterion leaf; each `field_comparisons` entry → a comparison leaf;
-each sub-filter field → a relation node (recurse into its child); the `AND` list → merged as
-sibling children; the `OR` list → an `OR` group child; the `NOT` list → a `NOT` group child.
-Export re-emits canonical form. Round-trip is logically equivalent (may canonicalize shape).
-Reuse server metadata — `resolve_path_kind()`, `_criterion_class_for()`,
-`comparable_columns()` — so the client never duplicates per-field type tables.
+**Canonical export (verified correct):** each group exports to exactly one connective key
+(`{AND:[…]}` / `{OR:[…]}` / `{NOT:[one]}`), each child a single-key dict; a leaf →
+`{field:{…}}`; a relation → `{rel_field:{match?, <one canonical group>}}`. The builder **never
+emits a mixed node** (keyed fields + operator lists at one level). A live `to_q()` check
+confirmed canonical top-level `OR` evaluates identically to the old OR-isolation-wrapper form
+(empty `Q()` is absorbed in Django ORs — no match-all poisoning), so the transitional wrapper
+is genuinely droppable. Empty operator lists are dropped on export (`{AND:[]}`→`{}`); round-trip
+is **logical equivalence**, not byte equality.
+
+**Import normalization (prefill from arbitrary/legacy JSON):** an `OperatorFilter` dict may mix
+keyed criterion fields + `AND`/`OR`/`NOT` lists + `field_comparisons` + sub-filter fields at one
+level, and the backend evaluates these in a fixed left-to-right order — `criteria &= …`, then
+`&= each AND`, then `|= each OR`, then `&= ~each NOT` (`_apply_operators`, criteria.py:1080).
+The importer must **reproduce that precedence faithfully**, not assume an implicit AND:
+1. Build the `&`-part `P` = an AND group of [each keyed criterion leaf, each `field_comparisons`
+   entry as its own comparison leaf, each sub-filter field as a relation node, each `AND`
+   sub-filter imported recursively].
+2. If `OR` present: `P` becomes `OR[ P, …each OR sub-filter imported ]`.
+3. If `NOT` present: result becomes `AND[ (P-or-OR), …NOT[each NOT sub-filter] ]` (each `&= ~`).
+
+So `{name, OR:[x]}` correctly imports as `OR[name, x]` (= `name OR x`), **not** `AND(name, x)`.
+Re-export canonicalizes the shape; the tree's `to_q()` equals the original's. Reuse server
+metadata — `resolve_path_kind()`, `_criterion_class_for()`, `comparable_columns()` — so the
+client never duplicates per-field type tables.
+
+**Relation / sub-filter notes:** a relation node's child is exactly **one** canonical group, so
+its sub-filter dict carries `match` + exactly one connective key (no ambiguity). An **empty**
+relation child is a feature: `ANY`+empty = "has ≥1 related row", `NONE`+empty = "has 0 related
+rows". Cross-model relation fields can cycle (`game→session→game`), and the backend has **no
+recursion guard** today (see Open items) — a hand-edited cyclic `?filter=` would infinite-loop,
+so a parse-time depth guard is a prerequisite.
 
 ## UX / visual spec
 
@@ -77,28 +101,40 @@ Reuse server metadata — `resolve_path_kind()`, `_criterion_class_for()`,
   group built from the **target model's** fields (makes the Game→Session model switch
   explicit, Filter-Forge `↳ INTO` pattern).
 - **Restructuring: buttons only, no drag-and-drop.** Per-node: `remove`, `duplicate`,
-  `wrap in group`; reorder within a group via `↑`/`↓`; group footer:
-  `[+ condition] [+ group] [+ relation]`; connective changed in place. Covers all real
-  restructuring with vanilla DOM, robust on touch (both case studies warned nested-tree DnD
+  `wrap in group` (new wrapper defaults to the parent's connective), `unwrap/flatten` (dissolve
+  a group, splice its children into the parent); reorder within a group via `↑`/`↓`; group
+  footer: `[+ condition] [+ group] [+ relation]`; connective changed in place. **Accepted
+  limitation:** moving a leaf to a non-sibling group two levels away is done via remove + re-add,
+  not a cross-branch move (vanilla DOM, robust on touch; both case studies warned nested-tree DnD
   is fragile).
-- **Depth: soft cap at 5.** `Add group`/`Add relation` disabled past depth 5 with a
-  "max nesting reached" hint.
+- **Depth: soft cap at 5.** The cap counts **group-nesting depth**; a relation-descent's child
+  group is **+1 level**; a criterion leaf is depth-0 (terminates). `Add group`/`Add relation`
+  disabled past depth 5 with a "max nesting reached" hint. (The backend recursion guard — Open
+  items — is set higher and is the real safety bound.)
 - **Add-condition / leaf flow:** `+ condition` inserts a row `[field ▾ searchable, grouped]
-  [modifier ▾ valid-for-type] [value widget]`. Field-first; on field pick the modifier list
-  + value widget derive from the criterion class. Reuse existing leaf widgets: `FilterSelect`
-  (id/enum sets), `DateRangeFilter`, number input, bool radio, single `field-comparison` row.
+  [modifier ▾ valid-for-type] [value widget]`. Field-first; on field pick the modifier list +
+  value widget derive from the criterion class. **On field change:** reset modifier to the first
+  valid one for the new type, **clear** the value (no silent type-coercion), mark the leaf
+  incomplete until filled; replacing the value widget flushes old DOM. Reuse existing leaf
+  widgets: `DateRangeFilter` + bool radio drop in clean; `FilterSelect` needs a **self-serialize**
+  rework (today it depends on a global `readSearchSelect` preprocessing pass — see components);
+  the single `field-comparison` row needs a **leaf variant** embedding its own `columns` and
+  dropping the AND/OR mode toggle (the enclosing group owns the connective).
 - **Empty / initial state:** root is always an `AND` group, pre-seeded with one empty leaf
   row (field picker open) + footer buttons.
 - **Validation:** client pre-validates (no field chosen, missing value, incomplete BETWEEN
-  bounds) → mark leaf invalid + disable Apply. Backend `apply_structured_filter` fail-open on
-  parse error remains the safety net.
+  bounds) → mark leaf **incomplete** (faded + badge), **exclude it from both the count query and
+  Apply**, and disable Apply while any leaf is incomplete. Backend `apply_structured_filter`
+  fail-open on parse error remains the safety net.
 - **Natural-language summary:** read-only English readout at top, recomputed on every edit by
   a pure client-side tree walk (no server call). e.g. "Games where status is Finished and any
   session has device Handheld and duration ≥ 2h."
 - **Live result count:** debounced + cancellable **top-level total** count badge
-  ("≈ 142 games"). One count query per settled edit via a small per-model count endpoint
-  (`parse_*_filter` → `to_q().count()`). Per-group counts are NOT built (Filter-Forge faked
-  them) — possible later enhancement.
+  ("≈ 142 games"). One count query per settled edit via a small per-model count endpoint (new —
+  `parse_*_filter` → `to_q().count()`). Badge shows **"counting…"** while debounced/in-flight and
+  **"count unavailable"** on endpoint error (never a bare 0). Incomplete leaves are excluded from
+  the query. Per-group counts are NOT built (Filter-Forge faked them) — possible later
+  enhancement.
 - **Presets:** toolbar `[Load preset ▾]` (prefills tree from a `FilterPreset`'s JSON — same
   code path as loading any `?filter=`) and `[Save as preset…]` (serializes the tree). Reuse
   existing `preset_list_url` / `preset_save_url`.
@@ -107,39 +143,56 @@ Reuse server metadata — `resolve_path_kind()`, `_criterion_class_for()`,
 
 ## Prereq components → 2c child issues (the required #172 output)
 
-Each built + unit-tested in isolation:
+The adversarial review corrected the naive "all built in isolation" framing: **two are
+foundational** and the rest depend on them. Build order: **0 → 9 → 6 → (1–5 in parallel) → 7,8 →
+10.**
 
+0. **Backend recursion/cycle guard** (NEW prereq) — relation fields cycle
+   (`game→session→game`) and `OperatorFilter.from_json`/`to_q` enforce no depth limit today, so a
+   hand-edited cyclic `?filter=` infinite-loops the server. Add a parse-time depth guard in
+   `from_json` (raise `FilterError` past a max depth, e.g. 10). Independent of the UI but a
+   security prerequisite the shareable-URL builder makes reachable. **File as a backend issue.**
+9. **Server field-metadata registry** (foundational) — a per-model field list returning
+   `{name, label, kind, nullable, choices, relations}`. `resolve_path_kind` /
+   `_criterion_class_for` / `comparable_columns` exist (~40%); the **label / choices / nullable /
+   relation enumeration is missing and must be built**. This is the field-metadata registry the
+   #168 comment flagged; cross-ref #161 (FilterField) + #157 (criterion types); later feeds #152.
+6. **Recursive serializer/deserializer** (foundational — blocks 1–5,7,8) — node tree ↔
+   `OperatorFilter` JSON: canonical export + the faithful import normalization (above). Replaces
+   the flat `filter-bar.ts` `setPath`/`appendAnd`/`data-kind`-switch glue. Must serialize a tree
+   recursively (per-group, not one global form pass). TS module, contract-tested against backend
+   round-trip (`to_q()` equality across OR / NOT-as-unary / relation×quantifier / field
+   comparison / mixed-shape import).
 1. **Recursive group shell** custom element — group card, connective chip, ordered children,
    footer buttons, depth coloring, soft cap 5, buttons-only restructuring
-   (remove/duplicate/wrap/unwrap/↑/↓). Recursion is the core.
-2. **Connective selector** — AND/OR/NOT chip dropdown.
-3. **Add-criterion field picker** — searchable/grouped field combobox reading per-model field
-   metadata (name, label, criterion kind, choices); inserts a leaf row.
-4. **Leaf row** — field/modifier/value; derives modifier list + value widget from criterion
-   class; mounts existing `FilterSelect` / date / number / bool / single `field-comparison`
-   widgets.
-5. **Relation-descent + quantifier picker** — relation select (typed sub-filter fields of the
-   model) + quantifier (ANY/NONE/ALL) + nested child group, rendered as the accent block.
-6. **Recursive serializer/deserializer** — node tree ↔ `OperatorFilter` JSON: canonical
-   export + import normalization (above). TS module, contract-tested against backend
-   round-trip.
-7. **Natural-language summary** — client-side tree → English walker.
-8. **Live count** — per-model count endpoint + debounced/cancellable badge.
-9. **Server field-metadata exposure** — per-model field list (name, label, criterion kind,
-   choices, available relations) for the picker, from `resolve_path_kind` /
-   `_criterion_class_for` / `comparable_columns` (#161 + #157 feed this; possibly the
-   field-metadata registry the #168 comment flagged).
+   (remove/duplicate/wrap/**unwrap**/↑/↓). Recursion is the core.
+2. **Connective selector** — AND/OR/NOT chip dropdown (NOT = unary wrapper).
+3. **Add-criterion field picker** — searchable/grouped field combobox reading component 9's
+   metadata; inserts a leaf row; defines on-field-change reset behavior.
+4. **Leaf row + leaf widgets** — field/modifier/value; derives modifier list + value widget from
+   criterion class. `DateRange` + bool reuse clean; **`FilterSelect` reworked to self-serialize**
+   (drop the global `readSearchSelect` preprocessing dependency); **new single-row
+   `field-comparison` leaf** embedding its own `columns`, no mode toggle.
+5. **Relation-descent + quantifier picker** — relation select (component 9's relation list) +
+   quantifier (ANY/NONE/ALL) + nested child group, rendered as the accent block.
+7. **Natural-language summary** — client-side tree → English walker (independent; decorative).
+8. **Live count** — NEW per-model count endpoint + debounced/cancellable badge with
+   counting/unavailable states.
 10. **Builder page shell** — per-model `/…/filter` route + `render_page` view; toolbar
-    (presets, Apply, Clear); mounts root group + NL summary + count.
+    (presets, Apply, Clear); mounts root group + NL summary + count; reads/writes `?filter=`.
 
 Exact split may merge/refine during 2b (#173) planning, but this is the component set.
 
-## Follow-up issues to file
+## Open items / follow-up issues to file
 
-- **GitHub-style quick bar** (single-model facet dropdowns + degrade-to-"Advanced active").
+- **Backend recursion/cycle guard** (component 0) — file as a backend issue; prerequisite to
+  shipping the builder (DoS via cyclic hand-edited `?filter=`).
+- **GitHub-style quick bar** (single-model facet dropdowns + degrade-to-"Advanced active"). Its
+  degrade predicate must account for canonicalization (a quick-bar filter, exported and reloaded,
+  must round-trip back to editable, not flip to "advanced") — pin in that issue.
 - **Per-group live count** (deferred enhancement on the advanced builder).
-- Confirm whether the #168-comment **field-metadata registry** is folded into component 9 or
-  filed separately — decide in 2b.
+- The #168-comment **field-metadata registry** is folded into component 9 (decided here, not
+  deferred).
 
 ## Verification (of the eventual build, for 2b/2d — not #172)
 
