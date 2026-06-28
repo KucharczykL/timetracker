@@ -429,6 +429,14 @@ const initWidget = (containerElement: Element) => {
     event.preventDefault();
   });
 
+  // Same guard for the pills region: clicking a pill's remove (×) button must
+  // not move focus out of the widget. Without this, browsers that don't focus a
+  // <button> on click (Firefox, Safari) fire focusout with relatedTarget=null,
+  // which would close the panel even though focus stayed in the widget.
+  pills.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+
   // ── Option click → select (form mode) or include/exclude (filter mode) ──
   options.addEventListener("click", (event) => {
     if (isFilter) {
@@ -641,6 +649,30 @@ const initWidget = (containerElement: Element) => {
       addPill({ value, label: value, data: {} });
     });
   }
+
+  // ── Close panel when focus leaves the widget (e.g. Tab away) ──
+  // focusout bubbles, so the container catches the input losing focus in every
+  // mode. Option mousedown preventDefault keeps the input focused during a
+  // click, so this only fires on a genuine exit.
+  container.addEventListener("focusout", (event) => {
+    if (!container.contains(event.relatedTarget as Node)) {
+      hidePanel();
+      clearHighlight();
+      // The search box is a transient query buffer; pills hold the committed
+      // values. Drop any uncommitted query on exit so it matches single-select
+      // (whose blur handler already clears/restores the box). Reset row
+      // visibility without reopening the panel — never call runSearch() here.
+      if (multi && search.value !== "") {
+        search.value = "";
+        if (freeText) {
+          rebuildFreeTextRow("");
+        } else {
+          filterRows("");
+          setNoResults(false);
+        }
+      }
+    }
+  });
 
   // ── Close panel on outside click ──
   const onDocumentClick = (event: MouseEvent) => {
