@@ -52,10 +52,11 @@ interface FilterPillEntry {
 
 const DEBOUNCE_MS = 100;
 
-// Must match Python common/components/filters.py:_PRESENCE_MODIFIERS.
-// These modifiers are mutually exclusive with value pills — selecting
-// one clears all value pills.  Non-presence modifiers (INCLUDES_ALL,
-// INCLUDES_ONLY) coexist with value pills.
+// Presence modifiers — the sole definition of this set (the former Python
+// _PRESENCE_MODIFIERS constant was removed with its only consumer in #141).
+// They are mutually exclusive with value pills — selecting one clears all
+// value pills.  Non-presence modifiers (INCLUDES_ALL, INCLUDES_ONLY) coexist
+// with value pills.
 const PRESENCE_MODIFIERS = ["NOT_NULL", "IS_NULL"];
 
 const initWidget = (containerElement: Element) => {

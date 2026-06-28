@@ -2,7 +2,7 @@
 
 from django.test import SimpleTestCase
 
-from common.components.filters import _parse_bool, _parse_range, _parse_bool_nullable
+from common.components.filters import _parse_range, _parse_bool_nullable
 
 
 class ParseRangeTest(SimpleTestCase):
@@ -38,34 +38,6 @@ class ParseRangeTest(SimpleTestCase):
             _parse_range({"field": {"value": 5, "value2": 15}}, "field"),
             ("5", "15"),
         )
-
-
-class ParseBoolTest(SimpleTestCase):
-    def test_empty_dict(self):
-        self.assertFalse(_parse_bool({}, "field"))
-
-    def test_missing_key(self):
-        self.assertFalse(_parse_bool({"other": 1}, "field"))
-
-    def test_null_value(self):
-        self.assertFalse(_parse_bool({"field": None}, "field"))
-
-    def test_non_dict_value(self):
-        """A non-dict field value is coerced to False."""
-        self.assertFalse(_parse_bool({"field": "not_a_dict"}, "field"))
-
-    def test_false_value(self):
-        self.assertFalse(_parse_bool({"field": {"value": False}}, "field"))
-
-    def test_true_value(self):
-        self.assertTrue(_parse_bool({"field": {"value": True}}, "field"))
-
-    def test_truthy_string(self):
-        """Non-empty strings are truthy — bool("yes") is True."""
-        self.assertTrue(_parse_bool({"field": {"value": "yes"}}, "field"))
-
-    def test_missing_value_in_field(self):
-        self.assertFalse(_parse_bool({"field": {}}, "field"))
 
 
 class ParseBoolNullableTest(SimpleTestCase):
