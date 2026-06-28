@@ -506,6 +506,11 @@ _FILTER_TYPES: dict[str, type["OperatorFilter"]] = {}
 # The three sub-filter composition fields, shared by every OperatorFilter.
 _OPERATOR_FIELDS: tuple[str, str, str] = ("AND", "OR", "NOT")
 
+# The dedicated field for field-to-field comparisons on every OperatorFilter.
+# Kept separate from _OPERATOR_FIELDS (a fixed 3-tuple) so the operator-resolution
+# logic is untouched; the from_json/to_json/apply paths branch on this name.
+_COMPARISON_FIELD = "field_comparisons"
+
 
 def _criterion_class_for(
     cls: type["OperatorFilter"], field_name: str
@@ -727,6 +732,12 @@ class OperatorFilter:
     OR: Sequence["OperatorFilter"] = field(default_factory=list)
     NOT: Sequence["OperatorFilter"] = field(default_factory=list)
 
+    # Field-to-field comparisons: compare two columns of the filter's own model
+    # (e.g. date_refunded < date_purchased).  Validated at to_q() time via
+    # _comparison_model(); subclasses override that hook (T4).  Inherited by every
+    # concrete filter with no re-declaration needed.
+    field_comparisons: list[FieldComparisonCriterion] = field(default_factory=list)
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Register concrete filter classes so from_json can resolve a
@@ -780,6 +791,14 @@ class OperatorFilter:
             field_criteria[field_name] = criterion_class(**criterion_arguments)
         return cls(**field_criteria)
 
+    def _comparison_model(self) -> type[models.Model] | None:
+        """The Django model whose columns ``field_comparisons`` reference.
+
+        Returns None (this filter does not support field comparisons). Concrete
+        filter subclasses override this to return their primary model — see T4.
+        """
+        return None
+
     def _apply_operators(self, q: Q) -> Q:
         """Compose this node's sub-filters onto ``q`` (which already holds this
         node's own criteria).
@@ -788,6 +807,10 @@ class OperatorFilter:
         is AND'd, every ``OR`` sub-filter is OR'd, every ``NOT`` sub-filter is
         AND'd-negated. Mixing families on one node composes left-to-right in that
         order (criteria → AND → OR → NOT); the common case uses one family.
+
+        Field comparisons (``field_comparisons``) are validated here so errors
+        surface on the ``to_q()`` path — preserving the "if it parses, to_q won't
+        raise" guarantee when used via ``filter_from_json``.
         """
         for sub in self.AND:
             q &= sub.to_q()
@@ -795,6 +818,31 @@ class OperatorFilter:
             q |= sub.to_q()
         for sub in self.NOT:
             q &= ~sub.to_q()
+        if self.field_comparisons:
+            model = self._comparison_model()
+            if model is None:
+                raise FilterError(
+                    f"{type(self).__name__} does not support field comparisons"
+                )
+            for comparison in self.field_comparisons:
+                if comparison.left == comparison.right:
+                    raise FilterError(
+                        f"field comparison needs two different columns"
+                        f" (got {comparison.left!r} twice)"
+                    )
+                left_group = _comparison_group_for(model, comparison.left)
+                right_group = _comparison_group_for(model, comparison.right)
+                if left_group != right_group:
+                    raise FilterError(
+                        f"cannot compare {comparison.left!r} ({left_group})"
+                        f" to {comparison.right!r} ({right_group})"
+                    )
+                if comparison.modifier not in _allowed_comparison_modifiers(left_group):
+                    raise FilterError(
+                        f"modifier {comparison.modifier} not allowed"
+                        f" for {left_group} comparison"
+                    )
+                q &= comparison.to_q()
         return q
 
     def _criterion_fields(self) -> list[str]:
@@ -834,6 +882,23 @@ class OperatorFilter:
                     kwargs["match"] = RelationMatch(raw)
                 except ValueError as exc:
                     raise FilterError(f"Unknown relation match {raw!r}") from exc
+                continue
+            # Field-comparison list: parse each entry with FieldComparisonCriterion.
+            # Mirrors the operator-field branch — null/absent → [], single item
+            # wrapped to list, None results filtered out.
+            if f.name == _COMPARISON_FIELD:
+                if raw is None:
+                    kwargs[f.name] = []
+                else:
+                    items = raw if isinstance(raw, list) else [raw]
+                    parsed_comparisons = [
+                        FieldComparisonCriterion.from_json(item) for item in items
+                    ]
+                    kwargs[f.name] = [
+                        comparison
+                        for comparison in parsed_comparisons
+                        if comparison is not None
+                    ]
                 continue
             # Operator fields are list-valued; handle them before the generic
             # ``raw is None`` guard so a JSON ``null`` (or absent) operator
@@ -887,6 +952,11 @@ class OperatorFilter:
             if v is None:
                 continue
             if f.name == "match":
+                continue
+            # Field-comparison list: emit only when non-empty (mirrors operator fields).
+            if f.name == _COMPARISON_FIELD:
+                if v:
+                    result[f.name] = [comparison.to_json() for comparison in v]
                 continue
             # Operator fields are lists; emit a JSON array only when non-empty so
             # an unused operator stays out of the serialized form.

@@ -1,6 +1,8 @@
 """Tests for the filtering system."""
 
 import json
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 
 import pytest
 from django.db.models import F, Q
@@ -14,6 +16,7 @@ from common.criteria import (
     IntCriterion,
     Modifier,
     MultiCriterion,
+    OperatorFilter,
     StringCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
@@ -1657,3 +1660,203 @@ class TestComparisonGroupResolver:
 
     def test_date_group_is_ordered(self):
         assert _allowed_comparison_modifiers("date") == Modifier.for_field_comparisons()
+
+
+# ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
+
+
+@dataclass
+class _PurchaseStub(OperatorFilter):
+    AND: list["_PurchaseStub"] = dc_field(default_factory=list)
+    OR: list["_PurchaseStub"] = dc_field(default_factory=list)
+    NOT: list["_PurchaseStub"] = dc_field(default_factory=list)
+
+    def _comparison_model(self):
+        from games.models import Purchase
+
+        return Purchase
+
+
+@dataclass
+class _NoModelStub(OperatorFilter):
+    """Stub that does NOT override _comparison_model — base returns None."""
+
+    AND: list["_NoModelStub"] = dc_field(default_factory=list)
+    OR: list["_NoModelStub"] = dc_field(default_factory=list)
+    NOT: list["_NoModelStub"] = dc_field(default_factory=list)
+
+
+@pytest.mark.django_db
+class TestFieldComparisonWiring:
+    # 1. Happy path — to_q produces the expected Q
+
+    def test_happy_path_to_q(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        assert stub.to_q() == Q(date_refunded__lt=F("date_purchased"))
+
+    # 2. Serialization roundtrip
+
+    def test_to_json_includes_field_comparisons(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        serialized = stub.to_json()
+        assert "field_comparisons" in serialized
+        assert serialized["field_comparisons"] == [
+            {"left": "date_refunded", "right": "date_purchased", "modifier": Modifier.LESS_THAN}
+        ]
+
+    def test_empty_field_comparisons_omitted_from_json(self):
+        stub = _PurchaseStub()
+        assert "field_comparisons" not in stub.to_json()
+
+    def test_roundtrip_restores_equal_object(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        restored = _PurchaseStub.from_json(stub.to_json())
+        assert restored == stub
+
+    # 3. Validation → FilterError via to_q()
+
+    def test_unknown_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="nonexistent",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_cross_group_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="price",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_disallowed_modifier_for_bool_group_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="infinite",
+                    right="needs_price_update",
+                    modifier=Modifier.GREATER_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_self_compare_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_purchased",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_relation_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="games",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    def test_relation_fk_column_raises(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="platform",
+                    right="date_purchased",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            stub.to_q()
+
+    # 4. No model — base default returns None → FilterError
+
+    def test_no_model_raises(self):
+        stub = _NoModelStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="does not support field comparisons"):
+            stub.to_q()
+
+    # 5. Integration — serialize to JSON, parse back, eager to_q validation
+
+    def test_integration_valid_roundtrip_via_json(self):
+        stub = _PurchaseStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        json_data = stub.to_json()
+        restored = _PurchaseStub.from_json(json_data)
+        assert restored is not None
+        # Eager validation via to_q should not raise
+        restored.to_q()
+
+    def test_integration_bad_column_raises_on_to_q(self):
+        bad_json = {
+            "field_comparisons": [
+                {"left": "nonexistent", "right": "date_purchased", "modifier": "LESS_THAN"}
+            ]
+        }
+        parsed = _PurchaseStub.from_json(bad_json)
+        assert parsed is not None
+        with pytest.raises(FilterError):
+            parsed.to_q()
