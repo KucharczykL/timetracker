@@ -48,9 +48,26 @@ def prefilled_and_view(request):
     return HttpResponse(_bar_page(filter_json=filter_json))
 
 
+def prefilled_granularity_view(request):
+    filter_json = json.dumps(
+        {
+            "field_comparisons": [
+                {
+                    "left": "timestamp_start",
+                    "right": "timestamp_end",
+                    "modifier": "LESS_THAN_OR_EQUAL",
+                    "granularity": "date",
+                }
+            ]
+        }
+    )
+    return HttpResponse(_bar_page(filter_json=filter_json))
+
+
 urlpatterns = [
     path("test-fc-empty/", empty_bar_view),
     path("test-fc-prefilled-and/", prefilled_and_view),
+    path("test-fc-prefilled-granularity/", prefilled_granularity_view),
 ]
 
 
@@ -157,6 +174,78 @@ def test_and_prefill_round_trip(live_server, page):
     parsed = _filter_from_url(page.url)
     assert parsed["field_comparisons"] == [
         {"left": "timestamp_end", "right": "timestamp_start", "modifier": "LESS_THAN"}
+    ]
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
+def test_by_day_toggle_serializes_granularity(live_server, page):
+    page.goto(live_server.url + "/test-fc-empty/")
+    page.locator("[data-fc-add]").click()
+    row = page.locator("[data-fc-row]").first
+    by_day = row.locator("[data-fc-granularity-wrap]")
+
+    # Hidden until a datetime left column is chosen.
+    assert not by_day.is_visible()
+    row.locator("[data-fc-left]").select_option("timestamp_start")
+    assert by_day.is_visible()
+    # >= / <= are offered for the datetime (ordered) set.
+    operator = row.locator("[data-fc-op]")
+    assert operator.locator('option[value="LESS_THAN_OR_EQUAL"]').count() == 1
+
+    by_day.locator("[data-fc-granularity]").check()
+    operator.select_option("LESS_THAN_OR_EQUAL")
+    row.locator("[data-fc-right]").select_option("timestamp_end")
+    _submit(page)
+
+    parsed = _filter_from_url(page.url)
+    assert parsed["field_comparisons"] == [
+        {
+            "left": "timestamp_start",
+            "right": "timestamp_end",
+            "modifier": "LESS_THAN_OR_EQUAL",
+            "granularity": "date",
+        }
+    ]
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
+def test_by_day_hidden_for_non_datetime_left(live_server, page):
+    page.goto(live_server.url + "/test-fc-empty/")
+    page.locator("[data-fc-add]").click()
+    row = page.locator("[data-fc-row]").first
+    by_day = row.locator("[data-fc-granularity-wrap]")
+
+    # Datetime → visible; switching to a non-datetime column hides + clears it.
+    row.locator("[data-fc-left]").select_option("timestamp_start")
+    by_day.locator("[data-fc-granularity]").check()
+    assert by_day.is_visible()
+    row.locator("[data-fc-left]").select_option("note")
+    assert not by_day.is_visible()
+    assert not by_day.locator("[data-fc-granularity]").is_checked()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
+def test_granularity_prefill_round_trip(live_server, page):
+    page.goto(live_server.url + "/test-fc-prefilled-granularity/")
+
+    row = page.locator("[data-fc-row]").first
+    by_day = row.locator("[data-fc-granularity-wrap]")
+    assert by_day.is_visible()
+    assert by_day.locator("[data-fc-granularity]").is_checked()
+    assert row.locator("[data-fc-op]").input_value() == "LESS_THAN_OR_EQUAL"
+
+    _submit(page)
+    parsed = _filter_from_url(page.url)
+    assert parsed["field_comparisons"] == [
+        {
+            "left": "timestamp_start",
+            "right": "timestamp_end",
+            "modifier": "LESS_THAN_OR_EQUAL",
+            "granularity": "date",
+        }
     ]
 
 

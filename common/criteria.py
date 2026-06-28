@@ -469,7 +469,7 @@ class AggregateCriterion(_Criterion):
         )
 
 
-type ComparisonGranularity = Literal["raw", "date"]  # e.g. "date"
+type ComparisonGranularity = Literal["raw", "date"]
 
 
 @dataclass
@@ -535,6 +535,16 @@ class FieldComparisonCriterion(_Criterion):
         if self.granularity != "raw":
             payload["granularity"] = self.granularity
         return payload
+
+    @classmethod
+    def from_json(cls, data: dict | None) -> Self | None:
+        # Validate granularity here (the base loop assigns it verbatim, like any
+        # field) so an unknown value is rejected at parse time rather than
+        # silently degrading to a raw comparison — mirrors the modifier coercion.
+        result = super().from_json(data)
+        if result is not None and result.granularity not in ("raw", "date"):
+            raise FilterError(f"unknown granularity {result.granularity!r}")
+        return result
 
 
 # ── Field descriptors ──────────────────────────────────────────────────────

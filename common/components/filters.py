@@ -772,11 +772,17 @@ def _field_comparison_row(
                 ],
             ),
             # Day-granular toggle — only meaningful for datetime operands, so
-            # field-comparison-set.ts shows/hides it from the chosen left column.
+            # field-comparison-set.ts shows/hides it based on the chosen left
+            # column. Hand-rolled (not Checkbox()) because the wrapper Label must
+            # carry data-fc-granularity-wrap + hidden; the input reuses Checkbox's
+            # utility classes so it matches every other checkbox in the app.
             Label(
                 attributes=[
                     ("data-fc-granularity-wrap", ""),
-                    ("class", "flex items-center gap-1 text-sm text-body"),
+                    (
+                        "class",
+                        "flex items-center gap-1 text-sm text-body cursor-pointer",
+                    ),
                     *([] if granularity_date else [("hidden", "")]),
                 ],
                 children=[
@@ -785,7 +791,12 @@ def _field_comparison_row(
                         attributes=[
                             ("type", "checkbox"),
                             ("data-fc-granularity", ""),
-                            ("class", "cursor-pointer"),
+                            (
+                                "class",
+                                "rounded border-default-medium"
+                                " bg-neutral-secondary-medium text-brand"
+                                " focus:ring-brand cursor-pointer",
+                            ),
                             *([("checked", "")] if granularity_date else []),
                         ],
                     ),

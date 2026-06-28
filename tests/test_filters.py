@@ -13,6 +13,7 @@ from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
+    ComparisonGranularity,
     DateCriterion,
     FieldComparisonCriterion,
     FilterError,
@@ -1615,6 +1616,27 @@ class TestFieldComparisonCriterion:
         assert restored is not None
         assert restored.granularity == "raw"
 
+    def test_from_json_rejects_unknown_granularity(self):
+        with pytest.raises(FilterError, match="unknown granularity"):
+            FieldComparisonCriterion.from_json(
+                {
+                    "left": "a",
+                    "right": "b",
+                    "modifier": "EQUALS",
+                    "granularity": "month",
+                }
+            )
+
+    def test_helper_date_granular_strict_ordering(self):
+        from django.db.models.functions import TruncDate
+
+        assert _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.GREATER_THAN, "date"
+        ) == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end")))
+        assert _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.LESS_THAN, "date"
+        ) == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end")))
+
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
 
     def test_to_q_delegates_to_helper(self):
@@ -2041,6 +2063,23 @@ class TestFieldComparisonWiring:
         with pytest.raises(FilterError, match="datetime operands"):
             stub.to_q()
 
+    def test_includes_on_datetime_rejected_before_granularity(self):
+        """INCLUDES/EXCLUDES (string-only) and date-granular (datetime-only) are
+        mutually exclusive by group: an INCLUDES on a datetime pair is rejected by
+        the modifier gate, so the nonsense __date__icontains query is unreachable."""
+        stub = _SessionStub(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_start",
+                    right="timestamp_end",
+                    modifier=Modifier.INCLUDES,
+                    granularity="date",
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="not allowed"):
+            stub.to_q()
+
     def test_roundtrip_restores_equal_object(self):
         stub = _PurchaseStub(
             field_comparisons=[
@@ -2463,6 +2502,60 @@ class TestFieldComparisonEndToEnd:
         )
         result = set(Session.objects.filter(session_filter.to_q()))
         assert result == {session_x}
+
+    def test_date_granular_same_day_behavior(self):
+        """granularity='date' matches by calendar day, unlike a raw comparison.
+
+        SAME spans one day (different clock times); CROSS spans two days. Uses
+        timestamps far from midnight in any near-UTC timezone so the active tz of
+        the test run cannot flip which calendar day a boundary falls on.
+        """
+        import datetime
+
+        from games.filters import SessionFilter
+        from games.models import Session
+
+        _, game = self._make_platform_and_game()
+
+        same = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 1, 14, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+        cross = Session.objects.create(
+            game=game,
+            timestamp_start=datetime.datetime(
+                2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timestamp_end=datetime.datetime(
+                2024, 6, 3, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+
+        def run(modifier: Modifier, granularity: ComparisonGranularity) -> set:
+            session_filter = SessionFilter(
+                field_comparisons=[
+                    FieldComparisonCriterion(
+                        left="timestamp_start",
+                        right="timestamp_end",
+                        modifier=modifier,
+                        granularity=granularity,
+                    )
+                ]
+            )
+            return set(Session.objects.filter(session_filter.to_q()))
+
+        # date-granular EQUALS: only the same-calendar-day session.
+        assert run(Modifier.EQUALS, "date") == {same}
+        # raw EQUALS: neither (clock times always differ) — the contrast that
+        # motivates the feature.
+        assert run(Modifier.EQUALS, "raw") == set()
+        # date-granular LESS_THAN (start day < end day): only the cross-day one.
+        assert run(Modifier.LESS_THAN, "date") == {cross}
 
     def test_generated_field_as_comparison_operand(self):
         """duration_total > duration_manual finds only P.

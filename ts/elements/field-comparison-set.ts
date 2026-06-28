@@ -23,7 +23,7 @@ export interface ComparisonRow {
   left: string;
   right: string;
   modifier: string;
-  granularity?: string; // omitted when "raw" to keep filter JSON compact
+  granularity?: "date"; // omitted when "raw" to keep filter JSON compact
 }
 
 // Operator labels by Modifier value — must match the modifiers the server
