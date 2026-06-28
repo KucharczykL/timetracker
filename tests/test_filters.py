@@ -15,6 +15,8 @@ from common.criteria import (
     Modifier,
     MultiCriterion,
     StringCriterion,
+    _allowed_comparison_modifiers,
+    _comparison_group_for,
     _field_comparison_to_q,
 )
 from common.components import FilterBar
@@ -1569,3 +1571,89 @@ class TestFieldComparisonCriterion:
             Modifier.GREATER_THAN,
             Modifier.LESS_THAN,
         ]
+
+
+class TestComparisonGroupResolver:
+    """Tests for _comparison_group_for and _allowed_comparison_modifiers."""
+
+    # ── concrete field → group ───────────────────────────────────────────────
+
+    def test_date_field(self):
+        from games.models import Purchase
+
+        assert _comparison_group_for(Purchase, "date_purchased") == "date"
+
+    def test_datetime_field(self):
+        from games.models import Session
+
+        assert _comparison_group_for(Session, "timestamp_start") == "datetime"
+
+    def test_generated_field_duration(self):
+        """GeneratedField (duration_total) resolves via output_field to 'duration'."""
+        from games.models import Session
+
+        assert _comparison_group_for(Session, "duration_total") == "duration"
+
+    def test_generated_field_number(self):
+        """GeneratedField (days_to_finish) resolves via output_field to 'number'."""
+        from games.models import PlayEvent
+
+        assert _comparison_group_for(PlayEvent, "days_to_finish") == "number"
+
+    def test_float_field(self):
+        from games.models import Purchase
+
+        assert _comparison_group_for(Purchase, "price") == "number"
+
+    def test_integer_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "year_released") == "number"
+
+    def test_char_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "name") == "string"
+
+    def test_bool_field(self):
+        from games.models import Game
+
+        assert _comparison_group_for(Game, "mastered") == "bool"
+
+    # ── excluded columns ────────────────────────────────────────────────────
+
+    def test_fk_relation_raises(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Session, "game")
+
+    def test_m2m_relation_raises(self):
+        from games.models import Purchase
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Purchase, "games")
+
+    def test_auto_pk_raises(self):
+        """AutoField / BigAutoField has no comparison group."""
+        from games.models import Game
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Game, "id")
+
+    def test_nonexistent_column_raises(self):
+        from games.models import Game
+
+        with pytest.raises(FilterError):
+            _comparison_group_for(Game, "nonexistent")
+
+    # ── _allowed_comparison_modifiers ────────────────────────────────────────
+
+    def test_bool_group_is_equality_only(self):
+        assert _allowed_comparison_modifiers("bool") == [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+        ]
+
+    def test_date_group_is_ordered(self):
+        assert _allowed_comparison_modifiers("date") == Modifier.for_field_comparisons()

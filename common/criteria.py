@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import Any, Literal, Self, TypeVar
 
+from django.core.exceptions import FieldDoesNotExist
+from django.db import models
 from django.db.models import F, Q
 
 # ── Errors ─────────────────────────────────────────────────────────────────
@@ -578,6 +580,27 @@ type LeafWidgetKind = Literal["string", "number", "date", "bool", "set", "field-
 # ``ts/elements/filter-bar.ts``.
 type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
 
+# The DB type "bucket" used to verify that two columns being compared
+# field-to-field share the same kind (e.g. both "date", both "number").
+# date and datetime are intentionally SEPARATE groups.
+type ComparisonGroup = str  # e.g. "date"
+
+_GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
+    "DateField": "date",
+    "DateTimeField": "datetime",
+    "DurationField": "duration",
+    "IntegerField": "number",
+    "PositiveIntegerField": "number",
+    "PositiveSmallIntegerField": "number",
+    "SmallIntegerField": "number",
+    "BigIntegerField": "number",
+    "FloatField": "number",
+    "DecimalField": "number",
+    "CharField": "string",
+    "TextField": "string",
+    "BooleanField": "bool",
+}
+
 
 # Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
 # advertises for it (see ``filter_widget_attributes``). The server↔client
@@ -1005,6 +1028,48 @@ def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{left}__lt": F(right)})
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
+
+
+def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonGroup:
+    """Resolve a model column's comparison group by DB type, or raise FilterError.
+
+    Raises FilterError if the column does not exist, is a relation (FK/M2M/reverse),
+    or is of a type with no comparison group (e.g. AutoField pk, JSONField).
+    """
+    try:
+        field = model._meta.get_field(column)
+    except FieldDoesNotExist:
+        raise FilterError(f"{model.__name__} has no field {column!r}")
+
+    if field.is_relation:
+        raise FilterError(
+            f"{model.__name__}.{column!r} is a relation and is not comparable"
+        )
+
+    if isinstance(field, models.GeneratedField):
+        output_field = field.output_field
+        if output_field is None:
+            raise FilterError(
+                f"{model.__name__}.{column!r} is a generated field with no output type"
+            )
+        internal_type = output_field.get_internal_type()
+    else:
+        internal_type = field.get_internal_type()
+
+    group = _GROUP_BY_INTERNAL_TYPE.get(internal_type)
+    if group is None:
+        raise FilterError(
+            f"{model.__name__}.{column!r} is not a comparable type ({internal_type})"
+        )
+
+    return group
+
+
+def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:
+    """Modifiers valid for a comparison group: bool is equality-only; all others ordered."""
+    if group == "bool":
+        return [Modifier.EQUALS, Modifier.NOT_EQUALS]
+    return Modifier.for_field_comparisons()
 
 
 def duration_hours_to_q(
