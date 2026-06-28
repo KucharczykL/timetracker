@@ -5,6 +5,7 @@ re-exports the public API so ``from common.components import X`` keeps working.
 """
 
 from common.components.core import (
+    AttrsArg,
     BaseComponent,
     Document,
     Element,
@@ -161,6 +162,7 @@ __all__ = [
     "Safe",
     "collect_media",
     "render",
+    "AttrsArg",
     "HTMLAttribute",
     "HTMLTag",
     "_render_element",

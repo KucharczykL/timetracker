@@ -14,7 +14,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 """
 
 import hashlib
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from functools import lru_cache
 from typing import Self
 
@@ -30,6 +30,13 @@ HTMLAttribute = tuple[str, str | int | bool]
 # would be invariant and reject it). Locals that get ``.append()``-ed should
 # stay a concrete ``list[HTMLAttribute]``.
 Attributes = Sequence[HTMLAttribute]
+
+
+# A builder's *dynamic* attributes argument (the positional ``attrs`` slot): a
+# sequence of ``(name, value)`` pairs or a ``Mapping`` of them, coerced to a
+# concrete ``list[HTMLAttribute]`` by ``_coerce_attrs``.
+# Example: ``[("data-x", "1")]`` or ``{"data-x": 1}``.
+type AttrsArg = Attributes | Mapping[str, str | int | bool]
 
 
 HTMLTag = str

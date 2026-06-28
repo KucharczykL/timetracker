@@ -657,6 +657,60 @@ class NormalizeAttributesTest(unittest.TestCase):
         self.assertEqual(result, '<div id="a"></div>')
 
 
+class GenericBuilderContractTest(SimpleTestCase):
+    """The transitional generic builder contract: positional attrs (list or
+    Mapping), legacy attributes=/children=, htpy kwargs, [] children."""
+
+    def test_positional_attrs_list(self):
+        result = str(components.Div([("id", "x")]))
+        self.assertEqual(result, '<div id="x"></div>')
+
+    def test_positional_attrs_mapping(self):
+        result = str(components.Div({"data-x": "y"}))
+        self.assertEqual(result, '<div data-x="y"></div>')
+
+    def test_kwargs_static(self):
+        result = str(components.Div(class_="a", data_foo="b"))
+        self.assertEqual(result, '<div class="a" data-foo="b"></div>')
+
+    def test_mixed_dynamic_and_static_class_accumulates(self):
+        result = str(components.Div([("class", "dyn")], class_="static"))
+        self.assertEqual(result, '<div class="dyn static"></div>')
+
+    def test_legacy_attributes_keyword_still_works(self):
+        result = str(components.Div(attributes=[("id", "x")]))
+        self.assertEqual(result, '<div id="x"></div>')
+
+    def test_legacy_children_keyword_still_works(self):
+        result = str(components.Div(children=["hi"]))
+        self.assertEqual(result, "<div>hi</div>")
+
+    def test_positional_children_still_works(self):
+        result = str(components.Div([("id", "x")], ["hi"]))
+        self.assertEqual(result, '<div id="x">hi</div>')
+
+    def test_getitem_children(self):
+        result = str(components.Div(class_="x")["hi"])
+        self.assertEqual(result, '<div class="x">hi</div>')
+
+    def test_reserved_attributes_kwarg_raises(self):
+        # The footgun guard: once the legacy named params are gone (Stage D),
+        # 'attributes'/'children' arriving via **kwargs are rejected rather than
+        # silently rendered as bogus HTML attributes. Tested at the helper now
+        # because the names are still legitimate params during the transition.
+        from common.components.primitives import _attrs_from_kwargs
+
+        with self.assertRaises(TypeError) as ctx:
+            _attrs_from_kwargs({"attributes": "oops"})
+        self.assertIn("htpy", str(ctx.exception))
+
+    def test_reserved_children_kwarg_raises(self):
+        from common.components.primitives import _attrs_from_kwargs
+
+        with self.assertRaises(TypeError):
+            _attrs_from_kwargs({"children": "oops"})
+
+
 class PopoverTruncatedTest(unittest.TestCase):
     """Test PopoverTruncated() component function."""
 

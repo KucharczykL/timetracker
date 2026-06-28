@@ -19,6 +19,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from common.components.core import (
     Attributes,
+    AttrsArg,
     Child,
     Children,
     Element,
@@ -115,12 +116,26 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 # tag name is data, not a separate class/function body. Add a tag = one line.
 
 
+# Builder param names that must never arrive as htpy attribute kwargs. After the
+# legacy ``attributes=`` / ``children=`` params are removed, a stray one would be
+# silently swallowed by ``**kwargs`` and rendered as a bogus ``attributes="…"``
+# HTML attribute — so we reject them with a pointer to the htpy form instead.
+_RESERVED_ATTR_KWARGS = frozenset({"attributes", "children"})
+
+
 def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     """Translate htpy-style attribute kwargs to (name, value) pairs.
 
     ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
     ``hx-get`` (inner underscores to hyphens); ``True`` -> bare attribute;
     ``False`` / ``None`` -> omitted."""
+    for reserved in _RESERVED_ATTR_KWARGS:
+        if reserved in attrs:
+            raise TypeError(
+                f"{reserved!r} is not an htpy attribute kwarg. Pass dynamic "
+                "attributes positionally — Builder(attrs) — and children via "
+                "Builder(...)[...]."
+            )
     result: list[HTMLAttribute] = []
     for key, value in attrs.items():
         if value is None or value is False:
@@ -128,6 +143,21 @@ def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
         name = key.rstrip("_").replace("_", "-")
         result.append((name, name if value is True else value))  # type: ignore[arg-type]
     return result
+
+
+def _coerce_attrs(attrs: "AttrsArg | None") -> list[HTMLAttribute]:
+    """Normalise a dynamic-attributes argument to ``list[HTMLAttribute]``.
+
+    Accepts an ``Attributes`` sequence of ``(name, value)`` pairs **or** a
+    ``Mapping`` (``{"data-x": "y"}``), so callers can build dynamic attributes
+    as whichever is convenient and pass them through the single positional
+    ``attrs`` slot. ``None`` -> empty list.
+    """
+    if attrs is None:
+        return []
+    if isinstance(attrs, Mapping):
+        return list(attrs.items())
+    return list(attrs)
 
 
 def custom_element_builder(tag_name: str):
@@ -147,11 +177,20 @@ def _html_element(tag_name: str, media: Media | None = None):
     """
 
     def element(
-        attributes: Attributes | None = None,
+        attrs: "AttrsArg | None" = None,
         children: Children = None,
-        **attrs: object,
+        *,
+        attributes: Attributes | None = None,
+        **kwargs: object,
     ) -> Element:
-        merged = as_attributes(attributes) + _attrs_from_kwargs(attrs)
+        # Merge order is priority order — first contributor wins per the node
+        # algebra: legacy ``attributes=`` and positional ``attrs`` (dynamic),
+        # then htpy ``kwargs`` (static). ``class`` accumulates across all.
+        merged = (
+            _coerce_attrs(attributes)
+            + _coerce_attrs(attrs)
+            + _attrs_from_kwargs(kwargs)
+        )
         node = Element(tag_name, merged, children)
         return node.with_media(media) if media else node
 
