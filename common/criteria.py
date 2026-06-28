@@ -141,6 +141,8 @@ class _Criterion:
             return None
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
+            if not f.init:
+                continue
             if f.name in data:
                 val = data[f.name]
                 # Coerce string modifier to Modifier enum
@@ -459,10 +461,18 @@ class FieldComparisonCriterion(_Criterion):
     the filter's model by the base OperatorFilter before to_q runs). Operands are
     self-contained, so to_q ignores the inherited ``field_name`` argument.
 
-    Null semantics: an F() comparison against a NULL operand matches no rows (SQL
-    unknown); NOT_EQUALS via ~Q likewise excludes NULLs. This is expected.
+    Null semantics: Django's ``~Q(left=F(right))`` (used for NOT_EQUALS) on a
+    nullable field generates ``NOT (left = right AND left IS NOT NULL)``, which
+    expands to ``left != right OR left IS NULL``.  Consequently NOT_EQUALS *includes*
+    rows where ``left`` is NULL, unlike ordered comparisons (``<``, ``>``) which
+    exclude NULLs because the SQL expression is NULL when either operand is NULL.
     """
 
+    # Shadow the inherited `value` field: FieldComparisonCriterion has no
+    # user-supplied value (operands are `left`/`right`).  init=False keeps
+    # it out of __init__ and from_json iteration, preventing a stray JSON
+    # "value" key from being accepted and creating a roundtrip asymmetry.
+    value: Any = field(default=None, init=False, repr=False)
     left: str = ""
     right: str = ""
     modifier: Modifier = Modifier.EQUALS
@@ -591,7 +601,7 @@ type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
 # The DB type "bucket" used to verify that two columns being compared
 # field-to-field share the same kind (e.g. both "date", both "number").
 # date and datetime are intentionally SEPARATE groups.
-type ComparisonGroup = str  # e.g. "date"
+type ComparisonGroup = Literal["date", "datetime", "duration", "number", "string", "bool"]
 
 _GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
     "DateField": "date",
@@ -600,6 +610,7 @@ _GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
     "IntegerField": "number",
     "PositiveIntegerField": "number",
     "PositiveSmallIntegerField": "number",
+    "PositiveBigIntegerField": "number",
     "SmallIntegerField": "number",
     "BigIntegerField": "number",
     "FloatField": "number",
@@ -887,21 +898,30 @@ class OperatorFilter:
                     raise FilterError(f"Unknown relation match {raw!r}") from exc
                 continue
             # Field-comparison list: parse each entry with FieldComparisonCriterion.
-            # Mirrors the operator-field branch — null/absent → [], single item
-            # wrapped to list, None results filtered out.
+            # null/absent → [], single dict wrapped to list.  Unlike AND/OR/NOT
+            # sub-filters (where a silently-dropped entry tightens the filter),
+            # a dropped *leaf* comparison silently weakens it — returning MORE rows
+            # than intended.  So non-dict entries and unparseable dicts raise
+            # FilterError rather than being silently dropped.
             if f.name == _COMPARISON_FIELD:
                 if raw is None:
                     kwargs[f.name] = []
                 else:
                     items = raw if isinstance(raw, list) else [raw]
-                    parsed_comparisons = [
-                        FieldComparisonCriterion.from_json(item) for item in items
-                    ]
-                    kwargs[f.name] = [
-                        comparison
-                        for comparison in parsed_comparisons
-                        if comparison is not None
-                    ]
+                    parsed_comparisons: list[FieldComparisonCriterion] = []
+                    for item in items:
+                        if not isinstance(item, dict):
+                            raise FilterError(
+                                f"field_comparisons entries must be dicts,"
+                                f" got {type(item).__name__!r}"
+                            )
+                        comparison = FieldComparisonCriterion.from_json(item)
+                        if comparison is None:
+                            raise FilterError(
+                                f"field_comparisons entry could not be parsed: {item!r}"
+                            )
+                        parsed_comparisons.append(comparison)
+                    kwargs[f.name] = parsed_comparisons
                 continue
             # Operator fields are list-valued; handle them before the generic
             # ``raw is None`` guard so a JSON ``null`` (or absent) operator
@@ -1089,8 +1109,10 @@ def _field_comparison_to_q(left: str, right: str, modifier: Modifier) -> Q:
     """Build a Q comparing two model columns: ``left <op> F(right)``.
 
     Used by field-to-field comparison criteria. Only the four ordered/equality
-    modifiers are supported; anything else raises FilterError (the caller has
-    already validated field existence and type-group — this only maps the operator).
+    modifiers are supported; anything else raises FilterError. The
+    ``_apply_operators`` caller pre-validates the modifier via
+    ``_allowed_comparison_modifiers`` before calling this function, so the
+    final ``raise FilterError`` is a defensive guard not reached in normal use.
     """
     if modifier == Modifier.EQUALS:
         return Q(**{left: F(right)})
@@ -1107,12 +1129,13 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     """Resolve a model column's comparison group by DB type, or raise FilterError.
 
     Raises FilterError if the column does not exist, is a relation (FK/M2M/reverse),
-    or is of a type with no comparison group (e.g. AutoField pk, JSONField).
+    is a GeneratedField with no resolvable output type, or is of a type with no
+    comparison group (e.g. AutoField pk, JSONField).
     """
     try:
         model_field = model._meta.get_field(column)
-    except FieldDoesNotExist:
-        raise FilterError(f"{model.__name__} has no field {column!r}")
+    except FieldDoesNotExist as exc:
+        raise FilterError(f"{model.__name__} has no field {column!r}") from exc
 
     if model_field.is_relation:
         raise FilterError(

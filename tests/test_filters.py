@@ -1847,8 +1847,7 @@ class TestFieldComparisonWiring:
         json_data = stub.to_json()
         restored = _PurchaseStub.from_json(json_data)
         assert restored is not None
-        # Eager validation via to_q should not raise
-        restored.to_q()
+        assert restored.to_q() == Q(date_refunded__lt=F("date_purchased"))
 
     def test_integration_bad_column_raises_on_to_q(self):
         bad_json = {
@@ -1860,6 +1859,54 @@ class TestFieldComparisonWiring:
         assert parsed is not None
         with pytest.raises(FilterError):
             parsed.to_q()
+
+    # 6. Malformed field_comparisons entries — Finding 1 (fail-open robustness)
+
+    def test_null_entry_in_field_comparisons_raises(self):
+        """[null] in field_comparisons raises FilterError instead of silently dropping."""
+        with pytest.raises(FilterError):
+            _PurchaseStub.from_json({"field_comparisons": [None]})
+
+    def test_non_dict_string_entry_raises(self):
+        """A string entry in field_comparisons raises FilterError."""
+        with pytest.raises(FilterError):
+            _PurchaseStub.from_json({"field_comparisons": ["oops"]})
+
+    def test_single_dict_not_wrapped_parses_as_one_comparison(self):
+        """A single dict (not in a list) is wrapped to a one-entry list."""
+        data = {
+            "field_comparisons": {
+                "left": "date_refunded",
+                "right": "date_purchased",
+                "modifier": "LESS_THAN",
+            }
+        }
+        stub = _PurchaseStub.from_json(data)
+        assert stub is not None
+        assert len(stub.field_comparisons) == 1
+        assert stub.field_comparisons[0].left == "date_refunded"
+        assert stub.field_comparisons[0].right == "date_purchased"
+
+    def test_null_field_comparisons_key_parses_to_empty_list(self):
+        """field_comparisons: null → empty list (not an error)."""
+        stub = _PurchaseStub.from_json({"field_comparisons": None})
+        assert stub is not None
+        assert stub.field_comparisons == []
+
+    # 7. Inherited value field shadowed — Finding 3
+
+    def test_stray_value_key_is_not_stored_and_not_re_emitted(self):
+        """A stray 'value' key in JSON is ignored: not stored and not in to_json()."""
+        instance = FieldComparisonCriterion.from_json(
+            {"left": "a", "right": "b", "modifier": "EQUALS", "value": "x"}
+        )
+        assert instance is not None
+        assert "value" not in instance.to_json()
+
+    def test_constructing_with_value_is_rejected(self):
+        """init=False means FieldComparisonCriterion(value=...) raises TypeError."""
+        with pytest.raises(TypeError):
+            FieldComparisonCriterion(value="x")  # type: ignore[call-arg]
 
 
 # ── T4 — per-filter _comparison_model overrides ───────────────────────────────
@@ -1921,7 +1968,7 @@ class TestFilterComparisonModels:
         assert parsed.field_comparisons[0].left == "date_refunded"
         assert parsed.field_comparisons[0].right == "date_purchased"
         assert parsed.field_comparisons[0].modifier == Modifier.LESS_THAN
-        parsed.to_q()  # does not raise
+        assert parsed.to_q() == Q(date_refunded__lt=F("date_purchased"))
 
     @pytest.mark.django_db
     def test_cross_group_pair_raises_filter_error_via_parse(self):
@@ -2118,6 +2165,128 @@ class TestFieldComparisonEndToEnd:
         )
         result = set(Session.objects.filter(session_filter.to_q()))
         assert result == {session_p}
+
+    def test_unknown_right_column_raises(self):
+        """An unknown right-operand raises FilterError via to_q()."""
+        from games.filters import PurchaseFilter
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="nonexistent",
+                    modifier=Modifier.LESS_THAN,
+                )
+            ]
+        )
+        with pytest.raises(FilterError):
+            purchase_filter.to_q()
+
+    def test_not_equals_null_semantics(self):
+        """date_refunded NOT_EQUALS date_purchased:
+        - equal row (B) is excluded by NOT_EQUALS.
+        - NULL row (C) is INCLUDED: Django's ~Q on a nullable field generates
+          NOT (date_refunded = date_purchased AND date_refunded IS NOT NULL),
+          which expands to date_refunded != date_purchased OR date_refunded IS NULL.
+        So NOT_EQUALS returns rows A (different dates) and C (NULL date_refunded),
+        but not B (equal dates). Documents actual Django ~Q NULL semantics.
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: date_refunded differs from date_purchased → returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+        )
+        # B: date_refunded equals date_purchased → excluded (NOT FALSE = FALSE)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 2, 1),
+            date_refunded=datetime.date(2024, 2, 1),
+        )
+        # C: date_refunded is NULL → included (IS NULL branch of Django's ~Q)
+        purchase_c = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.NOT_EQUALS,
+                )
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a, purchase_c}
+
+    def test_two_comparisons_both_must_hold(self):
+        """Two field comparisons in one filter AND-accumulate:
+        a row must satisfy BOTH to be returned; satisfying only one is not enough.
+        Proves _apply_operators ANDs rather than replaces.
+        """
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="FieldCmpTest", icon="fieldcmptest"
+        )
+
+        # A: refund after purchase AND price > converted_price → returned
+        purchase_a = Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+            price=50.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+        # B: refund after purchase BUT price < converted_price → excluded (fails comparison 2)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            date_refunded=datetime.date(2024, 3, 1),
+            price=30.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+        # C: price > converted_price BUT no refund (NULL) → excluded (fails comparison 1)
+        Purchase.objects.create(
+            platform=platform,
+            date_purchased=datetime.date(2024, 1, 1),
+            price=50.0,
+            converted_price=40.0,
+            needs_price_update=False,
+        )
+
+        purchase_filter = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="date_refunded",
+                    right="date_purchased",
+                    modifier=Modifier.GREATER_THAN,
+                ),
+                FieldComparisonCriterion(
+                    left="price",
+                    right="converted_price",
+                    modifier=Modifier.GREATER_THAN,
+                ),
+            ]
+        )
+        result = set(Purchase.objects.filter(purchase_filter.to_q()))
+        assert result == {purchase_a}
 
     def test_json_round_trip_purchase_comparison(self):
         """Serializing and re-parsing the purchase filter queries identically.
