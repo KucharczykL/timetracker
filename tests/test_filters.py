@@ -1,7 +1,9 @@
 """Tests for the filtering system."""
 
+import contextlib
 import dataclasses
 import json
+import logging
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
@@ -1496,6 +1498,67 @@ class TestFilterErrorBoundary:
         result = parse_game_filter(good)
         assert result is not None
         result.to_q()  # does not raise
+
+
+@contextlib.contextmanager
+def _capture_games_logger(caplog):
+    """Wire caplog to the ``games`` logger, which sets ``propagate=False`` in
+    settings — so caplog's root handler never sees its records. Attach caplog's
+    handler directly for the duration of the block."""
+    games_logger = logging.getLogger("games")
+    games_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="games")
+    try:
+        yield
+    finally:
+        games_logger.removeHandler(caplog.handler)
+
+
+class TestFilterErrorLogging:
+    """Issue #203: ``apply_structured_filter`` must log a server-side warning
+    (entity/user/path/exc) when it drops an invalid ``?filter=``, so operators
+    can spot DoS-probing — without changing the fail-open toast/None UX."""
+
+    def _request(self):
+        from django.contrib.auth.models import AnonymousUser
+        from django.contrib.messages.storage.cookie import CookieStorage
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/game/")
+        request.user = AnonymousUser()
+        # apply_structured_filter queues messages.warning, which needs storage.
+        # CookieStorage needs no session middleware (FallbackStorage would).
+        setattr(request, "_messages", CookieStorage(request))
+        return request
+
+    def test_invalid_filter_logs_warning_and_fails_open(self, caplog):
+        from games.views.filtering import apply_structured_filter
+
+        request = self._request()
+        bad = json.dumps({"name": {"modifier": "BOGUS", "value": "x"}})
+        with _capture_games_logger(caplog):
+            result = apply_structured_filter(request, parse_game_filter, bad)
+
+        assert result is None  # fail-open unchanged
+        records = [r for r in caplog.records if r.name == "games"]
+        assert any(
+            r.levelno == logging.WARNING
+            and "rejected invalid filter" in r.getMessage()
+            and "entity=game" in r.getMessage()
+            and "/game/" in r.getMessage()
+            for r in records
+        )
+
+    def test_valid_filter_logs_nothing(self, caplog):
+        from games.views.filtering import apply_structured_filter
+
+        request = self._request()
+        good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
+        with _capture_games_logger(caplog):
+            result = apply_structured_filter(request, parse_game_filter, good)
+
+        assert result is not None
+        assert not [r for r in caplog.records if r.name == "games"]
 
 
 def _nest_relation(levels: int) -> dict:
