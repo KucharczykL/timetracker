@@ -6,8 +6,6 @@ criterion with a value and a CriterionModifier. This separates *what* you're
 filtering from *how* you're comparing, and makes filter serialization trivial.
 """
 
-from __future__ import annotations
-
 import json
 import types
 from collections.abc import Callable, Sequence
@@ -755,8 +753,6 @@ class FilterField:
 
 # ── OperatorFilter base ────────────────────────────────────────────────────
 
-FilterType = TypeVar("FilterType", bound="OperatorFilter")
-
 
 # Canonical registry of every concrete criterion class, by name. Field-type
 # resolution no longer consults it (that is introspection now — see
@@ -812,10 +808,10 @@ MAX_SET_VALUES = 1000  # max entries per set-criterion value / excludes list
 # where / resolve_path_kind paths). Keyed by the filter class; a class is created
 # once, so this never grows unbounded. A plain dict rather than ``functools.cache``
 # because the dataclass ``__hash__`` confuses the cache decorator's type signature.
-_FIELD_TYPES_CACHE: dict[type["OperatorFilter"], dict[str, type]] = {}
+_FIELD_TYPES_CACHE: dict[type[OperatorFilter], dict[str, type]] = {}
 
 
-def _field_types(cls: type["OperatorFilter"]) -> dict[str, type]:
+def _field_types(cls: type[OperatorFilter]) -> dict[str, type]:
     """Resolved (Optional-unwrapped) type of each dataclass field on a filter class.
 
     Built on ``typing.get_type_hints`` so a stringized annotation (PEP 563 /
@@ -845,7 +841,7 @@ def _field_types(cls: type["OperatorFilter"]) -> dict[str, type]:
 
 
 def _criterion_class_for(
-    cls: type["OperatorFilter"], field_name: str
+    cls: type[OperatorFilter], field_name: str
 ) -> type[_Criterion] | None:
     """Resolve the criterion class declared for ``field_name`` on a filter, or
     None if the field is absent or isn't a criterion field.
@@ -861,8 +857,8 @@ def _criterion_class_for(
 
 
 def _filter_class_for(
-    cls: type["OperatorFilter"], field_name: str
-) -> type["OperatorFilter"] | None:
+    cls: type[OperatorFilter], field_name: str
+) -> type[OperatorFilter] | None:
     """Resolve the cross-entity sub-filter class declared for ``field_name`` on a
     filter, or None if the field is absent or isn't a sub-filter field.
 
@@ -968,7 +964,7 @@ def criterion_kind(criterion_cls: type[_Criterion]) -> LeafWidgetKind:
 
 
 def resolve_path_kind(
-    filter_cls: type["OperatorFilter"], path: FilterWidgetPath
+    filter_cls: type[OperatorFilter], path: FilterWidgetPath
 ) -> LeafWidgetKind:
     """Resolve a filter-widget ``data-path`` against a filter dataclass tree and
     return the expected ``data-kind``.
@@ -1030,9 +1026,9 @@ class OperatorFilter:
 
         @dataclass
         class GameFilter(OperatorFilter):
-            AND: list["GameFilter"] = field(default_factory=list)
-            OR:  list["GameFilter"] = field(default_factory=list)
-            NOT: list["GameFilter"] = field(default_factory=list)
+            AND: list[GameFilter] = field(default_factory=list)
+            OR:  list[GameFilter] = field(default_factory=list)
+            NOT: list[GameFilter] = field(default_factory=list)
             name: StringCriterion | None = None
             ...
 
@@ -1052,14 +1048,14 @@ class OperatorFilter:
     match: RelationMatch = RelationMatch.ANY
 
     # N-ary boolean composition: each operator is a list of sub-filters. Declared
-    # on the base as ``Sequence["OperatorFilter"]`` so ``_apply_operators`` reads a
+    # on the base as ``Sequence[OperatorFilter]`` so ``_apply_operators`` reads a
     # typed ``.to_q()`` while subclasses narrow to ``list[XFilter]`` (``Sequence``
     # is covariant, so the narrower override is accepted — a ``list[OperatorFilter]``
     # base would be rejected because ``list`` is invariant). Concrete filters
     # redeclare these with their own type — see games/filters.py.
-    AND: Sequence["OperatorFilter"] = field(default_factory=list)
-    OR: Sequence["OperatorFilter"] = field(default_factory=list)
-    NOT: Sequence["OperatorFilter"] = field(default_factory=list)
+    AND: Sequence[OperatorFilter] = field(default_factory=list)
+    OR: Sequence[OperatorFilter] = field(default_factory=list)
+    NOT: Sequence[OperatorFilter] = field(default_factory=list)
 
     # Field-to-field comparisons: compare two columns of the filter's own model
     # (e.g. date_refunded < date_purchased).  Validated at to_q() time via
@@ -1089,7 +1085,7 @@ class OperatorFilter:
     labels: ClassVar[dict[AttrName, str]] = {}
 
     @classmethod
-    def where(cls: type[FilterType], **lookups: Any) -> FilterType:
+    def where(cls, **lookups: Any) -> Self:
         """Build a filter from Django-``QuerySet.filter()``-style lookups.
 
         Each keyword is ``field__suffix=value`` (or ``field=value`` for the
@@ -1361,7 +1357,7 @@ class OperatorFilter:
 # ── JSON helpers ───────────────────────────────────────────────────────────
 
 
-def filter_from_json(cls: type[FilterType], json_str: str) -> FilterType | None:
+def filter_from_json[F: OperatorFilter](cls: type[F], json_str: str) -> F | None:
     """Deserialize and fully validate a filter from a JSON string.
 
     Usage:
@@ -1711,7 +1707,7 @@ def _static_choices(model_field: models.Field | None) -> list[ChoiceMeta]:
     return [ChoiceMeta(value=str(value), label=str(label)) for value, label in choices]
 
 
-def _field_label(filter_cls: type["OperatorFilter"], name: AttrName) -> str:
+def _field_label(filter_cls: type[OperatorFilter], name: AttrName) -> str:
     """Human label for a filter field: explicit ``FilterField.label`` →
     ``filter_cls.labels`` override → title-cased field name.
 
@@ -1730,7 +1726,7 @@ def _field_label(filter_cls: type["OperatorFilter"], name: AttrName) -> str:
     return name.replace("_", " ").title()
 
 
-def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
+def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     """Per-field filter metadata for ``filter_cls`` — the source of truth the
     add-criterion field picker, leaf widget, and relation-descent picker read.
 

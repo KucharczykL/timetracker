@@ -2526,9 +2526,9 @@ class TestComparableColumns:
 
 @dataclass
 class _PurchaseStub(OperatorFilter):
-    AND: list["_PurchaseStub"] = dc_field(default_factory=list)
-    OR: list["_PurchaseStub"] = dc_field(default_factory=list)
-    NOT: list["_PurchaseStub"] = dc_field(default_factory=list)
+    AND: list[_PurchaseStub] = dc_field(default_factory=list)
+    OR: list[_PurchaseStub] = dc_field(default_factory=list)
+    NOT: list[_PurchaseStub] = dc_field(default_factory=list)
 
     @classmethod
     def _comparison_model(cls):
@@ -2541,16 +2541,16 @@ class _PurchaseStub(OperatorFilter):
 class _NoModelStub(OperatorFilter):
     """Stub that does NOT override _comparison_model — base returns None."""
 
-    AND: list["_NoModelStub"] = dc_field(default_factory=list)
-    OR: list["_NoModelStub"] = dc_field(default_factory=list)
-    NOT: list["_NoModelStub"] = dc_field(default_factory=list)
+    AND: list[_NoModelStub] = dc_field(default_factory=list)
+    OR: list[_NoModelStub] = dc_field(default_factory=list)
+    NOT: list[_NoModelStub] = dc_field(default_factory=list)
 
 
 @dataclass
 class _SessionStub(OperatorFilter):
-    AND: list["_SessionStub"] = dc_field(default_factory=list)
-    OR: list["_SessionStub"] = dc_field(default_factory=list)
-    NOT: list["_SessionStub"] = dc_field(default_factory=list)
+    AND: list[_SessionStub] = dc_field(default_factory=list)
+    OR: list[_SessionStub] = dc_field(default_factory=list)
+    NOT: list[_SessionStub] = dc_field(default_factory=list)
 
     @classmethod
     def _comparison_model(cls):
@@ -4042,9 +4042,9 @@ class _LabelStub(OperatorFilter):
     ``FilterField.label`` (in ``fields``) and an ``OperatorFilter.labels`` entry
     (for a field outside ``fields``)."""
 
-    AND: list["_LabelStub"] = dc_field(default_factory=list)
-    OR: list["_LabelStub"] = dc_field(default_factory=list)
-    NOT: list["_LabelStub"] = dc_field(default_factory=list)
+    AND: list[_LabelStub] = dc_field(default_factory=list)
+    OR: list[_LabelStub] = dc_field(default_factory=list)
+    NOT: list[_LabelStub] = dc_field(default_factory=list)
     name: StringCriterion | None = None
     mastered: BoolCriterion | None = None
 
@@ -4063,9 +4063,9 @@ class _BadLookupStub(OperatorFilter):
     """A misconfigured filter whose ``fields`` lookup names no real column — the
     registry must raise rather than silently emit nullable=False/choices=[]."""
 
-    AND: list["_BadLookupStub"] = dc_field(default_factory=list)
-    OR: list["_BadLookupStub"] = dc_field(default_factory=list)
-    NOT: list["_BadLookupStub"] = dc_field(default_factory=list)
+    AND: list[_BadLookupStub] = dc_field(default_factory=list)
+    OR: list[_BadLookupStub] = dc_field(default_factory=list)
+    NOT: list[_BadLookupStub] = dc_field(default_factory=list)
     year_released: IntCriterion | None = None
 
     fields = {"year_released": FilterField("yeer_released")}
