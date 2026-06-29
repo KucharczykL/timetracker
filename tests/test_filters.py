@@ -46,6 +46,7 @@ from common.criteria import (
     FieldMeta,
     field_metadata,
     filter_from_json,
+    filter_to_json,
     search_q,
 )
 from common.components import FilterBar
@@ -166,10 +167,6 @@ class TestIntCriterion:
         EQUALS 0 (e.g. free price, zero-duration). Regression for #223."""
         assert IntCriterion(value=0, modifier=Modifier.EQUALS).to_json() == {"value": 0}
 
-    def test_value_zero_round_trip(self):
-        original = IntCriterion(value=0, modifier=Modifier.EQUALS)
-        assert IntCriterion.from_json(original.to_json()) == original
-
 
 class TestScalarCriterionZeroValue:
     """#223: every scalar criterion must serialize a meaningful default-valued
@@ -179,10 +176,6 @@ class TestScalarCriterionZeroValue:
         as_dict = FloatCriterion(value=0.0, modifier=Modifier.LESS_THAN).to_json()
         assert as_dict["value"] == 0.0
         assert as_dict["modifier"] == Modifier.LESS_THAN
-
-    def test_float_zero_round_trip(self):
-        original = FloatCriterion(value=0.0, modifier=Modifier.LESS_THAN)
-        assert FloatCriterion.from_json(original.to_json()) == original
 
     def test_date_empty_value_survives_to_json(self):
         # `""` is not a valid ISO date (from_json rightly rejects it on round-trip),
@@ -195,9 +188,31 @@ class TestScalarCriterionZeroValue:
         as_dict = AggregateCriterion(value=0, modifier=Modifier.EQUALS).to_json()
         assert as_dict["value"] == 0
 
-    def test_aggregate_zero_round_trip(self):
-        original = AggregateCriterion(value=0, modifier=Modifier.EQUALS)
-        assert AggregateCriterion.from_json(original.to_json()) == original
+    # The actual #223 bug path: `OperatorFilter.to_json` drops a field whose
+    # criterion serializes to `{}` (the `if j:` guard, criteria.py:1343-1346). A
+    # criterion-in-isolation round-trip can NEVER catch this — `from_json` refills
+    # the dropped value from the dataclass default, so it passes even on the
+    # buggy code. Only a full filter-level round-trip exercises the drop site and
+    # genuinely fails when the fix is reverted.
+
+    def test_int_zero_survives_filter_round_trip(self):
+        original = GameFilter(
+            year_released=IntCriterion(value=0, modifier=Modifier.EQUALS)
+        )
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.year_released == IntCriterion(value=0, modifier=Modifier.EQUALS)
+
+    def test_aggregate_zero_survives_filter_round_trip(self):
+        """'games with 0 sessions' through the full filter serializer."""
+        original = GameFilter(
+            session_count=AggregateCriterion(value=0, modifier=Modifier.EQUALS)
+        )
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.session_count == AggregateCriterion(
+            value=0, modifier=Modifier.EQUALS
+        )
 
 
 class TestBoolCriterion:
