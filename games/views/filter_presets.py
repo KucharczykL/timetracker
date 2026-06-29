@@ -104,10 +104,25 @@ def save_preset(request: HttpRequest) -> HttpResponse:
             )
             messages.error(request, f"Invalid filter: {exc}")
             return HttpResponse(status=400)
-        # parse() returns None for empty/null/non-object JSON; store {} then so a
-        # scalar/null is never persisted into the dict-typed field. After a
-        # successful parse(), json.loads cannot raise (parse() already loaded it).
-        object_filter = json.loads(filter_json_str) if parsed is not None else {}
+        if parsed is not None:
+            # A non-None parse means the payload was a filter object; re-loading
+            # it cannot raise (parse() already loaded + validated the JSON).
+            object_filter = json.loads(filter_json_str)
+        else:
+            # parse() returns None for any non-object JSON. `null` legitimately
+            # means "no filter" -> {}. A scalar/array is a malformed payload, not
+            # an empty filter: reject it like bad JSON rather than silently saving
+            # a match-everything preset behind a success toast (issue #206).
+            if json.loads(filter_json_str) is not None:
+                logger.warning(
+                    "rejected preset save (mode=%s, user=%s, path=%s): "
+                    "filter is not an object",
+                    mode,
+                    request.user,
+                    request.path,
+                )
+                messages.error(request, "Invalid filter: expected a filter object.")
+                return HttpResponse(status=400)
 
     FilterPreset.objects.create(
         name=name,

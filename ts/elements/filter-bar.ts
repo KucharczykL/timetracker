@@ -501,9 +501,10 @@ function savePreset(
   body.append("mode", presetMode());
   body.append("filter", JSON.stringify(filterObject));
 
-  // fetchWithHtmxTriggers (not plain fetch) so the server's messages — the
-  // error toast on a rejected filter/mode, and the success toast — surface via
-  // the HX-Trigger header the toast middleware sets.
+  // fetchWithHtmxTriggers (not plain fetch) so the server's messages — the error
+  // toast on a rejected filter/mode, and the success toast — surface via the
+  // HX-Trigger header the toast middleware sets, for any response that carries a
+  // Django message.
   window
     .fetchWithHtmxTriggers(presetSaveUrl, {
       method: "POST",
@@ -515,7 +516,9 @@ function savePreset(
       body: body.toString(),
     })
     .then((response) => {
-      if (!response.ok) throw new Error("Save failed");
+      // A non-ok response already fired its error toast via the wrapper; leave
+      // the confirm-save UI in place so the user can correct and retry.
+      if (!response.ok) return;
       if (input) {
         input.value = "";
         input.classList.add("hidden");
@@ -528,7 +531,10 @@ function savePreset(
       loadPresets(root, presetListUrl);
     })
     .catch((error) => {
+      // Reached only on a transport failure (no Response, so no HX-Trigger and no
+      // toast fired). Surface one here so the failure is never invisible.
       console.error("Failed to save preset:", error);
+      window.toast("Failed to save preset.", "error");
     });
 }
 
