@@ -198,26 +198,22 @@ def test_session_list_invalid_filter_semantics_rejected(auth_client):
     assert response.status_code == 400
 
 
-def test_session_list_malformed_filter_logged(auth_client, caplog):
+def test_session_list_malformed_filter_logged(auth_client, capture_games_logger):
     # Issue #203: a rejected filter must leave a server-side warning so operators
-    # can spot DoS-probing, in addition to the 400 the client sees. The "games"
-    # logger has propagate=False, so caplog's root handler never sees its records
-    # — attach caplog's handler to the games logger directly.
-    games_logger = logging.getLogger("games")
-    games_logger.addHandler(caplog.handler)
-    caplog.set_level(logging.WARNING, logger="games")
-    try:
+    # can spot DoS-probing, in addition to the 400 the client sees.
+    with capture_games_logger() as caplog:
         response = auth_client.get("/api/session/?filter=not-json")
-    finally:
-        games_logger.removeHandler(caplog.handler)
 
     assert response.status_code == 400
-    records = [r for r in caplog.records if r.name == "games"]
+    records = [record for record in caplog.records if record.name == "games"]
+    # Assert each labelled field so a swapped/dropped positional arg is caught.
     assert any(
-        r.levelno == logging.WARNING
-        and "rejected invalid filter" in r.getMessage()
-        and "entity=session" in r.getMessage()
-        for r in records
+        record.levelno == logging.WARNING
+        and "rejected invalid filter" in record.getMessage()
+        and "entity=session" in record.getMessage()
+        and "user=tester" in record.getMessage()
+        and "path=/api/session/" in record.getMessage()
+        for record in records
     )
 
 
