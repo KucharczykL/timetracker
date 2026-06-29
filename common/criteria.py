@@ -726,6 +726,10 @@ class FilterField:
 
     lookup: ORMLookup | None = None
     handler: FieldHandler | None = None
+    # Human label for the field-metadata registry (``field_metadata``). Optional;
+    # declared last so existing positional ``FilterField("lookup")`` calls are
+    # unaffected. When None, the registry falls back to a title-cased field name.
+    label: str | None = None
 
     def __post_init__(self) -> None:
         if self.lookup is not None and self.handler is not None:
@@ -1046,6 +1050,14 @@ class OperatorFilter:
     # plus the aggregate-typed fields partitions every criterion field.
     _IMPERATIVE_CRITERIA: ClassVar[set[str]] = {"search"}
 
+    # Human labels for the field-metadata registry, keyed by field name. A home for
+    # labels of fields outside ``fields`` (aggregates, the M2M ``games``) without
+    # touching the field-partition invariant; ``fields`` entries carry their own
+    # ``FilterField.label``. Empty by default — ``field_metadata`` falls back to a
+    # title-cased field name. Populated with exact strings when the field picker
+    # (issue #168) is built. Subclasses override per field.
+    labels: ClassVar[dict[AttrName, str]] = {}
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Register concrete filter classes so from_json can resolve a
@@ -1099,11 +1111,15 @@ class OperatorFilter:
             field_criteria[field_name] = criterion_class(**criterion_arguments)
         return cls(**field_criteria)
 
-    def _comparison_model(self) -> type[models.Model] | None:
+    @classmethod
+    def _comparison_model(cls) -> type[models.Model] | None:
         """The Django model whose columns ``field_comparisons`` reference.
 
         Returns None (this filter does not support field comparisons). Concrete
         filter subclasses override this to return their primary model — see T4.
+        A classmethod so the field-metadata registry can resolve filter→model
+        without instantiating (``field_metadata``); ``self``-call sites are
+        unaffected (classmethods are callable on instances).
         """
         return None
 
@@ -1584,6 +1600,177 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
         )
     columns.sort(key=lambda entry: entry["label"].lower())
     return columns
+
+
+# ── Field-metadata registry (issue #187) ───────────────────────────────────
+# The per-model source of truth the nested filter builder's add-criterion field
+# picker, leaf widget, and relation-descent picker read (issue #168). Builds on
+# the existing resolvers (``_criterion_class_for``, ``_filter_class_for``,
+# ``criterion_kind``) and adds the missing label / choices / nullable / relation
+# enumeration. Pure Python — JSON/codegen exposure is deferred to #152.
+
+type FieldMetaKind = LeafWidgetKind | Literal["relation"]
+type ModelName = str  # a Django model class name, e.g. "Session"
+type FilterClassName = str  # an OperatorFilter subclass name, e.g. "SessionFilter"
+
+
+class ChoiceMeta(TypedDict):
+    """One static-enum option for a filter field (status, ownership_type, …)."""
+
+    value: str  # stored value, e.g. "f"
+    label: str  # human label, e.g. "Finished"
+
+
+class RelationTarget(TypedDict):
+    """The target a relation-descent field points at, for the relation picker."""
+
+    field: AttrName  # the sub-filter attr, e.g. "session_filter"
+    filter: FilterClassName  # target filter class name, e.g. "SessionFilter"
+    model: ModelName  # target model name, e.g. "Session"
+
+
+class FieldMeta(TypedDict):
+    """Everything a picker needs to render one filterable field. ``choices`` is
+    populated only for static-enum fields; ``relations`` only for relation
+    descents (``kind == "relation"``)."""
+
+    name: AttrName
+    label: str
+    kind: FieldMetaKind
+    nullable: bool
+    choices: list[ChoiceMeta]
+    relations: list[RelationTarget]
+
+
+def _resolve_model_field(
+    model: type[models.Model], lookup: ORMLookup
+) -> models.Field | None:
+    """Resolve a filter field's ORM ``lookup`` to its terminal concrete model field.
+
+    Walks ``__``-separated segments, descending into the related model at each
+    relation segment, and stops at the first non-relation field — so a trailing
+    transform such as ``created_at__date`` returns the ``created_at`` field and a
+    relation hop such as ``platform__group`` returns ``Platform.group``. A
+    single-segment FK attname (``platform_id``) resolves directly (Django accepts
+    attnames). Returns None for any segment that does not resolve — handler-mapped
+    or aggregate fields, whose lookup names no column.
+    """
+    current = model
+    segments = lookup.split("__")
+    for index, segment in enumerate(segments):
+        try:
+            model_field = current._meta.get_field(segment)
+        except FieldDoesNotExist:
+            return None
+        is_last = index == len(segments) - 1
+        if model_field.is_relation and not is_last:
+            related = model_field.related_model
+            if related is None:
+                return None
+            current = related
+            continue
+        # First non-relation field, or a terminal relation/FK: this is the field.
+        # Any remaining segments are transforms (e.g. ``__date``) and are ignored.
+        return model_field if isinstance(model_field, models.Field) else None
+    return None
+
+
+def _static_choices(model_field: models.Field | None) -> list[ChoiceMeta]:
+    """Static enum ``(value, label)`` pairs for a model field, or ``[]``.
+
+    Only fields with declared ``choices`` (status, ownership_type, type) yield
+    entries; FK/M2M/free-text fields have no choices and are left to the dynamic
+    relation picker.
+    """
+    choices = getattr(model_field, "choices", None)
+    if not choices:
+        return []
+    return [ChoiceMeta(value=str(value), label=str(label)) for value, label in choices]
+
+
+def _field_label(filter_cls: type["OperatorFilter"], name: AttrName) -> str:
+    """Human label for a filter field: explicit ``FilterField.label`` →
+    ``filter_cls.labels`` override → title-cased field name.
+
+    ``verbose_name`` is deliberately not consulted: a nested lookup like
+    ``platform_group`` would surface ``Platform.group``'s verbose_name ("group"),
+    losing the relation context, whereas the field name gives "Platform Group".
+    The field name is the stable identifier; exact display strings are filled in
+    on ``FilterField.label`` / ``labels`` as the field picker (issue #168) lands.
+    """
+    field_spec = filter_cls.fields.get(name)
+    if field_spec is not None and field_spec.label is not None:
+        return field_spec.label
+    override = filter_cls.labels.get(name)
+    if override is not None:
+        return override
+    return name.replace("_", " ").title()
+
+
+def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
+    """Per-field filter metadata for ``filter_cls`` — the source of truth the
+    add-criterion field picker, leaf widget, and relation-descent picker read.
+
+    One ``FieldMeta`` per filterable field: leaf criteria and aggregates as value
+    fields (``kind`` from the criterion type), each cross-entity sub-filter as a
+    ``kind="relation"`` entry naming its target. The ``search`` free-text field is
+    excluded — it is served by ``FindFilter.q`` / ``?search_string=`` (TODO #216
+    removes the dead field). Non-recursive: a relation entry names its target
+    only; callers descend by calling ``field_metadata`` on the target filter
+    class, which bounds the ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
+    """
+    model = filter_cls._comparison_model()
+    entries: list[FieldMeta] = []
+    for dataclass_field in dc_fields(filter_cls):
+        name = dataclass_field.name
+        if name == "search":
+            continue  # TODO(#216): drop the ``search`` field entirely
+        criterion_cls = _criterion_class_for(filter_cls, name)
+        if criterion_cls is not None:
+            field_spec = filter_cls.fields.get(name)
+            has_handler = field_spec is not None and field_spec.handler is not None
+            model_field = (
+                _resolve_model_field(
+                    model, field_spec.lookup or name if field_spec else name
+                )
+                if model is not None and not has_handler
+                else None
+            )
+            is_aggregate = issubclass(criterion_cls, AggregateCriterion)
+            entries.append(
+                FieldMeta(
+                    name=name,
+                    label=_field_label(filter_cls, name),
+                    # Aggregates set kind directly: ``criterion_kind``'s exact-class
+                    # dict lookup would KeyError on a future AggregateCriterion
+                    # subclass, whereas the value shape is always "number".
+                    kind="number" if is_aggregate else criterion_kind(criterion_cls),
+                    nullable=bool(getattr(model_field, "null", False)),
+                    choices=_static_choices(model_field),
+                    relations=[],
+                )
+            )
+            continue
+        sub_filter_cls = _filter_class_for(filter_cls, name)
+        if sub_filter_cls is not None:
+            target_model = sub_filter_cls._comparison_model()
+            entries.append(
+                FieldMeta(
+                    name=name,
+                    label=_field_label(filter_cls, name),
+                    kind="relation",
+                    nullable=False,
+                    choices=[],
+                    relations=[
+                        RelationTarget(
+                            field=name,
+                            filter=sub_filter_cls.__name__,
+                            model=target_model.__name__ if target_model else "",
+                        )
+                    ],
+                )
+            )
+    return entries
 
 
 def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:
