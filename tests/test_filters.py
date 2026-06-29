@@ -19,6 +19,7 @@ from common.criteria import (
     FilterError,
     FilterField,
     FloatCriterion,
+    MAX_FILTER_DEPTH,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -1492,6 +1493,77 @@ class TestFilterErrorBoundary:
 
     def test_valid_filter_still_parses(self):
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+
+def _nest_relation(levels: int) -> dict:
+    """Build ``levels`` deep of alternating session_filter <-> game_filter relation
+    descent (the cyclic DoS vector named in issue #186). The outermost class is
+    GameFilter (parse_game_filter), so position 0 must be a key GameFilter accepts
+    (session_filter); SessionFilter at position 1 accepts game_filter; and so on.
+    Each nested dict is one from_json frame, so ``levels`` == the recursion depth
+    the guard counts. Empty innermost filter keeps the chain valid (a bare relation
+    is "has any related row" — to_q never raises)."""
+    node: dict = {}
+    for position in range(levels - 1, -1, -1):
+        key = "session_filter" if position % 2 == 0 else "game_filter"
+        node = {key: node}
+    return node
+
+
+def _nest_operator(levels: int) -> dict:
+    """Build ``levels`` deep of nested ``AND`` operator groups (the same-entity
+    recursion site). Each AND-list element is one from_json frame."""
+    node: dict = {"name": {"modifier": "INCLUDES", "value": "x"}}
+    for _ in range(levels):
+        node = {"AND": [node]}
+    return node
+
+
+class TestFilterDepthGuard:
+    """Issue #186: a hand-edited / shared cyclic or pathologically deep ``?filter=``
+    must raise FilterError at parse, never recurse into a RecursionError/500 or a
+    runaway nested-subquery build (DoS). The guard lives in OperatorFilter.from_json
+    and bounds both recursion sites (AND/OR/NOT and cross-entity relation descent)."""
+
+    def test_relation_nesting_past_cap_raises(self):
+        bad = json.dumps(_nest_relation(MAX_FILTER_DEPTH + 5))
+        with pytest.raises(FilterError, match="too deep"):
+            parse_game_filter(bad)
+
+    def test_operator_nesting_past_cap_raises(self):
+        bad = json.dumps(_nest_operator(MAX_FILTER_DEPTH + 5))
+        with pytest.raises(FilterError, match="too deep"):
+            parse_game_filter(bad)
+
+    def test_depth_guard_raises_filter_error_not_recursion_error(self):
+        """An extreme depth must surface as a catchable FilterError (a ValueError
+        subclass the views already handle), never an uncaught RecursionError that
+        would 500 the list view."""
+        bad = json.dumps(_nest_relation(500))
+        with pytest.raises(FilterError):
+            parse_game_filter(bad)
+
+    def test_nesting_within_cap_parses(self):
+        """A filter nested below the cap (covers the builder's <=5 soft cap with
+        headroom) parses and builds its Q without raising — guards against an
+        off-by-one that would reject legitimately built filters."""
+        good = json.dumps(_nest_relation(MAX_FILTER_DEPTH - 1))
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_nesting_at_cap_parses(self):
+        """Exactly at the cap is accepted (the guard rejects only *past* the cap)."""
+        good = json.dumps(_nest_relation(MAX_FILTER_DEPTH))
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_operator_nesting_within_cap_parses(self):
+        good = json.dumps(_nest_operator(MAX_FILTER_DEPTH - 1))
         result = parse_game_filter(good)
         assert result is not None
         result.to_q()  # does not raise

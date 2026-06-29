@@ -754,6 +754,15 @@ _OPERATOR_FIELDS: tuple[str, str, str] = ("AND", "OR", "NOT")
 # logic is untouched; the from_json/to_json/apply paths branch on this name.
 _COMPARISON_FIELD = "field_comparisons"
 
+# Max OperatorFilter nesting depth accepted from a hand-edited/shared ``?filter=``.
+# Each from_json frame (one AND/OR/NOT level OR one relation descent) = one unit, so
+# this aligns ~1:1 with the builder's group-nesting depth. The builder's UI soft cap
+# is 5; this 10 keeps headroom so no legitimately built filter is ever rejected, while
+# a pathologically deep / cyclic blob (relation fields cycle, e.g. GameFilter.session_filter
+# <-> SessionFilter.game_filter) raises FilterError at parse instead of recursing into a
+# RecursionError/500 or a runaway nested-subquery build (DoS). See issue #186.
+MAX_FILTER_DEPTH = 10
+
 
 def _criterion_class_for(
     cls: type["OperatorFilter"], field_name: str
@@ -1141,9 +1150,14 @@ class OperatorFilter:
         return Q()
 
     @classmethod
-    def from_json(cls, data: dict[str, Any] | None) -> Self | None:
+    def from_json(cls, data: dict[str, Any] | None, *, _depth: int = 0) -> Self | None:
         if data is None or not isinstance(data, dict):
             return None
+        # Cap nesting before recursing: a hand-edited/shared cyclic ``?filter=`` would
+        # otherwise parse into an unbounded tree and DoS the server (see MAX_FILTER_DEPTH).
+        # ``_depth`` is incremented only at the two operator-filter recursion sites below.
+        if _depth > MAX_FILTER_DEPTH:
+            raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
         # Resolve criterion class names to actual types
         criterion_types = _CRITERION_TYPES
         kwargs: dict[str, Any] = {}
@@ -1195,7 +1209,7 @@ class OperatorFilter:
                     kwargs[f.name] = []
                     continue
                 items = raw if isinstance(raw, list) else [raw]
-                parsed = [cls.from_json(item) for item in items]
+                parsed = [cls.from_json(item, _depth=_depth + 1) for item in items]
                 kwargs[f.name] = [sub for sub in parsed if sub is not None]
                 continue
             if raw is None:
@@ -1220,7 +1234,9 @@ class OperatorFilter:
             elif isinstance(f_type, str) and f_type in _FILTER_TYPES:
                 filter_cls = _FILTER_TYPES[f_type]
                 kwargs[f.name] = (
-                    filter_cls.from_json(raw) if isinstance(raw, dict) else None
+                    filter_cls.from_json(raw, _depth=_depth + 1)
+                    if isinstance(raw, dict)
+                    else None
                 )
         return cls(**kwargs)
 
