@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
@@ -22,7 +22,6 @@ from common.components import (
     NameWithIcon,
     Node,
     Popover,
-    SearchField,
     SessionActions,
     SessionDeviceSelector,
     SessionTimestampButtons,
@@ -66,13 +65,13 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
 
 
 @login_required
-def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse:
+def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
     )
     device_list = Device.objects.order_by("name")
 
-    # ── Structured filter (JSON) ──
+    # ── Structured filter (JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
         from games.filters import parse_session_filter
@@ -83,17 +82,6 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         )
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())
-    else:
-        # ── Legacy free-text search ──
-        search_string = request.GET.get("search_string", search_string)
-        if search_string != "":
-            sessions = sessions.filter(
-                Q(game__name__icontains=search_string)
-                | Q(game__name__icontains=search_string)
-                | Q(game__platform__name__icontains=search_string)
-                | Q(device__name__icontains=search_string)
-                | Q(device__type__icontains=search_string)
-            )
     try:
         last_session = sessions.latest()
     except Session.DoesNotExist:
@@ -107,8 +95,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
     csrf_token = get_token(request)
 
     data: TableData = {
-        "header_action": Div(class_="flex justify-between")[
-            SearchField(search_string=search_string),
+        "header_action": Div(class_="flex justify-end")[
             Div()[
                 A(
                     href=reverse("games:add_session"),
@@ -175,11 +162,6 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         content,
         title="Manage sessions",
     )
-
-
-@login_required
-def search_sessions(request: HttpRequest) -> HttpResponse:
-    return list_sessions(request, search_string=request.GET.get("search_string", ""))
 
 
 def _timestamp_buttons(field_name: str) -> Node:

@@ -3825,7 +3825,8 @@ class TestFieldMetadata:
     def test_does_not_raise_and_excludes_search(self, filter_cls):
         names = {entry["name"] for entry in field_metadata(filter_cls)}
         # search is a declared StringCriterion on every filter but is deliberately
-        # excluded (served by FindFilter.q; TODO #216 removes it).
+        # excluded from the per-field picker: it is the filter bar's dedicated
+        # free-text box, applied in _extra_q via search_q, not a pickable field.
         assert "search" in {f.name for f in dataclasses.fields(filter_cls)}
         assert "search" not in names
 

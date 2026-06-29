@@ -138,7 +138,6 @@ urlpatterns = [
         name="delete_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
-    path("session/search", session.search_sessions, name="search_sessions"),
     path(
         "statuschange/add",
         statuschange.add_statuschange,

@@ -56,9 +56,13 @@ from common.criteria import (
 
 @dataclass
 class FindFilter:
-    """Sorting and pagination, separate from filtering criteria (Stash-style)."""
+    """Sorting and pagination, separate from filtering criteria (Stash-style).
 
-    q: str | None = None  # free-text search
+    Free-text search is not here — it is a ``search`` criterion on each
+    ``OperatorFilter`` (rendered by the filter bar's search box, carried in the
+    ``?filter=`` JSON).
+    """
+
     page: int = 1
     per_page: int = 25
     sort: str | None = None  # e.g. "-created_at"

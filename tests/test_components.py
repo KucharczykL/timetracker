@@ -311,7 +311,6 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
                     )
                 ),
             ),
-            ("SearchField", str(components.SearchField())),
             ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
             ("PageHeading", str(components.PageHeading(["Title"]))),
             (
@@ -789,11 +788,6 @@ class StyledBuilderContractTest(SimpleTestCase):
         self.assertIn('name="real"', result)
         self.assertNotIn('name="spoof"', result)
         self.assertEqual(result.count("name="), 1)
-
-    def test_searchfield_kwargs_merge_onto_form(self):
-        result = str(components.SearchField(class_="w-80"))
-        self.assertIn("w-80", result)
-        self.assertIn("max-w-md", result)  # base form class retained
 
 
 class ModalContractTest(SimpleTestCase):

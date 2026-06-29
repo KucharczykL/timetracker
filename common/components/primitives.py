@@ -924,64 +924,6 @@ def AddForm(
     ]
 
 
-def SearchField(
-    attrs: "AttrsArg | None" = None,
-    *,
-    search_string: str = "",
-    id: str = "search_string",
-    placeholder: str = "Search",
-    **kwargs: object,
-) -> Element:
-    """Generate a search form with icon, input field, and submit button.
-
-    Extra ``attrs`` / kwargs land on the outer ``<form>`` (e.g. a caller adding
-    ``class_`` accumulates onto the base ``max-w-md``).
-    """
-    form_attrs = (
-        [("class", "max-w-md")] + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
-    )
-    return Form(form_attrs)[
-        Label(
-            for_="search",
-            class_="block mb-2.5 text-sm font-medium text-heading sr-only",
-        )["Search"],
-        Div(class_="relative")[
-            Safe(
-                '<div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">'
-                '<svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
-                'fill="none" viewBox="0 0 24 24">'
-                '<path stroke="currentColor" stroke-linecap="round" stroke-width="2" '
-                'd="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>'
-                "</svg></div>"
-            ),
-            Input(
-                type="search",
-                id=id,
-                name=id,
-                value=search_string,
-                class_=(
-                    "block w-full p-3 ps-9 bg-neutral-secondary-medium "
-                    "border border-default-medium text-heading text-sm "
-                    "rounded-base focus:ring-brand focus:border-brand "
-                    "shadow-xs placeholder:text-body"
-                ),
-                placeholder=placeholder,
-                required="",
-            ),
-            Button(
-                type="submit",
-                class_=(
-                    "absolute end-1.5 bottom-1.5 text-white bg-brand "
-                    "hover:bg-brand-strong box-border border border-transparent "
-                    "focus:ring-4 focus:ring-brand-medium shadow-xs font-medium "
-                    "leading-5 rounded text-xs px-3 py-1.5 focus:outline-none "
-                    "cursor-pointer"
-                ),
-            )["Search"],
-        ],
-    ]
-
-
 def PageHeading(
     children: Children = None,
     badge: str = "",

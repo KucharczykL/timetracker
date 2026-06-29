@@ -1719,17 +1719,20 @@ def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
     One ``FieldMeta`` per filterable field: leaf criteria and aggregates as value
     fields (``kind`` from the criterion type), each cross-entity sub-filter as a
     ``kind="relation"`` entry naming its target. The ``search`` free-text field is
-    excluded — it is served by ``FindFilter.q`` / ``?search_string=`` (TODO #216
-    removes the dead field). Non-recursive: a relation entry names its target
-    only; callers descend by calling ``field_metadata`` on the target filter
-    class, which bounds the ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
+    excluded — it is not a pickable per-field criterion but the filter bar's
+    dedicated free-text box (``_filter_search_field``), applied imperatively in
+    each filter's ``_extra_q`` via ``search_q``. Non-recursive: a relation entry
+    names its target only; callers descend by calling ``field_metadata`` on the
+    target filter class, which bounds the ``GameFilter`` ↔ ``SessionFilter``
+    relation cycle.
     """
     model = filter_cls._comparison_model()
     entries: list[FieldMeta] = []
     for dataclass_field in dc_fields(filter_cls):
         name = dataclass_field.name
         if name == "search":
-            continue  # TODO(#216): drop the ``search`` field entirely
+            # The filter bar's free-text box, not a pickable field — excluded here.
+            continue
         criterion_cls = _criterion_class_for(filter_cls, name)
         if criterion_cls is not None:
             # Only a field declared in ``fields`` with a plain lookup (no handler)
