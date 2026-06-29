@@ -528,6 +528,16 @@ class _SetCriterion(_Criterion):
         result = super().from_json(data)
         if result is None:
             return None
+        # Bound breadth before the per-element comprehensions below: a hand-edited
+        # 300k-element value/excludes would otherwise drive a 300k-iteration strip +
+        # coerce (CPU-amplification DoS, issue #204). ``len()`` is checked on any
+        # *sized* value, not just ``list`` — the base from_json assigns the raw JSON
+        # value verbatim, so a non-list (a huge string or dict) would slip a
+        # ``list``-only check yet still be iterated by ``_strip_set_label`` below.
+        for attr in ("value", "excludes"):
+            seq = getattr(result, attr)
+            if isinstance(seq, (list, tuple, str, dict)) and len(seq) > MAX_SET_VALUES:
+                raise FilterError(f"Filter set list too long (max {MAX_SET_VALUES})")
         # Labels embedded as {id, label} dicts are display-only; strip to bare ids
         # so the querying layer stays clean and typed. A hand-edited dict without
         # an ``id`` is bad input — raise FilterError (not a bare KeyError, which
@@ -764,6 +774,19 @@ _COMPARISON_FIELD = "field_comparisons"
 # FilterError at parse instead of recursing into a RecursionError/500 or a runaway
 # nested-subquery build (DoS). See issue #186.
 MAX_FILTER_DEPTH = 10
+
+# Max breadth (sibling-list length) accepted from a hand-edited/shared ``?filter=``.
+# The depth guard above bounds *nesting*, not *width*: a shallow-but-very-wide blob
+# (e.g. ``{"AND": [<10 000 sub-filters>]}`` or a 300k-element ``INCLUDES`` id array)
+# is otherwise bounded only by ``DATA_UPLOAD_MAX_MEMORY_SIZE`` (2.5 MB), yet each
+# sibling/value becomes its own criterion/subquery — so a tiny blob still amplifies
+# into an expensive parse + Q build (CPU/memory DoS). These caps remove that
+# amplification; the byte limit caps the substance. Reachable un-capped via a stored
+# FilterPreset blob (URL-length limits don't apply). Values are generous headroom
+# over any realistic hand-built filter. See issue #204.
+MAX_FILTER_BREADTH = 100  # max entries per AND/OR/NOT operator list
+MAX_FIELD_COMPARISONS = 100  # max entries in a field_comparisons list
+MAX_SET_VALUES = 1000  # max entries per set-criterion value / excludes list
 
 
 def _criterion_class_for(
@@ -1186,6 +1209,11 @@ class OperatorFilter:
                     kwargs[f.name] = []
                 else:
                     items = raw if isinstance(raw, list) else [raw]
+                    if len(items) > MAX_FIELD_COMPARISONS:
+                        raise FilterError(
+                            f"Filter field_comparisons list too long"
+                            f" (max {MAX_FIELD_COMPARISONS})"
+                        )
                     parsed_comparisons: list[FieldComparisonCriterion] = []
                     for item in items:
                         if not isinstance(item, dict):
@@ -1212,6 +1240,13 @@ class OperatorFilter:
                     kwargs[f.name] = []
                     continue
                 items = raw if isinstance(raw, list) else [raw]
+                # Bound breadth before recursing: a shallow-but-wide operator list
+                # (``{"AND": [<10 000 sub-filters>]}``) builds one Q per sibling and
+                # amplifies a tiny blob into an expensive parse (DoS, issue #204).
+                if len(items) > MAX_FILTER_BREADTH:
+                    raise FilterError(
+                        f"Filter operator list too long (max {MAX_FILTER_BREADTH})"
+                    )
                 parsed = [cls.from_json(item, _depth=_depth + 1) for item in items]
                 kwargs[f.name] = [sub for sub in parsed if sub is not None]
                 continue
