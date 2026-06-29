@@ -2,7 +2,7 @@ all: css migrate
 
 initialize: npm css migrate loadplatforms
 
-PYTHON_VERSION = 3.12
+PYTHON_VERSION = 3.14
 
 npm:
 	pnpm install

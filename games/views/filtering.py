@@ -8,25 +8,23 @@ on a malformed or semantically-invalid filter instead of letting a ``ValueError`
 mirroring the unknown-sort-field UX: drop the bad filter, warn, render unfiltered.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 
 from django.contrib import messages
 from django.http import HttpRequest
 
-from common.criteria import FilterError, FilterType
+from common.criteria import FilterError, OperatorFilter
 from games.sorting import SortKey
 
 logger = logging.getLogger("games")
 
 
-def apply_structured_filter(
+def apply_structured_filter[F: OperatorFilter](
     request: HttpRequest,
-    parse: Callable[[str], FilterType | None],
+    parse: Callable[[str], F | None],
     filter_json: str,
-) -> FilterType | None:
+) -> F | None:
     """Parse + validate a ``?filter=`` blob; warn-and-ignore invalid input.
 
     Returns a fully-renderable filter (its ``to_q()`` cannot raise — eager
