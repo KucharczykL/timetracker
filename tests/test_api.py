@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 import pytest
@@ -195,6 +196,25 @@ def test_session_list_invalid_filter_semantics_rejected(auth_client):
     bad = json.dumps({"duration_total_hours": {"modifier": "BETWEEN", "value": 1}})
     response = auth_client.get(f"/api/session/?filter={bad}")
     assert response.status_code == 400
+
+
+def test_session_list_malformed_filter_logged(auth_client, capture_games_logger):
+    # Issue #203: a rejected filter must leave a server-side warning so operators
+    # can spot DoS-probing, in addition to the 400 the client sees.
+    with capture_games_logger() as caplog:
+        response = auth_client.get("/api/session/?filter=not-json")
+
+    assert response.status_code == 400
+    records = [record for record in caplog.records if record.name == "games"]
+    # Assert each labelled field so a swapped/dropped positional arg is caught.
+    assert any(
+        record.levelno == logging.WARNING
+        and "rejected invalid filter" in record.getMessage()
+        and "entity=session" in record.getMessage()
+        and "user=tester" in record.getMessage()
+        and "path=/api/session/" in record.getMessage()
+        for record in records
+    )
 
 
 def _patch_session(client, session_id, body):

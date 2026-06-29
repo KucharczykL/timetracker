@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime
 from typing import List
 
@@ -19,6 +20,8 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+
+logger = logging.getLogger("games")
 
 api = NinjaAPI(auth=django_auth)
 playevent_router = Router()
@@ -222,6 +225,12 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
         try:
             session_filter = parse_session_filter(filter)
         except FilterError as exc:
+            logger.warning(
+                "rejected invalid filter (entity=session, user=%s, path=%s): %s",
+                request.user,
+                request.path,
+                exc,
+            )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())

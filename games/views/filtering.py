@@ -10,12 +10,15 @@ mirroring the unknown-sort-field UX: drop the bad filter, warn, render unfiltere
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from django.contrib import messages
 from django.http import HttpRequest
 
 from common.criteria import FilterError, FilterType
+
+logger = logging.getLogger("games")
 
 
 def apply_structured_filter(
@@ -45,5 +48,13 @@ def apply_structured_filter(
     try:
         return parse(filter_json)
     except FilterError as exc:
+        entity = parse.__name__.removeprefix("parse_").removesuffix("_filter")
+        logger.warning(
+            "rejected invalid filter (entity=%s, user=%s, path=%s): %s",
+            entity,
+            request.user,
+            request.path,
+            exc,
+        )
         messages.warning(request, f"Ignored invalid filter: {exc}")
         return None
