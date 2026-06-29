@@ -11,8 +11,10 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import operator
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from functools import reduce
 
 import pytest
 from django.db.models import F, Q
@@ -3755,6 +3757,49 @@ class TestSearchQHelper:
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
+
+
+class TestPerFilterSearchColumns:
+    """Pin the exact columns each filter's free-text ``search`` spans.
+
+    ``search_q`` and the drift guard verify *that* ``search`` is wired, but not
+    *which* columns it covers — a dropped/typo'd column (e.g. losing
+    ``sort_name``) would silently change results while every other test stays
+    green. This asserts the actual ``_extra_q`` column list per filter.
+    """
+
+    # filter class → the icontains columns its ``search`` OR's over, in order.
+    SEARCH_COLUMNS = {
+        GameFilter: ("name", "sort_name", "platform__name"),
+        SessionFilter: (
+            "game__name",
+            "game__platform__name",
+            "device__name",
+            "device__type",
+        ),
+        PurchaseFilter: ("name", "games__name", "platform__name"),
+        DeviceFilter: ("name", "type"),
+        PlatformFilter: ("name", "group"),
+        PlayEventFilter: ("game__name", "note"),
+    }
+
+    @pytest.mark.parametrize("filter_cls,columns", list(SEARCH_COLUMNS.items()))
+    def test_search_spans_expected_columns(self, filter_cls, columns):
+        produced = filter_cls(search=StringCriterion(value="needle")).to_q()
+        expected = reduce(
+            operator.or_, (Q(**{f"{col}__icontains": "needle"}) for col in columns)
+        )
+        assert produced == expected
+
+    def test_every_filter_with_search_is_pinned(self):
+        # Guard the guard: every filter that declares ``search`` must appear above,
+        # so a new filter can't add a free-text search this test silently skips.
+        declared = {
+            cls
+            for cls in _ALL_FILTERS
+            if "search" in {f.name for f in dataclasses.fields(cls)}
+        }
+        assert declared == set(self.SEARCH_COLUMNS)
 
 
 class TestValueTypeBoundaryIntegration:
