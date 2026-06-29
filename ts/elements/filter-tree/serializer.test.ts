@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { serialize, group } from "./serializer.js";
+import { deserialize } from "./serializer.js";
 import type { FilterNode, GroupNode } from "./types.js";
+import type { MetadataRegistry } from "./types.js";
 
 function root(...children: FilterNode[]): GroupNode {
   return { kind: "group", connective: "AND", negate: false, children };
@@ -83,5 +85,134 @@ describe("serialize", () => {
   it("does not wrap an empty negated group", () => {
     const negatedEmpty: GroupNode = { kind: "group", connective: "AND", negate: true, children: [] };
     expect(serialize(negatedEmpty)).toEqual({});
+  });
+});
+
+// Fixture registry: game has a session relation; session has none used here.
+const registry: MetadataRegistry = {
+  game: { fields: new Set(["name", "status", "year_released", "search"]), relations: { session_filter: "session" } },
+  session: { fields: new Set(["device", "note"]), relations: {} },
+};
+
+type Json = Record<string, unknown>;
+
+describe("deserialize — faithful fold", () => {
+  it("root is always a group", () => {
+    const tree = deserialize({ status: { value: ["f"], modifier: "INCLUDES" } }, "game", registry);
+    expect(tree.kind).toBe("group");
+    expect(tree.connective).toBe("AND");
+  });
+
+  it("{name, OR:[o1,o2]} => OR[name, o1, o2]", () => {
+    const tree = deserialize(
+      {
+        name: { value: "x", modifier: "INCLUDES" },
+        OR: [{ status: { value: ["f"], modifier: "INCLUDES" } }, { status: { value: ["p"], modifier: "INCLUDES" } }],
+      },
+      "game",
+      registry,
+    );
+    expect(tree.connective).toBe("OR");
+    expect(tree.children.map((c) => c.kind)).toEqual(["criterion", "criterion", "criterion"]);
+  });
+
+  it("{OR:[o1], NOT:[n1]} => AND[o1, n1¬]", () => {
+    const tree = deserialize(
+      { OR: [{ status: { value: ["f"], modifier: "INCLUDES" } }], NOT: [{ status: { value: ["p"], modifier: "INCLUDES" } }] },
+      "game",
+      registry,
+    );
+    expect(tree.connective).toBe("AND");
+    expect(tree.children).toHaveLength(2);
+    const negated = tree.children[1];
+    expect(negated.negate).toBe(true);
+  });
+
+  it("places field_comparisons at the outermost AND (after OR)", () => {
+    // {name, OR:[a], field_comparisons:[K]} => (name OR a) AND K
+    const tree = deserialize(
+      {
+        name: { value: "x", modifier: "INCLUDES" },
+        OR: [{ status: { value: ["f"], modifier: "INCLUDES" } }],
+        field_comparisons: [{ left: "a", right: "b", modifier: "LESS_THAN" }],
+      },
+      "game",
+      registry,
+    );
+    expect(tree.connective).toBe("AND");
+    expect(tree.children).toHaveLength(2);
+    expect(tree.children[0].kind).toBe("group"); // the OR
+    expect((tree.children[0] as GroupNode).connective).toBe("OR");
+    expect(tree.children[1].kind).toBe("comparison");
+  });
+
+  it("{NOT:[{OR:[a,b]}]} => OR[a,b] with negate", () => {
+    const tree = deserialize(
+      { NOT: [{ OR: [{ status: { value: ["f"], modifier: "INCLUDES" } }, { status: { value: ["p"], modifier: "INCLUDES" } }] }] },
+      "game",
+      registry,
+    );
+    expect(tree.kind).toBe("group");
+    // root-wrapped AND over the single negated OR
+    const inner = tree.children[0] as GroupNode;
+    expect(inner.connective).toBe("OR");
+    expect(inner.negate).toBe(true);
+  });
+
+  it("double NOT cancels: {NOT:[{NOT:[x]}]} => x", () => {
+    const tree = deserialize(
+      { NOT: [{ NOT: [{ status: { value: ["f"], modifier: "INCLUDES" } }] }] },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    expect(leaf.kind).toBe("criterion");
+    expect(leaf.negate).toBe(false);
+  });
+
+  it("{NOT:[a,b]} => AND[a¬, b¬]", () => {
+    const tree = deserialize(
+      { NOT: [{ status: { value: ["f"], modifier: "INCLUDES" } }, { name: { value: "x", modifier: "INCLUDES" } }] },
+      "game",
+      registry,
+    );
+    expect(tree.children.every((c) => c.negate)).toBe(true);
+    expect(tree.children).toHaveLength(2);
+  });
+
+  it("imports a relation descent with quantifier and target model", () => {
+    const tree = deserialize(
+      { session_filter: { match: "NONE", device: { value: [1], modifier: "INCLUDES" } } },
+      "game",
+      registry,
+    );
+    const relation = tree.children[0];
+    expect(relation.kind).toBe("relation");
+    if (relation.kind === "relation") {
+      expect(relation.match).toBe("NONE");
+      expect(relation.field).toBe("session_filter");
+      expect(relation.child.children[0].kind).toBe("criterion");
+    }
+  });
+
+  it("keeps an empty relation (ANY) as a presence test", () => {
+    const tree = deserialize({ session_filter: {} }, "game", registry);
+    const relation = tree.children[0];
+    expect(relation.kind).toBe("relation");
+    if (relation.kind === "relation") {
+      expect(relation.match).toBe("ANY");
+      expect(relation.child.children).toHaveLength(0);
+    }
+  });
+
+  it("drops unknown keys (backend from_json parity)", () => {
+    const tree = deserialize({ totally_unknown: { value: 1, modifier: "EQUALS" } }, "game", registry);
+    expect(tree.children).toHaveLength(0);
+  });
+
+  it("rejects over-deep nesting", () => {
+    let blob: Json = { status: { value: ["f"], modifier: "INCLUDES" } };
+    for (let i = 0; i < 12; i++) blob = { AND: [blob] };
+    expect(() => deserialize(blob, "game", registry)).toThrow(/too deep/i);
   });
 });
