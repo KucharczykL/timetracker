@@ -495,6 +495,12 @@ class FilterPreset(models.Model):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "mode", "name"],
+                name="unique_user_mode_name_preset",
+            )
+        ]
 
     MODE_CHOICES = [
         ("games", "Games"),

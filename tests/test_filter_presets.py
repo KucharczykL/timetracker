@@ -14,6 +14,7 @@ import logging
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
 
@@ -281,3 +282,58 @@ def test_delete_preset_rejects_non_delete_methods(auth_client, method):
     )
     assert response.status_code == 405
     assert FilterPreset.objects.filter(id=preset.id).exists()
+
+
+# --- #212: unique (user, mode, name) + overwrite (upsert) --------------------
+
+
+def test_resaving_same_name_overwrites_in_place(auth_client):
+    # Re-saving an existing (user, mode, name) overwrites the stored filter
+    # rather than creating a duplicate row, and reports the update with 200.
+    first = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
+    second = json.dumps({"name": {"modifier": "INCLUDES", "value": "doom"}})
+
+    created = _save(auth_client, name="Backlog", mode="games", filter=first)
+    assert created.status_code == 201
+
+    updated = _save(auth_client, name="Backlog", mode="games", filter=second)
+    assert updated.status_code == 200
+    assert any("updated" in message for message in _messages(updated))
+
+    preset = FilterPreset.objects.get(name="Backlog")  # exactly one row
+    assert preset.object_filter == {"name": {"modifier": "INCLUDES", "value": "doom"}}
+
+
+def test_same_name_different_user_is_separate_row(auth_client, second_auth_client):
+    _save(auth_client, name="Backlog", mode="games", filter="")
+    _save(second_auth_client, name="Backlog", mode="games", filter="")
+    assert FilterPreset.objects.filter(name="Backlog").count() == 2
+
+
+def test_same_name_different_mode_is_separate_row(auth_client):
+    _save(auth_client, name="Backlog", mode="games", filter="")
+    _save(auth_client, name="Backlog", mode="sessions", filter="")
+    assert FilterPreset.objects.filter(name="Backlog").count() == 2
+
+
+def test_case_differing_names_are_distinct(auth_client):
+    # The constraint uses SQLite's default (case-sensitive) collation, so these
+    # are two presets — mirrored by the case-sensitive client-side warning.
+    _save(auth_client, name="Backlog", mode="games", filter="")
+    response = _save(auth_client, name="backlog", mode="games", filter="")
+    assert response.status_code == 201
+    assert FilterPreset.objects.filter(mode="games").count() == 2
+
+
+def test_list_presets_row_carries_data_preset_name(auth_client):
+    # The TS collision check reads data-preset-name off each row.
+    _make_preset(auth_client, name="Wired")
+    body = _list(auth_client).content.decode()
+    assert 'data-preset-name="Wired"' in body
+
+
+def test_unique_constraint_enforced_at_db(user):
+    FilterPreset.objects.create(user=user, name="Dup", mode="games")
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            FilterPreset.objects.create(user=user, name="Dup", mode="games")
