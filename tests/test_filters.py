@@ -1879,14 +1879,30 @@ class TestFilterBreadthGuard:
         assert result is not None
         result.to_q()  # does not raise
 
-    def test_set_non_list_value_past_cap_raises(self):
-        """A hand-edited *non-list* value (here a long string on a ChoiceCriterion
-        field, whose ``_coerce`` is None so type-coercion doesn't reject it first)
-        must still be caught — it would otherwise drive a huge ``_strip_set_label``
-        comprehension. Guards the non-list amplification bypass (review HIGH)."""
-        bad = json.dumps({"status": {"value": "x" * (MAX_SET_VALUES + 1)}})
-        with pytest.raises(FilterError, match="set list too long"):
+    def test_set_string_value_rejected_not_char_split(self):
+        """A hand-edited *string* value on a ChoiceCriterion field (whose ``_coerce``
+        is None, so type-coercion wouldn't reject it first) must raise — it would
+        otherwise be silently split into characters by ``_strip_set_label`` (a
+        quietly-wrong filter)."""
+        bad = json.dumps({"status": {"value": "u"}})
+        with pytest.raises(FilterError, match="must be a list"):
             parse_game_filter(bad)
+
+    def test_set_scalar_value_rejected_not_500(self):
+        """A hand-edited *scalar* (non-iterable) value must raise FilterError, not
+        escape ``_strip_set_label`` as an uncaught ``TypeError`` (a 500 outside the
+        filter error boundary)."""
+        bad = json.dumps({"platform": {"value": 5, "modifier": "INCLUDES"}})
+        with pytest.raises(FilterError, match="must be a list"):
+            parse_game_filter(bad)
+
+    def test_set_null_value_normalizes_to_empty(self):
+        """A JSON ``null`` value/excludes normalizes to an empty list (mirrors the
+        AND/OR/NOT None->[] handling) rather than 500-ing in ``_strip_set_label``."""
+        good = json.dumps({"platform": {"value": None, "modifier": "INCLUDES"}})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
 
 
 # Wrong-typed value per coercible criterion class (issue #157). Criteria whose

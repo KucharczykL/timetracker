@@ -528,15 +528,24 @@ class _SetCriterion(_Criterion):
         result = super().from_json(data)
         if result is None:
             return None
-        # Bound breadth before the per-element comprehensions below: a hand-edited
-        # 300k-element value/excludes would otherwise drive a 300k-iteration strip +
-        # coerce (CPU-amplification DoS, issue #204). ``len()`` is checked on any
-        # *sized* value, not just ``list`` — the base from_json assigns the raw JSON
-        # value verbatim, so a non-list (a huge string or dict) would slip a
-        # ``list``-only check yet still be iterated by ``_strip_set_label`` below.
-        for attr in ("value", "excludes"):
-            seq = getattr(result, attr)
-            if isinstance(seq, (list, tuple, str, dict)) and len(seq) > MAX_SET_VALUES:
+        # ``value``/``excludes`` must be JSON arrays (the widget sends id/code lists).
+        # The base from_json assigns the raw JSON value verbatim, so validate the type
+        # and bound the length before the per-element comprehensions below:
+        #  - a null normalizes to ``[]`` (mirrors the AND/OR/NOT None->[] handling);
+        #  - any other non-list (a scalar, string, or dict) is bad input — reject it
+        #    here, else ``_strip_set_label`` iterates it: a non-iterable scalar 500s
+        #    (TypeError escapes the FilterError boundary) and a string is silently
+        #    split into characters (a quietly-wrong filter);
+        #  - a 300k-element list would drive a 300k-iteration strip + coerce, so a
+        #    tiny blob amplifies into an expensive parse + Q build (DoS, issue #204).
+        for field_name in ("value", "excludes"):
+            field_value = getattr(result, field_name)
+            if field_value is None:
+                setattr(result, field_name, [])
+                continue
+            if not isinstance(field_value, list):
+                raise FilterError(f"Filter set {field_name} must be a list")
+            if len(field_value) > MAX_SET_VALUES:
                 raise FilterError(f"Filter set list too long (max {MAX_SET_VALUES})")
         # Labels embedded as {id, label} dicts are display-only; strip to bare ids
         # so the querying layer stays clean and typed. A hand-edited dict without
