@@ -1631,8 +1631,10 @@ class RelationTarget(TypedDict):
 
 class FieldMeta(TypedDict):
     """Everything a picker needs to render one filterable field. ``choices`` is
-    populated only for static-enum fields; ``relations`` only for relation
-    descents (``kind == "relation"``)."""
+    populated only for static-enum fields; ``relations`` is non-empty (a single
+    entry) iff ``kind == "relation"``, and a relation entry always has empty
+    ``choices`` and ``nullable=False``. These cross-field invariants are enforced
+    by ``field_metadata`` (the sole producer), not by the type."""
 
     name: AttrName
     label: str
@@ -1652,8 +1654,11 @@ def _resolve_model_field(
     transform such as ``created_at__date`` returns the ``created_at`` field and a
     relation hop such as ``platform__group`` returns ``Platform.group``. A
     single-segment FK attname (``platform_id``) resolves directly (Django accepts
-    attnames). Returns None for any segment that does not resolve — handler-mapped
-    or aggregate fields, whose lookup names no column.
+    attnames). Returns None when a segment does not resolve (e.g. a mis-typed
+    lookup, or an aggregate field name that is no column); the caller decides
+    whether that None is expected (columnless field) or a misconfiguration to
+    raise on. Handler-mapped fields never reach here — ``field_metadata`` skips
+    them upstream.
     """
     current = model
     segments = lookup.split("__")
@@ -1727,23 +1732,38 @@ def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
             continue  # TODO(#216): drop the ``search`` field entirely
         criterion_cls = _criterion_class_for(filter_cls, name)
         if criterion_cls is not None:
+            # Only a field declared in ``fields`` with a plain lookup (no handler)
+            # maps to a single model column. Aggregates (not in ``fields``),
+            # handler-mapped fields, and imperatively-applied criteria (the M2M
+            # ``games``) name no single column, so they carry no choices and are
+            # not nullable — they skip the resolver entirely. Resolving *only* the
+            # column-backed fields means a mis-typed ``FilterField`` lookup raises
+            # here (matching ``criterion_kind`` / ``resolve_path_kind``'s
+            # loud-failure contract) instead of silently degrading to an empty
+            # picker, while the legitimately-columnless fields never hit the None.
+            model_field: models.Field | None = None
             field_spec = filter_cls.fields.get(name)
-            has_handler = field_spec is not None and field_spec.handler is not None
-            model_field = (
-                _resolve_model_field(
-                    model, field_spec.lookup or name if field_spec else name
-                )
-                if model is not None and not has_handler
-                else None
-            )
+            if (
+                field_spec is not None
+                and field_spec.handler is None
+                and model is not None
+            ):
+                lookup = field_spec.lookup or name
+                model_field = _resolve_model_field(model, lookup)
+                if model_field is None:
+                    raise ValueError(
+                        f"{filter_cls.__name__}.{name} lookup {lookup!r} resolves "
+                        f"to no field on {model.__name__}"
+                    )
             is_aggregate = issubclass(criterion_cls, AggregateCriterion)
             entries.append(
                 FieldMeta(
                     name=name,
                     label=_field_label(filter_cls, name),
-                    # Aggregates set kind directly: ``criterion_kind``'s exact-class
-                    # dict lookup would KeyError on a future AggregateCriterion
-                    # subclass, whereas the value shape is always "number".
+                    # Aggregates set kind directly: ``criterion_kind`` would reject
+                    # a future ``AggregateCriterion`` subclass (its exact-class
+                    # registry has no entry → ValueError), whereas the value shape
+                    # is always "number".
                     kind="number" if is_aggregate else criterion_kind(criterion_cls),
                     nullable=bool(getattr(model_field, "null", False)),
                     choices=_static_choices(model_field),
@@ -1754,6 +1774,13 @@ def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
         sub_filter_cls = _filter_class_for(filter_cls, name)
         if sub_filter_cls is not None:
             target_model = sub_filter_cls._comparison_model()
+            if target_model is None:
+                # A descendable sub-filter with no model is a misconfiguration:
+                # fail loudly rather than emit a nameless relation target.
+                raise ValueError(
+                    f"{filter_cls.__name__}.{name} descends into "
+                    f"{sub_filter_cls.__name__}, which has no comparison model"
+                )
             entries.append(
                 FieldMeta(
                     name=name,
@@ -1765,7 +1792,7 @@ def field_metadata(filter_cls: type["OperatorFilter"]) -> list[FieldMeta]:
                         RelationTarget(
                             field=name,
                             filter=sub_filter_cls.__name__,
-                            model=target_model.__name__ if target_model else "",
+                            model=target_model.__name__,
                         )
                     ],
                 )

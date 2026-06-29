@@ -1,5 +1,13 @@
 """Tests for the filtering system."""
 
+# Stringizes all annotations (PEP 563), matching every filter module
+# (games/filters.py). Without it, the stub filters' ``X | None`` field
+# annotations would be live UnionType objects that the annotation-string-based
+# resolvers (``_criterion_class_for`` / ``_filter_class_for``) can't read.
+# Removable once #218 resolves field types by introspection instead of
+# annotation-string parsing.
+from __future__ import annotations
+
 import dataclasses
 import json
 import logging
@@ -36,6 +44,7 @@ from common.criteria import (
     _field_comparison_to_q,
     _filter_class_for,
     _maybe_group_for,
+    _resolve_model_field,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
@@ -3929,3 +3938,102 @@ class TestFieldMetadata:
         assert self._by_name(GameFilter)["name"]["label"] == "Name"
         # a FilterField.label override would take precedence (plumbing check)
         assert FilterField(lookup="x", label="Custom").label == "Custom"
+
+    def test_resolve_model_field_descent_and_transform(self):
+        from games.models import Game, Platform, Session
+
+        # multi-hop FK descent reaches the terminal related-model field
+        assert _resolve_model_field(
+            Game, "platform__group"
+        ) is Platform._meta.get_field("group")
+        # trailing transform is ignored; stops at the first non-relation field
+        assert _resolve_model_field(
+            Session, "timestamp_start__date"
+        ) is Session._meta.get_field("timestamp_start")
+        # single-segment FK attname resolves to the FK itself
+        assert _resolve_model_field(Game, "platform_id") is Game._meta.get_field(
+            "platform"
+        )
+
+    def test_resolve_model_field_unresolvable_returns_none(self):
+        from games.models import Game
+
+        assert _resolve_model_field(Game, "does_not_exist") is None
+        # reverse relation / aggregate-style name resolves to no concrete field
+        assert _resolve_model_field(Game, "sessions") is None
+
+    def test_nullable_true_for_plain_column(self):
+        # year_released is a nullable plain (non-relation) column — exercises the
+        # nullable=True path for a real model column, not just an FK.
+        entry = self._by_name(GameFilter)["year_released"]
+        assert entry["kind"] == "number"
+        assert entry["nullable"] is True
+
+    def test_relation_payload_for_every_subfilter(self):
+        for filter_cls in _ALL_FILTERS:
+            by_name = self._by_name(filter_cls)
+            for dataclass_field in dataclasses.fields(filter_cls):
+                sub = _filter_class_for(filter_cls, dataclass_field.name)
+                if sub is None:
+                    continue
+                entry = by_name[dataclass_field.name]
+                assert entry["kind"] == "relation"
+                assert entry["relations"] == [
+                    {
+                        "field": dataclass_field.name,
+                        "filter": sub.__name__,
+                        "model": sub._comparison_model().__name__,
+                    }
+                ]
+
+    def test_filterfield_label_and_labels_override_win(self):
+        by_name = self._by_name(_LabelStub)
+        # FilterField.label (highest precedence) surfaces for an in-`fields` field
+        assert by_name["name"]["label"] == "Explicit Name"
+        # OperatorFilter.labels override surfaces for a field outside `fields`
+        assert by_name["mastered"]["label"] == "Override Mastered"
+
+    def test_mistyped_lookup_raises(self):
+        with pytest.raises(ValueError, match="resolves to no field"):
+            field_metadata(_BadLookupStub)
+
+
+@dataclass
+class _LabelStub(OperatorFilter):
+    """Exercises the two label-override branches of ``_field_label``: a
+    ``FilterField.label`` (in ``fields``) and an ``OperatorFilter.labels`` entry
+    (for a field outside ``fields``)."""
+
+    AND: list[_LabelStub] = dc_field(default_factory=list)
+    OR: list[_LabelStub] = dc_field(default_factory=list)
+    NOT: list[_LabelStub] = dc_field(default_factory=list)
+    name: StringCriterion | None = None
+    mastered: BoolCriterion | None = None
+
+    fields = {"name": FilterField(label="Explicit Name")}
+    labels = {"mastered": "Override Mastered"}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game
+
+
+@dataclass
+class _BadLookupStub(OperatorFilter):
+    """A misconfigured filter whose ``fields`` lookup names no real column — the
+    registry must raise rather than silently emit nullable=False/choices=[]."""
+
+    AND: list[_BadLookupStub] = dc_field(default_factory=list)
+    OR: list[_BadLookupStub] = dc_field(default_factory=list)
+    NOT: list[_BadLookupStub] = dc_field(default_factory=list)
+    year_released: IntCriterion | None = None
+
+    fields = {"year_released": FilterField("yeer_released")}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game
