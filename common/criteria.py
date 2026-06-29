@@ -9,11 +9,23 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 from __future__ import annotations
 
 import json
+import types
 from collections.abc import Callable, Sequence
 from datetime import date
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
-from typing import Any, ClassVar, Literal, Self, TypedDict, TypeVar
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    Self,
+    TypedDict,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
@@ -746,9 +758,11 @@ class FilterField:
 FilterType = TypeVar("FilterType", bound="OperatorFilter")
 
 
-# Maps criterion class names (as they appear in dataclass annotations) to the
-# concrete class. Shared by from_json() and where() so the two construction
-# paths resolve field types identically and cannot drift.
+# Canonical registry of every concrete criterion class, by name. Field-type
+# resolution no longer consults it (that is introspection now — see
+# ``_field_types``); it remains the single source of truth for the
+# ``_CRITERION_TYPES``↔``_CRITERION_KINDS`` parity invariant (tests/test_filter_paths.py),
+# so a new criterion class can't slip in without being given a widget kind.
 _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "StringCriterion": StringCriterion,
     "IntCriterion": IntCriterion,
@@ -760,14 +774,6 @@ _CRITERION_TYPES: dict[str, type[_Criterion]] = {
     "AggregateCriterion": AggregateCriterion,
     "FieldComparisonCriterion": FieldComparisonCriterion,
 }
-
-# Registry of OperatorFilter subclasses by name, so from_json can resolve a
-# cross-entity sub-filter field's type from its (string) annotation name — e.g.
-# PurchaseFilter.game_filter, GameFilter.playevent_filter. (to_json needs no
-# lookup; it dispatches structurally on isinstance.) Populated by
-# OperatorFilter.__init_subclass__ as each concrete filter class is defined (see
-# games/filters.py). Mirrors _CRITERION_TYPES for criterion fields.
-_FILTER_TYPES: dict[str, type["OperatorFilter"]] = {}
 
 # The three sub-filter composition fields, shared by every OperatorFilter.
 _OPERATOR_FIELDS: tuple[str, str, str] = ("AND", "OR", "NOT")
@@ -802,22 +808,55 @@ MAX_FIELD_COMPARISONS = 100  # max entries in a field_comparisons list
 MAX_SET_VALUES = 1000  # max entries per set-criterion value / excludes list
 
 
+# Per-class cache for ``_field_types`` (these resolvers sit on the hot from_json /
+# where / resolve_path_kind paths). Keyed by the filter class; a class is created
+# once, so this never grows unbounded. A plain dict rather than ``functools.cache``
+# because the dataclass ``__hash__`` confuses the cache decorator's type signature.
+_FIELD_TYPES_CACHE: dict[type["OperatorFilter"], dict[str, type]] = {}
+
+
+def _field_types(cls: type["OperatorFilter"]) -> dict[str, type]:
+    """Resolved (Optional-unwrapped) type of each dataclass field on a filter class.
+
+    Built on ``typing.get_type_hints`` so a stringized annotation (PEP 563 /
+    explicit forward ref) and a live ``X | None`` object resolve identically —
+    correctness no longer depends on a module's ``from __future__ import
+    annotations``. A union ``X | None`` is unwrapped to its single non-None
+    member; a non-union generic (``list[...]``) is left as-is so a list field
+    (``field_comparisons``, ``AND``/``OR``/``NOT``) is never misread as a
+    criterion. Cached per class.
+    """
+    cached = _FIELD_TYPES_CACHE.get(cls)
+    if cached is not None:
+        return cached
+    hints = get_type_hints(cls)
+    resolved: dict[str, type] = {}
+    for dataclass_field in dc_fields(cls):
+        hint = hints.get(dataclass_field.name)
+        if hint is None:
+            continue
+        if get_origin(hint) in (Union, types.UnionType):
+            non_none = [arg for arg in get_args(hint) if arg is not type(None)]
+            if len(non_none) == 1:
+                hint = non_none[0]
+        resolved[dataclass_field.name] = hint
+    _FIELD_TYPES_CACHE[cls] = resolved
+    return resolved
+
+
 def _criterion_class_for(
     cls: type["OperatorFilter"], field_name: str
 ) -> type[_Criterion] | None:
     """Resolve the criterion class declared for ``field_name`` on a filter, or
-    None if the field is absent or isn't a criterion field."""
-    for dataclass_field in dc_fields(cls):
-        if dataclass_field.name != field_name:
-            continue
-        field_type = dataclass_field.type
-        if isinstance(field_type, str):
-            # e.g. "StringCriterion | None" → "StringCriterion"
-            field_type = field_type.split("|")[0].strip()
-            return _CRITERION_TYPES.get(field_type)
-        if isinstance(field_type, type) and issubclass(field_type, _Criterion):
-            return field_type
-        return None
+    None if the field is absent or isn't a criterion field.
+
+    Reads the field's resolved annotation via ``_field_types`` (real type objects,
+    not annotation strings), so a list/sub-filter field — whose resolved hint is a
+    generic alias or an ``OperatorFilter`` subclass, not a ``_Criterion`` — yields
+    None."""
+    hint = _field_types(cls).get(field_name)
+    if isinstance(hint, type) and issubclass(hint, _Criterion):
+        return hint
     return None
 
 
@@ -827,25 +866,16 @@ def _filter_class_for(
     """Resolve the cross-entity sub-filter class declared for ``field_name`` on a
     filter, or None if the field is absent or isn't a sub-filter field.
 
-    Mirrors ``_criterion_class_for`` but resolves the field's (string) annotation
-    through ``_FILTER_TYPES`` — e.g. ``GameFilter.session_filter`` annotated
-    ``"SessionFilter | None"`` resolves to ``SessionFilter``. The same-class
-    AND/OR/NOT operator fields are deliberately excluded: they compose a filter
-    with itself rather than crossing to another entity, and a widget path never
-    steps through them."""
+    Mirrors ``_criterion_class_for`` over ``_field_types`` — e.g.
+    ``GameFilter.session_filter`` annotated ``SessionFilter | None`` resolves to
+    ``SessionFilter``. The same-class AND/OR/NOT operator fields are deliberately
+    excluded: they compose a filter with itself rather than crossing to another
+    entity, and a widget path never steps through them."""
     if field_name in _OPERATOR_FIELDS:
         return None
-    for dataclass_field in dc_fields(cls):
-        if dataclass_field.name != field_name:
-            continue
-        field_type = dataclass_field.type
-        if isinstance(field_type, str):
-            # e.g. "SessionFilter | None" → "SessionFilter"
-            field_type = field_type.split("|")[0].strip()
-            return _FILTER_TYPES.get(field_type)
-        if isinstance(field_type, type) and issubclass(field_type, OperatorFilter):
-            return field_type
-        return None
+    hint = _field_types(cls).get(field_name)
+    if isinstance(hint, type) and issubclass(hint, OperatorFilter):
+        return hint
     return None
 
 
@@ -1058,12 +1088,6 @@ class OperatorFilter:
     # (issue #168) is built. Subclasses override per field.
     labels: ClassVar[dict[AttrName, str]] = {}
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        # Register concrete filter classes so from_json can resolve a
-        # cross-entity sub-filter field's type by its annotation name.
-        _FILTER_TYPES[cls.__name__] = cls
-
     @classmethod
     def where(cls: type[FilterType], **lookups: Any) -> FilterType:
         """Build a filter from Django-``QuerySet.filter()``-style lookups.
@@ -1209,8 +1233,6 @@ class OperatorFilter:
         # operator list and the cross-entity relation descent (both consume the budget).
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
-        # Resolve criterion class names to actual types
-        criterion_types = _CRITERION_TYPES
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:
@@ -1278,26 +1300,22 @@ class OperatorFilter:
             if raw is None:
                 kwargs[f.name] = None
                 continue
-            # Resolve criterion fields from string type annotation
-            f_type = f.type
-            if isinstance(f_type, str):
-                # e.g. "StringCriterion | None" → "StringCriterion"
-                f_type = f_type.split("|")[0].strip()
-            if isinstance(f_type, str) and f_type in criterion_types:
-                criterion_cls = criterion_types[f_type]
+            # Resolve the field's declared type by introspection (shared with
+            # ``where``/``resolve_path_kind``), so a criterion field and a
+            # cross-entity sub-filter field dispatch identically regardless of
+            # whether the module stringizes its annotations.
+            criterion_cls = _criterion_class_for(cls, f.name)
+            if criterion_cls is not None:
                 kwargs[f.name] = (
                     criterion_cls.from_json(raw) if isinstance(raw, dict) else None
                 )
-            elif isinstance(f_type, type) and issubclass(f_type, _Criterion):
-                kwargs[f.name] = (
-                    f_type.from_json(raw) if isinstance(raw, dict) else None
-                )
+                continue
             # Cross-entity sub-filter field (e.g. game_filter, playevent_filter):
-            # resolve the filter class by its annotation name and recurse.
-            elif isinstance(f_type, str) and f_type in _FILTER_TYPES:
-                filter_cls = _FILTER_TYPES[f_type]
+            # resolve the filter class and recurse.
+            sub_filter_cls = _filter_class_for(cls, f.name)
+            if sub_filter_cls is not None:
                 kwargs[f.name] = (
-                    filter_cls.from_json(raw, _depth=_depth + 1)
+                    sub_filter_cls.from_json(raw, _depth=_depth + 1)
                     if isinstance(raw, dict)
                     else None
                 )
