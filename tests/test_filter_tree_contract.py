@@ -53,6 +53,10 @@ def test_ts_canonical_output_is_to_q_equivalent(case):
     original = filter_from_json(filter_cls, json.dumps(case["filter"]))
     assert original is not None, f"fixture did not parse: {case['description']}"
 
+    if case["description"] not in _canonical_by_description:
+        pytest.fail(
+            f"TS canonical missing case {case['description']!r} — run `make test-ts` first"
+        )
     ts_canonical = _canonical_by_description[case["description"]]
     reparsed = filter_from_json(filter_cls, json.dumps(ts_canonical["filter"]))
     assert reparsed is not None, f"TS canonical did not parse: {case['description']}"

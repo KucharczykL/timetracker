@@ -44,7 +44,7 @@ ts: gen-element-types
 	pnpm exec tsc
 
 ts-check: gen-element-types
-	pnpm exec tsc --noEmit
+	pnpm exec tsc --noEmit -p tsconfig.check.json
 
 test-ts:
 	pnpm exec vitest run
@@ -94,7 +94,7 @@ uv.lock: pyproject.toml
 
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
-test: uv.lock css ts
+test: uv.lock css ts test-ts
 	uv run --with pytest-django pytest
 
 test-e2e: uv.lock css ts
