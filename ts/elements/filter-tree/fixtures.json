@@ -81,6 +81,15 @@
       "description": "relation ANY presence test",
       "model": "game",
       "filter": { "session_filter": {} }
+    },
+    {
+      "description": "field_comparisons precedence: (name OR status) AND comparison",
+      "model": "game",
+      "filter": {
+        "name": { "value": "x", "modifier": "INCLUDES" },
+        "OR": [ { "status": { "value": ["f"], "modifier": "INCLUDES" } } ],
+        "field_comparisons": [ { "left": "original_year_released", "right": "year_released", "modifier": "LESS_THAN" } ]
+      }
     }
   ]
 }
