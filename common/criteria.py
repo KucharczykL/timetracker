@@ -756,11 +756,13 @@ _COMPARISON_FIELD = "field_comparisons"
 
 # Max OperatorFilter nesting depth accepted from a hand-edited/shared ``?filter=``.
 # Each from_json frame (one AND/OR/NOT level OR one relation descent) = one unit, so
-# this aligns ~1:1 with the builder's group-nesting depth. The builder's UI soft cap
-# is 5; this 10 keeps headroom so no legitimately built filter is ever rejected, while
-# a pathologically deep / cyclic blob (relation fields cycle, e.g. GameFilter.session_filter
-# <-> SessionFilter.game_filter) raises FilterError at parse instead of recursing into a
-# RecursionError/500 or a runaway nested-subquery build (DoS). See issue #186.
+# this counts the same nesting the builder bounds with its UI soft cap of 5. Both
+# operator groups and relation descents draw from this single budget, so this 10 is
+# 2x headroom over that cap — a filter built within the UI's nesting limit is not
+# rejected in practice — while a pathologically deep / cyclic blob (relation fields
+# cycle, e.g. GameFilter.session_filter <-> SessionFilter.game_filter) raises
+# FilterError at parse instead of recursing into a RecursionError/500 or a runaway
+# nested-subquery build (DoS). See issue #186.
 MAX_FILTER_DEPTH = 10
 
 
@@ -1155,7 +1157,8 @@ class OperatorFilter:
             return None
         # Cap nesting before recursing: a hand-edited/shared cyclic ``?filter=`` would
         # otherwise parse into an unbounded tree and DoS the server (see MAX_FILTER_DEPTH).
-        # ``_depth`` is incremented only at the two operator-filter recursion sites below.
+        # ``_depth`` is incremented at the two recursion sites below: the AND/OR/NOT
+        # operator list and the cross-entity relation descent (both consume the budget).
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
         # Resolve criterion class names to actual types
@@ -1317,6 +1320,14 @@ def filter_from_json(cls: type[FilterType], json_str: str) -> FilterType | None:
         data = json.loads(json_str)
     except json.JSONDecodeError as exc:
         raise FilterError(f"Filter is not valid JSON: {exc}") from exc
+    except RecursionError as exc:
+        # ``json.loads`` recurses per nesting level and overflows the C stack on a
+        # deeply-nested blob *before* OperatorFilter.from_json's MAX_FILTER_DEPTH
+        # guard can run. Reclassify to FilterError so the same deep/cyclic ``?filter=``
+        # DoS (issue #186) is caught here too, not just post-parse — otherwise this
+        # RecursionError escapes the view's FilterError boundary and 500s. Reachable
+        # un-capped via a stored FilterPreset blob (URL-length limits don't apply).
+        raise FilterError("Filter nesting too deep") from exc
     result = cls.from_json(data)
     if result is None:
         return None

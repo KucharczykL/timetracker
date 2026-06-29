@@ -1504,8 +1504,8 @@ def _nest_relation(levels: int) -> dict:
     GameFilter (parse_game_filter), so position 0 must be a key GameFilter accepts
     (session_filter); SessionFilter at position 1 accepts game_filter; and so on.
     Each nested dict is one from_json frame, so ``levels`` == the recursion depth
-    the guard counts. Empty innermost filter keeps the chain valid (a bare relation
-    is "has any related row" — to_q never raises)."""
+    the guard counts. The empty innermost filter keeps the chain valid — an empty
+    sub-filter parses and its to_q() does not raise."""
     node: dict = {}
     for position in range(levels - 1, -1, -1):
         key = "session_filter" if position % 2 == 0 else "game_filter"
@@ -1520,6 +1520,15 @@ def _nest_operator(levels: int) -> dict:
     for _ in range(levels):
         node = {"AND": [node]}
     return node
+
+
+def _deep_json_string(levels: int) -> str:
+    """A ``levels``-deep nested-``AND`` blob built as a raw string, NOT via
+    json.dumps — dumping a dict this deep would itself overflow and die in the
+    harness, masking the point. ``json.loads`` of this overflows the C stack
+    (RecursionError) before OperatorFilter.from_json's depth guard can run, so it
+    exercises the pre-parse vector (issue #186)."""
+    return '{"AND":[' * levels + "{}" + "]}" * levels
 
 
 class TestFilterDepthGuard:
@@ -1538,12 +1547,22 @@ class TestFilterDepthGuard:
         with pytest.raises(FilterError, match="too deep"):
             parse_game_filter(bad)
 
-    def test_depth_guard_raises_filter_error_not_recursion_error(self):
-        """An extreme depth must surface as a catchable FilterError (a ValueError
-        subclass the views already handle), never an uncaught RecursionError that
-        would 500 the list view."""
+    def test_post_parse_depth_raises_filter_error(self):
+        """A well-formed but deep blob (json.loads succeeds) must be cut by the
+        from_json depth guard as a catchable FilterError, never an uncaught
+        RecursionError that would 500 the list view."""
         bad = json.dumps(_nest_relation(500))
-        with pytest.raises(FilterError):
+        with pytest.raises(FilterError, match="too deep"):
+            parse_game_filter(bad)
+
+    def test_json_loads_recursion_raises_filter_error_not_500(self):
+        """A blob deep enough that json.loads itself overflows the C stack
+        (RecursionError, raised *before* the from_json guard runs) must still
+        surface as a catchable FilterError — otherwise it escapes the view's
+        FilterError boundary and 500s. Reachable un-capped via a stored
+        FilterPreset blob (issue #186)."""
+        bad = _deep_json_string(100_000)
+        with pytest.raises(FilterError, match="too deep"):
             parse_game_filter(bad)
 
     def test_nesting_within_cap_parses(self):
@@ -1567,6 +1586,30 @@ class TestFilterDepthGuard:
         result = parse_game_filter(good)
         assert result is not None
         result.to_q()  # does not raise
+
+    def test_mixed_operator_and_relation_share_one_depth_budget(self):
+        """Both recursion sites increment the same ``_depth``, so a tree alternating
+        AND groups with relation descents sums their frames against one budget — each
+        kind does not get its own cap. Build the chain outer->inner tracking the
+        current entity so every key is valid (AND preserves the entity; session_filter
+        descends game->session, game_filter descends session->game), then a
+        combined-deep-but-modest-per-kind blob raises."""
+        entity = "game"
+        keys: list[str] = []
+        for index in range(MAX_FILTER_DEPTH + 4):
+            if index % 2 == 0:
+                keys.append("AND")
+            elif entity == "game":
+                keys.append("session_filter")
+                entity = "session"
+            else:
+                keys.append("game_filter")
+                entity = "game"
+        node: dict = {}
+        for key in reversed(keys):
+            node = {"AND": [node]} if key == "AND" else {key: node}
+        with pytest.raises(FilterError, match="too deep"):
+            parse_game_filter(json.dumps(node))
 
     def test_valid_nested_relation_filter_parses_and_reusable(self):
         """A valid cross-entity sub-filter survives eager validation and its
