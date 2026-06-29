@@ -587,3 +587,42 @@ def test_sort_header_shift_click_removes_descending_column(
     # param disappears and the view's default order applies.
     page.get_by_role("link", name="Name", exact=True).click(modifiers=["Shift"])
     expect(page).not_to_have_url(re.compile(r"sort="))
+
+
+def test_preset_name_collision_warns_and_relabels_save_button(
+    authenticated_page: Page, live_server, django_user_model
+):
+    """Typing the name of an existing preset shows the red overwrite warning and
+    relabels the confirm button "Save" -> "Overwrite"; a non-colliding name
+    hides it again (issue #212). The match is case-sensitive."""
+    from games.models import FilterPreset
+
+    user = django_user_model.objects.get(username="tester")
+    FilterPreset.objects.create(user=user, name="Backlog", mode="games")
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    open_filter_bar(page)
+
+    # The preset list loads via fetch on connect; wait for the row to arrive.
+    expect(
+        page.locator('#preset-dropdown [data-preset-name="Backlog"]')
+    ).to_be_attached()
+
+    page.click("[data-filter-bar-save]")
+    name_input = page.locator("[data-filter-bar-preset-name]")
+    warning = page.locator("[data-filter-bar-overwrite-warning]")
+    confirm = page.locator("[data-filter-bar-confirm-save]")
+
+    name_input.fill("Backlog")
+    expect(warning).to_be_visible()
+    expect(confirm).to_have_text("Overwrite")
+
+    # Case-sensitive: a different casing does not collide.
+    name_input.fill("backlog")
+    expect(warning).to_be_hidden()
+    expect(confirm).to_have_text("Save")
+
+    name_input.fill("Brand new")
+    expect(warning).to_be_hidden()
+    expect(confirm).to_have_text("Save")

@@ -471,6 +471,8 @@ function loadPresets(root: HTMLElement, presetListUrl: string): void {
     .then((html) => {
       dropdown.innerHTML = html;
       setupPresetDeleteHandlers(dropdown);
+      // Names just (re)arrived; re-check collision in case the input is open.
+      updateOverwriteWarning(root);
     })
     .catch((error) => {
       dropdown.innerHTML =
@@ -487,6 +489,32 @@ function showPresetNameInput(root: HTMLElement): void {
   if (saveButton) saveButton.classList.add("hidden");
   if (confirmButton) confirmButton.classList.remove("hidden");
   if (input instanceof HTMLElement) input.focus();
+  // A name may already be typed (e.g. reopening the input); reflect collision now.
+  updateOverwriteWarning(root);
+}
+
+// Names of the presets currently rendered in the dropdown, trimmed. The match is
+// case-sensitive to mirror the (user, mode, name) unique constraint, which uses
+// SQLite's default BINARY collation ("Backlog" and "backlog" are distinct rows).
+function existingPresetNames(root: HTMLElement): Set<string> {
+  const names = new Set<string>();
+  root.querySelectorAll<HTMLElement>("#preset-dropdown [data-preset-name]").forEach((row) => {
+    const name = row.getAttribute("data-preset-name");
+    if (name !== null) names.add(name.trim());
+  });
+  return names;
+}
+
+// Show the red inline warning and relabel the confirm button to "Overwrite" only
+// when the typed name collides with an existing preset; otherwise restore "Save".
+function updateOverwriteWarning(root: HTMLElement): void {
+  const input = root.querySelector<HTMLInputElement>("[data-filter-bar-preset-name]");
+  const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
+  const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
+  const name = input ? input.value.trim() : "";
+  const collides = name !== "" && existingPresetNames(root).has(name);
+  if (warning) warning.classList.toggle("hidden", !collides);
+  if (confirmButton) confirmButton.textContent = collides ? "Overwrite" : "Save";
 }
 
 function savePreset(
@@ -534,7 +562,12 @@ function savePreset(
       const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
       const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
       if (saveButton) saveButton.classList.remove("hidden");
-      if (confirmButton) confirmButton.classList.add("hidden");
+      if (confirmButton) {
+        confirmButton.classList.add("hidden");
+        confirmButton.textContent = "Save";
+      }
+      const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
+      if (warning) warning.classList.add("hidden");
       loadPresets(root, presetListUrl);
     })
     .catch((error) => {
@@ -583,6 +616,10 @@ class FilterBarElement extends HTMLElement {
 
     this.querySelector("[data-filter-bar-confirm-save]")?.addEventListener("click", () => {
       savePreset(form, presetSaveUrl, presetListUrl, this);
+    });
+
+    this.querySelector("[data-filter-bar-preset-name]")?.addEventListener("input", () => {
+      updateOverwriteWarning(this);
     });
 
     setupDeselectableRadios(this);

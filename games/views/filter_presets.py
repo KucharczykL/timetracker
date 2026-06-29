@@ -74,7 +74,7 @@ def list_presets(request: HttpRequest) -> HttpResponse:
         list_url = reverse(f"games:list_{mode}")
         delete_url = reverse("games:delete_preset", args=[preset.id])
         items.append(
-            Li()[
+            Li(data_preset_name=preset.name)[
                 A(href=f"{list_url}?filter={quote(filter_json)}", class_=ITEM_CLASS)[
                     Span()[preset.name],
                     Span(
@@ -151,14 +151,19 @@ def save_preset(request: HttpRequest) -> HttpResponse:
                 messages.error(request, "Invalid filter: expected a filter object.")
                 return HttpResponse(status=400)
 
-    FilterPreset.objects.create(
+    # Upsert on the (user, mode, name) identity: re-saving a name overwrites the
+    # stored filter rather than creating a duplicate row. The unique constraint
+    # (FilterPreset.Meta) enforces that identity at the DB level; the filter bar
+    # warns inline before the user confirms an overwrite (issue #212).
+    _, created = FilterPreset.objects.update_or_create(
         user=cast(User, request.user),
         name=name,
         mode=mode,
-        object_filter=object_filter,
+        defaults={"object_filter": object_filter},
     )
-    messages.success(request, f'Filter preset "{name}" saved.')
-    return HttpResponse(status=201)
+    verb = "saved" if created else "updated"
+    messages.success(request, f'Filter preset "{name}" {verb}.')
+    return HttpResponse(status=201 if created else 200)
 
 
 @login_required

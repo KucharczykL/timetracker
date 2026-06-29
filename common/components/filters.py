@@ -583,6 +583,11 @@ def _filter_action_row() -> Node:
                     "focus:ring-4 focus:ring-green-300"
                 ),
             )["Save"],
+            Span(
+                id_="preset-overwrite-warning",
+                data_filter_bar_overwrite_warning="",
+                class_="hidden text-sm text-red-500",
+            )["A preset with this name exists — saving will overwrite it."],
         ],
         Div(id_="preset-dropdown", class_="relative")[
             Span(class_="text-sm text-body")["Loading presets..."],
