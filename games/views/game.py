@@ -103,9 +103,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "header_action": Div(
             class_="flex justify-end",
-        )[
-            A(href=reverse("games:add_game"))[StyledButton()["Add game"]],
-        ],
+        )[A(href=reverse("games:add_game"))[StyledButton()["Add game"]],],
         "columns": [
             Column("Name", "name"),
             Column("Sort Name", "sort_name"),
