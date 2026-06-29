@@ -287,6 +287,56 @@ describe("deserialize — faithful fold", () => {
     expect(thrownError).toBeInstanceOf(FilterTreeError);
     expect((thrownError as FilterTreeError).code).toBe("INVALID_FIELD_COMPARISON");
   });
+
+  it("unknown model key throws UNKNOWN_MODEL", () => {
+    let thrownError: unknown;
+    try {
+      deserialize({ status: { value: ["f"], modifier: "INCLUDES" } }, "nonexistent", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("UNKNOWN_MODEL");
+  });
+
+  it("invalid relation match quantifier throws INVALID_MATCH", () => {
+    let thrownError: unknown;
+    try {
+      deserialize(
+        { session_filter: { match: "SOME", device: { value: [1], modifier: "INCLUDES" } } },
+        "game",
+        registry,
+      );
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("INVALID_MATCH");
+  });
+
+  it("relation match is case-sensitive: lowercase 'none' throws INVALID_MATCH", () => {
+    let thrownError: unknown;
+    try {
+      deserialize({ session_filter: { match: "none" } }, "game", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("INVALID_MATCH");
+  });
+
+  it("serialize guards against a cyclic node tree (SERIALIZE_DEPTH_EXCEEDED)", () => {
+    const cyclic = group("AND", []);
+    cyclic.children.push(cyclic); // a group that contains itself
+    let thrownError: unknown;
+    try {
+      serialize(cyclic);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("SERIALIZE_DEPTH_EXCEEDED");
+  });
 });
 
 import { writeFileSync } from "node:fs";

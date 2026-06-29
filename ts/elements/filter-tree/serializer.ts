@@ -27,14 +27,23 @@ export function group(connective: Connective, children: FilterNode[], negate = f
 // ── Export ─────────────────────────────────────────────────────────────────
 
 export function serialize(root: GroupNode): Json {
-  return serializeNode(root);
+  return serializeNode(root, 0);
 }
 
-function serializeNode(node: FilterNode): Json {
+function serializeNode(node: FilterNode, depth: number): Json {
+  // Symmetric with deserialize's guard: a cyclic in-memory node tree (a builder
+  // bug — e.g. a group appended to itself) would otherwise recurse until the JS
+  // stack overflows and locks the tab. Bound it and throw loudly instead.
+  if (depth > MAX_FILTER_DEPTH) {
+    throw new FilterTreeError(
+      `Filter nesting too deep (max ${MAX_FILTER_DEPTH})`,
+      "SERIALIZE_DEPTH_EXCEEDED",
+    );
+  }
   switch (node.kind) {
     case "group": {
       const children = node.children
-        .map(serializeNode)
+        .map((child) => serializeNode(child, depth + 1))
         .filter((childJson) => Object.keys(childJson).length > 0);
       const inner: Json = children.length ? { [node.connective]: children } : {};
       return wrapNegate(inner, node.negate);
@@ -44,7 +53,7 @@ function serializeNode(node: FilterNode): Json {
     case "comparison":
       return wrapNegate({ field_comparisons: [node.comparison] }, node.negate);
     case "relation": {
-      const serializedChild = serializeNode(node.child); // {} | {AND:…} | {OR:…} | {NOT:…}
+      const serializedChild = serializeNode(node.child, depth + 1); // {} | {AND:…} | {OR:…} | {NOT:…}
       const relationJson: Json = {
         ...(node.match !== "ANY" ? { match: node.match } : {}),
         ...serializedChild,
@@ -78,12 +87,17 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
   for (const key of Object.keys(json)) {
     if (RESERVED_KEYS.has(key)) continue;
     const value = json[key];
-    if (key in meta.relations) {
+    // Criterion-first, mirroring Python from_json (criteria.py:1303-1317 resolves
+    // _criterion_class_for before _filter_class_for). fields/relations are disjoint
+    // for well-formed metadata, so order only matters if a key ever appears in both.
+    if (meta.fields.has(key)) {
+      if (isObject(value)) {
+        baseChildren.push({ kind: "criterion", field: key, criterion: value, negate: false });
+      }
+    } else if (key in meta.relations) {
       if (isObject(value)) {
         baseChildren.push(relationNode(key, value, meta.relations[key], registry, depth));
       }
-    } else if (meta.fields.has(key) && isObject(value)) {
-      baseChildren.push({ kind: "criterion", field: key, criterion: value, negate: false });
     }
     // else: unknown key or non-object value -> dropped (backend from_json parity)
   }

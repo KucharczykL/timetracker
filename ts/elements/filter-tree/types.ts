@@ -77,7 +77,8 @@ export type FilterTreeErrorCode =
   | "FIELD_COMPARISONS_EXCEEDED"
   | "INVALID_FIELD_COMPARISON"
   | "UNKNOWN_MODEL"
-  | "INVALID_MATCH";
+  | "INVALID_MATCH"
+  | "SERIALIZE_DEPTH_EXCEEDED";
 
 export class FilterTreeError extends Error {
   constructor(message: string, readonly code: FilterTreeErrorCode) {
