@@ -2,14 +2,18 @@
 
 import json
 import logging
+from typing import cast
 from urllib.parse import quote
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.views.decorators.http import require_http_methods
 
+from common.components import A, Li, Node, Span, Ul
 from common.criteria import FilterError
 from games.filters import (
     parse_device_filter,
@@ -35,34 +39,53 @@ MODE_PARSERS = {
 }
 
 
+ITEM_CLASS = (
+    "flex justify-between items-center px-4 py-2 text-sm "
+    "text-heading hover:bg-neutral-secondary-medium"
+)
+DELETE_CLASS = "text-red-500 hover:text-red-700 cursor-pointer ml-4"
+EMPTY_CLASS = "px-4 py-2 text-sm text-body italic"
+
+
 @login_required
 def list_presets(request: HttpRequest) -> HttpResponse:
-    """Return a preset dropdown as an HTML fragment."""
+    """Return the current user's preset dropdown as an HTML fragment."""
     mode = request.GET.get("mode", "games")
-    presets = FilterPreset.objects.filter(mode=mode).order_by("name")
+    # `mode` is interpolated into reverse(f"games:list_{mode}") below; an unknown
+    # value would raise NoReverseMatch (500). Reject it up front (mirrors
+    # save_preset). MODE_PARSERS keys == FilterPreset.MODE_CHOICES (parity-tested).
+    if mode not in MODE_PARSERS:
+        return HttpResponse(status=400)
 
-    items: list[str] = []
+    # @login_required guarantees an authenticated User (never AnonymousUser).
+    user = cast(User, request.user)
+    presets = FilterPreset.objects.filter(mode=mode, user=user).order_by("name")
+
+    # Built with the component node layer (not f-strings) so user-controlled
+    # preset.name is auto-escaped — the string child and every attribute value
+    # pass through escape() (fixes the stored-XSS in the old raw-HTML build).
+    items: list[Node] = []
     for preset in presets:
         filter_json = json.dumps(preset.object_filter) if preset.object_filter else ""
         list_url = reverse(f"games:list_{mode}")
         delete_url = reverse("games:delete_preset", args=[preset.id])
-
         items.append(
-            f"<li>"
-            f'<a href="{list_url}?filter={quote(filter_json)}" '
-            f'class="flex justify-between items-center px-4 py-2 text-sm '
-            f'text-heading hover:bg-neutral-secondary-medium">'
-            f"<span>{preset.name}</span>"
-            f'<span class="text-red-500 hover:text-red-700 cursor-pointer ml-4" '
-            f'data-delete-preset="{preset.id}" '
-            f'href="{delete_url}">x</span>'
-            f"</a></li>"
+            Li()[
+                A(href=f"{list_url}?filter={quote(filter_json)}", class_=ITEM_CLASS)[
+                    Span()[preset.name],
+                    Span(
+                        class_=DELETE_CLASS,
+                        data_delete_preset=str(preset.id),
+                        href=delete_url,
+                    )["x"],
+                ]
+            ]
         )
 
     if not items:
-        items = ['<li class="px-4 py-2 text-sm text-body italic">No saved presets</li>']
+        items = [Li(class_=EMPTY_CLASS)["No saved presets"]]
 
-    return HttpResponse(f'<ul class="py-1">{"".join(items)}</ul>')
+    return HttpResponse(Ul(class_="py-1")[items])
 
 
 @login_required
@@ -125,6 +148,7 @@ def save_preset(request: HttpRequest) -> HttpResponse:
                 return HttpResponse(status=400)
 
     FilterPreset.objects.create(
+        user=cast(User, request.user),
         name=name,
         mode=mode,
         object_filter=object_filter,
@@ -134,9 +158,16 @@ def save_preset(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_http_methods(["DELETE"])
 def delete_preset(request: HttpRequest, preset_id: int) -> HttpResponse:
-    """Delete a saved filter preset."""
-    preset = get_object_or_404(FilterPreset, id=preset_id)
+    """Delete one of the current user's filter presets.
+
+    DELETE-only: a destructive action must not be reachable by GET, or a
+    cross-site `<img src=.../>` would delete the victim's preset (CSRF only
+    guards unsafe methods). Scoped to request.user so it cannot touch another
+    user's preset (404 instead).
+    """
+    preset = get_object_or_404(FilterPreset, id=preset_id, user=request.user)
     name = preset.name
     preset.delete()
     messages.success(request, f'Preset "{name}" deleted.')
@@ -145,8 +176,8 @@ def delete_preset(request: HttpRequest, preset_id: int) -> HttpResponse:
 
 @login_required
 def load_preset(request: HttpRequest, preset_id: int) -> HttpResponse:
-    """Load a preset and redirect to the appropriate list view."""
-    preset = get_object_or_404(FilterPreset, id=preset_id)
+    """Load one of the current user's presets and redirect to its list view."""
+    preset = get_object_or_404(FilterPreset, id=preset_id, user=request.user)
     filter_json = json.dumps(preset.object_filter) if preset.object_filter else ""
     return redirect(
         f"{reverse(f'games:list_{preset.mode}')}?filter={quote(filter_json)}"

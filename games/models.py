@@ -505,6 +505,11 @@ class FilterPreset(models.Model):
         ("platforms", "Platforms"),
     ]
 
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="filter_presets",
+    )
     name = models.CharField(max_length=255)
     mode = models.CharField(max_length=50, choices=MODE_CHOICES, default="games")
     find_filter = models.JSONField(default=dict, blank=True)

@@ -165,7 +165,7 @@ urlpatterns = [
     path("filter/presets/list", filter_presets.list_presets, name="list_presets"),
     path("filter/presets/save", filter_presets.save_preset, name="save_preset"),
     path(
-        "filter/presets/<int:preset_id>/delete",
+        "filter/presets/<int:preset_id>",
         filter_presets.delete_preset,
         name="delete_preset",
     ),

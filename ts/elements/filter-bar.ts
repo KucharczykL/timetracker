@@ -426,7 +426,7 @@ function setupPresetDeleteHandlers(container: HTMLElement): void {
       if (!deleteUrl) return;
       if (!confirm("Delete this preset?")) return;
       fetch(deleteUrl, {
-        method: "POST",
+        method: "DELETE",
         credentials: "same-origin",
         headers: { "X-CSRFToken": getCsrfToken() },
       })
