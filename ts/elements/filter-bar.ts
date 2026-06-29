@@ -501,15 +501,19 @@ function savePreset(
   body.append("mode", presetMode());
   body.append("filter", JSON.stringify(filterObject));
 
-  fetch(presetSaveUrl, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "X-CSRFToken": getCsrfToken(),
-    },
-    body: body.toString(),
-  })
+  // fetchWithHtmxTriggers (not plain fetch) so the server's messages — the
+  // error toast on a rejected filter/mode, and the success toast — surface via
+  // the HX-Trigger header the toast middleware sets.
+  window
+    .fetchWithHtmxTriggers(presetSaveUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRFToken": getCsrfToken(),
+      },
+      body: body.toString(),
+    })
     .then((response) => {
       if (!response.ok) throw new Error("Save failed");
       if (input) {
