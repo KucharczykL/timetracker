@@ -114,6 +114,23 @@ class TestStringCriterion:
         c = StringCriterion(value="", modifier=Modifier.NOT_NULL)
         assert c.to_q("name") == Q(name__isnull=False)
 
+    def test_empty_value_survives_to_json(self):
+        """An EQUALS "" match (empty string, not unset — "unset" is the criterion
+        being absent at the filter level) must serialize. The base to_json drops
+        value=="" as it equals the default. Symmetric with the scalar #223 fix."""
+        assert StringCriterion(value="", modifier=Modifier.EQUALS).to_json() == {
+            "value": ""
+        }
+
+    def test_empty_value_survives_filter_round_trip(self):
+        """The real drop path: parent OperatorFilter.to_json must not drop an
+        EQUALS "" criterion. Unlike DateCriterion, StringCriterion has no coercion,
+        so "" round-trips fully."""
+        original = GameFilter(name=StringCriterion(value="", modifier=Modifier.EQUALS))
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.name == StringCriterion(value="", modifier=Modifier.EQUALS)
+
 
 class TestIntCriterion:
     def test_between(self):

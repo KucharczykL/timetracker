@@ -324,6 +324,17 @@ class StringCriterion(_Criterion):
     value: str = ""
     modifier: Modifier = Modifier.EQUALS
 
+    def to_json(self) -> dict[str, Any]:
+        # "unset" is the criterion being absent at the filter level (field is None),
+        # never a magic empty value — so a present StringCriterion with value=="" is
+        # a meaningful EQUALS "" match and must serialize. The base to_json drops it
+        # (value == default). Force-emit, mirroring the scalar #223 fix and
+        # BoolCriterion/FieldComparisonCriterion. ``modifier`` (EQUALS default)
+        # stays base-handled: it re-parses to the same default, byte-stable.
+        result = super().to_json()
+        result["value"] = self.value
+        return result
+
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
         if m == Modifier.EQUALS:
