@@ -160,6 +160,45 @@ class TestIntCriterion:
         assert restored == original
         assert restored.to_q("year_released") == Q(year_released__isnull=True)
 
+    def test_value_zero_survives_to_json(self):
+        """value=0 with a value-using modifier must serialize — it equals the
+        dataclass default, so the base to_json would drop it, losing a meaningful
+        EQUALS 0 (e.g. free price, zero-duration). Regression for #223."""
+        assert IntCriterion(value=0, modifier=Modifier.EQUALS).to_json() == {"value": 0}
+
+    def test_value_zero_round_trip(self):
+        original = IntCriterion(value=0, modifier=Modifier.EQUALS)
+        assert IntCriterion.from_json(original.to_json()) == original
+
+
+class TestScalarCriterionZeroValue:
+    """#223: every scalar criterion must serialize a meaningful default-valued
+    `value` rather than dropping it (the base to_json omits value==default)."""
+
+    def test_float_zero_survives_to_json(self):
+        as_dict = FloatCriterion(value=0.0, modifier=Modifier.LESS_THAN).to_json()
+        assert as_dict["value"] == 0.0
+        assert as_dict["modifier"] == Modifier.LESS_THAN
+
+    def test_float_zero_round_trip(self):
+        original = FloatCriterion(value=0.0, modifier=Modifier.LESS_THAN)
+        assert FloatCriterion.from_json(original.to_json()) == original
+
+    def test_date_empty_value_survives_to_json(self):
+        # `""` is not a valid ISO date (from_json rightly rejects it on round-trip),
+        # but to_json must still force-emit value for shape-consistency with the
+        # other scalars rather than silently dropping it.
+        assert "value" in DateCriterion(value="", modifier=Modifier.EQUALS).to_json()
+
+    def test_aggregate_zero_survives_to_json(self):
+        """'games with 0 sessions' — the latent stats hazard from #223."""
+        as_dict = AggregateCriterion(value=0, modifier=Modifier.EQUALS).to_json()
+        assert as_dict["value"] == 0
+
+    def test_aggregate_zero_round_trip(self):
+        original = AggregateCriterion(value=0, modifier=Modifier.EQUALS)
+        assert AggregateCriterion.from_json(original.to_json()) == original
+
 
 class TestBoolCriterion:
     def test_equals_true(self):
