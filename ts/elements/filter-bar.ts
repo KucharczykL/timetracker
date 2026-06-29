@@ -425,12 +425,17 @@ function setupPresetDeleteHandlers(container: HTMLElement): void {
       const deleteUrl = link.getAttribute("href");
       if (!deleteUrl) return;
       if (!confirm("Delete this preset?")) return;
-      fetch(deleteUrl, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": getCsrfToken() },
-      })
-        .then(() => {
+      // fetchWithHtmxTriggers so the server's delete success/error toast surfaces;
+      // only remove the row when the server actually deleted it (response.ok),
+      // otherwise a 404/405/500 would desync the UI from the DB.
+      window
+        .fetchWithHtmxTriggers(deleteUrl, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": getCsrfToken() },
+        })
+        .then((response) => {
+          if (!response.ok) return; // server rejected; its toast already fired
           const listItem = link.closest("li");
           if (listItem) listItem.remove();
           const list = container.querySelector("ul");
@@ -440,7 +445,9 @@ function setupPresetDeleteHandlers(container: HTMLElement): void {
           }
         })
         .catch((error) => {
+          // Transport failure only (no Response, no HX-Trigger) — surface a toast.
           console.error("Delete failed:", error);
+          window.toast("Failed to delete preset.", "error");
         });
     });
   });
@@ -501,17 +508,24 @@ function savePreset(
   body.append("mode", presetMode());
   body.append("filter", JSON.stringify(filterObject));
 
-  fetch(presetSaveUrl, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "X-CSRFToken": getCsrfToken(),
-    },
-    body: body.toString(),
-  })
+  // fetchWithHtmxTriggers (not plain fetch) so the server's messages — the error
+  // toast on a rejected filter/mode, and the success toast — surface via the
+  // HX-Trigger header the toast middleware sets, for any response that carries a
+  // Django message.
+  window
+    .fetchWithHtmxTriggers(presetSaveUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRFToken": getCsrfToken(),
+      },
+      body: body.toString(),
+    })
     .then((response) => {
-      if (!response.ok) throw new Error("Save failed");
+      // A non-ok response already fired its error toast via the wrapper; leave
+      // the confirm-save UI in place so the user can correct and retry.
+      if (!response.ok) return;
       if (input) {
         input.value = "";
         input.classList.add("hidden");
@@ -524,7 +538,10 @@ function savePreset(
       loadPresets(root, presetListUrl);
     })
     .catch((error) => {
+      // Reached only on a transport failure (no Response, so no HX-Trigger and no
+      // toast fired). Surface one here so the failure is never invisible.
       console.error("Failed to save preset:", error);
+      window.toast("Failed to save preset.", "error");
     });
 }
 
