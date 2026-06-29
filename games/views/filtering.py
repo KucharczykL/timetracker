@@ -17,6 +17,7 @@ from django.contrib import messages
 from django.http import HttpRequest
 
 from common.criteria import FilterError, FilterType
+from games.sorting import SortKey
 
 logger = logging.getLogger("games")
 
@@ -58,3 +59,27 @@ def apply_structured_filter(
         )
         messages.warning(request, f"Ignored invalid filter: {exc}")
         return None
+
+
+def warn_unknown_sort(
+    request: HttpRequest, unknown: list[SortKey], *, entity: str
+) -> None:
+    """Log + toast unknown ``?sort=`` keys, mirroring ``apply_structured_filter``.
+
+    ``?sort=`` is attacker-controllable like ``?filter=``; an unknown key is
+    dropped (the queryset falls back to the trusted default sort) and a warning is
+    both logged on the ``games`` logger — so operators can spot probing — and
+    queued as a user-facing toast. ``entity`` is the singular noun
+    (``"game"``/``"session"``/``"purchase"``), matching the filter log convention.
+    """
+    if not unknown:
+        return
+    logger.warning(
+        "rejected unknown sort field(s) (entity=%s, user=%s, path=%s): %s",
+        entity,
+        request.user,
+        request.path,
+        ", ".join(unknown),
+    )
+    for key in unknown:
+        messages.warning(request, f"Unknown sort field '{key}' was ignored.")

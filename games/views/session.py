@@ -1,6 +1,5 @@
 from typing import Any
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -48,6 +47,7 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.filtering import warn_unknown_sort
 
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
@@ -102,8 +102,7 @@ def list_sessions(request: HttpRequest, search_string: str = "") -> HttpResponse
         sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
     )
     sessions = sort.queryset
-    for key in sort.unknown:
-        messages.warning(request, f"Unknown sort field '{key}' was ignored.")
+    warn_unknown_sort(request, sort.unknown, entity="session")
     sessions, page_obj, elided_page_range = paginate(request, sessions)
     csrf_token = get_token(request)
 

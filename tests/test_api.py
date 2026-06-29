@@ -217,6 +217,42 @@ def test_session_list_malformed_filter_logged(auth_client, capture_games_logger)
     )
 
 
+def test_session_list_unknown_sort_rejected(auth_client):
+    # Issue #207: an unknown ?sort= key must 400 (parity with the filter rejection
+    # in the same handler) instead of silently returning default-sorted data.
+    _make_session()
+    response = auth_client.get("/api/session/?sort=bogusfield")
+    assert response.status_code == 400
+    assert "Invalid sort" in response.json()["detail"]
+
+
+def test_session_list_unknown_sort_logged(auth_client, capture_games_logger):
+    # Issue #207: the rejection must also leave a server-side warning, mirroring
+    # the filter path, so ?sort=<garbage> probing is visible to operators.
+    _make_session()
+    with capture_games_logger() as caplog:
+        response = auth_client.get("/api/session/?sort=bogusfield")
+
+    assert response.status_code == 400
+    records = [record for record in caplog.records if record.name == "games"]
+    assert any(
+        record.levelno == logging.WARNING
+        and "rejected unknown sort field(s)" in record.getMessage()
+        and "entity=session" in record.getMessage()
+        and "user=tester" in record.getMessage()
+        and "path=/api/session/" in record.getMessage()
+        and "bogusfield" in record.getMessage()
+        for record in records
+    )
+
+
+def test_session_list_valid_sort_still_ok(auth_client):
+    # Regression: a valid ?sort= key is unaffected by the unknown-sort rejection.
+    _make_session()
+    response = auth_client.get("/api/session/?sort=-date")
+    assert response.status_code == 200
+
+
 def _patch_session(client, session_id, body):
     return client.patch(
         f"/api/session/{session_id}",

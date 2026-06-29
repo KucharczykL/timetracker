@@ -235,10 +235,20 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
         if session_filter is not None:
             sessions = sessions.filter(session_filter.to_q())
     # `sort` is read from request.GET by parse_find_filter; declared above so it
-    # appears in the OpenAPI schema. Unknown sort keys are silently ignored.
+    # appears in the OpenAPI schema. Unknown sort keys are rejected (not silently
+    # dropped) for parity with the filter rejection above — silently-wrong ordering
+    # is worse than an explicit error for an API consumer.
     sort_result = apply_sort(
         sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
     )
+    if sort_result.unknown:
+        logger.warning(
+            "rejected unknown sort field(s) (entity=session, user=%s, path=%s): %s",
+            request.user,
+            request.path,
+            ", ".join(sort_result.unknown),
+        )
+        raise HttpError(400, f"Invalid sort: {', '.join(sort_result.unknown)}")
     paginator = Paginator(sort_result.queryset, PAGE_SIZE)
     page_obj = paginator.get_page(page)
     return {

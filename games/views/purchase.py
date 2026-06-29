@@ -58,6 +58,7 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.filtering import warn_unknown_sort
 from games.views.general import use_custom_redirect
 
 
@@ -163,8 +164,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT
     )
     purchases = sort.queryset
-    for key in sort.unknown:
-        messages.warning(request, f"Unknown sort field '{key}' was ignored.")
+    warn_unknown_sort(request, sort.unknown, entity="purchase")
 
     purchases, page_obj, elided_page_range = paginate(request, purchases)
 

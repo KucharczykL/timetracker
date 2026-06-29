@@ -1587,6 +1587,56 @@ class TestFilterErrorLogging:
         assert not [record for record in caplog.records if record.name == "games"]
 
 
+class TestUnknownSortLogging:
+    """Issue #207: ``warn_unknown_sort`` must log a server-side warning
+    (entity/user/path/keys) when it drops an unknown ``?sort=`` key, mirroring the
+    #203 filter boundary — while keeping the existing per-key toast UX."""
+
+    def _request(self, path="/game/"):
+        from django.contrib.auth.models import AnonymousUser
+        from django.contrib.messages.storage.cookie import CookieStorage
+        from django.test import RequestFactory
+
+        request = RequestFactory().get(path)
+        request.user = AnonymousUser()
+        setattr(request, "_messages", CookieStorage(request))
+        return request
+
+    def test_unknown_sort_logs_warning_and_toasts(self, capture_games_logger):
+        from games.views.filtering import warn_unknown_sort
+
+        request = self._request()
+        with capture_games_logger() as caplog:
+            warn_unknown_sort(request, ["bogus", "alsobad"], entity="game")
+
+        records = [record for record in caplog.records if record.name == "games"]
+        # Assert each interpolated field by its labelled token, matching the filter
+        # test, so a swapped/dropped positional arg is caught.
+        assert any(
+            record.levelno == logging.WARNING
+            and "rejected unknown sort field(s)" in record.getMessage()
+            and "entity=game" in record.getMessage()
+            and "user=AnonymousUser" in record.getMessage()
+            and "path=/game/" in record.getMessage()
+            and "bogus" in record.getMessage()
+            and "alsobad" in record.getMessage()
+            for record in records
+        )
+        # Existing per-key toast UX is preserved (one message per unknown key).
+        messages = list(request._messages)  # type: ignore[attr-defined]
+        assert len(messages) == 2
+
+    def test_no_unknown_logs_nothing(self, capture_games_logger):
+        from games.views.filtering import warn_unknown_sort
+
+        request = self._request()
+        with capture_games_logger() as caplog:
+            warn_unknown_sort(request, [], entity="game")
+
+        assert not [record for record in caplog.records if record.name == "games"]
+        assert not list(request._messages)  # type: ignore[attr-defined]
+
+
 def _nest_relation(levels: int) -> dict:
     """Build ``levels`` deep of alternating session_filter <-> game_filter relation
     descent (the cyclic DoS vector named in issue #186). The outermost class is
