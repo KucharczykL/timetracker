@@ -208,6 +208,21 @@ def test_list_presets_empty_state(auth_client):
     assert b"No saved presets" in _list(auth_client).content
 
 
+def test_list_presets_renders_row_wiring(auth_client):
+    # The row must carry the JS delete contract (data-delete-preset="{id}") and a
+    # ?filter= link, both tied to the preset — rename/drop would break the client.
+    preset = _make_preset(auth_client, name="Wired")
+    body = _list(auth_client).content.decode()
+    assert f'data-delete-preset="{preset.id}"' in body
+    assert "?filter=" in body
+    assert "Wired" in body
+
+
+def test_save_preset_rejects_non_post(auth_client):
+    response = auth_client.get(reverse("games:save_preset"))
+    assert response.status_code == 405
+
+
 # --- per-user ownership (IDOR) + delete method guard -------------------------
 
 
@@ -219,7 +234,11 @@ def _make_preset(client, name="P"):
 
 def test_list_presets_only_returns_own(auth_client, second_auth_client):
     _make_preset(auth_client, name="MineAlone")
-    assert b"MineAlone" not in _list(second_auth_client).content
+    _make_preset(second_auth_client, name="TheirOwn")
+    response = _list(second_auth_client)
+    assert response.status_code == 200
+    assert b"TheirOwn" in response.content  # positive anchor: B sees own preset
+    assert b"MineAlone" not in response.content  # but not A's
 
 
 def test_delete_preset_requires_ownership(auth_client, second_auth_client):
@@ -235,6 +254,15 @@ def test_load_preset_requires_ownership(auth_client, second_auth_client):
     preset = _make_preset(auth_client)
     response = second_auth_client.get(reverse("games:load_preset", args=[preset.id]))
     assert response.status_code == 404
+
+
+def test_load_preset_owner_redirects_to_list(auth_client):
+    preset = _make_preset(auth_client, name="Load")
+    response = auth_client.get(reverse("games:load_preset", args=[preset.id]))
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith(reverse("games:list_games"))
+    assert "?filter=" in location
 
 
 def test_owner_can_delete_via_delete_method(auth_client):

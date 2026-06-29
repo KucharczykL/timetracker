@@ -425,12 +425,17 @@ function setupPresetDeleteHandlers(container: HTMLElement): void {
       const deleteUrl = link.getAttribute("href");
       if (!deleteUrl) return;
       if (!confirm("Delete this preset?")) return;
-      fetch(deleteUrl, {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": getCsrfToken() },
-      })
-        .then(() => {
+      // fetchWithHtmxTriggers so the server's delete success/error toast surfaces;
+      // only remove the row when the server actually deleted it (response.ok),
+      // otherwise a 404/405/500 would desync the UI from the DB.
+      window
+        .fetchWithHtmxTriggers(deleteUrl, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": getCsrfToken() },
+        })
+        .then((response) => {
+          if (!response.ok) return; // server rejected; its toast already fired
           const listItem = link.closest("li");
           if (listItem) listItem.remove();
           const list = container.querySelector("ul");
@@ -440,7 +445,9 @@ function setupPresetDeleteHandlers(container: HTMLElement): void {
           }
         })
         .catch((error) => {
+          // Transport failure only (no Response, no HX-Trigger) — surface a toast.
           console.error("Delete failed:", error);
+          window.toast("Failed to delete preset.", "error");
         });
     });
   });

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import Callable
 from typing import cast
 from urllib.parse import quote
 
@@ -14,7 +15,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from common.components import A, Li, Node, Span, Ul
-from common.criteria import FilterError
+from common.criteria import FilterError, OperatorFilter
 from games.filters import (
     parse_device_filter,
     parse_game_filter,
@@ -27,9 +28,12 @@ from games.models import FilterPreset
 
 logger = logging.getLogger("games")
 
+# Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
+type FilterParser = Callable[[str], OperatorFilter | None]
+
 # Maps a FilterPreset.mode to the parser that validates that mode's filter JSON.
 # Keys must stay in sync with FilterPreset.MODE_CHOICES (games/models.py).
-MODE_PARSERS = {
+MODE_PARSERS: dict[str, FilterParser] = {
     "games": parse_game_filter,
     "sessions": parse_session_filter,
     "purchases": parse_purchase_filter,
