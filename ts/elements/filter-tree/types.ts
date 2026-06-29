@@ -12,9 +12,14 @@ export type RelationMatch = "ANY" | "NONE" | "ALL";
 // Opaque to the serializer: whatever a leaf widget produced. Never inspected.
 export type CriterionPayload = Record<string, unknown>;
 
+// Opaque to the serializer: whatever a field-comparison widget produced.
+export type ComparisonPayload = Record<string, unknown>;
+
 export interface GroupNode {
   kind: "group";
   connective: Connective; // negation is a separate flag, never a connective
+  // negate on a group with no children is meaningless; silently dropped on
+  // export — wrapNegate returns identity when the inner dict is empty.
   negate: boolean;
   children: FilterNode[];
 }
@@ -28,7 +33,7 @@ export interface CriterionLeaf {
 
 export interface ComparisonLeaf {
   kind: "comparison";
-  comparison: Record<string, unknown>;
+  comparison: ComparisonPayload;
   negate: boolean;
 }
 
@@ -47,12 +52,12 @@ export type FilterNode = GroupNode | CriterionLeaf | ComparisonLeaf | RelationNo
 // dropped, mirroring the backend's `from_json` (it iterates declared fields only).
 export interface ModelMeta {
   fields: ReadonlySet<string>; // valid criterion field names (includes "search")
-  relations: Record<string, string>; // relationField -> targetModelKey
+  relations: Readonly<Record<string, string>>; // relationField -> targetModelKey
 }
 
-export type MetadataRegistry = Record<string, ModelMeta>; // modelKey -> meta
+export type MetadataRegistry = Readonly<Record<string, ModelMeta>>; // modelKey -> meta
 
-// Mirror the backend parse-time caps (common/criteria.py:791,803) so the builder
+// Mirror the backend parse-time caps (common/criteria.py:791,802,803) so the builder
 // and backend agree on validity and a deep blob cannot blow the JS stack.
 export const MAX_FILTER_DEPTH = 10;
 export const MAX_FILTER_BREADTH = 100;
@@ -66,4 +71,17 @@ export const RESERVED_KEYS: ReadonlySet<string> = new Set([
   "field_comparisons",
 ]);
 
-export class FilterTreeError extends Error {}
+export type FilterTreeErrorCode =
+  | "DEPTH_EXCEEDED"
+  | "BREADTH_EXCEEDED"
+  | "FIELD_COMPARISONS_EXCEEDED"
+  | "INVALID_FIELD_COMPARISON"
+  | "UNKNOWN_MODEL"
+  | "INVALID_MATCH";
+
+export class FilterTreeError extends Error {
+  constructor(message: string, readonly code: FilterTreeErrorCode) {
+    super(message);
+    this.name = "FilterTreeError";
+  }
+}

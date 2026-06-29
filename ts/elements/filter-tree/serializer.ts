@@ -35,7 +35,7 @@ function serializeNode(node: FilterNode): Json {
     case "group": {
       const children = node.children
         .map(serializeNode)
-        .filter((dict) => Object.keys(dict).length > 0);
+        .filter((childJson) => Object.keys(childJson).length > 0);
       const inner: Json = children.length ? { [node.connective]: children } : {};
       return wrapNegate(inner, node.negate);
     }
@@ -44,40 +44,40 @@ function serializeNode(node: FilterNode): Json {
     case "comparison":
       return wrapNegate({ field_comparisons: [node.comparison] }, node.negate);
     case "relation": {
-      const childDict = serializeNode(node.child); // {} | {AND:…} | {OR:…} | {NOT:…}
-      const relationDict: Json = {
+      const serializedChild = serializeNode(node.child); // {} | {AND:…} | {OR:…} | {NOT:…}
+      const relationJson: Json = {
         ...(node.match !== "ANY" ? { match: node.match } : {}),
-        ...childDict,
+        ...serializedChild,
       };
-      return wrapNegate({ [node.field]: relationDict }, node.negate);
+      return wrapNegate({ [node.field]: relationJson }, node.negate);
     }
   }
 }
 
 // Negating identity ({}) is still identity, so an empty dict is never wrapped.
-function wrapNegate(dict: Json, negate: boolean): Json {
-  if (!negate || Object.keys(dict).length === 0) return dict;
-  return { NOT: [dict] };
+function wrapNegate(json: Json, negate: boolean): Json {
+  if (!negate || Object.keys(json).length === 0) return json;
+  return { NOT: [json] };
 }
 
 // ── Import ─────────────────────────────────────────────────────────────────
 
-export function deserialize(dict: Json, modelKey: string, registry: MetadataRegistry): GroupNode {
-  return asGroup(deserializeNode(dict, modelKey, registry, 0));
+export function deserialize(json: Json, modelKey: string, registry: MetadataRegistry): GroupNode {
+  return asGroup(deserializeNode(json, modelKey, registry, 0));
 }
 
-function deserializeNode(dict: Json, modelKey: string, registry: MetadataRegistry, depth: number): FilterNode {
+function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistry, depth: number): FilterNode {
   if (depth > MAX_FILTER_DEPTH) {
-    throw new FilterTreeError(`Filter nesting too deep (max ${MAX_FILTER_DEPTH})`);
+    throw new FilterTreeError(`Filter nesting too deep (max ${MAX_FILTER_DEPTH})`, "DEPTH_EXCEEDED");
   }
   const meta = registry[modelKey];
-  if (!meta) throw new FilterTreeError(`Unknown model ${modelKey}`);
+  if (!meta) throw new FilterTreeError(`Unknown model ${modelKey}`, "UNKNOWN_MODEL");
 
   // 1. Base: own criteria + relations + AND-subs, all &-composed (pre-OR).
   const baseChildren: FilterNode[] = [];
-  for (const key of Object.keys(dict)) {
+  for (const key of Object.keys(json)) {
     if (RESERVED_KEYS.has(key)) continue;
-    const value = dict[key];
+    const value = json[key];
     if (key in meta.relations) {
       if (isObject(value)) {
         baseChildren.push(relationNode(key, value, meta.relations[key], registry, depth));
@@ -87,38 +87,44 @@ function deserializeNode(dict: Json, modelKey: string, registry: MetadataRegistr
     }
     // else: unknown key or non-object value -> dropped (backend from_json parity)
   }
-  const andSubs = asArray(dict.AND);
-  checkBreadth(andSubs);
-  for (const sub of andSubs) {
-    if (isObject(sub)) baseChildren.push(deserializeNode(sub, modelKey, registry, depth + 1));
+  const andSubfilters = asArray(json.AND);
+  checkBreadth(andSubfilters);
+  for (const subfilter of andSubfilters) {
+    if (isObject(subfilter)) baseChildren.push(deserializeNode(subfilter, modelKey, registry, depth + 1));
   }
   let core: FilterNode = collapse(group("AND", baseChildren));
 
   // 2. OR: (base OR or-subs). An empty base is dropped (Q() | Q(x) == Q(x)).
-  const orSubs = asArray(dict.OR);
-  checkBreadth(orSubs);
-  if (orSubs.length) {
+  const orSubfilters = asArray(json.OR);
+  checkBreadth(orSubfilters);
+  if (orSubfilters.length) {
     const orChildren: FilterNode[] = [];
     if (!isEmptyGroup(core)) orChildren.push(core);
-    for (const sub of orSubs) {
-      if (isObject(sub)) orChildren.push(deserializeNode(sub, modelKey, registry, depth + 1));
+    for (const subfilter of orSubfilters) {
+      if (isObject(subfilter)) orChildren.push(deserializeNode(subfilter, modelKey, registry, depth + 1));
     }
     core = collapse(group("OR", orChildren));
   }
 
   // 3. Tail: ~NOT (negate toggled), then field_comparisons — the outermost &.
   const tail: FilterNode[] = [];
-  const notSubs = asArray(dict.NOT);
-  checkBreadth(notSubs);
-  for (const sub of notSubs) {
-    if (isObject(sub)) tail.push(withNegateToggled(deserializeNode(sub, modelKey, registry, depth + 1)));
+  const notSubfilters = asArray(json.NOT);
+  checkBreadth(notSubfilters);
+  for (const subfilter of notSubfilters) {
+    if (isObject(subfilter)) tail.push(withNegateToggled(deserializeNode(subfilter, modelKey, registry, depth + 1)));
   }
-  const comparisons = asArray(dict.field_comparisons);
+  const comparisons = asArray(json.field_comparisons);
   if (comparisons.length > MAX_FIELD_COMPARISONS) {
-    throw new FilterTreeError(`Too many field_comparisons (max ${MAX_FIELD_COMPARISONS})`);
+    throw new FilterTreeError(`Too many field_comparisons (max ${MAX_FIELD_COMPARISONS})`, "FIELD_COMPARISONS_EXCEEDED");
   }
   for (const comparison of comparisons) {
-    if (isObject(comparison)) tail.push({ kind: "comparison", comparison, negate: false });
+    if (!isObject(comparison)) {
+      throw new FilterTreeError(
+        "field_comparisons entries must be objects",
+        "INVALID_FIELD_COMPARISON",
+      );
+    }
+    tail.push({ kind: "comparison", comparison, negate: false });
   }
 
   if (!tail.length) return core;
@@ -145,7 +151,7 @@ function relationNode(
 function parseMatch(value: unknown): RelationMatch {
   if (value == null) return "ANY";
   if (value === "ANY" || value === "NONE" || value === "ALL") return value;
-  throw new FilterTreeError(`Unknown relation match ${JSON.stringify(value)}`);
+  throw new FilterTreeError(`Unknown relation match ${JSON.stringify(value)}`, "INVALID_MATCH");
 }
 
 // Negate is a composable node property: toggling the returned node's flag means
@@ -179,7 +185,7 @@ function asArray(value: unknown): unknown[] {
 
 function checkBreadth(list: unknown[]): void {
   if (list.length > MAX_FILTER_BREADTH) {
-    throw new FilterTreeError(`Operator list too long (max ${MAX_FILTER_BREADTH})`);
+    throw new FilterTreeError(`Operator list too long (max ${MAX_FILTER_BREADTH})`, "BREADTH_EXCEEDED");
   }
 }
 

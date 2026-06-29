@@ -90,6 +90,16 @@
         "OR": [ { "status": { "value": ["f"], "modifier": "INCLUDES" } } ],
         "field_comparisons": [ { "left": "original_year_released", "right": "year_released", "modifier": "LESS_THAN" } ]
       }
+    },
+    {
+      "description": "relation ALL quantifier",
+      "model": "game",
+      "filter": { "session_filter": { "match": "ALL", "device": { "value": [1], "modifier": "INCLUDES" } } }
+    },
+    {
+      "description": "negated relation (NOT EXISTS)",
+      "model": "game",
+      "filter": { "NOT": [ { "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } } } ] }
     }
   ]
 }

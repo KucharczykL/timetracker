@@ -22,12 +22,19 @@ describe("types module", () => {
     expect(RESERVED_KEYS.has("status")).toBe(false);
   });
 
-  it("has a dedicated error type", () => {
-    expect(new FilterTreeError("x")).toBeInstanceOf(Error);
+  it("FilterTreeError carries a discriminant code", () => {
+    const error = new FilterTreeError("nesting too deep", "DEPTH_EXCEEDED");
+    expect(error).toBeInstanceOf(Error);
+    expect(error.code).toBe("DEPTH_EXCEEDED");
+    expect(error.name).toBe("FilterTreeError");
+    expect(error.message).toBe("nesting too deep");
   });
 
-  it("models an AND root group", () => {
-    const root: GroupNode = { kind: "group", connective: "AND", negate: false, children: [] };
-    expect(root.kind).toBe("group");
+  it("GroupNode children are mutable and connective is assignable", () => {
+    const node: GroupNode = { kind: "group", connective: "AND", negate: false, children: [] };
+    const inner: GroupNode = { kind: "group", connective: "OR", negate: false, children: [] };
+    node.children.push(inner);
+    expect(node.children).toHaveLength(1);
+    expect((node.children[0] as GroupNode).connective).toBe("OR");
   });
 });

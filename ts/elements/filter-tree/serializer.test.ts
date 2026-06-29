@@ -3,6 +3,7 @@ import { serialize, group } from "./serializer.js";
 import { deserialize } from "./serializer.js";
 import type { FilterNode, GroupNode, ModelMeta } from "./types.js";
 import type { MetadataRegistry } from "./types.js";
+import { FilterTreeError } from "./types.js";
 
 function root(...children: FilterNode[]): GroupNode {
   return { kind: "group", connective: "AND", negate: false, children };
@@ -86,6 +87,17 @@ describe("serialize", () => {
     const negatedEmpty: GroupNode = { kind: "group", connective: "AND", negate: true, children: [] };
     expect(serialize(negatedEmpty)).toEqual({});
   });
+
+  it("negated relation serialize: round-trip is a fixed point", () => {
+    const input: Record<string, unknown> = {
+      NOT: [{ session_filter: { device: { value: [1], modifier: "INCLUDES" } } }],
+    };
+    const once = serialize(deserialize(input, "game", registry));
+    const twice = serialize(deserialize(once, "game", registry));
+    expect(twice).toEqual(once);
+    // The negated relation is preserved: the canonical form contains a NOT wrapper.
+    expect(JSON.stringify(once)).toContain('"NOT"');
+  });
 });
 
 // Fixture registry: game has a session relation; session has none used here.
@@ -97,10 +109,11 @@ const registry: MetadataRegistry = {
 type Json = Record<string, unknown>;
 
 describe("deserialize — faithful fold", () => {
-  it("root is always a group", () => {
+  it("root is always a group with criterion imported", () => {
     const tree = deserialize({ status: { value: ["f"], modifier: "INCLUDES" } }, "game", registry);
     expect(tree.kind).toBe("group");
     expect(tree.connective).toBe("AND");
+    expect(tree.children[0].kind).toBe("criterion");
   });
 
   it("{name, OR:[o1,o2]} => OR[name, o1, o2]", () => {
@@ -210,10 +223,69 @@ describe("deserialize — faithful fold", () => {
     expect(tree.children).toHaveLength(0);
   });
 
+  it("known field with non-object value is dropped", () => {
+    const tree = deserialize({ status: "bad" }, "game", registry);
+    expect(tree.children).toHaveLength(0);
+  });
+
   it("rejects over-deep nesting", () => {
     let blob: Json = { status: { value: ["f"], modifier: "INCLUDES" } };
     for (let i = 0; i < 12; i++) blob = { AND: [blob] };
     expect(() => deserialize(blob, "game", registry)).toThrow(/too deep/i);
+  });
+
+  it("depth boundary: 10 nested AND wraps does not throw", () => {
+    let blob: Json = { status: { value: ["f"], modifier: "INCLUDES" } };
+    for (let i = 0; i < 10; i++) blob = { AND: [blob] };
+    expect(() => deserialize(blob, "game", registry)).not.toThrow();
+  });
+
+  it("depth boundary: 11 nested AND wraps throws DEPTH_EXCEEDED", () => {
+    let blob: Json = { status: { value: ["f"], modifier: "INCLUDES" } };
+    for (let i = 0; i < 11; i++) blob = { AND: [blob] };
+    let thrownError: unknown;
+    try {
+      deserialize(blob, "game", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("DEPTH_EXCEEDED");
+  });
+
+  it("breadth cap: OR of 101 items throws BREADTH_EXCEEDED", () => {
+    const orItems = Array.from({ length: 101 }, () => ({ status: { value: ["f"], modifier: "INCLUDES" } }));
+    let thrownError: unknown;
+    try {
+      deserialize({ OR: orItems }, "game", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("BREADTH_EXCEEDED");
+  });
+
+  it("field_comparisons count cap: 101 entries throws FIELD_COMPARISONS_EXCEEDED", () => {
+    const comparisons = Array.from({ length: 101 }, () => ({ left: "a", right: "b", modifier: "LESS_THAN" }));
+    let thrownError: unknown;
+    try {
+      deserialize({ field_comparisons: comparisons }, "game", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("FIELD_COMPARISONS_EXCEEDED");
+  });
+
+  it("field_comparisons non-dict entry throws INVALID_FIELD_COMPARISON", () => {
+    let thrownError: unknown;
+    try {
+      deserialize({ field_comparisons: ["nope"] }, "game", registry);
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toBeInstanceOf(FilterTreeError);
+    expect((thrownError as FilterTreeError).code).toBe("INVALID_FIELD_COMPARISON");
   });
 });
 
@@ -221,30 +293,32 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import fixtures from "./fixtures.json";
 
+type CanonicalCase = { description: string; model: string; filter: Record<string, unknown> };
+
 function buildRegistry(raw: typeof fixtures.registry): MetadataRegistry {
-  const out: MetadataRegistry = {};
+  const registry: Record<string, ModelMeta> = {};
   for (const [model, meta] of Object.entries(raw)) {
-    out[model] = { fields: new Set(meta.fields), relations: meta.relations } as ModelMeta;
+    registry[model] = { fields: new Set(meta.fields), relations: meta.relations } as ModelMeta;
   }
-  return out;
+  return registry;
 }
 
 describe("round-trip over fixtures + canonical artifact", () => {
-  const reg = buildRegistry(fixtures.registry);
-  const canonical: Array<{ description: string; model: string; filter: Record<string, unknown> }> = [];
+  const registry = buildRegistry(fixtures.registry);
+  const canonical: CanonicalCase[] = [];
 
   for (const testCase of fixtures.cases) {
     it(`serialize(deserialize(x)) is a fixed point: ${testCase.description}`, () => {
-      const once = serialize(deserialize(testCase.filter as Record<string, unknown>, testCase.model, reg));
-      const twice = serialize(deserialize(once, testCase.model, reg));
+      const once = serialize(deserialize(testCase.filter as Record<string, unknown>, testCase.model, registry));
+      const twice = serialize(deserialize(once, testCase.model, registry));
       expect(twice).toEqual(once); // canonical form is stable under re-round-trip
       canonical.push({ description: testCase.description, model: testCase.model, filter: once });
     });
   }
 
   it("writes the canonical artifact for the Python contract", () => {
-    const out = fileURLToPath(new URL("./fixtures.canonical.json", import.meta.url));
-    writeFileSync(out, JSON.stringify({ cases: canonical }, null, 2));
+    const canonicalPath = fileURLToPath(new URL("./fixtures.canonical.json", import.meta.url));
+    writeFileSync(canonicalPath, JSON.stringify({ cases: canonical }, null, 2));
     expect(canonical.length).toBe(fixtures.cases.length);
   });
 });
