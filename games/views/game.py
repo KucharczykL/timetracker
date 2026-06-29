@@ -1,7 +1,6 @@
 from datetime import timedelta
 from typing import Any
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -62,7 +61,7 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
-from games.views.filtering import apply_structured_filter
+from games.views.filtering import apply_structured_filter, warn_unknown_sort
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
 
@@ -119,8 +118,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     sort = apply_sort(games, parse_find_filter(request), GAME_SORTS, GAME_DEFAULT_SORT)
     games = sort.queryset
-    for key in sort.unknown:
-        messages.warning(request, f"Unknown sort field '{key}' was ignored.")
+    warn_unknown_sort(request, sort.unknown, entity="game")
 
     games, page_obj, elided_page_range = paginate(request, games)
 
