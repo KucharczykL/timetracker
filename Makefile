@@ -46,6 +46,9 @@ ts: gen-element-types
 ts-check: gen-element-types
 	pnpm exec tsc --noEmit
 
+test-ts:
+	pnpm exec vitest run
+
 dev: gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
@@ -112,7 +115,7 @@ format-check:
 typecheck:
 	uv run mypy .
 
-check: lint format-check typecheck ts-check check-icons test
+check: lint format-check typecheck ts-check check-icons test-ts test
 
 date:
 	uv run python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'

@@ -10,5 +10,7 @@
     "rootDir": "ts",
     "outDir": "games/static/js/dist"
   },
-  "include": ["ts/**/*.ts"]
+  "include": ["ts/**/*.ts"],
+  "exclude": ["ts/**/*.test.ts"]
 }
+
