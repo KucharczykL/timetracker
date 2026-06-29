@@ -20,7 +20,10 @@ from common.criteria import (
     FilterError,
     FilterField,
     FloatCriterion,
+    MAX_FIELD_COMPARISONS,
+    MAX_FILTER_BREADTH,
     MAX_FILTER_DEPTH,
+    MAX_SET_VALUES,
     IntCriterion,
     Modifier,
     MultiCriterion,
@@ -1779,6 +1782,127 @@ class TestFilterDepthGuard:
         result.to_q()  # does not raise
         assert result.session_filter is not None
         result.session_filter.to_q()  # the exact second call game.py makes
+
+
+class TestFilterBreadthGuard:
+    """Issue #204: a shallow-but-very-wide ``?filter=`` (a huge AND/OR/NOT sibling
+    list, a long field_comparisons list, or a massive set-criterion value/excludes
+    array) must raise FilterError at parse, never amplify a tiny blob into an
+    expensive parse + Q build (DoS). The depth guard bounds nesting, not width;
+    these caps bound the three per-list breadth vectors."""
+
+    def test_operator_list_past_cap_raises(self):
+        bad = json.dumps({"AND": [{} for _ in range(MAX_FILTER_BREADTH + 1)]})
+        with pytest.raises(FilterError, match="operator list too long"):
+            parse_game_filter(bad)
+
+    def test_operator_list_at_cap_parses(self):
+        good = json.dumps({"AND": [{} for _ in range(MAX_FILTER_BREADTH)]})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_field_comparisons_past_cap_raises(self):
+        entry = {
+            "left": "date_purchased",
+            "right": "date_refunded",
+            "modifier": "LESS_THAN",
+        }
+        bad = json.dumps(
+            {"field_comparisons": [entry for _ in range(MAX_FIELD_COMPARISONS + 1)]}
+        )
+        with pytest.raises(FilterError, match="field_comparisons list too long"):
+            parse_purchase_filter(bad)
+
+    def test_field_comparisons_at_cap_parses(self):
+        entry = {
+            "left": "date_purchased",
+            "right": "date_refunded",
+            "modifier": "LESS_THAN",
+        }
+        good = json.dumps(
+            {"field_comparisons": [entry for _ in range(MAX_FIELD_COMPARISONS)]}
+        )
+        result = parse_purchase_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_set_value_past_cap_raises(self):
+        bad = json.dumps(
+            {
+                "platform": {
+                    "value": list(range(MAX_SET_VALUES + 1)),
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        with pytest.raises(FilterError, match="set list too long"):
+            parse_game_filter(bad)
+
+    def test_set_excludes_past_cap_raises(self):
+        bad = json.dumps(
+            {
+                "platform": {
+                    "value": [],
+                    "excludes": list(range(MAX_SET_VALUES + 1)),
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        with pytest.raises(FilterError, match="set list too long"):
+            parse_game_filter(bad)
+
+    def test_set_value_at_cap_parses(self):
+        good = json.dumps(
+            {
+                "platform": {
+                    "value": list(range(MAX_SET_VALUES)),
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_set_excludes_at_cap_parses(self):
+        good = json.dumps(
+            {
+                "platform": {
+                    "value": [],
+                    "excludes": list(range(MAX_SET_VALUES)),
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_set_string_value_rejected_not_char_split(self):
+        """A hand-edited *string* value on a ChoiceCriterion field (whose ``_coerce``
+        is None, so type-coercion wouldn't reject it first) must raise — it would
+        otherwise be silently split into characters by ``_strip_set_label`` (a
+        quietly-wrong filter)."""
+        bad = json.dumps({"status": {"value": "u"}})
+        with pytest.raises(FilterError, match="must be a list"):
+            parse_game_filter(bad)
+
+    def test_set_scalar_value_rejected_not_500(self):
+        """A hand-edited *scalar* (non-iterable) value must raise FilterError, not
+        escape ``_strip_set_label`` as an uncaught ``TypeError`` (a 500 outside the
+        filter error boundary)."""
+        bad = json.dumps({"platform": {"value": 5, "modifier": "INCLUDES"}})
+        with pytest.raises(FilterError, match="must be a list"):
+            parse_game_filter(bad)
+
+    def test_set_null_value_normalizes_to_empty(self):
+        """A JSON ``null`` value/excludes normalizes to an empty list (mirrors the
+        AND/OR/NOT None->[] handling) rather than 500-ing in ``_strip_set_label``."""
+        good = json.dumps({"platform": {"value": None, "modifier": "INCLUDES"}})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
 
 
 # Wrong-typed value per coercible criterion class (issue #157). Criteria whose
