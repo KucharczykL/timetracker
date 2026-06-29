@@ -1,5 +1,13 @@
 """Tests for the filtering system."""
 
+# Stringizes all annotations (PEP 563), matching every filter module
+# (games/filters.py). Without it, the stub filters' ``X | None`` field
+# annotations would be live UnionType objects that the annotation-string-based
+# resolvers (``_criterion_class_for`` / ``_filter_class_for``) can't read.
+# Removable once #218 resolves field types by introspection instead of
+# annotation-string parsing.
+from __future__ import annotations
+
 import dataclasses
 import json
 import logging
@@ -34,11 +42,15 @@ from common.criteria import (
     _comparison_group_for,
     _criterion_class_for,
     _field_comparison_to_q,
+    _filter_class_for,
     _maybe_group_for,
+    _resolve_model_field,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
+    FieldMeta,
+    field_metadata,
     filter_from_json,
     search_q,
 )
@@ -2524,7 +2536,8 @@ class _PurchaseStub(OperatorFilter):
     OR: list["_PurchaseStub"] = dc_field(default_factory=list)
     NOT: list["_PurchaseStub"] = dc_field(default_factory=list)
 
-    def _comparison_model(self):
+    @classmethod
+    def _comparison_model(cls):
         from games.models import Purchase
 
         return Purchase
@@ -2545,7 +2558,8 @@ class _SessionStub(OperatorFilter):
     OR: list["_SessionStub"] = dc_field(default_factory=list)
     NOT: list["_SessionStub"] = dc_field(default_factory=list)
 
-    def _comparison_model(self):
+    @classmethod
+    def _comparison_model(cls):
         from games.models import Session
 
         return Session
@@ -3788,3 +3802,238 @@ class TestValueTypeBoundaryIntegration:
         parsed = parse_game_filter(good)
         assert parsed is not None
         assert Game.objects.filter(parsed.to_q()).filter(pk=game.pk).exists()
+
+
+# ── Component 9 — per-model field-metadata registry (issue #187) ──────────────
+
+
+class TestFieldMetadata:
+    """``field_metadata`` returns one entry per filterable field with the
+    {name, label, kind, nullable, choices, relations} shape the nested filter
+    builder's pickers read."""
+
+    @staticmethod
+    def _by_name(filter_cls) -> dict[str, FieldMeta]:
+        return {entry["name"]: entry for entry in field_metadata(filter_cls)}
+
+    @staticmethod
+    def _expected_choices(model, field_name) -> list[dict]:
+        choices = model._meta.get_field(field_name).choices
+        return [{"value": str(value), "label": str(label)} for value, label in choices]
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_does_not_raise_and_excludes_search(self, filter_cls):
+        names = {entry["name"] for entry in field_metadata(filter_cls)}
+        # search is a declared StringCriterion on every filter but is deliberately
+        # excluded (served by FindFilter.q; TODO #216 removes it).
+        assert "search" in {f.name for f in dataclasses.fields(filter_cls)}
+        assert "search" not in names
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_covers_every_criterion_and_relation_field(self, filter_cls):
+        expected = {
+            f.name
+            for f in dataclasses.fields(filter_cls)
+            if f.name != "search"
+            and (
+                _criterion_class_for(filter_cls, f.name) is not None
+                or _filter_class_for(filter_cls, f.name) is not None
+            )
+        }
+        names = {entry["name"] for entry in field_metadata(filter_cls)}
+        assert names == expected
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_non_filter_fields_skipped(self, filter_cls):
+        names = {entry["name"] for entry in field_metadata(filter_cls)}
+        for skipped in ("AND", "OR", "NOT", "field_comparisons", "match"):
+            assert skipped not in names
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_leaf_kind_matches_criterion(self, filter_cls):
+        from common.criteria import AggregateCriterion, criterion_kind
+
+        for entry in field_metadata(filter_cls):
+            if entry["kind"] == "relation":
+                continue
+            criterion_cls = _criterion_class_for(filter_cls, entry["name"])
+            assert criterion_cls is not None
+            if issubclass(criterion_cls, AggregateCriterion):
+                # aggregates set kind directly, bypassing the exact-class dict
+                assert entry["kind"] == "number"
+            else:
+                assert entry["kind"] == criterion_kind(criterion_cls)
+
+    def test_aggregate_field_is_number(self):
+        entry = self._by_name(GameFilter)["session_count"]
+        assert entry["kind"] == "number"
+        assert entry["nullable"] is False
+        assert entry["choices"] == []
+        assert entry["relations"] == []
+
+    def test_relation_entry_targets_subfilter(self):
+        entry = self._by_name(GameFilter)["session_filter"]
+        assert entry["kind"] == "relation"
+        assert entry["choices"] == []
+        assert entry["nullable"] is False
+        assert entry["relations"] == [
+            {"field": "session_filter", "filter": "SessionFilter", "model": "Session"}
+        ]
+
+    def test_static_choices_game_status(self):
+        from games.models import Game
+
+        entry = self._by_name(GameFilter)["status"]
+        assert entry["kind"] == "set"
+        assert entry["choices"] == self._expected_choices(Game, "status")
+
+    def test_static_choices_purchase(self):
+        from games.models import Purchase
+
+        by_name = self._by_name(PurchaseFilter)
+        assert by_name["ownership_type"]["choices"] == self._expected_choices(
+            Purchase, "ownership_type"
+        )
+        assert by_name["type"]["choices"] == self._expected_choices(Purchase, "type")
+
+    def test_static_choices_device(self):
+        from games.models import Device
+
+        entry = self._by_name(DeviceFilter)["type"]
+        assert entry["choices"] == self._expected_choices(Device, "type")
+
+    def test_dynamic_fk_and_m2m_have_no_choices(self):
+        game_fields = self._by_name(GameFilter)
+        assert game_fields["platform"]["choices"] == []
+        assert game_fields["platform_group"]["choices"] == []
+        # M2M ``games`` must resolve without AttributeError on ``.null``.
+        purchase_fields = self._by_name(PurchaseFilter)
+        assert purchase_fields["games"]["choices"] == []
+        assert purchase_fields["games"]["nullable"] is False
+
+    def test_nullable_reads_fk_attname(self):
+        from games.models import Game
+
+        # platform → lookup "platform_id" (FK attname) resolves to the FK's .null
+        entry = self._by_name(GameFilter)["platform"]
+        assert entry["nullable"] == bool(Game._meta.get_field("platform").null)
+
+    def test_handler_field_defaults_not_nullable(self):
+        # playtime_hours is handler-mapped (no model column) → nullable False
+        entry = self._by_name(GameFilter)["playtime_hours"]
+        assert entry["kind"] == "number"
+        assert entry["nullable"] is False
+
+    def test_multi_hop_descent_label(self):
+        # platform_group (lookup platform__group) descends to Platform.group; the
+        # label is the field name title-cased (not "Group" from verbose_name).
+        entry = self._by_name(GameFilter)["platform_group"]
+        assert entry["label"] == "Platform Group"
+
+    def test_explicit_filterfield_label_wins(self):
+        from common.criteria import FilterField
+
+        assert GameFilter.fields["platform"].lookup == "platform_id"
+        # default label fallback is the title-cased name
+        assert self._by_name(GameFilter)["name"]["label"] == "Name"
+        # a FilterField.label override would take precedence (plumbing check)
+        assert FilterField(lookup="x", label="Custom").label == "Custom"
+
+    def test_resolve_model_field_descent_and_transform(self):
+        from games.models import Game, Platform, Session
+
+        # multi-hop FK descent reaches the terminal related-model field
+        assert _resolve_model_field(
+            Game, "platform__group"
+        ) is Platform._meta.get_field("group")
+        # trailing transform is ignored; stops at the first non-relation field
+        assert _resolve_model_field(
+            Session, "timestamp_start__date"
+        ) is Session._meta.get_field("timestamp_start")
+        # single-segment FK attname resolves to the FK itself
+        assert _resolve_model_field(Game, "platform_id") is Game._meta.get_field(
+            "platform"
+        )
+
+    def test_resolve_model_field_unresolvable_returns_none(self):
+        from games.models import Game
+
+        assert _resolve_model_field(Game, "does_not_exist") is None
+        # reverse relation / aggregate-style name resolves to no concrete field
+        assert _resolve_model_field(Game, "sessions") is None
+
+    def test_nullable_true_for_plain_column(self):
+        # year_released is a nullable plain (non-relation) column — exercises the
+        # nullable=True path for a real model column, not just an FK.
+        entry = self._by_name(GameFilter)["year_released"]
+        assert entry["kind"] == "number"
+        assert entry["nullable"] is True
+
+    def test_relation_payload_for_every_subfilter(self):
+        for filter_cls in _ALL_FILTERS:
+            by_name = self._by_name(filter_cls)
+            for dataclass_field in dataclasses.fields(filter_cls):
+                sub = _filter_class_for(filter_cls, dataclass_field.name)
+                if sub is None:
+                    continue
+                entry = by_name[dataclass_field.name]
+                assert entry["kind"] == "relation"
+                assert entry["relations"] == [
+                    {
+                        "field": dataclass_field.name,
+                        "filter": sub.__name__,
+                        "model": sub._comparison_model().__name__,
+                    }
+                ]
+
+    def test_filterfield_label_and_labels_override_win(self):
+        by_name = self._by_name(_LabelStub)
+        # FilterField.label (highest precedence) surfaces for an in-`fields` field
+        assert by_name["name"]["label"] == "Explicit Name"
+        # OperatorFilter.labels override surfaces for a field outside `fields`
+        assert by_name["mastered"]["label"] == "Override Mastered"
+
+    def test_mistyped_lookup_raises(self):
+        with pytest.raises(ValueError, match="resolves to no field"):
+            field_metadata(_BadLookupStub)
+
+
+@dataclass
+class _LabelStub(OperatorFilter):
+    """Exercises the two label-override branches of ``_field_label``: a
+    ``FilterField.label`` (in ``fields``) and an ``OperatorFilter.labels`` entry
+    (for a field outside ``fields``)."""
+
+    AND: list[_LabelStub] = dc_field(default_factory=list)
+    OR: list[_LabelStub] = dc_field(default_factory=list)
+    NOT: list[_LabelStub] = dc_field(default_factory=list)
+    name: StringCriterion | None = None
+    mastered: BoolCriterion | None = None
+
+    fields = {"name": FilterField(label="Explicit Name")}
+    labels = {"mastered": "Override Mastered"}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game
+
+
+@dataclass
+class _BadLookupStub(OperatorFilter):
+    """A misconfigured filter whose ``fields`` lookup names no real column — the
+    registry must raise rather than silently emit nullable=False/choices=[]."""
+
+    AND: list[_BadLookupStub] = dc_field(default_factory=list)
+    OR: list[_BadLookupStub] = dc_field(default_factory=list)
+    NOT: list[_BadLookupStub] = dc_field(default_factory=list)
+    year_released: IntCriterion | None = None
+
+    fields = {"year_released": FilterField("yeer_released")}
+
+    @classmethod
+    def _comparison_model(cls):
+        from games.models import Game
+
+        return Game

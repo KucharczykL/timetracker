@@ -135,7 +135,8 @@ class GameFilter(OperatorFilter):
     # that shadows the builtin in annotation scope, so ``type[Purchase]`` fails
     # mypy ("Variable ... .type is not valid as a type"). Uniform ``Type`` keeps
     # all six overrides consistent.
-    def _comparison_model(self) -> Type[Game]:
+    @classmethod
+    def _comparison_model(cls) -> Type[Game]:
         from games.models import Game
 
         return Game
@@ -310,7 +311,8 @@ class SessionFilter(OperatorFilter):
         "created_at": FilterField("created_at__date"),
     }
 
-    def _comparison_model(self) -> Type[Session]:
+    @classmethod
+    def _comparison_model(cls) -> Type[Session]:
         from games.models import Session
 
         return Session
@@ -420,7 +422,8 @@ class PurchaseFilter(OperatorFilter):
     # need chained subqueries), so it stays out of ``fields``.
     _IMPERATIVE_CRITERIA = {"search", "games"}
 
-    def _comparison_model(self) -> Type[Purchase]:
+    @classmethod
+    def _comparison_model(cls) -> Type[Purchase]:
         from games.models import Purchase
 
         return Purchase
@@ -556,7 +559,8 @@ class DeviceFilter(OperatorFilter):
         "created_at": FilterField("created_at__date"),
     }
 
-    def _comparison_model(self) -> Type[Device]:
+    @classmethod
+    def _comparison_model(cls) -> Type[Device]:
         from games.models import Device
 
         return Device
@@ -613,7 +617,8 @@ class PlatformFilter(OperatorFilter):
         "created_at": FilterField("created_at__date"),
     }
 
-    def _comparison_model(self) -> Type[Platform]:
+    @classmethod
+    def _comparison_model(cls) -> Type[Platform]:
         from games.models import Platform
 
         return Platform
@@ -680,7 +685,8 @@ class PlayEventFilter(OperatorFilter):
         "created_at": FilterField("created_at__date"),
     }
 
-    def _comparison_model(self) -> Type[PlayEvent]:
+    @classmethod
+    def _comparison_model(cls) -> Type[PlayEvent]:
         from games.models import PlayEvent
 
         return PlayEvent
