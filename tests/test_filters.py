@@ -46,6 +46,7 @@ from common.criteria import (
     FieldMeta,
     field_metadata,
     filter_from_json,
+    filter_to_json,
     search_q,
 )
 from common.components import FilterBar
@@ -113,6 +114,23 @@ class TestStringCriterion:
         c = StringCriterion(value="", modifier=Modifier.NOT_NULL)
         assert c.to_q("name") == Q(name__isnull=False)
 
+    def test_empty_value_survives_to_json(self):
+        """An EQUALS "" match (empty string, not unset — "unset" is the criterion
+        being absent at the filter level) must serialize. The base to_json drops
+        value=="" as it equals the default. Symmetric with the scalar #223 fix."""
+        assert StringCriterion(value="", modifier=Modifier.EQUALS).to_json() == {
+            "value": ""
+        }
+
+    def test_empty_value_survives_filter_round_trip(self):
+        """The real drop path: parent OperatorFilter.to_json must not drop an
+        EQUALS "" criterion. Unlike DateCriterion, StringCriterion has no coercion,
+        so "" round-trips fully."""
+        original = GameFilter(name=StringCriterion(value="", modifier=Modifier.EQUALS))
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.name == StringCriterion(value="", modifier=Modifier.EQUALS)
+
 
 class TestIntCriterion:
     def test_between(self):
@@ -159,6 +177,59 @@ class TestIntCriterion:
         restored = IntCriterion.from_json(original.to_json())
         assert restored == original
         assert restored.to_q("year_released") == Q(year_released__isnull=True)
+
+    def test_value_zero_survives_to_json(self):
+        """value=0 with a value-using modifier must serialize — it equals the
+        dataclass default, so the base to_json would drop it, losing a meaningful
+        EQUALS 0 (e.g. free price, zero-duration). Regression for #223."""
+        assert IntCriterion(value=0, modifier=Modifier.EQUALS).to_json() == {"value": 0}
+
+
+class TestScalarCriterionZeroValue:
+    """#223: every scalar criterion must serialize a meaningful default-valued
+    `value` rather than dropping it (the base to_json omits value==default)."""
+
+    def test_float_zero_survives_to_json(self):
+        as_dict = FloatCriterion(value=0.0, modifier=Modifier.LESS_THAN).to_json()
+        assert as_dict["value"] == 0.0
+        assert as_dict["modifier"] == Modifier.LESS_THAN
+
+    def test_date_empty_value_survives_to_json(self):
+        # `""` is not a valid ISO date (from_json rightly rejects it on round-trip),
+        # but to_json must still force-emit value for shape-consistency with the
+        # other scalars rather than silently dropping it.
+        assert "value" in DateCriterion(value="", modifier=Modifier.EQUALS).to_json()
+
+    def test_aggregate_zero_survives_to_json(self):
+        """'games with 0 sessions' — the latent stats hazard from #223."""
+        as_dict = AggregateCriterion(value=0, modifier=Modifier.EQUALS).to_json()
+        assert as_dict["value"] == 0
+
+    # The actual #223 bug path: `OperatorFilter.to_json` drops a field whose
+    # criterion serializes to `{}` (the `if j:` guard, criteria.py:1343-1346). A
+    # criterion-in-isolation round-trip can NEVER catch this — `from_json` refills
+    # the dropped value from the dataclass default, so it passes even on the
+    # buggy code. Only a full filter-level round-trip exercises the drop site and
+    # genuinely fails when the fix is reverted.
+
+    def test_int_zero_survives_filter_round_trip(self):
+        original = GameFilter(
+            year_released=IntCriterion(value=0, modifier=Modifier.EQUALS)
+        )
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.year_released == IntCriterion(value=0, modifier=Modifier.EQUALS)
+
+    def test_aggregate_zero_survives_filter_round_trip(self):
+        """'games with 0 sessions' through the full filter serializer."""
+        original = GameFilter(
+            session_count=AggregateCriterion(value=0, modifier=Modifier.EQUALS)
+        )
+        restored = filter_from_json(GameFilter, filter_to_json(original))
+        assert restored is not None
+        assert restored.session_count == AggregateCriterion(
+            value=0, modifier=Modifier.EQUALS
+        )
 
 
 class TestBoolCriterion:

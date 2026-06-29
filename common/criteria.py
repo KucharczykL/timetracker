@@ -285,6 +285,18 @@ class _ScalarCriterion(_Criterion):
         if cls._coerce is None:
             raise TypeError(f"{cls.__name__} must set a _coerce validator (issue #157)")
 
+    def to_json(self) -> dict[str, Any]:
+        # ``value`` carries the criterion's payload; at the type default (0 / 0.0 /
+        # "") the base to_json drops it, silently losing a meaningful EQUALS-0 (free
+        # price, zero-duration session, "0 sessions" aggregate — issue #223).
+        # Force-emit it, like BoolCriterion/FieldComparisonCriterion. ``value2``
+        # (None default = no second bound) and ``modifier`` (EQUALS default) stay
+        # base-handled: both re-parse to the same default, so omitting them is
+        # lossless and keeps existing filter JSON byte-stable.
+        result = super().to_json()
+        result["value"] = self.value
+        return result
+
     @classmethod
     def from_json(cls, data: dict | None) -> Self | None:
         result = super().from_json(data)
@@ -311,6 +323,17 @@ class _ScalarCriterion(_Criterion):
 class StringCriterion(_Criterion):
     value: str = ""
     modifier: Modifier = Modifier.EQUALS
+
+    def to_json(self) -> dict[str, Any]:
+        # "unset" is the criterion being absent at the filter level (field is None),
+        # never a magic empty value — so a present StringCriterion with value=="" is
+        # a meaningful EQUALS "" match and must serialize. The base to_json drops it
+        # (value == default). Force-emit, mirroring the scalar #223 fix and
+        # BoolCriterion/FieldComparisonCriterion. ``modifier`` (EQUALS default)
+        # stays base-handled: it re-parses to the same default, byte-stable.
+        result = super().to_json()
+        result["value"] = self.value
+        return result
 
     def to_q(self, field_name: str) -> Q:
         m = self.modifier
