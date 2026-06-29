@@ -1,13 +1,9 @@
-import operator
-from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date
-from functools import reduce, wraps
-from typing import Any, Callable, Generator, Literal, TypeVar
+from functools import wraps
+from typing import Any, Generator, TypeVar
 from urllib.parse import urlencode
 
 from django.core.paginator import Page, Paginator
-from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import redirect
 
@@ -124,49 +120,6 @@ def label_with_details(name: str, *details: object, separator: str = ", ") -> st
     """
     present = [str(detail) for detail in details if detail]
     return f"{name} ({separator.join(present)})" if present else name
-
-
-OperatorType = Literal["|", "&"]
-
-
-@dataclass
-class FilterEntry:
-    condition: Q
-    operator: OperatorType = "&"
-
-
-def build_dynamic_filter(
-    filters: Sequence[FilterEntry | Q], default_operator: OperatorType = "&"
-):
-    """
-    Constructs a Django Q filter from a list of filter conditions.
-
-    Args:
-        filters (list): A list where each item is either:
-            - A Q object (default AND logic applied)
-            - A tuple of (Q object, operator) where operator is "|" (OR) or "&" (AND)
-
-    Returns:
-        Q: A combined Q object that can be passed to Django's filter().
-    """
-    op_map: dict[OperatorType, Callable[[Q, Q], Q]] = {
-        "|": operator.or_,
-        "&": operator.and_,
-    }
-
-    # Convert all plain Q objects into (Q, "&") for default AND behavior
-    processed_filters = [
-        FilterEntry(f, default_operator) if isinstance(f, Q) else f for f in filters
-    ]
-
-    # Reduce with dynamic operators
-    return reduce(
-        lambda combined_filters, filter: op_map[filter.operator](
-            combined_filters, filter.condition
-        ),
-        processed_filters,
-        Q(),
-    )
 
 
 def redirect_to(default_view: str, *default_args):

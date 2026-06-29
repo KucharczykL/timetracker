@@ -34,7 +34,6 @@ from common.components import (
     PopoverTruncated,
     PurchasePrice,
     Safe,
-    SearchField,
     StyledButton,
     StyledTable,
     TableData,
@@ -49,7 +48,7 @@ from common.time import (
     format_duration,
     local_strftime,
 )
-from common.utils import build_dynamic_filter, paginate, safe_division
+from common.utils import paginate, safe_division
 from games.filters import (
     PlayEventFilter,
     PurchaseFilter,
@@ -67,7 +66,7 @@ from games.views.playevent import create_playevent_tabledata
 
 
 @login_required
-def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
+def list_games(request: HttpRequest) -> HttpResponse:
     games = Game.objects.select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
@@ -75,7 +74,7 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
     # column shows total playtime.
     session_q = Q()
 
-    # ── Structured filter (Stash-style JSON) ──
+    # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
     if filter_json:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
@@ -83,27 +82,6 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
             games = games.filter(game_filter.to_q())
             if game_filter.session_filter is not None:
                 session_q = game_filter.session_filter.to_q()
-    else:
-        # ── Legacy free-text search ──
-        search_string = request.GET.get("search_string", search_string)
-        if search_string != "":
-            filters = [
-                Q(name__icontains=search_string),
-                Q(sort_name__icontains=search_string),
-                Q(platform__name__icontains=search_string),
-            ]
-            try:
-                year_value = int(search_string)
-            except ValueError:
-                year_value = None
-            if year_value:
-                filters.append(Q(year_released=year_value))
-            search_string_parts = search_string.split()
-            if len(search_string_parts) == 1:
-                if search_string.title() in Game.Status.labels:
-                    search_status = Game.Status[search_string.upper()]
-                    filters.append(Q(status=search_status))
-            games = games.filter(build_dynamic_filter(filters, "|"))
 
     # Per-game playtime restricted to the session sub-filter, summed in the DB.
     # session_q stays in Session's own field namespace via the correlated
@@ -124,9 +102,8 @@ def list_games(request: HttpRequest, search_string: str = "") -> HttpResponse:
 
     data: TableData = {
         "header_action": Div(
-            class_="flex justify-between",
+            class_="flex justify-end",
         )[
-            SearchField(search_string=search_string),
             A(href=reverse("games:add_game"))[StyledButton()["Add game"]],
         ],
         "columns": [
