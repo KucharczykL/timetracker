@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Install dependencies | `make init` (installs Python via uv + npm packages, loads platform fixtures) |
 | Development server | `make dev` (runs Django runserver + Tailwind CSS watcher) |
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
-| Run tests | `make test` (or `uv run --with pytest-django pytest`) |
+| Run tests | `make test` (pytest; also runs the vitest TS suite via its `test-ts` prereq) |
+| Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
 | Make migrations | `make makemigrations` |
 | Apply migrations | `make migrate` |
 | CSS (Tailwind) | `make css` |
@@ -21,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Type check (mypy) | `make typecheck` (or `uv run mypy .`) |
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
-| Lint + format check + mypy + ts-check + tests | `make check` (CI-style aggregate) |
+| Lint + format check + mypy + ts-check + vitest + tests | `make check` (CI-style aggregate; CI runs exactly this) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
@@ -133,14 +134,14 @@ Only a small number of HTML templates remain (platform icon snippets and partial
 
 New interactive components are **custom elements**, not inline JS in Python. A component that needs behavior emits a semantic tag via `custom_element("tag", Props(...))` (light DOM, server-rendered inner markup built with the htpy-style node builders). Behavior lives in `ts/elements/<tag>.ts` (TypeScript, vanilla DOM, `customElements.define`); the native `connectedCallback` replaces `onSwap` (it fires on parse *and* htmx swap). The server↔client contract is one Python `TypedDict` per element registered with `register_element(...)` in `common/components/custom_elements.py`; `manage.py gen_element_types` codegens `ts/generated/props.ts` (interface + attribute reader) so renaming a prop fails `tsc`.
 
-- **Build:** `tsc` per-module (`tsconfig.json`) compiles `ts/` → `games/static/js/dist/` (build-only, gitignored). `make ts` = codegen + compile; `make ts-check` (in `make check`) = codegen + `tsc --noEmit`; `make dev` runs `tsc --watch`. The Docker image builds CSS + TS in a Node stage. Run `make ts` after editing any `.ts` so e2e/local serving sees fresh output.
+- **Build:** `tsc` per-module (`tsconfig.json`) compiles `ts/` → `games/static/js/dist/` (build-only, gitignored). `make ts` = codegen + compile; `make ts-check` (in `make check`) = codegen + `tsc --noEmit -p tsconfig.check.json`; `make dev` runs `tsc --watch`. The Docker image builds CSS + TS in a Node stage. Run `make ts` after editing any `.ts` so e2e/local serving sees fresh output. **Two tsconfigs:** the emit `tsconfig.json` **excludes** `ts/**/*.test.ts` (test files never ship to `dist/`); `tsconfig.check.json` re-includes them and adds `@types/node` (scoped there, so the browser emit stays node-free) so `make ts-check` also type-checks the vitest tests.
 - **htpy-style markup:** builders take kwargs attributes and `[]` children — `Div(class_="x", hx_get="/y")[child1, child2]` (`class_`→`class`, `hx_get`→`hx-get`, `True`→`name="name"` boolean form, `False`/`None`→omitted). A runtime-built attribute collection goes in the single positional slot: `Div(attrs_list, class_="x")`. Still a walkable `Element` tree, so `Media` bubbles. `attributes=`/`children=` kwargs are rejected (`TypeError`).
 - **Do NOT** author HTML/JS as Python f-strings or add new inline Alpine `x-data` blobs. Alpine remains only for trivial pre-existing toggles (toast store, etc.).
 - **Tables bubble cell media:** `StyledTable` returns a node tree (`Table`/`Thead`/`Tbody` builders), so a custom element in a table cell has its declared `Media` collected automatically when `Page()` walks the tree — its `<script>` is still emitted, with no manual `collect_media` step.
 
 ### Deployment
 
-Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): builds Docker image; Drone CI (`.drone.yml`) also present for deployments via Portainer webhook.
+Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): a `test` job runs `make check` (lint, format-check, mypy, ts-check, icon drift, the vitest suite, and the pytest suite incl. the cross-language filter-tree contract), then a `build-and-push` job builds + pushes the Docker image on `main`.
 
 **Package manager (pnpm):** front-end deps use **pnpm**, not npm. The pnpm version is pinned in `package.json`'s `packageManager` field and provisioned via **Corepack** (bundled with Node) — the Docker assets stage runs `corepack enable` rather than `npm install -g pnpm`. To bump pnpm, update the `packageManager` field; local, CI, and Docker all follow it. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
 
@@ -178,6 +179,8 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 - `test_search_select.py` — SearchSelect component
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
+
+**TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`, run with `make test-ts` (`vitest run`) — and automatically by `make test` (a prereq) and `make check`. vitest/Vite resolves the NodeNext-style `.js` import specifiers to the sibling `.ts`, so no compile step is needed; the test files are excluded from the emit build but type-checked by `make ts-check` (via `tsconfig.check.json`). The filter-tree serializer (`ts/elements/filter-tree/`, issue #188) is covered this way, plus a **cross-language contract** (`tests/test_filter_tree_contract.py`): the vitest suite writes `ts/elements/filter-tree/fixtures.canonical.json` (the serializer's actual output for the shared `fixtures.json` cases, gitignored) and the pytest test asserts each is `to_q()`-equivalent to the source filter — so the TS serializer cannot drift from the Python backend. The contract `skipif`-skips when the artifact is absent; `make check`/`make test` order `test-ts` first so it always runs there.
 
 **Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium; otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
 

@@ -94,7 +94,7 @@ def _filter_parse(filter_json: str) -> dict:
 
         loaded = json.loads(filter_json)
         return loaded if isinstance(loaded, dict) else {}
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return {}
 
 

@@ -5,15 +5,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0021_filterpreset_user'),
+        ("games", "0021_filterpreset_user"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddConstraint(
-            model_name='filterpreset',
-            constraint=models.UniqueConstraint(fields=('user', 'mode', 'name'), name='unique_user_mode_name_preset'),
+            model_name="filterpreset",
+            constraint=models.UniqueConstraint(
+                fields=("user", "mode", "name"), name="unique_user_mode_name_preset"
+            ),
         ),
     ]

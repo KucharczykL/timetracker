@@ -1,0 +1,105 @@
+{
+  "registry": {
+    "game": {
+      "fields": ["name", "status", "year_released", "search"],
+      "relations": { "session_filter": "session" }
+    },
+    "session": {
+      "fields": ["device", "note"],
+      "relations": { "game_filter": "game" }
+    }
+  },
+  "cases": [
+    {
+      "description": "single criterion",
+      "model": "game",
+      "filter": { "status": { "value": ["f"], "modifier": "INCLUDES" } }
+    },
+    {
+      "description": "canonical OR",
+      "model": "game",
+      "filter": {
+        "OR": [
+          { "status": { "value": ["f"], "modifier": "INCLUDES" } },
+          { "status": { "value": ["p"], "modifier": "INCLUDES" } }
+        ]
+      }
+    },
+    {
+      "description": "mixed name OR status (faithful fold)",
+      "model": "game",
+      "filter": {
+        "name": { "value": "zelda", "modifier": "INCLUDES" },
+        "OR": [{ "status": { "value": ["f"], "modifier": "INCLUDES" } }]
+      }
+    },
+    {
+      "description": "OR with NOT",
+      "model": "game",
+      "filter": {
+        "OR": [{ "status": { "value": ["f"], "modifier": "INCLUDES" } }],
+        "NOT": [{ "status": { "value": ["p"], "modifier": "INCLUDES" } }]
+      }
+    },
+    {
+      "description": "NOT of OR (De Morgan)",
+      "model": "game",
+      "filter": {
+        "NOT": [
+          {
+            "OR": [
+              { "status": { "value": ["f"], "modifier": "INCLUDES" } },
+              { "status": { "value": ["p"], "modifier": "INCLUDES" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "multi-child NOT",
+      "model": "game",
+      "filter": {
+        "NOT": [
+          { "status": { "value": ["f"], "modifier": "INCLUDES" } },
+          { "name": { "value": "x", "modifier": "INCLUDES" } }
+        ]
+      }
+    },
+    {
+      "description": "relation ANY with child",
+      "model": "game",
+      "filter": {
+        "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } }
+      }
+    },
+    {
+      "description": "relation NONE presence test",
+      "model": "game",
+      "filter": { "session_filter": { "match": "NONE" } }
+    },
+    {
+      "description": "relation ANY presence test",
+      "model": "game",
+      "filter": { "session_filter": {} }
+    },
+    {
+      "description": "field_comparisons precedence: (name OR status) AND comparison",
+      "model": "game",
+      "filter": {
+        "name": { "value": "x", "modifier": "INCLUDES" },
+        "OR": [ { "status": { "value": ["f"], "modifier": "INCLUDES" } } ],
+        "field_comparisons": [ { "left": "original_year_released", "right": "year_released", "modifier": "LESS_THAN" } ]
+      }
+    },
+    {
+      "description": "relation ALL quantifier",
+      "model": "game",
+      "filter": { "session_filter": { "match": "ALL", "device": { "value": [1], "modifier": "INCLUDES" } } }
+    },
+    {
+      "description": "negated relation (NOT EXISTS)",
+      "model": "game",
+      "filter": { "NOT": [ { "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } } } ] }
+    }
+  ]
+}

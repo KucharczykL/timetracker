@@ -23,4 +23,5 @@ dist/
 /games/static/base.css
 /games/static/js/dist/
 /ts/generated/
+/ts/elements/filter-tree/fixtures.canonical.json
 .claude/
