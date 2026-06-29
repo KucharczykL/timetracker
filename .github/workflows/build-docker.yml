@@ -27,23 +27,11 @@ jobs:
       - name: Install pnpm and JS dependencies
         run: corepack enable && pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Build TypeScript
-        run: make ts
-
-      - name: Build CSS
-        run: make css
-
       - name: Install Playwright browsers
         run: uv run playwright install --with-deps chromium
 
-      - name: Run Migrations
-        run: uv run python manage.py migrate
-
-      - name: Type check
-        run: uv run mypy .
-
-      - name: Run Tests
-        run: uv run --with pytest-django pytest
+      - name: Run checks
+        run: make check
 
   build-and-push:
     needs: test

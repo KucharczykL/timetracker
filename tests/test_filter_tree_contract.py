@@ -9,6 +9,7 @@ likely to diverge). Skipped if the artifact is missing (run `make test-ts` first
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,17 @@ if CANONICAL_PATH.exists():
     }
 else:
     _canonical_by_description = {}
+
+
+def test_canonical_artifact_present_under_ci():
+    """In CI the artifact MUST exist (`make test-ts` runs before pytest), so a
+    pipeline that forgets to generate it fails loudly here instead of letting the
+    contract test below silently skip. Locally the artifact may be absent (#227)."""
+    if os.environ.get("CI"):
+        assert CANONICAL_PATH.exists(), (
+            "fixtures.canonical.json missing under CI — `make test-ts` must run "
+            "before pytest (see #227)"
+        )
 
 
 def _q_str(filter_object) -> str:
