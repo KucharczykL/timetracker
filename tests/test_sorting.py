@@ -1,5 +1,6 @@
 """Tests for the list-view sorting system (games/sorting.py)."""
 
+import logging
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -170,11 +171,23 @@ class TestListGamesSort:
         ascending_body = ascending.content.decode()
         assert ascending_body.index("Alpha") < ascending_body.index("Beta")
 
-    def test_unknown_sort_emits_warning_message(self, logged_client, two_games):
-        response = logged_client.get(reverse("games:list_games"), {"sort": "bogus"})
+    def test_unknown_sort_emits_warning_message(
+        self, logged_client, two_games, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(reverse("games:list_games"), {"sort": "bogus"})
         assert response.status_code == 200
         warnings = [str(m) for m in get_messages(response.wsgi_request)]
         assert any("bogus" in w for w in warnings)
+        # The view's own entity="game" literal is load-bearing for operator log
+        # triage but invisible in the toast/fallback behavior, so assert it here.
+        assert any(
+            record.levelno == logging.WARNING
+            and "entity=game" in record.getMessage()
+            and "bogus" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )
 
     def test_valid_sort_emits_no_warning(self, logged_client, two_games):
         response = logged_client.get(reverse("games:list_games"), {"sort": "name"})
@@ -213,10 +226,20 @@ class TestListSessionsSort:
             "Beta"
         )  # longer session first, despite earlier date
 
-    def test_unknown_sort_emits_warning(self, logged_client, two_games):
-        response = logged_client.get(reverse("games:list_sessions"), {"sort": "nope"})
+    def test_unknown_sort_emits_warning(
+        self, logged_client, two_games, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(
+                reverse("games:list_sessions"), {"sort": "nope"}
+            )
         warnings = [str(m) for m in get_messages(response.wsgi_request)]
         assert any("nope" in w for w in warnings)
+        assert any(
+            "entity=session" in record.getMessage() and "nope" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )
 
 
 class TestListPurchasesSort:
@@ -264,10 +287,20 @@ class TestListPurchasesSort:
         body = response.content.decode()
         assert body.count("purchase-row-") == 2  # exactly two purchase rows
 
-    def test_unknown_sort_emits_warning(self, logged_client, two_purchases):
-        response = logged_client.get(reverse("games:list_purchases"), {"sort": "nope"})
+    def test_unknown_sort_emits_warning(
+        self, logged_client, two_purchases, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(
+                reverse("games:list_purchases"), {"sort": "nope"}
+            )
         warnings = [str(m) for m in get_messages(response.wsgi_request)]
         assert any("nope" in w for w in warnings)
+        assert any(
+            "entity=purchase" in record.getMessage() and "nope" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )
 
 
 class TestDefaultOrderUnchanged:

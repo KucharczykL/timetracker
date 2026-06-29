@@ -242,11 +242,13 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
         sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
     )
     if sort_result.unknown:
+        # repr() the raw keys: parse_sort_terms only strips outer whitespace, so an
+        # embedded newline would otherwise forge log lines (CWE-117).
         logger.warning(
             "rejected unknown sort field(s) (entity=session, user=%s, path=%s): %s",
             request.user,
             request.path,
-            ", ".join(sort_result.unknown),
+            ", ".join(repr(key) for key in sort_result.unknown),
         )
         raise HttpError(400, f"Invalid sort: {', '.join(sort_result.unknown)}")
     paginator = Paginator(sort_result.queryset, PAGE_SIZE)

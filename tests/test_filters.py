@@ -1636,6 +1636,24 @@ class TestUnknownSortLogging:
         assert not [record for record in caplog.records if record.name == "games"]
         assert not list(request._messages)  # type: ignore[attr-defined]
 
+    def test_newline_in_key_does_not_forge_log_line(self, capture_games_logger):
+        """CWE-117: ``parse_sort_terms`` only strips outer whitespace, so an
+        embedded newline reaches ``unknown`` verbatim. The log message must
+        ``repr()`` the key so the newline is escaped, not emitted raw — otherwise
+        an attacker could forge log lines via ``?sort=a%0Afake``."""
+        from games.views.filtering import warn_unknown_sort
+
+        request = self._request()
+        with capture_games_logger() as caplog:
+            warn_unknown_sort(request, ["a\nFORGED"], entity="game")
+
+        records = [record for record in caplog.records if record.name == "games"]
+        assert records
+        message = records[0].getMessage()
+        assert "\n" not in message  # the raw newline must not survive into the line
+        assert "\\n" in message  # repr escaped it
+        assert "FORGED" in message
+
 
 def _nest_relation(levels: int) -> dict:
     """Build ``levels`` deep of alternating session_filter <-> game_filter relation
