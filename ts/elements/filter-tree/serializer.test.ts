@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { serialize, group } from "./serializer.js";
 import { deserialize } from "./serializer.js";
-import type { FilterNode, GroupNode } from "./types.js";
+import type { FilterNode, GroupNode, ModelMeta } from "./types.js";
 import type { MetadataRegistry } from "./types.js";
 
 function root(...children: FilterNode[]): GroupNode {
@@ -214,5 +214,37 @@ describe("deserialize — faithful fold", () => {
     let blob: Json = { status: { value: ["f"], modifier: "INCLUDES" } };
     for (let i = 0; i < 12; i++) blob = { AND: [blob] };
     expect(() => deserialize(blob, "game", registry)).toThrow(/too deep/i);
+  });
+});
+
+import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import fixtures from "./fixtures.json";
+
+function buildRegistry(raw: typeof fixtures.registry): MetadataRegistry {
+  const out: MetadataRegistry = {};
+  for (const [model, meta] of Object.entries(raw)) {
+    out[model] = { fields: new Set(meta.fields), relations: meta.relations } as ModelMeta;
+  }
+  return out;
+}
+
+describe("round-trip over fixtures + canonical artifact", () => {
+  const reg = buildRegistry(fixtures.registry);
+  const canonical: Array<{ description: string; model: string; filter: Record<string, unknown> }> = [];
+
+  for (const testCase of fixtures.cases) {
+    it(`serialize(deserialize(x)) is a fixed point: ${testCase.description}`, () => {
+      const once = serialize(deserialize(testCase.filter as Record<string, unknown>, testCase.model, reg));
+      const twice = serialize(deserialize(once, testCase.model, reg));
+      expect(twice).toEqual(once); // canonical form is stable under re-round-trip
+      canonical.push({ description: testCase.description, model: testCase.model, filter: once });
+    });
+  }
+
+  it("writes the canonical artifact for the Python contract", () => {
+    const out = fileURLToPath(new URL("./fixtures.canonical.json", import.meta.url));
+    writeFileSync(out, JSON.stringify({ cases: canonical }, null, 2));
+    expect(canonical.length).toBe(fixtures.cases.length);
   });
 });
