@@ -1,13 +1,5 @@
 """Tests for the filtering system."""
 
-# Stringizes all annotations (PEP 563), matching every filter module
-# (games/filters.py). Without it, the stub filters' ``X | None`` field
-# annotations would be live UnionType objects that the annotation-string-based
-# resolvers (``_criterion_class_for`` / ``_filter_class_for``) can't read.
-# Removable once #218 resolves field types by introspection instead of
-# annotation-string parsing.
-from __future__ import annotations
-
 import dataclasses
 import json
 import logging
@@ -1218,7 +1210,7 @@ class TestPurchaseFilterDates:
         """PurchaseFilter with both DateCriterion fields and is_refunded
         survives a json → object → json round-trip — confirms
         DateCriterion is dispatched correctly by OperatorFilter.from_json
-        via the criterion_types lookup."""
+        via field-type introspection (``_field_types``)."""
         from games.filters import PurchaseFilter
 
         payload = {
@@ -4050,9 +4042,9 @@ class _LabelStub(OperatorFilter):
     ``FilterField.label`` (in ``fields``) and an ``OperatorFilter.labels`` entry
     (for a field outside ``fields``)."""
 
-    AND: list[_LabelStub] = dc_field(default_factory=list)
-    OR: list[_LabelStub] = dc_field(default_factory=list)
-    NOT: list[_LabelStub] = dc_field(default_factory=list)
+    AND: list["_LabelStub"] = dc_field(default_factory=list)
+    OR: list["_LabelStub"] = dc_field(default_factory=list)
+    NOT: list["_LabelStub"] = dc_field(default_factory=list)
     name: StringCriterion | None = None
     mastered: BoolCriterion | None = None
 
@@ -4071,9 +4063,9 @@ class _BadLookupStub(OperatorFilter):
     """A misconfigured filter whose ``fields`` lookup names no real column — the
     registry must raise rather than silently emit nullable=False/choices=[]."""
 
-    AND: list[_BadLookupStub] = dc_field(default_factory=list)
-    OR: list[_BadLookupStub] = dc_field(default_factory=list)
-    NOT: list[_BadLookupStub] = dc_field(default_factory=list)
+    AND: list["_BadLookupStub"] = dc_field(default_factory=list)
+    OR: list["_BadLookupStub"] = dc_field(default_factory=list)
+    NOT: list["_BadLookupStub"] = dc_field(default_factory=list)
     year_released: IntCriterion | None = None
 
     fields = {"year_released": FilterField("yeer_released")}
