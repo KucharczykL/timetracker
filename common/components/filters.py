@@ -522,14 +522,22 @@ def field_widget(
     ``value`` is the field's raw criterion blob (the per-field JSON dict, e.g.
     ``existing[field_name]``); ``None`` → a blank widget (what #192 clones).
     ``path`` defaults to ``[field_name]`` (cross-entity callers pass the nested
-    chain). ``name_prefix`` is the DOM id/name base (defaults to
-    ``f"filter-{field_name}"``) — kept caller-supplied because the bars' historic
-    prefixes are arbitrary and #192 needs per-row-unique ids. ``field_name_override``
-    is the ``FilterSelect`` identifier when it differs from the attr name (the two
-    cross-entity enums whose DOM name is ``purchase_type`` / ``purchase_ownership_type``).
-    ``label`` / ``placeholder`` / ``placeholder2`` / ``step`` are presentation hints
-    the builders accept; the bars forward their existing literals for byte-stable
-    output, leaf callers omit them.
+    chain). ``name_prefix`` is the input id/name base for the **string/number/date/
+    bool** branches (defaults to ``f"filter-{field_name}"``); the **set** branch
+    ignores it and takes its DOM name from ``field_name_override or field_name``.
+    It's kept caller-supplied because the bars' historic prefixes are arbitrary and
+    #192 needs per-row-unique ids. ``field_name_override`` is the ``FilterSelect``
+    identifier when it differs from the attr name (the two cross-entity enums whose
+    DOM name is ``purchase_type`` / ``purchase_ownership_type``). ``label`` /
+    ``placeholder`` / ``placeholder2`` / ``step`` are presentation hints the bars
+    forward to match their existing literals; leaf callers omit them.
+
+    Output matches the bars' old inline widgets except ``nullable`` is re-derived
+    from the field's column (``FieldMeta``), not forwarded — so a field whose bar
+    previously hard-coded a different ``nullable`` than its DB column changes its
+    presence (``IS_NULL``) modifier. The one such field is the Game bar's
+    cross-entity Device, now correctly nullable (matches the Session bar + the
+    ``Session.device`` column).
     """
     meta = _field_meta(filter_cls, field_name)
     kind = meta["kind"]

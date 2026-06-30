@@ -807,22 +807,45 @@ class FilterField:
     lookup: ORMLookup | None = None
     handler: FieldHandler | None = None
     # Human label for the field-metadata registry (``field_metadata``). Optional;
-    # declared last so existing positional ``FilterField("lookup")`` calls are
-    # unaffected. When None, the registry falls back to a title-cased field name.
+    # when None, the registry falls back to a title-cased field name.
     label: str | None = None
     # Widget config consumed by ``field_metadata`` → ``field_widget`` (issue #242),
-    # never by ``to_q``. ``search_url`` names the search endpoint for FK/M2M set
-    # fields (None → static-enum or non-set field). ``imperative`` marks a field
-    # whose value widget belongs in the table but whose Q is built in ``_extra_q``
-    # (the M2M ``games``), so ``to_q`` must skip it — see ``OperatorFilter.to_q``.
-    # Declared after ``label`` so existing positional ``FilterField("lookup")``
-    # calls are unaffected.
+    # never by ``to_q``. ``search_url`` names the endpoint a set field fetches its
+    # options from on demand — model-backed FKs/M2Ms *and* dynamic value lists like
+    # platform groups (None → static-enum set field, or a non-set field).
+    # ``imperative`` marks a field whose value widget belongs in the table but whose
+    # Q is built in ``_extra_q`` (the M2M ``games``), so ``to_q`` must skip it — see
+    # ``OperatorFilter.to_q``. Declared after ``label`` so existing positional
+    # ``FilterField("lookup")`` calls are unaffected.
     search_url: str | None = None
     imperative: bool = False
 
     def __post_init__(self) -> None:
+        # Same loud-at-import contract as the lookup/handler check: reject the
+        # config combinations whose widget/Q axes silently cancel each other, so a
+        # misconfigured field fails on load rather than degrading at query/render.
         if self.lookup is not None and self.handler is not None:
             raise ValueError("FilterField takes lookup OR handler, not both")
+        if self.imperative and self.handler is not None:
+            # ``to_q`` skips imperative fields, so the handler would never run.
+            raise ValueError(
+                "FilterField imperative fields build their Q in _extra_q; "
+                "a handler would be dead code"
+            )
+        if self.imperative and self.lookup is None:
+            # ``field_metadata`` needs the lookup to resolve the field's column for
+            # the widget (choices / nullable / is_m2m); without it the imperative
+            # field surfaces in the picker resolving to nothing.
+            raise ValueError(
+                "FilterField imperative=True needs a lookup so field_metadata "
+                "can build its widget"
+            )
+        if self.search_url is not None and self.handler is not None:
+            # Handler-mapped fields skip column resolution, so search_url (a
+            # set-field widget input) has no consumer.
+            raise ValueError(
+                "FilterField search_url has no effect on a handler-mapped field"
+            )
 
     def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
         if self.handler is not None:
@@ -1761,8 +1784,10 @@ class FieldMeta(TypedDict):
     modifiers: list[ModifierToken]
     relations: list[RelationTarget]
     # Value-widget config for ``field_widget`` (issue #242). ``search_url`` is the
-    # search endpoint for FK/M2M ``set`` fields ("" → static-enum or non-set field,
-    # which dispatches via ``choices``). ``is_m2m`` is True only for true
+    # endpoint a ``set`` field fetches its options from on demand (model-backed
+    # FKs/M2Ms and dynamic value lists like platform groups); "" means a
+    # static-enum set field (``field_widget`` dispatches it via ``choices``) or a
+    # non-set field (dispatched by ``kind``). ``is_m2m`` is True only for true
     # many-to-many set fields (surfaces ``(All)``/``(Only)`` modifiers); derived
     # from the resolved model field, not stored on ``FilterField``.
     search_url: str
@@ -1886,13 +1911,14 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             continue
         criterion_cls = _criterion_class_for(filter_cls, name)
         if criterion_cls is not None:
-            # Only a field declared in ``fields`` with a plain lookup (no handler)
-            # maps to a single model column. Aggregates (not in ``fields``),
-            # handler-mapped fields, and imperatively-applied criteria (the M2M
-            # ``games``) name no single column, so they carry no choices and are
-            # not nullable — they skip the resolver entirely. Resolving *only* the
-            # column-backed fields means a mis-typed ``FilterField`` lookup raises
-            # here (matching ``criterion_kind`` / ``resolve_path_kind``'s
+            # Resolve the model column for any field in ``fields`` with a lookup
+            # and no handler — this includes the imperative M2M ``games``
+            # (``lookup="games"``, ``handler=None``), whose resolved field is what
+            # powers its ``is_m2m``/``search_url`` widget config. Aggregates (not in
+            # ``fields``) and handler-mapped fields name no single column, so they
+            # skip resolution and carry no choices / aren't nullable. Resolving
+            # *only* the column-backed fields means a mis-typed ``FilterField``
+            # lookup raises here (matching ``criterion_kind`` / ``resolve_path_kind``'s
             # loud-failure contract) instead of silently degrading to an empty
             # picker, while the legitimately-columnless fields never hit the None.
             model_field: models.Field | None = None

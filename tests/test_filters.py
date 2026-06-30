@@ -3771,6 +3771,38 @@ class TestFilterFieldDescriptors:
                 f"{filter_cls.__name__}.fields[{key!r}] is not a criterion field"
             )
 
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_imperative_descriptors_carry_a_lookup(self, filter_cls):
+        """An ``imperative`` descriptor must have a lookup (so ``field_metadata``
+        can build its widget) — mirrors ``FilterField.__post_init__``."""
+        for name, descriptor in filter_cls.fields.items():
+            if descriptor.imperative:
+                assert descriptor.lookup is not None, (
+                    f"{filter_cls.__name__}.fields[{name!r}] is imperative but has "
+                    f"no lookup"
+                )
+
+    @pytest.mark.django_db
+    def test_imperative_field_is_applied_once_via_extra_q(self):
+        """``to_q`` must skip an ``imperative`` descriptor field (its Q is built in
+        ``_extra_q``) — never double-apply it.
+
+        The M2M ``games`` is in ``PurchaseFilter.fields`` with ``imperative=True``.
+        With only ``games`` set, the generic ``fields`` loop must contribute
+        nothing, so ``to_q()`` carries exactly the one ``games`` clause ``_extra_q``
+        builds — not two. (``Q``s can't be compared with ``==`` because each
+        ``_games_to_q`` call builds a fresh, unequal subquery, so we count clauses:
+        a double-apply would add a second child.)
+        """
+        from games.filters import PurchaseFilter
+
+        pf = PurchaseFilter.from_json(
+            {"games": {"value": [1, 2], "modifier": "INCLUDES"}}
+        )
+        assert pf is not None
+        assert len(pf.to_q().children) == len(pf._extra_q().children) == 1
+        assert str(pf.to_q()) == str(pf._extra_q())
+
 
 # ── FilterField handlers (issue #161) ────────────────────────────────────────
 
@@ -3789,6 +3821,27 @@ class TestFilterField:
     def test_lookup_and_handler_together_rejected(self):
         with pytest.raises(ValueError, match="lookup OR handler"):
             FilterField("x", handler=lambda c: Q())
+
+    def test_imperative_with_handler_rejected(self):
+        # ``to_q`` skips imperative fields, so a handler would be dead code.
+        with pytest.raises(ValueError, match="dead code"):
+            FilterField(handler=lambda c: Q(), imperative=True)
+
+    def test_imperative_without_lookup_rejected(self):
+        with pytest.raises(ValueError, match="needs a lookup"):
+            FilterField(imperative=True)
+
+    def test_search_url_with_handler_rejected(self):
+        with pytest.raises(ValueError, match="search_url has no effect"):
+            FilterField(handler=lambda c: Q(), search_url="/x")
+
+    def test_imperative_with_lookup_is_accepted(self):
+        # The legitimate shape (the M2M ``games``): widget config in the table,
+        # Q built in ``_extra_q``.
+        field = FilterField(
+            lookup="games", search_url="/api/games/search", imperative=True
+        )
+        assert field.imperative and field.lookup == "games"
 
 
 class TestFilterFieldHandlers:
