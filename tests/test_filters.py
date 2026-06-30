@@ -4164,6 +4164,47 @@ class TestFieldMetadata:
                     }
                 ]
 
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_modifiers_match_helper(self, filter_cls):
+        # The list emitted per field is exactly the helper's output for its
+        # (kind, nullable) — guards the duplication the metadata layer introduces.
+        from common.criteria import _modifiers_for_field
+
+        for entry in field_metadata(filter_cls):
+            assert entry["modifiers"] == _modifiers_for_field(
+                entry["kind"], entry["nullable"]
+            )
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_leaf_modifiers_nonempty_relation_empty(self, filter_cls):
+        for entry in field_metadata(filter_cls):
+            if entry["kind"] == "relation":
+                assert entry["modifiers"] == []
+            else:
+                assert entry["modifiers"], entry["name"]
+
+    def test_first_modifier_is_reset_default_per_kind(self):
+        # The first entry is what the field picker resets to on field change.
+        game = self._by_name(GameFilter)
+        assert game["name"]["modifiers"][0] == "EQUALS"  # string
+        assert game["year_released"]["modifiers"][0] == "EQUALS"  # number
+        assert game["status"]["modifiers"][0] == "INCLUDES"  # set
+
+    def test_modifiers_drop_presence_when_not_nullable(self):
+        from common.criteria import Modifier
+
+        game = self._by_name(GameFilter)
+        # name is a non-nullable CharField → presence modifiers dropped
+        name = game["name"]
+        assert name["nullable"] is False
+        assert Modifier.IS_NULL.value not in name["modifiers"]
+        assert Modifier.NOT_NULL.value not in name["modifiers"]
+        # year_released is nullable → presence modifiers retained
+        year = game["year_released"]
+        assert year["nullable"] is True
+        assert Modifier.IS_NULL.value in year["modifiers"]
+        assert Modifier.NOT_NULL.value in year["modifiers"]
+
     def test_filterfield_label_and_labels_override_win(self):
         by_name = self._by_name(_LabelStub)
         # FilterField.label (highest precedence) surfaces for an in-`fields` field

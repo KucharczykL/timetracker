@@ -1,5 +1,6 @@
 """Stash-style filter bars, built from FilterSelect widgets."""
 
+import json
 from typing import NamedTuple
 
 from django.db import models
@@ -25,11 +26,21 @@ from common.components.primitives import (
     Template,
     filter_widget_attributes,
 )
-from common.criteria import ComparableColumn, comparable_columns
+from common.criteria import (
+    ComparableColumn,
+    FieldMeta,
+    FieldMetaKind,
+    OperatorFilter,
+    comparable_columns,
+    field_metadata,
+)
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
     LabeledOption,
+    OptionGroup,
+    SearchSelect,
+    SearchSelectOption,
 )
 
 
@@ -1845,4 +1856,86 @@ def NumberFilter(
             Input(value_attrs, type="number"),
             Input(value2_attrs, type="number"),
         ],
+    ]
+
+
+# ── Add-criterion field picker (issue #191, nested filter builder #168) ───────
+# The searchable, grouped field combobox the nested filter builder's
+# "+ condition" flow opens. It lists a model's leaf-criterion fields (relations
+# are added via the separate relation picker, component 5/#193), grouped by
+# criterion kind, and embeds each field's whole FieldMeta as JSON on its option
+# so the client can reset the leaf's modifier/value on field change without a
+# round-trip (see ts/elements/filter-tree). Built on the generic grouped
+# SearchSelect; it carries a `data-field-picker` marker so a consumer scopes its
+# `search-select:change` listener to this element.
+
+# Human header per leaf kind. Ordered: the panel renders groups in this order.
+# "field-comparison" is intentionally absent — those are list fields no single
+# path resolves to, so field_metadata never emits a leaf of that kind.
+KIND_GROUP_LABELS: dict[FieldMetaKind, str] = {
+    "string": "Text",
+    "number": "Number",
+    "date": "Date",
+    "bool": "Yes / No",
+    "set": "Choice",
+}
+
+
+def _field_picker_option(meta: FieldMeta) -> SearchSelectOption:
+    """One picker option carrying its field's whole FieldMeta as `data-meta`."""
+    return {
+        "value": meta["name"],
+        "label": meta["label"],
+        "data": {"meta": json.dumps(meta)},
+    }
+
+
+def _field_picker_groups(filter_cls: type[OperatorFilter]) -> list[OptionGroup]:
+    """Group a filter's non-relation leaf fields by kind, in KIND_GROUP_LABELS
+    order, preserving each field's declaration order within its group. Empty
+    groups are dropped."""
+    by_kind: dict[FieldMetaKind, list[SearchSelectOption]] = {
+        kind: [] for kind in KIND_GROUP_LABELS
+    }
+    for meta in field_metadata(filter_cls):
+        if meta["kind"] == "relation":
+            continue
+        bucket = by_kind.get(meta["kind"])
+        if bucket is not None:
+            bucket.append(_field_picker_option(meta))
+    return [
+        OptionGroup(label=KIND_GROUP_LABELS[kind], options=options)
+        for kind, options in by_kind.items()
+        if options
+    ]
+
+
+def FilterFieldPicker(
+    filter_cls: type[OperatorFilter],
+    *,
+    id: str = "",
+    placeholder: str = "Add condition…",
+) -> Node:
+    """A searchable, kind-grouped field combobox for ``filter_cls``'s leaf fields.
+
+    Picking a field fires SearchSelect's ``search-select:change`` with the picked
+    option's ``data-meta`` (the field's ``FieldMeta`` JSON); the consumer
+    (#192 leaf row) resets the leaf via ``criterionForField`` in
+    ``ts/elements/filter-tree``. Relation fields are excluded — they are added via
+    the relation picker (#193). Inline (no ``search_url``): the field set is small
+    and fully known at render, so filtering is client-side.
+
+    Wrapped in a ``data-field-picker`` marker so a consumer scopes its
+    ``search-select:change`` listener to this picker (the event bubbles from the
+    inner ``<search-select>`` to the wrapper) — never a page-level listener that
+    other comboboxes on the page would also trip.
+    """
+    return Div(data_field_picker="")[
+        SearchSelect(
+            name="field-picker",
+            option_groups=_field_picker_groups(filter_cls),
+            multi_select=False,
+            placeholder=placeholder,
+            id=id,
+        )
     ]

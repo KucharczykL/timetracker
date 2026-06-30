@@ -15,12 +15,14 @@
 import {
   type Connective,
   type CriterionLeaf,
+  type FilterFieldMeta,
   type FilterNode,
   type GroupNode,
   type RelationMatch,
   type RelationNode,
 } from "./types.js";
 import { group } from "./serializer.js";
+import { isPresenceModifier } from "../filter-tokens.js";
 
 export type NodePath = readonly number[];
 
@@ -35,6 +37,46 @@ export const SOFT_DEPTH_CAP = 5;
 // fills `field`/`criterion` in 2d; until then it is an inert slot in the shell.
 export function emptyCriterion(): CriterionLeaf {
   return { kind: "criterion", field: "", criterion: {}, negate: false };
+}
+
+// ── Add-criterion field picker contract (issue #191) ─────────────────────────
+
+// Parse a field-picker option's `data-meta` JSON into a `FilterFieldMeta`.
+// Defensive: returns null on empty/malformed JSON (the consumer no-ops) since the
+// Python↔TS shape is not codegen-guarded yet. Does not deep-validate the shape —
+// it trusts the single server producer (common.criteria.field_metadata).
+export function parseFieldMeta(raw: string): FilterFieldMeta | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as FilterFieldMeta;
+  } catch {
+    return null;
+  }
+}
+
+// The on-field-change reset (design spec / issue #191): a FRESH leaf for the
+// picked field — modifier reset to the first valid one for the field's kind, the
+// value DROPPED entirely (no silent type-coercion from the previous field). The
+// leaf is structurally incomplete until a value widget (#192) fills it.
+export function criterionForField(meta: FilterFieldMeta): CriterionLeaf {
+  const [firstModifier] = meta.modifiers;
+  const criterion = firstModifier !== undefined ? { modifier: firstModifier } : {};
+  return { kind: "criterion", field: meta.name, criterion, negate: false };
+}
+
+// Whether a leaf is complete enough to query/apply: it needs a field, a modifier,
+// and a non-empty value — UNLESS the modifier is a presence test (IS_NULL /
+// NOT_NULL), which is value-less by design. Per-widget value validation (e.g. both
+// BETWEEN bounds present) layers on top of this in the leaf widgets (#192).
+export function isCriterionComplete(leaf: CriterionLeaf): boolean {
+  if (!leaf.field) return false;
+  const modifier = leaf.criterion["modifier"];
+  if (typeof modifier !== "string" || modifier === "") return false;
+  if (isPresenceModifier(modifier)) return true;
+  const value = leaf.criterion["value"];
+  if (value === undefined || value === null || value === "") return false;
+  if (Array.isArray(value) && value.length === 0) return false;
+  return true;
 }
 
 // An empty relation descent: ANY over an empty child group is the "has ≥1 related

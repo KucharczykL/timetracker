@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { group } from "./serializer.js";
 import type { CriterionLeaf, FilterNode, GroupNode } from "./types.js";
+import type { FilterFieldMeta } from "./types.js";
 import {
   SOFT_DEPTH_CAP,
   canAddGroup,
   canAddRelation,
   canUnwrap,
   canWrap,
+  criterionForField,
   deepestGroupDepth,
   duplicateAt,
   emptyCriterion,
@@ -15,8 +17,10 @@ import {
   emptyRoot,
   groupDepthAt,
   insertChild,
+  isCriterionComplete,
   move,
   nodeAt,
+  parseFieldMeta,
   removeAt,
   setConnective,
   setMatch,
@@ -25,6 +29,19 @@ import {
   unwrapGroup,
   wrapInGroup,
 } from "./operations.js";
+
+function fieldMeta(overrides: Partial<FilterFieldMeta> = {}): FilterFieldMeta {
+  return {
+    name: "status",
+    label: "Status",
+    kind: "set",
+    nullable: false,
+    choices: [],
+    modifiers: ["INCLUDES", "EXCLUDES"],
+    relations: [],
+    ...overrides,
+  };
+}
 
 function criterion(field: string): FilterNode {
   return { kind: "criterion", field, criterion: { value: field, modifier: "INCLUDES" }, negate: false };
@@ -372,5 +389,98 @@ describe("soft cap", () => {
     expect(canUnwrap(tree, [0])).toBe(true);
     expect(canUnwrap(tree, [1])).toBe(false); // a leaf
     expect(canUnwrap(tree, [])).toBe(false); // the root
+  });
+});
+
+describe("add-criterion field picker contract (#191)", () => {
+  describe("parseFieldMeta", () => {
+    it("parses a well-formed data-meta blob", () => {
+      const meta = fieldMeta();
+      expect(parseFieldMeta(JSON.stringify(meta))).toEqual(meta);
+    });
+
+    it("returns null on empty or malformed JSON", () => {
+      expect(parseFieldMeta("")).toBeNull();
+      expect(parseFieldMeta("{not json")).toBeNull();
+    });
+  });
+
+  describe("criterionForField", () => {
+    it("resets to the field's first valid modifier and drops the value", () => {
+      const leaf = criterionForField(
+        fieldMeta({ name: "name", kind: "string", modifiers: ["EQUALS", "INCLUDES"] }),
+      );
+      expect(leaf).toEqual({
+        kind: "criterion",
+        field: "name",
+        criterion: { modifier: "EQUALS" },
+        negate: false,
+      });
+      expect("value" in leaf.criterion).toBe(false); // no silent coercion
+    });
+
+    it("picks the first modifier per kind", () => {
+      expect(criterionForField(fieldMeta({ kind: "set" })).criterion).toEqual({
+        modifier: "INCLUDES",
+      });
+      expect(
+        criterionForField(fieldMeta({ kind: "number", modifiers: ["EQUALS", "GREATER_THAN"] }))
+          .criterion,
+      ).toEqual({ modifier: "EQUALS" });
+    });
+
+    it("yields an empty payload when the field has no modifiers", () => {
+      expect(criterionForField(fieldMeta({ modifiers: [] })).criterion).toEqual({});
+    });
+  });
+
+  describe("isCriterionComplete", () => {
+    it("is incomplete with no field, no modifier, or empty value", () => {
+      expect(isCriterionComplete(emptyCriterion())).toBe(false);
+      expect(
+        isCriterionComplete(criterionForField(fieldMeta({ name: "name", kind: "string" }))),
+      ).toBe(false); // modifier set but value still empty
+      expect(
+        isCriterionComplete({
+          kind: "criterion",
+          field: "name",
+          criterion: { modifier: "EQUALS", value: "" },
+          negate: false,
+        }),
+      ).toBe(false);
+    });
+
+    it("is complete once a non-empty value is present", () => {
+      expect(
+        isCriterionComplete({
+          kind: "criterion",
+          field: "name",
+          criterion: { modifier: "EQUALS", value: "Hades" },
+          negate: false,
+        }),
+      ).toBe(true);
+    });
+
+    it("treats a presence modifier as complete without a value", () => {
+      expect(
+        isCriterionComplete({
+          kind: "criterion",
+          field: "year_released",
+          criterion: { modifier: "IS_NULL" },
+          negate: false,
+        }),
+      ).toBe(true);
+    });
+
+    it("is incomplete for an empty multi-value list", () => {
+      expect(
+        isCriterionComplete({
+          kind: "criterion",
+          field: "platform",
+          criterion: { modifier: "INCLUDES", value: [] },
+          negate: false,
+        }),
+      ).toBe(false);
+    });
   });
 });

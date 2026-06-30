@@ -439,3 +439,85 @@ class SearchGamesApiTest(django.test.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GroupedSearchSelectTest(unittest.TestCase):
+    """SearchSelect grouped-option rendering and the FilterFieldPicker built on
+    it (issue #191)."""
+
+    def test_option_groups_render_headers_and_rows(self):
+        from common.components import OptionGroup
+
+        html = str(
+            SearchSelect(
+                name="x",
+                option_groups=[
+                    OptionGroup(label="Text", options=[("name", "Name")]),
+                    OptionGroup(label="Number", options=[("year", "Year")]),
+                ],
+            )
+        )
+        self.assertIn("data-search-select-group-header", html)
+        self.assertIn('role="presentation"', html)
+        self.assertIn("Text", html)
+        self.assertIn("Number", html)
+        # both groups' option rows are present
+        self.assertIn('data-value="name"', html)
+        self.assertIn('data-value="year"', html)
+
+    def test_options_and_groups_are_mutually_exclusive(self):
+        from common.components import OptionGroup
+
+        with self.assertRaises(ValueError):
+            SearchSelect(
+                name="x",
+                options=[("a", "A")],
+                option_groups=[OptionGroup(label="G", options=[("b", "B")])],
+            )
+
+
+class FilterFieldPickerTest(unittest.TestCase):
+    def setUp(self):
+        from common.components import FilterFieldPicker
+        from games.filters import GameFilter
+
+        self.html = str(FilterFieldPicker(GameFilter, id="id_field_picker"))
+
+    def test_marker_and_grouped_combobox(self):
+        self.assertIn("data-field-picker", self.html)
+        self.assertIn("<search-select", self.html)
+        self.assertIn("data-search-select-group-header", self.html)
+        # single-select (no multi pills channel beyond the lone hidden input)
+        self.assertIn('multi="false"', self.html)
+
+    def test_options_embed_field_metadata(self):
+        import json
+
+        from common.criteria import field_metadata
+        from games.filters import GameFilter
+
+        # every non-relation field appears as an option carrying its FieldMeta
+        leaf_names = [
+            meta["name"]
+            for meta in field_metadata(GameFilter)
+            if meta["kind"] != "relation"
+        ]
+        self.assertTrue(leaf_names)
+        for name in leaf_names:
+            self.assertIn(f'data-value="{name}"', self.html)
+        # data-meta carries serialized metadata (modifiers included)
+        self.assertIn("data-meta=", self.html)
+        self.assertIn("modifiers", self.html)
+        # the embedded JSON for "status" matches json.dumps of its FieldMeta once
+        # the attribute's HTML-escaped quotes are decoded (the same call the
+        # builder makes in _field_picker_option).
+        import html as html_module
+
+        status_meta = next(
+            meta for meta in field_metadata(GameFilter) if meta["name"] == "status"
+        )
+        self.assertIn(json.dumps(status_meta), html_module.unescape(self.html))
+
+    def test_relation_fields_excluded(self):
+        # session_filter is a relation → handled by the relation picker, not here
+        self.assertNotIn('data-value="session_filter"', self.html)

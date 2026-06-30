@@ -32,7 +32,7 @@ user types.
 """
 
 from collections.abc import Callable, Iterable, Sequence
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 
 from common.components.core import Attributes, HTMLAttribute, Node
@@ -60,6 +60,19 @@ class SearchSelectOption(TypedDict):
 # needed — e.g. filter pill lists and modifier pseudo-options. The richer
 # SearchSelectOption adds a ``data`` dict for extra row attributes.
 LabeledOption = tuple[str, str]
+
+
+class OptionGroup(NamedTuple):
+    """A labelled run of options for a grouped single-select panel.
+
+    Passed as ``SearchSelect(option_groups=[...])`` (mutually exclusive with
+    ``options=``); the widget renders a non-selectable header row before each
+    group's option rows. Used by the filter builder's add-criterion field picker
+    (#191), which groups fields by criterion kind.
+    """
+
+    label: str
+    options: list[SearchSelectOption]
 
 
 # The pills and the search box share one flex-wrap row (with padding) so the
@@ -106,6 +119,13 @@ _OPTION_ROW_CLASS = (
     "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
 _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
+# A non-selectable group header in a grouped panel. role="presentation" keeps it
+# out of the combobox's option semantics; carrying no data-search-select-option
+# excludes it from keyboard nav, client-side filtering, and selection. The JS
+# hides a header whose whole run of following option rows is filtered out.
+_GROUP_HEADER_CLASS = (
+    "px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-body"
+)
 
 # Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,
 # used to derive the panel's max-height from items_visible.
@@ -207,6 +227,23 @@ def _option_row(option: SearchSelectOption) -> Node:
     )[_label_slot(option["label"])]
 
 
+def _group_header(label: str) -> Node:
+    return Div(
+        data_search_select_group_header="",
+        role="presentation",
+        class_=_GROUP_HEADER_CLASS,
+    )[label]
+
+
+def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
+    """Flatten groups into header + option-row nodes for the options panel."""
+    rows: list[Node] = []
+    for group in groups:
+        rows.append(_group_header(group.label))
+        rows.extend(_option_row(_normalize_option(option)) for option in group.options)
+    return rows
+
+
 def _combobox_children(
     *,
     pills: Node,
@@ -246,6 +283,7 @@ def SearchSelect(
     name: str,
     selected: list[SearchSelectOption] | None = None,
     options: list[SearchSelectOption] | None = None,
+    option_groups: list[OptionGroup] | None = None,
     search_url: str = "",
     multi_select: bool = False,
     always_visible: bool = False,
@@ -257,7 +295,15 @@ def SearchSelect(
     sync_url: bool = False,
     autofocus: bool = False,
 ) -> Node:
-    """Render the search-select widget. See module docstring for the contract."""
+    """Render the search-select widget. See module docstring for the contract.
+
+    Pass ``option_groups`` instead of ``options`` to render a grouped panel
+    (non-selectable header rows before each group's options); the two are mutually
+    exclusive and grouping is only meaningful for the inline (no ``search_url``)
+    complete-set case.
+    """
+    if options and option_groups:
+        raise ValueError("SearchSelect takes options or option_groups, not both")
     selected = [_normalize_option(option) for option in (selected or [])]
     options = [_normalize_option(option) for option in (options or [])]
 
@@ -302,7 +348,12 @@ def SearchSelect(
         search_attrs.append(("value", search_value))
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
-    option_rows = [_option_row(option) for option in options] if not search_url else []
+    if search_url:
+        option_rows: list[Node] = []
+    elif option_groups:
+        option_rows = _grouped_option_rows(option_groups)
+    else:
+        option_rows = [_option_row(option) for option in options]
 
     # ── Templates the JS clones: a row when results are fetched, a pill when
     #    multi-select adds chosen items. ──
