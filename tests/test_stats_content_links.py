@@ -79,14 +79,17 @@ def test_unfinished_count_links_to_unfinished_purchases(rendered):
 
 
 def test_platform_row_links_to_platform_sessions(rendered):
-    url = _href(stats_links.sessions_for_platform(rendered["pc"].id, YEAR))
+    # the rendered link embeds the platform name as a display label (#224)
+    pc = rendered["pc"]
+    url = _href(stats_links.sessions_for_platform(pc.id, YEAR, pc.name))
     assert url in rendered["html"]
 
 
 def test_game_row_has_session_link(rendered):
-    # at least one games-by-playtime game links to its sessions
+    # at least one games-by-playtime game links to its sessions, with the game
+    # name embedded as a display label (#224)
     any_game = rendered["games"][0]
-    url = _href(stats_links.sessions_for_game(any_game.id, YEAR))
+    url = _href(stats_links.sessions_for_game(any_game.id, YEAR, any_game.name))
     assert url in rendered["html"]
 
 

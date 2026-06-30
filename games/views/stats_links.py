@@ -19,6 +19,7 @@ from common.criteria import (
     DateCriterion,
     IntCriterion,
     Modifier,
+    MultiCriterion,
 )
 from games.filters import (
     GameFilter,
@@ -57,13 +58,25 @@ def all_sessions(year) -> SessionFilter:
     return SessionFilter.where(**_session_bounds(year))
 
 
-def sessions_for_game(game_id: int, year) -> SessionFilter:
-    return SessionFilter.where(game=[game_id], **_session_bounds(year))
-
-
-def sessions_for_platform(platform_id: int, year) -> SessionFilter:
+def sessions_for_game(game_id: int, year, label: str = "") -> SessionFilter:
+    # Carry the game name as a display label so the filter bar renders a named
+    # pill on landing (#224); falls back to a bare id when no label is given.
     session_filter = SessionFilter.where(**_session_bounds(year))
-    session_filter.game_filter = GameFilter.where(platform=[platform_id])
+    session_filter.game = MultiCriterion(
+        value=[game_id], labels={game_id: label} if label else {}
+    )
+    return session_filter
+
+
+def sessions_for_platform(platform_id: int, year, label: str = "") -> SessionFilter:
+    # See sessions_for_game: the platform name rides along as a display label so
+    # the session bar's (cross-entity) platform pill renders a name, not an id.
+    session_filter = SessionFilter.where(**_session_bounds(year))
+    session_filter.game_filter = GameFilter(
+        platform=MultiCriterion(
+            value=[platform_id], labels={platform_id: label} if label else {}
+        )
+    )
     return session_filter
 
 

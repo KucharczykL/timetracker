@@ -18,12 +18,21 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from common.components.filters import FilterBar, PurchaseFilterBar
+from common.components.filters import FilterBar, PurchaseFilterBar, SessionFilterBar
 from games.filters import (
     parse_game_filter,
     parse_purchase_filter,
+    parse_session_filter,
 )
 from games.models import Device, Game, Platform, PlayEvent, Purchase, Session
+
+
+def _session_ids(filter_json: str) -> set[int]:
+    parsed = parse_session_filter(filter_json)
+    assert parsed is not None
+    return set(
+        Session.objects.filter(parsed.to_q()).distinct().values_list("id", flat=True)
+    )
 
 
 def _dt(year=2024, month=6, day=1):
@@ -500,6 +509,41 @@ def test_game_bar_prefills_device_from_and(db):
     html = str(FilterBar(filter_json))
     # the included pill renders the device label
     assert "SteamDeck" in html
+
+
+def test_session_bar_platform_widget_json_selects_sessions(db):
+    """The session bar's cross-entity platform widget emits
+    AND→game_filter→platform and selects sessions on that platform."""
+    pc = Platform.objects.create(name="PC")
+    switch = Platform.objects.create(name="Switch")
+    on_pc = Game.objects.create(name="On PC", platform=pc)
+    on_switch = Game.objects.create(name="On Switch", platform=switch)
+    pc_session = Session.objects.create(game=on_pc, timestamp_start=_dt())
+    Session.objects.create(game=on_switch, timestamp_start=_dt())
+    filter_json = json.dumps(
+        {"AND": [{"game_filter": {"platform": _set_criterion(str(pc.id), "PC")}}]}
+    )
+    assert _session_ids(filter_json) == {pc_session.id}
+
+
+def test_session_bar_prefills_platform_from_and(db):
+    """The session bar reads a game_filter→platform AND element back and renders
+    a labelled platform pill (the consumer for sessions_for_platform's #224
+    embedded label)."""
+    platform = Platform.objects.create(name="MegaDrive")
+    filter_json = json.dumps(
+        {
+            "AND": [
+                {
+                    "game_filter": {
+                        "platform": _set_criterion(str(platform.id), "MegaDrive")
+                    }
+                }
+            ]
+        }
+    )
+    html = str(SessionFilterBar(filter_json))
+    assert "MegaDrive" in html
 
 
 def test_game_bar_prefills_purchase_type_from_and(db):

@@ -521,6 +521,26 @@ class _SetCriterion(_Criterion):
     excludes: list = field(default_factory=list)
     modifier: Modifier = Modifier.INCLUDES
 
+    # Display-only id -> label map. THE place where embedded set labels are
+    # documented (issue #224).
+    #
+    # Set pills (platform/game/device) need a human label to render; the id
+    # alone ("5") is meaningless to the user. UI-built filters carry the label
+    # inline as ``{id, label}`` dicts (see ``ts/elements/filter-bar.ts``); a
+    # filter built server-side (stats-page links) only knows the id, so it stashes
+    # the labels it has here and ``to_json`` folds them back into the ``{id, label}``
+    # wire shape. The filter bar then prefills labelled pills straight from the URL
+    # JSON with no extra DB round-trip.
+    #
+    # Labels are PURELY cosmetic: ``to_q`` reads only ``value``/``excludes``/
+    # ``modifier`` and never touches ``labels``, and ``from_json`` strips labels
+    # back to bare ids. So they never change which rows a filter matches; the one
+    # trade-off is that a label can go stale if the underlying record is renamed
+    # after the link/preset was created (the pill shows the old name until the link
+    # is regenerated). ``compare=False`` keeps two criteria with the same ids but
+    # different labels equal.
+    labels: dict = field(default_factory=dict, compare=False)
+
     def to_q(self, field_name: str) -> Q:
         modifier = self.modifier
         if modifier == Modifier.IS_NULL:
@@ -599,6 +619,31 @@ class _SetCriterion(_Criterion):
             result.excludes = [coerce(item) for item in result.excludes]
         return result
 
+    def _labelled(self, item: Any) -> Any:
+        """Fold a known label back into the ``{id, label}`` wire shape (#224).
+
+        Returns the bare id when no label is known, so unlabelled criteria
+        serialize exactly as before.
+        """
+        label = self.labels.get(item)
+        return {"id": item, "label": label} if label else item
+
+    def to_json(self) -> dict[str, Any]:
+        # Overrides (does NOT mirror) the base ``to_json``: because ``value`` /
+        # ``excludes`` use ``default_factory``, the base never treats an empty
+        # list as the default, so it would leak ``"value": []`` / ``"excludes":
+        # []`` and a raw ``"labels": {}`` key onto the wire. This skips empty
+        # lists, never emits ``labels`` as its own key (labels are folded inline
+        # per ``_labelled``), and — like the base — omits the default modifier.
+        result: dict[str, Any] = {}
+        if self.value:
+            result["value"] = [self._labelled(item) for item in self.value]
+        if self.excludes:
+            result["excludes"] = [self._labelled(item) for item in self.excludes]
+        if self.modifier != Modifier.INCLUDES:
+            result["modifier"] = self.modifier
+        return result
+
 
 @dataclass
 class MultiCriterion(_SetCriterion):
@@ -610,6 +655,7 @@ class MultiCriterion(_SetCriterion):
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
+    labels: dict[int, str] = field(default_factory=dict, compare=False)
     _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
 
@@ -623,6 +669,7 @@ class ChoiceCriterion(_SetCriterion):
 
     value: list[str] = field(default_factory=list)
     excludes: list[str] = field(default_factory=list)
+    labels: dict[str, str] = field(default_factory=dict, compare=False)
 
 
 @dataclass

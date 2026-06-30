@@ -16,3 +16,19 @@ def test_extract_labeled_handles_bare_values():
 
 def test_extract_labeled_handles_bare_ints():
     assert _extract_labeled([3, 7]) == [("3", "3"), ("7", "7")]
+
+
+def test_stats_link_prefills_labelled_choice():
+    """End-to-end (#224): a server-built stats-link that embeds an id's label
+    serializes it into the ``?filter=`` JSON, so the bar prefills a labelled pill
+    rather than a bare id."""
+    import json
+
+    from common.components.filters import _filter_get_choice
+    from common.criteria import MultiCriterion
+    from games.filters import SessionFilter
+
+    link = SessionFilter(game=MultiCriterion(value=[5], labels={5: "Hollow Knight"}))
+    existing = json.loads(json.dumps(link.to_json()))
+    choice = _filter_get_choice(existing, "game")
+    assert choice.selected == [("5", "Hollow Knight")]

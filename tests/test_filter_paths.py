@@ -109,7 +109,7 @@ class _BarCase(NamedTuple):
 # resolution check below skips kind=="field-comparison".
 _BAR_CASES = [
     _BarCase("game", FilterBar, GameFilter, 24),
-    _BarCase("session", SessionFilterBar, SessionFilter, 9),
+    _BarCase("session", SessionFilterBar, SessionFilter, 10),
     _BarCase("purchase", PurchaseFilterBar, PurchaseFilter, 15),
     _BarCase("device", DeviceFilterBar, DeviceFilter, 2),
     _BarCase("platform", PlatformFilterBar, PlatformFilter, 3),

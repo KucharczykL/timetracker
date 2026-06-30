@@ -115,6 +115,33 @@ def test_sessions_for_platform_matches_year_scoped_sessions(world):
     )
 
 
+def test_sessions_for_game_embeds_label(world):
+    """A game session-link carries the game name as a display label so the
+    destination filter bar renders a named pill, not a bare id (#224)."""
+    game = world["finished_game"]
+    payload = stats_links.sessions_for_game(game.id, YEAR, game.name).to_json()
+    assert payload["game"]["value"] == [{"id": game.id, "label": game.name}]
+
+
+def test_sessions_for_platform_embeds_label(world):
+    """The platform name rides into the nested game_filter.platform criterion so
+    the session bar's cross-entity platform pill renders a name (#224)."""
+    platform = world["pc"]
+    payload = stats_links.sessions_for_platform(
+        platform.id, YEAR, platform.name
+    ).to_json()
+    assert payload["game_filter"]["platform"]["value"] == [
+        {"id": platform.id, "label": platform.name}
+    ]
+
+
+def test_sessions_for_game_without_label_stays_bare(world):
+    """No label given -> serialization is unchanged (bare id)."""
+    game = world["finished_game"]
+    payload = stats_links.sessions_for_game(game.id, YEAR).to_json()
+    assert payload["game"]["value"] == [game.id]
+
+
 def test_sessions_in_month_matches_that_month(world):
     expected = Session.objects.filter(
         timestamp_start__year=YEAR, timestamp_start__month=6

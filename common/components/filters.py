@@ -1249,6 +1249,12 @@ def _session_fields(existing: dict) -> list:
 
     game_choice = _filter_get_choice(existing, "game")
     device_choice = _filter_get_choice(existing, "device")
+    # Cross-entity: a session's platform lives on its game, so the widget
+    # serializes into a game_filter EXISTS sub-filter (mirrors the game bar's
+    # device widget). Prefill reads it back from existing["AND"] by the same path.
+    platform_choice = _choice_from_raw(
+        _cross_entity_criterion(existing, ["game_filter", "platform"])
+    )
     note_value = existing.get("note", {}).get("value", "")
     note_modifier = existing.get("note", {}).get("modifier", "EQUALS")
 
@@ -1276,6 +1282,16 @@ def _session_fields(existing: dict) -> list:
                     device_choice,
                     search_url="/api/devices/search",
                     nullable=Session._meta.get_field("device").null,
+                ),
+            ),
+            _filter_field(
+                "Platform",
+                _model_filter(
+                    "platform",
+                    platform_choice,
+                    search_url="/api/platforms/search",
+                    nullable=Game._meta.get_field("platform").null,
+                    path=["game_filter", "platform"],
                 ),
             ),
             _filter_field(
