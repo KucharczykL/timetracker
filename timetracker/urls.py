@@ -20,6 +20,17 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from common.components.core import Document
+from common.components.primitives import (
+    Body,
+    Head,
+    Html,
+    Link,
+    Meta,
+    Script,
+    StyledButton,
+    Title,
+)
 from games.api import api
 from games.views.auth import LoginView
 
@@ -47,20 +58,24 @@ if settings.DEBUG:
     from common.components import FilterGroup
 
     def filter_group_demo(_request: object) -> HttpResponse:
-        stylesheet = static("base.css")
-        module = static("js/dist/elements/filter-group.js")
-        html = (
-            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-            "<title>filter-group demo</title>"
-            f'<link rel="stylesheet" href="{stylesheet}">'
-            f'<script type="module" src="{module}"></script>'
-            "</head><body class='bg-white p-6 dark:bg-gray-900'>"
-            '<button type="button" onclick="document.documentElement.classList.toggle(\'dark\')" '
-            'class="mb-4 rounded border border-gray-300 px-3 py-1 text-sm '
-            'dark:border-gray-600 dark:text-white">Toggle dark</button>'
-            f'<div style="max-width:760px">{FilterGroup(model="game")}</div>'
-            "</body></html>"
+        page = Document(
+            Html(lang="en")[
+                Head()[
+                    Title()["filter-group demo"],
+                    Meta(charset="utf-8"),
+                    Link(rel="stylesheet", href=static("base.css")),
+                    Script(
+                        type="module", src=static("js/dist/elements/filter-group.js")
+                    ),
+                ],
+                Body(class_="bg-body p-6 dark:bg-gray-900")[
+                    StyledButton(
+                        onclick="document.documentElement.classList.toggle('dark')"
+                    )["Toggle dark"],
+                    FilterGroup(model="game"),
+                ],
+            ]
         )
-        return HttpResponse(html)
+        return HttpResponse(page)
 
     urlpatterns.append(path("filter-group-demo/", filter_group_demo))
