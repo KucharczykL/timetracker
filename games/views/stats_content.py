@@ -403,7 +403,9 @@ def stats_content(ctx: StatsData) -> Node:
             ctx.get("total_playtime_per_platform") or [],
             lambda item: A(
                 href=filter_url(
-                    stats_links.sessions_for_platform(item["platform_id"], year)
+                    stats_links.sessions_for_platform(
+                        item["platform_id"], year, item["platform_name"] or ""
+                    )
                 ),
                 class_="hover:underline decoration-dotted",
             )[item["platform_name"] or "Unspecified"],

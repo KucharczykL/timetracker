@@ -123,6 +123,18 @@ def test_sessions_for_game_embeds_label(world):
     assert payload["game"]["value"] == [{"id": game.id, "label": game.name}]
 
 
+def test_sessions_for_platform_embeds_label(world):
+    """The platform name rides into the nested game_filter.platform criterion so
+    the session bar's cross-entity platform pill renders a name (#224)."""
+    platform = world["pc"]
+    payload = stats_links.sessions_for_platform(
+        platform.id, YEAR, platform.name
+    ).to_json()
+    assert payload["game_filter"]["platform"]["value"] == [
+        {"id": platform.id, "label": platform.name}
+    ]
+
+
 def test_sessions_for_game_without_label_stays_bare(world):
     """No label given -> serialization is unchanged (bare id)."""
     game = world["finished_game"]
