@@ -31,6 +31,7 @@ from common.components.custom_elements import (
     DropdownLinkItem,
     DropdownMenuPanel,
     DropdownSubmenu,
+    FilterGroup,
     ListboxPanel,
     MenuDropdown,
     SelectDropdown,
@@ -254,6 +255,7 @@ __all__ = [
     "StringFilter",
     "NumberFilter",
     "FieldComparisonSet",
+    "FilterGroup",
     "Option",
     "Select",
 ]

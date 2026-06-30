@@ -170,6 +170,29 @@ register_element("field-comparison-set", "FieldComparisonSet", FieldComparisonSe
 _FieldComparisonSet = custom_element_builder("field-comparison-set")
 
 
+class FilterGroupProps(TypedDict):
+    # Root model key (e.g. "game"). Reserved for 2d: it will select the field-
+    # metadata registry + serialization model. The element reads it but does not
+    # consume it yet in this phase (#189).
+    model: str
+
+
+register_element("filter-group", "FilterGroup", FilterGroupProps)
+_FilterGroup = custom_element_builder("filter-group")
+
+
+def FilterGroup(*, model: str) -> Node:
+    """The recursive nested-filter group shell (issue #189, phase 2c of #168).
+
+    A self-seeding client-built tree: the element starts from an empty root AND
+    group and owns the whole `FilterNode` tree in JS, re-rendering on each
+    restructuring op. Behavior + DOM live in ``ts/elements/filter-group.ts``;
+    the connective/negate UI, leaf widgets, and relation block (sibling 2c
+    components) hydrate the inert slots during 2d assembly. Media (the compiled
+    JS) is attached automatically by ``custom_element_builder``."""
+    return _FilterGroup(model=model)
+
+
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which
 # renders it). Its whole contract is two plain attributes already on the anchor
 # (href + data-shift-href), so the props are empty; registration here is
