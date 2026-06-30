@@ -7,6 +7,7 @@
  */
 import { readFilterBarProps } from "../generated/props.js";
 import { readFieldComparisonSet } from "./field-comparison-set.js";
+import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readSearchSelect } from "./search-select.js";
 
 interface Criterion {
@@ -140,7 +141,7 @@ function readStringWidget(element: HTMLElement): Record<string, unknown> | null 
   const modifier =
     element.querySelector<HTMLInputElement>('input[data-string-modifier-radio]:checked')
       ?.value ?? "EQUALS";
-  if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
+  if (isPresenceModifier(modifier)) {
     return { modifier };
   }
   const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
@@ -154,13 +155,13 @@ function readNumberWidget(element: HTMLElement): Criterion | Record<string, unkn
   const modifier =
     element.querySelector<HTMLInputElement>('input[data-number-modifier-radio]:checked')
       ?.value ?? "EQUALS";
-  if (modifier === "IS_NULL" || modifier === "NOT_NULL") {
+  if (isPresenceModifier(modifier)) {
     return { modifier };
   }
   const value = parseNumberInputValue(
     element.querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])'),
   );
-  if (modifier === "BETWEEN" || modifier === "NOT_BETWEEN") {
+  if (isRangeModifier(modifier)) {
     const value2Marker = element.querySelector('[data-number-value2]');
     const value2Input =
       value2Marker instanceof HTMLInputElement
@@ -192,8 +193,7 @@ function readSetWidget(element: HTMLElement): Record<string, unknown> | null {
   const included = parseJSONAttr<PillEntry>(element, "data-included");
   const excluded = parseJSONAttr<PillEntry>(element, "data-excluded");
   const modifier = element.getAttribute("data-modifier");
-  const isPresence = modifier === "NOT_NULL" || modifier === "IS_NULL";
-  if (isPresence) {
+  if (modifier && isPresenceModifier(modifier)) {
     return { modifier };
   }
   if (included.length > 0 || excluded.length > 0) {

@@ -2580,11 +2580,42 @@ class TestComparableColumns:
     def _by_value(self, model):
         return {entry["value"]: entry for entry in comparable_columns(model)}
 
-    def test_entries_have_value_label_group_keys(self):
+    def test_entries_have_value_label_group_operators_keys(self):
         from games.models import Game
 
         for entry in comparable_columns(Game):
-            assert set(entry.keys()) == {"value", "label", "group"}
+            assert set(entry.keys()) == {"value", "label", "group", "operators"}
+
+    def test_operators_match_allowed_comparison_modifiers(self):
+        """Each column carries the server-derived operator list (#152) so the TS
+        widget renders it directly instead of re-deriving group->operators."""
+        from games.models import Game
+
+        from common.criteria import _allowed_comparison_modifiers
+
+        columns = self._by_value(Game)
+        # string adds containment; number is ordered-only; bool is equality-only.
+        assert columns["name"]["operators"] == [
+            modifier.value for modifier in _allowed_comparison_modifiers("string")
+        ]
+        assert "INCLUDES" in columns["name"]["operators"]
+        assert columns["year_released"]["operators"] == [
+            modifier.value for modifier in _allowed_comparison_modifiers("number")
+        ]
+        assert columns["mastered"]["operators"] == ["EQUALS", "NOT_EQUALS"]
+
+    def test_operators_for_datetime_and_date_groups(self):
+        """Close the group matrix: datetime (Session) and date (Purchase) carry
+        the ordered-only operator set, like number."""
+        from games.models import Purchase, Session
+
+        from common.criteria import _allowed_comparison_modifiers
+
+        ordered = [
+            modifier.value for modifier in _allowed_comparison_modifiers("number")
+        ]
+        assert self._by_value(Session)["timestamp_end"]["operators"] == ordered
+        assert self._by_value(Purchase)["date_purchased"]["operators"] == ordered
 
     def test_known_game_columns(self):
         from games.models import Game
