@@ -126,6 +126,27 @@ describe("insertChild / removeAt", () => {
     const tree = group("AND", [group("OR", [criterion("a")])]);
     expect(removeAt(tree, [0, 0])).toEqual(group("AND", []));
   });
+
+  it("prunes only emptied groups, stopping at a non-empty ancestor", () => {
+    const tree = group("AND", [group("OR", [group("AND", [criterion("a")]), criterion("keep")])]);
+    // Removing 'a' empties its AND, which is pruned; the OR survives (has 'keep'),
+    // so the cascade stops there — no spurious sibling removal.
+    expect(removeAt(tree, [0, 0, 0])).toEqual(group("AND", [group("OR", [criterion("keep")])]));
+  });
+
+  it("does not descend or prune a relation's (possibly empty) child group", () => {
+    // A relation is a terminal slot; removeAt never walks into its child group, so
+    // an empty relation child (the ANY presence test) is never treated as prunable.
+    const tree = group("OR", [criterion("a"), relation("sessions", group("AND", []))]);
+    expect(removeAt(tree, [0])).toEqual(group("OR", [relation("sessions", group("AND", []))]));
+  });
+
+  it("does not mutate the input tree during a cascade", () => {
+    const tree = group("AND", [criterion("a"), group("OR", [group("AND", [criterion("b")])])]);
+    const snapshot = structuredClone(tree);
+    removeAt(tree, [1, 0, 0]); // full multi-level cascade
+    expect(tree).toEqual(snapshot);
+  });
 });
 
 describe("duplicateAt", () => {

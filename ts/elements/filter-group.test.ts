@@ -224,6 +224,16 @@ describe("<filter-group> empty groups (#236)", () => {
     expect(host.serialize()).toEqual({});
   });
 
+  it("a cascade removal collapses the group in the DOM and fires one change event", () => {
+    const host = mount();
+    clickAction(host, "add-group", []); // [1]=group seeded with [1,0]=criterion
+    let count = 0;
+    host.addEventListener("filter-tree-change", () => (count += 1));
+    clickAction(host, "remove", [1, 0]); // empties the nested group → collapses it
+    expect(count).toBe(1);
+    expect(host.querySelector('[data-kind="group"][data-path="[1]"]')).toBeNull();
+  });
+
   it("rebuilds from the empty state and restores the header chips", () => {
     const host = mount();
     clickAction(host, "remove", [0]);
