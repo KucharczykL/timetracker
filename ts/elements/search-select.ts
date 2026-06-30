@@ -21,6 +21,8 @@
  * in one place (the Python components), never duplicated here.
  */
 
+import { isPresenceModifier } from "./filter-tokens.js";
+
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
 export interface SearchSelectOption {
@@ -52,12 +54,10 @@ interface FilterPillEntry {
 
 const DEBOUNCE_MS = 100;
 
-// Presence modifiers — the sole definition of this set (the former Python
-// _PRESENCE_MODIFIERS constant was removed with its only consumer in #141).
-// They are mutually exclusive with value pills — selecting one clears all
-// value pills.  Non-presence modifiers (INCLUDES_ALL, INCLUDES_ONLY) coexist
-// with value pills.
-const PRESENCE_MODIFIERS = ["NOT_NULL", "IS_NULL"];
+// Presence modifiers (IS_NULL / NOT_NULL) are mutually exclusive with value
+// pills — selecting one clears all value pills. Non-presence modifiers
+// (INCLUDES_ALL, INCLUDES_ONLY) coexist with value pills. The token set lives in
+// ./filter-tokens (contract-guarded against common.criteria.Modifier, #152).
 
 const initWidget = (containerElement: Element) => {
   const container = containerElement as SearchSelectContainer;
@@ -482,7 +482,7 @@ const initWidget = (containerElement: Element) => {
     const modifierPill = pills.querySelector("[data-search-select-modifier]");
     if (modifierPill) {
       const modifierValue = modifierPill.getAttribute("data-search-select-modifier") ?? "";
-      if (PRESENCE_MODIFIERS.includes(modifierValue)) {
+      if (isPresenceModifier(modifierValue)) {
         clearModifier();
       }
     }
@@ -510,7 +510,7 @@ const initWidget = (containerElement: Element) => {
   const setModifier = (modifierValue: string, label: string) => {
     // Remove any existing modifier pill to avoid duplicates.
     clearModifierPill();
-    if (PRESENCE_MODIFIERS.includes(modifierValue)) {
+    if (isPresenceModifier(modifierValue)) {
       pills.innerHTML = "";
     }
     const pill = cloneTemplate("pill-modifier")!;

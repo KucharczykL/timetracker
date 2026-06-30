@@ -3,10 +3,10 @@
  *
  * Drives common/components/filters.py FieldComparisonSet. Each row's left column
  * is server-rendered with the full column option set; this module fills the
- * operator and right-column selects from the chosen left column's comparison
- * group (mirroring the server's _allowed_comparison_modifiers / same-group rule),
- * restoring any saved value stashed in data-selected. The set's rows + AND/OR
- * mode are read back by filter-bar.ts on Apply (see readFieldComparisonSet).
+ * operator select from the chosen column's server-supplied `operators` list and
+ * the right-column select from the same-group columns, restoring any saved value
+ * stashed in data-selected. The set's rows + AND/OR mode are read back by
+ * filter-bar.ts on Apply (see readFieldComparisonSet).
  *
  * The single-row logic (refreshRow) is intentionally separable from the set
  * container so the nested boolean builder (#168) can reuse it inside a group.
@@ -17,6 +17,7 @@ interface Column {
   value: string;
   label: string;
   group: string;
+  operators: string[]; // server-supplied allowed operators (#152)
 }
 
 export interface ComparisonRow {
@@ -26,8 +27,11 @@ export interface ComparisonRow {
   granularity?: "date"; // omitted when "raw" to keep filter JSON compact
 }
 
-// Operator labels by Modifier value — must match the modifiers the server
-// accepts per group (common/criteria.py _allowed_comparison_modifiers).
+// Presentation-only glyphs for the operator tokens the server sends. Not a
+// source of truth for *which* operators are valid — that's the per-column
+// `operators` list (server-derived from _allowed_comparison_modifiers). A token
+// with no glyph here falls back to its raw value, so an added operator still
+// renders.
 const OPERATOR_LABELS: Record<string, string> = {
   EQUALS: "=",
   NOT_EQUALS: "≠",
@@ -38,26 +42,6 @@ const OPERATOR_LABELS: Record<string, string> = {
   INCLUDES: "contains",
   EXCLUDES: "doesn't contain",
 };
-
-const ORDERED = [
-  "EQUALS",
-  "NOT_EQUALS",
-  "GREATER_THAN",
-  "LESS_THAN",
-  "GREATER_THAN_OR_EQUAL",
-  "LESS_THAN_OR_EQUAL",
-];
-
-function operatorsForGroup(group: string): string[] {
-  if (group === "bool") return ["EQUALS", "NOT_EQUALS"];
-  if (group === "string") return [...ORDERED, "INCLUDES", "EXCLUDES"];
-  return ORDERED;
-}
-
-function groupOf(columns: Column[], value: string): string | null {
-  const column = columns.find((candidate) => candidate.value === value);
-  return column ? column.group : null;
-}
 
 function fillSelect(
   select: HTMLSelectElement,
@@ -93,7 +77,8 @@ function refreshRow(row: HTMLElement, columns: Column[]): void {
   operator.removeAttribute("data-selected");
   right.removeAttribute("data-selected");
 
-  const group = groupOf(columns, left.value);
+  const leftColumn = columns.find((column) => column.value === left.value) ?? null;
+  const group = leftColumn?.group ?? null;
 
   // Day-granular toggle is only meaningful for datetime operands.
   const granularityWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
@@ -102,7 +87,7 @@ function refreshRow(row: HTMLElement, columns: Column[]): void {
   if (granularityWrap) granularityWrap.hidden = !isDatetime;
   if (granularityInput && !isDatetime) granularityInput.checked = false;
 
-  if (!group) {
+  if (!leftColumn || !group) {
     fillSelect(operator, [], "", "—");
     fillSelect(right, [], "", "column…");
     operator.disabled = true;
@@ -113,7 +98,7 @@ function refreshRow(row: HTMLElement, columns: Column[]): void {
   right.disabled = false;
   fillSelect(
     operator,
-    operatorsForGroup(group).map((modifier) => [modifier, OPERATOR_LABELS[modifier]]),
+    leftColumn.operators.map((modifier) => [modifier, OPERATOR_LABELS[modifier] ?? modifier]),
     operatorSaved,
     "—",
   );

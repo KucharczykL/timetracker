@@ -24,4 +24,5 @@ dist/
 /games/static/js/dist/
 /ts/generated/
 /ts/elements/filter-tree/fixtures.canonical.json
+/ts/elements/filter-tokens.canonical.json
 .claude/
