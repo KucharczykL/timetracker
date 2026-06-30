@@ -168,6 +168,17 @@ export function setConnective(root: GroupNode, groupPath: NodePath, connective: 
   });
 }
 
+// Flip a group's connective between the two values (AND<->OR). The connective is
+// a fixed binary (design spec), so the chip UI in component 2 is a flip, not a
+// pick; this is the payload-free operation it dispatches. `setConnective` keeps
+// the explicit-value setter for programmatic/import use.
+export function toggleConnective(root: GroupNode, groupPath: NodePath): GroupNode {
+  return replaceNodeAt(root, groupPath, (node) => {
+    if (node.kind !== "group") throw new Error(`Node at path is not a group`);
+    return { ...node, connective: node.connective === "AND" ? "OR" : "AND" };
+  });
+}
+
 export function setMatch(root: GroupNode, path: NodePath, match: RelationMatch): GroupNode {
   return replaceNodeAt(root, path, (node) => {
     if (node.kind !== "relation") throw new Error(`Node at path is not a relation`);

@@ -4,11 +4,13 @@
  *
  * Holds the whole `FilterNode` tree in JS (the single source of truth the
  * serializer consumes) and re-renders the DOM from it on every edit. This shell
- * owns only *structure*: group cards, alternating depth coloring, the soft depth
+ * owns the *structure* — group cards, alternating depth coloring, the soft depth
  * cap, the footer add-buttons, and the buttons-only restructuring affordances
- * (remove / duplicate / wrap / unwrap / ↑ / ↓). The connective+negate UI (comp 2),
- * leaf widgets (comp 3/4), and relation block (comp 5) are sibling 2c components;
- * here their places are **inert slots** carrying each node's identity + payload,
+ * (remove / duplicate / wrap / unwrap / ↑ / ↓) — plus the connective + NOT chips
+ * (comp 2, #190), which are stateless projections of each node's
+ * connective/negate flag wired through the same data-action delegation. The leaf
+ * widgets (comp 3/4) and relation block (comp 5) are sibling 2c components; here
+ * their places are **inert slots** carrying each node's identity + payload,
  * hydrated during 2d assembly.
  *
  * Correctness (every mutation) lives in the pure `filter-tree/operations.ts`
@@ -31,6 +33,8 @@ import {
   insertChild,
   move,
   removeAt,
+  toggleConnective,
+  toggleNegate,
   unwrapGroup,
   wrapInGroup,
 } from "./filter-tree/operations.js";
@@ -52,9 +56,27 @@ const SLOT_ROW_CLASS = "flex items-center justify-between gap-2";
 const SLOT_CLASS =
   "flex-1 rounded border border-dashed border-gray-300 px-2 py-1 text-sm text-gray-600 " +
   "dark:border-gray-600 dark:text-gray-300";
-const CONNECTIVE_SLOT_CLASS =
-  "rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 " +
-  "dark:border-gray-600 dark:text-gray-200";
+// Connective + NOT chips (component 2, issue #190). Pill shape (rounded-full) +
+// saturated fill sets this cluster apart from the square, gray restructuring
+// buttons so it never reads as "just another button". The connective is
+// color-coded by value with a NON-semantic cool/warm pair — AND = teal, OR =
+// orange — kept out of the action palette (blue/red/green/gray) so it reads as
+// "logic type", not status. The NOT-on look uses an amber FILL + RING so a lit
+// NOT chip stays distinct from an adjacent OR chip (fill-only) — they never read
+// as one blob.
+const CHIP_BASE = "rounded-full border px-2.5 py-0.5 text-xs font-semibold hover:cursor-pointer";
+const CONNECTIVE_AND_CLASS =
+  "border-teal-300 bg-teal-100 text-teal-800 " +
+  "dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-200";
+const CONNECTIVE_OR_CLASS =
+  "border-orange-300 bg-orange-100 text-orange-800 " +
+  "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200";
+const NEGATE_OFF_CLASS =
+  "border-gray-200 text-gray-500 hover:bg-gray-100 " +
+  "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700";
+const NEGATE_ON_CLASS =
+  "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 " +
+  "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 dark:ring-amber-500/70";
 const BUTTON_CLASS =
   "rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-100 disabled:cursor-not-allowed " +
   "disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700";
@@ -71,7 +93,9 @@ type TreeAction =
   | "wrap"
   | "unwrap"
   | "up"
-  | "down";
+  | "down"
+  | "toggle-connective"
+  | "toggle-negate";
 
 // The event the shell dispatches after every edit (see FilterTreeChangeDetail).
 export const FILTER_TREE_CHANGE_EVENT = "filter-tree-change";
@@ -179,6 +203,12 @@ export class FilterGroupElement extends HTMLElement {
       case "down":
         this.tree = move(this.tree, path, 1);
         break;
+      case "toggle-connective":
+        this.tree = toggleConnective(this.tree, path);
+        break;
+      case "toggle-negate":
+        this.tree = toggleNegate(this.tree, path);
+        break;
       default: {
         // Exhaustiveness guard: every TreeAction is handled above, so `action`
         // narrows to `never` here. Adding a member without a case fails tsc. The
@@ -203,7 +233,12 @@ export class FilterGroupElement extends HTMLElement {
     card.dataset.path = JSON.stringify(path);
 
     const header = element("div", HEADER_CLASS);
-    header.appendChild(this.connectiveSlot(node.connective, path));
+    // NOT is the leftmost control on every node (groups and leaves) so negation
+    // always reads in the same place; the connective follows it on groups.
+    const connectiveCluster = element("div", "flex items-center gap-1");
+    connectiveCluster.appendChild(this.negateChip(node, path));
+    connectiveCluster.appendChild(this.connectiveChip(node.connective, path));
+    header.appendChild(connectiveCluster);
     if (path.length > 0) header.appendChild(this.controls(path, true, index, siblingCount));
     card.appendChild(header);
 
@@ -226,19 +261,50 @@ export class FilterGroupElement extends HTMLElement {
     slot.dataset.path = JSON.stringify(path);
     slot.dataset.payload = JSON.stringify(child); // identity + payload for 2d hydration
     slot.textContent = slotLabel(child);
+    // NOT leads the row (leftmost), matching the group header; the slot and the
+    // restructuring controls follow.
+    row.appendChild(this.negateChip(child, path));
     row.appendChild(slot);
     row.appendChild(this.controls(path, false, index, siblingCount));
     return row;
   }
 
-  // The connective is an inert placeholder here — component 2 replaces it with a
-  // real AND/OR selector + ¬ toggle, reading the same data-path.
-  private connectiveSlot(connective: Connective, path: NodePath): HTMLElement {
-    const slot = element("div", CONNECTIVE_SLOT_CLASS);
-    slot.dataset.slot = "connective";
-    slot.dataset.path = JSON.stringify(path);
-    slot.textContent = connective;
-    return slot;
+  // A chip-style toggle button: a restructuring action (so it rides the existing
+  // data-action delegation + applyAction) wearing its own chip classes instead of
+  // BUTTON_CLASS. `pressed` reflects an on/off state via aria-pressed.
+  private chip(
+    action: TreeAction,
+    label: string,
+    path: NodePath,
+    className: string,
+    { title = "", pressed }: { title?: string; pressed?: boolean } = {},
+  ): HTMLButtonElement {
+    const button = element("button", `${CHIP_BASE} ${className}`);
+    button.type = "button";
+    button.textContent = label;
+    button.dataset.action = action;
+    button.dataset.path = JSON.stringify(path);
+    if (title) button.title = title;
+    if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed));
+    return button;
+  }
+
+  // The connective chip: label is the value itself; clicking flips AND<->OR. Color
+  // carries the value (no lit/pressed state — the label already shows it).
+  private connectiveChip(connective: Connective, path: NodePath): HTMLButtonElement {
+    const colorClass = connective === "AND" ? CONNECTIVE_AND_CLASS : CONNECTIVE_OR_CLASS;
+    return this.chip("toggle-connective", connective, path, colorClass, {
+      title: "Toggle AND/OR for this group",
+    });
+  }
+
+  // The NOT negate chip (groups and leaves): constant label, lit when the node's
+  // negate flag is set. Clicking toggles it.
+  private negateChip(node: FilterNode, path: NodePath): HTMLButtonElement {
+    return this.chip("toggle-negate", "NOT", path, node.negate ? NEGATE_ON_CLASS : NEGATE_OFF_CLASS, {
+      title: node.negate ? "Remove negation" : "Negate",
+      pressed: node.negate,
+    });
   }
 
   private controls(path: NodePath, isGroup: boolean, index: number, siblingCount: number): HTMLElement {
