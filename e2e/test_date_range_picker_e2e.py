@@ -155,6 +155,31 @@ def test_min_side_only_serializes_greater_than(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_max_side_only_serializes_less_than(live_server, page):
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _segment(page, "max", "day").click()
+    page.keyboard.type("30062025")
+    _submit_filter_bar(page)
+    parsed = _filter_from_url(page.url)
+    assert parsed == {
+        "date_purchased": {"value": "2025-06-30", "modifier": "LESS_THAN"}
+    }
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_empty_picker_omits_date_criterion(live_server, page):
+    """No date entered → the filter JSON carries no date_* keys (vs. an
+    empty-string criterion that the backend would reject)."""
+    page.goto(live_server.url + "/test-date-range-picker/")
+    _submit_filter_bar(page)
+    parsed = _filter_from_url(page.url)
+    assert "date_purchased" not in parsed
+    assert "date_refunded" not in parsed
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
 def test_backspace_reverts_part_to_placeholder(live_server, page):
     page.goto(live_server.url + "/test-date-range-picker/")
     _segment(page, "min", "day").click()
