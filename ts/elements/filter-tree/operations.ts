@@ -15,6 +15,7 @@
 import {
   type Connective,
   type CriterionLeaf,
+  type CriterionPayload,
   type FilterFieldMeta,
   type FilterNode,
   type GroupNode,
@@ -22,7 +23,7 @@ import {
   type RelationNode,
 } from "./types.js";
 import { group } from "./serializer.js";
-import { isPresenceModifier } from "../filter-tokens.js";
+import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
 export type NodePath = readonly number[];
 
@@ -64,18 +65,28 @@ export function criterionForField(meta: FilterFieldMeta): CriterionLeaf {
   return { kind: "criterion", field: meta.name, criterion, negate: false };
 }
 
+// Whether a single payload slot counts as filled. A bare `""`/null/undefined or an
+// empty array is empty; anything else (incl. `0`, `false`) is present.
+function isValuePresent(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return false;
+  if (Array.isArray(value) && value.length === 0) return false;
+  return true;
+}
+
 // Whether a leaf is complete enough to query/apply: it needs a field, a modifier,
 // and a non-empty value — UNLESS the modifier is a presence test (IS_NULL /
-// NOT_NULL), which is value-less by design. Per-widget value validation (e.g. both
-// BETWEEN bounds present) layers on top of this in the leaf widgets (#192).
+// NOT_NULL), which is value-less by design. A range modifier (BETWEEN / NOT_BETWEEN)
+// additionally needs the second bound `value2`: a half-filled BETWEEN serializes to a
+// payload the backend rejects *wholesale* (`IntCriterion.to_q` raises FilterError when
+// value2 is None, and `filter_from_json` validates eagerly — so one bad leaf drops the
+// entire filter). Excluding it here keeps it out of both the count query and Apply.
 export function isCriterionComplete(leaf: CriterionLeaf): boolean {
   if (!leaf.field) return false;
   const modifier = leaf.criterion["modifier"];
   if (typeof modifier !== "string" || modifier === "") return false;
   if (isPresenceModifier(modifier)) return true;
-  const value = leaf.criterion["value"];
-  if (value === undefined || value === null || value === "") return false;
-  if (Array.isArray(value) && value.length === 0) return false;
+  if (!isValuePresent(leaf.criterion["value"])) return false;
+  if (isRangeModifier(modifier) && !isValuePresent(leaf.criterion["value2"])) return false;
   return true;
 }
 
@@ -241,6 +252,70 @@ export function setMatch(root: GroupNode, path: NodePath, match: RelationMatch):
     if (node.kind !== "relation") throw new Error(`Node at path is not a relation`);
     return { ...node, match };
   });
+}
+
+// ── Leaf payload edits (issue #192) ──────────────────────────────────────────
+
+// Pick (or change) a criterion leaf's field: replace it with a FRESH leaf for the
+// chosen field via `criterionForField` (modifier reset to the field's first valid,
+// value dropped — no silent type-coercion). The node's own `negate` flag is
+// preserved (changing the field shouldn't silently un-negate the row).
+export function setLeafField(root: GroupNode, path: NodePath, meta: FilterFieldMeta): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
+    return { ...criterionForField(meta), negate: node.negate };
+  });
+}
+
+// Set a criterion leaf's whole opaque payload (what a value widget produced). The
+// serializer wraps it verbatim as `{field: payload}`, so the widget owns the shape.
+export function setLeafCriterion(
+  root: GroupNode,
+  path: NodePath,
+  criterion: CriterionPayload,
+): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
+    return { ...node, criterion };
+  });
+}
+
+// ── Pruning incomplete leaves for the query (issue #192) ─────────────────────
+
+// Drop every incomplete criterion leaf (see `isCriterionComplete`) so the count /
+// Apply query never carries one (an incomplete leaf with `field === ""` serializes
+// to `{"": …}` — one key — so the serializer's empty-child filter does NOT drop it;
+// pruning is required). A non-root group emptied by pruning collapses out of its
+// parent (the #236 invariant: no rendered, NOT-able empty group); the root may sit
+// empty (→ `{}` matches-all). A full recursive walk — relations descend into their
+// child group too — and a relation is kept even if its child empties (ANY over an
+// empty group is the meaningful "has ≥1 related row" presence test).
+export function pruneIncomplete(root: GroupNode): GroupNode {
+  return pruneGroup(root);
+}
+
+function pruneGroup(node: GroupNode): GroupNode {
+  const children: FilterNode[] = [];
+  for (const child of node.children) {
+    const pruned = pruneNode(child);
+    if (pruned !== null) children.push(pruned);
+  }
+  return { ...node, children };
+}
+
+function pruneNode(node: FilterNode): FilterNode | null {
+  switch (node.kind) {
+    case "criterion":
+      return isCriterionComplete(node) ? node : null;
+    case "comparison":
+      return node; // comparison completeness lands with the field-comparison leaf
+    case "relation":
+      return { ...node, child: pruneGroup(node.child) };
+    case "group": {
+      const pruned = pruneGroup(node);
+      return pruned.children.length === 0 ? null : pruned; // collapse emptied non-root group
+    }
+  }
 }
 
 // Negation is a per-node flag, never a connective (design spec). Toggling it twice

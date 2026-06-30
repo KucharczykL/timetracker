@@ -21,8 +21,11 @@ import {
   move,
   nodeAt,
   parseFieldMeta,
+  pruneIncomplete,
   removeAt,
   setConnective,
+  setLeafCriterion,
+  setLeafField,
   setMatch,
   toggleConnective,
   toggleNegate,
@@ -482,5 +485,74 @@ describe("add-criterion field picker contract (#191)", () => {
         }),
       ).toBe(false);
     });
+
+    it("requires both bounds for a range modifier (#192)", () => {
+      const halfBetween: CriterionLeaf = {
+        kind: "criterion",
+        field: "year_released",
+        criterion: { modifier: "BETWEEN", value: 1990 },
+        negate: false,
+      };
+      expect(isCriterionComplete(halfBetween)).toBe(false);
+      expect(
+        isCriterionComplete({ ...halfBetween, criterion: { modifier: "BETWEEN", value: 1990, value2: 2000 } }),
+      ).toBe(true);
+    });
+  });
+});
+
+describe("leaf payload edits (#192)", () => {
+  it("setLeafField replaces the leaf with a fresh reset leaf, preserving negate", () => {
+    const tree = group("AND", [
+      { kind: "criterion", field: "name", criterion: { modifier: "EQUALS", value: "x" }, negate: true },
+    ]);
+    const next = setLeafField(tree, [0], fieldMeta({ name: "status", kind: "set" }));
+    expect(nodeAt(next, [0])).toEqual({
+      kind: "criterion",
+      field: "status",
+      criterion: { modifier: "INCLUDES" }, // value dropped, modifier reset
+      negate: true, // preserved
+    });
+  });
+
+  it("setLeafCriterion swaps the opaque payload verbatim", () => {
+    const tree = group("AND", [emptyCriterion()]);
+    const payload = { modifier: "INCLUDES", value: [{ id: "1", label: "PC" }] };
+    const next = setLeafCriterion(tree, [0], payload);
+    expect((nodeAt(next, [0]) as CriterionLeaf).criterion).toEqual(payload);
+  });
+
+  it("setLeafField / setLeafCriterion throw on a non-criterion node", () => {
+    const tree = group("AND", [emptyGroup()]);
+    expect(() => setLeafField(tree, [0], fieldMeta())).toThrow();
+    expect(() => setLeafCriterion(tree, [0], {})).toThrow();
+  });
+});
+
+describe("pruneIncomplete (#192)", () => {
+  const complete = (field: string): CriterionLeaf => ({
+    kind: "criterion",
+    field,
+    criterion: { modifier: "EQUALS", value: "v" },
+    negate: false,
+  });
+
+  it("drops incomplete criterion leaves, keeps complete ones", () => {
+    const tree = group("AND", [complete("name"), emptyCriterion()]);
+    expect(pruneIncomplete(tree)).toEqual(group("AND", [complete("name")]));
+  });
+
+  it("collapses a non-root group emptied by pruning, but keeps an empty root", () => {
+    const inner = group("OR", [emptyCriterion()]);
+    const tree = group("AND", [complete("name"), inner]);
+    expect(pruneIncomplete(tree)).toEqual(group("AND", [complete("name")]));
+    expect(pruneIncomplete(group("AND", [emptyCriterion()]))).toEqual(group("AND", []));
+  });
+
+  it("keeps a relation even if its child group empties (presence test)", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", [emptyCriterion()]))]);
+    expect(pruneIncomplete(tree)).toEqual(
+      group("AND", [relation("session_filter", group("AND", []))]),
+    );
   });
 });

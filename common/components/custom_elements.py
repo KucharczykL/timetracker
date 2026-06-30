@@ -171,10 +171,13 @@ _FieldComparisonSet = custom_element_builder("field-comparison-set")
 
 
 class FilterGroupProps(TypedDict):
-    # Root model key (e.g. "game"). Reserved for 2d: it will select the field-
-    # metadata registry + serialization model. The element reads it but does not
-    # consume it yet in this phase (#189).
+    # Root model key (e.g. "game"); the deserializer selects its serialization
+    # model from it.
     model: str
+    # JSON of the model's field_metadata() — the leaf row (#192) reads it to build
+    # each criterion's modifier dropdown + value widget client-side. Mirrors the
+    # FieldComparisonSetProps.columns precedent (JSON in a str-typed prop).
+    fields: str
 
 
 register_element("filter-group", "FilterGroup", FilterGroupProps)
@@ -186,11 +189,29 @@ def FilterGroup(*, model: str) -> Node:
 
     A self-seeding client-built tree: the element starts from an empty root AND
     group and owns the whole `FilterNode` tree in JS, re-rendering on each
-    restructuring op. Behavior + DOM live in ``ts/elements/filter-group.ts``;
-    the connective/negate UI, leaf widgets, and relation block (sibling 2c
-    components) hydrate the inert slots during 2d assembly. Media (the compiled
-    JS) is attached automatically by ``custom_element_builder``."""
-    return _FilterGroup(model=model)
+    restructuring op. Behavior + DOM live in ``ts/elements/filter-group.ts``.
+
+    Carries two things the leaf row (#192) needs client-side: the model's
+    ``field_metadata`` (as the ``fields`` JSON prop) and an **id-less**
+    ``FilterFieldPicker`` in a ``<template>`` the shell clones into each leaf's
+    field cell (id-less so per-leaf clones don't collide; the TS assigns a unique
+    id per clone). The filter class is resolved from ``model`` by convention
+    (``filter_for_model``) — no registry. Media is auto-attached by
+    ``custom_element_builder``."""
+    import json
+
+    from common.components.filters import FilterFieldPicker
+    from common.components.primitives import Template
+    from common.criteria import field_metadata
+    from games.filters import filter_for_model
+
+    filter_cls = filter_for_model(model)
+    return _FilterGroup(
+        model=model,
+        fields=json.dumps(field_metadata(filter_cls)),
+    )[
+        Template(data_field_picker_template="")[FilterFieldPicker(filter_cls)],
+    ]
 
 
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which

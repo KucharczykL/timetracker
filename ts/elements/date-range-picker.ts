@@ -22,6 +22,29 @@
  */
 import { bindPopupDismiss } from "../utils.js";
 
+// Fired whenever a committed bound actually changes — segment typing or a
+// calendar/preset pick (issue #192). The flat filter bar reads the hidden inputs
+// at serialize time (pull), but the nested filter builder's date leaf needs a push
+// signal to fold the new value into its tree node. detail carries both ISO bounds
+// ("" when a side is empty) so a consumer needn't re-query the DOM.
+export const DATE_RANGE_CHANGE_EVENT = "date-range:change";
+
+export interface DateRangeChangeDetail {
+  min: string;
+  max: string;
+}
+
+function dispatchDateRangeChange(picker: HTMLElement): void {
+  const read = (side: string): string =>
+    picker.querySelector<HTMLInputElement>(`input[data-date-range-hidden="${side}"]`)?.value ?? "";
+  picker.dispatchEvent(
+    new CustomEvent<DateRangeChangeDetail>(DATE_RANGE_CHANGE_EVENT, {
+      bubbles: true,
+      detail: { min: read("min"), max: read("max") },
+    }),
+  );
+}
+
 type Anchor = "" | "start" | "end";
 
 interface CalendarState {
@@ -230,7 +253,9 @@ function syncHiddenFromSegments(picker: HTMLElement, side: string): boolean {
   } else {
     hidden.value = "";
   }
-  return hidden.value !== previousValue;
+  const changed = hidden.value !== previousValue;
+  if (changed) dispatchDateRangeChange(picker);
+  return changed;
 }
 
 /** Push an ISO value (or "") into a side's segments and hidden input. */
@@ -238,6 +263,7 @@ function setSideValue(picker: HTMLElement, side: string, isoString: string): voi
   const hidden = picker.querySelector<HTMLInputElement>(
     `input[data-date-range-hidden="${side}"]`
   )!;
+  const previousValue = hidden.value;
   hidden.value = isoString;
   let partValues: Record<string, string> = { year: "", month: "", day: "" };
   if (isoString) {
@@ -247,6 +273,7 @@ function setSideValue(picker: HTMLElement, side: string, isoString: string): voi
   segmentsForSide(picker, side).forEach((segment) => {
     setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""]);
   });
+  if (hidden.value !== previousValue) dispatchDateRangeChange(picker);
 }
 
 function initField(picker: HTMLElement, calendarState: CalendarState): void {
