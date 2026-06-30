@@ -27,6 +27,7 @@ from common.components.primitives import (
     filter_widget_attributes,
 )
 from common.criteria import (
+    AttrName,
     ComparableColumn,
     FieldMeta,
     FieldMetaKind,
@@ -281,11 +282,13 @@ def _cross_entity_bool(
     return None
 
 
-def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
-    """Extract a nullable boolean value from a filter criterion."""
-    if key not in existing:
-        return None
-    field = existing[key]
+def _bool_from_field(field: dict) -> bool | None:
+    """Extract a nullable boolean from a criterion dict, defaulting to None.
+
+    The blob-level counterpart of :func:`_parse_bool_nullable`, so ``field_widget``
+    can prefill a bool control from a raw criterion blob the same way the other
+    ``_*_from_field`` helpers serve their widgets.
+    """
     if not isinstance(field, dict):
         return None
     val = field.get("value")
@@ -297,6 +300,13 @@ def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
         if val.lower() in ("false", "0", "no"):
             return False
     return bool(val)
+
+
+def _parse_bool_nullable(existing: dict, key: str) -> bool | None:
+    """Extract a nullable boolean value from a filter criterion."""
+    if key not in existing:
+        return None
+    return _bool_from_field(existing[key])
 
 
 # ── FilterSelect adapters ────────────────────────────────────────────────────
@@ -453,66 +463,164 @@ def _filter_boolean_radio(
         class_="flex flex-col gap-1",
     )[
         Span(class_=_FILTER_LABEL_CLASS)[label],
-        Div(class_="flex items-center gap-4 h-9")[
-            Radio(name=name, label="True", checked=value is True, value="true"),
-            Radio(name=name, label="False", checked=value is False, value="false"),
-        ],
+        Div(class_="flex items-center gap-4 h-9")[*_bool_radios(name, value)],
     ]
 
 
-_DATE_RANGE_INPUT_CLASS = (
-    "w-full rounded-base border border-default-medium bg-neutral-secondary-medium "
-    "text-sm text-heading p-1.5 focus:ring-brand focus:border-brand"
-)
+def _bool_radios(name: str, value: bool | None) -> list[Node]:
+    """The True/False radio pair shared by the bar's bool widget and the leaf
+    ``_bool_control``."""
+    return [
+        Radio(name=name, label="True", checked=value is True, value="true"),
+        Radio(name=name, label="False", checked=value is False, value="false"),
+    ]
 
 
-def DateRangeFilter(
-    *,
-    label: str,
-    input_name_prefix: str,
-    path: FilterWidgetPath,
-    min_value: str = "",
-    max_value: str = "",
-    min_placeholder: str = "From",
-    max_placeholder: str = "To",
-) -> Node:
-    """A pair of ``<input type="date">`` elements representing a date range.
+def _bool_control(name: str, value: bool | None, *, path: FilterWidgetPath) -> Node:
+    """Label-free bool value widget for ``field_widget`` (issue #242).
 
-    Two inputs named ``{prefix}-min`` and ``{prefix}-max`` — the browser's
-    native date picker is the UI. Serialized client-side into a ``DateCriterion``
-    with ``BETWEEN`` / ``GREATER_THAN`` / ``LESS_THAN`` depending on which
-    bound(s) the user filled.
+    Carries ``data-kind="bool"`` + ``data-path`` so the leaf serializer picks it up,
+    holding only the True/False radios — the field label is the caller's concern
+    (the #192 leaf row's field cell). The bars keep using ``_filter_boolean_radio``
+    (self-labeled, in its own flex row), so their output is unchanged.
     """
-    min_input_id = f"{input_name_prefix}-min"
-    max_input_id = f"{input_name_prefix}-max"
     return Div(
-        filter_widget_attributes(path, "date"),
-        class_="date-range-block mb-4",
-    )[
-        Div(class_="flex items-center gap-2")[
-            Input(
-                type="date",
-                name=min_input_id,
-                id_=min_input_id,
-                value=min_value,
-                placeholder=min_placeholder,
-                aria_label=f"{label} from",
-                data_range_min="",
-                class_=_DATE_RANGE_INPUT_CLASS,
-            ),
-            Span(class_="text-body text-sm")["–"],
-            Input(
-                type="date",
-                name=max_input_id,
-                id_=max_input_id,
-                value=max_value,
-                placeholder=max_placeholder,
-                aria_label=f"{label} to",
-                data_range_max="",
-                class_=_DATE_RANGE_INPUT_CLASS,
-            ),
-        ],
-    ]
+        filter_widget_attributes(path, "bool"),
+        class_="flex items-center gap-4 h-9",
+    )[*_bool_radios(name, value)]
+
+
+# ── field_widget: the single per-field value-widget builder (issue #242) ──────
+# One dispatcher that returns a field's value control, keyed off the field's
+# ``FieldMeta`` (kind / nullable / choices / search_url / is_m2m). It reuses the
+# existing builders — no new markup. Both the flat bars and the #192 nested-builder
+# leaf row clone the same widget from here, so a field is described once.
+
+
+def _field_meta(filter_cls: type[OperatorFilter], field_name: AttrName) -> FieldMeta:
+    for meta in field_metadata(filter_cls):
+        if meta["name"] == field_name:
+            return meta
+    raise KeyError(f"{filter_cls.__name__} has no filterable field {field_name!r}")
+
+
+def field_widget(
+    filter_cls: type[OperatorFilter],
+    field_name: AttrName,
+    *,
+    value: dict | None = None,
+    path: FilterWidgetPath | None = None,
+    name_prefix: str | None = None,
+    field_name_override: str | None = None,
+    label: str | None = None,
+    placeholder: str = "",
+    placeholder2: str = "",
+    step: str = "1",
+) -> Node:
+    """Build a filter field's value control, dispatching by its ``FieldMeta`` kind.
+
+    ``value`` is the field's raw criterion blob (the per-field JSON dict, e.g.
+    ``existing[field_name]``); ``None`` → a blank widget (what #192 clones).
+    ``path`` defaults to ``[field_name]`` (cross-entity callers pass the nested
+    chain). ``name_prefix`` is the input id/name base for the **string/number/date/
+    bool** branches (defaults to ``f"filter-{field_name}"``); the **set** branch
+    ignores it and takes its DOM name from ``field_name_override or field_name``.
+    It's kept caller-supplied because the bars' historic prefixes are arbitrary and
+    #192 needs per-row-unique ids. ``field_name_override`` is the ``FilterSelect``
+    identifier when it differs from the attr name (the two cross-entity enums whose
+    DOM name is ``purchase_type`` / ``purchase_ownership_type``). ``label`` /
+    ``placeholder`` / ``placeholder2`` / ``step`` are presentation hints the bars
+    forward to match their existing literals; leaf callers omit them.
+
+    Output matches the bars' old inline widgets except ``nullable`` is re-derived
+    from the field's column (``FieldMeta``), not forwarded — so a field whose bar
+    previously hard-coded a different ``nullable`` than its DB column changes its
+    presence (``IS_NULL``) modifier. The one such field is the Game bar's
+    cross-entity Device, now correctly nullable (matches the Session bar + the
+    ``Session.device`` column).
+    """
+    meta = _field_meta(filter_cls, field_name)
+    kind = meta["kind"]
+    if kind == "relation":
+        raise ValueError(
+            f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
+        )
+    widget_path = path if path is not None else [field_name]
+    prefix = name_prefix if name_prefix is not None else f"filter-{field_name}"
+    blob = value if isinstance(value, dict) else {}
+
+    if kind == "string":
+        text = _string_from_field(blob)
+        return StringFilter(
+            prefix,
+            value=text.value,
+            modifier=text.modifier,
+            placeholder=placeholder,
+            path=widget_path,
+        )
+    if kind == "number":
+        number = _number_from_field(blob)
+        return NumberFilter(
+            prefix,
+            value=number.value,
+            value2=number.value2,
+            modifier=number.modifier,
+            placeholder=placeholder,
+            placeholder2=placeholder2,
+            step=step,
+            path=widget_path,
+        )
+    if kind == "date":
+        bounds = _range_from_field(blob)
+        return DateRangePicker(
+            label=label if label is not None else meta["label"],
+            input_name_prefix=prefix,
+            min_value=bounds.min,
+            max_value=bounds.max,
+            path=widget_path,
+        )
+    if kind == "bool":
+        return _bool_control(prefix, _bool_from_field(blob), path=widget_path)
+    if kind == "set":
+        choice = _choice_from_raw(blob)
+        select_name = field_name_override or field_name
+        if meta["search_url"]:
+            return _model_filter(
+                select_name,
+                choice,
+                search_url=meta["search_url"],
+                nullable=meta["nullable"],
+                m2m_modifiers=_M2M_MODIFIERS if meta["is_m2m"] else None,
+                path=widget_path,
+            )
+        options = [
+            (choice_meta["value"], choice_meta["label"])
+            for choice_meta in meta["choices"]
+        ]
+        return _enum_filter(
+            select_name,
+            options,
+            choice,
+            nullable=meta["nullable"],
+            path=widget_path,
+        )
+    raise ValueError(
+        f"field_widget: unhandled kind {kind!r} for {filter_cls.__name__}.{field_name}"
+    )
+
+
+def field_widget_templates(
+    filter_cls: type[OperatorFilter],
+) -> dict[AttrName, Node]:
+    """One blank value-widget ``<template>`` per non-relation leaf field, keyed by
+    field name — what ``<filter-group>`` (#192) embeds and clones on field-pick."""
+    return {
+        meta["name"]: Template(data_field=meta["name"])[
+            field_widget(filter_cls, meta["name"])
+        ]
+        for meta in field_metadata(filter_cls)
+        if meta["kind"] != "relation"
+    }
 
 
 _FILTER_FORM_ID = "filter-bar-form"
@@ -922,15 +1030,13 @@ class FilterBar(_FilterBarBase):
     def __init__(
         self,
         filter_json: str = "",
-        status_options: list[LabeledOption] | None = None,
         preset_list_url: str = "",
         preset_save_url: str = "",
     ) -> None:
         super().__init__(filter_json, preset_list_url, preset_save_url)
-        self.status_options = status_options
 
     def build_fields(self) -> list:
-        return _game_fields(self.existing, self.status_options)
+        return _game_fields(self.existing)
 
     def comparison_model(self) -> type[models.Model]:
         from games.models import Game
@@ -938,29 +1044,9 @@ class FilterBar(_FilterBarBase):
         return Game
 
 
-def _game_fields(
-    existing: dict, status_options: list[LabeledOption] | None = None
-) -> list:
-    from games.models import Game, Purchase
+def _game_fields(existing: dict) -> list:
+    from games.filters import GameFilter, PurchaseFilter, SessionFilter
 
-    if status_options is None:
-        status_options = [(s.value, s.label) for s in Game.Status]
-
-    status_choice = _filter_get_choice(existing, "status")
-    platform_choice = _filter_get_choice(existing, "platform")
-    platform_group_choice = _filter_get_choice(existing, "platform_group")
-    # Cross-entity widgets serialize into existing["AND"] as independent EXISTS
-    # sub-filters (#123 Phase 2d), so prefill reads them back from that list,
-    # matched by the same data-path each widget serializes to.
-    device_choice = _choice_from_raw(
-        _cross_entity_criterion(existing, ["session_filter", "device"])
-    )
-    purchase_type_choice = _choice_from_raw(
-        _cross_entity_criterion(existing, ["purchase_filter", "type"])
-    )
-    purchase_ownership_choice = _choice_from_raw(
-        _cross_entity_criterion(existing, ["purchase_filter", "ownership_type"])
-    )
     playevent_note_value, playevent_note_modifier = _string_from_field(
         _cross_entity_criterion(existing, ["playevent_filter", "note"])
     )
@@ -994,61 +1080,56 @@ def _game_fields(
         Div(class_=_FILTER_GRID_CLASS)[
             _filter_field(
                 "Status",
-                _enum_filter(
-                    "status",
-                    status_options,
-                    status_choice,
-                    nullable=not Game._meta.get_field("status").has_default(),
-                ),
+                field_widget(GameFilter, "status", value=existing.get("status")),
             ),
             _filter_field(
                 "Platform",
-                _model_filter(
-                    "platform",
-                    platform_choice,
-                    search_url="/api/platforms/search",
-                    nullable=Game._meta.get_field("platform").null,
-                ),
+                field_widget(GameFilter, "platform", value=existing.get("platform")),
             ),
             _filter_field(
                 "Platform Group",
-                _model_filter(
-                    "platform_group",
-                    platform_group_choice,
-                    search_url="/api/platforms/groups",
-                    nullable=False,
+                field_widget(
+                    GameFilter, "platform_group", value=existing.get("platform_group")
                 ),
             ),
             _filter_field(
                 "Device",
-                _model_filter(
+                # Cross-entity widgets serialize into existing["AND"] as independent
+                # EXISTS sub-filters (#123 Phase 2d); prefill reads them back from
+                # that list, matched by the same data-path the widget serializes to.
+                field_widget(
+                    SessionFilter,
                     "device",
-                    device_choice,
-                    search_url="/api/devices/search",
-                    nullable=False,
+                    value=_cross_entity_criterion(
+                        existing, ["session_filter", "device"]
+                    ),
                     path=["session_filter", "device"],
                 ),
             ),
             _filter_field(
                 "Purchase Type",
-                _enum_filter(
-                    # Element name stays flat (a DOM identifier); the nested
-                    # leaf comes from data-path, decoupled from the name.
-                    "purchase_type",
-                    Purchase.TYPES,
-                    purchase_type_choice,
-                    nullable=False,
+                # ``field_name_override`` keeps the flat DOM identifier
+                # ("purchase_type") while ``path`` carries the nested leaf.
+                field_widget(
+                    PurchaseFilter,
+                    "type",
+                    value=_cross_entity_criterion(
+                        existing, ["purchase_filter", "type"]
+                    ),
                     path=["purchase_filter", "type"],
+                    field_name_override="purchase_type",
                 ),
             ),
             _filter_field(
                 "Purchase Ownership",
-                _enum_filter(
-                    "purchase_ownership_type",
-                    Purchase.OWNERSHIP_TYPES,
-                    purchase_ownership_choice,
-                    nullable=False,
+                field_widget(
+                    PurchaseFilter,
+                    "ownership_type",
+                    value=_cross_entity_criterion(
+                        existing, ["purchase_filter", "ownership_type"]
+                    ),
                     path=["purchase_filter", "ownership_type"],
+                    field_name_override="purchase_ownership_type",
                 ),
             ),
             _filter_field(
@@ -1256,16 +1337,8 @@ class SessionFilterBar(_FilterBarBase):
 
 
 def _session_fields(existing: dict) -> list:
-    from games.models import Game, Session
+    from games.filters import GameFilter, SessionFilter
 
-    game_choice = _filter_get_choice(existing, "game")
-    device_choice = _filter_get_choice(existing, "device")
-    # Cross-entity: a session's platform lives on its game, so the widget
-    # serializes into a game_filter EXISTS sub-filter (mirrors the game bar's
-    # device widget). Prefill reads it back from existing["AND"] by the same path.
-    platform_choice = _choice_from_raw(
-        _cross_entity_criterion(existing, ["game_filter", "platform"])
-    )
     note_value = existing.get("note", {}).get("value", "")
     note_modifier = existing.get("note", {}).get("modifier", "EQUALS")
 
@@ -1279,29 +1352,23 @@ def _session_fields(existing: dict) -> list:
         Div(class_=_FILTER_GRID_CLASS)[
             _filter_field(
                 "Game",
-                _model_filter(
-                    "game",
-                    game_choice,
-                    search_url="/api/games/search",
-                    nullable=not Game._meta.get_field("name").has_default(),
-                ),
+                field_widget(SessionFilter, "game", value=existing.get("game")),
             ),
             _filter_field(
                 "Device",
-                _model_filter(
-                    "device",
-                    device_choice,
-                    search_url="/api/devices/search",
-                    nullable=Session._meta.get_field("device").null,
-                ),
+                field_widget(SessionFilter, "device", value=existing.get("device")),
             ),
             _filter_field(
                 "Platform",
-                _model_filter(
+                # Cross-entity: a session's platform lives on its game, so the
+                # widget serializes into a game_filter EXISTS sub-filter. Prefill
+                # reads it back from existing["AND"] by the same path.
+                field_widget(
+                    GameFilter,
                     "platform",
-                    platform_choice,
-                    search_url="/api/platforms/search",
-                    nullable=Game._meta.get_field("platform").null,
+                    value=_cross_entity_criterion(
+                        existing, ["game_filter", "platform"]
+                    ),
                     path=["game_filter", "platform"],
                 ),
             ),
@@ -1377,14 +1444,8 @@ class PurchaseFilterBar(_FilterBarBase):
 
 
 def _purchase_fields(existing: dict) -> list:
-    from games.models import Purchase
+    from games.filters import PurchaseFilter
 
-    type_options = Purchase.TYPES
-    ownership_options = Purchase.OWNERSHIP_TYPES
-    game_choice = _filter_get_choice(existing, "games")
-    platform_choice = _filter_get_choice(existing, "platform")
-    type_choice = _filter_get_choice(existing, "type")
-    ownership_choice = _filter_get_choice(existing, "ownership_type")
     price = _parse_number(existing, "price")
     is_refunded_value = _parse_bool_nullable(existing, "is_refunded")
     infinite_value = _parse_bool_nullable(existing, "infinite")
@@ -1410,44 +1471,27 @@ def _purchase_fields(existing: dict) -> list:
         Div(class_=_FILTER_GRID_CLASS)[
             _filter_field(
                 "Game",
-                _model_filter(
-                    "games",
-                    game_choice,
-                    search_url="/api/games/search",
-                    nullable=False,
-                    # games is many-to-many on Purchase: (All) means
-                    # INCLUDES_ALL ("purchase linked to every selected
-                    # game"); (Only) means INCLUDES_ONLY.
-                    m2m_modifiers=_M2M_MODIFIERS,
-                ),
+                # games is many-to-many on Purchase, so its FilterField declares
+                # the search endpoint and field_widget surfaces (All)/(Only)
+                # (INCLUDES_ALL / INCLUDES_ONLY) from the derived is_m2m flag.
+                field_widget(PurchaseFilter, "games", value=existing.get("games")),
             ),
             _filter_field(
                 "Platform",
-                _model_filter(
-                    "platform",
-                    platform_choice,
-                    search_url="/api/platforms/search",
-                    nullable=Purchase._meta.get_field("platform").null,
+                field_widget(
+                    PurchaseFilter, "platform", value=existing.get("platform")
                 ),
             ),
             _filter_field(
                 "Type",
-                _enum_filter(
-                    "type",
-                    type_options,
-                    type_choice,
-                    nullable=not Purchase._meta.get_field("type").has_default(),
-                ),
+                field_widget(PurchaseFilter, "type", value=existing.get("type")),
             ),
             _filter_field(
                 "Ownership",
-                _enum_filter(
+                field_widget(
+                    PurchaseFilter,
                     "ownership_type",
-                    ownership_options,
-                    ownership_choice,
-                    nullable=not Purchase._meta.get_field(
-                        "ownership_type"
-                    ).has_default(),
+                    value=existing.get("ownership_type"),
                 ),
             ),
             Div(class_=_FILTER_GRID_CLASS)[
@@ -1484,7 +1528,9 @@ def _purchase_fields(existing: dict) -> list:
             ),
             _filter_field(
                 "Refunded",
-                DateRangeFilter(
+                # Normalized to the canonical <date-range-picker> (was the bare
+                # native DateRangeFilter) — same {prefix}-min/-max contract.
+                DateRangePicker(
                     label="Refunded",
                     input_name_prefix="filter-date-refunded",
                     min_value=date_refunded_min,

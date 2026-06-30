@@ -154,8 +154,8 @@ class DateRangePickerTest(SimpleTestCase):
 
 
 class PurchaseFilterBarDateRangePickerTest(TestCase):
-    """The Purchased filter uses the DateRangePicker; Refunded keeps the
-    native-date DateRangeFilter (the picker is a tryout on one field)."""
+    """Both Purchase date filters (Purchased and Refunded) use the canonical
+    DateRangePicker — the native-date DateRangeFilter was normalized away (#242)."""
 
     def render(self, filter_json=""):
         return str(
@@ -172,12 +172,13 @@ class PurchaseFilterBarDateRangePickerTest(TestCase):
         self.assertIn('name="filter-date-purchased-min"', html)
         self.assertIn('name="filter-date-purchased-max"', html)
 
-    def test_refunded_keeps_native_date_inputs(self):
+    def test_refunded_uses_date_range_picker(self):
+        # #242 normalized Refunded onto the canonical picker; it now carries the
+        # calendar element's prefix marker and the same hidden -min/-max inputs.
         html = self.render()
-        refunded_min = html.find('name="filter-date-refunded-min"')
-        self.assertGreater(refunded_min, 0)
-        self.assertIn('type="date"', html)
-        self.assertNotIn('data-input-name-prefix="filter-date-refunded"', html)
+        self.assertIn('data-input-name-prefix="filter-date-refunded"', html)
+        self.assertIn('name="filter-date-refunded-min"', html)
+        self.assertIn('name="filter-date-refunded-max"', html)
 
     def test_prefilled_between_filter_round_trips_into_picker(self):
         filter_json = json.dumps(

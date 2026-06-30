@@ -2,6 +2,36 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Environment: run everything inside the Nix dev shell
+
+This repo's toolchain (`pnpm`, `nodejs`, `uv`, `ruff`, and the `LD_LIBRARY_PATH`
+that `pytest-playwright`/greenlet needs) is provided **only** by the Nix dev shell
+defined in `shell.nix`, loaded automatically via `direnv` (`.envrc` = `use nix`).
+
+**Every `make` / `pnpm` / `uv` / `pytest` command MUST run inside that shell.** A
+bare `make check` (or `make ts`, `make css`, `pytest e2e/…`) run outside it has no
+`pnpm` on `PATH`, so the TS compile and Tailwind build silently no-op or error,
+`dist/` and `games/static/base.css` go stale/missing, and the e2e suite then fails
+on CSS/JS-dependent assertions **locally only** — a green local run that breaks CI.
+Do not work around this with a `pnpm` shim or a global install: that still misses
+the pinned node, `LD_LIBRARY_PATH`, and `uv`/`ruff` the shell pins.
+
+How to run commands (non-interactive tools/agents):
+
+- **Preferred:** `direnv exec . <command>` — e.g. `direnv exec . make check`. Uses
+  the cached direnv env. In a **fresh worktree** the `.envrc` is unapproved; run
+  `direnv allow .` once first (first load runs `shell.nix`'s `shellHook`:
+  `uv venv --clear` + `uv sync`, so it's slow once).
+- **Fallback (no direnv):** `nix-shell --run "<command>"`.
+- A real browser for e2e is found from the system (`google-chrome`); the shell does
+  not vendor one.
+
+**Verification gate:** before declaring done / pushing / opening a PR, run the full
+`direnv exec . make check` (lint + format-check + mypy + ts-check + vitest + the
+entire pytest suite **including `e2e/`**) and confirm it is green. Never verify with
+a hand-picked subset of test files — that is how removed-widget e2e breakage reaches
+CI.
+
 ## Commands
 
 | Task | Command |

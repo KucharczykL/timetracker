@@ -336,7 +336,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_purchase_filter_bar_renders_date_inputs(self):
         """PurchaseFilterBar surfaces date_purchased and date_refunded as
-        type=date input pairs with -min/-max naming."""
+        <date-range-picker> widgets with -min/-max hidden-input naming."""
         html = str(
             PurchaseFilterBar(
                 filter_json="", preset_list_url="/l", preset_save_url="/s"
@@ -350,8 +350,9 @@ class FilterBarRenderingTest(TestCase):
         ):
             self.assertIn(f'name="{name}"', html)
             self.assertIn(f'id="{name}"', html)
-        # Inputs are native date pickers, not text.
-        self.assertIn('type="date"', html)
+        # Both date filters now render via the canonical <date-range-picker> (#242
+        # normalized Refunded off the bare native-date inputs).
+        self.assertIn("<date-range-picker", html)
         self.assertNoEscapedTags(html)
 
     def test_purchase_filter_bar_prepopulates_dates_between(self):
