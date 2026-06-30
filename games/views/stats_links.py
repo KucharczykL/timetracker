@@ -68,13 +68,9 @@ def sessions_for_game(game_id: int, year, label: str = "") -> SessionFilter:
     return session_filter
 
 
-def sessions_for_platform(platform_id: int, year, label: str = "") -> SessionFilter:
+def sessions_for_platform(platform_id: int, year) -> SessionFilter:
     session_filter = SessionFilter.where(**_session_bounds(year))
-    session_filter.game_filter = GameFilter(
-        platform=MultiCriterion(
-            value=[platform_id], labels={platform_id: label} if label else {}
-        )
-    )
+    session_filter.game_filter = GameFilter.where(platform=[platform_id])
     return session_filter
 
 

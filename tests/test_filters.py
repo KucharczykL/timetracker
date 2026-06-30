@@ -398,6 +398,11 @@ class TestMultiCriterion:
         c = MultiCriterion(value=[1, 2], labels={1: "One"})
         assert c.to_json() == {"value": [{"id": 1, "label": "One"}, 2]}
 
+    def test_to_json_embeds_labels_on_excludes_channel(self):
+        """The excludes channel is labelled symmetrically with value."""
+        c = MultiCriterion(value=[], excludes=[2], labels={2: "Two"})
+        assert c.to_json() == {"excludes": [{"id": 2, "label": "Two"}]}
+
     def test_labels_do_not_affect_query(self):
         """Labels are display-only: to_q is identical with and without them."""
         labelled = MultiCriterion(value=[1], excludes=[2], labels={1: "a", 2: "b"})

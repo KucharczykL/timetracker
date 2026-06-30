@@ -79,9 +79,7 @@ def test_unfinished_count_links_to_unfinished_purchases(rendered):
 
 
 def test_platform_row_links_to_platform_sessions(rendered):
-    # the rendered link embeds the platform name as a display label (#224)
-    pc = rendered["pc"]
-    url = _href(stats_links.sessions_for_platform(pc.id, YEAR, pc.name))
+    url = _href(stats_links.sessions_for_platform(rendered["pc"].id, YEAR))
     assert url in rendered["html"]
 
 

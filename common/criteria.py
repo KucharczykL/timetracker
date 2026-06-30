@@ -629,10 +629,12 @@ class _SetCriterion(_Criterion):
         return {"id": item, "label": label} if label else item
 
     def to_json(self) -> dict[str, Any]:
-        # Mirrors the base omission rules (skip empty value/excludes and the
-        # default modifier) but emits ``{id, label}`` dicts for ids that carry a
-        # display label and never emits ``labels`` as its own key — labels live
-        # inline on each element, matching the client serializer's wire shape.
+        # Overrides (does NOT mirror) the base ``to_json``: because ``value`` /
+        # ``excludes`` use ``default_factory``, the base never treats an empty
+        # list as the default, so it would leak ``"value": []`` / ``"excludes":
+        # []`` and a raw ``"labels": {}`` key onto the wire. This skips empty
+        # lists, never emits ``labels`` as its own key (labels are folded inline
+        # per ``_labelled``), and — like the base — omits the default modifier.
         result: dict[str, Any] = {}
         if self.value:
             result["value"] = [self._labelled(item) for item in self.value]
@@ -653,6 +655,7 @@ class MultiCriterion(_SetCriterion):
 
     value: list[int] = field(default_factory=list)
     excludes: list[int] = field(default_factory=list)
+    labels: dict[int, str] = field(default_factory=dict, compare=False)
     _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_int)
 
 
@@ -666,6 +669,7 @@ class ChoiceCriterion(_SetCriterion):
 
     value: list[str] = field(default_factory=list)
     excludes: list[str] = field(default_factory=list)
+    labels: dict[str, str] = field(default_factory=dict, compare=False)
 
 
 @dataclass
