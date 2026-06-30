@@ -132,9 +132,24 @@ export function insertChild(
   });
 }
 
+// Remove the node at `path`, then collapse any group the removal leaves empty:
+// an emptied non-root group is removed from its own parent, cascading upward as
+// long as each removal empties the next ancestor. The root is the one group
+// allowed to sit empty (it cannot be removed — the shell renders it as a "matches
+// all" empty state), so the walk stops there. Keeps the invariant that no
+// rendered, NOT-able group is ever empty (issue #236).
 export function removeAt(root: GroupNode, path: NodePath): GroupNode {
   const { parentPath, index } = splitPath(path);
-  return updateChildren(root, parentPath, (children) => children.filter((_, i) => i !== index));
+  let next = updateChildren(root, parentPath, (children) => children.filter((_, i) => i !== index));
+  let groupPath: NodePath = parentPath;
+  while (groupPath.length > 0 && groupAt(next, groupPath).children.length === 0) {
+    const { parentPath: grandparentPath, index: groupIndex } = splitPath(groupPath);
+    next = updateChildren(next, grandparentPath, (children) =>
+      children.filter((_, i) => i !== groupIndex),
+    );
+    groupPath = grandparentPath;
+  }
+  return next;
 }
 
 export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {

@@ -18,8 +18,11 @@ export type ComparisonPayload = Record<string, unknown>;
 export interface GroupNode {
   kind: "group";
   connective: Connective; // negation is a separate flag, never a connective
-  // negate on a group with no children is meaningless; silently dropped on
-  // export — wrapNegate returns identity when the inner dict is empty.
+  // negate on a group with no children is meaningless and serializes away
+  // (wrapNegate returns identity for an empty dict). The builder never lets that
+  // state arise: non-root groups auto-collapse when emptied, and the empty root
+  // renders a header-less "matches all" state with no NOT chip (issue #236). The
+  // wrapNegate guard remains only as defense for imported/legacy JSON.
   negate: boolean;
   children: FilterNode[];
 }

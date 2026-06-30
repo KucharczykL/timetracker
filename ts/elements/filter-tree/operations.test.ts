@@ -110,6 +110,22 @@ describe("insertChild / removeAt", () => {
   it("removing the last child of root yields an empty group", () => {
     expect(removeAt(group("AND", [criterion("a")]), [0])).toEqual(group("AND", []));
   });
+
+  it("removing the last child of a nested group removes that group", () => {
+    const tree = group("AND", [criterion("a"), group("OR", [criterion("b")])]);
+    expect(removeAt(tree, [1, 0])).toEqual(group("AND", [criterion("a")]));
+  });
+
+  it("cascades through multiple ancestors that empty as a result", () => {
+    const tree = group("AND", [criterion("a"), group("OR", [group("AND", [criterion("b")])])]);
+    // Removing the only leaf empties its group, which empties its parent group.
+    expect(removeAt(tree, [1, 0, 0])).toEqual(group("AND", [criterion("a")]));
+  });
+
+  it("stops the cascade at the root, leaving it empty", () => {
+    const tree = group("AND", [group("OR", [criterion("a")])]);
+    expect(removeAt(tree, [0, 0])).toEqual(group("AND", []));
+  });
 });
 
 describe("duplicateAt", () => {

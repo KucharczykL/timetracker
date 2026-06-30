@@ -52,6 +52,11 @@ const CARD_CLASS = "flex flex-col gap-2 rounded-lg border border-gray-200 p-2 da
 const HEADER_CLASS = "flex items-center justify-between gap-2";
 const CHILDREN_CLASS = "flex flex-col gap-2 pl-3";
 const FOOTER_CLASS = "flex flex-wrap gap-2";
+// Shown in place of the header when the root group is empty: an empty filter
+// serializes to {} (matches everything), so say so rather than render a NOT/AND
+// chip on a group with nothing to negate or join (issue #236).
+const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
+const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
 const SLOT_ROW_CLASS = "flex items-center justify-between gap-2";
 const SLOT_CLASS =
   "flex-1 rounded border border-dashed border-gray-300 px-2 py-1 text-sm text-gray-600 " +
@@ -231,6 +236,17 @@ export class FilterGroupElement extends HTMLElement {
     const card = element("div", `${CARD_CLASS} ${depthBackground(path.length)}`);
     card.dataset.kind = "group";
     card.dataset.path = JSON.stringify(path);
+
+    // Only the root may be empty (non-root groups auto-collapse on their last
+    // child's removal). A header-less "matches all" state keeps an empty group
+    // off the NOT/connective chips it has nothing to apply to (issue #236).
+    if (path.length === 0 && node.children.length === 0) {
+      const emptyState = element("div", EMPTY_STATE_CLASS);
+      emptyState.textContent = EMPTY_STATE_TEXT;
+      card.appendChild(emptyState);
+      card.appendChild(this.footer(path));
+      return card;
+    }
 
     const header = element("div", HEADER_CLASS);
     // NOT is the leftmost control on every node (groups and leaves) so negation
