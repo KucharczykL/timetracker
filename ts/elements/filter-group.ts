@@ -16,7 +16,7 @@
  */
 import { readFilterGroupProps } from "../generated/props.js";
 import { serialize } from "./filter-tree/serializer.js";
-import type { Connective, FilterNode, GroupNode } from "./filter-tree/types.js";
+import type { Connective, FilterNode, FilterTreeChangeDetail, GroupNode } from "./filter-tree/types.js";
 import {
   type NodePath,
   canAddGroup,
@@ -36,7 +36,8 @@ import {
 } from "./filter-tree/operations.js";
 
 // Full, static class strings only — Tailwind detects complete strings, so the
-// depth palette is a fixed lookup (never `bg-depth-${n}`). ~4-shade cycle (Qui).
+// depth palette is a fixed lookup (never `bg-depth-${n}`). ~4-shade cycle that
+// repeats past depth 3, giving nested cards alternating backgrounds.
 const DEPTH_BACKGROUNDS = [
   "bg-gray-50 dark:bg-gray-900/40",
   "bg-white dark:bg-gray-800/40",
@@ -58,6 +59,23 @@ const BUTTON_CLASS =
   "rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-100 disabled:cursor-not-allowed " +
   "disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700";
 
+// The closed set of restructuring actions a button can carry; producer
+// (actionButton) and consumer (applyAction's switch) share it so a typo on either
+// side fails tsc instead of silently no-op'ing.
+type TreeAction =
+  | "add-condition"
+  | "add-group"
+  | "add-relation"
+  | "remove"
+  | "duplicate"
+  | "wrap"
+  | "unwrap"
+  | "up"
+  | "down";
+
+// The event the shell dispatches after every edit (see FilterTreeChangeDetail).
+export const FILTER_TREE_CHANGE_EVENT = "filter-tree-change";
+
 function depthBackground(depth: number): string {
   return DEPTH_BACKGROUNDS[depth % DEPTH_BACKGROUNDS.length];
 }
@@ -72,10 +90,11 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 // A restructuring action button: carries the action name + the target path so a
-// single delegated listener can route it. `disabled` greys it out (the op is also
-// re-guarded in the handler, so a stale click is harmless).
+// single delegated listener can route it. `disabled` greys it out; the cap-gated
+// actions (add-group/add-relation/wrap/unwrap) are additionally re-guarded in the
+// handler, so a stale click on a since-invalidated one is harmless.
 function actionButton(
-  action: string,
+  action: TreeAction,
   label: string,
   path: NodePath,
   { disabled = false, title = "" } = {},
@@ -110,8 +129,10 @@ export class FilterGroupElement extends HTMLElement {
     this.render();
   }
 
-  /** The current node tree (read-only source of truth) — for 2d serialize/count. */
-  getTree(): GroupNode {
+  /** The current node tree — for 2d serialize/count. Do not mutate it: the shell's
+   *  immutability invariant (and the change-event dispatch) relies on edits going
+   *  through the pure ops, so the type is `Readonly` to flag in-place writes. */
+  getTree(): Readonly<GroupNode> {
     return this.tree;
   }
 
@@ -122,12 +143,12 @@ export class FilterGroupElement extends HTMLElement {
 
   private onClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
-    if (!button || button.dataset.path === undefined) return;
-    const path = JSON.parse(button.dataset.path) as number[];
-    this.applyAction(button.dataset.action ?? "", path);
+    if (!button || button.dataset.action === undefined || button.dataset.path === undefined) return;
+    const path: NodePath = JSON.parse(button.dataset.path) as number[];
+    this.applyAction(button.dataset.action as TreeAction, path);
   };
 
-  private applyAction(action: string, path: NodePath): void {
+  private applyAction(action: TreeAction, path: NodePath): void {
     const before = this.tree;
     switch (action) {
       case "add-condition":
@@ -160,11 +181,10 @@ export class FilterGroupElement extends HTMLElement {
       default:
         return;
     }
-    if (this.tree === before) return; // a guarded no-op changed nothing
+    if (this.tree === before) return; // a guarded/boundary no-op changed nothing
     this.render();
-    this.dispatchEvent(
-      new CustomEvent("filter-tree-change", { bubbles: true, detail: { tree: this.tree } }),
-    );
+    const detail: FilterTreeChangeDetail = { tree: this.tree };
+    this.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true, detail }));
   }
 
   private render(): void {

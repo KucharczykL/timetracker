@@ -47,6 +47,14 @@ export interface RelationNode {
 
 export type FilterNode = GroupNode | CriterionLeaf | ComparisonLeaf | RelationNode;
 
+// Payload of the `filter-tree-change` CustomEvent the <filter-group> shell
+// dispatches after every edit — the new root tree. Named so producer (the
+// element) and consumers (2d serialize/count, tests) share one typed contract,
+// mirroring the OpenMenuDetail precedent in menu-behavior.ts.
+export interface FilterTreeChangeDetail {
+  tree: GroupNode;
+}
+
 // Per-model metadata the importer consumes to classify a JSON key as a relation
 // descent (and find its target model) or a criterion leaf. Unknown keys are
 // dropped, mirroring the backend's `from_json` (it iterates declared fields only).

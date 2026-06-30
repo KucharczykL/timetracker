@@ -12,7 +12,14 @@
  * shell renders a relation's child group as an inert slot, not a navigable subtree),
  * so a group reached at path `P` always sits at group-nesting depth `P.length`.
  */
-import { type Connective, type FilterNode, type GroupNode, type RelationMatch } from "./types.js";
+import {
+  type Connective,
+  type CriterionLeaf,
+  type FilterNode,
+  type GroupNode,
+  type RelationMatch,
+  type RelationNode,
+} from "./types.js";
 import { group } from "./serializer.js";
 
 export type NodePath = readonly number[];
@@ -26,13 +33,13 @@ export const SOFT_DEPTH_CAP = 5;
 
 // An empty criterion leaf: field unchosen, payload empty. A leaf widget (comp 4)
 // fills `field`/`criterion` in 2d; until then it is an inert slot in the shell.
-export function emptyCriterion(): FilterNode {
+export function emptyCriterion(): CriterionLeaf {
   return { kind: "criterion", field: "", criterion: {}, negate: false };
 }
 
 // An empty relation descent: ANY over an empty child group is the "has ≥1 related
 // row" presence test (design spec). Relation field + quantifier are set by comp 5.
-export function emptyRelation(): FilterNode {
+export function emptyRelation(): RelationNode {
   return { kind: "relation", field: "", match: "ANY", child: group("AND", []), negate: false };
 }
 
@@ -68,14 +75,14 @@ function groupAt(root: GroupNode, path: NodePath): GroupNode {
 
 // ── Immutable spine rewrite ──────────────────────────────────────────────────
 
-// Replace the node at `path` with `fn(node)`, cloning only the groups along the
-// spine. The input tree is never mutated.
+// Replace the node at `path` with `transform(node)`, cloning only the groups along
+// the spine. The input tree is never mutated.
 function replaceNodeAt(
   root: GroupNode,
   path: NodePath,
-  fn: (node: FilterNode) => FilterNode,
+  transform: (node: FilterNode) => FilterNode,
 ): GroupNode {
-  const result = replaceNode(root, path, fn);
+  const result = replaceNode(root, path, transform);
   if (result.kind !== "group") throw new Error(`Root replacement must stay a group`);
   return result;
 }
@@ -83,14 +90,14 @@ function replaceNodeAt(
 function replaceNode(
   node: FilterNode,
   path: NodePath,
-  fn: (node: FilterNode) => FilterNode,
+  transform: (node: FilterNode) => FilterNode,
 ): FilterNode {
-  if (path.length === 0) return fn(node);
+  if (path.length === 0) return transform(node);
   if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
   const [index, ...rest] = path;
   const child = node.children[index];
   if (child === undefined) throw new Error(`Path index ${index} out of range`);
-  const newChild = replaceNode(child, rest, fn);
+  const newChild = replaceNode(child, rest, transform);
   return { ...node, children: node.children.map((existing, i) => (i === index ? newChild : existing)) };
 }
 
@@ -98,11 +105,11 @@ function replaceNode(
 function updateChildren(
   root: GroupNode,
   groupPath: NodePath,
-  fn: (children: FilterNode[]) => FilterNode[],
+  transform: (children: FilterNode[]) => FilterNode[],
 ): GroupNode {
   return replaceNodeAt(root, groupPath, (node) => {
     if (node.kind !== "group") throw new Error(`Node at path is not a group`);
-    return { ...node, children: fn([...node.children]) };
+    return { ...node, children: transform([...node.children]) };
   });
 }
 
@@ -139,12 +146,15 @@ export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {
 }
 
 // Move the node at `path` one slot earlier (-1) or later (+1) among its siblings.
-// A move past either boundary is a no-op (the element disables ↑/↓ at the ends).
+// A move past either boundary returns the *same* root reference unchanged, so a
+// caller can identity-compare to detect the no-op (the element also disables ↑/↓
+// at the ends).
 export function move(root: GroupNode, path: NodePath, direction: -1 | 1): GroupNode {
   const { parentPath, index } = splitPath(path);
+  const siblings = groupAt(root, parentPath).children;
+  const target = index + direction;
+  if (target < 0 || target >= siblings.length) return root;
   return updateChildren(root, parentPath, (children) => {
-    const target = index + direction;
-    if (target < 0 || target >= children.length) return children;
     const reordered = [...children];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     return reordered;

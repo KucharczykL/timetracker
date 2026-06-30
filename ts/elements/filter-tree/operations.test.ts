@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { group } from "./serializer.js";
-import type { FilterNode, GroupNode } from "./types.js";
+import type { CriterionLeaf, FilterNode, GroupNode } from "./types.js";
 import {
   SOFT_DEPTH_CAP,
   canAddGroup,
@@ -99,11 +99,15 @@ describe("insertChild / removeAt", () => {
   });
 
   it("does not mutate the input tree", () => {
-    const tree = group("AND", [criterion("a")]);
+    const tree = group("AND", [criterion("a"), criterion("b")]);
     const snapshot = structuredClone(tree);
-    insertChild(tree, [], criterion("b"));
-    removeAt(group("AND", [criterion("a"), criterion("b")]), [0]);
+    insertChild(tree, [], criterion("c"));
+    removeAt(tree, [0]);
     expect(tree).toEqual(snapshot);
+  });
+
+  it("removing the last child of root yields an empty group", () => {
+    expect(removeAt(group("AND", [criterion("a")]), [0])).toEqual(group("AND", []));
   });
 });
 
@@ -117,9 +121,13 @@ describe("duplicateAt", () => {
     const tree = group("AND", [group("OR", [criterion("a")])]);
     const result = duplicateAt(tree, [0]);
     const clone = result.children[1];
-    if (clone.kind !== "group") throw new Error("expected a group clone");
-    expect(clone).toEqual(tree.children[0]);
-    expect(clone).not.toBe(tree.children[0]);
+    if (clone.kind !== "group" || clone.children[0].kind !== "criterion") {
+      throw new Error("expected a nested group clone");
+    }
+    (clone.children[0] as CriterionLeaf).field = "MUTATED";
+    const original = tree.children[0];
+    if (original.kind !== "group") throw new Error("expected a group");
+    expect((original.children[0] as CriterionLeaf).field).toBe("a"); // untouched
   });
 });
 
@@ -134,12 +142,37 @@ describe("move", () => {
     expect(move(tree, [1], 1)).toEqual(group("AND", [criterion("a"), criterion("c"), criterion("b")]));
   });
 
-  it("is a no-op past the first slot", () => {
-    expect(move(tree, [0], -1)).toEqual(tree);
+  it("returns the same root reference past the first slot", () => {
+    expect(move(tree, [0], -1)).toBe(tree);
   });
 
-  it("is a no-op past the last slot", () => {
-    expect(move(tree, [2], 1)).toEqual(tree);
+  it("returns the same root reference past the last slot", () => {
+    expect(move(tree, [2], 1)).toBe(tree);
+  });
+
+  it("reorders within a nested group", () => {
+    const nested = group("AND", [group("OR", [criterion("a"), criterion("b")])]);
+    expect(move(nested, [0, 0], 1)).toEqual(group("AND", [group("OR", [criterion("b"), criterion("a")])]));
+  });
+});
+
+describe("error branches", () => {
+  it("setConnective throws on a non-group node", () => {
+    expect(() => setConnective(group("AND", [criterion("a")]), [0], "OR")).toThrow();
+  });
+
+  it("setMatch throws on a non-relation node", () => {
+    expect(() => setMatch(group("AND", [criterion("a")]), [0], "NONE")).toThrow();
+  });
+
+  it("wrapInGroup and unwrapGroup throw at the root path", () => {
+    expect(() => wrapInGroup(emptyRoot(), [])).toThrow();
+    expect(() => unwrapGroup(emptyRoot(), [])).toThrow();
+  });
+
+  it("toggleNegate works on a relation node", () => {
+    const tree = group("AND", [relation("sessions", group("AND", []))]);
+    expect(nodeAt(toggleNegate(tree, [0]), [0])).toMatchObject({ kind: "relation", negate: true });
   });
 });
 
@@ -219,6 +252,16 @@ describe("depth", () => {
     const tree = group("AND", [relation("sessions", group("AND", [criterion("a")]))]);
     // root(0) → relation child group(1). The relation itself is not a group level.
     expect(deepestGroupDepth(tree, 0)).toBe(1);
+  });
+
+  it("recurses through a relation's nested child groups", () => {
+    // root(0) → relation child group(1) → nested OR group(2).
+    const tree = group("AND", [relation("sessions", group("AND", [group("OR", [criterion("a")])]))]);
+    expect(deepestGroupDepth(tree, 0)).toBe(2);
+  });
+
+  it("canWrap accounts for a relation's child group depth", () => {
+    expect(canWrap(group("AND", [relation("sessions", group("AND", []))]), [0])).toBe(true);
   });
 
   it("counts nested groups", () => {

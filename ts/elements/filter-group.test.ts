@@ -128,4 +128,44 @@ describe("<filter-group> change event", () => {
   });
 });
 
+describe("<filter-group> inert-slot contract (2d hydration)", () => {
+  it("leaf/relation slots carry data-path and a round-trippable data-payload", () => {
+    const host = mount();
+    clickAction(host, "add-relation", []); // [0]=criterion, [1]=relation
+    const relationSlot = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
+    expect(relationSlot.dataset.path).toBe(JSON.stringify([1]));
+    expect(JSON.parse(relationSlot.dataset.payload!)).toMatchObject({
+      kind: "relation",
+      field: "",
+      match: "ANY",
+      negate: false,
+    });
+    const criterionSlot = slots(host).find((slot) => slot.dataset.nodeKind === "criterion")!;
+    expect(JSON.parse(criterionSlot.dataset.payload!)).toMatchObject({ kind: "criterion", negate: false });
+  });
+
+  it("the connective slot carries its group path for component 2", () => {
+    const host = mount();
+    expect(host.querySelector<HTMLElement>('[data-slot="connective"]')!.dataset.path).toBe("[]");
+  });
+});
+
+describe("<filter-group> duplicate + event fidelity", () => {
+  it("duplicate adds a sibling copy", () => {
+    const host = mount();
+    clickAction(host, "duplicate", [0]);
+    expect(slots(host)).toHaveLength(2);
+  });
+
+  it("dispatches exactly one change event per effective edit (no spurious)", () => {
+    const host = mount();
+    let count = 0;
+    host.addEventListener("filter-tree-change", () => (count += 1));
+    clickAction(host, "add-condition", []);
+    clickAction(host, "add-group", []);
+    clickAction(host, "remove", [0]);
+    expect(count).toBe(3);
+  });
+});
+
 type GroupNodeLike = { children: unknown[] };

@@ -171,7 +171,10 @@ _FieldComparisonSet = custom_element_builder("field-comparison-set")
 
 
 class FilterGroupProps(TypedDict):
-    model: str  # root model key (e.g. "game"); drives 2d metadata + serialization
+    # Root model key (e.g. "game"). Reserved for 2d: it will select the field-
+    # metadata registry + serialization model. The element reads it but does not
+    # consume it yet in this phase (#189).
+    model: str
 
 
 register_element("filter-group", "FilterGroup", FilterGroupProps)
