@@ -201,6 +201,49 @@ describe("<filter-group> connective + negate (component 2, #190)", () => {
   });
 });
 
+describe("<filter-group> empty groups (#236)", () => {
+  it("auto-collapses a nested group when its last child is removed", () => {
+    const host = mount();
+    clickAction(host, "add-group", []); // [0]=seed criterion, [1]=group with [1,0]=criterion
+    expect(host.querySelector('[data-kind="group"][data-path="[1]"]')).not.toBeNull();
+    clickAction(host, "remove", [1, 0]); // empties the nested group → it is removed
+    expect(host.querySelector('[data-kind="group"][data-path="[1]"]')).toBeNull();
+    expect(slots(host)).toHaveLength(1); // only the root's seed criterion remains
+  });
+
+  it("renders a 'matches all' empty state with no NOT/connective chip when root is cleared", () => {
+    const host = mount();
+    clickAction(host, "remove", [0]); // remove the root's only seed criterion
+    expect(button(host, "toggle-negate", [])).toBeNull();
+    expect(button(host, "toggle-connective", [])).toBeNull();
+    expect(host.textContent).toContain("No conditions. This will match all items.");
+    // the add affordances stay so the user can rebuild
+    expect(button(host, "add-condition", [])).not.toBeNull();
+    expect(button(host, "add-group", [])).not.toBeNull();
+    // an empty filter serializes to {} (matches everything)
+    expect(host.serialize()).toEqual({});
+  });
+
+  it("a cascade removal collapses the group in the DOM and fires one change event", () => {
+    const host = mount();
+    clickAction(host, "add-group", []); // [1]=group seeded with [1,0]=criterion
+    let count = 0;
+    host.addEventListener("filter-tree-change", () => (count += 1));
+    clickAction(host, "remove", [1, 0]); // empties the nested group → collapses it
+    expect(count).toBe(1);
+    expect(host.querySelector('[data-kind="group"][data-path="[1]"]')).toBeNull();
+  });
+
+  it("rebuilds from the empty state and restores the header chips", () => {
+    const host = mount();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-condition", []);
+    expect(button(host, "toggle-negate", [])).not.toBeNull();
+    expect(button(host, "toggle-connective", [])?.textContent).toBe("AND");
+    expect(slots(host)).toHaveLength(1);
+  });
+});
+
 describe("<filter-group> duplicate + event fidelity", () => {
   it("duplicate adds a sibling copy", () => {
     const host = mount();
