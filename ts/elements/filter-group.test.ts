@@ -111,6 +111,8 @@ describe("<filter-group> depth cap", () => {
     expect(button(host, "add-group", deepest)?.disabled).toBe(true);
     expect(button(host, "add-relation", deepest)?.disabled).toBe(true);
     expect(button(host, "add-condition", deepest)?.disabled).toBeFalsy();
+    // the deepest group's own Wrap is disabled too — wrapping it would breach the cap
+    expect(button(host, "wrap", deepest)?.disabled).toBe(true);
   });
 });
 

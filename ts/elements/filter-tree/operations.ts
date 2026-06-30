@@ -196,10 +196,9 @@ export function unwrapGroup(root: GroupNode, path: NodePath): GroupNode {
   const { parentPath, index } = splitPath(path);
   const node = nodeAt(root, path);
   if (node.kind !== "group") throw new Error(`Cannot unwrap a non-group node`);
-  const dissolved = node;
   return updateChildren(root, parentPath, (children) => [
     ...children.slice(0, index),
-    ...dissolved.children,
+    ...node.children,
     ...children.slice(index + 1),
   ]);
 }

@@ -129,9 +129,10 @@ export class FilterGroupElement extends HTMLElement {
     this.render();
   }
 
-  /** The current node tree — for 2d serialize/count. Do not mutate it: the shell's
-   *  immutability invariant (and the change-event dispatch) relies on edits going
-   *  through the pure ops, so the type is `Readonly` to flag in-place writes. */
+  /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
+   *  must go through the pure ops (the change-event dispatch depends on it). The
+   *  `Readonly` is shallow — it flags top-level rebinds only; deep mutation of
+   *  `children` or a nested node stays on the honor system. */
   getTree(): Readonly<GroupNode> {
     return this.tree;
   }
@@ -178,8 +179,13 @@ export class FilterGroupElement extends HTMLElement {
       case "down":
         this.tree = move(this.tree, path, 1);
         break;
-      default:
-        return;
+      default: {
+        // Exhaustiveness guard: every TreeAction is handled above, so `action`
+        // narrows to `never` here. Adding a member without a case fails tsc. The
+        // runtime `return` still guards the `as TreeAction` cast of dataset.action.
+        const unhandled: never = action;
+        return unhandled;
+      }
     }
     if (this.tree === before) return; // a guarded/boundary no-op changed nothing
     this.render();
@@ -241,10 +247,11 @@ export class FilterGroupElement extends HTMLElement {
     bar.appendChild(
       actionButton("down", "↓", path, { disabled: index >= siblingCount - 1, title: "Move down" }),
     );
+    const wrappable = canWrap(this.tree, path);
     bar.appendChild(
       actionButton("wrap", "Wrap", path, {
-        disabled: !canWrap(this.tree, path),
-        title: canWrap(this.tree, path) ? "Wrap in a group" : "Max nesting reached",
+        disabled: !wrappable,
+        title: wrappable ? "Wrap in a group" : "Max nesting reached",
       }),
     );
     if (isGroup) {
