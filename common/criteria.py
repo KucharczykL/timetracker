@@ -1653,6 +1653,9 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     return group
 
 
+type ModifierValue = str  # a Modifier.value, e.g. "INCLUDES"
+
+
 class ComparableColumn(TypedDict):
     """A model column that can take part in a field-to-field comparison, ready for
     a picker: its field name, a human label, and its comparison group."""
@@ -1660,7 +1663,7 @@ class ComparableColumn(TypedDict):
     value: str  # column name, e.g. "timestamp_end"
     label: str  # field verbose_name, title-cased, e.g. "Timestamp End"
     group: ComparisonGroup
-    operators: list[str]  # Modifier values valid for this column's group (#152)
+    operators: list[ModifierValue]  # valid for this column's group (#152)
 
 
 def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:

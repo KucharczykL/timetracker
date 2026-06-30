@@ -710,6 +710,14 @@ class FieldComparisonWidgetTest(TestCase):
         self.assertIn("timestamp_start", html)
         self.assertIn('mode="AND"', html)
 
+    def test_columns_prop_carries_operators(self):
+        # Each column ships its allowed operators as data (#152) so the TS widget
+        # renders them directly; the key + a representative ordered op reach the
+        # serialized attribute (JSON key/value text survives attribute escaping).
+        html = str(SessionFilterBar(filter_json=""))
+        self.assertIn("operators", html)
+        self.assertIn("LESS_THAN", html)
+
     def test_no_double_escaped_markup(self):
         # The columns JSON attribute must not introduce escaped element markup.
         html = str(SessionFilterBar(filter_json=""))

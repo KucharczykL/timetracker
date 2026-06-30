@@ -31,7 +31,10 @@ export interface ComparisonRow {
 // source of truth for *which* operators are valid — that's the per-column
 // `operators` list (server-derived from _allowed_comparison_modifiers). A token
 // with no glyph here falls back to its raw value, so an added operator still
-// renders.
+// renders. Intentionally NOT contract-guarded against the Python enum: these are
+// labels, not vocabulary, so a renamed modifier degrades to its raw token (e.g.
+// "GREATER_THAN" instead of ">") rather than breaking — acceptable for a
+// cosmetic map.
 const OPERATOR_LABELS: Record<string, string> = {
   EQUALS: "=",
   NOT_EQUALS: "≠",
@@ -96,9 +99,13 @@ function refreshRow(row: HTMLElement, columns: Column[]): void {
   }
   operator.disabled = false;
   right.disabled = false;
+  // `?? []` defends against a columns prop missing `operators` (server/client
+  // skew, a stale cached page): degrade to an empty operator list rather than
+  // throwing mid-loop and leaving the rest of the rows unwired.
+  const operators = leftColumn.operators ?? [];
   fillSelect(
     operator,
-    leftColumn.operators.map((modifier) => [modifier, OPERATOR_LABELS[modifier] ?? modifier]),
+    operators.map((modifier) => [modifier, OPERATOR_LABELS[modifier] ?? modifier]),
     operatorSaved,
     "—",
   );

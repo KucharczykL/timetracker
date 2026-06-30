@@ -126,6 +126,32 @@ def test_dependent_options_and_and_mode(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
+def test_operator_options_track_column_group(live_server, page):
+    """The operator <select> is filled from the chosen column's server-supplied
+    `operators` (#152), so each comparison group offers the right set: bool is
+    equality-only, string adds containment, ordered groups have neither extreme."""
+    page.goto(live_server.url + "/test-fc-empty/")
+    page.locator("[data-fc-add]").click()
+    row = page.locator("[data-fc-row]").first
+    left = row.locator("[data-fc-left]")
+    operator = row.locator("[data-fc-op]")
+
+    # bool column (emulated) -> EQUALS / NOT_EQUALS only.
+    left.select_option("emulated")
+    assert operator.locator('option[value="EQUALS"]').count() == 1
+    assert operator.locator('option[value="NOT_EQUALS"]').count() == 1
+    assert operator.locator('option[value="GREATER_THAN"]').count() == 0
+    assert operator.locator('option[value="INCLUDES"]').count() == 0
+
+    # string column (note) -> ordered + containment.
+    left.select_option("note")
+    assert operator.locator('option[value="INCLUDES"]').count() == 1
+    assert operator.locator('option[value="EXCLUDES"]').count() == 1
+    assert operator.locator('option[value="GREATER_THAN"]').count() == 1
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
 def test_or_mode_serializes_isolated_wrapper(live_server, page):
     page.goto(live_server.url + "/test-fc-empty/")
     page.locator("[data-fc-add]").click()

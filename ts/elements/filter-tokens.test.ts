@@ -20,9 +20,14 @@ import {
 
 describe("filter behavioral tokens", () => {
   it("presence/range membership helpers reflect their token sets", () => {
+    // Pin every token individually so accidentally dropping one (e.g. NOT_BETWEEN,
+    // which no e2e exercises) fails here rather than silently regressing the
+    // value2 read / value-less-criterion behavior keyed on it.
     expect(isPresenceModifier("IS_NULL")).toBe(true);
+    expect(isPresenceModifier("NOT_NULL")).toBe(true);
     expect(isPresenceModifier("EQUALS")).toBe(false);
     expect(isRangeModifier("BETWEEN")).toBe(true);
+    expect(isRangeModifier("NOT_BETWEEN")).toBe(true);
     expect(isRangeModifier("EQUALS")).toBe(false);
   });
 

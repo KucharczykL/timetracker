@@ -2604,6 +2604,19 @@ class TestComparableColumns:
         ]
         assert columns["mastered"]["operators"] == ["EQUALS", "NOT_EQUALS"]
 
+    def test_operators_for_datetime_and_date_groups(self):
+        """Close the group matrix: datetime (Session) and date (Purchase) carry
+        the ordered-only operator set, like number."""
+        from games.models import Purchase, Session
+
+        from common.criteria import _allowed_comparison_modifiers
+
+        ordered = [
+            modifier.value for modifier in _allowed_comparison_modifiers("number")
+        ]
+        assert self._by_value(Session)["timestamp_end"]["operators"] == ordered
+        assert self._by_value(Purchase)["date_purchased"]["operators"] == ordered
+
     def test_known_game_columns(self):
         from games.models import Game
 

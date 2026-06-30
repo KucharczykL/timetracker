@@ -6,9 +6,12 @@
  * list). These are the handful of modifier tokens whose IDENTITY drives client
  * UI behavior, so they legitimately live in TS:
  *
- *   - PRESENCE_MODIFIERS: mutually exclusive with value pills (selecting one
- *     clears the pills, and adding a pill clears a presence modifier).
- *   - RANGE_MODIFIERS: reveal the second value input.
+ *   - PRESENCE_MODIFIERS: in the set widget, mutually exclusive with value pills
+ *     (selecting one clears the pills, and adding a pill clears a presence
+ *     modifier); in the string/number widgets, serialize to a value-less
+ *     `{ modifier }` criterion (no value/value2).
+ *   - RANGE_MODIFIERS: signal that a second bound (value2) is present and must be
+ *     read and serialized from the number widget's second input.
  *
  * The single TS home for these tokens. `tests/test_filter_tokens_contract.py`
  * asserts every value here is a real `common.criteria.Modifier`, so a renamed or
