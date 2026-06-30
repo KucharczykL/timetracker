@@ -68,6 +68,8 @@ from common.components.filters import (
     PurchaseFilterBar,
     SessionFilterBar,
     StringFilter,
+    field_widget,
+    field_widget_templates,
 )
 from common.components.primitives import (
     H1,
@@ -258,6 +260,8 @@ __all__ = [
     "PlayEventFilterBar",
     "StringFilter",
     "NumberFilter",
+    "field_widget",
+    "field_widget_templates",
     "FieldComparisonSet",
     "FilterGroup",
     "Option",

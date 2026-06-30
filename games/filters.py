@@ -123,13 +123,15 @@ class GameFilter(OperatorFilter):
         "year_released": FilterField(),
         "original_year_released": FilterField(),
         "wikidata": FilterField(),
-        "platform": FilterField("platform_id"),
+        "platform": FilterField("platform_id", search_url="/api/platforms/search"),
         "status": FilterField(),
         "mastered": FilterField(),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
         "created_at": FilterField("created_at__date"),
         "updated_at": FilterField("updated_at__date"),
-        "platform_group": FilterField("platform__group"),
+        "platform_group": FilterField(
+            "platform__group", search_url="/api/platforms/groups"
+        ),
     }
 
     # Uppercase ``Type[...]`` (not the modern ``type[...]``) is deliberate: two
@@ -290,8 +292,8 @@ class SessionFilter(OperatorFilter):
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
-        "game": FilterField("game_id"),
-        "device": FilterField("device_id"),
+        "game": FilterField("game_id", search_url="/api/games/search"),
+        "device": FilterField("device_id", search_url="/api/devices/search"),
         "emulated": FilterField(),
         "note": FilterField(),
         "duration_total_hours": FilterField(
@@ -397,11 +399,20 @@ class PurchaseFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
-    # ``games`` (M2M) and ``search`` stay imperative — see ``_IMPERATIVE_CRITERIA``
-    # and ``_extra_q``.
+    # ``games`` (M2M) carries ``imperative=True``: its widget config lives here (so
+    # ``field_widget`` can build its set widget with ``(All)/(Only)`` modifiers) but
+    # ``to_q`` skips it — its Q is built imperatively by ``_games_to_q`` in
+    # ``_extra_q`` (INCLUDES_ALL/_ONLY need chained subqueries). ``search`` stays
+    # out of the table entirely (the free-text box, not a pickable field).
     fields = {
         "name": FilterField(),
-        "platform": FilterField("platform_id"),
+        "platform": FilterField("platform_id", search_url="/api/platforms/search"),
+        "games": FilterField(
+            lookup="games",
+            search_url="/api/games/search",
+            imperative=True,
+            label="Game",
+        ),
         "date_purchased": FilterField(),
         "date_refunded": FilterField(),
         "is_refunded": FilterField(
@@ -420,9 +431,7 @@ class PurchaseFilter(OperatorFilter):
         "converted_currency": FilterField(),
     }
 
-    # ``games`` is a many-to-many handled by ``_games_to_q`` (INCLUDES_ALL/_ONLY
-    # need chained subqueries), so it stays out of ``fields``.
-    _IMPERATIVE_CRITERIA = {"search", "games"}
+    _IMPERATIVE_CRITERIA = {"search"}
 
     @classmethod
     def _comparison_model(cls) -> Type[Purchase]:
@@ -679,7 +688,7 @@ class PlayEventFilter(OperatorFilter):
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields = {
-        "game": FilterField("game_id"),
+        "game": FilterField("game_id", search_url="/api/games/search"),
         "started": FilterField(),
         "ended": FilterField(),
         "days_to_finish": FilterField(),

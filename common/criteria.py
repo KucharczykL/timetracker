@@ -810,6 +810,15 @@ class FilterField:
     # declared last so existing positional ``FilterField("lookup")`` calls are
     # unaffected. When None, the registry falls back to a title-cased field name.
     label: str | None = None
+    # Widget config consumed by ``field_metadata`` → ``field_widget`` (issue #242),
+    # never by ``to_q``. ``search_url`` names the search endpoint for FK/M2M set
+    # fields (None → static-enum or non-set field). ``imperative`` marks a field
+    # whose value widget belongs in the table but whose Q is built in ``_extra_q``
+    # (the M2M ``games``), so ``to_q`` must skip it — see ``OperatorFilter.to_q``.
+    # Declared after ``label`` so existing positional ``FilterField("lookup")``
+    # calls are unaffected.
+    search_url: str | None = None
+    imperative: bool = False
 
     def __post_init__(self) -> None:
         if self.lookup is not None and self.handler is not None:
@@ -1274,6 +1283,11 @@ class OperatorFilter:
         """
         q = Q()
         for attr_name, descriptor in self.fields.items():
+            # ``imperative`` fields carry widget config in the table but build
+            # their Q in ``_extra_q`` (e.g. the M2M ``games``) — skip them here so
+            # the criterion is not double-applied.
+            if descriptor.imperative:
+                continue
             criterion = getattr(self, attr_name)
             if criterion is not None:
                 q &= descriptor.to_q(attr_name, criterion)
@@ -1746,6 +1760,13 @@ class FieldMeta(TypedDict):
     # relation entry always has empty ``modifiers`` (it carries no leaf criterion).
     modifiers: list[ModifierToken]
     relations: list[RelationTarget]
+    # Value-widget config for ``field_widget`` (issue #242). ``search_url`` is the
+    # search endpoint for FK/M2M ``set`` fields ("" → static-enum or non-set field,
+    # which dispatches via ``choices``). ``is_m2m`` is True only for true
+    # many-to-many set fields (surfaces ``(All)``/``(Only)`` modifiers); derived
+    # from the resolved model field, not stored on ``FilterField``.
+    search_url: str
+    is_m2m: bool
 
 
 def _resolve_model_field(
@@ -1896,6 +1917,11 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                 "number" if is_aggregate else criterion_kind(criterion_cls)
             )
             nullable = bool(getattr(model_field, "null", False))
+            # Value-widget config (issue #242). ``field_spec`` is None for
+            # aggregates (no ``fields`` entry) — guard it. ``is_m2m`` is derived
+            # from the resolved model field, so a future FK set field needs no flag.
+            is_m2m = bool(getattr(model_field, "many_to_many", False))
+            search_url = field_spec.search_url if field_spec is not None else None
             entries.append(
                 FieldMeta(
                     name=name,
@@ -1905,6 +1931,8 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     choices=_static_choices(model_field),
                     modifiers=_modifiers_for_field(kind, nullable),
                     relations=[],
+                    search_url=search_url or "",
+                    is_m2m=is_m2m,
                 )
             )
             continue
@@ -1933,6 +1961,8 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                             model=target_model.__name__,
                         )
                     ],
+                    search_url="",
+                    is_m2m=False,
                 )
             )
     return entries
