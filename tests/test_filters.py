@@ -324,6 +324,11 @@ class TestChoiceCriterion:
         c = ChoiceCriterion(value=["f"], modifier=Modifier.NOT_EQUALS)
         assert c.to_q("status") == ~Q(status__in=["f"])
 
+    def test_to_json_emits_bare_codes(self):
+        """Enum criteria never set labels, so the shared _SetCriterion.to_json
+        leaves their codes bare (#224)."""
+        assert ChoiceCriterion(value=["f", "p"]).to_json() == {"value": ["f", "p"]}
+
 
 class TestMultiCriterion:
     def test_includes(self):
@@ -378,6 +383,34 @@ class TestMultiCriterion:
         assert c.value == [797]
         assert c.excludes == [11]
         assert c.to_q("game_id") == Q(game_id__in=[797]) & ~Q(game_id__in=[11])
+
+    def test_to_json_embeds_known_labels(self):
+        """to_json folds the labels map back into {id, label} wire shape (#224)."""
+        c = MultiCriterion(value=[797], labels={797: "Hollow Knight"})
+        assert c.to_json() == {"value": [{"id": 797, "label": "Hollow Knight"}]}
+
+    def test_to_json_without_labels_emits_bare_ids(self):
+        """No labels -> serialization is unchanged (bare ids)."""
+        assert MultiCriterion(value=[797]).to_json() == {"value": [797]}
+
+    def test_to_json_emits_bare_id_for_unlabelled_element(self):
+        """Only ids present in the labels map get a label; others stay bare."""
+        c = MultiCriterion(value=[1, 2], labels={1: "One"})
+        assert c.to_json() == {"value": [{"id": 1, "label": "One"}, 2]}
+
+    def test_labels_do_not_affect_query(self):
+        """Labels are display-only: to_q is identical with and without them."""
+        labelled = MultiCriterion(value=[1], excludes=[2], labels={1: "a", 2: "b"})
+        bare = MultiCriterion(value=[1], excludes=[2])
+        assert labelled.to_q("game_id") == bare.to_q("game_id")
+
+    def test_labels_round_trip_strips_back_to_bare(self):
+        """to_json embeds labels; from_json strips them — the query value is the
+        same bare id list either way."""
+        original = MultiCriterion(value=[797], labels={797: "Hollow Knight"})
+        restored = MultiCriterion.from_json(original.to_json())
+        assert restored.value == [797]
+        assert restored.labels == {}
 
 
 class TestChoiceCriterionAgainstDB:

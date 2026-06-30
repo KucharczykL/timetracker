@@ -43,11 +43,14 @@ _NAME_TH = f"{_CELL} purchase-name truncate max-w-20char"
 _LIST_CAP = 5
 
 
-def _session_link(game_id, year) -> Node:
+def _session_link(game_id, year, label: str = "") -> Node:
     """Small affordance linking a game row to its (year-scoped) session list.
-    Sits next to the existing GameLink (which goes to the game detail page)."""
+    Sits next to the existing GameLink (which goes to the game detail page).
+
+    ``label`` is the game name, embedded in the filter so the destination bar
+    renders a named pill instead of a bare id (#224)."""
     return A(
-        href=filter_url(stats_links.sessions_for_game(game_id, year)),
+        href=filter_url(stats_links.sessions_for_game(game_id, year, label)),
         class_="ml-1 inline-block align-middle hover:text-heading",
         title="View sessions",
     )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
@@ -187,7 +190,7 @@ def _playtime_table(ctx) -> Node:
                         " (",
                         GameLink(game.id, game.name),
                         ")",
-                        _session_link(game.id, year),
+                        _session_link(game.id, year, game.name),
                     ]
                 ),
             ]
@@ -222,7 +225,7 @@ def _playtime_table(ctx) -> Node:
                         [
                             GameLink(first_game.id, first_game.name),
                             f" ({ctx.get('first_play_date')})",
-                            _session_link(first_game.id, year),
+                            _session_link(first_game.id, year, first_game.name),
                         ]
                     ),
                 ]
@@ -238,7 +241,7 @@ def _playtime_table(ctx) -> Node:
                         [
                             GameLink(last_game.id, last_game.name),
                             f" ({ctx.get('last_play_date')})",
-                            _session_link(last_game.id, year),
+                            _session_link(last_game.id, year, last_game.name),
                         ]
                     ),
                 ]
@@ -386,7 +389,9 @@ def stats_content(ctx: StatsData) -> Node:
         _two_col_table(
             "Name",
             ctx.get("top_10_games_by_playtime") or [],
-            lambda g: Fragment(GameLink(g.id, g.name), _session_link(g.id, year)),
+            lambda g: Fragment(
+                GameLink(g.id, g.name), _session_link(g.id, year, g.name)
+            ),
             lambda g: _dur(g.total_playtime),
             view_all_url=filter_url(
                 stats_links.games_played(year), sort="-filtered_playtime"
@@ -398,7 +403,9 @@ def stats_content(ctx: StatsData) -> Node:
             ctx.get("total_playtime_per_platform") or [],
             lambda item: A(
                 href=filter_url(
-                    stats_links.sessions_for_platform(item["platform_id"], year)
+                    stats_links.sessions_for_platform(
+                        item["platform_id"], year, item["platform_name"] or ""
+                    )
                 ),
                 class_="hover:underline decoration-dotted",
             )[item["platform_name"] or "Unspecified"],
