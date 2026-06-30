@@ -26,3 +26,6 @@ dist/
 /ts/elements/filter-tree/fixtures.canonical.json
 /ts/elements/filter-tokens.canonical.json
 .claude/
+
+# Playwright MCP browser session artifacts
+.playwright-mcp/
