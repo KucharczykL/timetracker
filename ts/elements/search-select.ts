@@ -247,7 +247,27 @@ const initWidget = (containerElement: Element) => {
       item.style.display = match ? "" : "none";
       if (match) visibleCount += 1;
     });
+    syncGroupHeaders();
     return visibleCount;
+  };
+
+  // In a grouped panel, hide each group header whose run of following option rows
+  // (up to the next header) has no visible option, so an empty group leaves no
+  // dangling label. A no-op when the panel has no headers (the common case).
+  const syncGroupHeaders = () => {
+    const headers = options.querySelectorAll<HTMLElement>("[data-search-select-group-header]");
+    headers.forEach(header => {
+      let anyVisible = false;
+      let sibling = header.nextElementSibling as HTMLElement | null;
+      while (sibling && !sibling.hasAttribute("data-search-select-group-header")) {
+        if (sibling.hasAttribute("data-search-select-option") && sibling.style.display !== "none") {
+          anyVisible = true;
+          break;
+        }
+        sibling = sibling.nextElementSibling as HTMLElement | null;
+      }
+      header.style.display = anyVisible ? "" : "none";
+    });
   };
 
   // ── Fetch matching rows from the server. The previous in-flight request is

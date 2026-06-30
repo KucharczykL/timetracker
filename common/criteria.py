@@ -1709,6 +1709,7 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
 type FieldMetaKind = LeafWidgetKind | Literal["relation"]
 type ModelName = str  # a Django model class name, e.g. "Session"
 type FilterClassName = str  # an OperatorFilter subclass name, e.g. "SessionFilter"
+type ModifierToken = str  # a Modifier value, e.g. "EQUALS"
 
 
 class ChoiceMeta(TypedDict):
@@ -1730,14 +1731,20 @@ class FieldMeta(TypedDict):
     """Everything a picker needs to render one filterable field. ``choices`` is
     populated only for static-enum fields; ``relations`` is non-empty (a single
     entry) iff ``kind == "relation"``, and a relation entry always has empty
-    ``choices`` and ``nullable=False``. These cross-field invariants are enforced
-    by ``field_metadata`` (the sole producer), not by the type."""
+    ``choices``, empty ``modifiers``, and ``nullable=False``. A leaf entry always
+    has a non-empty ``modifiers``. These cross-field invariants are enforced by
+    ``field_metadata`` (the sole producer), not by the type."""
 
     name: AttrName
     label: str
     kind: FieldMetaKind
     nullable: bool
     choices: list[ChoiceMeta]
+    # Ordered, nullable-filtered modifier vocabulary for this field. The FIRST
+    # entry is the reset default the add-criterion field picker (#191) selects on
+    # field change; the whole list is what the modifier dropdown (#192) renders. A
+    # relation entry always has empty ``modifiers`` (it carries no leaf criterion).
+    modifiers: list[ModifierToken]
     relations: list[RelationTarget]
 
 
@@ -1788,6 +1795,32 @@ def _static_choices(model_field: models.Field | None) -> list[ChoiceMeta]:
     if not choices:
         return []
     return [ChoiceMeta(value=str(value), label=str(label)) for value, label in choices]
+
+
+def _modifiers_for_field(kind: FieldMetaKind, nullable: bool) -> list[ModifierToken]:
+    """Ordered modifier vocabulary for a leaf field of the given kind.
+
+    Reuses the ``Modifier.for_*`` lists (the single home for "which operators a
+    value shape allows") keyed by leaf kind, so the field picker's reset default
+    (first entry) and the modifier dropdown (#192) never duplicate a per-kind
+    table on the client. ``IS_NULL``/``NOT_NULL`` are dropped for a non-nullable
+    field — a column that can't be NULL has no meaningful presence test.
+    """
+    by_kind: dict[FieldMetaKind, list[Modifier]] = {
+        "string": Modifier.for_strings(),
+        "number": Modifier.for_numbers(),
+        "date": Modifier.for_dates(),
+        "set": Modifier.for_multi(),
+        "bool": [Modifier.EQUALS, Modifier.NOT_EQUALS],
+    }
+    modifiers = by_kind.get(kind, [])
+    if not nullable:
+        modifiers = [
+            modifier
+            for modifier in modifiers
+            if modifier not in (Modifier.IS_NULL, Modifier.NOT_NULL)
+        ]
+    return [modifier.value for modifier in modifiers]
 
 
 def _field_label(filter_cls: type[OperatorFilter], name: AttrName) -> str:
@@ -1856,17 +1889,21 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                         f"to no field on {model.__name__}"
                     )
             is_aggregate = issubclass(criterion_cls, AggregateCriterion)
+            # Aggregates set kind directly: ``criterion_kind`` would reject a
+            # future ``AggregateCriterion`` subclass (its exact-class registry has
+            # no entry → ValueError), whereas the value shape is always "number".
+            kind: FieldMetaKind = (
+                "number" if is_aggregate else criterion_kind(criterion_cls)
+            )
+            nullable = bool(getattr(model_field, "null", False))
             entries.append(
                 FieldMeta(
                     name=name,
                     label=_field_label(filter_cls, name),
-                    # Aggregates set kind directly: ``criterion_kind`` would reject
-                    # a future ``AggregateCriterion`` subclass (its exact-class
-                    # registry has no entry → ValueError), whereas the value shape
-                    # is always "number".
-                    kind="number" if is_aggregate else criterion_kind(criterion_cls),
-                    nullable=bool(getattr(model_field, "null", False)),
+                    kind=kind,
+                    nullable=nullable,
                     choices=_static_choices(model_field),
+                    modifiers=_modifiers_for_field(kind, nullable),
                     relations=[],
                 )
             )
@@ -1888,6 +1925,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     kind="relation",
                     nullable=False,
                     choices=[],
+                    modifiers=[],
                     relations=[
                         RelationTarget(
                             field=name,
