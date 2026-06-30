@@ -20,6 +20,7 @@ import {
   removeAt,
   setConnective,
   setMatch,
+  toggleConnective,
   toggleNegate,
   unwrapGroup,
   wrapInGroup,
@@ -161,6 +162,10 @@ describe("error branches", () => {
     expect(() => setConnective(group("AND", [criterion("a")]), [0], "OR")).toThrow();
   });
 
+  it("toggleConnective throws on a non-group node", () => {
+    expect(() => toggleConnective(group("AND", [criterion("a")]), [0])).toThrow();
+  });
+
   it("setMatch throws on a non-relation node", () => {
     expect(() => setMatch(group("AND", [criterion("a")]), [0], "NONE")).toThrow();
   });
@@ -180,6 +185,17 @@ describe("setConnective / setMatch / toggleNegate", () => {
   it("changes a group's connective in place", () => {
     const tree = group("AND", [criterion("a")]);
     expect(setConnective(tree, [], "OR")).toEqual(group("OR", [criterion("a")]));
+  });
+
+  it("flips a group's connective AND->OR and back", () => {
+    const tree = group("AND", [criterion("a")]);
+    expect(toggleConnective(tree, [])).toEqual(group("OR", [criterion("a")]));
+    expect(toggleConnective(toggleConnective(tree, []), [])).toEqual(tree);
+  });
+
+  it("flips a nested group's connective by path", () => {
+    const tree = group("AND", [group("OR", [criterion("a")])]);
+    expect(nodeAt(toggleConnective(tree, [0]), [0])).toMatchObject({ kind: "group", connective: "AND" });
   });
 
   it("sets a relation's quantifier", () => {

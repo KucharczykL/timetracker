@@ -32,7 +32,7 @@ describe("<filter-group> initial render", () => {
     const host = mount();
     const root = host.querySelector('[data-kind="group"][data-path="[]"]');
     expect(root).not.toBeNull();
-    expect(host.querySelector('[data-slot="connective"]')?.textContent).toBe("AND");
+    expect(button(host, "toggle-connective", [])?.textContent).toBe("AND");
     expect(slots(host)).toHaveLength(1);
     expect(slots(host)[0].dataset.nodeKind).toBe("criterion");
     expect(button(host, "add-condition", [])).not.toBeNull();
@@ -145,10 +145,59 @@ describe("<filter-group> inert-slot contract (2d hydration)", () => {
     const criterionSlot = slots(host).find((slot) => slot.dataset.nodeKind === "criterion")!;
     expect(JSON.parse(criterionSlot.dataset.payload!)).toMatchObject({ kind: "criterion", negate: false });
   });
+});
 
-  it("the connective slot carries its group path for component 2", () => {
+describe("<filter-group> connective + negate (component 2, #190)", () => {
+  it("connective chip flips the group connective AND<->OR", () => {
     const host = mount();
-    expect(host.querySelector<HTMLElement>('[data-slot="connective"]')!.dataset.path).toBe("[]");
+    expect(button(host, "toggle-connective", [])?.textContent).toBe("AND");
+    clickAction(host, "toggle-connective", []);
+    expect(button(host, "toggle-connective", [])?.textContent).toBe("OR");
+    expect(Object.keys(host.serialize())[0]).toBe("OR");
+    clickAction(host, "toggle-connective", []);
+    expect(button(host, "toggle-connective", [])?.textContent).toBe("AND");
+  });
+
+  it("color-codes the connective chip by value (teal AND / orange OR)", () => {
+    const host = mount();
+    expect(button(host, "toggle-connective", [])?.className).toContain("teal");
+    clickAction(host, "toggle-connective", []);
+    const orChip = button(host, "toggle-connective", []);
+    expect(orChip?.className).toContain("orange");
+    expect(orChip?.className).not.toContain("teal");
+  });
+
+  it("negate chip on a group wraps it in {NOT:[…]} and flips aria-pressed", () => {
+    const host = mount();
+    const before = button(host, "toggle-negate", []);
+    expect(before?.getAttribute("aria-pressed")).toBe("false");
+    clickAction(host, "toggle-negate", []);
+    expect(button(host, "toggle-negate", [])?.getAttribute("aria-pressed")).toBe("true");
+    expect(Object.keys(host.serialize())[0]).toBe("NOT");
+    // toggling off restores the un-negated shape (UI re-render round-trips)
+    clickAction(host, "toggle-negate", []);
+    expect(button(host, "toggle-negate", [])?.getAttribute("aria-pressed")).toBe("false");
+    expect(Object.keys(host.serialize())[0]).toBe("AND");
+  });
+
+  it("negate chip on a leaf negates only that leaf", () => {
+    const host = mount(); // root AND with one seed criterion at [0]
+    expect(button(host, "toggle-negate", [0])?.getAttribute("aria-pressed")).toBe("false");
+    clickAction(host, "toggle-negate", [0]);
+    expect(button(host, "toggle-negate", [0])?.getAttribute("aria-pressed")).toBe("true");
+    // root stays a plain AND group; the negation is on the leaf inside it
+    const serialized = host.serialize() as { AND: Record<string, unknown>[] };
+    expect(Object.keys(serialized)[0]).toBe("AND");
+    expect(Object.keys(serialized.AND[0])[0]).toBe("NOT");
+  });
+
+  it("dispatches filter-tree-change on connective and negate edits", () => {
+    const host = mount();
+    let count = 0;
+    host.addEventListener("filter-tree-change", () => (count += 1));
+    clickAction(host, "toggle-connective", []);
+    clickAction(host, "toggle-negate", []);
+    expect(count).toBe(2);
   });
 });
 
