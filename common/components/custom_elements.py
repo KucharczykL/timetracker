@@ -274,6 +274,74 @@ def FilterSummary(*, model: str, model_label: str, models: str) -> Node:
     ]
 
 
+class FilterBuilderProps(TypedDict):
+    model: str  # root model key
+    mode: str  # preset/list mode (plural), e.g. "games"
+    apply_url: str  # list URL to navigate to on Apply
+    preset_list_url: str
+    preset_save_url: str
+
+
+register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
+_FilterBuilder = custom_element_builder("filter-builder")
+
+
+def FilterBuilder(
+    *, model: str, mode: str, apply_url: str, preset_list_url: str, preset_save_url: str
+) -> Node:
+    """Toolbar/orchestrator for the nested filter builder page (#196).
+
+    Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
+    <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
+    clear on Clear). Behavior in ``ts/elements/filter-builder.ts``."""
+    # StyledButton bakes the app's button look (color/size/rounded); per-attribute
+    # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
+    # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
+    # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
+    # or the positional attrs slot; not needed here).
+    return _FilterBuilder(
+        model=model,
+        mode=mode,
+        apply_url=apply_url,
+        preset_list_url=preset_list_url,
+        preset_save_url=preset_save_url,
+    )[
+        Div(class_="flex flex-wrap gap-3 items-center mb-4")[
+            Div(class_="relative")[
+                StyledButton(color="gray", type="button", data_load_presets="")[
+                    "Load preset ▾"
+                ],
+                Div(
+                    {"data-preset-dropdown": ""},
+                    class_=(
+                        "hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border "
+                        "border-default-medium bg-body shadow-lg"
+                    ),
+                )[Ul(class_="py-1")],
+            ],
+            Input(
+                type="text",
+                data_preset_name="",
+                placeholder="Preset name…",
+                class_=(
+                    "px-3 py-2 text-sm rounded-lg border border-default-medium "
+                    "bg-neutral-secondary-medium text-heading"
+                ),
+            ),
+            StyledButton(color="gray", type="button", data_save_preset="")[
+                "Save as preset…"
+            ],
+            StyledButton(
+                color="blue",
+                type="button",
+                data_apply="",
+                class_="disabled:opacity-50 disabled:cursor-not-allowed",
+            )["Apply"],
+            StyledButton(color="gray", type="button", data_clear="")["Clear"],
+        ]
+    ]
+
+
 class FilterCountProps(TypedDict):
     # Root model key (e.g. "game") — the same value passed to the sibling
     # <filter-group>; sent to the count endpoint to select the queryset.
