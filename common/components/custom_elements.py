@@ -253,6 +253,27 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
     )[*templates]
 
 
+class FilterSummaryProps(TypedDict):
+    model: str  # root model key, e.g. "game"
+    model_label: str  # display plural noun, e.g. "Games"
+    models: str  # JSON of model_field_registry(model) — same bundle as <filter-group>
+
+
+register_element("filter-summary", "FilterSummary", FilterSummaryProps)
+_FilterSummary = custom_element_builder("filter-summary")
+
+
+def FilterSummary(*, model: str, model_label: str, models: str) -> Node:
+    """Read-only natural-language readout of the current filter tree (#194, #196).
+
+    Self-wiring like <filter-count>: watches the sibling <filter-group> for
+    ``filter-tree-change`` and rewrites its text via ``summarize()``. Behavior in
+    ``ts/elements/filter-summary.ts``; Media auto-attached."""
+    return _FilterSummary(model=model, model_label=model_label, models=models)[
+        Span(class_="text-sm text-body")[f"{model_label} (all)."]
+    ]
+
+
 class FilterCountProps(TypedDict):
     # Root model key (e.g. "game") — the same value passed to the sibling
     # <filter-group>; sent to the count endpoint to select the queryset.
