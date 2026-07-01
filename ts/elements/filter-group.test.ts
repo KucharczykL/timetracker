@@ -342,6 +342,19 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     clickAction(host, "add-condition", [1, "child"]);
     expect(relationChildText(host, [1, "child"])).not.toContain("related items");
   });
+
+  // #225: the empty child the copy describes must actually survive to the query as a
+  // presence test — a field-set relation is never pruned even with no sub-conditions.
+  it("serializes a field-set empty relation child as a presence test (not pruned)", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter"); // field set, child left empty
+    // ANY is the default (omitted from the payload): a bare presence test.
+    expect(host.serializeForQuery()).toEqual({ AND: [{ session_filter: {} }] });
+    // The quantifier still rides along on an empty child.
+    setRelationMatch(host, [1], "NONE");
+    expect(host.serializeForQuery()).toEqual({ AND: [{ session_filter: { match: "NONE" } }] });
+  });
 });
 
 describe("<filter-group> connective + negate (component 2, #190)", () => {
