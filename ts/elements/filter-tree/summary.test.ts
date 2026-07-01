@@ -272,3 +272,84 @@ describe("summarize — connectives, parens, NOT", () => {
     );
   });
 });
+
+describe("summarize — relation descent", () => {
+  const CTX: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map([
+          [
+            "session_filter",
+            field({
+              name: "session_filter",
+              label: "Sessions",
+              kind: "relation",
+              relations: [{ field: "session_filter", filter: "SessionFilter", model: "Session" }],
+            }),
+          ],
+        ]),
+      },
+      session: {
+        fields: new Map([
+          ["device", field({ name: "device", label: "Device", kind: "set" })],
+        ]),
+      },
+    },
+  };
+  function relation(match: "ANY" | "NONE" | "ALL", childChildren: GroupNode["children"], negate = false): GroupNode {
+    return root({
+      kind: "relation",
+      id: "r",
+      field: "session_filter",
+      match,
+      negate,
+      child: { kind: "group", id: "rc", connective: "AND", negate: false, children: childChildren },
+    });
+  }
+  const deviceHandheld = { kind: "criterion", id: "d", field: "device", criterion: { value: [{ id: "1", label: "Handheld" }], modifier: "INCLUDES" }, negate: false } as const;
+
+  it("phrases ANY with a child body under the target model", () => {
+    expect(summarize(relation("ANY", [deviceHandheld]), CTX)).toBe(
+      "Games where any sessions matching (Device is Handheld).",
+    );
+  });
+  it("phrases NONE and ALL quantifiers", () => {
+    expect(summarize(relation("NONE", [deviceHandheld]), CTX)).toBe(
+      "Games where no sessions matching (Device is Handheld).",
+    );
+    expect(summarize(relation("ALL", [deviceHandheld]), CTX)).toBe(
+      "Games where all sessions matching (Device is Handheld).",
+    );
+  });
+  it("phrases an empty ANY child as a presence test", () => {
+    expect(summarize(relation("ANY", []), CTX)).toBe(
+      "Games where any related sessions.",
+    );
+  });
+  it("phrases an empty NONE child as a no-related test", () => {
+    expect(summarize(relation("NONE", []), CTX)).toBe(
+      "Games where no related sessions.",
+    );
+  });
+  it("phrases an empty ALL child as the vacuous match-all", () => {
+    expect(summarize(relation("ALL", []), CTX)).toBe("Games where matches all.");
+  });
+  it("negates a relation descent", () => {
+    expect(summarize(relation("ANY", [deviceHandheld], true), CTX)).toBe(
+      "Games where not (any sessions matching (Device is Handheld)).",
+    );
+  });
+  it("renders an unset relation field as a placeholder", () => {
+    const tree = root({
+      kind: "relation",
+      id: "r",
+      field: "",
+      match: "ANY",
+      negate: false,
+      child: { kind: "group", id: "rc", connective: "AND", negate: false, children: [] },
+    });
+    expect(summarize(tree, CTX)).toBe("Games where ….");
+  });
+});

@@ -13,6 +13,8 @@ import type {
   FieldMeta,
   FilterNode,
   GroupNode,
+  RelationMatch,
+  RelationNode,
 } from "./types.js";
 import { isCriterionComplete } from "./operations.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
@@ -99,9 +101,50 @@ function renderInner(node: FilterNode, model: SummaryModel | undefined, ctx: Sum
       return joinChildren(node, model, ctx);
     case "criterion":
       return renderCriterion(node, model);
+    case "relation":
+      return renderRelation(node, model, ctx);
     default:
-      return ""; // comparison + relation handled in later tasks
+      return ""; // comparison handled in Task 6
   }
+}
+
+// "all" (not "every") so the quantifier agrees with the plural, as-is relation
+// label: "all sessions" / "any sessions" / "no sessions" all read grammatically.
+const QUANTIFIERS: Record<RelationMatch, string> = { ANY: "any", NONE: "no", ALL: "all" };
+
+// The relation clause uses "matching (…)" rather than an inner "where": the frame is
+// already "<Model> where …", so a nested "where" would collide. "matching (…)" reads
+// cleanly after the frame's "where" and after a joining "and".
+function renderRelation(node: RelationNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
+  if (!node.field) return PLACEHOLDER; // no field → target model unknown, don't guess a body
+  const meta = model?.fields.get(node.field);
+  const noun = (meta?.label ?? node.field).toLowerCase();
+  const targetKey = targetModelKey(meta, ctx);
+  const targetModel = ctx.models[targetKey];
+  const body = node.child.children.length ? joinChildren(node.child, targetModel, ctx) : "";
+  if (!body) return emptyRelationPhrase(node.match, noun);
+  return `${QUANTIFIERS[node.match]} ${noun} matching (${body})`;
+}
+
+// The model key a relation descends into — its RelationTarget.model lower-cased,
+// mirroring filter-group's targetModel. Falls back to the root when unknown.
+function targetModelKey(meta: FieldMeta | undefined, ctx: SummaryContext): string {
+  return meta?.relations[0]?.model?.toLowerCase() ?? ctx.modelKey;
+}
+
+// What an empty relation child matches, per quantifier — the presence test (#225),
+// model-agnostic beyond the relation noun. ALL over an empty child is vacuously true.
+function emptyRelationPhrase(match: RelationMatch, noun: string): string {
+  switch (match) {
+    case "ANY":
+      return `any related ${noun}`;
+    case "NONE":
+      return `no related ${noun}`;
+    case "ALL":
+      return "matches all";
+  }
+  const unreachable: never = match;
+  return unreachable;
 }
 
 function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): string {
