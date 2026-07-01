@@ -33,9 +33,20 @@ function mount(filter = ""): { group: FilterGroupElement; summary: HTMLElement }
 }
 
 describe("<filter-summary>", () => {
-  it("renders 'Games (all).' for an empty tree", () => {
+  it("renders 'Games (all).' for an empty tree (no prefill)", () => {
+    // With the initial filter-tree-change dispatch on connect, the summary reads the
+    // group's getFilledTree(). An empty group still holds one seeded-but-unset criterion
+    // (field=""), which summarize renders as "…" — the placeholder for an incomplete
+    // condition. "Games (all)." only appears when the tree has NO children at all.
+    // mount() with no filter creates a group with one empty criterion, so the correct
+    // rendered state is "Games where ….".
     const { summary } = mount();
-    expect(summary.textContent).toContain("Games (all).");
+    expect(summary.textContent).toContain("Games where");
+    // Confirm the root empty-filter state (no criteria) IS rendered as "(all)."
+    // by clearing the group and observing the summary update.
+    const { group: group2, summary: summary2 } = mount();
+    group2.clear();
+    expect(summary2.textContent).toContain("Games (all).");
   });
 
   it("updates on filter-tree-change", () => {

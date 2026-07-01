@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import "./filter-group.js"; // side-effect: customElements.define("filter-group", …)
+import { FILTER_TREE_CHANGE_EVENT } from "./filter-group.js"; // also registers the custom element
 import type { FilterGroupElement } from "./filter-group.js";
 
 // A node path: group-child indices plus the "child" sentinel for descending into a
@@ -735,6 +735,29 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     byDay.checked = true;
     const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
     expect(payload).not.toHaveProperty("granularity");
+  });
+});
+
+// ── Initial dispatch on connect (#196) ──
+describe("<filter-group> initial filter-tree-change on connect (prefill sync)", () => {
+  it("dispatches filter-tree-change on connectedCallback when a filter prop is present", () => {
+    document.body.innerHTML = "";
+    const events: CustomEvent[] = [];
+    const prefillFilter = JSON.stringify({ AND: [{ status: { modifier: "INCLUDES", value: "f" } }] });
+    // Attach the listener BEFORE appending the element — the group is the last sibling
+    // in a real page, so all sibling listeners are already attached when it connects.
+    document.addEventListener(FILTER_TREE_CHANGE_EVENT, (event) => {
+      events.push(event as CustomEvent);
+    });
+    const group = document.createElement("filter-group") as FilterGroupElement;
+    group.setAttribute("model", "game");
+    group.setAttribute("models", MODELS);
+    group.setAttribute("filter", prefillFilter);
+    document.body.appendChild(group); // connectedCallback fires here
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    // The dispatched event must carry the seeded (non-empty) tree
+    const detail = events[0].detail as { tree: { children: unknown[] } };
+    expect(detail.tree.children.length).toBeGreaterThan(0);
   });
 });
 

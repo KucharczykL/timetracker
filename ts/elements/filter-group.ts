@@ -321,6 +321,11 @@ export class FilterGroupElement extends HTMLElement {
       this.wired = true;
     }
     this.render();
+    // Dispatch the initial change event so sibling consumers (<filter-summary>,
+    // <filter-count>) that connected before us sync to the prefilled tree. The group
+    // is the last element in the builder DOM, so every sibling's document listener is
+    // already attached by the time connectedCallback runs here.
+    this.dispatchChange();
   }
 
   // Build one ModelBundle per model in the `models` prop: its field map, comparison

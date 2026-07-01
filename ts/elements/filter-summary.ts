@@ -53,8 +53,8 @@ export class FilterSummaryElement extends HTMLElement {
     } else {
       // The group is not yet upgraded (element upgrade order is not guaranteed).
       // Render the "all" state from an empty tree so the label is immediately
-      // correct; the first filter-tree-change event will overwrite it once the
-      // group connects and begins dispatching.
+      // present; the group's initial connect dispatch (or the first user edit)
+      // will overwrite it with the real tree once the group connects.
       this.renderText(summarize(EMPTY_TREE, this.context));
     }
   }
