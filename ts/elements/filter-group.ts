@@ -19,6 +19,7 @@
 import { readFilterGroupProps } from "../generated/props.js";
 import { serialize } from "./filter-tree/serializer.js";
 import type {
+  ComparisonLeaf,
   Connective,
   CriterionLeaf,
   FilterFieldMeta,
@@ -34,11 +35,13 @@ import {
   canWrap,
   criterionForField,
   duplicateAt,
+  emptyComparison,
   emptyCriterion,
   emptyGroup,
   emptyRelation,
   emptyRoot,
   insertChild,
+  isComparisonComplete,
   isCriterionComplete,
   move,
   parseFieldMeta,
@@ -50,6 +53,11 @@ import {
   unwrapGroup,
   wrapInGroup,
 } from "./filter-tree/operations.js";
+import {
+  type Column,
+  readComparisonRow,
+  refreshRow,
+} from "./field-comparison-set.js";
 import { readLeafWidget, setupModifierToggles } from "./filter-widgets.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
@@ -117,6 +125,7 @@ const BUTTON_CLASS =
 // side fails tsc instead of silently no-op'ing.
 type TreeAction =
   | "add-condition"
+  | "add-comparison"
   | "add-group"
   | "add-relation"
   | "remove"
@@ -188,12 +197,24 @@ export class FilterGroupElement extends HTMLElement {
   private wired = false;
   // field name -> its FieldMeta (kind, label, modifiers …), from the `fields` prop.
   private fields = new Map<string, FilterFieldMeta>();
+  // The model's comparable columns (from the `columns` prop), driving each
+  // comparison leaf's row widget (#246). `hasComparableGroup` gates the
+  // `+ comparison` affordance on the same rule as the flat bar (a group with ≥2
+  // columns — otherwise no valid comparison row could be built).
+  private columns: Column[] = [];
+  private hasComparableGroup = false;
   // The <template> whose content is the field-picker combobox, cloned per leaf.
   private fieldPickerTemplate: HTMLTemplateElement | null = null;
   // field name -> its blank value-widget <template>, cloned into a leaf on field-pick.
   private widgetTemplates = new Map<string, HTMLTemplateElement>();
+  // The <template> whose content is a blank field-comparison row, cloned per
+  // comparison leaf (#246). Absent when the model admits no comparison.
+  private comparisonRowTemplate: HTMLTemplateElement | null = null;
   // node id -> its cached cells (see LeafCells). Pruned to live nodes each render.
   private rowCache = new Map<string, LeafCells>();
+  // node id -> a comparison leaf's cached row cell, reused across structural
+  // re-renders so an in-progress comparison survives edits elsewhere.
+  private comparisonCache = new Map<string, HTMLElement>();
   // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
   private cloneSequence = 0;
 
@@ -203,6 +224,7 @@ export class FilterGroupElement extends HTMLElement {
     if (!this.wired) {
       this.captureTemplates();
       this.parseFields(props.fields);
+      this.parseColumns(props.columns);
       this.addEventListener("click", this.onClick);
       // Value edits (typing, radios, set pills, date bounds, field pick) bubble
       // here; one delegated listener updates completeness / handles field changes.
@@ -228,6 +250,9 @@ export class FilterGroupElement extends HTMLElement {
       const field = template.getAttribute("data-field");
       if (field) this.widgetTemplates.set(field, template);
     });
+    this.comparisonRowTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-fc-row-template]",
+    );
   }
 
   private parseFields(raw: string): void {
@@ -238,6 +263,24 @@ export class FilterGroupElement extends HTMLElement {
     } catch {
       console.warn("filter-group: malformed fields prop");
     }
+  }
+
+  // Parse the `columns` prop and precompute whether any comparison is possible: a
+  // comparison needs two columns of the SAME group, so a group with ≥2 members.
+  private parseColumns(raw: string): void {
+    if (raw) {
+      try {
+        this.columns = JSON.parse(raw) as Column[];
+      } catch {
+        console.warn("filter-group: malformed columns prop");
+        this.columns = [];
+      }
+    }
+    const groupCounts = new Map<string, number>();
+    for (const column of this.columns) {
+      groupCounts.set(column.group, (groupCounts.get(column.group) ?? 0) + 1);
+    }
+    this.hasComparableGroup = [...groupCounts.values()].some((count) => count >= 2);
   }
 
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
@@ -271,7 +314,8 @@ export class FilterGroupElement extends HTMLElement {
   private fillNode(node: FilterNode): FilterNode {
     if (node.kind === "group") return this.fillCriteria(node);
     if (node.kind === "criterion") return { ...node, criterion: this.readLeaf(node) ?? {} };
-    return node; // relation/comparison unchanged (out of this slice)
+    if (node.kind === "comparison") return { ...node, comparison: this.readComparison(node) ?? {} };
+    return node; // relation unchanged (its widget is a sibling 2c component)
   }
 
   // Read a criterion leaf's live value widget into a payload, or null when it has
@@ -287,11 +331,33 @@ export class FilterGroupElement extends HTMLElement {
     return isCriterionComplete({ ...node, criterion: this.readLeaf(node) ?? {} });
   }
 
+  // Read a comparison leaf's live row into its {left, right, modifier, granularity?}
+  // payload, or null when the row is incomplete. Keyed off the cached row cell.
+  private readComparison(node: ComparisonLeaf): Record<string, unknown> | null {
+    const cell = this.comparisonCache.get(node.id);
+    const row = cell ? readComparisonRow(cell) : null;
+    // ComparisonRow → the opaque ComparisonPayload the serializer wraps verbatim.
+    return row as Record<string, unknown> | null;
+  }
+
+  private comparisonComplete(node: ComparisonLeaf): boolean {
+    return isComparisonComplete({ ...node, comparison: this.readComparison(node) ?? {} });
+  }
+
+  // Whether the user has picked the row's left column yet — the "touched" signal
+  // that gates the Incomplete badge, mirroring how a criterion row shows no badge
+  // until a field is chosen (a pristine comparison row shouldn't nag).
+  private comparisonTouched(node: ComparisonLeaf): boolean {
+    const left = this.comparisonCache.get(node.id)?.querySelector<HTMLSelectElement>("[data-fc-left]");
+    return Boolean(left?.value);
+  }
+
   private incompleteCount(node: GroupNode = this.tree): number {
     let count = 0;
     for (const child of node.children) {
       if (child.kind === "group") count += this.incompleteCount(child);
       else if (child.kind === "criterion" && !this.leafComplete(child)) count += 1;
+      else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
     }
     return count;
   }
@@ -308,6 +374,9 @@ export class FilterGroupElement extends HTMLElement {
     switch (action) {
       case "add-condition":
         this.tree = insertChild(this.tree, path, emptyCriterion());
+        break;
+      case "add-comparison":
+        this.tree = insertChild(this.tree, path, emptyComparison());
         break;
       case "add-group":
         if (canAddGroup(this.tree, path)) this.tree = insertChild(this.tree, path, emptyGroup());
@@ -377,6 +446,9 @@ export class FilterGroupElement extends HTMLElement {
     for (const id of [...this.rowCache.keys()]) {
       if (!live.has(id)) this.rowCache.delete(id);
     }
+    for (const id of [...this.comparisonCache.keys()]) {
+      if (!live.has(id)) this.comparisonCache.delete(id);
+    }
   }
 
   private renderGroup(node: GroupNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
@@ -418,11 +490,12 @@ export class FilterGroupElement extends HTMLElement {
   private renderChild(child: FilterNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
     if (child.kind === "group") return this.renderGroup(child, path, index, siblingCount);
     if (child.kind === "criterion") return this.renderCriterionRow(child, path, index, siblingCount);
+    if (child.kind === "comparison") return this.renderComparisonRow(child, path, index, siblingCount);
     return this.renderInertSlot(child, path, index, siblingCount);
   }
 
-  // Relation/comparison leaves stay inert slots (their widgets are sibling 2c
-  // components, out of this slice); the criterion row is live below.
+  // The relation leaf stays an inert slot (its widget is a sibling 2c component,
+  // out of this slice); the criterion + comparison rows are live below.
   private renderInertSlot(
     child: FilterNode,
     path: NodePath,
@@ -523,6 +596,57 @@ export class FilterGroupElement extends HTMLElement {
     return cell;
   }
 
+  // The live field-comparison leaf row (#246): [NOT] [left op right (by-day?)]
+  // [controls]. The reused single-row widget lives in a cached cell so a structural
+  // edit never wipes an in-progress comparison.
+  private renderComparisonRow(
+    node: ComparisonLeaf,
+    path: NodePath,
+    index: number,
+    siblingCount: number,
+  ): HTMLElement {
+    const cell = this.comparisonCells(node);
+    const row = element("div", SLOT_ROW_CLASS);
+    row.dataset.nodeSlot = "";
+    row.dataset.nodeKind = "comparison";
+    row.dataset.path = JSON.stringify(path);
+    row.appendChild(this.negateChip(node, path));
+    row.appendChild(cell);
+    row.appendChild(this.controls(path, false, index, siblingCount));
+    this.applyIncompleteState(row, this.comparisonTouched(node) && !this.comparisonComplete(node));
+    return row;
+  }
+
+  // Build or reuse a comparison leaf's row cell (cached by node id). Clones the
+  // blank field-comparison row template, drops its ✕ (the group's controls own
+  // removal), and wires the left-column change to rebuild its dependent
+  // operator/right-column options via the reused refreshRow.
+  private comparisonCells(node: ComparisonLeaf): HTMLElement {
+    let cell = this.comparisonCache.get(node.id);
+    if (!cell) {
+      cell = this.buildComparisonCell();
+      this.comparisonCache.set(node.id, cell);
+    }
+    return cell;
+  }
+
+  private buildComparisonCell(): HTMLElement {
+    const cell = element("div", VALUE_CELL_CLASS);
+    cell.dataset.valueCell = "";
+    const content = this.comparisonRowTemplate?.content.firstElementChild;
+    if (content) {
+      const row = content.cloneNode(true) as HTMLElement;
+      row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
+      this.uniquify(row);
+      cell.appendChild(row);
+      refreshRow(row, this.columns); // seed operator/right options from the (blank) left
+      row
+        .querySelector<HTMLSelectElement>("[data-fc-left]")
+        ?.addEventListener("change", () => refreshRow(row, this.columns));
+    }
+    return cell;
+  }
+
   // Suffix every id/for/name in a cloned subtree so repeated clones stay valid HTML
   // and label associations point at their own controls (the widgets query their own
   // descendants, so functionality never depended on these being unique).
@@ -566,10 +690,14 @@ export class FilterGroupElement extends HTMLElement {
   // Toggle the row's incomplete badge/fade in place (no re-render → the widget the
   // user is editing keeps focus) and report the new incomplete count.
   private refreshCompleteness(target: HTMLElement): void {
-    const row = target.closest<HTMLElement>('[data-node-slot][data-node-kind="criterion"]');
+    const row = target.closest<HTMLElement>("[data-node-slot]");
     if (row?.dataset.path) {
       const node = this.nodeAtPath(JSON.parse(row.dataset.path) as number[]);
-      if (node?.kind === "criterion") this.applyIncompleteState(row, !this.leafComplete(node));
+      if (node?.kind === "criterion") {
+        this.applyIncompleteState(row, !this.leafComplete(node));
+      } else if (node?.kind === "comparison") {
+        this.applyIncompleteState(row, this.comparisonTouched(node) && !this.comparisonComplete(node));
+      }
     }
     this.dispatchChange();
   }
@@ -678,6 +806,15 @@ export class FilterGroupElement extends HTMLElement {
         title: capReached ? "Max nesting reached" : "Add a relation descent",
       }),
     );
+    // A comparison is a leaf (no nesting), so it is never depth-gated — only shown
+    // when the model admits one (a comparison group with ≥2 columns).
+    if (this.hasComparableGroup) {
+      footer.appendChild(
+        actionButton("add-comparison", "+ comparison", path, {
+          title: "Add a field-to-field comparison",
+        }),
+      );
+    }
     return footer;
   }
 }
