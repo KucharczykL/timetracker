@@ -264,6 +264,37 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     expect(host.serializeForQuery()).toEqual({}); // seed criterion + unset relation both pruned
   });
 
+  it("NOT on the relation wraps the whole descent, keeping the live child leaf", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    clickAction(host, "toggle-negate", [1]); // negate the relation node
+    clickAction(host, "add-condition", [1, "child"]);
+    pickField(host, [1, "child", 0], NAME_META);
+    typeValue(host, [1, "child", 0], "Hades");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        { NOT: [{ session_filter: { AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] } }] },
+      ],
+    });
+  });
+
+  it("counts a field-set/value-empty child leaf as incomplete under the target model", () => {
+    const host = mountRelation();
+    let last = -1;
+    host.addEventListener("filter-tree-change", (event) => {
+      last = (event as CustomEvent).detail.incompleteCount;
+    });
+    clickAction(host, "add-relation", []);
+    clickAction(host, "remove", [0]); // drop the seed criterion so only the relation counts
+    pickRelation(host, [0], "session_filter"); // relation complete (field set)
+    clickAction(host, "add-condition", [0, "child"]);
+    pickField(host, [0, "child", 0], NAME_META); // session `name` chosen, value still empty
+    expect(last).toBe(1); // the child leaf is incomplete, resolved against the session bundle
+    typeValue(host, [0, "child", 0], "Hades");
+    expect(last).toBe(0);
+  });
+
   it("does not offer + relation for a model with no relations", () => {
     const host = mountRelation();
     clickAction(host, "add-relation", []);

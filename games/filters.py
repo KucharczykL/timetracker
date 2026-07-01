@@ -757,7 +757,7 @@ def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
 # ── Model-key → filter-class resolution ────────────────────────────────────
 
 
-def filter_for_model(model_name: str) -> type[OperatorFilter]:
+def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
     """Resolve a model key (e.g. ``"game"``) to its ``OperatorFilter`` subclass by
     naming convention — no registry to maintain.
 
@@ -772,7 +772,7 @@ def filter_for_model(model_name: str) -> type[OperatorFilter]:
     return globals()[f"{model.__name__}Filter"]
 
 
-def reachable_models(root_model: str) -> dict[ModelKey, type[OperatorFilter]]:
+def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:
     """The closed set of models reachable from ``root_model`` via relation descents,
     each mapped to its ``OperatorFilter`` subclass (BFS over ``field_metadata``'s
     relation entries). Relation fields cycle (game↔session, game↔purchase, …), so the
@@ -796,7 +796,7 @@ def reachable_models(root_model: str) -> dict[ModelKey, type[OperatorFilter]]:
     return result
 
 
-def model_field_registry(root_model: str) -> dict[ModelKey, ModelFieldBundle]:
+def model_field_registry(root_model: ModelKey) -> dict[ModelKey, ModelFieldBundle]:
     """Per-model ``{fields, columns}`` bundles for every model reachable from
     ``root_model`` (#193). Serialized as ``<filter-group>``'s ``models`` prop; the
     client keys off it to render each relation's child group from the target model's

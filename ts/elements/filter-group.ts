@@ -85,8 +85,9 @@ const FOOTER_CLASS = "flex flex-wrap gap-2";
 // chip on a group with nothing to negate or join (issue #236).
 const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
-// Shown for an empty relation child group: an empty child is the presence test
-// (ANY = has ≥1 related row, NONE = has none) rather than an error (#193).
+// Shown for an empty relation child group: an empty child is meaningful — the
+// quantifier alone is the test (ANY = has ≥1 related row, NONE = has none, ALL =
+// vacuously true) rather than an error (#193).
 const RELATION_EMPTY_TEXT = "No conditions — matches on the related row's existence.";
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
@@ -129,8 +130,8 @@ const BUTTON_CLASS =
   "rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-100 disabled:cursor-not-allowed " +
   "disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700";
 // Relation-descent accent block (component 5, #193): a left-accented indigo card set
-// apart from the gray group chrome so the Game→Session model switch reads explicitly
-// (Filter-Forge ↳ INTO). Header carries the `↳ [quantifier] of [relation] where` row.
+// apart from the gray group chrome so the Game→Session model switch reads explicitly.
+// Header carries the `↳ [quantifier] of [relation] where` row.
 const RELATION_CARD_CLASS =
   "flex flex-col gap-2 rounded-lg border border-l-4 border-indigo-200 border-l-indigo-400 " +
   "bg-indigo-50/50 p-2 dark:border-indigo-500/40 dark:border-l-indigo-500/70 dark:bg-indigo-500/10";
@@ -338,16 +339,31 @@ export class FilterGroupElement extends HTMLElement {
   }
 
   // The bundle for a model key, or the root model's as a defensive fallback so a
-  // stale/unknown key never throws mid-render.
+  // stale/unknown key never throws mid-render. An unknown key is a server-metadata
+  // gap (a relation target missing from model_field_registry / a key-casing mismatch),
+  // not an expected path — warn so the otherwise-silent wrong-model render is
+  // debuggable. The server contract (model_field_registry ≡ reachable_models) is
+  // asserted in tests, so this branch should be unreachable in practice.
   private bundle(model: string): ModelBundle | undefined {
-    return this.models.get(model) ?? this.models.get(this.model);
+    const found = this.models.get(model);
+    if (!found) {
+      console.warn(
+        `filter-group: no metadata bundle for model "${model}"; falling back to root "${this.model}"`,
+      );
+    }
+    return found ?? this.models.get(this.model);
   }
 
   // The target model key a relation field descends into, resolved from `model`'s
-  // metadata (RelationTarget.model is a Django model name → lower-cased key).
+  // metadata (RelationTarget.model is a Django model name → lower-cased key). An unset
+  // field ("") is the expected pre-pick state (stay on `model`, silent); a field that
+  // is set but has no relation target is a metadata gap worth warning about.
   private targetModel(model: string, field: string): string {
-    const target = this.bundle(model)?.fields.get(field)?.relations[0]?.model;
-    return target ? target.toLowerCase() : model;
+    const meta = this.bundle(model)?.fields.get(field);
+    if (field && !meta?.relations[0]?.model) {
+      console.warn(`filter-group: relation field "${field}" on model "${model}" has no target`);
+    }
+    return meta?.relations[0]?.model?.toLowerCase() ?? model;
   }
 
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit

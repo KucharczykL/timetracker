@@ -629,8 +629,8 @@ def field_widget_templates(
 
 def _model_attr(model: str) -> dict[str, str]:
     """A dynamic ``data-model`` attribute (positional slot) for a template, or nothing
-    when ``model`` is empty — so single-model flat callers stay byte-for-byte
-    unchanged (#193)."""
+    when ``model`` is empty — so single-model flat callers render no ``data-model`` and
+    their output is unchanged (#193)."""
     return {"data-model": model} if model else {}
 
 

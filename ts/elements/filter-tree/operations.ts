@@ -62,6 +62,10 @@ export function parseFieldMeta(raw: string): FilterFieldMeta | null {
   try {
     return JSON.parse(raw) as FilterFieldMeta;
   } catch {
+    // A non-empty blob that won't parse is a broken Python↔TS contract (not the
+    // normal empty-option case above) — warn so the silently-dropped field pick is
+    // debuggable, consistent with parseModels in filter-group.ts.
+    console.warn("filter-tree: malformed field-picker data-meta blob");
     return null;
   }
 }

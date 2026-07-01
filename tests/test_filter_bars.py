@@ -845,6 +845,35 @@ class ReachableModelsTest(TestCase):
         }
         self.assertIn("session_filter", game_relations)
 
+    def test_reachable_set_is_the_same_from_any_root(self):
+        """The relation graph is strongly connected, so the builder reaches the whole
+        model set regardless of which list it is opened from (game/session/…)."""
+        from games.filters import reachable_models
+
+        full = {"game", "session", "purchase", "playevent", "platform", "device"}
+        for root in full:
+            self.assertEqual(set(reachable_models(root)), full, f"root={root}")
+
+    def test_registry_covers_every_reachable_model_and_relation_target(self):
+        """The server invariant the client's bundle() fallback relies on: every
+        reachable model has a bundle, and every relation target named in any bundle is
+        itself a registry key — so a relation descent never lands on a missing model
+        (which the client would otherwise silently paper over with the root bundle)."""
+        from games.filters import model_field_registry, reachable_models
+
+        for root in ["game", "session", "purchase", "playevent", "platform", "device"]:
+            registry = model_field_registry(root)
+            self.assertEqual(set(registry), set(reachable_models(root)), f"root={root}")
+            for key, bundle in registry.items():
+                for meta in bundle["fields"]:
+                    for relation in meta["relations"]:
+                        self.assertIn(
+                            relation["model"].lower(),
+                            registry,
+                            f"root={root}: relation target {relation['model']!r} "
+                            f"(from {key}.{meta['name']}) missing from registry",
+                        )
+
 
 class FilterGroupComparisonTest(TestCase):
     """The nested-builder shell (#246, #193): the multi-model `models` prop + the
