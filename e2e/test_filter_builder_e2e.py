@@ -28,6 +28,15 @@ Prefill behavior note:
     - the Apply button triggers a navigation to /tracker/game/list
     - navigating directly to /tracker/game/list?filter=<JSON> narrows results
       on the Django side (round-trip GameFilter JSON test)
+
+Known limitation — tracked in #263:
+  Prefill seeds the filter-group tree structure but does NOT yet hydrate the
+  leaf value widgets.  Therefore ``serializeForQuery()`` reads blank widgets and
+  Apply navigates to the list WITHOUT ``?filter=`` — the prefilled filter is
+  dropped.  The full prefill→Apply→filtered-list round-trip is tested below as a
+  strict xfail (``test_prefill_apply_roundtrip_carries_filter``); when #263 lands
+  and that test unexpectedly passes, the suite will fail — forcing removal of the
+  marker and confirming the fix.
 """
 
 import json
@@ -179,5 +188,54 @@ def test_game_list_filter_narrows_results(
     page.goto(game_list_url)
 
     # DoneGame (status=f) must appear; PlayGame (status=p) must not.
+    expect(page.get_by_text("DoneGame")).to_be_visible()
+    expect(page.get_by_text("PlayGame")).not_to_be_visible()
+
+
+@pytest.mark.xfail(
+    reason="prefill value-widget hydration not implemented yet — #263",
+    strict=True,
+)
+def test_prefill_apply_roundtrip_carries_filter(
+    authenticated_page: Page, live_server
+) -> None:
+    """The full prefill → Apply → filtered-list round-trip is NOT yet working.
+
+    When #263 lands (leaf value widgets are hydrated from the deserialized tree),
+    serializeForQuery() will read the hydrated values and Apply will carry the
+    ?filter= through to the game list, narrowing results.  Until then this test
+    is expected to fail (strict xfail): if it unexpectedly passes the suite
+    reports XPASS and fails, forcing removal of the marker."""
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    Game.objects.create(name="DoneGame", platform=platform, status="f")
+    Game.objects.create(name="PlayGame", platform=platform, status="p")
+
+    # Same filter JSON used by the other tests in this file: status INCLUDES "f".
+    filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    filter_param = _encode_filter(filter_json)
+
+    builder_url = (
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={filter_param}"
+    )
+    page.goto(builder_url)
+
+    # Wait for the JS to initialize: count badge must have settled.
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+
+    # Click Apply and wait for navigation.
+    with page.expect_navigation():
+        page.locator("filter-builder [data-apply]").click()
+
+    # The round-trip assertion: Apply must carry ?filter= into the game list URL
+    # so the Django backend can narrow results.
+    current_url = page.url
+    assert "?filter=" in current_url, (
+        f"Expected Apply to carry ?filter= but got: {current_url}"
+    )
+
+    # With the prefilled filter active, only the finished game should appear.
     expect(page.get_by_text("DoneGame")).to_be_visible()
     expect(page.get_by_text("PlayGame")).not_to_be_visible()
