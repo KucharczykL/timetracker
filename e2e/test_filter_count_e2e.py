@@ -11,7 +11,6 @@ and the "count unavailable" error state — is exercised on load without driving
 the builder UI (the debounce/cancel/stale logic is unit-tested in vitest).
 """
 
-import pytest
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path, reverse
@@ -38,6 +37,14 @@ COUNT_ENDPOINT = "/api/filter/count"
 def filter_count_view(request):
     from django.templatetags.static import static
 
+    # Exactly ONE <filter-count> per page. Each badge auto-fetches the count on
+    # load; two badges would fire two concurrent authenticated requests into the
+    # live_server thread and contend on the SQLite connection (InterfaceError).
+    # The badge's model comes from the query string so a single view serves both
+    # the valid-count and the unknown-model (error-state) cases; the <filter-group>
+    # stays "game" (it needs a real model for its field metadata) while the badge's
+    # own model is what the endpoint receives.
+    badge_model = request.GET.get("model", "game")
     page = Document(
         Html(lang="en")[
             Head()[
@@ -53,21 +60,11 @@ def filter_count_view(request):
             ],
             Body(class_="p-6")[
                 FilterGroup(model="game"),
-                Div(id="ok-count")[
+                Div(id="count")[
                     FilterCount(
-                        model="game",
+                        model=badge_model,
                         noun_singular="game",
                         noun_plural="games",
-                        endpoint=COUNT_ENDPOINT,
-                    )
-                ],
-                # A deliberately unknown model → the endpoint 400s → the badge must
-                # show "count unavailable", never a bare 0.
-                Div(id="bad-count")[
-                    FilterCount(
-                        model="bogus",
-                        noun_singular="thing",
-                        noun_plural="things",
                         endpoint=COUNT_ENDPOINT,
                     )
                 ],
@@ -80,45 +77,54 @@ def filter_count_view(request):
 urlpatterns = [*base_urlpatterns, path("filter-count-test/", filter_count_view)]
 
 
-def _login_and_open(page: Page, live_server) -> None:
+def _login_and_open(page: Page, live_server, query: str = "") -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
-    page.goto(f"{live_server.url}/filter-count-test/")
+    page.goto(f"{live_server.url}/filter-count-test/{query}")
 
 
-@pytest.fixture
-def platform(db):
-    return Platform.objects.create(name="PC")
+# NB: no ``@pytest.mark.django_db`` / ``db`` fixture here. ``live_server`` pulls in
+# ``transactional_db`` (committed rows visible to the server thread); mixing the
+# plain ``db`` fixture with it breaks the between-test table flush, which leaked a
+# second "tester" user into the next test (User.MultipleObjectsReturned on login).
+# Mirror the working ``test_widgets_e2e`` pattern: create rows in the test body.
 
 
-@pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
-def test_badge_shows_total_and_error_state(
-    live_server, page: Page, django_user_model, platform
-):
+def test_badge_shows_total(live_server, page: Page, django_user_model):
     django_user_model.objects.create_user(username="tester", password="secret123")
+    platform = Platform.objects.create(name="PC")
     for name in ("Hades", "Celeste", "Braid"):
         Game.objects.create(name=name, platform=platform)
 
     _login_and_open(page, live_server)
 
     # The valid badge counts all three games (plural noun).
-    expect(page.locator("#ok-count filter-count")).to_have_text("≈ 3 games")
-    # The unknown-model badge degrades to an explicit error, not "0".
-    expect(page.locator("#bad-count filter-count")).to_have_text("count unavailable")
+    expect(page.locator("#count filter-count")).to_have_text("≈ 3 games")
 
 
-@pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
-def test_badge_uses_singular_noun_for_one(
-    live_server, page: Page, django_user_model, platform
-):
+def test_badge_uses_singular_noun_for_one(live_server, page: Page, django_user_model):
     django_user_model.objects.create_user(username="tester", password="secret123")
+    platform = Platform.objects.create(name="PC")
     Game.objects.create(name="Hades", platform=platform)
 
     _login_and_open(page, live_server)
 
-    expect(page.locator("#ok-count filter-count")).to_have_text("≈ 1 game")
+    expect(page.locator("#count filter-count")).to_have_text("≈ 1 game")
+
+
+@override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
+def test_badge_shows_error_state_on_bad_model(
+    live_server, page: Page, django_user_model
+):
+    django_user_model.objects.create_user(username="tester", password="secret123")
+
+    # The badge's model is unknown → the endpoint 400s → the badge must show an
+    # explicit "count unavailable", never a bare 0.
+    _login_and_open(page, live_server, query="?model=bogus")
+
+    expect(page.locator("#count filter-count")).to_have_text("count unavailable")
