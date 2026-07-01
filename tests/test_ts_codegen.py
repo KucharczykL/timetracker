@@ -2,8 +2,28 @@
 
 from typing import Literal, TypedDict
 
+import pytest
+
 from common.components.ts_codegen import render_filter_metadata_module
 from common.criteria import ComparableColumn, FieldMeta
+
+
+# Module-level so get_type_hints can resolve the "Tree" forward reference.
+class Tree(TypedDict):
+    label: str
+    children: list["Tree"]  # self-referential -> exercises the recursion guard
+
+
+class Shared(TypedDict):
+    x: str
+
+
+class RootA(TypedDict):
+    shared: Shared
+
+
+class RootB(TypedDict):
+    shared: Shared
 
 
 def test_emits_field_meta_and_comparable_column_interfaces() -> None:
@@ -35,6 +55,37 @@ def test_literal_alias_becomes_a_string_union() -> None:
     )
 
 
+def test_union_alias_of_alias_and_literal_renders_both() -> None:
+    # FieldMetaKind = LeafWidgetKind | Literal["relation"] — the only branch where
+    # a `X | Y` union combines a nested alias arm with an inline Literal arm.
+    output = render_filter_metadata_module([FieldMeta])
+    assert 'export type FieldMetaKind = LeafWidgetKind | "relation";' in output
+    assert (
+        'export type LeafWidgetKind = "string" | "number" | "date" | "bool" | '
+        '"set" | "field-comparison";' in output
+    )
+
+
+def test_alias_referenced_twice_is_emitted_once() -> None:
+    # AttrName backs both FieldMeta.name and RelationTarget.field; the dedup guard
+    # must emit its `export type` exactly once (a second would be a tsc error).
+    output = render_filter_metadata_module([FieldMeta])
+    assert output.count("export type AttrName = ") == 1
+
+
+def test_shared_nested_interface_emitted_once_across_roots() -> None:
+    output = render_filter_metadata_module([RootA, RootB])
+    assert output.count("export interface Shared {") == 1
+
+
+def test_self_referential_typeddict_terminates_and_emits_once() -> None:
+    # The reserve-slot recursion guard must break the cycle rather than recurse
+    # forever; Tree is emitted once and its field references itself as Tree[].
+    output = render_filter_metadata_module([Tree])
+    assert output.count("export interface Tree {") == 1
+    assert "children: Tree[];" in output
+
+
 def test_str_alias_becomes_named_string_type() -> None:
     output = render_filter_metadata_module([FieldMeta])
     assert "export type ModifierToken = string;" in output
@@ -60,9 +111,13 @@ def test_unsupported_type_raises() -> None:
     class Bad(TypedDict):
         value: complex  # not in the primitive map, not a supported construct
 
-    try:
+    with pytest.raises(TypeError, match="unsupported type"):
         render_filter_metadata_module([Bad])
-    except TypeError as error:
-        assert "unsupported type" in str(error)
-    else:  # pragma: no cover - the call must raise
-        raise AssertionError("expected TypeError for an unsupported field type")
+
+
+def test_non_typeddict_root_raises() -> None:
+    class NotATypedDict:
+        pass
+
+    with pytest.raises(TypeError, match="not a TypedDict"):
+        render_filter_metadata_module([NotATypedDict])
