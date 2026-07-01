@@ -56,4 +56,70 @@ describe("<filter-builder>", () => {
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
+
+  it("Preset pick loads filter into the group without navigating", () => {
+    const { group, builder } = mount();
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+
+    // Inject a preset dropdown anchor whose href carries a ?filter= param,
+    // mimicking the server's list_presets fragment. The delete span is nested
+    // inside so the click-ordering logic is also exercised (delete check runs
+    // first, but the click is on the anchor itself, not the delete span).
+    const filter = { AND: [{ status: { modifier: "INCLUDES", value: ["f"] } }] };
+    const dropdown = builder.querySelector("[data-preset-dropdown]") as HTMLElement;
+    dropdown.classList.remove("hidden");
+    dropdown.innerHTML = `
+      <ul>
+        <li>
+          <a href="/tracker/game/list?filter=${encodeURIComponent(JSON.stringify(filter))}">
+            Finished games
+            <span data-delete-preset href="/tracker/filter/presets/delete/1">×</span>
+          </a>
+        </li>
+      </ul>`;
+
+    const anchor = dropdown.querySelector("a[href]") as HTMLElement;
+    anchor.click();
+
+    expect(group.serialize()).toEqual(filter);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("Delete sends X-CSRFToken header and does not load the preset", () => {
+    const { builder } = mount();
+
+    // Set the CSRF cookie so getCsrfToken() returns a known value.
+    document.cookie = "csrftoken=testtoken";
+
+    // Stub window.fetchWithHtmxTriggers and window.confirm.
+    const fetchStub = vi.fn(() => Promise.resolve());
+    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
+    const confirmStub = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmStub);
+
+    // Inject a preset anchor containing a nested [data-delete-preset] span.
+    const dropdown = builder.querySelector("[data-preset-dropdown]") as HTMLElement;
+    dropdown.classList.remove("hidden");
+    dropdown.innerHTML = `
+      <ul>
+        <li>
+          <a href="/tracker/game/list?filter=%7B%7D">
+            My preset
+            <span data-delete-preset="" href="/tracker/filter/presets/delete/42">×</span>
+          </a>
+        </li>
+      </ul>`;
+
+    const deleteSpan = dropdown.querySelector("[data-delete-preset]") as HTMLElement;
+    deleteSpan.click();
+
+    expect(confirmStub).toHaveBeenCalled();
+    expect(fetchStub).toHaveBeenCalledOnce();
+    const [_url, options] = fetchStub.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
+    expect(options.method).toBe("DELETE");
+    expect(options.headers["X-CSRFToken"]).toBe("testtoken");
+
+    vi.unstubAllGlobals();
+  });
 });

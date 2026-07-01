@@ -16,7 +16,9 @@ export function applyUrl(listUrl: string, filter: Record<string, unknown>): stri
 // save/delete requests 403.
 function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
+  if (match) return decodeURIComponent(match[1]);
+  const element = document.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]');
+  return element ? element.value : "";
 }
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
