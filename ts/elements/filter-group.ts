@@ -145,8 +145,13 @@ const RELATION_CARD_CLASS =
 const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
 const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
 const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
+// No horizontal padding: @tailwindcss/forms styles bare <select> with
+// appearance:none, a right-anchored chevron, and the right padding (~2.5rem) that
+// clears it. A px-*/pr-* utility can't beat the plugin rule for the right side;
+// px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
+// under the chevron (the old px-2 did this). Set only vertical padding here.
 const RELATION_SELECT_CLASS =
-  "rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 " +
+  "rounded border border-gray-300 bg-white py-1 text-sm dark:border-gray-600 dark:bg-gray-800 " +
   "disabled:opacity-50 disabled:cursor-not-allowed";
 
 // The closed set of restructuring actions a button can carry; producer
