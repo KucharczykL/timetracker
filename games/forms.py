@@ -38,8 +38,15 @@ INPUT_CLASS = (
     "text-sm rounded-base focus:ring-brand focus:border-brand block w-full "
     f"px-3 py-2.5 shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
+# No horizontal padding here: @tailwindcss/forms (base strategy) styles every
+# bare <select> with appearance:none, a chevron pinned to the right edge, AND the
+# right padding (~2.5rem/40px) that clears it. A px-*/pr-* utility can't win over
+# that plugin rule for the right side, and px-* *does* override it symmetrically —
+# pulling the right padding down so option text slides under the chevron (the old
+# px-3 did exactly this on narrow selects, e.g. the field-comparison operator
+# select). So set only vertical padding and let the plugin own the horizontal.
 SELECT_CLASS = (
-    "w-full px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium "
+    "w-full py-2.5 bg-neutral-secondary-medium border border-default-medium "
     "text-heading text-sm rounded-base focus:ring-brand focus:border-brand "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
