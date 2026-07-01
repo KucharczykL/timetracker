@@ -131,6 +131,12 @@ class TestStringCriterion:
         assert restored is not None
         assert restored.name == StringCriterion(value="", modifier=Modifier.EQUALS)
 
+    def test_is_null_round_trips_json(self):
+        original = StringCriterion(value="", modifier=Modifier.IS_NULL)
+        restored = StringCriterion.from_json(original.to_json())
+        assert restored == original
+        assert restored.to_q("note") == Q(note__isnull=True) | Q(note__exact="")
+
 
 class TestIntCriterion:
     def test_between(self):
@@ -4418,7 +4424,7 @@ class TestStringFieldNullConvention:
         games_config = apps.get_app_config("games")
         unexpected_nullable_fields: list[str] = []
         for model in games_config.get_models():
-            for field in model._meta.get_fields():
+            for field in model._meta.get_fields():  # get_fields() also returns reverse relations; the isinstance check below filters them out
                 if isinstance(field, (CharField, TextField)) and field.null:
                     field_key = f"{model.__name__}.{field.name}"
                     if field_key not in self.KNOWN_NULLABLE_EXCEPTIONS:
