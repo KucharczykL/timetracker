@@ -90,6 +90,18 @@ describe("summarize — modifier families", () => {
           ["name", field({ name: "name", label: "Name", kind: "string" })],
           ["playtime", field({ name: "playtime", label: "Playtime", kind: "number" })],
           ["mastered", field({ name: "mastered", label: "Mastered", kind: "bool" })],
+          [
+            "owned",
+            field({
+              name: "owned",
+              label: "Owned",
+              kind: "bool",
+              choices: [
+                { value: "true", label: "Owned it" },
+                { value: "false", label: "Never owned" },
+              ],
+            }),
+          ],
         ]),
       },
     },
@@ -119,6 +131,11 @@ describe("summarize — modifier families", () => {
       "Games where Playtime is between 2 and 5.",
     );
   });
+  it("phrases NOT_BETWEEN with both bounds", () => {
+    expect(one("playtime", { value: "2", value2: "5", modifier: "NOT_BETWEEN" })).toBe(
+      "Games where Playtime is not between 2 and 5.",
+    );
+  });
   it("phrases presence modifiers with no value", () => {
     expect(one("name", { modifier: "IS_NULL" })).toBe("Games where Name is empty.");
     expect(one("name", { modifier: "NOT_NULL" })).toBe("Games where Name is set.");
@@ -127,6 +144,9 @@ describe("summarize — modifier families", () => {
     expect(one("name", { value: "^z", modifier: "MATCHES_REGEX" })).toBe(
       "Games where Name matches ^z.",
     );
+    expect(one("name", { value: "^z", modifier: "NOT_MATCHES_REGEX" })).toBe(
+      "Games where Name does not match ^z.",
+    );
   });
   it("phrases a bool as yes/no", () => {
     expect(one("mastered", { value: true, modifier: "EQUALS" })).toBe(
@@ -134,6 +154,16 @@ describe("summarize — modifier families", () => {
     );
     expect(one("mastered", { value: false, modifier: "EQUALS" })).toBe(
       "Games where Mastered is no.",
+    );
+  });
+  it("prefers a bool field's choice label over yes/no", () => {
+    expect(one("owned", { value: true, modifier: "EQUALS" })).toBe(
+      "Games where Owned is Owned it.",
+    );
+  });
+  it("reads a stringified bool value ('true') as yes", () => {
+    expect(one("mastered", { value: "true", modifier: "EQUALS" })).toBe(
+      "Games where Mastered is yes.",
     );
   });
 });
@@ -190,19 +220,37 @@ describe("summarize — set values", () => {
       "Games where Status is exactly Finished and Playing.",
     );
   });
-  it("appends an excludes clause when both present (search-select {id,label} entries)", () => {
+  it("appends an excludes clause with 'but not' when both present ({id,label} entries)", () => {
     expect(
       one("device", {
         value: [{ id: "1", label: "Steam Deck" }],
         excludes: [{ id: "2", label: "Switch" }],
         modifier: "INCLUDES",
       }),
-    ).toBe("Games where Device is Steam Deck and not Switch.");
+    ).toBe("Games where Device is Steam Deck but not Switch.");
+  });
+  it("keeps the include 'and' distinct from the exclude 'but not' for INCLUDES_ALL", () => {
+    expect(
+      one("status", {
+        value: ["f", "p"],
+        excludes: [{ id: "3", label: "Abandoned" }],
+        modifier: "INCLUDES_ALL",
+      }),
+    ).toBe("Games where Status has all of Finished and Playing but not Abandoned.");
   });
   it("phrases an excludes-only set as 'is not'", () => {
     expect(
       one("device", { value: [], excludes: [{ id: "2", label: "Switch" }], modifier: "INCLUDES" }),
     ).toBe("Games where Device is not Switch.");
+  });
+  it("joins three included values with commas and a final 'or'", () => {
+    expect(one("status", { value: ["f", "p", "a"], modifier: "INCLUDES" })).toBe(
+      "Games where Status is one of Finished, Playing or Abandoned.",
+    );
+  });
+  it("phrases a presence modifier on a set field", () => {
+    expect(one("status", { modifier: "IS_NULL" })).toBe("Games where Status is empty.");
+    expect(one("device", { modifier: "NOT_NULL" })).toBe("Games where Device is set.");
   });
 });
 
@@ -260,6 +308,18 @@ describe("summarize — connectives, parens, NOT", () => {
     const andGroup: GroupNode = { kind: "group", id: "in", connective: "AND", negate: false, children: [pc] };
     expect(summarize(root(finished, andGroup), CTX)).toBe(
       "Games where Status is Finished and Platform is PC.",
+    );
+  });
+  it("parenthesizes a same-connective multi-child nested group", () => {
+    const andGroup: GroupNode = { kind: "group", id: "in", connective: "AND", negate: false, children: [pc, sw] };
+    expect(summarize(root(finished, andGroup), CTX)).toBe(
+      "Games where Status is Finished and (Platform is PC and Platform is Switch).",
+    );
+  });
+  it("drops an empty nested group from the join with no dangling connective", () => {
+    const emptyGroup: GroupNode = { kind: "group", id: "empty", connective: "AND", negate: false, children: [] };
+    expect(summarize(root(finished, emptyGroup), CTX)).toBe(
+      "Games where Status is Finished.",
     );
   });
   it("prefixes a negated leaf with not (…)", () => {
@@ -389,6 +449,11 @@ describe("summarize — field comparison", () => {
   });
   it("renders an incomplete comparison as a placeholder", () => {
     expect(comparison({ left: "year_released" })).toBe("Games where ….");
+  });
+  it("falls back to the raw column name when it is absent from columns", () => {
+    expect(
+      comparison({ left: "playtime", right: "year_released", modifier: "LESS_THAN" }),
+    ).toBe("Games where playtime is less than Release year.");
   });
 });
 

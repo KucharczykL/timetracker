@@ -49,3 +49,19 @@ def test_summary_modifier_keys_are_real_modifiers():
             f"MODIFIER_PHRASES key {key!r} is not a common.criteria.Modifier value "
             "— the summary phrase map drifted from the Python enum (#194)"
         )
+
+
+@pytest.mark.skipif(
+    not CANONICAL_PATH.exists(),
+    reason="summary-modifiers.canonical.json missing — run `make test-ts` first",
+)
+def test_every_modifier_has_a_summary_phrase():
+    """The contract is bidirectional: besides every phrase key being a real
+    Modifier, every Modifier must have a phrase — otherwise a newly-added Modifier
+    would reach the summary and silently print its raw token instead of English."""
+    keys = set(json.loads(CANONICAL_PATH.read_text()))
+    missing = MODIFIER_VALUES - keys
+    assert not missing, (
+        f"Modifier(s) {sorted(missing)} have no MODIFIER_PHRASES entry — the summary "
+        "would print the raw token. Add a phrase in ts/elements/filter-tree/summary.ts (#194)"
+    )

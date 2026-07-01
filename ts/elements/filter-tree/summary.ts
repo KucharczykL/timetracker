@@ -1,7 +1,7 @@
 /**
  * Natural-language filter summary (issue #194, phase 2c component 7 of #168).
  *
- * A pure, DOM-free tree → English walker: `summarize(tree, ctx)` turns a
+ * A pure, DOM-free tree → English walker: `summarize(tree, context)` turns a
  * `GroupNode` filter tree into a read-only sentence, recomputed by the builder on
  * every edit. Reads node payloads + explicit per-model `FieldMeta` metadata only;
  * the caller passes a *filled* tree (leaf payloads already read from live widgets —
@@ -14,6 +14,7 @@ import type {
   FieldMeta,
   FilterNode,
   GroupNode,
+  ModifierToken,
   RelationMatch,
   RelationNode,
 } from "./types.js";
@@ -35,7 +36,7 @@ export interface SummaryContext {
 
 // modifier token -> natural phrase. The SINGLE source the Python contract validates
 // (Task 7): every key must be a real common.criteria.Modifier value.
-export const MODIFIER_PHRASES: Record<string, string> = {
+export const MODIFIER_PHRASES: Record<ModifierToken, string> = {
   EQUALS: "is",
   NOT_EQUALS: "is not",
   GREATER_THAN: "is more than",
@@ -56,19 +57,23 @@ export const MODIFIER_PHRASES: Record<string, string> = {
 
 const PLACEHOLDER = "…";
 
-export function summarize(tree: GroupNode, ctx: SummaryContext): string {
-  const model = ctx.models[ctx.modelKey];
-  const body = tree.children.length ? joinChildren(tree, model, ctx) : "";
-  if (!body) return `${ctx.modelLabel} (all).`;
-  return `${ctx.modelLabel} where ${body}.`;
+export function summarize(tree: GroupNode, context: SummaryContext): string {
+  const model = context.models[context.modelKey];
+  const body = tree.children.length ? joinChildren(tree, model, context) : "";
+  if (!body) return `${context.modelLabel} (all).`;
+  // The builder never negates the root (issue #236: no NOT chip on the root), but
+  // an imported/legacy `?filter=` can — honor it so the summary stays symmetric with
+  // the serializer's root wrapNegate.
+  const negated = tree.negate ? `not (${body})` : body;
+  return `${context.modelLabel} where ${negated}.`;
 }
 
 // Join a group's children with the group's connective word. Empty renders (empty
 // nested groups) drop out.
-function joinChildren(node: GroupNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
+function joinChildren(node: GroupNode, model: SummaryModel | undefined, context: SummaryContext): string {
   const word = node.connective === "AND" ? "and" : "or";
   const parts = node.children
-    .map((child) => renderChildForGroup(child, node.connective, model, ctx))
+    .map((child) => renderChildForGroup(child, node.connective, model, context))
     .filter((part) => part.length > 0);
   return parts.join(` ${word} `);
 }
@@ -80,9 +85,9 @@ function renderChildForGroup(
   child: FilterNode,
   parentConnective: GroupNode["connective"],
   model: SummaryModel | undefined,
-  ctx: SummaryContext,
+  context: SummaryContext,
 ): string {
-  const rendered = renderNode(child, model, ctx);
+  const rendered = renderNode(child, model, context);
   if (child.kind === "group" && !child.negate && rendered.length > 0) {
     const needsParens = child.children.length > 1 || child.connective !== parentConnective;
     if (needsParens) return `(${rendered})`;
@@ -90,20 +95,20 @@ function renderChildForGroup(
   return rendered;
 }
 
-function renderNode(node: FilterNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
-  const inner = renderInner(node, model, ctx);
+function renderNode(node: FilterNode, model: SummaryModel | undefined, context: SummaryContext): string {
+  const inner = renderInner(node, model, context);
   if (!inner) return "";
   return node.negate ? `not (${inner})` : inner;
 }
 
-function renderInner(node: FilterNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
+function renderInner(node: FilterNode, model: SummaryModel | undefined, context: SummaryContext): string {
   switch (node.kind) {
     case "group":
-      return joinChildren(node, model, ctx);
+      return joinChildren(node, model, context);
     case "criterion":
       return renderCriterion(node, model);
     case "relation":
-      return renderRelation(node, model, ctx);
+      return renderRelation(node, model, context);
     case "comparison":
       return renderComparison(node, model);
     default:
@@ -121,28 +126,41 @@ function renderComparison(leaf: ComparisonLeaf, model: SummaryModel | undefined)
   return `${leftLabel} ${phrase} ${rightLabel}${suffix}`;
 }
 
-// "all" (not "every") so the quantifier agrees with the plural, as-is relation
+// "all" (not "every") so the quantifier agrees with the already-plural relation
 // label: "all sessions" / "any sessions" / "no sessions" all read grammatically.
 const QUANTIFIERS: Record<RelationMatch, string> = { ANY: "any", NONE: "no", ALL: "all" };
 
 // The relation clause uses "matching (…)" rather than an inner "where": the frame is
 // already "<Model> where …", so a nested "where" would collide. "matching (…)" reads
 // cleanly after the frame's "where" and after a joining "and".
-function renderRelation(node: RelationNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
+function renderRelation(node: RelationNode, model: SummaryModel | undefined, context: SummaryContext): string {
   if (!node.field) return PLACEHOLDER; // no field → target model unknown, don't guess a body
   const meta = model?.fields.get(node.field);
   const noun = (meta?.label ?? node.field).toLowerCase();
-  const targetKey = targetModelKey(meta, ctx);
-  const targetModel = ctx.models[targetKey];
-  const body = node.child.children.length ? joinChildren(node.child, targetModel, ctx) : "";
+  const targetKey = targetModelKey(meta, context);
+  const targetModel = context.models[targetKey];
+  // A relation field that resolves to a model absent from the metadata is a gap: the
+  // child body would render its labels off the wrong (fallback) model with no cue.
+  // Warn — matching filter-group's bundle()/targetModel precedent — so the otherwise
+  // silent wrong-model summary is debuggable.
+  if (!targetModel) {
+    console.warn(`filter summary: no metadata for relation target model "${targetKey}"`);
+  }
+  const body = node.child.children.length ? joinChildren(node.child, targetModel, context) : "";
   if (!body) return emptyRelationPhrase(node.match, noun);
   return `${QUANTIFIERS[node.match]} ${noun} matching (${body})`;
 }
 
 // The model key a relation descends into — its RelationTarget.model lower-cased,
-// mirroring filter-group's targetModel. Falls back to the root when unknown.
-function targetModelKey(meta: FieldMeta | undefined, ctx: SummaryContext): string {
-  return meta?.relations[0]?.model?.toLowerCase() ?? ctx.modelKey;
+// mirroring filter-group's targetModel. Falls back to the root when the field has no
+// resolvable target (a metadata gap), warning like filter-group does so the fallback
+// render isn't silent.
+function targetModelKey(meta: FieldMeta | undefined, context: SummaryContext): string {
+  const target = meta?.relations[0]?.model;
+  if (!target) {
+    console.warn("filter summary: relation field has no target model; using root");
+  }
+  return target?.toLowerCase() ?? context.modelKey;
 }
 
 // What an empty relation child matches, per quantifier — the presence test (#225),
@@ -188,8 +206,10 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
 }
 
 // A set is worth rendering once it has a modifier and any selection (included,
-// excluded, or a presence test). Mirrors buildSetCriterion's "included OR excluded"
-// non-null condition rather than isCriterionComplete's value-only check.
+// excluded, or a presence test). Like buildSetCriterion's "included OR excluded"
+// non-null condition, but stricter: summary also requires a modifier (there is
+// nothing to phrase without one). Distinct from isCriterionComplete's value-only
+// check, which would reject an excludes-only set.
 function setHasSelection(criterion: CriterionLeaf["criterion"], modifier: string): boolean {
   if (!modifier) return false;
   if (isPresenceModifier(modifier)) return true;
@@ -217,8 +237,10 @@ function renderSet(
     clauses.push(`${includePhrase(modifier, included.items.length)} ${included.text}`);
   }
   if (excluded.items.length) {
-    // "is not X" on its own when there is no include clause; else "and not X".
-    clauses.push(clauses.length ? `and not ${excluded.text}` : `is not ${excluded.text}`);
+    // "is not X" on its own when there is no include clause; else "but not X" — "but"
+    // (not "and") keeps the exclusion distinct from the include list's own "and"
+    // joiner (e.g. INCLUDES_ALL: "has all of A and B but not C", not "…and B and C").
+    clauses.push(clauses.length ? `but not ${excluded.text}` : `is not ${excluded.text}`);
   }
   return clauses.join(" ");
 }
