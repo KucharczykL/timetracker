@@ -32,7 +32,9 @@ def test_builder_rejects_unknown_model(logged_in_client):
 
 
 def test_builder_prefills_filter_prop(logged_in_client):
-    filter_json = json.dumps({"AND": [{"name": {"modifier": "EQUALS", "value": "Zelda"}}]})
+    filter_json = json.dumps(
+        {"AND": [{"name": {"modifier": "EQUALS", "value": "Zelda"}}]}
+    )
     response = logged_in_client.get(
         reverse("games:filter_builder", args=["game"]), {"filter": filter_json}
     )
