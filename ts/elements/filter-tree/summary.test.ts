@@ -135,3 +135,71 @@ describe("summarize — modifier families", () => {
     );
   });
 });
+
+describe("summarize — set values", () => {
+  const CTX: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map([
+          [
+            "status",
+            field({
+              name: "status",
+              label: "Status",
+              kind: "set",
+              choices: [
+                { value: "f", label: "Finished" },
+                { value: "p", label: "Playing" },
+                { value: "a", label: "Abandoned" },
+              ],
+            }),
+          ],
+          ["device", field({ name: "device", label: "Device", kind: "set" })],
+        ]),
+      },
+    },
+  };
+  function one(field: string, criterion: Record<string, unknown>): string {
+    return summarize(root({ kind: "criterion", id: "c", field, criterion, negate: false }), CTX);
+  }
+
+  it("phrases a single-value INCLUDES as 'is'", () => {
+    expect(one("status", { value: ["f"], modifier: "INCLUDES" })).toBe(
+      "Games where Status is Finished.",
+    );
+  });
+  it("phrases a multi-value INCLUDES as 'is one of'", () => {
+    expect(one("status", { value: ["f", "p"], modifier: "INCLUDES" })).toBe(
+      "Games where Status is one of Finished or Playing.",
+    );
+  });
+  it("phrases EXCLUDES", () => {
+    expect(one("status", { value: ["a"], modifier: "EXCLUDES" })).toBe(
+      "Games where Status is not Abandoned.",
+    );
+  });
+  it("phrases INCLUDES_ALL and INCLUDES_ONLY", () => {
+    expect(one("status", { value: ["f", "p"], modifier: "INCLUDES_ALL" })).toBe(
+      "Games where Status has all of Finished and Playing.",
+    );
+    expect(one("status", { value: ["f", "p"], modifier: "INCLUDES_ONLY" })).toBe(
+      "Games where Status is exactly Finished and Playing.",
+    );
+  });
+  it("appends an excludes clause when both present (search-select {id,label} entries)", () => {
+    expect(
+      one("device", {
+        value: [{ id: "1", label: "Steam Deck" }],
+        excludes: [{ id: "2", label: "Switch" }],
+        modifier: "INCLUDES",
+      }),
+    ).toBe("Games where Device is Steam Deck and not Switch.");
+  });
+  it("phrases an excludes-only set as 'is not'", () => {
+    expect(
+      one("device", { value: [], excludes: [{ id: "2", label: "Switch" }], modifier: "INCLUDES" }),
+    ).toBe("Games where Device is not Switch.");
+  });
+});

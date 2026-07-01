@@ -85,8 +85,15 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
   if (!leaf.field) return PLACEHOLDER;
   const meta = model?.fields.get(leaf.field);
   const label = meta?.label ?? leaf.field;
+  const modifier = String(leaf.criterion["modifier"] ?? "");
+  // Sets gate on include-OR-exclude presence, not isCriterionComplete (which only
+  // inspects `value` and would call an excludes-only set incomplete).
+  if (meta?.kind === "set") {
+    if (!setHasSelection(leaf.criterion, modifier)) return `${label} ${PLACEHOLDER}`;
+    if (isPresenceModifier(modifier)) return `${label} ${MODIFIER_PHRASES[modifier] ?? modifier}`;
+    return `${label} ${renderSet(leaf.criterion, meta, modifier)}`;
+  }
   if (!isCriterionComplete(leaf)) return `${label} ${PLACEHOLDER}`;
-  const modifier = String(leaf.criterion["modifier"]);
   const phrase = MODIFIER_PHRASES[modifier] ?? modifier;
   // Presence modifiers carry no value: the phrase ("is empty"/"is set") is the whole clause.
   if (isPresenceModifier(modifier)) return `${label} ${phrase}`;
@@ -99,6 +106,69 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
     return `${label} ${phrase} ${lower} and ${upper}`;
   }
   return `${label} ${phrase} ${renderValue(leaf.criterion["value"], meta)}`;
+}
+
+// A set is worth rendering once it has a modifier and any selection (included,
+// excluded, or a presence test). Mirrors buildSetCriterion's "included OR excluded"
+// non-null condition rather than isCriterionComplete's value-only check.
+function setHasSelection(criterion: CriterionLeaf["criterion"], modifier: string): boolean {
+  if (!modifier) return false;
+  if (isPresenceModifier(modifier)) return true;
+  const value = criterion["value"];
+  const excludes = criterion["excludes"];
+  return (
+    (Array.isArray(value) && value.length > 0) ||
+    (Array.isArray(excludes) && excludes.length > 0)
+  );
+}
+
+// Render a set criterion's predicate (everything after the field label): the
+// included values phrased per modifier, with an appended "and not …" for excludes.
+// *_ALL/_ONLY join with "and" (all required); INCLUDES/EXCLUDES join with "or".
+function renderSet(
+  criterion: CriterionLeaf["criterion"],
+  meta: FieldMeta,
+  modifier: string,
+): string {
+  const conjunction = modifier === "INCLUDES_ALL" || modifier === "INCLUDES_ONLY" ? "and" : "or";
+  const included = renderList(criterion["value"], meta, conjunction);
+  const excluded = renderList(criterion["excludes"], meta, "or");
+  const clauses: string[] = [];
+  if (included.items.length) {
+    clauses.push(`${includePhrase(modifier, included.items.length)} ${included.text}`);
+  }
+  if (excluded.items.length) {
+    // "is not X" on its own when there is no include clause; else "and not X".
+    clauses.push(clauses.length ? `and not ${excluded.text}` : `is not ${excluded.text}`);
+  }
+  return clauses.join(" ");
+}
+
+// The verb for an included list: INCLUDES → is / is one of; the *_ALL/_ONLY forms
+// keep their MODIFIER_PHRASES phrasing; EXCLUDES on the include slot → is not / is none of.
+function includePhrase(modifier: string, count: number): string {
+  if (modifier === "INCLUDES") return count > 1 ? "is one of" : "is";
+  if (modifier === "EXCLUDES") return count > 1 ? "is none of" : "is not";
+  return MODIFIER_PHRASES[modifier] ?? modifier;
+}
+
+interface RenderedList {
+  items: string[];
+  text: string; // items joined "a, b <conjunction> c"
+}
+
+function renderList(value: unknown, meta: FieldMeta, conjunction: string): RenderedList {
+  const raw = Array.isArray(value) ? value : value == null ? [] : [value];
+  const items = raw.map((item) => renderItem(item, meta));
+  return { items, text: joinWords(items, conjunction) };
+}
+
+// Join a display list: "a", "a and b", "a, b or c" — final conjunction chosen by
+// the caller ("or" for a disjunction of allowed values, "and" for required sets).
+function joinWords(items: string[], conjunction: string): string {
+  if (items.length <= 1) return items.join("");
+  if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} ${conjunction} ${items[items.length - 1]}`;
 }
 
 // A bool value's display: the field's matching choice label if present, else yes/no.
