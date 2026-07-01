@@ -41,6 +41,7 @@ export interface SearchSelectChangeDetail {
 interface SearchSelectContainer extends HTMLElement {
   _searchSelectLabel?: string;
   _searchSelectDirty?: boolean;
+  _searchSelectSetSelected?: (value: string, label?: string) => void;
 }
 
 interface OptionRow extends HTMLElement {
@@ -570,7 +571,11 @@ const initWidget = (containerElement: Element) => {
     };
   };
 
-  const selectOption = (option: SearchSelectOption) => {
+  // `emit` lets a programmatic restore (setSelected) seed the selection WITHOUT
+  // firing search-select:change — otherwise restoring a value after a re-render
+  // would re-trigger the consumer's on-change logic (e.g. the leaf row's field
+  // reset), looping. User-driven picks pass emit=true (the default).
+  const selectOption = (option: SearchSelectOption, emit = true) => {
     if (multi) {
       if (!pills.querySelector(`input[value="${cssEscape(option.value)}"]`)) {
         addPill(option);
@@ -586,7 +591,14 @@ const initWidget = (containerElement: Element) => {
       container._searchSelectDirty = false;
       hidePanel();
     }
-    emitChange(option);
+    if (emit) emitChange(option);
+  };
+
+  // Public programmatic setter (issue #192): restore/seed a selection from code
+  // without a round-trip through the option list or a change event. Used by the
+  // nested filter builder to show a leaf's already-chosen field after a re-render.
+  container._searchSelectSetSelected = (value: string, label?: string) => {
+    selectOption({ value, label: label ?? value, data: {} }, false);
   };
 
   const addPill = (option: SearchSelectOption) => {
@@ -705,39 +717,56 @@ const initWidget = (containerElement: Element) => {
 /** Minimal escape for use inside an attribute-value selector. */
 const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
 
+// The current include/exclude/modifier state of one filter-mode <search-select>,
+// read straight from its pills. Self-contained per element (no flat form) so the
+// nested filter builder's leaf row can serialize a single widget on its
+// search-select:change — issue #192. `modifier` is "" when no modifier pill is set.
+export interface FilterSelectValue {
+  included: FilterPillEntry[];
+  excluded: FilterPillEntry[];
+  modifier: string;
+}
+
+export function readFilterSelect(container: HTMLElement): FilterSelectValue {
+  const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
+  const included: FilterPillEntry[] = [];
+  const excluded: FilterPillEntry[] = [];
+  let modifier = "";
+  if (pills) {
+    pills.querySelectorAll<HTMLElement>("[data-pill]").forEach(pill => {
+      const pillModifier = pill.getAttribute("data-search-select-modifier");
+      if (pillModifier) {
+        modifier = pillModifier;  // last modifier pill wins
+        return;                    // skip value extraction for this pill
+      }
+      const value = pill.getAttribute("data-value") ?? "";
+      const label = pill.getAttribute("data-label") || "";
+      if (pill.getAttribute("data-search-select-type") === "exclude") {
+        excluded.push({ id: value, label });
+      } else {
+        included.push({ id: value, label });
+      }
+    });
+  }
+  return { included, excluded, modifier };
+}
+
 // Serialise each widget's current state onto data-* attributes for the caller.
 // Form widgets expose data-values (the submitted hidden-input values); filter
 // widgets expose data-included / data-excluded / data-modifier for the filter
-// bar to read.
+// bar to read. (The legacy flat filter bar's whole-form pass; the nested builder
+// uses readFilterSelect per widget instead.)
 export function readSearchSelect(form: HTMLElement): void {
   form.querySelectorAll<HTMLElement>("search-select").forEach(container => {
-    const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
     if (container.getAttribute("filter-mode") === "true") {
-      const included: FilterPillEntry[] = [];
-      const excluded: FilterPillEntry[] = [];
-      let modifier = "";
-      if (pills) {
-        pills.querySelectorAll<HTMLElement>("[data-pill]").forEach(pill => {
-          const pillModifier = pill.getAttribute("data-search-select-modifier");
-          if (pillModifier) {
-            modifier = pillModifier;  // last modifier pill wins
-            return;                    // skip value extraction for this pill
-          }
-          const value = pill.getAttribute("data-value") ?? "";
-          const label = pill.getAttribute("data-label") || "";
-          if (pill.getAttribute("data-search-select-type") === "exclude") {
-            excluded.push({ id: value, label });
-          } else {
-            included.push({ id: value, label });
-          }
-        });
-      }
+      const { included, excluded, modifier } = readFilterSelect(container);
       container.setAttribute("data-included", JSON.stringify(included));
       container.setAttribute("data-excluded", JSON.stringify(excluded));
       if (modifier) container.setAttribute("data-modifier", modifier);
       else container.removeAttribute("data-modifier");
       return;
     }
+    const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
     const values = pills
       ? Array.from(pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]')).map(input => input.value)
       : [];
@@ -745,21 +774,33 @@ export function readSearchSelect(form: HTMLElement): void {
   });
 }
 
-// Keep as window global for filter_bar.ts until it is converted to a custom element.
-window.readSearchSelect = readSearchSelect;
-
 class SearchSelectElement extends HTMLElement {
   private onDocumentClick: ((event: MouseEvent) => void) | null = null;
+  private initialized = false;
 
   connectedCallback(): void {
+    // Idempotent across DOM moves (the nested filter builder reconciles rows by
+    // re-appending them, which reconnects this element). The inner element
+    // listeners persist with the moved subtree, so re-running initWidget would
+    // double-bind them — instead just re-attach the outside-click listener that
+    // disconnectedCallback removed.
+    if (this.initialized) {
+      if (this.onDocumentClick) document.addEventListener("click", this.onDocumentClick);
+      return;
+    }
+    this.initialized = true;
     this.onDocumentClick = initWidget(this) as ((event: MouseEvent) => void) | null;
   }
 
+  /** Programmatically set a single-select value without firing a change event
+   *  (issue #192). No-op until the widget has initialised. */
+  setSelected(value: string, label?: string): void {
+    (this as SearchSelectContainer)._searchSelectSetSelected?.(value, label);
+  }
+
   disconnectedCallback(): void {
-    if (this.onDocumentClick) {
-      document.removeEventListener("click", this.onDocumentClick);
-      this.onDocumentClick = null;
-    }
+    // Keep the handler reference so a reconnection can re-attach it (see above).
+    if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick);
   }
 }
 

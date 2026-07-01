@@ -7,57 +7,19 @@
  */
 import { readFilterBarProps } from "../generated/props.js";
 import { readFieldComparisonSet } from "./field-comparison-set.js";
-import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readSearchSelect } from "./search-select.js";
-
-interface Criterion {
-  value: unknown;
-  modifier: string;
-  value2?: unknown;
-}
-
-interface PillEntry {
-  id: string;
-  label: string;
-}
+import {
+  parseJSONAttr,
+  readBoolWidget,
+  readDateWidget,
+  readNumberWidget,
+  readSetWidget,
+  readStringWidget,
+  setupModifierToggles,
+} from "./filter-widgets.js";
 
 interface DeselectableRadio extends HTMLInputElement {
   wasChecked?: boolean;
-}
-
-function criterion(value: unknown, value2: unknown, modifier: string): Criterion {
-  const result: Criterion = { value, modifier };
-  if (value2 !== null && value2 !== undefined && value2 !== "") {
-    result.value2 = value2;
-  }
-  return result;
-}
-
-function parseNumberInputValue(element: HTMLInputElement | null): number | "" {
-  if (!element || element.value === "") return "";
-  const value = parseFloat(element.value);
-  return isNaN(value) ? "" : value;
-}
-
-function buildRangeCriterion(
-  valueMin: number | string,
-  valueMax: number | string,
-): Criterion | null {
-  if (valueMin !== "" && valueMax !== "") return criterion(valueMin, valueMax, "BETWEEN");
-  if (valueMin !== "") return criterion(valueMin, null, "GREATER_THAN");
-  if (valueMax !== "") return criterion(valueMax, null, "LESS_THAN");
-  return null;
-}
-
-function parseJSONAttr<T>(element: Element, attr: string): T[] {
-  const raw = element.getAttribute(attr);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    console.warn("filter-bar: malformed JSON attribute", attr, raw);
-    return [];
-  }
 }
 
 function baseUrl(): string {
@@ -130,80 +92,6 @@ function appendAnd(
 ): void {
   if (!Array.isArray(filter.AND)) filter.AND = [];
   (filter.AND as unknown[]).push(element);
-}
-
-// Per-kind readers: each is scoped to a single widget element and returns a
-// criterion object, or null to omit the field entirely. The value/modifier
-// logic is a verbatim port of the former hardcoded field loops; only the
-// element lookup changed (within the widget element instead of global [name=…]).
-
-function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
-  const modifier =
-    element.querySelector<HTMLInputElement>('input[data-string-modifier-radio]:checked')
-      ?.value ?? "EQUALS";
-  if (isPresenceModifier(modifier)) {
-    return { modifier };
-  }
-  const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
-  if (textInput && textInput.value.trim()) {
-    return { value: textInput.value.trim(), modifier };
-  }
-  return null;
-}
-
-function readNumberWidget(element: HTMLElement): Criterion | Record<string, unknown> | null {
-  const modifier =
-    element.querySelector<HTMLInputElement>('input[data-number-modifier-radio]:checked')
-      ?.value ?? "EQUALS";
-  if (isPresenceModifier(modifier)) {
-    return { modifier };
-  }
-  const value = parseNumberInputValue(
-    element.querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])'),
-  );
-  if (isRangeModifier(modifier)) {
-    const value2Marker = element.querySelector('[data-number-value2]');
-    const value2Input =
-      value2Marker instanceof HTMLInputElement
-        ? value2Marker
-        : (value2Marker?.querySelector<HTMLInputElement>("input") ?? null);
-    const value2 = parseNumberInputValue(value2Input);
-    if (value !== "") return criterion(value, value2, modifier);
-    return null;
-  }
-  if (value !== "") return criterion(value, null, modifier);
-  return null;
-}
-
-function readDateWidget(element: HTMLElement): Criterion | null {
-  const valueMin =
-    element.querySelector<HTMLInputElement>("[data-range-min]")?.value ?? "";
-  const valueMax =
-    element.querySelector<HTMLInputElement>("[data-range-max]")?.value ?? "";
-  return buildRangeCriterion(valueMin, valueMax);
-}
-
-function readBoolWidget(element: HTMLElement): Criterion | null {
-  const checked = element.querySelector<HTMLInputElement>('input[type="radio"]:checked');
-  if (!checked) return null;
-  return criterion(checked.value === "true", null, "EQUALS");
-}
-
-function readSetWidget(element: HTMLElement): Record<string, unknown> | null {
-  const included = parseJSONAttr<PillEntry>(element, "data-included");
-  const excluded = parseJSONAttr<PillEntry>(element, "data-excluded");
-  const modifier = element.getAttribute("data-modifier");
-  if (modifier && isPresenceModifier(modifier)) {
-    return { modifier };
-  }
-  if (included.length > 0 || excluded.length > 0) {
-    return {
-      value: included.map((item) => ({ id: item.id, label: item.label })),
-      excludes: excluded.map((item) => ({ id: item.id, label: item.label })),
-      modifier: modifier || "INCLUDES",
-    };
-  }
-  return null;
 }
 
 function readWidget(element: HTMLElement, kind: string | null): unknown {
@@ -351,68 +239,6 @@ function setupDeselectableRadios(root: HTMLElement): void {
     });
     if (radio.checked) {
       radio.wasChecked = true;
-    }
-  });
-}
-
-function toggleStringFilterInput(radio: HTMLInputElement): void {
-  const container = radio.closest(".flex-col");
-  if (!container) return;
-  const textInput = container.querySelector<HTMLInputElement>('input[type="text"]');
-  if (!textInput) return;
-  const checkedRadio = container.querySelector<HTMLInputElement>('input[type="radio"]:checked');
-  const value = checkedRadio ? checkedRadio.value : "";
-  if (value === "IS_NULL" || value === "NOT_NULL") {
-    textInput.disabled = true;
-    textInput.value = "";
-    textInput.classList.add("opacity-50", "cursor-not-allowed");
-  } else {
-    textInput.disabled = false;
-    textInput.classList.remove("opacity-50", "cursor-not-allowed");
-  }
-}
-
-function setupStringFilters(root: HTMLElement): void {
-  // Delegated on the persistent custom element (see setupNumberFilters) so the
-  // modifier radios keep working after an htmx swap of the inner #filter-bar.
-  root.addEventListener("change", (event) => {
-    const target = event.target as Element;
-    if (target.matches("input[data-string-modifier-radio]")) {
-      toggleStringFilterInput(target as HTMLInputElement);
-    }
-  });
-}
-
-function toggleNumberFilterInput(radio: HTMLInputElement): void {
-  const container = radio.closest(".flex-col");
-  if (!container) return;
-  const inputs = container.querySelectorAll<HTMLInputElement>('input[type="number"]');
-  const value2 = container.querySelector<HTMLInputElement>("[data-number-value2]");
-  const checkedRadio = container.querySelector<HTMLInputElement>('input[type="radio"]:checked');
-  const modifier = checkedRadio ? checkedRadio.value : "";
-  const isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
-  const isBetween = modifier === "BETWEEN" || modifier === "NOT_BETWEEN";
-  inputs.forEach((input) => {
-    if (isPresence) {
-      input.disabled = true;
-      input.value = "";
-      input.classList.add("opacity-50", "cursor-not-allowed");
-    } else {
-      input.disabled = false;
-      input.classList.remove("opacity-50", "cursor-not-allowed");
-    }
-  });
-  if (value2) value2.classList.toggle("hidden", isPresence || !isBetween);
-}
-
-function setupNumberFilters(root: HTMLElement): void {
-  // Delegated on the persistent custom element so the modifier radios keep
-  // working after the inner #filter-bar body is htmx-swapped (connectedCallback
-  // does not re-run for inner swaps — a direct per-radio listener would be lost).
-  root.addEventListener("change", (event) => {
-    const target = event.target as Element;
-    if (target.matches("input[data-number-modifier-radio]")) {
-      toggleNumberFilterInput(target as HTMLInputElement);
     }
   });
 }
@@ -623,8 +449,7 @@ class FilterBarElement extends HTMLElement {
     });
 
     setupDeselectableRadios(this);
-    setupStringFilters(this);
-    setupNumberFilters(this);
+    setupModifierToggles(this);
     if (presetListUrl) loadPresets(this, presetListUrl);
   }
 }

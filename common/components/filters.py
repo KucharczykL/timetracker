@@ -1751,8 +1751,9 @@ def StringFilter(
     *,
     path: FilterWidgetPath,
 ) -> Node:
-    """Renders a string filter with 8 modifier radio options and a text input."""
+    """Renders a string filter: a modifier ``<select>`` and a text input."""
     from common.criteria import Modifier
+    from games.forms import SELECT_CLASS
 
     if modifier not in [m.value for m in Modifier.for_strings()]:
         modifier = "EQUALS"
@@ -1768,16 +1769,19 @@ def StringFilter(
         ("NOT_NULL", "is not null"),
     ]
 
-    # Grid of Radios using standard Radio primitives
-    radio_buttons = [
-        Radio(
-            name=f"{input_name_prefix}-modifier",
-            label=lbl,
-            checked=(modifier == mod_val),
-            value=mod_val,
-            data_string_modifier_radio="",
-        )
-        for mod_val, lbl in options
+    # A compact modifier dropdown (was an 8-radio grid): one control reads well both
+    # in the flat bar and nested in the filter builder's tree.
+    modifier_select = Select(
+        [
+            ("name", f"{input_name_prefix}-modifier"),
+            ("data-string-modifier-select", ""),
+            ("class", SELECT_CLASS),
+        ]
+    )[
+        *[
+            Option(value=mod_val, selected=(modifier == mod_val))[lbl]
+            for mod_val, lbl in options
+        ]
     ]
 
     input_disabled = modifier in ("IS_NULL", "NOT_NULL")
@@ -1806,7 +1810,7 @@ def StringFilter(
         filter_widget_attributes(path, "string"),
         class_="flex flex-col gap-2 @container",
     )[
-        Div(class_="grid grid-cols-2 @md:grid-cols-4 gap-2 py-1")[*radio_buttons],
+        modifier_select,
         Input(input_attrs),
     ]
 
@@ -1837,6 +1841,7 @@ def NumberFilter(
     so the widget never flashes before its JS runs.
     """
     from common.criteria import Modifier
+    from games.forms import SELECT_CLASS
 
     if modifier not in [m.value for m in Modifier.for_numbers()]:
         modifier = "EQUALS"
@@ -1852,15 +1857,17 @@ def NumberFilter(
         ("NOT_NULL", "is not null"),
     ]
 
-    radio_buttons = [
-        Radio(
-            name=f"{input_name_prefix}-modifier",
-            label=lbl,
-            checked=(modifier == mod_val),
-            value=mod_val,
-            data_number_modifier_radio="",
-        )
-        for mod_val, lbl in options
+    modifier_select = Select(
+        [
+            ("name", f"{input_name_prefix}-modifier"),
+            ("data-number-modifier-select", ""),
+            ("class", SELECT_CLASS),
+        ]
+    )[
+        *[
+            Option(value=mod_val, selected=(modifier == mod_val))[lbl]
+            for mod_val, lbl in options
+        ]
     ]
 
     inputs_disabled = modifier in ("IS_NULL", "NOT_NULL")
@@ -1897,7 +1904,7 @@ def NumberFilter(
         filter_widget_attributes(path, "number"),
         class_="flex flex-col gap-2 @container",
     )[
-        Div(class_="grid grid-cols-2 @md:grid-cols-4 gap-2 py-1")[*radio_buttons],
+        modifier_select,
         Div(class_="flex items-center gap-2")[
             Input(value_attrs, type="number"),
             Input(value2_attrs, type="number"),

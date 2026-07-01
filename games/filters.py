@@ -750,6 +750,24 @@ def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
     return filter_from_json(PlayEventFilter, json_str)
 
 
+# ── Model-key → filter-class resolution ────────────────────────────────────
+
+
+def filter_for_model(model_name: str) -> type[OperatorFilter]:
+    """Resolve a model key (e.g. ``"game"``) to its ``OperatorFilter`` subclass by
+    naming convention — no registry to maintain.
+
+    The nested filter builder element carries ``model = Model._meta.model_name``;
+    every filter in this module is named ``{Model.__name__}Filter``. So
+    ``"game" → Game → GameFilter``. Raises ``LookupError`` for an unknown model and
+    ``KeyError`` if a model has no matching filter class.
+    """
+    from django.apps import apps
+
+    model = apps.get_model("games", model_name)
+    return globals()[f"{model.__name__}Filter"]
+
+
 # ── URL building (the "reverse() for filters") ─────────────────────────────
 
 

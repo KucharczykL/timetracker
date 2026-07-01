@@ -51,9 +51,9 @@ class FilterBarRenderingTest(TestCase):
 
     def _assert_number_filter(self, html, field_prefix):
         """Every filter bar must use the Stash-style NumberFilter: a modifier
-        radio grid plus two number inputs (value + value2), with no legacy
+        <select> plus two number inputs (value + value2), with no legacy
         RangeSlider custom element left behind."""
-        self.assertIn("data-number-modifier-radio", html)
+        self.assertIn("data-number-modifier-select", html)
         self.assertIn(f'name="{field_prefix}-modifier"', html)
         self.assertIn('value="BETWEEN"', html)
         self.assertIn('value="IS_NULL"', html)
@@ -592,7 +592,7 @@ class FilterBarRenderingTest(TestCase):
 class NumberFilterRenderTest(TestCase):
     """Render-level contract for the Stash-style NumberFilter component."""
 
-    def test_renders_all_eight_modifier_radios(self):
+    def test_renders_all_eight_modifier_options(self):
         html = str(
             NumberFilter(input_name_prefix="filter-year", path=["year_released"])
         )
@@ -607,7 +607,7 @@ class NumberFilterRenderTest(TestCase):
             "NOT_NULL",
         ):
             self.assertIn(f'value="{modifier}"', html)
-        self.assertIn("data-number-modifier-radio", html)
+        self.assertIn("data-number-modifier-select", html)
 
     def test_renders_two_number_inputs(self):
         html = str(
@@ -624,8 +624,9 @@ class NumberFilterRenderTest(TestCase):
         )
         # value2 is hidden for the default EQUALS modifier.
         self.assertRegex(html, r'data-number-value2="" class="[^"]*\bhidden\b')
-        # Inputs are not disabled by default.
-        self.assertNotIn("disabled", html)
+        # Inputs are not disabled by default (the select's class carries the
+        # `disabled:` utility variants, so match the real disabled attribute).
+        self.assertNotIn('disabled="true"', html)
 
     def test_between_shows_second_input_and_prefills_values(self):
         html = str(
@@ -652,7 +653,7 @@ class NumberFilterRenderTest(TestCase):
                 path=["year_released"],
             )
         )
-        self.assertIn("disabled", html)
+        self.assertIn('disabled="true"', html)
         self.assertIn("cursor-not-allowed", html)
         # Values are cleared while disabled.
         self.assertNotIn('value="2000"', html)
@@ -666,8 +667,8 @@ class NumberFilterRenderTest(TestCase):
                 path=["year_released"],
             )
         )
-        # EQUALS is the only checked radio when an invalid modifier is given.
-        self.assertRegex(html, r'value="EQUALS"[^>]*checked="true"')
+        # EQUALS is the selected option when an invalid modifier is given.
+        self.assertRegex(html, r'value="EQUALS"[^>]*selected')
         self.assertNotRegex(html, r'value="INCLUDES"')
 
 

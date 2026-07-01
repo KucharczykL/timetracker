@@ -31,8 +31,8 @@ describe("types module", () => {
   });
 
   it("GroupNode children are mutable and connective is assignable", () => {
-    const node: GroupNode = { kind: "group", connective: "AND", negate: false, children: [] };
-    const inner: GroupNode = { kind: "group", connective: "OR", negate: false, children: [] };
+    const node: GroupNode = { kind: "group", id: "g1", connective: "AND", negate: false, children: [] };
+    const inner: GroupNode = { kind: "group", id: "g2", connective: "OR", negate: false, children: [] };
     node.children.push(inner);
     expect(node.children).toHaveLength(1);
     expect((node.children[0] as GroupNode).connective).toBe("OR");

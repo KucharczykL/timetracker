@@ -55,24 +55,12 @@ if settings.DEBUG:
     from django.http import HttpResponse
     from django.templatetags.static import static
 
-    from common.components import FilterFieldPicker, FilterGroup
-    from common.components.core import Safe
-    from games.filters import GameFilter
-
-    # Inline ES module: log the picked field's reset leaf so the field picker
-    # (#191) can be eyeballed standalone. Scoped to the [data-field-picker] marker
-    # so it never trips on another <search-select> on the page.
-    _picker_demo_script = (
-        "import { parseFieldMeta, criterionForField } from "
-        "'/static/js/dist/elements/filter-tree/operations.js';\n"
-        "document.querySelector('[data-field-picker]')"
-        ".addEventListener('search-select:change', (event) => {\n"
-        "  const meta = parseFieldMeta(event.detail.last?.data?.meta ?? '');\n"
-        "  if (meta) console.log('field-picker →', criterionForField(meta));\n"
-        "});"
-    )
+    from common.components import FilterGroup
 
     def filter_group_demo(_request: object) -> HttpResponse:
+        # The leaf rows clone search-select (field picker + set values) and
+        # date-range-picker (date values), so both element modules must load; the
+        # rest of the value widgets are plain markup wired by filter-group.js.
         page = Document(
             Html(lang="en")[
                 Head()[
@@ -85,14 +73,16 @@ if settings.DEBUG:
                     Script(
                         type="module", src=static("js/dist/elements/search-select.js")
                     ),
+                    Script(
+                        type="module",
+                        src=static("js/dist/elements/date-range-picker.js"),
+                    ),
                 ],
                 Body(class_="bg-body p-6 dark:bg-gray-900")[
                     StyledButton(
                         onclick="document.documentElement.classList.toggle('dark')"
                     )["Toggle dark"],
                     FilterGroup(model="game"),
-                    FilterFieldPicker(GameFilter, id="id_field_picker"),
-                    Script(type="module")[Safe(_picker_demo_script)],
                 ],
             ]
         )

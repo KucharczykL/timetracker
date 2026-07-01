@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { group } from "./serializer.js";
+import { nextNodeId } from "./node-id.js";
+import { ignoreNodeIds } from "./test-support.js";
 import type { CriterionLeaf, FilterNode, GroupNode } from "./types.js";
 import type { FilterFieldMeta } from "./types.js";
+
+ignoreNodeIds();
 import {
   SOFT_DEPTH_CAP,
   canAddGroup,
@@ -21,8 +25,11 @@ import {
   move,
   nodeAt,
   parseFieldMeta,
+  pruneIncomplete,
   removeAt,
   setConnective,
+  setLeafCriterion,
+  setLeafField,
   setMatch,
   toggleConnective,
   toggleNegate,
@@ -44,11 +51,11 @@ function fieldMeta(overrides: Partial<FilterFieldMeta> = {}): FilterFieldMeta {
 }
 
 function criterion(field: string): FilterNode {
-  return { kind: "criterion", field, criterion: { value: field, modifier: "INCLUDES" }, negate: false };
+  return { kind: "criterion", id: nextNodeId(), field, criterion: { value: field, modifier: "INCLUDES" }, negate: false };
 }
 
 function relation(field: string, child: GroupNode): FilterNode {
-  return { kind: "relation", field, match: "ANY", child, negate: false };
+  return { kind: "relation", id: nextNodeId(), field, match: "ANY", child, negate: false };
 }
 
 describe("factories", () => {
@@ -231,7 +238,9 @@ describe("error branches", () => {
 
   it("toggleNegate works on a relation node", () => {
     const tree = group("AND", [relation("sessions", group("AND", []))]);
-    expect(nodeAt(toggleNegate(tree, [0]), [0])).toMatchObject({ kind: "relation", negate: true });
+    const node = nodeAt(toggleNegate(tree, [0]), [0]);
+    expect(node.kind).toBe("relation");
+    expect(node.negate).toBe(true);
   });
 });
 
@@ -249,13 +258,16 @@ describe("setConnective / setMatch / toggleNegate", () => {
 
   it("flips a nested group's connective by path", () => {
     const tree = group("AND", [group("OR", [criterion("a")])]);
-    expect(nodeAt(toggleConnective(tree, [0]), [0])).toMatchObject({ kind: "group", connective: "AND" });
+    const node = nodeAt(toggleConnective(tree, [0]), [0]);
+    expect(node.kind).toBe("group");
+    if (node.kind === "group") expect(node.connective).toBe("AND");
   });
 
   it("sets a relation's quantifier", () => {
     const tree = group("AND", [relation("sessions", group("AND", []))]);
-    const result = setMatch(tree, [0], "NONE");
-    expect(nodeAt(result, [0])).toMatchObject({ kind: "relation", match: "NONE" });
+    const node = nodeAt(setMatch(tree, [0], "NONE"), [0]);
+    expect(node.kind).toBe("relation");
+    if (node.kind === "relation") expect(node.match).toBe("NONE");
   });
 
   it("toggles a node's negate flag", () => {
@@ -270,7 +282,9 @@ describe("setConnective / setMatch / toggleNegate", () => {
 
   it("negates a group", () => {
     const tree = group("AND", [group("OR", [criterion("a")])]);
-    expect(nodeAt(toggleNegate(tree, [0]), [0])).toMatchObject({ kind: "group", negate: true });
+    const node = nodeAt(toggleNegate(tree, [0]), [0]);
+    expect(node.kind).toBe("group");
+    expect(node.negate).toBe(true);
   });
 });
 
@@ -412,7 +426,8 @@ describe("add-criterion field picker contract (#191)", () => {
       );
       expect(leaf).toEqual({
         kind: "criterion",
-        field: "name",
+        id: "c",
+        field:"name",
         criterion: { modifier: "EQUALS" },
         negate: false,
       });
@@ -443,7 +458,8 @@ describe("add-criterion field picker contract (#191)", () => {
       expect(
         isCriterionComplete({
           kind: "criterion",
-          field: "name",
+          id: "c",
+          field:"name",
           criterion: { modifier: "EQUALS", value: "" },
           negate: false,
         }),
@@ -454,7 +470,8 @@ describe("add-criterion field picker contract (#191)", () => {
       expect(
         isCriterionComplete({
           kind: "criterion",
-          field: "name",
+          id: "c",
+          field:"name",
           criterion: { modifier: "EQUALS", value: "Hades" },
           negate: false,
         }),
@@ -465,7 +482,8 @@ describe("add-criterion field picker contract (#191)", () => {
       expect(
         isCriterionComplete({
           kind: "criterion",
-          field: "year_released",
+          id: "c",
+          field:"year_released",
           criterion: { modifier: "IS_NULL" },
           negate: false,
         }),
@@ -476,11 +494,83 @@ describe("add-criterion field picker contract (#191)", () => {
       expect(
         isCriterionComplete({
           kind: "criterion",
-          field: "platform",
+          id: "c",
+          field:"platform",
           criterion: { modifier: "INCLUDES", value: [] },
           negate: false,
         }),
       ).toBe(false);
     });
+
+    it("requires both bounds for a range modifier (#192)", () => {
+      const halfBetween: CriterionLeaf = {
+        kind: "criterion",
+        id: "c",
+        field:"year_released",
+        criterion: { modifier: "BETWEEN", value: 1990 },
+        negate: false,
+      };
+      expect(isCriterionComplete(halfBetween)).toBe(false);
+      expect(
+        isCriterionComplete({ ...halfBetween, criterion: { modifier: "BETWEEN", value: 1990, value2: 2000 } }),
+      ).toBe(true);
+    });
+  });
+});
+
+describe("leaf payload edits (#192)", () => {
+  it("setLeafField replaces the leaf with a fresh reset leaf, preserving negate", () => {
+    const tree = group("AND", [
+      { kind: "criterion", id: "c", field: "name", criterion: { modifier: "EQUALS", value: "x" }, negate: true },
+    ]);
+    const next = setLeafField(tree, [0], fieldMeta({ name: "status", kind: "set" }));
+    expect(nodeAt(next, [0])).toEqual({
+      kind: "criterion",
+      field: "status",
+      criterion: { modifier: "INCLUDES" }, // value dropped, modifier reset
+      negate: true, // preserved
+    });
+  });
+
+  it("setLeafCriterion swaps the opaque payload verbatim", () => {
+    const tree = group("AND", [emptyCriterion()]);
+    const payload = { modifier: "INCLUDES", value: [{ id: "1", label: "PC" }] };
+    const next = setLeafCriterion(tree, [0], payload);
+    expect((nodeAt(next, [0]) as CriterionLeaf).criterion).toEqual(payload);
+  });
+
+  it("setLeafField / setLeafCriterion throw on a non-criterion node", () => {
+    const tree = group("AND", [emptyGroup()]);
+    expect(() => setLeafField(tree, [0], fieldMeta())).toThrow();
+    expect(() => setLeafCriterion(tree, [0], {})).toThrow();
+  });
+});
+
+describe("pruneIncomplete (#192)", () => {
+  const complete = (field: string): CriterionLeaf => ({
+    kind: "criterion",
+    id: nextNodeId(),
+    field,
+    criterion: { modifier: "EQUALS", value: "v" },
+    negate: false,
+  });
+
+  it("drops incomplete criterion leaves, keeps complete ones", () => {
+    const tree = group("AND", [complete("name"), emptyCriterion()]);
+    expect(pruneIncomplete(tree)).toEqual(group("AND", [complete("name")]));
+  });
+
+  it("collapses a non-root group emptied by pruning, but keeps an empty root", () => {
+    const inner = group("OR", [emptyCriterion()]);
+    const tree = group("AND", [complete("name"), inner]);
+    expect(pruneIncomplete(tree)).toEqual(group("AND", [complete("name")]));
+    expect(pruneIncomplete(group("AND", [emptyCriterion()]))).toEqual(group("AND", []));
+  });
+
+  it("keeps a relation even if its child group empties (presence test)", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", [emptyCriterion()]))]);
+    expect(pruneIncomplete(tree)).toEqual(
+      group("AND", [relation("session_filter", group("AND", []))]),
+    );
   });
 });

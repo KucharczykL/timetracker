@@ -17,11 +17,12 @@ import {
   MAX_FILTER_DEPTH,
   RESERVED_KEYS,
 } from "./types.js";
+import { nextNodeId } from "./node-id.js";
 
 type Json = Record<string, unknown>;
 
 export function group(connective: Connective, children: FilterNode[], negate = false): GroupNode {
-  return { kind: "group", connective, negate, children };
+  return { kind: "group", id: nextNodeId(), connective, negate, children };
 }
 
 // ── Export ─────────────────────────────────────────────────────────────────
@@ -92,7 +93,7 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
     // for well-formed metadata, so order only matters if a key ever appears in both.
     if (meta.fields.has(key)) {
       if (isObject(value)) {
-        baseChildren.push({ kind: "criterion", field: key, criterion: value, negate: false });
+        baseChildren.push({ kind: "criterion", id: nextNodeId(), field: key, criterion: value, negate: false });
       }
     } else if (key in meta.relations) {
       if (isObject(value)) {
@@ -138,7 +139,7 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
         "INVALID_FIELD_COMPARISON",
       );
     }
-    tail.push({ kind: "comparison", comparison, negate: false });
+    tail.push({ kind: "comparison", id: nextNodeId(), comparison, negate: false });
   }
 
   if (!tail.length) return core;
@@ -159,7 +160,7 @@ function relationNode(
   const match = parseMatch(sub.match);
   delete sub.match;
   const child = asGroup(deserializeNode(sub, targetModel, registry, depth + 1));
-  return { kind: "relation", field, match, child, negate: false };
+  return { kind: "relation", id: nextNodeId(), field, match, child, negate: false };
 }
 
 function parseMatch(value: unknown): RelationMatch {

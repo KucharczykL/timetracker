@@ -83,13 +83,11 @@ def test_number_filter_defaults_and_greater_than(live_server, page):
     value2_input = page.locator('input[name="filter-year-value2"]')
     assert value_input.is_enabled()
     # EQUALS is the default; the second input is hidden.
-    assert page.locator(
-        'input[name="filter-year-modifier"][value="EQUALS"]'
-    ).is_checked()
+    assert page.locator('select[name="filter-year-modifier"]').input_value() == "EQUALS"
     assert value2_input.is_hidden()
 
     value_input.fill("2015")
-    page.locator('input[name="filter-year-modifier"][value="GREATER_THAN"]').click()
+    page.locator('select[name="filter-year-modifier"]').select_option("GREATER_THAN")
     _submit(page)
 
     parsed = _filter_from_url(page.url)
@@ -104,7 +102,7 @@ def test_number_filter_between_reveals_and_serializes(live_server, page):
     value2_input = page.locator('input[name="filter-year-value2"]')
     assert value2_input.is_hidden()
 
-    page.locator('input[name="filter-year-modifier"][value="BETWEEN"]').click()
+    page.locator('select[name="filter-year-modifier"]').select_option("BETWEEN")
     assert value2_input.is_visible()
 
     page.locator('input[name="filter-year"]').fill("2000")
@@ -127,7 +125,7 @@ def test_number_filter_null_states(live_server, page):
     value_input = page.locator('input[name="filter-year"]')
     value_input.fill("1999")
 
-    page.locator('input[name="filter-year-modifier"][value="IS_NULL"]').click()
+    page.locator('select[name="filter-year-modifier"]').select_option("IS_NULL")
 
     # Both inputs disable and clear under a presence modifier.
     assert not value_input.is_enabled()
@@ -147,13 +145,14 @@ def test_number_filter_prefilled_states(live_server, page):
     assert page.locator('input[name="filter-year"]').input_value() == "2000"
     assert page.locator('input[name="filter-year-value2"]').input_value() == "2010"
     assert page.locator('input[name="filter-year-value2"]').is_visible()
-    assert page.locator(
-        'input[name="filter-year-modifier"][value="BETWEEN"]'
-    ).is_checked()
+    assert (
+        page.locator('select[name="filter-year-modifier"]').input_value() == "BETWEEN"
+    )
 
-    # session_count: IS_NULL — value input disabled, modifier checked.
+    # session_count: IS_NULL — value input disabled, modifier selected.
     session_input = page.locator('input[name="filter-session-count"]')
     assert not session_input.is_enabled()
-    assert page.locator(
-        'input[name="filter-session-count-modifier"][value="IS_NULL"]'
-    ).is_checked()
+    assert (
+        page.locator('select[name="filter-session-count-modifier"]').input_value()
+        == "IS_NULL"
+    )
