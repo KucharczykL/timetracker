@@ -61,6 +61,7 @@ from common.components.domain import (
     _resolve_name_with_icon,
 )
 from common.components.filters import (
+    AdvancedFilterLink,
     DeviceFilterBar,
     FieldComparisonSet,
     FilterBar,
@@ -254,6 +255,7 @@ __all__ = [
     "DateRangeCalendar",
     "DateRangeField",
     "DateRangePicker",
+    "AdvancedFilterLink",
     "FilterBar",
     "FilterFieldPicker",
     "PurchaseFilterBar",

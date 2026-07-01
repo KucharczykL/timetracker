@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import (
@@ -192,14 +194,17 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import PurchaseFilterBar
+    from common.components import AdvancedFilterLink, PurchaseFilterBar
 
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = Fragment(filter_bar, content)
+    builder_url = reverse("games:filter_builder", args=["purchase"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
     return render_page(
         request,
         content,

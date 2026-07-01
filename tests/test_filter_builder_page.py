@@ -44,3 +44,20 @@ def test_builder_prefills_filter_prop(logged_in_client):
 def test_builder_requires_login(client):
     response = client.get(reverse("games:filter_builder", args=["game"]))
     assert response.status_code == 302  # redirect to login
+
+
+@pytest.mark.parametrize(
+    "list_name, model",
+    [
+        ("list_games", "game"),
+        ("list_sessions", "session"),
+        ("list_purchases", "purchase"),
+        ("list_playevents", "playevent"),
+    ],
+)
+def test_list_has_advanced_filter_link(logged_in_client, list_name, model):
+    response = logged_in_client.get(reverse(f"games:{list_name}"))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert reverse("games:filter_builder", args=[model]) in body
+    assert "Advanced filter" in body
