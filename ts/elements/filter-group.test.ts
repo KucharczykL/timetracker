@@ -130,20 +130,12 @@ describe("<filter-group> change event", () => {
   });
 });
 
-describe("<filter-group> inert-slot contract (2d hydration)", () => {
-  it("leaf/relation slots carry data-path and a round-trippable data-payload", () => {
+describe("<filter-group> relation slot (inert, comp 5)", () => {
+  it("relation slots carry data-path and data-node-kind", () => {
     const host = mount();
     clickAction(host, "add-relation", []); // [0]=criterion, [1]=relation
     const relationSlot = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
     expect(relationSlot.dataset.path).toBe(JSON.stringify([1]));
-    expect(JSON.parse(relationSlot.dataset.payload!)).toMatchObject({
-      kind: "relation",
-      field: "",
-      match: "ANY",
-      negate: false,
-    });
-    const criterionSlot = slots(host).find((slot) => slot.dataset.nodeKind === "criterion")!;
-    expect(JSON.parse(criterionSlot.dataset.payload!)).toMatchObject({ kind: "criterion", negate: false });
   });
 });
 
@@ -263,3 +255,107 @@ describe("<filter-group> duplicate + event fidelity", () => {
 });
 
 type GroupNodeLike = { children: unknown[] };
+
+// ── Live criterion leaf row (#192) ──
+// The real templates come from the server (FilterGroup Python); here we synthesize
+// a minimal field-picker + one string field widget so the row wiring can be driven
+// in jsdom. The string widget mirrors StringFilter's data hooks readStringWidget reads.
+const NAME_META = {
+  name: "name",
+  label: "Name",
+  kind: "string",
+  nullable: false,
+  choices: [],
+  modifiers: ["EQUALS", "INCLUDES"],
+  relations: [],
+};
+
+function mountLive(): FilterGroupElement {
+  document.body.replaceChildren();
+  const host = document.createElement("filter-group") as FilterGroupElement;
+  host.setAttribute("model", "game");
+  host.setAttribute("fields", JSON.stringify([NAME_META]));
+  // Templates must exist before connectedCallback (captureTemplates runs there).
+  host.innerHTML = `
+    <template data-field-picker-template>
+      <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+    </template>
+    <template data-field="name">
+      <div class="flex-col">
+        <input type="radio" data-string-modifier-radio value="EQUALS" checked />
+        <input type="text" />
+      </div>
+    </template>`;
+  document.body.appendChild(host); // connectedCallback → captures templates + renders
+  return host;
+}
+
+function row(host: HTMLElement, path: number[]): HTMLElement {
+  return host.querySelector<HTMLElement>(
+    `[data-node-slot][data-path="${JSON.stringify(path)}"]`,
+  )!;
+}
+
+function pickField(host: HTMLElement, path: number[], meta: object): void {
+  const picker = row(host, path).querySelector<HTMLElement>("[data-field-picker]")!;
+  picker.dispatchEvent(
+    new CustomEvent("search-select:change", {
+      bubbles: true,
+      detail: { name: "field-picker", values: [], last: { data: { meta: JSON.stringify(meta) } } },
+    }),
+  );
+}
+
+function typeValue(host: HTMLElement, path: number[], text: string): void {
+  const input = row(host, path).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!;
+  input.value = text;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("<filter-group> live criterion leaf row (#192)", () => {
+  it("picking a field swaps in that field's value widget", () => {
+    const host = mountLive();
+    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).toBeNull();
+    pickField(host, [0], NAME_META);
+    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).not.toBeNull();
+  });
+
+  it("serializeForQuery reads the live widget into the exact backend payload shape", () => {
+    const host = mountLive();
+    pickField(host, [0], NAME_META);
+    typeValue(host, [0], "Hades");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ name: { value: "Hades", modifier: "EQUALS" } }],
+    });
+  });
+
+  it("excludes an incomplete leaf (no value) from the query + flags it", () => {
+    const host = mountLive();
+    pickField(host, [0], NAME_META); // field chosen, value still empty
+    expect(row(host, [0]).querySelector("[data-incomplete-badge]")).not.toBeNull();
+    expect(host.serializeForQuery()).toEqual({}); // pruned → matches all
+    expect(host.serialize()).not.toEqual({}); // structure still carries the leaf
+  });
+
+  it("a leaf's live value survives a structural edit elsewhere (reconcile by id)", () => {
+    const host = mountLive();
+    pickField(host, [0], NAME_META);
+    typeValue(host, [0], "Hades");
+    clickAction(host, "add-condition", []); // structural re-render of the whole tree
+    // The first row's widget DOM (and its typed value) is reused, not rebuilt.
+    const input = row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!;
+    expect(input.value).toBe("Hades");
+  });
+
+  it("reports incompleteCount in the change event", () => {
+    const host = mountLive();
+    let last = -1;
+    host.addEventListener("filter-tree-change", (event) => {
+      last = (event as CustomEvent).detail.incompleteCount;
+    });
+    pickField(host, [0], NAME_META); // 1 incomplete (no value yet)
+    expect(last).toBe(1);
+    typeValue(host, [0], "Hades");
+    expect(last).toBe(0);
+  });
+});

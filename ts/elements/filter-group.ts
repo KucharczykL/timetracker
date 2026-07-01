@@ -18,26 +18,40 @@
  */
 import { readFilterGroupProps } from "../generated/props.js";
 import { serialize } from "./filter-tree/serializer.js";
-import type { Connective, FilterNode, FilterTreeChangeDetail, GroupNode } from "./filter-tree/types.js";
+import type {
+  Connective,
+  CriterionLeaf,
+  FilterFieldMeta,
+  FilterNode,
+  FilterTreeChangeDetail,
+  GroupNode,
+} from "./filter-tree/types.js";
 import {
   type NodePath,
   canAddGroup,
   canAddRelation,
   canUnwrap,
   canWrap,
+  criterionForField,
   duplicateAt,
   emptyCriterion,
   emptyGroup,
   emptyRelation,
   emptyRoot,
   insertChild,
+  isCriterionComplete,
   move,
+  parseFieldMeta,
+  pruneIncomplete,
   removeAt,
+  setLeafField,
   toggleConnective,
   toggleNegate,
   unwrapGroup,
   wrapInGroup,
 } from "./filter-tree/operations.js";
+import { readLeafWidget, setupModifierToggles } from "./filter-widgets.js";
+import type { SearchSelectChangeDetail } from "./search-select.js";
 
 // Full, static class strings only — Tailwind detects complete strings, so the
 // depth palette is a fixed lookup (never `bg-depth-${n}`). ~4-shade cycle that
@@ -57,10 +71,19 @@ const FOOTER_CLASS = "flex flex-wrap gap-2";
 // chip on a group with nothing to negate or join (issue #236).
 const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
-const SLOT_ROW_CLASS = "flex items-center justify-between gap-2";
-const SLOT_CLASS =
-  "flex-1 rounded border border-dashed border-gray-300 px-2 py-1 text-sm text-gray-600 " +
-  "dark:border-gray-600 dark:text-gray-300";
+const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
+const FIELD_CELL_CLASS = "min-w-[12rem]";
+const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
+// Placeholder shown in the value cell until a field is chosen.
+const VALUE_PLACEHOLDER_CLASS =
+  "flex-1 min-w-[12rem] rounded border border-dashed border-gray-300 px-2 py-1 text-sm " +
+  "text-gray-500 dark:border-gray-600 dark:text-gray-400";
+// Faded look + "Incomplete" badge for a leaf missing its value (excluded from the
+// count/Apply query). Applied to the whole row.
+const INCOMPLETE_ROW_CLASS = "opacity-60";
+const BADGE_CLASS =
+  "rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium " +
+  "text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300";
 // Connective + NOT chips (component 2, issue #190). Pill shape (rounded-full) +
 // saturated fill sets this cluster apart from the square, gray restructuring
 // buttons so it never reads as "just another button". The connective is
@@ -144,18 +167,74 @@ function slotLabel(node: FilterNode): string {
   return "comparison";
 }
 
+// A leaf's two stateful cells, cached by node id so a structural re-render reuses
+// (re-appends) them — the live value widget's DOM state survives edits elsewhere.
+interface LeafCells {
+  field: string; // the field the value cell was built for ("" = none yet)
+  fieldCell: HTMLElement;
+  valueCell: HTMLElement;
+}
+
+interface SearchSelectLike extends HTMLElement {
+  setSelected(value: string, label?: string): void;
+}
+
 export class FilterGroupElement extends HTMLElement {
   private tree: GroupNode = emptyRoot();
   private model = "";
   private wired = false;
+  // field name -> its FieldMeta (kind, label, modifiers …), from the `fields` prop.
+  private fields = new Map<string, FilterFieldMeta>();
+  // The <template> whose content is the field-picker combobox, cloned per leaf.
+  private fieldPickerTemplate: HTMLTemplateElement | null = null;
+  // field name -> its blank value-widget <template>, cloned into a leaf on field-pick.
+  private widgetTemplates = new Map<string, HTMLTemplateElement>();
+  // node id -> its cached cells (see LeafCells). Pruned to live nodes each render.
+  private rowCache = new Map<string, LeafCells>();
+  // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
+  private cloneSequence = 0;
 
   connectedCallback(): void {
-    this.model = readFilterGroupProps(this).model;
+    const props = readFilterGroupProps(this);
+    this.model = props.model;
     if (!this.wired) {
+      this.captureTemplates();
+      this.parseFields(props.fields);
       this.addEventListener("click", this.onClick);
+      // Value edits (typing, radios, set pills, date bounds, field pick) bubble
+      // here; one delegated listener updates completeness / handles field changes.
+      this.addEventListener("input", this.onValueEvent);
+      this.addEventListener("change", this.onValueEvent);
+      this.addEventListener("search-select:change", this.onValueEvent);
+      this.addEventListener("date-range:change", this.onValueEvent);
+      // Reuse the flat bar's modifier-radio enable/disable behavior for the cloned
+      // string/number widgets (presence hides value; BETWEEN reveals value2).
+      setupModifierToggles(this);
       this.wired = true;
     }
     this.render();
+  }
+
+  // Detach the server-rendered <template>s (field picker + one per field) before
+  // the first render() replaces our children, keeping references to clone from.
+  private captureTemplates(): void {
+    this.fieldPickerTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-field-picker-template]",
+    );
+    this.querySelectorAll<HTMLTemplateElement>("template[data-field]").forEach((template) => {
+      const field = template.getAttribute("data-field");
+      if (field) this.widgetTemplates.set(field, template);
+    });
+  }
+
+  private parseFields(raw: string): void {
+    if (!raw) return;
+    try {
+      const list = JSON.parse(raw) as FilterFieldMeta[];
+      for (const meta of list) this.fields.set(meta.name, meta);
+    } catch {
+      console.warn("filter-group: malformed fields prop");
+    }
   }
 
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
@@ -166,9 +245,52 @@ export class FilterGroupElement extends HTMLElement {
     return this.tree;
   }
 
-  /** Convenience: the canonical OperatorFilter JSON for the current tree. */
+  /** The canonical OperatorFilter JSON for the current tree structure (leaf values
+   *  are read live from the widgets — see serializeForQuery). */
   serialize(): Record<string, unknown> {
     return serialize(this.tree);
+  }
+
+  /** The JSON to actually query with: each criterion leaf's value is read from its
+   *  live widget, then incomplete leaves are pruned (excluded from the count/Apply
+   *  query). Used by the builder page (comp 10). */
+  serializeForQuery(): Record<string, unknown> {
+    return serialize(pruneIncomplete(this.fillCriteria(this.tree)));
+  }
+
+  // Clone the tree with every criterion leaf's `criterion` filled from its live
+  // value widget (empty {} when the field/widget yields nothing → pruned as
+  // incomplete). Structure/ids are preserved.
+  private fillCriteria(node: GroupNode): GroupNode {
+    return { ...node, children: node.children.map((child) => this.fillNode(child)) };
+  }
+
+  private fillNode(node: FilterNode): FilterNode {
+    if (node.kind === "group") return this.fillCriteria(node);
+    if (node.kind === "criterion") return { ...node, criterion: this.readLeaf(node) ?? {} };
+    return node; // relation/comparison unchanged (out of this slice)
+  }
+
+  // Read a criterion leaf's live value widget into a payload, or null when it has
+  // no usable value (empty field, empty widget). Keyed off the cached value cell.
+  private readLeaf(node: CriterionLeaf): Record<string, unknown> | null {
+    const meta = this.fields.get(node.field);
+    const cells = this.rowCache.get(node.id);
+    if (!meta || !cells) return null;
+    return readLeafWidget(cells.valueCell, meta.kind);
+  }
+
+  private leafComplete(node: CriterionLeaf): boolean {
+    return isCriterionComplete({ ...node, criterion: this.readLeaf(node) ?? {} });
+  }
+
+  private incompleteCount(node: GroupNode = this.tree): number {
+    let count = 0;
+    for (const child of node.children) {
+      if (child.kind === "group") count += this.incompleteCount(child);
+      else if (child.kind === "criterion" && !this.leafComplete(child)) count += 1;
+    }
+    return count;
   }
 
   private onClick = (event: Event): void => {
@@ -224,12 +346,34 @@ export class FilterGroupElement extends HTMLElement {
     }
     if (this.tree === before) return; // a guarded/boundary no-op changed nothing
     this.render();
-    const detail: FilterTreeChangeDetail = { tree: this.tree };
+    this.dispatchChange();
+  }
+
+  private dispatchChange(): void {
+    const detail: FilterTreeChangeDetail = {
+      tree: this.tree,
+      incompleteCount: this.incompleteCount(),
+    };
     this.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true, detail }));
   }
 
   private render(): void {
     this.replaceChildren(this.renderGroup(this.tree, [], 0, 1));
+    this.pruneRowCache();
+  }
+
+  // Drop cached cells for nodes no longer in the tree (their DOM was discarded by
+  // the replaceChildren above); live nodes keep their reused cells.
+  private pruneRowCache(): void {
+    const live = new Set<string>();
+    const walk = (node: FilterNode): void => {
+      if (node.kind === "group") node.children.forEach(walk);
+      else live.add(node.id);
+    };
+    walk(this.tree);
+    for (const id of [...this.rowCache.keys()]) {
+      if (!live.has(id)) this.rowCache.delete(id);
+    }
   }
 
   private renderGroup(node: GroupNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
@@ -270,19 +414,185 @@ export class FilterGroupElement extends HTMLElement {
 
   private renderChild(child: FilterNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
     if (child.kind === "group") return this.renderGroup(child, path, index, siblingCount);
+    if (child.kind === "criterion") return this.renderCriterionRow(child, path, index, siblingCount);
+    return this.renderInertSlot(child, path, index, siblingCount);
+  }
+
+  // Relation/comparison leaves stay inert slots (their widgets are sibling 2c
+  // components, out of this slice); the criterion row is live below.
+  private renderInertSlot(
+    child: FilterNode,
+    path: NodePath,
+    index: number,
+    siblingCount: number,
+  ): HTMLElement {
     const row = element("div", SLOT_ROW_CLASS);
-    const slot = element("div", SLOT_CLASS);
+    const slot = element("div", VALUE_PLACEHOLDER_CLASS);
     slot.dataset.nodeSlot = "";
     slot.dataset.nodeKind = child.kind;
     slot.dataset.path = JSON.stringify(path);
-    slot.dataset.payload = JSON.stringify(child); // identity + payload for 2d hydration
     slot.textContent = slotLabel(child);
-    // NOT leads the row (leftmost), matching the group header; the slot and the
-    // restructuring controls follow.
     row.appendChild(this.negateChip(child, path));
     row.appendChild(slot);
     row.appendChild(this.controls(path, false, index, siblingCount));
     return row;
+  }
+
+  // The live criterion leaf row: [NOT] [field combobox] [value widget] [badge?]
+  // [controls]. The two stateful cells are reused across renders via rowCache so a
+  // structural edit never wipes an in-progress widget.
+  private renderCriterionRow(
+    node: CriterionLeaf,
+    path: NodePath,
+    index: number,
+    siblingCount: number,
+  ): HTMLElement {
+    const cells = this.leafCells(node);
+    const row = element("div", SLOT_ROW_CLASS);
+    row.dataset.nodeSlot = "";
+    row.dataset.nodeKind = "criterion";
+    row.dataset.path = JSON.stringify(path);
+    row.appendChild(this.negateChip(node, path));
+    row.appendChild(cells.fieldCell);
+    row.appendChild(cells.valueCell);
+    row.appendChild(this.controls(path, false, index, siblingCount));
+    // Controls are the row's last child; the badge (if any) is inserted before them.
+    this.applyIncompleteState(row, Boolean(node.field) && !this.leafComplete(node));
+    return row;
+  }
+
+  // Build or reuse a leaf's field + value cells, rebuilding the value cell only when
+  // the field changed (or first set). Cached by node id.
+  private leafCells(node: CriterionLeaf): LeafCells {
+    let cells = this.rowCache.get(node.id);
+    if (!cells) {
+      cells = { field: "", fieldCell: this.buildFieldCell(), valueCell: this.buildValueCell("") };
+      this.rowCache.set(node.id, cells);
+    }
+    if (cells.field !== node.field) {
+      cells.valueCell = this.buildValueCell(node.field);
+      cells.field = node.field;
+      if (node.field) this.showFieldSelection(cells.fieldCell, node.field);
+    }
+    return cells;
+  }
+
+  // Clone the field-picker combobox into a cell, with a unique id per leaf so
+  // multiple pickers on the page never collide.
+  private buildFieldCell(): HTMLElement {
+    const cell = element("div", FIELD_CELL_CLASS);
+    cell.dataset.fieldCell = "";
+    const content = this.fieldPickerTemplate?.content.firstElementChild;
+    if (content) {
+      const clone = content.cloneNode(true) as HTMLElement;
+      this.uniquify(clone);
+      cell.appendChild(clone);
+    }
+    return cell;
+  }
+
+  // Reflect an already-chosen field in the cloned combobox (import/rebuild). The
+  // search-select's setSelected is silent, so it won't re-fire a field-pick.
+  private showFieldSelection(fieldCell: HTMLElement, field: string): void {
+    const searchSelect = fieldCell.querySelector<SearchSelectLike>("search-select");
+    const label = this.fields.get(field)?.label ?? field;
+    searchSelect?.setSelected(field, label);
+  }
+
+  // Build a value cell for `field`: a clone of the field's blank widget template,
+  // or a placeholder prompt when no field is chosen yet.
+  private buildValueCell(field: string): HTMLElement {
+    if (!field) {
+      const placeholder = element("div", VALUE_PLACEHOLDER_CLASS);
+      placeholder.dataset.valueCell = "";
+      placeholder.textContent = "Choose a field…";
+      return placeholder;
+    }
+    const cell = element("div", VALUE_CELL_CLASS);
+    cell.dataset.valueCell = "";
+    const template = this.widgetTemplates.get(field);
+    const content = template?.content.firstElementChild;
+    if (content) {
+      const clone = content.cloneNode(true) as HTMLElement;
+      this.uniquify(clone);
+      cell.appendChild(clone);
+    }
+    return cell;
+  }
+
+  // Suffix every id/for/name in a cloned subtree so repeated clones stay valid HTML
+  // and label associations point at their own controls (the widgets query their own
+  // descendants, so functionality never depended on these being unique).
+  private uniquify(root: HTMLElement): void {
+    const suffix = `g${(this.cloneSequence += 1)}`;
+    const rewrite = (element: Element, attribute: string): void => {
+      const value = element.getAttribute(attribute);
+      if (value) element.setAttribute(attribute, `${value}-${suffix}`);
+    };
+    root.querySelectorAll<HTMLElement>("[id],[for],[name]").forEach((element) => {
+      rewrite(element, "id");
+      rewrite(element, "for");
+      rewrite(element, "name");
+    });
+  }
+
+  // A value-cell edit (or a field pick) bubbled up. Route field picks to setLeafField
+  // (re-render swaps the value widget); plain value edits just refresh completeness
+  // (the widget DOM is the source of truth, read at serialize time).
+  private onValueEvent = (event: Event): void => {
+    const target = event.target as HTMLElement;
+    const fieldPicker = target.closest<HTMLElement>("[data-field-picker]");
+    if (fieldPicker && event.type === "search-select:change") {
+      this.handleFieldPick(fieldPicker, event as CustomEvent<SearchSelectChangeDetail>);
+      return;
+    }
+    if (target.closest("[data-value-cell]")) this.refreshCompleteness(target);
+  };
+
+  private handleFieldPick(fieldPicker: HTMLElement, event: CustomEvent<SearchSelectChangeDetail>): void {
+    const row = fieldPicker.closest<HTMLElement>("[data-node-slot]");
+    if (!row?.dataset.path) return;
+    const meta = parseFieldMeta(event.detail.last?.data?.meta ?? "");
+    if (!meta) return;
+    const path = JSON.parse(row.dataset.path) as number[];
+    this.tree = setLeafField(this.tree, path, meta);
+    this.render();
+    this.dispatchChange();
+  }
+
+  // Toggle the row's incomplete badge/fade in place (no re-render → the widget the
+  // user is editing keeps focus) and report the new incomplete count.
+  private refreshCompleteness(target: HTMLElement): void {
+    const row = target.closest<HTMLElement>('[data-node-slot][data-node-kind="criterion"]');
+    if (row?.dataset.path) {
+      const node = this.nodeAtPath(JSON.parse(row.dataset.path) as number[]);
+      if (node?.kind === "criterion") this.applyIncompleteState(row, !this.leafComplete(node));
+    }
+    this.dispatchChange();
+  }
+
+  private applyIncompleteState(row: HTMLElement, incomplete: boolean): void {
+    row.classList.toggle(INCOMPLETE_ROW_CLASS, incomplete);
+    let badge = row.querySelector<HTMLElement>("[data-incomplete-badge]");
+    if (incomplete && !badge) {
+      badge = element("span", BADGE_CLASS);
+      badge.dataset.incompleteBadge = "";
+      badge.textContent = "Incomplete";
+      row.insertBefore(badge, row.lastElementChild);
+    } else if (!incomplete && badge) {
+      badge.remove();
+    }
+  }
+
+  private nodeAtPath(path: NodePath): FilterNode | null {
+    let node: FilterNode = this.tree;
+    for (const index of path) {
+      if (node.kind !== "group") return null;
+      const child: FilterNode | undefined = node.children[index];
+      if (!child) return null;
+      node = child;
+    }
+    return node;
   }
 
   // A chip-style toggle button: a restructuring action (so it rides the existing

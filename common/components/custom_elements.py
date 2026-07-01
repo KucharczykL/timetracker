@@ -200,17 +200,23 @@ def FilterGroup(*, model: str) -> Node:
     ``custom_element_builder``."""
     import json
 
-    from common.components.filters import FilterFieldPicker
+    from common.components.filters import FilterFieldPicker, field_widget_templates
     from common.components.primitives import Template
     from common.criteria import field_metadata
     from games.filters import filter_for_model
 
     filter_cls = filter_for_model(model)
+    # One blank value-widget <template data-field="name"> per leaf field, cloned
+    # into a leaf's value cell on field-pick, plus the field-picker combobox
+    # template cloned into every leaf's field cell (id-less → the TS assigns a
+    # unique id per clone).
+    widget_templates = list(field_widget_templates(filter_cls).values())
     return _FilterGroup(
         model=model,
         fields=json.dumps(field_metadata(filter_cls)),
     )[
         Template(data_field_picker_template="")[FilterFieldPicker(filter_cls)],
+        *widget_templates,
     ]
 
 

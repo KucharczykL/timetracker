@@ -776,8 +776,19 @@ export function readSearchSelect(form: HTMLElement): void {
 
 class SearchSelectElement extends HTMLElement {
   private onDocumentClick: ((event: MouseEvent) => void) | null = null;
+  private initialized = false;
 
   connectedCallback(): void {
+    // Idempotent across DOM moves (the nested filter builder reconciles rows by
+    // re-appending them, which reconnects this element). The inner element
+    // listeners persist with the moved subtree, so re-running initWidget would
+    // double-bind them — instead just re-attach the outside-click listener that
+    // disconnectedCallback removed.
+    if (this.initialized) {
+      if (this.onDocumentClick) document.addEventListener("click", this.onDocumentClick);
+      return;
+    }
+    this.initialized = true;
     this.onDocumentClick = initWidget(this) as ((event: MouseEvent) => void) | null;
   }
 
@@ -788,10 +799,8 @@ class SearchSelectElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    if (this.onDocumentClick) {
-      document.removeEventListener("click", this.onDocumentClick);
-      this.onDocumentClick = null;
-    }
+    // Keep the handler reference so a reconnection can re-attach it (see above).
+    if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick);
   }
 }
 

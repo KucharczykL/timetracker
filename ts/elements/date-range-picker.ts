@@ -367,7 +367,7 @@ function initField(picker: HTMLElement, calendarState: CalendarState): void {
 
 function createCalendarState(
   picker: HTMLElement
-): { state: CalendarState; cleanup: () => void } {
+): { state: CalendarState; bindDismiss: () => () => void } {
   const popup = picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
   const grid = popup.querySelector<HTMLElement>("[data-date-range-grid]")!;
   const monthLabel = popup.querySelector<HTMLElement>("[data-date-range-month-label]")!;
@@ -630,26 +630,29 @@ function createCalendarState(
       closePopup();
     });
 
-  const cleanup = bindPopupDismiss({
-    host: picker,
-    isOpen: () => state.open,
-    close: closePopup,
-  });
+  // Deferred + re-callable so a reconnection (the nested filter builder moves rows,
+  // reconnecting this element) re-binds the outside-click dismiss without re-wiring
+  // the field/calendar listeners, which persist with the moved subtree.
+  const bindDismiss = (): (() => void) =>
+    bindPopupDismiss({ host: picker, isOpen: () => state.open, close: closePopup });
 
-  return { state, cleanup };
+  return { state, bindDismiss };
 }
 
-function initPicker(picker: HTMLElement): () => void {
-  const { state: calendarState, cleanup } = createCalendarState(picker);
+// One-time wiring (field + calendar listeners); returns the dismiss-binder.
+function initPicker(picker: HTMLElement): () => () => void {
+  const { state: calendarState, bindDismiss } = createCalendarState(picker);
   initField(picker, calendarState);
-  return cleanup;
+  return bindDismiss;
 }
 
 class DateRangePickerElement extends HTMLElement {
+  private bindDismiss: (() => () => void) | null = null;
   private cleanup: (() => void) | null = null;
 
   connectedCallback(): void {
-    this.cleanup = initPicker(this);
+    if (!this.bindDismiss) this.bindDismiss = initPicker(this); // one-time
+    this.cleanup = this.bindDismiss(); // (re)bind outside-click dismiss
   }
 
   disconnectedCallback(): void {

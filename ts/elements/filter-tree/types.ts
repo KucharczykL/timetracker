@@ -106,6 +106,10 @@ export type FilterNode = GroupNode | CriterionLeaf | ComparisonLeaf | RelationNo
 // mirroring the OpenMenuDetail precedent in menu-behavior.ts.
 export interface FilterTreeChangeDetail {
   tree: GroupNode;
+  // How many criterion leaves are incomplete (no field, or a value widget with no
+  // usable value / a half-filled BETWEEN). The builder page (#192 comp 10) disables
+  // Apply while this is > 0; incomplete leaves are excluded from serializeForQuery.
+  incompleteCount: number;
 }
 
 // Per-model metadata the importer consumes to classify a JSON key as a relation
