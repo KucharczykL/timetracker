@@ -13,6 +13,7 @@
  * so a group reached at path `P` always sits at group-nesting depth `P.length`.
  */
 import {
+  type ComparisonLeaf,
   type Connective,
   type CriterionLeaf,
   type CriterionPayload,
@@ -89,6 +90,26 @@ export function isCriterionComplete(leaf: CriterionLeaf): boolean {
   if (!isValuePresent(leaf.criterion["value"])) return false;
   if (isRangeModifier(modifier) && !isValuePresent(leaf.criterion["value2"])) return false;
   return true;
+}
+
+// Whether a field-comparison leaf is complete enough to query/apply: it needs a left
+// column, a right column, and a modifier, and the two columns must DIFFER (a column
+// compared to itself is meaningless — the row widget never offers it). Mirrors
+// isCriterionComplete: an incomplete comparison is excluded from the count/Apply query
+// (a half-filled field_comparisons entry the backend rejects wholesale — see
+// pruneIncomplete). This is the single place the serializer layer reads the payload's
+// shape; `ComparisonPayload` (Partial<ComparisonRow>) makes the field access typo-safe.
+export function isComparisonComplete(leaf: ComparisonLeaf): boolean {
+  const { left, right, modifier } = leaf.comparison;
+  if (!left || !right || !modifier) return false;
+  return left !== right;
+}
+
+// An empty comparison leaf: no columns/modifier chosen. The field-comparison row
+// widget (#246) fills `comparison` with {left, right, modifier, granularity?} read
+// live from its row; until then it is a structurally-incomplete slot.
+export function emptyComparison(): ComparisonLeaf {
+  return { kind: "comparison", id: nextNodeId(), comparison: {}, negate: false };
 }
 
 // An empty relation descent: ANY over an empty child group is the "has ≥1 related
@@ -320,7 +341,7 @@ function pruneNode(node: FilterNode): FilterNode | null {
     case "criterion":
       return isCriterionComplete(node) ? node : null;
     case "comparison":
-      return node; // comparison completeness lands with the field-comparison leaf
+      return isComparisonComplete(node) ? node : null;
     case "relation":
       return { ...node, child: pruneGroup(node.child) };
     case "group": {

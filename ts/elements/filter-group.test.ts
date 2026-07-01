@@ -363,3 +363,159 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
     expect(last).toBe(0);
   });
 });
+
+// ── Live field-comparison leaf row (#246) ──
+// Two number columns of the same group so a comparison is buildable. The synthetic
+// row template mirrors _field_comparison_row's data hooks (data-fc-left/op/right +
+// the by-day granularity toggle) so the reused refreshRow/readComparisonRow drive it.
+const COLUMNS = [
+  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
+];
+
+function mountComparison(): FilterGroupElement {
+  document.body.replaceChildren();
+  const host = document.createElement("filter-group") as FilterGroupElement;
+  host.setAttribute("model", "game");
+  host.setAttribute("fields", JSON.stringify([]));
+  host.setAttribute("columns", JSON.stringify(COLUMNS));
+  host.innerHTML = `
+    <template data-fc-row-template>
+      <div data-fc-row>
+        <select data-fc-left>
+          <option value="">column…</option>
+          <option value="year_released">Year</option>
+          <option value="original_year_released">Orig</option>
+          <option value="created_at">Created</option>
+          <option value="updated_at">Updated</option>
+        </select>
+        <select data-fc-op data-selected></select>
+        <select data-fc-right data-selected></select>
+        <label data-fc-granularity-wrap hidden><input type="checkbox" data-fc-granularity /></label>
+        <button data-fc-remove>✕</button>
+      </div>
+    </template>`;
+  document.body.appendChild(host);
+  return host;
+}
+
+function setSelect(host: HTMLElement, path: number[], hook: string, value: string): void {
+  const select = row(host, path).querySelector<HTMLSelectElement>(`[data-value-cell] [${hook}]`)!;
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+describe("<filter-group> live field-comparison leaf (#246)", () => {
+  it("shows + comparison only when the model has a comparable group", () => {
+    expect(button(mountComparison(), "add-comparison", [])).not.toBeNull();
+    // no columns → no comparison affordance
+    const host = mount(); // model "game" but no columns attribute → hasComparableGroup false
+    expect(button(host, "add-comparison", [])).toBeNull();
+  });
+
+  it("+ comparison adds a live comparison row (not an inert slot)", () => {
+    const host = mountComparison();
+    clickAction(host, "add-comparison", []);
+    const slot = slots(host).find((s) => s.dataset.nodeKind === "comparison")!;
+    expect(slot).toBeDefined();
+    expect(slot.querySelector("[data-fc-row]")).not.toBeNull();
+    // the row's own ✕ is dropped — the group's controls own removal
+    expect(slot.querySelector("[data-fc-remove]")).toBeNull();
+  });
+
+  it("serializeForQuery emits the backend field_comparisons payload", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]); // drop the seed criterion so only the comparison remains
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released"); // refreshRow fills op + right
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ field_comparisons: [{ left: "year_released", right: "original_year_released", modifier: "LESS_THAN" }] }],
+    });
+  });
+
+  it("excludes an incomplete comparison (only left chosen) from the query + flags it", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released"); // right/op still empty
+    expect(row(host, [0]).querySelector("[data-incomplete-badge]")).not.toBeNull();
+    expect(host.serializeForQuery()).toEqual({}); // pruned → matches all
+  });
+
+  it("reports the incomplete comparison in incompleteCount", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    let last = -1;
+    host.addEventListener("filter-tree-change", (event) => {
+      last = (event as CustomEvent).detail.incompleteCount;
+    });
+    clickAction(host, "add-comparison", []); // added empty → 1 incomplete
+    expect(last).toBe(1);
+    setSelect(host, [0], "data-fc-left", "year_released");
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    expect(last).toBe(0);
+  });
+
+  it("a comparison's live value survives a structural edit elsewhere (reconcile by id)", () => {
+    const host = mountComparison();
+    clickAction(host, "add-comparison", []); // [0]=criterion seed, [1]=comparison
+    setSelect(host, [1], "data-fc-left", "year_released");
+    setSelect(host, [1], "data-fc-op", "LESS_THAN");
+    setSelect(host, [1], "data-fc-right", "original_year_released");
+    clickAction(host, "add-condition", []); // structural re-render
+    const left = row(host, [1]).querySelector<HTMLSelectElement>("[data-fc-left]")!;
+    expect(left.value).toBe("year_released");
+  });
+
+  it("negating a comparison leaf serializes to {NOT:[{field_comparisons:…}]}", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released");
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    clickAction(host, "toggle-negate", [0]);
+    expect(button(host, "toggle-negate", [0])?.getAttribute("aria-pressed")).toBe("true");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ NOT: [{ field_comparisons: [{ left: "year_released", right: "original_year_released", modifier: "LESS_THAN" }] }] }],
+    });
+  });
+
+  it("emits granularity:\"date\" only when the by-day toggle is checked and visible", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    // A datetime left column unhides the by-day wrapper (refreshRow); check it.
+    setSelect(host, [0], "data-fc-left", "created_at");
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "updated_at");
+    const wrap = row(host, [0]).querySelector<HTMLElement>("[data-fc-granularity-wrap]")!;
+    expect(wrap.hidden).toBe(false); // datetime operand → toggle shown
+    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
+    byDay.checked = true;
+    byDay.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ field_comparisons: [{ left: "created_at", right: "updated_at", modifier: "LESS_THAN", granularity: "date" }] }],
+    });
+  });
+
+  it("drops granularity when the by-day wrapper is hidden (non-datetime operand)", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released"); // number group → wrapper stays hidden
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    // Force the checkbox on even though the wrapper is hidden — readComparisonRow
+    // must still omit granularity (guards the `!byDayWrap.hidden` condition).
+    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
+    byDay.checked = true;
+    const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
+    expect(payload).not.toHaveProperty("granularity");
+  });
+});

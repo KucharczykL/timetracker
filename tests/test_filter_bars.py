@@ -771,3 +771,62 @@ class FieldComparisonWidgetTest(TestCase):
         html = str(SessionFilterBar(filter_json=filter_json))
         self.assertRegex(html, r'value="OR"[^>]*checked="true"')
         self.assertIn('data-selected="LESS_THAN"', html)
+
+
+class HasComparableGroupTest(TestCase):
+    """The ≥2-columns-of-one-group gate shared by the flat bar's comparison field
+    and the nested builder's `+ comparison` affordance / row template (#246)."""
+
+    def _column(self, value, group):
+        return {"value": value, "label": value.title(), "group": group, "operators": []}
+
+    def test_empty_is_false(self):
+        from common.components.filters import has_comparable_group
+
+        self.assertFalse(has_comparable_group([]))
+
+    def test_single_column_is_false(self):
+        from common.components.filters import has_comparable_group
+
+        self.assertFalse(has_comparable_group([self._column("a", "number")]))
+
+    def test_two_columns_different_groups_is_false(self):
+        from common.components.filters import has_comparable_group
+
+        columns = [self._column("a", "number"), self._column("b", "datetime")]
+        self.assertFalse(has_comparable_group(columns))
+
+    def test_two_columns_same_group_is_true(self):
+        from common.components.filters import has_comparable_group
+
+        columns = [self._column("a", "number"), self._column("b", "number")]
+        self.assertTrue(has_comparable_group(columns))
+
+
+class FilterGroupComparisonTest(TestCase):
+    """The nested-builder shell (#246): the `columns` prop + the blank
+    comparison-row `<template>` it emits for the field-comparison leaf."""
+
+    def test_columns_prop_carries_comparable_columns(self):
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="session"))
+        self.assertIn("columns=", html)
+        # Session's datetime pair — the issue's driving use case.
+        self.assertIn("timestamp_start", html)
+        self.assertIn("timestamp_end", html)
+
+    def test_emits_comparison_row_template_when_model_has_comparable_group(self):
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="session"))
+        self.assertIn("data-fc-row-template", html)
+        # The reused single row's hooks reach the cloned template.
+        self.assertIn("data-fc-left", html)
+
+    def test_columns_prop_has_no_double_escaped_markup(self):
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="session"))
+        for marker in _ESCAPED_TAG_MARKERS:
+            self.assertNotIn(marker, html)

@@ -54,8 +54,23 @@ export interface FilterFieldMeta {
 // Opaque to the serializer: whatever a leaf widget produced. Never inspected.
 export type CriterionPayload = Record<string, unknown>;
 
-// Opaque to the serializer: whatever a field-comparison widget produced.
-export type ComparisonPayload = Record<string, unknown>;
+// The concrete shape one field-comparison row produces (issue #246): two column
+// names + a modifier, plus an optional day-granularity flag (omitted → "raw", so
+// the filter JSON stays compact). Lives here — not the DOM widget module — so the
+// widget, the serializer, and the completeness check share one definition.
+export interface ComparisonRow {
+  left: string;
+  right: string;
+  modifier: ModifierToken;
+  granularity?: "date";
+}
+
+// What a field-comparison leaf carries: a Partial while the user fills it (a fresh
+// leaf is `{}`), a full ComparisonRow once complete. The serializer wraps it
+// verbatim into `field_comparisons: [payload]` and never inspects it;
+// `isComparisonComplete` (operations.ts) is the single place its shape is read, and
+// `Partial<ComparisonRow>` makes that read typo-checked (a renamed field fails tsc).
+export type ComparisonPayload = Partial<ComparisonRow>;
 
 // Every node carries a stable client-only `id` (see node-id.ts): the serializer
 // ignores it (never reaches the wire); <filter-group> reconciles DOM on it so a
