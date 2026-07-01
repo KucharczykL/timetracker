@@ -18,8 +18,23 @@ pkgs.mkShell {
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
 
   shellHook = ''
-    uv venv --clear
+    # Timing probe: shellHook only runs on a nix-direnv cache miss, so if you
+    # see these lines during `direnv allow`/`cd`, the cache was rebuilt and
+    # these are the slow steps. Set TIMETRACKER_SHELLHOOK_QUIET=1 to silence.
+    _timed() {
+      local _label="$1"; shift
+      local _start=$(date +%s.%N)
+      "$@"
+      local _status=$?
+      if [ -z "$TIMETRACKER_SHELLHOOK_QUIET" ]; then
+        printf 'shellHook: %-16s %ss\n' "$_label" \
+          "$(awk "BEGIN { printf \"%.2f\", $(date +%s.%N) - $_start }")" >&2
+      fi
+      return $_status
+    }
+
+    _timed "uv venv --clear" uv venv --clear
     . .venv/bin/activate
-    uv sync
+    _timed "uv sync" uv sync
   '';
 }
