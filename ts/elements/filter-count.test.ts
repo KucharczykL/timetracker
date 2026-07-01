@@ -140,4 +140,39 @@ describe("<filter-count> behavior", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(label(badge)).toBe("≈ 2 games");
   });
+
+  it("renders 'count unavailable' on a non-Abort network rejection", async () => {
+    // fetch rejecting with a TypeError is the offline/DNS case — a different
+    // branch from a resolved non-200 response.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
+    const group = mountGroup();
+    const badge = mountBadge();
+
+    group.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(label(badge)).toBe(UNAVAILABLE_TEXT);
+  });
+
+  it("stops listening and cancels pending work once disconnected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(5));
+    vi.stubGlobal("fetch", fetchMock);
+    const group = mountGroup();
+    const badge = mountBadge();
+
+    // Arm the debounce timer, then remove the badge before it fires.
+    group.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true }));
+    badge.remove(); // disconnectedCallback: clears timer, aborts, removes listener
+
+    await vi.advanceTimersByTimeAsync(300);
+    // The cleared timer never fired, so no request was issued.
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // A later change must not reach the detached badge (listener was removed).
+    group.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

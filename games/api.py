@@ -336,7 +336,12 @@ def filter_count(request, model: str, filter: str = ""):
 
     try:
         filter_cls = filter_for_model(model)
-    except (LookupError, KeyError) as exc:
+    except LookupError as exc:
+        # Unknown Django model — a bad/hand-edited ``model`` key: a user 400.
+        # A ``KeyError`` from filter_for_model means the model *exists* but has no
+        # ``{Model}Filter`` class (a wiring bug for a model the client can reach);
+        # let it propagate to a 500 so it surfaces, per the filter_from_json
+        # contract of not masking genuine wiring bugs.
         raise HttpError(400, f"Unknown model: {model!r}") from exc
     queryset = apps.get_model("games", model).objects.all()
     if filter:

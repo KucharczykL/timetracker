@@ -359,20 +359,39 @@ def test_filter_count_empty_object_counts_all(auth_client):
 
 
 def test_filter_count_applies_filter(auth_client):
-    _make_games("Hades", "Celeste", "Braid")
-    filter_json = json.dumps({"name": {"value": "Hades", "modifier": "EQUALS"}})
+    # Discriminating: filter a 5-game set down to a 2-game subset so a regression
+    # that silently matched-all (or returned the wrong branch) can't pass — the
+    # expected count is strictly between 0 and the total.
+    _make_games("Hades", "Hades II", "Celeste", "Braid", "Tunic")
+    filter_json = json.dumps({"name": {"value": "Hades", "modifier": "INCLUDES"}})
     response = auth_client.get(COUNT_URL, {"model": "game", "filter": filter_json})
     assert response.status_code == 200
     # Parity with the real queryset the list view would build.
     parsed = parse_game_filter(filter_json)
     assert parsed is not None
-    assert response.json() == {"count": Game.objects.filter(parsed.to_q()).count()}
-    assert response.json() == {"count": 1}
+    expected = Game.objects.filter(parsed.to_q()).count()
+    assert expected == 2
+    assert expected < Game.objects.count()
+    assert response.json() == {"count": expected}
+
+
+def test_filter_count_non_game_model(auth_client):
+    # The endpoint's whole point is genericity — prove a non-game model key
+    # resolves its own filter class + queryset, not just "game".
+    Device.objects.create(name="Deck", type="h")
+    Device.objects.create(name="Desktop", type="d")
+    response = auth_client.get(COUNT_URL, {"model": "device"})
+    assert response.status_code == 200
+    assert response.json() == {"count": Device.objects.count()}
+    # And a filter actually applies against that model.
+    filter_json = json.dumps({"name": {"value": "Deck", "modifier": "EQUALS"}})
+    filtered = auth_client.get(COUNT_URL, {"model": "device", "filter": filter_json})
+    assert filtered.json() == {"count": 1}
 
 
 def test_filter_count_special_characters_round_trip(auth_client):
-    # A value with quotes/ampersand/non-ASCII must survive URL-encoding and match.
-    tricky = "Ni≈\"o & Zelda's"
+    # A value with quotes/ampersand/accented Latin must survive URL-encoding and match.
+    tricky = 'Niño "quoted" & Zelda\'s'
     _make_games(tricky, "Other")
     filter_json = json.dumps({"name": {"value": tricky, "modifier": "EQUALS"}})
     response = auth_client.get(COUNT_URL, {"model": "game", "filter": filter_json})

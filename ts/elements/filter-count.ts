@@ -15,8 +15,17 @@ import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js"
 
 const DEBOUNCE_MS = 300;
 
+// Must match the class the server bakes onto the initial <span> (see the
+// FilterCount builder) so a fallback-created label looks identical.
+const LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-400";
+
 export const COUNTING_TEXT = "Counting…";
 export const UNAVAILABLE_TEXT = "count unavailable";
+
+// The count endpoint's response shape (mirrors games.api.FilterCountOut).
+interface CountResponse {
+  count: number;
+}
 
 // The settled-count label. Exact `.count()`; the "≈" signals only that it
 // tracks the last *settled* filter and may lag an in-progress edit.
@@ -109,16 +118,19 @@ export class FilterCountElement extends HTMLElement {
     this.abortController = controller;
     const sequence = ++this.requestSequence;
 
-    const filterJson = JSON.stringify(group.serializeForQuery());
-    const url = countEndpointUrl(this.endpoint, this.model, filterJson);
     try {
+      // serializeForQuery reads every live widget; a throw here must also degrade
+      // to "count unavailable" rather than escape as an unhandled rejection that
+      // freezes the badge on "Counting…".
+      const filterJson = JSON.stringify(group.serializeForQuery());
+      const url = countEndpointUrl(this.endpoint, this.model, filterJson);
       const response = await fetch(url, { signal: controller.signal });
       if (sequence !== this.requestSequence) return;
       if (!response.ok) {
         this.render(UNAVAILABLE_TEXT);
         return;
       }
-      const data = (await response.json()) as { count: number };
+      const data = (await response.json()) as CountResponse;
       if (sequence !== this.requestSequence) return;
       this.render(totalText(data.count, this.nounSingular, this.nounPlural));
     } catch (error) {
@@ -133,6 +145,7 @@ export class FilterCountElement extends HTMLElement {
     let label = this.querySelector("span");
     if (!label) {
       label = document.createElement("span");
+      label.className = LABEL_CLASS;
       this.appendChild(label);
     }
     label.textContent = text;
