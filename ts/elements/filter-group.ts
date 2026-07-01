@@ -85,9 +85,6 @@ const FOOTER_CLASS = "flex flex-wrap gap-2";
 // chip on a group with nothing to negate or join (issue #236).
 const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
-// Generic fallback for an empty relation child; `relationEmptyText` supersedes it.
-const RELATION_EMPTY_TEXT = "Matches items with related items.";
-
 // An empty relation child is meaningful, not an error: the quantifier alone is the
 // test. But that intent is invisible until spelled out — an unspelled empty relation
 // silently injects an EXISTS/anti-EXISTS filter the user may not have meant (#225).
@@ -102,6 +99,8 @@ function relationEmptyText(match: RelationMatch): string {
     case "ALL":
       return "Matches all items (add a condition to filter them).";
   }
+  const unreachable: never = match; // exhaustive over RelationMatch; a new member fails tsc here
+  return unreachable;
 }
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
@@ -602,9 +601,9 @@ export class FilterGroupElement extends HTMLElement {
     // nothing to apply to (issue #236).
     if ((path.length === 0 || isRelationChild) && node.children.length === 0) {
       const emptyState = element("div", EMPTY_STATE_CLASS);
-      emptyState.textContent = isRelationChild
-        ? (relationEmptyLabel ?? RELATION_EMPTY_TEXT)
-        : EMPTY_STATE_TEXT;
+      // Only a relation child supplies a label (its per-quantifier presence-test copy);
+      // the root empty group falls through to the generic "matches all" text.
+      emptyState.textContent = relationEmptyLabel ?? EMPTY_STATE_TEXT;
       card.appendChild(emptyState);
       card.appendChild(this.footer(path, model));
       return card;

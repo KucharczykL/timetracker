@@ -329,6 +329,9 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     // ALL empty: matches all.
     setRelationMatch(host, [1], "ALL");
     expect(relationChildText(host, [1, "child"])).toContain("Matches all items");
+    // Back to ANY restores the "1 or more" copy (the switch recomputes each render).
+    setRelationMatch(host, [1], "ANY");
+    expect(relationChildText(host, [1, "child"])).toContain("1 or more related items");
   });
 
   it("drops the empty-child presence-test copy once a real condition is added", () => {
