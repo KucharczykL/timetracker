@@ -120,6 +120,13 @@ const CONNECTIVE_AND_CLASS =
 const CONNECTIVE_OR_CLASS =
   "border-orange-300 bg-orange-100 text-orange-800 " +
   "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200";
+// Group left-edge accent, colored by connective — reuses the chip hues (AND=teal,
+// OR=orange) so the card frame echoes the connective chip. Strong 400 edge matches
+// the relation descent's indigo-400 left edge; together `border-l-4` +
+// `border-l-<color>` thicken and recolor the left side of CARD_CLASS's uniform gray
+// box border into a colored accent.
+const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70";
+const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70";
 const NEGATE_OFF_CLASS =
   "border-gray-200 text-gray-500 hover:bg-gray-100 " +
   "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700";
@@ -564,7 +571,8 @@ export class FilterGroupElement extends HTMLElement {
     depth: number,
   ): HTMLElement {
     const isRelationChild = path[path.length - 1] === RELATION_CHILD;
-    const card = element("div", `${CARD_CLASS} ${depthBackground(depth)}`);
+    const edgeClass = node.connective === "AND" ? GROUP_AND_EDGE_CLASS : GROUP_OR_EDGE_CLASS;
+    const card = element("div", `${CARD_CLASS} ${depthBackground(depth)} ${edgeClass}`);
     card.dataset.kind = "group";
     card.dataset.path = JSON.stringify(path);
 
