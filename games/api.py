@@ -11,8 +11,8 @@ from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
 
-from common.criteria import FilterError
-from games.filters import parse_session_filter
+from common.criteria import FilterError, filter_from_json
+from games.filters import filter_for_model, parse_session_filter
 from games.models import Device, Game, Platform, PlayEvent, Session
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -315,3 +315,51 @@ def partial_update_session(request, session_id: int, payload: SessionUpdate):
 
 
 api.add_router("/session", session_router)
+
+filter_router = Router()
+
+
+class FilterCountOut(Schema):
+    count: int
+
+
+@filter_router.get("/count", response=FilterCountOut)
+def filter_count(request, model: str, filter: str = ""):
+    """Live result count for the nested filter builder (#195).
+
+    Generic across every filterable model: the ``model`` key selects the
+    ``OperatorFilter`` subclass (``filter_for_model``) and the Django model
+    (``apps.get_model``). GET is CSRF-safe (read-only); auth is inherited from
+    ``NinjaAPI(auth=django_auth)``.
+    """
+    from django.apps import apps
+
+    try:
+        filter_cls = filter_for_model(model)
+    except LookupError as exc:
+        # Unknown Django model — a bad/hand-edited ``model`` key: a user 400.
+        # A ``KeyError`` from filter_for_model means the model *exists* but has no
+        # ``{Model}Filter`` class (a wiring bug for a model the client can reach);
+        # let it propagate to a 500 so it surfaces, per the filter_from_json
+        # contract of not masking genuine wiring bugs.
+        raise HttpError(400, f"Unknown model: {model!r}") from exc
+    queryset = apps.get_model("games", model).objects.all()
+    if filter:
+        # "" -> None (count all); "{}" -> an all-None filter whose to_q() is an
+        # empty Q() (also counts all). A present-but-invalid filter -> 400.
+        try:
+            parsed = filter_from_json(filter_cls, filter)
+        except FilterError as exc:
+            logger.warning(
+                "rejected invalid filter (entity=%s, user=%s): %s",
+                model,
+                request.user,
+                exc,
+            )
+            raise HttpError(400, f"Invalid filter: {exc}") from exc
+        if parsed is not None:
+            queryset = queryset.filter(parsed.to_q())
+    return {"count": queryset.count()}
+
+
+api.add_router("/filter", filter_router)

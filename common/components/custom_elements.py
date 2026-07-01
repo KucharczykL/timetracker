@@ -248,6 +248,40 @@ def FilterGroup(*, model: str) -> Node:
     )[*templates]
 
 
+class FilterCountProps(TypedDict):
+    # Root model key (e.g. "game") — the same value passed to the sibling
+    # <filter-group>; sent to the count endpoint to select the queryset.
+    model: str
+    # Result-noun forms: singular is rendered when the count is exactly 1.
+    noun_singular: str  # e.g. "game"
+    noun_plural: str  # e.g. "games"
+    # URL of the /api/filter/count endpoint (reverse()d by the caller).
+    endpoint: str
+
+
+register_element("filter-count", "FilterCount", FilterCountProps)
+_FilterCount = custom_element_builder("filter-count")
+
+
+def FilterCount(
+    *, model: str, noun_singular: str, noun_plural: str, endpoint: str
+) -> Node:
+    """Live result-count badge for the nested filter builder (issue #195, #168).
+
+    Watches the sibling ``<filter-group>`` for ``filter-tree-change`` events,
+    debounces, and fetches ``endpoint`` for the current filter's row count —
+    rendering "Counting…", "≈ N games", or "count unavailable" (never a bare 0).
+    Behavior lives in ``ts/elements/filter-count.ts``; Media is auto-attached by
+    ``custom_element_builder``. The initial markup is the "Counting…" state, shown
+    until the first count settles."""
+    return _FilterCount(
+        model=model,
+        noun_singular=noun_singular,
+        noun_plural=noun_plural,
+        endpoint=endpoint,
+    )[Span(class_="text-sm text-gray-600 dark:text-gray-400")["Counting…"]]
+
+
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which
 # renders it). Its whole contract is two plain attributes already on the anchor
 # (href + data-shift-href), so the props are empty; registration here is
