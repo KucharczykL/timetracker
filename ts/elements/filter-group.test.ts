@@ -371,6 +371,8 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
 const COLUMNS = [
   { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"] },
   { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
 ];
 
 function mountComparison(): FilterGroupElement {
@@ -386,6 +388,8 @@ function mountComparison(): FilterGroupElement {
           <option value="">column…</option>
           <option value="year_released">Year</option>
           <option value="original_year_released">Orig</option>
+          <option value="created_at">Created</option>
+          <option value="updated_at">Updated</option>
         </select>
         <select data-fc-op data-selected></select>
         <select data-fc-right data-selected></select>
@@ -466,5 +470,52 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     clickAction(host, "add-condition", []); // structural re-render
     const left = row(host, [1]).querySelector<HTMLSelectElement>("[data-fc-left]")!;
     expect(left.value).toBe("year_released");
+  });
+
+  it("negating a comparison leaf serializes to {NOT:[{field_comparisons:…}]}", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released");
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    clickAction(host, "toggle-negate", [0]);
+    expect(button(host, "toggle-negate", [0])?.getAttribute("aria-pressed")).toBe("true");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ NOT: [{ field_comparisons: [{ left: "year_released", right: "original_year_released", modifier: "LESS_THAN" }] }] }],
+    });
+  });
+
+  it("emits granularity:\"date\" only when the by-day toggle is checked and visible", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    // A datetime left column unhides the by-day wrapper (refreshRow); check it.
+    setSelect(host, [0], "data-fc-left", "created_at");
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "updated_at");
+    const wrap = row(host, [0]).querySelector<HTMLElement>("[data-fc-granularity-wrap]")!;
+    expect(wrap.hidden).toBe(false); // datetime operand → toggle shown
+    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
+    byDay.checked = true;
+    byDay.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ field_comparisons: [{ left: "created_at", right: "updated_at", modifier: "LESS_THAN", granularity: "date" }] }],
+    });
+  });
+
+  it("drops granularity when the by-day wrapper is hidden (non-datetime operand)", () => {
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+    setSelect(host, [0], "data-fc-left", "year_released"); // number group → wrapper stays hidden
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-right", "original_year_released");
+    // Force the checkbox on even though the wrapper is hidden — readComparisonRow
+    // must still omit granularity (guards the `!byDayWrap.hidden` condition).
+    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
+    byDay.checked = true;
+    const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
+    expect(payload).not.toHaveProperty("granularity");
   });
 });

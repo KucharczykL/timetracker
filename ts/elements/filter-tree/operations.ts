@@ -97,15 +97,11 @@ export function isCriterionComplete(leaf: CriterionLeaf): boolean {
 // compared to itself is meaningless — the row widget never offers it). Mirrors
 // isCriterionComplete: an incomplete comparison is excluded from the count/Apply query
 // (a half-filled field_comparisons entry the backend rejects wholesale — see
-// pruneIncomplete). The payload is opaque to the serializer, so this is the one place
-// its shape (left/right/modifier — see field-comparison-set.ts ComparisonRow) is read.
+// pruneIncomplete). This is the single place the serializer layer reads the payload's
+// shape; `ComparisonPayload` (Partial<ComparisonRow>) makes the field access typo-safe.
 export function isComparisonComplete(leaf: ComparisonLeaf): boolean {
-  const left = leaf.comparison["left"];
-  const right = leaf.comparison["right"];
-  const modifier = leaf.comparison["modifier"];
-  if (typeof left !== "string" || left === "") return false;
-  if (typeof right !== "string" || right === "") return false;
-  if (typeof modifier !== "string" || modifier === "") return false;
+  const { left, right, modifier } = leaf.comparison;
+  if (!left || !right || !modifier) return false;
   return left !== right;
 }
 

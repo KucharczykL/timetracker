@@ -12,19 +12,17 @@
  * container so the nested boolean builder (#168) can reuse it inside a group.
  */
 import { readFieldComparisonSetProps } from "../generated/props.js";
+import type { ComparisonRow } from "./filter-tree/types.js";
+
+// The row shape lives in filter-tree/types.ts (shared with the serializer +
+// completeness check); re-exported here for the widget's existing consumers.
+export type { ComparisonRow };
 
 export interface Column {
   value: string;
   label: string;
   group: string;
   operators: string[]; // server-supplied allowed operators (#152)
-}
-
-export interface ComparisonRow {
-  left: string;
-  right: string;
-  modifier: string;
-  granularity?: "date"; // omitted when "raw" to keep filter JSON compact
 }
 
 // Presentation-only glyphs for the operator tokens the server sends. Not a
