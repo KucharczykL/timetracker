@@ -20,6 +20,7 @@ import { readFilterGroupProps } from "../generated/props.js";
 import { serialize } from "./filter-tree/serializer.js";
 import type {
   ComparisonLeaf,
+  ComparisonPayload,
   Connective,
   CriterionLeaf,
   FilterFieldMeta,
@@ -173,10 +174,12 @@ function actionButton(
   return button;
 }
 
+// Only relation leaves reach the inert slot now (criterion + comparison render live);
+// kept general for the two node kinds that carry a field label.
 function slotLabel(node: FilterNode): string {
-  if (node.kind === "criterion") return node.field ? `condition · ${node.field}` : "condition · (unset)";
   if (node.kind === "relation") return node.field ? `relation · ${node.field}` : "relation · (unset)";
-  return "comparison";
+  if (node.kind === "criterion") return node.field ? `condition · ${node.field}` : "condition · (unset)";
+  return node.kind;
 }
 
 // A leaf's two stateful cells, cached by node id so a structural re-render reuses
@@ -333,11 +336,9 @@ export class FilterGroupElement extends HTMLElement {
 
   // Read a comparison leaf's live row into its {left, right, modifier, granularity?}
   // payload, or null when the row is incomplete. Keyed off the cached row cell.
-  private readComparison(node: ComparisonLeaf): Record<string, unknown> | null {
+  private readComparison(node: ComparisonLeaf): ComparisonPayload | null {
     const cell = this.comparisonCache.get(node.id);
-    const row = cell ? readComparisonRow(cell) : null;
-    // ComparisonRow → the opaque ComparisonPayload the serializer wraps verbatim.
-    return row as Record<string, unknown> | null;
+    return cell ? readComparisonRow(cell) : null;
   }
 
   private comparisonComplete(node: ComparisonLeaf): boolean {
