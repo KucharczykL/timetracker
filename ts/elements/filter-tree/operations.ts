@@ -7,10 +7,13 @@
  * input, so the custom element can hold `tree`, call an op, reassign, and re-render.
  * DOM lives in `filter-group.ts`; correctness lives here (and is vitest-tested).
  *
- * Addressing: a `NodePath` is the list of `group.children` indices from the root.
- * Paths only ever descend through groups — leaves and relations are terminal (the
- * shell renders a relation's child group as an inert slot, not a navigable subtree),
- * so a group reached at path `P` always sits at group-nesting depth `P.length`.
+ * Addressing: a `NodePath` is a list of steps from the root. A numeric step selects
+ * a `group.children` index; the `RELATION_CHILD` sentinel step descends from a
+ * relation node into its one child group (issue #193). So a relation's child group
+ * *is* a navigable subtree — a numeric step lands on the relation, then a
+ * `RELATION_CHILD` step enters its group. Because a relation node is not itself a
+ * group level, path length no longer equals group-nesting depth; `groupDepthAt`
+ * walks the tree to count group levels.
  */
 import {
   type ComparisonLeaf,
@@ -27,7 +30,13 @@ import { group } from "./serializer.js";
 import { nextNodeId } from "./node-id.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
-export type NodePath = readonly number[];
+// A path step is either a positional index into a group's children, or the
+// `RELATION_CHILD` sentinel meaning "descend into the relation node's child group".
+// The string sentinel survives `JSON.stringify`/`JSON.parse` (paths are stored in the
+// DOM as `data-path` JSON), so no custom (de)serialization is needed.
+export const RELATION_CHILD = "child";
+export type PathStep = number | typeof RELATION_CHILD;
+export type NodePath = readonly PathStep[];
 
 // Soft UI cap on group nesting (design spec): the root group is depth 0; a new
 // group/relation child may be created up to depth 5, deeper is disabled. The
@@ -53,6 +62,10 @@ export function parseFieldMeta(raw: string): FilterFieldMeta | null {
   try {
     return JSON.parse(raw) as FilterFieldMeta;
   } catch {
+    // A non-empty blob that won't parse is a broken Python↔TS contract (not the
+    // normal empty-option case above) — warn so the silently-dropped field pick is
+    // debuggable, consistent with parseModels in filter-group.ts.
+    console.warn("filter-tree: malformed field-picker data-meta blob");
     return null;
   }
 }
@@ -133,10 +146,15 @@ export function emptyRoot(): GroupNode {
 
 export function nodeAt(root: GroupNode, path: NodePath): FilterNode {
   let node: FilterNode = root;
-  for (const index of path) {
+  for (const step of path) {
+    if (step === RELATION_CHILD) {
+      if (node.kind !== "relation") throw new Error(`RELATION_CHILD step on a non-relation node`);
+      node = node.child;
+      continue;
+    }
     if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
-    const child: FilterNode | undefined = node.children[index];
-    if (child === undefined) throw new Error(`Path index ${index} out of range`);
+    const child: FilterNode | undefined = node.children[step];
+    if (child === undefined) throw new Error(`Path index ${step} out of range`);
     node = child;
   }
   return node;
@@ -168,12 +186,16 @@ function replaceNode(
   transform: (node: FilterNode) => FilterNode,
 ): FilterNode {
   if (path.length === 0) return transform(node);
+  const [step, ...rest] = path;
+  if (step === RELATION_CHILD) {
+    if (node.kind !== "relation") throw new Error(`RELATION_CHILD step on a non-relation node`);
+    return { ...node, child: replaceNode(node.child, rest, transform) as GroupNode };
+  }
   if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
-  const [index, ...rest] = path;
-  const child = node.children[index];
-  if (child === undefined) throw new Error(`Path index ${index} out of range`);
+  const child = node.children[step];
+  if (child === undefined) throw new Error(`Path index ${step} out of range`);
   const newChild = replaceNode(child, rest, transform);
-  return { ...node, children: node.children.map((existing, i) => (i === index ? newChild : existing)) };
+  return { ...node, children: node.children.map((existing, i) => (i === step ? newChild : existing)) };
 }
 
 // Transform the `children` array of the group at `groupPath`.
@@ -188,9 +210,15 @@ function updateChildren(
   });
 }
 
+// Split a *positional* node path into its containing group + index. The last step
+// must be a numeric index: only a group's positional children are removed / moved /
+// duplicated / wrapped. A `RELATION_CHILD`-terminated path addresses a relation's
+// child group, which is owned by its relation (never a list slot), so it is rejected.
 function splitPath(path: NodePath): { parentPath: NodePath; index: number } {
   if (path.length === 0) throw new Error(`Path addresses the root, which has no parent`);
-  return { parentPath: path.slice(0, -1), index: path[path.length - 1] };
+  const last = path[path.length - 1];
+  if (typeof last !== "number") throw new Error(`Path does not address a positional child`);
+  return { parentPath: path.slice(0, -1), index: last };
 }
 
 // ── Structural operations ────────────────────────────────────────────────────
@@ -217,7 +245,15 @@ export function removeAt(root: GroupNode, path: NodePath): GroupNode {
   const { parentPath, index } = splitPath(path);
   let next = updateChildren(root, parentPath, (children) => children.filter((_, i) => i !== index));
   let groupPath: NodePath = parentPath;
-  while (groupPath.length > 0 && groupAt(next, groupPath).children.length === 0) {
+  // Cascade the empty-group collapse upward, but only through *positional* group
+  // children (numeric last step). A relation's child group (RELATION_CHILD-terminated)
+  // is a boundary like the root: ANY over an empty child group is the meaningful
+  // "has ≥1 related row" presence test, so it may sit empty and the relation stays.
+  while (
+    groupPath.length > 0 &&
+    typeof groupPath[groupPath.length - 1] === "number" &&
+    groupAt(next, groupPath).children.length === 0
+  ) {
     const { parentPath: grandparentPath, index: groupIndex } = splitPath(groupPath);
     next = updateChildren(next, grandparentPath, (children) =>
       children.filter((_, i) => i !== groupIndex),
@@ -285,6 +321,19 @@ export function setMatch(root: GroupNode, path: NodePath, match: RelationMatch):
   });
 }
 
+// Pick (or change) a relation node's field (issue #193). Changing the field can
+// change the target model, whose fields differ, so the child group is reset to a
+// fresh empty AND group — no silent carry-over of leaves keyed by the old model's
+// fields (mirrors `setLeafField`'s reset). Re-picking the SAME field is a no-op that
+// preserves the in-progress child group. `id`, `negate`, and `match` are preserved.
+export function setRelationField(root: GroupNode, path: NodePath, field: string): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "relation") throw new Error(`Node at path is not a relation`);
+    if (node.field === field) return node;
+    return { ...node, field, child: group("AND", []) };
+  });
+}
+
 // ── Leaf payload edits (issue #192) ──────────────────────────────────────────
 
 // Pick (or change) a criterion leaf's field: replace it with a FRESH leaf for the
@@ -343,7 +392,10 @@ function pruneNode(node: FilterNode): FilterNode | null {
     case "comparison":
       return isComparisonComplete(node) ? node : null;
     case "relation":
-      return { ...node, child: pruneGroup(node.child) };
+      // A field-unset relation would serialize to `{"": …}`; drop it like an
+      // incomplete leaf. With a field chosen it survives even when its child group
+      // empties (ANY over empty = the "has ≥1 related row" presence test).
+      return node.field === "" ? null : { ...node, child: pruneGroup(node.child) };
     case "group": {
       const pruned = pruneGroup(node);
       return pruned.children.length === 0 ? null : pruned; // collapse emptied non-root group
@@ -397,10 +449,26 @@ export function deepestGroupDepth(node: GroupNode, groupDepth: number): number {
   return deepest;
 }
 
-// A group reached at `groupPath` sits at depth `groupPath.length` (paths descend
-// through group children only).
-export function groupDepthAt(_root: GroupNode, groupPath: NodePath): number {
-  return groupPath.length;
+// The group-nesting depth of the group reached at `groupPath`. Path length is no
+// longer a proxy: a numeric step onto a relation node is not a group level (only the
+// following RELATION_CHILD step is), so the tree is walked, counting each landing on
+// a group node. `game AND (rel sessions where AND …)`: the child group at
+// `[0, RELATION_CHILD]` is depth 1 (two steps, one group level).
+export function groupDepthAt(root: GroupNode, groupPath: NodePath): number {
+  let node: FilterNode = root;
+  let depth = 0;
+  for (const step of groupPath) {
+    if (step === RELATION_CHILD) {
+      if (node.kind !== "relation") throw new Error(`RELATION_CHILD step on a non-relation node`);
+      node = node.child;
+      depth += 1; // a relation's child group is one level below the relation's group
+      continue;
+    }
+    if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
+    node = node.children[step];
+    if (node?.kind === "group") depth += 1;
+  }
+  return depth;
 }
 
 // `+ group`/`+ relation` add a child group one level below the current group; allow
@@ -419,12 +487,20 @@ export function canAddRelation(root: GroupNode, groupPath: NodePath): boolean {
 // a group holding the node, and `deepestGroupDepth` accounts for groups/relations.
 export function canWrap(root: GroupNode, path: NodePath): boolean {
   if (path.length === 0) return false; // the root cannot be wrapped
-  const slotDepth = path.length;
+  // The wrapper takes the node's slot, sitting one level below its containing group;
+  // groupDepthAt (not path.length) gives that group's true depth through relations.
+  const slotDepth = groupDepthAt(root, path.slice(0, -1)) + 1;
   const node = nodeAt(root, path);
   return deepestGroupDepth(group("AND", [node]), slotDepth) <= SOFT_DEPTH_CAP;
 }
 
-// Unwrap is meaningful only for a non-root group.
+// Unwrap is meaningful only for a non-root group. A relation's child group
+// (RELATION_CHILD-terminated) is owned by its relation, never a splice-able list
+// slot, so it is not unwrappable.
 export function canUnwrap(root: GroupNode, path: NodePath): boolean {
-  return path.length > 0 && nodeAt(root, path).kind === "group";
+  return (
+    path.length > 0 &&
+    path[path.length - 1] !== RELATION_CHILD &&
+    nodeAt(root, path).kind === "group"
+  );
 }

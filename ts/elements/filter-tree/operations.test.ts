@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import { group } from "./serializer.js";
 import { nextNodeId } from "./node-id.js";
 import { ignoreNodeIds } from "./test-support.js";
-import type { ComparisonLeaf, CriterionLeaf, FilterNode, GroupNode } from "./types.js";
+import type { ComparisonLeaf, CriterionLeaf, FilterNode, GroupNode, RelationNode } from "./types.js";
 import type { FilterFieldMeta } from "./types.js";
 
 ignoreNodeIds();
 import {
+  RELATION_CHILD,
   SOFT_DEPTH_CAP,
   canAddGroup,
   canAddRelation,
@@ -33,6 +34,7 @@ import {
   setLeafCriterion,
   setLeafField,
   setMatch,
+  setRelationField,
   toggleConnective,
   toggleNegate,
   unwrapGroup,
@@ -58,7 +60,7 @@ function criterion(field: string): FilterNode {
   return { kind: "criterion", id: nextNodeId(), field, criterion: { value: field, modifier: "INCLUDES" }, negate: false };
 }
 
-function relation(field: string, child: GroupNode): FilterNode {
+function relation(field: string, child: GroupNode): RelationNode {
   return { kind: "relation", id: nextNodeId(), field, match: "ANY", child, negate: false };
 }
 
@@ -611,5 +613,93 @@ describe("pruneIncomplete (#192)", () => {
     };
     const tree = group("AND", [complete, emptyComparison()]);
     expect(pruneIncomplete(tree)).toEqual(group("AND", [complete]));
+  });
+
+  it("drops a relation whose field is unset (#193)", () => {
+    // A field-unset relation would serialize to `{"": …}`; it must be pruned like
+    // an incomplete leaf. A relation with a chosen field + empty child survives (the
+    // ANY presence test).
+    const tree = group("AND", [emptyRelation(), relation("session_filter", group("AND", []))]);
+    expect(pruneIncomplete(tree)).toEqual(
+      group("AND", [relation("session_filter", group("AND", []))]),
+    );
+  });
+});
+
+describe("relation child group navigation (#193)", () => {
+  it("nodeAt descends into a relation's child group via RELATION_CHILD", () => {
+    const tree = group("AND", [relation("session_filter", group("OR", [criterion("device")]))]);
+    expect(nodeAt(tree, [0, RELATION_CHILD])).toEqual(group("OR", [criterion("device")]));
+    expect(nodeAt(tree, [0, RELATION_CHILD, 0])).toEqual(criterion("device"));
+  });
+
+  it("insertChild adds a condition into a relation's child group", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", []))]);
+    const next = insertChild(tree, [0, RELATION_CHILD], criterion("device"));
+    expect(nodeAt(next, [0, RELATION_CHILD])).toEqual(group("AND", [criterion("device")]));
+  });
+
+  it("removeAt removes a node inside a relation's child group", () => {
+    const tree = group("AND", [
+      relation("session_filter", group("AND", [criterion("a"), criterion("b")])),
+    ]);
+    const next = removeAt(tree, [0, RELATION_CHILD, 0]);
+    expect(nodeAt(next, [0, RELATION_CHILD])).toEqual(group("AND", [criterion("b")]));
+  });
+
+  it("removing the last child keeps the (now-empty) relation, not collapses it", () => {
+    // ANY over an empty child group is the presence test — the relation must survive
+    // its child group emptying, unlike a normal nested group (which collapses out).
+    const tree = group("AND", [relation("session_filter", group("AND", [criterion("a")]))]);
+    const next = removeAt(tree, [0, RELATION_CHILD, 0]);
+    expect(next).toEqual(group("AND", [relation("session_filter", group("AND", []))]));
+  });
+
+  it("toggleConnective flips a relation child-group's connective", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", [criterion("a")]))]);
+    const child = nodeAt(toggleConnective(tree, [0, RELATION_CHILD]), [0, RELATION_CHILD]);
+    expect(child.kind).toBe("group");
+    if (child.kind === "group") expect(child.connective).toBe("OR");
+  });
+
+  it("groupDepthAt counts a relation's child group as one group level, not two path steps", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", []))]);
+    expect(groupDepthAt(tree, [0, RELATION_CHILD])).toBe(1);
+    // and one deeper via a nested group inside the child
+    const nested = group("AND", [
+      relation("session_filter", group("AND", [group("OR", [criterion("a")])])),
+    ]);
+    expect(groupDepthAt(nested, [0, RELATION_CHILD, 0])).toBe(2);
+  });
+
+  it("canUnwrap is false for a relation's child group", () => {
+    const tree = group("AND", [relation("session_filter", group("AND", [criterion("a")]))]);
+    expect(canUnwrap(tree, [0, RELATION_CHILD])).toBe(false);
+  });
+});
+
+describe("setRelationField (#193)", () => {
+  it("sets the field and resets the child on change, preserving id/negate/match", () => {
+    const tree = group("AND", [
+      { ...relation("session_filter", group("OR", [criterion("device")])), negate: true, match: "ALL" },
+    ]);
+    const next = setRelationField(tree, [0], "purchase_filter");
+    expect(nodeAt(next, [0])).toEqual({
+      kind: "relation",
+      field: "purchase_filter",
+      match: "ALL",
+      negate: true,
+      child: group("AND", []),
+    });
+  });
+
+  it("keeps the child group when the same field is re-picked", () => {
+    const tree = group("AND", [relation("session_filter", group("OR", [criterion("device")]))]);
+    const next = setRelationField(tree, [0], "session_filter");
+    expect(nodeAt(next, [0])).toEqual(relation("session_filter", group("OR", [criterion("device")])));
+  });
+
+  it("throws on a non-relation node", () => {
+    expect(() => setRelationField(group("AND", [criterion("a")]), [0], "x")).toThrow();
   });
 });

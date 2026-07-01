@@ -803,18 +803,98 @@ class HasComparableGroupTest(TestCase):
         self.assertTrue(has_comparable_group(columns))
 
 
-class FilterGroupComparisonTest(TestCase):
-    """The nested-builder shell (#246): the `columns` prop + the blank
-    comparison-row `<template>` it emits for the field-comparison leaf."""
+class ReachableModelsTest(TestCase):
+    """The relation-reachable model set the nested builder needs to render any
+    relation's child group offline (#193)."""
 
-    def test_columns_prop_carries_comparable_columns(self):
+    def test_reachable_models_is_the_closed_relation_set(self):
+        from games.filters import reachable_models
+
+        self.assertEqual(
+            set(reachable_models("game")),
+            {"game", "session", "purchase", "playevent", "platform", "device"},
+        )
+
+    def test_reachable_models_maps_keys_to_filter_classes(self):
+        from games.filters import GameFilter, SessionFilter, reachable_models
+
+        models = reachable_models("game")
+        self.assertIs(models["game"], GameFilter)
+        self.assertIs(models["session"], SessionFilter)
+
+    def test_registry_bundles_fields_and_columns_per_model(self):
+        from games.filters import model_field_registry
+
+        registry = model_field_registry("game")
+        self.assertEqual(
+            set(registry),
+            {"game", "session", "purchase", "playevent", "platform", "device"},
+        )
+        session = registry["session"]
+        self.assertIn("fields", session)
+        self.assertIn("columns", session)
+        # Session's datetime pair reaches the comparison columns.
+        column_names = {column["value"] for column in session["columns"]}
+        self.assertLessEqual({"timestamp_start", "timestamp_end"}, column_names)
+        # The relation entries are discoverable in the field metadata (game→session).
+        game_relations = {
+            relation["field"]
+            for meta in registry["game"]["fields"]
+            if meta["kind"] == "relation"
+            for relation in meta["relations"]
+        }
+        self.assertIn("session_filter", game_relations)
+
+    def test_reachable_set_is_the_same_from_any_root(self):
+        """The relation graph is strongly connected, so the builder reaches the whole
+        model set regardless of which list it is opened from (game/session/…)."""
+        from games.filters import reachable_models
+
+        full = {"game", "session", "purchase", "playevent", "platform", "device"}
+        for root in full:
+            self.assertEqual(set(reachable_models(root)), full, f"root={root}")
+
+    def test_registry_covers_every_reachable_model_and_relation_target(self):
+        """The server invariant the client's bundle() fallback relies on: every
+        reachable model has a bundle, and every relation target named in any bundle is
+        itself a registry key — so a relation descent never lands on a missing model
+        (which the client would otherwise silently paper over with the root bundle)."""
+        from games.filters import model_field_registry, reachable_models
+
+        for root in ["game", "session", "purchase", "playevent", "platform", "device"]:
+            registry = model_field_registry(root)
+            self.assertEqual(set(registry), set(reachable_models(root)), f"root={root}")
+            for key, bundle in registry.items():
+                for meta in bundle["fields"]:
+                    for relation in meta["relations"]:
+                        self.assertIn(
+                            relation["model"].lower(),
+                            registry,
+                            f"root={root}: relation target {relation['model']!r} "
+                            f"(from {key}.{meta['name']}) missing from registry",
+                        )
+
+
+class FilterGroupComparisonTest(TestCase):
+    """The nested-builder shell (#246, #193): the multi-model `models` prop + the
+    per-model, namespaced templates it emits for the leaf and relation rows."""
+
+    def test_models_prop_carries_every_reachable_model(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="session"))
-        self.assertIn("columns=", html)
-        # Session's datetime pair — the issue's driving use case.
+        html = str(FilterGroup(model="game"))
+        self.assertIn("models=", html)
+        # Session's datetime pair — the field-comparison driving use case — reaches
+        # the child-model bundle even though the root is game.
         self.assertIn("timestamp_start", html)
         self.assertIn("timestamp_end", html)
+
+    def test_emits_model_namespaced_templates_for_each_reachable_model(self):
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="game"))
+        for key in ("game", "session", "purchase", "playevent", "platform", "device"):
+            self.assertIn(f'data-model="{key}"', html)
 
     def test_emits_comparison_row_template_when_model_has_comparable_group(self):
         from common.components import FilterGroup

@@ -27,9 +27,12 @@ import type {
   FilterNode,
   FilterTreeChangeDetail,
   GroupNode,
+  RelationMatch,
+  RelationNode,
 } from "./filter-tree/types.js";
 import {
   type NodePath,
+  RELATION_CHILD,
   canAddGroup,
   canAddRelation,
   canUnwrap,
@@ -49,6 +52,8 @@ import {
   pruneIncomplete,
   removeAt,
   setLeafField,
+  setMatch,
+  setRelationField,
   toggleConnective,
   toggleNegate,
   unwrapGroup,
@@ -80,6 +85,10 @@ const FOOTER_CLASS = "flex flex-wrap gap-2";
 // chip on a group with nothing to negate or join (issue #236).
 const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
+// Shown for an empty relation child group: an empty child is meaningful — the
+// quantifier alone is the test (ANY = has ≥1 related row, NONE = has none, ALL =
+// vacuously true) rather than an error (#193).
+const RELATION_EMPTY_TEXT = "No conditions — matches on the related row's existence.";
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
@@ -120,6 +129,18 @@ const NEGATE_ON_CLASS =
 const BUTTON_CLASS =
   "rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-100 disabled:cursor-not-allowed " +
   "disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700";
+// Relation-descent accent block (component 5, #193): a left-accented indigo card set
+// apart from the gray group chrome so the Game→Session model switch reads explicitly.
+// Header carries the `↳ [quantifier] of [relation] where` row.
+const RELATION_CARD_CLASS =
+  "flex flex-col gap-2 rounded-lg border border-l-4 border-indigo-200 border-l-indigo-400 " +
+  "bg-indigo-50/50 p-2 dark:border-indigo-500/40 dark:border-l-indigo-500/70 dark:bg-indigo-500/10";
+const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
+const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
+const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
+const RELATION_SELECT_CLASS =
+  "rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 " +
+  "disabled:opacity-50 disabled:cursor-not-allowed";
 
 // The closed set of restructuring actions a button can carry; producer
 // (actionButton) and consumer (applyAction's switch) share it so a typo on either
@@ -143,6 +164,16 @@ export const FILTER_TREE_CHANGE_EVENT = "filter-tree-change";
 
 function depthBackground(depth: number): string {
   return DEPTH_BACKGROUNDS[depth % DEPTH_BACKGROUNDS.length];
+}
+
+// A comparison needs two columns of the SAME comparison group; a model admits one
+// only when some group has ≥2 columns. Mirrors the server's has_comparable_group.
+function hasComparableGroup(columns: Column[]): boolean {
+  const groupCounts = new Map<string, number>();
+  for (const column of columns) {
+    groupCounts.set(column.group, (groupCounts.get(column.group) ?? 0) + 1);
+  }
+  return [...groupCounts.values()].some((count) => count >= 2);
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -174,14 +205,6 @@ function actionButton(
   return button;
 }
 
-// Only relation leaves reach the inert slot now (criterion + comparison render live);
-// kept general for the two node kinds that carry a field label.
-function slotLabel(node: FilterNode): string {
-  if (node.kind === "relation") return node.field ? `relation · ${node.field}` : "relation · (unset)";
-  if (node.kind === "criterion") return node.field ? `condition · ${node.field}` : "condition · (unset)";
-  return node.kind;
-}
-
 // A leaf's two stateful cells, cached by node id so a structural re-render reuses
 // (re-appends) them — the live value widget's DOM state survives edits elsewhere.
 interface LeafCells {
@@ -194,25 +217,47 @@ interface SearchSelectLike extends HTMLElement {
   setSelected(value: string, label?: string): void;
 }
 
+// One relation-descent option for the relation picker (#193): the sub-filter field
+// name + its human label. Derived from a model's `kind === "relation"` FieldMeta.
+interface RelationOption {
+  field: string;
+  label: string;
+}
+
+// One model's client-side filter metadata + templates. The builder carries a bundle
+// per relation-reachable model (#193) so a relation's child group renders from the
+// TARGET model's fields/columns/templates, never the root's.
+interface ModelBundle {
+  fields: Map<string, FilterFieldMeta>;
+  columns: Column[];
+  hasComparableGroup: boolean;
+  relations: RelationOption[];
+  fieldPickerTemplate: HTMLTemplateElement | null;
+  widgetTemplates: Map<string, HTMLTemplateElement>;
+  comparisonRowTemplate: HTMLTemplateElement | null;
+}
+
+// The RelationMatch quantifiers, ordered for the picker. ANY is the default/first.
+const RELATION_MATCHES: RelationMatch[] = ["ANY", "NONE", "ALL"];
+const RELATION_MATCH_LABELS: Record<RelationMatch, string> = {
+  ANY: "any",
+  NONE: "none",
+  ALL: "all",
+};
+
+// The shape of one model's bundle in the `models` prop JSON (mirrors ModelFieldBundle).
+interface ModelFieldBundleJson {
+  fields: FilterFieldMeta[];
+  columns: Column[];
+}
+
 export class FilterGroupElement extends HTMLElement {
   private tree: GroupNode = emptyRoot();
   private model = "";
   private wired = false;
-  // field name -> its FieldMeta (kind, label, modifiers …), from the `fields` prop.
-  private fields = new Map<string, FilterFieldMeta>();
-  // The model's comparable columns (from the `columns` prop), driving each
-  // comparison leaf's row widget (#246). `hasComparableGroup` gates the
-  // `+ comparison` affordance on the same rule as the flat bar (a group with ≥2
-  // columns — otherwise no valid comparison row could be built).
-  private columns: Column[] = [];
-  private hasComparableGroup = false;
-  // The <template> whose content is the field-picker combobox, cloned per leaf.
-  private fieldPickerTemplate: HTMLTemplateElement | null = null;
-  // field name -> its blank value-widget <template>, cloned into a leaf on field-pick.
-  private widgetTemplates = new Map<string, HTMLTemplateElement>();
-  // The <template> whose content is a blank field-comparison row, cloned per
-  // comparison leaf (#246). Absent when the model admits no comparison.
-  private comparisonRowTemplate: HTMLTemplateElement | null = null;
+  // model key -> its metadata + templates bundle (#193). The root model is
+  // `models.get(this.model)`; relation child groups read the target model's bundle.
+  private models = new Map<string, ModelBundle>();
   // node id -> its cached cells (see LeafCells). Pruned to live nodes each render.
   private rowCache = new Map<string, LeafCells>();
   // node id -> a comparison leaf's cached row cell, reused across structural
@@ -225,9 +270,8 @@ export class FilterGroupElement extends HTMLElement {
     const props = readFilterGroupProps(this);
     this.model = props.model;
     if (!this.wired) {
+      this.parseModels(props.models);
       this.captureTemplates();
-      this.parseFields(props.fields);
-      this.parseColumns(props.columns);
       this.addEventListener("click", this.onClick);
       // Value edits (typing, radios, set pills, date bounds, field pick) bubble
       // here; one delegated listener updates completeness / handles field changes.
@@ -243,47 +287,83 @@ export class FilterGroupElement extends HTMLElement {
     this.render();
   }
 
-  // Detach the server-rendered <template>s (field picker + one per field) before
-  // the first render() replaces our children, keeping references to clone from.
-  private captureTemplates(): void {
-    this.fieldPickerTemplate = this.querySelector<HTMLTemplateElement>(
-      "template[data-field-picker-template]",
-    );
-    this.querySelectorAll<HTMLTemplateElement>("template[data-field]").forEach((template) => {
-      const field = template.getAttribute("data-field");
-      if (field) this.widgetTemplates.set(field, template);
-    });
-    this.comparisonRowTemplate = this.querySelector<HTMLTemplateElement>(
-      "template[data-fc-row-template]",
-    );
-  }
-
-  private parseFields(raw: string): void {
-    if (!raw) return;
-    try {
-      const list = JSON.parse(raw) as FilterFieldMeta[];
-      for (const meta of list) this.fields.set(meta.name, meta);
-    } catch {
-      console.warn("filter-group: malformed fields prop");
-    }
-  }
-
-  // Parse the `columns` prop and precompute whether any comparison is possible: a
-  // comparison needs two columns of the SAME group, so a group with ≥2 members.
-  private parseColumns(raw: string): void {
+  // Build one ModelBundle per model in the `models` prop: its field map, comparison
+  // columns (+ whether a comparison is possible), and relation-descent options
+  // (derived from its `kind === "relation"` fields). Templates are attached later by
+  // captureTemplates.
+  private parseModels(raw: string): void {
+    let bundles: Record<string, ModelFieldBundleJson> = {};
     if (raw) {
       try {
-        this.columns = JSON.parse(raw) as Column[];
+        bundles = JSON.parse(raw) as Record<string, ModelFieldBundleJson>;
       } catch {
-        console.warn("filter-group: malformed columns prop");
-        this.columns = [];
+        console.warn("filter-group: malformed models prop");
       }
     }
-    const groupCounts = new Map<string, number>();
-    for (const column of this.columns) {
-      groupCounts.set(column.group, (groupCounts.get(column.group) ?? 0) + 1);
+    for (const [key, bundle] of Object.entries(bundles)) {
+      const fields = new Map<string, FilterFieldMeta>();
+      const relations: RelationOption[] = [];
+      for (const meta of bundle.fields) {
+        fields.set(meta.name, meta);
+        if (meta.kind === "relation") relations.push({ field: meta.name, label: meta.label });
+      }
+      this.models.set(key, {
+        fields,
+        columns: bundle.columns,
+        // A comparison needs two columns of the SAME group, so a group with ≥2 members.
+        hasComparableGroup: hasComparableGroup(bundle.columns),
+        relations,
+        fieldPickerTemplate: null,
+        widgetTemplates: new Map(),
+        comparisonRowTemplate: null,
+      });
     }
-    this.hasComparableGroup = [...groupCounts.values()].some((count) => count >= 2);
+  }
+
+  // Detach the server-rendered <template>s (field picker + one per field + comparison
+  // row) before the first render() replaces our children, bucketing each into its
+  // model's bundle by the template's `data-model` tag (#193).
+  private captureTemplates(): void {
+    this.querySelectorAll<HTMLTemplateElement>("template[data-model]").forEach((template) => {
+      const bundle = this.models.get(template.getAttribute("data-model") ?? "");
+      if (!bundle) return;
+      if (template.hasAttribute("data-field-picker-template")) {
+        bundle.fieldPickerTemplate = template;
+      } else if (template.hasAttribute("data-fc-row-template")) {
+        bundle.comparisonRowTemplate = template;
+      } else {
+        const field = template.getAttribute("data-field");
+        if (field) bundle.widgetTemplates.set(field, template);
+      }
+    });
+  }
+
+  // The bundle for a model key, or the root model's as a defensive fallback so a
+  // stale/unknown key never throws mid-render. An unknown key is a server-metadata
+  // gap (a relation target missing from model_field_registry / a key-casing mismatch),
+  // not an expected path — warn so the otherwise-silent wrong-model render is
+  // debuggable. The server contract (model_field_registry ≡ reachable_models) is
+  // asserted in tests, so this branch should be unreachable in practice.
+  private bundle(model: string): ModelBundle | undefined {
+    const found = this.models.get(model);
+    if (!found) {
+      console.warn(
+        `filter-group: no metadata bundle for model "${model}"; falling back to root "${this.model}"`,
+      );
+    }
+    return found ?? this.models.get(this.model);
+  }
+
+  // The target model key a relation field descends into, resolved from `model`'s
+  // metadata (RelationTarget.model is a Django model name → lower-cased key). An unset
+  // field ("") is the expected pre-pick state (stay on `model`, silent); a field that
+  // is set but has no relation target is a metadata gap worth warning about.
+  private targetModel(model: string, field: string): string {
+    const meta = this.bundle(model)?.fields.get(field);
+    if (field && !meta?.relations[0]?.model) {
+      console.warn(`filter-group: relation field "${field}" on model "${model}" has no target`);
+    }
+    return meta?.relations[0]?.model?.toLowerCase() ?? model;
   }
 
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
@@ -304,34 +384,36 @@ export class FilterGroupElement extends HTMLElement {
    *  live widget, then incomplete leaves are pruned (excluded from the count/Apply
    *  query). Used by the builder page (comp 10). */
   serializeForQuery(): Record<string, unknown> {
-    return serialize(pruneIncomplete(this.fillCriteria(this.tree)));
+    return serialize(pruneIncomplete(this.fillCriteria(this.tree, this.model)));
   }
 
   // Clone the tree with every criterion leaf's `criterion` filled from its live
   // value widget (empty {} when the field/widget yields nothing → pruned as
-  // incomplete). Structure/ids are preserved.
-  private fillCriteria(node: GroupNode): GroupNode {
-    return { ...node, children: node.children.map((child) => this.fillNode(child)) };
+  // incomplete). Structure/ids are preserved. `model` is the active model at this
+  // group (switches to the target model inside each relation's child group, #193).
+  private fillCriteria(node: GroupNode, model: string): GroupNode {
+    return { ...node, children: node.children.map((child) => this.fillNode(child, model)) };
   }
 
-  private fillNode(node: FilterNode): FilterNode {
-    if (node.kind === "group") return this.fillCriteria(node);
-    if (node.kind === "criterion") return { ...node, criterion: this.readLeaf(node) ?? {} };
+  private fillNode(node: FilterNode, model: string): FilterNode {
+    if (node.kind === "group") return this.fillCriteria(node, model);
+    if (node.kind === "criterion") return { ...node, criterion: this.readLeaf(node, model) ?? {} };
     if (node.kind === "comparison") return { ...node, comparison: this.readComparison(node) ?? {} };
-    return node; // relation unchanged (its widget is a sibling 2c component)
+    // relation: its child group's leaves are live too — fill them under the target model.
+    return { ...node, child: this.fillCriteria(node.child, this.targetModel(model, node.field)) };
   }
 
   // Read a criterion leaf's live value widget into a payload, or null when it has
   // no usable value (empty field, empty widget). Keyed off the cached value cell.
-  private readLeaf(node: CriterionLeaf): Record<string, unknown> | null {
-    const meta = this.fields.get(node.field);
+  private readLeaf(node: CriterionLeaf, model: string): Record<string, unknown> | null {
+    const meta = this.bundle(model)?.fields.get(node.field);
     const cells = this.rowCache.get(node.id);
     if (!meta || !cells) return null;
     return readLeafWidget(cells.valueCell, meta.kind);
   }
 
-  private leafComplete(node: CriterionLeaf): boolean {
-    return isCriterionComplete({ ...node, criterion: this.readLeaf(node) ?? {} });
+  private leafComplete(node: CriterionLeaf, model: string): boolean {
+    return isCriterionComplete({ ...node, criterion: this.readLeaf(node, model) ?? {} });
   }
 
   // Read a comparison leaf's live row into its {left, right, modifier, granularity?}
@@ -353,12 +435,18 @@ export class FilterGroupElement extends HTMLElement {
     return Boolean(left?.value);
   }
 
-  private incompleteCount(node: GroupNode = this.tree): number {
+  private incompleteCount(node: GroupNode = this.tree, model: string = this.model): number {
     let count = 0;
     for (const child of node.children) {
-      if (child.kind === "group") count += this.incompleteCount(child);
-      else if (child.kind === "criterion" && !this.leafComplete(child)) count += 1;
+      if (child.kind === "group") count += this.incompleteCount(child, model);
+      else if (child.kind === "criterion" && !this.leafComplete(child, model)) count += 1;
       else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
+      else if (child.kind === "relation") {
+        // A field-unset relation is incomplete (would serialize to `{"": …}`); its
+        // child group's leaves count under the target model.
+        if (child.field === "") count += 1;
+        count += this.incompleteCount(child.child, this.targetModel(model, child.field));
+      }
     }
     return count;
   }
@@ -366,7 +454,7 @@ export class FilterGroupElement extends HTMLElement {
   private onClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
     if (!button || button.dataset.action === undefined || button.dataset.path === undefined) return;
-    const path: NodePath = JSON.parse(button.dataset.path) as number[];
+    const path = JSON.parse(button.dataset.path) as NodePath;
     this.applyAction(button.dataset.action as TreeAction, path);
   };
 
@@ -441,7 +529,7 @@ export class FilterGroupElement extends HTMLElement {
   // widget when render() runs and the loss is not observable. Revisit (and build real
   // keyed reconciliation) only if an edit can ever fire while a leaf widget is focused.
   private render(): void {
-    this.replaceChildren(this.renderGroup(this.tree, [], 0, 1));
+    this.replaceChildren(this.renderGroup(this.tree, [], 0, 1, this.model, 0));
     this.pruneRowCache();
   }
 
@@ -451,6 +539,7 @@ export class FilterGroupElement extends HTMLElement {
     const live = new Set<string>();
     const walk = (node: FilterNode): void => {
       if (node.kind === "group") node.children.forEach(walk);
+      else if (node.kind === "relation") walk(node.child); // its child group's leaves stay live
       else live.add(node.id);
     };
     walk(this.tree);
@@ -462,19 +551,32 @@ export class FilterGroupElement extends HTMLElement {
     }
   }
 
-  private renderGroup(node: GroupNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
-    const card = element("div", `${CARD_CLASS} ${depthBackground(path.length)}`);
+  // `model` is the active model at this group; `depth` is the true group-nesting
+  // depth for coloring (path length is no longer a proxy — a relation's child group
+  // is +1 depth but +2 path steps, #193). A relation's child group is rendered here
+  // too but without its own restructuring controls (the relation node owns them).
+  private renderGroup(
+    node: GroupNode,
+    path: NodePath,
+    index: number,
+    siblingCount: number,
+    model: string,
+    depth: number,
+  ): HTMLElement {
+    const isRelationChild = path[path.length - 1] === RELATION_CHILD;
+    const card = element("div", `${CARD_CLASS} ${depthBackground(depth)}`);
     card.dataset.kind = "group";
     card.dataset.path = JSON.stringify(path);
 
-    // Only the root may be empty (non-root groups auto-collapse on their last
-    // child's removal). A header-less "matches all" state keeps an empty group
-    // off the NOT/connective chips it has nothing to apply to (issue #236).
-    if (path.length === 0 && node.children.length === 0) {
+    // The root and every relation child group may sit empty — the root serializes to
+    // {} (matches all), a relation's empty child is the ANY/NONE presence test. A
+    // header-less state keeps an empty group off the NOT/connective chips it has
+    // nothing to apply to (issue #236).
+    if ((path.length === 0 || isRelationChild) && node.children.length === 0) {
       const emptyState = element("div", EMPTY_STATE_CLASS);
-      emptyState.textContent = EMPTY_STATE_TEXT;
+      emptyState.textContent = isRelationChild ? RELATION_EMPTY_TEXT : EMPTY_STATE_TEXT;
       card.appendChild(emptyState);
-      card.appendChild(this.footer(path));
+      card.appendChild(this.footer(path, model));
       return card;
     }
 
@@ -485,44 +587,121 @@ export class FilterGroupElement extends HTMLElement {
     connectiveCluster.appendChild(this.negateChip(node, path));
     connectiveCluster.appendChild(this.connectiveChip(node.connective, path));
     header.appendChild(connectiveCluster);
-    if (path.length > 0) header.appendChild(this.controls(path, true, index, siblingCount));
+    // A relation child group is owned by its relation (not a list sibling), so it
+    // carries no up/down/wrap/unwrap/duplicate/remove — only the relation node does.
+    if (path.length > 0 && !isRelationChild) {
+      header.appendChild(this.controls(path, true, index, siblingCount));
+    }
     card.appendChild(header);
 
     const childrenBox = element("div", CHILDREN_CLASS);
     node.children.forEach((child, childIndex) => {
-      childrenBox.appendChild(this.renderChild(child, [...path, childIndex], childIndex, node.children.length));
+      childrenBox.appendChild(
+        this.renderChild(child, [...path, childIndex], childIndex, node.children.length, model, depth),
+      );
     });
     card.appendChild(childrenBox);
 
-    card.appendChild(this.footer(path));
+    card.appendChild(this.footer(path, model));
     return card;
   }
 
-  private renderChild(child: FilterNode, path: NodePath, index: number, siblingCount: number): HTMLElement {
-    if (child.kind === "group") return this.renderGroup(child, path, index, siblingCount);
-    if (child.kind === "criterion") return this.renderCriterionRow(child, path, index, siblingCount);
-    if (child.kind === "comparison") return this.renderComparisonRow(child, path, index, siblingCount);
-    return this.renderInertSlot(child, path, index, siblingCount);
-  }
-
-  // The relation leaf stays an inert slot (its widget is a sibling 2c component,
-  // out of this slice); the criterion + comparison rows are live below.
-  private renderInertSlot(
+  private renderChild(
     child: FilterNode,
     path: NodePath,
     index: number,
     siblingCount: number,
+    model: string,
+    depth: number,
   ): HTMLElement {
-    const row = element("div", SLOT_ROW_CLASS);
-    const slot = element("div", VALUE_PLACEHOLDER_CLASS);
-    slot.dataset.nodeSlot = "";
-    slot.dataset.nodeKind = child.kind;
-    slot.dataset.path = JSON.stringify(path);
-    slot.textContent = slotLabel(child);
-    row.appendChild(this.negateChip(child, path));
-    row.appendChild(slot);
-    row.appendChild(this.controls(path, false, index, siblingCount));
-    return row;
+    if (child.kind === "group") {
+      return this.renderGroup(child, path, index, siblingCount, model, depth + 1);
+    }
+    if (child.kind === "criterion") return this.renderCriterionRow(child, path, index, siblingCount, model);
+    if (child.kind === "comparison") {
+      return this.renderComparisonRow(child, path, index, siblingCount, model);
+    }
+    return this.renderRelationRow(child, path, index, siblingCount, model, depth);
+  }
+
+  // The relation-descent accent block (component 5, #193):
+  //   [NOT] ↳ [quantifier ▾] of [relation ▾] where …  [controls]
+  //   └ nested child group (built from the TARGET model's fields)
+  // An unset relation field marks the block incomplete (pruned from the query).
+  private renderRelationRow(
+    node: RelationNode,
+    path: NodePath,
+    index: number,
+    siblingCount: number,
+    model: string,
+    depth: number,
+  ): HTMLElement {
+    const card = element("div", RELATION_CARD_CLASS);
+    card.dataset.nodeSlot = "";
+    card.dataset.nodeKind = "relation";
+    card.dataset.path = JSON.stringify(path);
+    card.dataset.model = model;
+
+    const header = element("div", RELATION_HEADER_CLASS);
+    header.appendChild(this.negateChip(node, path));
+    const arrow = element("span", RELATION_ARROW_CLASS);
+    arrow.textContent = "↳";
+    header.appendChild(arrow);
+    header.appendChild(this.relationMatchSelect(node));
+    header.appendChild(this.relationLabel("of"));
+    header.appendChild(this.relationFieldSelect(node, model));
+    header.appendChild(this.relationLabel("where"));
+    header.appendChild(this.controls(path, false, index, siblingCount));
+    card.appendChild(header);
+
+    // The child group is built from the target model; it descends one depth level.
+    const childModel = this.targetModel(model, node.field);
+    card.appendChild(
+      this.renderGroup(node.child, [...path, RELATION_CHILD], 0, 1, childModel, depth + 1),
+    );
+    this.applyIncompleteState(card, node.field === "");
+    return card;
+  }
+
+  private relationLabel(text: string): HTMLElement {
+    const span = element("span", RELATION_LABEL_CLASS);
+    span.textContent = text;
+    return span;
+  }
+
+  // The ANY/NONE/ALL quantifier picker; change dispatches setMatch.
+  private relationMatchSelect(node: RelationNode): HTMLSelectElement {
+    const select = element("select", RELATION_SELECT_CLASS);
+    select.dataset.relationMatch = "";
+    for (const match of RELATION_MATCHES) {
+      const option = element("option");
+      option.value = match;
+      option.textContent = RELATION_MATCH_LABELS[match];
+      option.selected = match === node.match;
+      select.appendChild(option);
+    }
+    return select;
+  }
+
+  // The relation-field picker: the current model's relation options; change
+  // dispatches setRelationField (which resets the child group on a model change).
+  private relationFieldSelect(node: RelationNode, model: string): HTMLSelectElement {
+    const select = element("select", RELATION_SELECT_CLASS);
+    select.dataset.relationField = "";
+    const placeholder = element("option");
+    placeholder.value = "";
+    placeholder.textContent = "a relation…";
+    placeholder.disabled = true;
+    placeholder.selected = node.field === "";
+    select.appendChild(placeholder);
+    for (const relation of this.bundle(model)?.relations ?? []) {
+      const option = element("option");
+      option.value = relation.field;
+      option.textContent = relation.label;
+      option.selected = relation.field === node.field;
+      select.appendChild(option);
+    }
+    return select;
   }
 
   // The live criterion leaf row: [NOT] [field combobox] [value widget] [badge?]
@@ -533,43 +712,50 @@ export class FilterGroupElement extends HTMLElement {
     path: NodePath,
     index: number,
     siblingCount: number,
+    model: string,
   ): HTMLElement {
-    const cells = this.leafCells(node);
+    const cells = this.leafCells(node, model);
     const row = element("div", SLOT_ROW_CLASS);
     row.dataset.nodeSlot = "";
     row.dataset.nodeKind = "criterion";
     row.dataset.path = JSON.stringify(path);
+    row.dataset.model = model;
     row.appendChild(this.negateChip(node, path));
     row.appendChild(cells.fieldCell);
     row.appendChild(cells.valueCell);
     row.appendChild(this.controls(path, false, index, siblingCount));
     // Controls are the row's last child; the badge (if any) is inserted before them.
-    this.applyIncompleteState(row, Boolean(node.field) && !this.leafComplete(node));
+    this.applyIncompleteState(row, Boolean(node.field) && !this.leafComplete(node, model));
     return row;
   }
 
   // Build or reuse a leaf's field + value cells, rebuilding the value cell only when
-  // the field changed (or first set). Cached by node id.
-  private leafCells(node: CriterionLeaf): LeafCells {
+  // the field changed (or first set). Cached by node id. `model` picks the field
+  // picker + value-widget templates from that model's bundle (#193).
+  private leafCells(node: CriterionLeaf, model: string): LeafCells {
     let cells = this.rowCache.get(node.id);
     if (!cells) {
-      cells = { field: "", fieldCell: this.buildFieldCell(), valueCell: this.buildValueCell("") };
+      cells = {
+        field: "",
+        fieldCell: this.buildFieldCell(model),
+        valueCell: this.buildValueCell("", model),
+      };
       this.rowCache.set(node.id, cells);
     }
     if (cells.field !== node.field) {
-      cells.valueCell = this.buildValueCell(node.field);
+      cells.valueCell = this.buildValueCell(node.field, model);
       cells.field = node.field;
-      if (node.field) this.showFieldSelection(cells.fieldCell, node.field);
+      if (node.field) this.showFieldSelection(cells.fieldCell, node.field, model);
     }
     return cells;
   }
 
   // Clone the field-picker combobox into a cell, with a unique id per leaf so
   // multiple pickers on the page never collide.
-  private buildFieldCell(): HTMLElement {
+  private buildFieldCell(model: string): HTMLElement {
     const cell = element("div", FIELD_CELL_CLASS);
     cell.dataset.fieldCell = "";
-    const content = this.fieldPickerTemplate?.content.firstElementChild;
+    const content = this.bundle(model)?.fieldPickerTemplate?.content.firstElementChild;
     if (content) {
       const clone = content.cloneNode(true) as HTMLElement;
       this.uniquify(clone);
@@ -580,15 +766,15 @@ export class FilterGroupElement extends HTMLElement {
 
   // Reflect an already-chosen field in the cloned combobox (import/rebuild). The
   // search-select's setSelected is silent, so it won't re-fire a field-pick.
-  private showFieldSelection(fieldCell: HTMLElement, field: string): void {
+  private showFieldSelection(fieldCell: HTMLElement, field: string, model: string): void {
     const searchSelect = fieldCell.querySelector<SearchSelectLike>("search-select");
-    const label = this.fields.get(field)?.label ?? field;
+    const label = this.bundle(model)?.fields.get(field)?.label ?? field;
     searchSelect?.setSelected(field, label);
   }
 
   // Build a value cell for `field`: a clone of the field's blank widget template,
   // or a placeholder prompt when no field is chosen yet.
-  private buildValueCell(field: string): HTMLElement {
+  private buildValueCell(field: string, model: string): HTMLElement {
     if (!field) {
       const placeholder = element("div", VALUE_PLACEHOLDER_CLASS);
       placeholder.dataset.valueCell = "";
@@ -597,7 +783,7 @@ export class FilterGroupElement extends HTMLElement {
     }
     const cell = element("div", VALUE_CELL_CLASS);
     cell.dataset.valueCell = "";
-    const template = this.widgetTemplates.get(field);
+    const template = this.bundle(model)?.widgetTemplates.get(field);
     const content = template?.content.firstElementChild;
     if (content) {
       const clone = content.cloneNode(true) as HTMLElement;
@@ -615,12 +801,14 @@ export class FilterGroupElement extends HTMLElement {
     path: NodePath,
     index: number,
     siblingCount: number,
+    model: string,
   ): HTMLElement {
-    const cell = this.comparisonCells(node);
+    const cell = this.comparisonCells(node, model);
     const row = element("div", SLOT_ROW_CLASS);
     row.dataset.nodeSlot = "";
     row.dataset.nodeKind = "comparison";
     row.dataset.path = JSON.stringify(path);
+    row.dataset.model = model;
     row.appendChild(this.negateChip(node, path));
     row.appendChild(cell);
     row.appendChild(this.controls(path, false, index, siblingCount));
@@ -631,29 +819,32 @@ export class FilterGroupElement extends HTMLElement {
   // Build or reuse a comparison leaf's row cell (cached by node id). Clones the
   // blank field-comparison row template, drops its ✕ (the group's controls own
   // removal), and wires the left-column change to rebuild its dependent
-  // operator/right-column options via the reused refreshRow.
-  private comparisonCells(node: ComparisonLeaf): HTMLElement {
+  // operator/right-column options via the reused refreshRow. Templates + columns
+  // come from `model`'s bundle (#193).
+  private comparisonCells(node: ComparisonLeaf, model: string): HTMLElement {
     let cell = this.comparisonCache.get(node.id);
     if (!cell) {
-      cell = this.buildComparisonCell();
+      cell = this.buildComparisonCell(model);
       this.comparisonCache.set(node.id, cell);
     }
     return cell;
   }
 
-  private buildComparisonCell(): HTMLElement {
+  private buildComparisonCell(model: string): HTMLElement {
     const cell = element("div", VALUE_CELL_CLASS);
     cell.dataset.valueCell = "";
-    const content = this.comparisonRowTemplate?.content.firstElementChild;
-    if (content) {
+    const bundle = this.bundle(model);
+    const content = bundle?.comparisonRowTemplate?.content.firstElementChild;
+    if (content && bundle) {
+      const columns = bundle.columns;
       const row = content.cloneNode(true) as HTMLElement;
       row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
       this.uniquify(row);
       cell.appendChild(row);
-      refreshRow(row, this.columns); // seed operator/right options from the (blank) left
+      refreshRow(row, columns); // seed operator/right options from the (blank) left
       row
         .querySelector<HTMLSelectElement>("[data-fc-left]")
-        ?.addEventListener("change", () => refreshRow(row, this.columns));
+        ?.addEventListener("change", () => refreshRow(row, columns));
     }
     return cell;
   }
@@ -684,6 +875,12 @@ export class FilterGroupElement extends HTMLElement {
       this.handleFieldPick(fieldPicker, event as CustomEvent<SearchSelectChangeDetail>);
       return;
     }
+    // The relation picker + quantifier are native <select>s (#193); a change on
+    // either rewrites the relation node and re-renders.
+    if (event.type === "change" && target instanceof HTMLSelectElement) {
+      if (target.dataset.relationField !== undefined) return this.handleRelationField(target);
+      if (target.dataset.relationMatch !== undefined) return this.handleRelationMatch(target);
+    }
     if (target.closest("[data-value-cell]")) this.refreshCompleteness(target);
   };
 
@@ -692,10 +889,37 @@ export class FilterGroupElement extends HTMLElement {
     if (!row?.dataset.path) return;
     const meta = parseFieldMeta(event.detail.last?.data?.meta ?? "");
     if (!meta) return;
-    const path = JSON.parse(row.dataset.path) as number[];
+    const path = JSON.parse(row.dataset.path) as NodePath;
     this.tree = setLeafField(this.tree, path, meta);
     this.render();
     this.dispatchChange();
+  }
+
+  // Pick a relation field: setRelationField resets the child group on a model change,
+  // so a full re-render is needed (the child group's field pickers/widgets change).
+  private handleRelationField(select: HTMLSelectElement): void {
+    const path = this.pathForControl(select);
+    if (!path) return;
+    this.tree = setRelationField(this.tree, path, select.value);
+    this.render();
+    this.dispatchChange();
+  }
+
+  // Pick a relation quantifier (ANY/NONE/ALL): only the node's match changes; a
+  // re-render keeps the select + downstream count/summary consistent.
+  private handleRelationMatch(select: HTMLSelectElement): void {
+    const path = this.pathForControl(select);
+    if (!path) return;
+    this.tree = setMatch(this.tree, path, select.value as RelationMatch);
+    this.render();
+    this.dispatchChange();
+  }
+
+  // The node path a relation control belongs to — read off its owning node slot.
+  private pathForControl(control: HTMLElement): NodePath | null {
+    const row = control.closest<HTMLElement>("[data-node-slot]");
+    if (!row?.dataset.path) return null;
+    return JSON.parse(row.dataset.path) as NodePath;
   }
 
   // Toggle the row's incomplete badge/fade in place (no re-render → the widget the
@@ -703,9 +927,10 @@ export class FilterGroupElement extends HTMLElement {
   private refreshCompleteness(target: HTMLElement): void {
     const row = target.closest<HTMLElement>("[data-node-slot]");
     if (row?.dataset.path) {
-      const node = this.nodeAtPath(JSON.parse(row.dataset.path) as number[]);
+      const node = this.nodeAtPath(JSON.parse(row.dataset.path) as NodePath);
+      const model = row.dataset.model ?? this.model;
       if (node?.kind === "criterion") {
-        this.applyIncompleteState(row, !this.leafComplete(node));
+        this.applyIncompleteState(row, !this.leafComplete(node, model));
       } else if (node?.kind === "comparison") {
         this.applyIncompleteState(row, this.comparisonTouched(node) && !this.comparisonComplete(node));
       }
@@ -728,9 +953,14 @@ export class FilterGroupElement extends HTMLElement {
 
   private nodeAtPath(path: NodePath): FilterNode | null {
     let node: FilterNode = this.tree;
-    for (const index of path) {
+    for (const step of path) {
+      if (step === RELATION_CHILD) {
+        if (node.kind !== "relation") return null;
+        node = node.child;
+        continue;
+      }
       if (node.kind !== "group") return null;
-      const child: FilterNode | undefined = node.children[index];
+      const child: FilterNode | undefined = node.children[step];
       if (!child) return null;
       node = child;
     }
@@ -801,7 +1031,7 @@ export class FilterGroupElement extends HTMLElement {
     return bar;
   }
 
-  private footer(path: NodePath): HTMLElement {
+  private footer(path: NodePath, model: string): HTMLElement {
     const footer = element("div", FOOTER_CLASS);
     const capReached = !canAddGroup(this.tree, path);
     footer.appendChild(actionButton("add-condition", "+ condition", path));
@@ -811,15 +1041,19 @@ export class FilterGroupElement extends HTMLElement {
         title: capReached ? "Max nesting reached" : "Add a nested group",
       }),
     );
-    footer.appendChild(
-      actionButton("add-relation", "+ relation", path, {
-        disabled: !canAddRelation(this.tree, path),
-        title: capReached ? "Max nesting reached" : "Add a relation descent",
-      }),
-    );
+    // A relation descends into the current group's model; only offer it when that
+    // model actually has relations (a leaf-only model like Device has none).
+    if ((this.bundle(model)?.relations.length ?? 0) > 0) {
+      footer.appendChild(
+        actionButton("add-relation", "+ relation", path, {
+          disabled: !canAddRelation(this.tree, path),
+          title: capReached ? "Max nesting reached" : "Add a relation descent",
+        }),
+      );
+    }
     // A comparison is a leaf (no nesting), so it is never depth-gated — only shown
     // when the model admits one (a comparison group with ≥2 columns).
-    if (this.hasComparableGroup) {
+    if (this.bundle(model)?.hasComparableGroup) {
       footer.appendChild(
         actionButton("add-comparison", "+ comparison", path, {
           title: "Add a field-to-field comparison",

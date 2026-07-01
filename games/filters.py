@@ -36,13 +36,17 @@ from common.criteria import (
     FloatCriterion,
     IntCriterion,
     Modifier,
+    ModelFieldBundle,
+    ModelKey,
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
     aggregate_to_q,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
+    comparable_columns,
     duration_hours_handler,
+    field_metadata,
     filter_from_json,
     filter_to_json,
     relation_to_q,
@@ -753,7 +757,7 @@ def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
 # ── Model-key → filter-class resolution ────────────────────────────────────
 
 
-def filter_for_model(model_name: str) -> type[OperatorFilter]:
+def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
     """Resolve a model key (e.g. ``"game"``) to its ``OperatorFilter`` subclass by
     naming convention — no registry to maintain.
 
@@ -766,6 +770,46 @@ def filter_for_model(model_name: str) -> type[OperatorFilter]:
 
     model = apps.get_model("games", model_name)
     return globals()[f"{model.__name__}Filter"]
+
+
+def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:
+    """The closed set of models reachable from ``root_model`` via relation descents,
+    each mapped to its ``OperatorFilter`` subclass (BFS over ``field_metadata``'s
+    relation entries). Relation fields cycle (game↔session, game↔purchase, …), so the
+    result covers every model the nested builder can descend into from the root — the
+    metadata the client needs to render any child group offline (#193)."""
+    from collections import deque
+
+    result: dict[ModelKey, type[OperatorFilter]] = {}
+    queue: deque[ModelKey] = deque([root_model])
+    while queue:
+        key = queue.popleft()
+        if key in result:
+            continue
+        filter_cls = filter_for_model(key)
+        result[key] = filter_cls
+        for meta in field_metadata(filter_cls):
+            for relation in meta["relations"]:
+                target_key = relation["model"].lower()
+                if target_key not in result:
+                    queue.append(target_key)
+    return result
+
+
+def model_field_registry(root_model: ModelKey) -> dict[ModelKey, ModelFieldBundle]:
+    """Per-model ``{fields, columns}`` bundles for every model reachable from
+    ``root_model`` (#193). Serialized as ``<filter-group>``'s ``models`` prop; the
+    client keys off it to render each relation's child group from the target model's
+    own field metadata and comparison columns."""
+    from django.apps import apps
+
+    return {
+        key: ModelFieldBundle(
+            fields=field_metadata(filter_cls),
+            columns=comparable_columns(apps.get_model("games", key)),
+        )
+        for key, filter_cls in reachable_models(root_model).items()
+    }
 
 
 # ── URL building (the "reverse() for filters") ─────────────────────────────

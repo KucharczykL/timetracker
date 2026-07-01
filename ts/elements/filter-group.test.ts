@@ -3,21 +3,49 @@ import { describe, it, expect } from "vitest";
 import "./filter-group.js"; // side-effect: customElements.define("filter-group", …)
 import type { FilterGroupElement } from "./filter-group.js";
 
+// A node path: group-child indices plus the "child" sentinel for descending into a
+// relation's child group (RELATION_CHILD, #193).
+type Path = (number | string)[];
+
+// One relation-descent field on the game model, pointing at the session model. Gives
+// the base `mount()` a model with a relation so the `+ relation` affordance shows.
+const SESSION_RELATION = {
+  name: "session_filter",
+  label: "Sessions",
+  kind: "relation",
+  nullable: false,
+  choices: [],
+  modifiers: [],
+  relations: [{ field: "session_filter", filter: "SessionFilter", model: "Session" }],
+  search_url: "",
+  is_m2m: false,
+};
+
+// The minimal multi-model `models` prop for the structural (chrome) tests: game has a
+// relation into session; session is present (empty) so the descent resolves.
+const MODELS_BASE = {
+  game: { fields: [SESSION_RELATION], columns: [] },
+  session: { fields: [], columns: [] },
+};
+
 function mount(): FilterGroupElement {
   document.body.replaceChildren();
   const host = document.createElement("filter-group") as FilterGroupElement;
   host.setAttribute("model", "game");
+  host.setAttribute("models", JSON.stringify(MODELS_BASE));
   document.body.appendChild(host); // connectedCallback → initial render
   return host;
 }
 
-function button(host: HTMLElement, action: string, path: number[]): HTMLButtonElement | null {
+// Single-quote the data-path attribute value: JSON.stringify uses double quotes
+// internally (e.g. the "child" sentinel), so a single-quoted CSS value stays valid.
+function button(host: HTMLElement, action: string, path: Path): HTMLButtonElement | null {
   return host.querySelector<HTMLButtonElement>(
-    `button[data-action="${action}"][data-path="${JSON.stringify(path)}"]`,
+    `button[data-action="${action}"][data-path='${JSON.stringify(path)}']`,
   );
 }
 
-function clickAction(host: HTMLElement, action: string, path: number[]): void {
+function clickAction(host: HTMLElement, action: string, path: Path): void {
   const target = button(host, action, path);
   if (!target) throw new Error(`no ${action} button at ${JSON.stringify(path)}`);
   target.click();
@@ -130,12 +158,149 @@ describe("<filter-group> change event", () => {
   });
 });
 
-describe("<filter-group> relation slot (inert, comp 5)", () => {
-  it("relation slots carry data-path and data-node-kind", () => {
-    const host = mount();
-    clickAction(host, "add-relation", []); // [0]=criterion, [1]=relation
-    const relationSlot = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
-    expect(relationSlot.dataset.path).toBe(JSON.stringify([1]));
+// ── Relation-descent block (component 5, #193) ──
+// game → session relation + a session `name` field, with field-picker + widget
+// templates for both models (namespaced by data-model) so the child group can be
+// driven live in jsdom.
+function mountRelation(): FilterGroupElement {
+  document.body.replaceChildren();
+  const host = document.createElement("filter-group") as FilterGroupElement;
+  host.setAttribute("model", "game");
+  host.setAttribute(
+    "models",
+    JSON.stringify({
+      game: { fields: [SESSION_RELATION], columns: [] },
+      session: { fields: [NAME_META], columns: [] },
+    }),
+  );
+  host.innerHTML = `
+    <template data-model="game" data-field-picker-template>
+      <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+    </template>
+    <template data-model="session" data-field-picker-template>
+      <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+    </template>
+    <template data-model="session" data-field="name">
+      <div class="flex-col">
+        <select data-string-modifier-select>
+          <option value="EQUALS" selected>is</option>
+          <option value="INCLUDES">includes</option>
+        </select>
+        <input type="text" />
+      </div>
+    </template>`;
+  document.body.appendChild(host);
+  return host;
+}
+
+function relationSelect(host: HTMLElement, path: Path, hook: string): HTMLSelectElement {
+  return host.querySelector<HTMLSelectElement>(
+    `[data-node-slot][data-path='${JSON.stringify(path)}'] [${hook}]`,
+  )!;
+}
+
+function pickRelation(host: HTMLElement, path: Path, field: string): void {
+  const select = relationSelect(host, path, "data-relation-field");
+  select.value = field;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+describe("<filter-group> relation descent (component 5, #193)", () => {
+  it("+ relation adds a live accent block with quantifier + relation pickers", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []); // [0]=seed criterion, [1]=relation
+    const card = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
+    expect(card.dataset.path).toBe(JSON.stringify([1]));
+    expect(card.querySelector("[data-relation-match]")).not.toBeNull();
+    expect(card.querySelector("[data-relation-field]")).not.toBeNull();
+    // Unset field → incomplete until a relation is chosen.
+    expect(card.querySelector("[data-incomplete-badge]")).not.toBeNull();
+  });
+
+  it("the quantifier picker lists ANY/NONE/ALL and defaults to ANY", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    const match = relationSelect(host, [1], "data-relation-match");
+    expect([...match.options].map((option) => option.value)).toEqual(["ANY", "NONE", "ALL"]);
+    expect(match.value).toBe("ANY");
+  });
+
+  it("picking a relation opens a child group built from the target model", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    // The child group is addressable at [1,"child"] and offers its own footer.
+    expect(host.querySelector(`[data-kind="group"][data-path='${JSON.stringify([1, "child"])}']`)).not.toBeNull();
+    expect(button(host, "add-condition", [1, "child"])).not.toBeNull();
+    // No longer incomplete once a relation is chosen (empty child = presence test).
+    const card = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
+    expect(card.querySelector("[data-incomplete-badge]")).toBeNull();
+  });
+
+  it("serializeForQuery emits {relation:{match, …child}} with a live child leaf", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    relationSelect(host, [1], "data-relation-match").value = "ALL";
+    relationSelect(host, [1], "data-relation-match").dispatchEvent(new Event("change", { bubbles: true }));
+    clickAction(host, "add-condition", [1, "child"]); // child criterion at [1,"child",0]
+    pickField(host, [1, "child", 0], NAME_META); // session's `name` field
+    typeValue(host, [1, "child", 0], "Hades");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        {
+          session_filter: {
+            match: "ALL",
+            AND: [{ name: { value: "Hades", modifier: "EQUALS" } }],
+          },
+        },
+      ],
+    });
+  });
+
+  it("an unset relation is pruned from the query (never serializes to {\"\":…})", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []); // field still unset
+    expect(host.serializeForQuery()).toEqual({}); // seed criterion + unset relation both pruned
+  });
+
+  it("NOT on the relation wraps the whole descent, keeping the live child leaf", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    clickAction(host, "toggle-negate", [1]); // negate the relation node
+    clickAction(host, "add-condition", [1, "child"]);
+    pickField(host, [1, "child", 0], NAME_META);
+    typeValue(host, [1, "child", 0], "Hades");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        { NOT: [{ session_filter: { AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] } }] },
+      ],
+    });
+  });
+
+  it("counts a field-set/value-empty child leaf as incomplete under the target model", () => {
+    const host = mountRelation();
+    let last = -1;
+    host.addEventListener("filter-tree-change", (event) => {
+      last = (event as CustomEvent).detail.incompleteCount;
+    });
+    clickAction(host, "add-relation", []);
+    clickAction(host, "remove", [0]); // drop the seed criterion so only the relation counts
+    pickRelation(host, [0], "session_filter"); // relation complete (field set)
+    clickAction(host, "add-condition", [0, "child"]);
+    pickField(host, [0, "child", 0], NAME_META); // session `name` chosen, value still empty
+    expect(last).toBe(1); // the child leaf is incomplete, resolved against the session bundle
+    typeValue(host, [0, "child", 0], "Hades");
+    expect(last).toBe(0);
+  });
+
+  it("does not offer + relation for a model with no relations", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    // session has no relation fields here → its child group shows no + relation.
+    expect(button(host, "add-relation", [1, "child"])).toBeNull();
   });
 });
 
@@ -274,13 +439,14 @@ function mountLive(): FilterGroupElement {
   document.body.replaceChildren();
   const host = document.createElement("filter-group") as FilterGroupElement;
   host.setAttribute("model", "game");
-  host.setAttribute("fields", JSON.stringify([NAME_META]));
-  // Templates must exist before connectedCallback (captureTemplates runs there).
+  host.setAttribute("models", JSON.stringify({ game: { fields: [NAME_META], columns: [] } }));
+  // Templates must exist before connectedCallback (captureTemplates runs there),
+  // tagged data-model so the multi-model builder buckets them (#193).
   host.innerHTML = `
-    <template data-field-picker-template>
+    <template data-model="game" data-field-picker-template>
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
-    <template data-field="name">
+    <template data-model="game" data-field="name">
       <div class="flex-col">
         <select data-string-modifier-select>
           <option value="EQUALS" selected>is</option>
@@ -294,13 +460,13 @@ function mountLive(): FilterGroupElement {
   return host;
 }
 
-function row(host: HTMLElement, path: number[]): HTMLElement {
+function row(host: HTMLElement, path: Path): HTMLElement {
   return host.querySelector<HTMLElement>(
-    `[data-node-slot][data-path="${JSON.stringify(path)}"]`,
+    `[data-node-slot][data-path='${JSON.stringify(path)}']`,
   )!;
 }
 
-function pickField(host: HTMLElement, path: number[], meta: object): void {
+function pickField(host: HTMLElement, path: Path, meta: object): void {
   const picker = row(host, path).querySelector<HTMLElement>("[data-field-picker]")!;
   picker.dispatchEvent(
     new CustomEvent("search-select:change", {
@@ -310,7 +476,7 @@ function pickField(host: HTMLElement, path: number[], meta: object): void {
   );
 }
 
-function typeValue(host: HTMLElement, path: number[], text: string): void {
+function typeValue(host: HTMLElement, path: Path, text: string): void {
   const input = row(host, path).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!;
   input.value = text;
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -379,10 +545,9 @@ function mountComparison(): FilterGroupElement {
   document.body.replaceChildren();
   const host = document.createElement("filter-group") as FilterGroupElement;
   host.setAttribute("model", "game");
-  host.setAttribute("fields", JSON.stringify([]));
-  host.setAttribute("columns", JSON.stringify(COLUMNS));
+  host.setAttribute("models", JSON.stringify({ game: { fields: [], columns: COLUMNS } }));
   host.innerHTML = `
-    <template data-fc-row-template>
+    <template data-model="game" data-fc-row-template>
       <div data-fc-row>
         <select data-fc-left>
           <option value="">column…</option>
@@ -401,7 +566,7 @@ function mountComparison(): FilterGroupElement {
   return host;
 }
 
-function setSelect(host: HTMLElement, path: number[], hook: string, value: string): void {
+function setSelect(host: HTMLElement, path: Path, hook: string, value: string): void {
   const select = row(host, path).querySelector<HTMLSelectElement>(`[data-value-cell] [${hook}]`)!;
   select.value = value;
   select.dispatchEvent(new Event("change", { bubbles: true }));
