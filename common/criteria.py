@@ -350,9 +350,17 @@ class StringCriterion(_Criterion):
         if m == Modifier.NOT_MATCHES_REGEX:
             return ~Q(**{f"{field_name}__regex": self.value})
         if m == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
+            # String fields in this codebase use blank=True, default="" (null=False),
+            # so "empty" means either SQL NULL or an empty string. Both are matched here
+            # so the criterion works correctly regardless of the field's null setting.
+            return Q(**{f"{field_name}__isnull": True}) | Q(
+                **{f"{field_name}__exact": ""}
+            )
         if m == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
+            # Logical complement of IS_NULL: neither NULL nor empty string.
+            return ~(
+                Q(**{f"{field_name}__isnull": True}) | Q(**{f"{field_name}__exact": ""})
+            )
         raise FilterError(f"Unsupported modifier {m} for string field")
 
 
