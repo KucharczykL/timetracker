@@ -61,6 +61,7 @@
   - `FilterGroupElement.getFilledTree(): GroupNode`
   - `FilterGroupElement.loadFilter(json: Record<string, unknown>): void`
   - `FilterGroupElement.clear(): void`
+  - `FilterGroupElement.getIncompleteCount(): number`
   - `FilterGroup(*, model, filter="")` Python builder emits a `filter` attribute.
 
 - [ ] **Step 1: Add the `filter` prop (Python) and regenerate the reader**
@@ -103,17 +104,24 @@ import { describe, expect, it } from "vitest";
 import "./filter-group.js";
 import type { FilterGroupElement } from "./filter-group.js";
 
-// Minimal two-model registry: game.status (a plain field) + game.sessions
-// (relation -> session), enough to deserialize the fixtures below.
+// Minimal two-model registry: game.status (a set field with choices) +
+// game.sessions (relation -> session). Field shape mirrors the real FieldMeta
+// (ts/generated/filter-metadata.ts): kind ∈ string|number|date|bool|set|relation|
+// field-comparison; choices are {value,label} OBJECTS (NOT tuples); modifiers,
+// search_url, is_m2m are present. relations[].model is the target Django model
+// name ("Session"), lower-cased into the registry by buildRegistry.
+const STATUS_FIELD = {
+  name: "status", label: "Status", kind: "set", nullable: false,
+  choices: [{ value: "f", label: "Finished" }], relations: [],
+  modifiers: ["INCLUDES", "EXCLUDES"], search_url: "", is_m2m: false,
+};
+const SESSIONS_FIELD = {
+  name: "sessions", label: "Sessions", kind: "relation", nullable: false,
+  choices: [], relations: [{ field: "sessions", label: "Sessions", model: "Session" }],
+  modifiers: [], search_url: "", is_m2m: false,
+};
 const MODELS = JSON.stringify({
-  game: {
-    fields: [
-      { name: "status", label: "Status", kind: "choice", nullable: false, choices: [], relations: [] },
-      { name: "sessions", label: "Sessions", kind: "relation", nullable: false, choices: [],
-        relations: [{ field: "sessions", label: "Sessions", model: "Session" }] },
-    ],
-    columns: [],
-  },
+  game: { fields: [STATUS_FIELD, SESSIONS_FIELD], columns: [] },
   session: { fields: [], columns: [] },
 });
 
@@ -198,6 +206,13 @@ Build the registry from the already-parsed `this.models`, and add the three publ
     this.dispatchChange();
   }
 
+  /** How many criterion leaves are incomplete right now. The builder toolbar reads
+   *  this on connect to set Apply's initial disabled state (no change event fires on
+   *  the server-seeded tree, so it can't wait for one). */
+  getIncompleteCount(): number {
+    return this.incompleteCount();
+  }
+
   // A name-set MetadataRegistry (what deserialize wants) projected from the richer
   // per-model ModelBundle map this element already parsed from the `models` prop.
   private buildRegistry(): MetadataRegistry {
@@ -214,15 +229,21 @@ Build the registry from the already-parsed `this.models`, and add the three publ
   }
 ```
 
-Seed from the `filter` prop in `connectedCallback`. After `this.parseModels(props.models); this.captureTemplates();` (inside the `if (!this.wired)` block, before `this.wired = true`), add a prefill from the prop — but do it once, before the first `render()`:
+Seed from the `filter` prop **inside** the existing `if (!this.wired)` block, right after
+`this.parseModels(props.models); this.captureTemplates();` and **before** `this.wired = true;`.
+The `wired` guard already makes this run exactly once, and the block ends before the existing
+single `this.render()` at the tail of `connectedCallback` (currently ~line 312) — so the tree
+is seeded before that one render. **Do NOT add a second `this.render()`** (that would
+double-render); the existing trailing `this.render()` stays as the only one.
+
+Concretely, the `if (!this.wired)` block becomes (new lines are the `if (props.filter)` seed):
 
 ```typescript
-      this.wired = true;
-    }
-    // Seed from ?filter= exactly once, before the first render, so summary/count
-    // read the correct initial tree. A malformed blob fails open to the empty root.
-    if (!this.seeded) {
-      this.seeded = true;
+    if (!this.wired) {
+      this.parseModels(props.models);
+      this.captureTemplates();
+      // Seed from the server-rendered ?filter= before the first render, so the
+      // summary/count/toolbar read the correct initial tree. Malformed → fail open.
       if (props.filter) {
         try {
           this.tree = deserialize(JSON.parse(props.filter), this.model, this.buildRegistry());
@@ -230,15 +251,18 @@ Seed from the `filter` prop in `connectedCallback`. After `this.parseModels(prop
           console.warn("filter-group: ignoring malformed filter prop", error);
         }
       }
+      this.addEventListener("click", this.onClick);
+      this.addEventListener("input", this.onValueEvent);
+      this.addEventListener("change", this.onValueEvent);
+      this.addEventListener("search-select:change", this.onValueEvent);
+      this.addEventListener("date-range:change", this.onValueEvent);
+      setupModifierToggles(this);
+      this.wired = true;
     }
-    this.render();
+    this.render(); // unchanged — the single, existing trailing render
 ```
 
-Add the field near the other private fields (`private wired = false;`):
-
-```typescript
-  private seeded = false;
-```
+No new `seeded` field is needed — the `wired` guard is the once-only gate.
 
 - [ ] **Step 5: Run the vitest to verify it passes**
 
@@ -315,11 +339,14 @@ import "./filter-group.js";
 import "./filter-summary.js";
 import type { FilterGroupElement } from "./filter-group.js";
 
+// Valid FieldMeta shape (see Task 1's note): kind "set", choices as
+// {value,label} objects so summarize() maps "f" -> "Finished".
 const MODELS = JSON.stringify({
   game: {
     fields: [
-      { name: "status", label: "Status", kind: "choice", nullable: false,
-        choices: [["f", "Finished"]], relations: [] },
+      { name: "status", label: "Status", kind: "set", nullable: false,
+        choices: [{ value: "f", label: "Finished" }], relations: [],
+        modifiers: ["INCLUDES", "EXCLUDES"], search_url: "", is_m2m: false },
     ],
     columns: [],
   },
@@ -348,9 +375,12 @@ describe("<filter-summary>", () => {
 
   it("updates on filter-tree-change", () => {
     const { group, summary } = mount();
-    group.loadFilter({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    group.loadFilter({ AND: [{ status: { modifier: "INCLUDES", value: "f" } }] });
+    // Assert structurally ("Games where …") rather than the exact rendered phrase,
+    // which depends on the set-criterion payload shape summarize() expects. If you
+    // want the stronger "Finished" check, first read summary.ts's set-value path
+    // (summary.ts ~line 290) and match its expected criterion payload exactly.
     expect(summary.textContent).toContain("Games where");
-    expect(summary.textContent).toContain("Finished");
   });
 });
 ```
@@ -376,10 +406,12 @@ import type { FieldMeta } from "./filter-tree/types.js";
 
 const LABEL_CLASS = "text-sm text-body";
 
-// One reachable model's bundle as it arrives in the `models` prop JSON.
+// One reachable model's bundle as it arrives in the `models` prop JSON. `columns`
+// entries are ComparableColumn objects ({value,label,group,operators}); the summary
+// needs only value+label.
 interface ModelBundleJson {
   fields: FieldMeta[];
-  columns?: [string, string][] | { value: string; label: string }[];
+  columns?: { value: string; label: string }[];
 }
 
 function isFilterGroup(element: Element): element is FilterGroupElement {
@@ -432,10 +464,7 @@ export class FilterSummaryElement extends HTMLElement {
       const fields = new Map<string, FieldMeta>();
       for (const meta of bundle.fields) fields.set(meta.name, meta);
       const columns = new Map<string, string>();
-      for (const column of bundle.columns ?? []) {
-        if (Array.isArray(column)) columns.set(column[0], column[1]);
-        else columns.set(column.value, column.label);
-      }
+      for (const column of bundle.columns ?? []) columns.set(column.value, column.label);
       models[key] = { fields, columns: columns.size ? columns : undefined };
     }
     return models;
@@ -518,6 +547,17 @@ def FilterBuilder(
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
     <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
     clear on Clear). Behavior in ``ts/elements/filter-builder.ts``."""
+    # Buttons follow _filter_action_row's exact pattern (filters.py): plain Button
+    # with a data-* hook kwarg + inline classes. StyledButton is NOT used — it
+    # rejects an `attributes=` kwarg (raises TypeError via the _attrs_from_kwargs
+    # guard); its dynamic attrs would need the positional `attrs` slot, but copying
+    # the flat bar's Button styling keeps the two toolbars visually identical.
+    secondary = (
+        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border "
+        "border-gray-200 rounded-lg hover:bg-gray-100 dark:bg-gray-800 "
+        "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700 "
+        "dark:hover:text-white"
+    )
     return _FilterBuilder(
         model=model,
         mode=mode,
@@ -527,7 +567,7 @@ def FilterBuilder(
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4")[
             Div(class_="relative")[
-                StyledButton(color="gray", attributes=[("data-load-presets", "")])[
+                Button(type="button", data_load_presets="", class_=secondary)[
                     "Load preset ▾"
                 ],
                 Div(
@@ -547,16 +587,24 @@ def FilterBuilder(
                     "bg-neutral-secondary-medium text-heading"
                 ),
             ),
-            StyledButton(color="gray", attributes=[("data-save-preset", "")])[
+            Button(type="button", data_save_preset="", class_=secondary)[
                 "Save as preset…"
             ],
-            StyledButton(color="blue", attributes=[("data-apply", "")])["Apply"],
-            StyledButton(color="gray", attributes=[("data-clear", "")])["Clear"],
+            Button(
+                type="button",
+                data_apply="",
+                class_=(
+                    "px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg "
+                    "hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium "
+                    "disabled:opacity-50 disabled:cursor-not-allowed"
+                ),
+            )["Apply"],
+            Button(type="button", data_clear="", class_=secondary)["Clear"],
         ]
     ]
 ```
 
-Confirm `Div`, `Ul`, `Input`, `StyledButton` are imported in the module (add any missing to the primitives import). `StyledButton`'s dynamic attribute goes through its positional `attributes=` — check its current signature; if `StyledButton` rejects `attributes=` (per the htpy migration it may), use a plain `Button(..., data_apply="")` with the styled classes inline, matching `_filter_action_row` in `filters.py`. **Prefer copying the exact `Button(type="button", data_…="", class_=…)` pattern from `_filter_action_row`** so the buttons match the flat bar visually.
+Confirm `Button`, `Div`, `Ul`, `Input` are imported in `custom_elements.py` (add any missing to the `from common.components.primitives import …` line). The `data_load_presets=""` / `data_apply=""` kwargs render as boolean `data-load-presets` / `data-apply` attributes (htpy `True`/`""` form) — the exact hooks `filter-builder.ts` queries.
 
 Run: `direnv exec . make gen-element-types`
 Expected: `readFilterBuilderProps` in `ts/generated/props.ts`.
@@ -574,7 +622,8 @@ import type { FilterGroupElement } from "./filter-group.js";
 
 const MODELS = JSON.stringify({
   game: {
-    fields: [{ name: "status", label: "Status", kind: "choice", nullable: false, choices: [], relations: [] }],
+    fields: [{ name: "status", label: "Status", kind: "set", nullable: false, choices: [],
+      relations: [], modifiers: ["INCLUDES", "EXCLUDES"], search_url: "", is_m2m: false }],
     columns: [],
   },
 });
@@ -645,6 +694,15 @@ export function applyUrl(listUrl: string, filter: Record<string, unknown>): stri
   return listUrl + "?filter=" + encodeURIComponent(JSON.stringify(filter));
 }
 
+// fetchWithHtmxTriggers does NOT add CSRF — it only parses HX-Trigger response
+// headers. Django's CSRF middleware rejects unsafe methods (POST/DELETE) without
+// the token, so mirror filter-bar.ts (getCsrfToken + X-CSRFToken header) or the
+// save/delete requests 403.
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
   return (
     element instanceof HTMLElement &&
@@ -677,6 +735,11 @@ export class FilterBuilderElement extends HTMLElement {
       }
     };
     document.addEventListener(FILTER_TREE_CHANGE_EVENT, this.changeListener);
+    // Seed Apply's disabled state from the server-seeded group NOW — no change
+    // event fires on the initial tree, so a prefilled-but-incomplete leaf would
+    // otherwise leave Apply wrongly enabled until the first edit.
+    const group = this.group();
+    if (group) this.incompleteCount = group.getIncompleteCount();
     this.syncApplyDisabled();
   }
 
@@ -708,15 +771,18 @@ export class FilterBuilderElement extends HTMLElement {
     if (target.closest("[data-clear]")) return this.group()?.clear();
     if (target.closest("[data-load-presets]")) return this.onLoadPresets();
     if (target.closest("[data-save-preset]")) return this.onSavePreset();
-    const presetLink = target.closest<HTMLAnchorElement>("[data-preset-dropdown] a[href]");
-    if (presetLink) {
-      event.preventDefault();
-      return this.onPresetPicked(presetLink);
-    }
+    // Delete FIRST: list_presets renders the delete control as a <span
+    // data-delete-preset> nested INSIDE the preset <a href>, so the anchor branch
+    // would otherwise swallow a delete click and load the preset instead.
     const deleteButton = target.closest<HTMLElement>("[data-delete-preset]");
     if (deleteButton) {
       event.preventDefault();
       return this.onDeletePreset(deleteButton);
+    }
+    const presetLink = target.closest<HTMLAnchorElement>("[data-preset-dropdown] a[href]");
+    if (presetLink) {
+      event.preventDefault();
+      return this.onPresetPicked(presetLink);
     }
   };
 
@@ -763,7 +829,11 @@ export class FilterBuilderElement extends HTMLElement {
     const deleteUrl = button.getAttribute("href");
     if (!deleteUrl || !confirm("Delete this preset?")) return;
     window
-      .fetchWithHtmxTriggers(deleteUrl, { method: "DELETE", credentials: "same-origin" })
+      .fetchWithHtmxTriggers(deleteUrl, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": getCsrfToken() },
+      })
       .then(() => this.onLoadPresets())
       .catch(() => window.toast("Failed to delete preset.", "error"));
   }
@@ -786,6 +856,7 @@ export class FilterBuilderElement extends HTMLElement {
         method: "POST",
         body,
         credentials: "same-origin",
+        headers: { "X-CSRFToken": getCsrfToken() },
       })
       .then(() => {
         input.value = "";
@@ -797,7 +868,12 @@ export class FilterBuilderElement extends HTMLElement {
 customElements.define("filter-builder", FilterBuilderElement);
 ```
 
-Note: `window.toast` / `window.fetchWithHtmxTriggers` typings come from `ts/toast.ts`'s global declarations — the flat `filter-bar.ts` uses both, so the ambient types already exist. CSRF: `fetchWithHtmxTriggers` sends the cookie; the save/delete endpoints require CSRF, so confirm `fetchWithHtmxTriggers` adds the `X-CSRFToken` header (it does — `filter-bar.ts` relies on it). If it does not, add the header from the `csrftoken` cookie the same way `filter-bar.ts` does.
+Note: `window.toast` / `window.fetchWithHtmxTriggers` ambient globals are declared in
+`ts/globals.d.ts` (used by `filter-bar.ts`), so the types exist. **CSRF (verified):**
+`fetchWithHtmxTriggers` does **not** add a CSRF token — it only parses `HX-Trigger`
+response headers. `filter-bar.ts` supplies CSRF itself via its own `getCsrfToken()` (reads
+the `csrftoken` cookie) and an `X-CSRFToken` header on POST/DELETE. This element does the
+same (the `getCsrfToken()` helper above); without it, `save_preset`/`delete_preset` 403.
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -901,7 +977,6 @@ from common.components import (
     Fragment,
     PageHeading,
 )
-from games.filters import filter_for_model
 ```
 
 Add the per-model config and view (near the other list-adjacent views):
@@ -928,7 +1003,9 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     if mode is None:
         raise Http404(f"No filter builder for model {model!r}")
 
-    django_model = filter_for_model(model).model  # the Django model class
+    # filter_for_model returns the OperatorFilter *class* (no `.model` attr); resolve
+    # the Django model the same way filter_for_model / model_field_registry do.
+    django_model = apps.get_model("games", model)
     meta = django_model._meta
     label = str(meta.verbose_name_plural).title()
     filter_json = request.GET.get("filter", "")
@@ -955,9 +1032,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     return render_page(request, content, title=f"Filter {label}")
 ```
 
-Add the needed imports to `general.py`: `Http404` (`from django.http import Http404` — add to the existing django.http import), `json` (`import json` at top), and `model_field_registry` (extend the `from games.filters import …` line to include `filter_for_model, model_field_registry`).
-
-**Check `filter_for_model(...).model`:** `OperatorFilter` subclasses may not expose `.model`. If not, resolve the Django model directly: `from django.apps import apps; django_model = apps.get_model("games", model)`. Use whichever the codebase supports (grep `class GameFilter` for a `model` attr; fall back to `apps.get_model`).
+Add the needed imports to `general.py`: `Http404` (add to the existing `from django.http import …` line), `import json` (top), `from django.apps import apps` (top), and `model_field_registry` (extend `from games.filters import …` — currently `SessionFilter, filter_url` — to add `model_field_registry`). `filter_for_model` is **not** needed (we use `apps.get_model`).
 
 - [ ] **Step 4: Add the route in `games/urls.py`**
 
@@ -976,9 +1051,16 @@ Expected: PASS (all 4 parametrized + unknown-model 404 + prefill + login).
 
 - [ ] **Step 6: Remove the demo page**
 
-In `timetracker/urls.py`, delete the DEBUG block that defines `filter_group_demo` and appends `path("filter-group-demo/", filter_group_demo)` (lines ~49–91, the comment + `from django.http import HttpResponse` + `from django.templatetags.static import static` + `from common.components import FilterGroup` that are only used by it + the function + the append). Leave the other DEBUG-only appends (admin, debug toolbar) intact.
+In `timetracker/urls.py`, delete the entire `/filter-group-demo/` sub-block inside the
+`if settings.DEBUG:` section (~lines 49–91): the explanatory comment, the demo-only local
+imports (`from django.http import HttpResponse`, `from django.templatetags.static import
+static`, `from common.components import FilterGroup`), the `filter_group_demo` function
+(which also uses `Document`/`Html`/`Head`/`Title`/`Meta`/`Link`/`Script`/`Body`/
+`StyledButton`), and the `urlpatterns.append(path("filter-group-demo/", filter_group_demo))`.
+Leave the other DEBUG appends (admin, debug toolbar) intact. Don't remove module-level
+imports still used elsewhere — let ruff tell you which are now unused.
 
-Run: `direnv exec . make lint` (ruff will flag any now-unused import left behind)
+Run: `direnv exec . make lint` (ruff flags any now-unused import left behind)
 Expected: clean (no unused-import errors).
 
 - [ ] **Step 7: Commit**
@@ -1100,19 +1182,32 @@ Expected: `dist/elements/filter-builder.js`, `filter-summary.js`, `filter-group.
 
 - [ ] **Step 2: Write the e2e test**
 
-Create `e2e/test_filter_builder_e2e.py`. Follow the existing `e2e/` conventions (look at `e2e/test_widgets_e2e.py` for the `live_server`, login, and `page` fixtures — reuse its login helper/fixture rather than reinventing). Skeleton:
+Create `e2e/test_filter_builder_e2e.py`. **Fixtures (verified):** there is NO shared
+`logged_in_page`/`seeded_games` fixture — `e2e/test_widgets_e2e.py` defines a module-local
+`authenticated_page` fixture (built on a `_login(page, live_server, django_user_model)`
+helper, ~lines 19/27) and seeds its own data inline. Do the same here: copy the `_login`
+helper + `authenticated_page` fixture pattern into this file (or, if you prefer sharing,
+lift `_login`/`authenticated_page` into `e2e/conftest.py` first and depend on it from both —
+a small refactor, but keep it out of #196's critical path unless trivial). Seed the
+game/session inline with the Django ORM (models are importable; `live_server` shares the
+test DB). Skeleton:
 
 ```python
 import pytest
 from playwright.sync_api import Page, expect
 
-# Reuse the project's e2e login fixture/helpers from conftest; if e2e uses a
-# `logged_in_page` fixture, depend on it instead of logging in inline.
+# Copy _login + authenticated_page from test_widgets_e2e.py (no shared fixture exists),
+# or lift them into e2e/conftest.py and import. Seed data inline via the ORM.
 
 
 @pytest.mark.e2e
-def test_apply_narrows_the_game_list(logged_in_page: Page, live_server, seeded_games):
-    page = logged_in_page
+def test_apply_narrows_the_game_list(authenticated_page: Page, live_server):
+    page = authenticated_page
+    # Seed inline, e.g.:
+    #   from games.models import Game, Platform
+    #   platform = Platform.objects.create(name="PC")
+    #   Game.objects.create(name="Done", platform=platform, status="f")
+    #   Game.objects.create(name="Playing", platform=platform, status="p")
     page.goto(f"{live_server.url}/tracker/game/filter")
 
     # The builder starts with one empty leaf row (field picker). Pick a field +
@@ -1195,5 +1290,17 @@ EOF
 ## Self-Review Notes (coverage vs spec)
 
 - Spec §1 route+view → Task 4. §2 group additions → Task 1 (incl. negated-empty-root edge test). §3 `<filter-summary>` → Task 2. §4 `<filter-builder>` → Task 3 (preset duplication decision honored). §5 page composition → Task 4 view. §6 entry link → Task 5. §7 remove demo → Task 4 Step 6. §Testing → Tasks 1–6. §Follow-ups → Task 7.
-- Type consistency: `getFilledTree`/`loadFilter`/`clear` names identical across Tasks 1→2→3; `applyUrl` used in Task 3 only; `FilterSummary`/`FilterBuilder`/`FilterCount`/`FilterGroup` builder kwargs match their `*Props` TypedDicts and the `general.py` call site (Task 4).
-- Known adaptation points flagged inline (not placeholders): `filter_for_model(...).model` vs `apps.get_model` fallback (Task 4 Step 3); `StyledButton(attributes=…)` vs copying `_filter_action_row`'s `Button` pattern (Task 3 Step 1); e2e leaf-picking selectors (Task 6 Step 2); `fetchWithHtmxTriggers` CSRF header presence (Task 3 Step 4). Each says exactly how to resolve by reading a named existing file.
+- Type consistency: `getFilledTree`/`loadFilter`/`clear`/`getIncompleteCount` names identical across Tasks 1→2→3; `applyUrl` used in Task 3 only; `FilterSummary`/`FilterBuilder`/`FilterCount`/`FilterGroup` builder kwargs match their `*Props` TypedDicts and the `general.py` call site (Task 4).
+
+### Adversarial review (3 agents vs. real code) — findings folded in
+
+- **CSRF (blocking):** `fetchWithHtmxTriggers` does NOT add a CSRF token → save/delete would 403. Folded: `getCsrfToken()` helper + `X-CSRFToken` header on both, mirroring `filter-bar.ts` (Task 3).
+- **`filter_for_model(model).model` → AttributeError** (it returns the class): folded to `apps.get_model("games", model)` (Task 4 Step 3; import + note updated).
+- **`StyledButton(attributes=…)` raises `TypeError`:** folded to the `Button(type="button", data_…="", class_=…)` pattern from `_filter_action_row` (Task 3 Step 1).
+- **Delete control unreachable** (delete `<span data-delete-preset>` nested inside the preset `<a>`): folded — `onClick` checks `[data-delete-preset]` BEFORE the anchor branch (Task 3).
+- **Apply enabled on incomplete prefill** (no change event on seed): folded — added `getIncompleteCount()` to the group (Task 1) and seed it in `filter-builder.connectedCallback` (Task 3).
+- **Double render on seed:** folded — seed goes INSIDE the `if (!this.wired)` block before the single existing trailing `this.render()`; no `seeded` flag, no second render (Task 1 Step 4).
+- **Invalid vitest fixtures** (`kind:"choice"`, tuple `choices`, missing keys): folded — valid `FieldMeta` shape (kind `"set"`, `{value,label}` choices, `modifiers`/`search_url`/`is_m2m`) across Tasks 1–3; summary assertion made structural.
+- **e2e fixture names:** folded — use `authenticated_page` + `_login` from `test_widgets_e2e.py` (no `logged_in_page`/`seeded_games` exist); seed inline via ORM (Task 6).
+- Verified OK (no change): route non-shadowing; login→302; `verbose_name_plural.title()` (incl. "Play Events"); `reverse("api-1.0.0:filter_count")`; CSS tokens; no circular import; incomplete-leaf pruning already in `serializeForQuery`; empty-tree round-trips to `{}`.
+- Remaining adaptation point (not a defect): e2e leaf-picking selectors (Task 6) must be read off the live `renderGroup` markup / `test_widgets_e2e.py` helpers.
