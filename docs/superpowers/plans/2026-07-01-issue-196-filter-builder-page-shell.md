@@ -547,17 +547,11 @@ def FilterBuilder(
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
     <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
     clear on Clear). Behavior in ``ts/elements/filter-builder.ts``."""
-    # Buttons follow _filter_action_row's exact pattern (filters.py): plain Button
-    # with a data-* hook kwarg + inline classes. StyledButton is NOT used — it
-    # rejects an `attributes=` kwarg (raises TypeError via the _attrs_from_kwargs
-    # guard); its dynamic attrs would need the positional `attrs` slot, but copying
-    # the flat bar's Button styling keeps the two toolbars visually identical.
-    secondary = (
-        "px-4 py-2 text-sm font-medium text-gray-900 bg-white border "
-        "border-gray-200 rounded-lg hover:bg-gray-100 dark:bg-gray-800 "
-        "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700 "
-        "dark:hover:text-white"
-    )
+    # StyledButton bakes the app's button look (color/size/rounded); per-attribute
+    # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
+    # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
+    # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
+    # or the positional attrs slot; not needed here).
     return _FilterBuilder(
         model=model,
         mode=mode,
@@ -567,7 +561,7 @@ def FilterBuilder(
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4")[
             Div(class_="relative")[
-                Button(type="button", data_load_presets="", class_=secondary)[
+                StyledButton(color="gray", type="button", data_load_presets="")[
                     "Load preset ▾"
                 ],
                 Div(
@@ -587,24 +581,21 @@ def FilterBuilder(
                     "bg-neutral-secondary-medium text-heading"
                 ),
             ),
-            Button(type="button", data_save_preset="", class_=secondary)[
+            StyledButton(color="gray", type="button", data_save_preset="")[
                 "Save as preset…"
             ],
-            Button(
+            StyledButton(
+                color="blue",
                 type="button",
                 data_apply="",
-                class_=(
-                    "px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg "
-                    "hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium "
-                    "disabled:opacity-50 disabled:cursor-not-allowed"
-                ),
+                class_="disabled:opacity-50 disabled:cursor-not-allowed",
             )["Apply"],
-            Button(type="button", data_clear="", class_=secondary)["Clear"],
+            StyledButton(color="gray", type="button", data_clear="")["Clear"],
         ]
     ]
 ```
 
-Confirm `Button`, `Div`, `Ul`, `Input` are imported in `custom_elements.py` (add any missing to the `from common.components.primitives import …` line). The `data_load_presets=""` / `data_apply=""` kwargs render as boolean `data-load-presets` / `data-apply` attributes (htpy `True`/`""` form) — the exact hooks `filter-builder.ts` queries.
+Confirm `StyledButton`, `Div`, `Ul`, `Input` are imported in `custom_elements.py` (add any missing to the `from common.components.primitives import …` line). The `data_load_presets=""` / `data_apply=""` kwargs render as `data-load-presets` / `data-apply` attributes (htpy `""` form) — the exact hooks `filter-builder.ts` queries. `class_` on Apply accumulates the shared `DISABLED_CONTROL_CLASS` variants onto StyledButton's baked classes; the TS sets `.disabled` at runtime.
 
 Run: `direnv exec . make gen-element-types`
 Expected: `readFilterBuilderProps` in `ts/generated/props.ts`.
@@ -1296,7 +1287,7 @@ EOF
 
 - **CSRF (blocking):** `fetchWithHtmxTriggers` does NOT add a CSRF token → save/delete would 403. Folded: `getCsrfToken()` helper + `X-CSRFToken` header on both, mirroring `filter-bar.ts` (Task 3).
 - **`filter_for_model(model).model` → AttributeError** (it returns the class): folded to `apps.get_model("games", model)` (Task 4 Step 3; import + note updated).
-- **`StyledButton(attributes=…)` raises `TypeError`:** folded to the `Button(type="button", data_…="", class_=…)` pattern from `_filter_action_row` (Task 3 Step 1).
+- **`StyledButton(attributes=…)` raises `TypeError`:** folded — keep `StyledButton` but pass per-attribute kwargs (`data_apply=""`, `class_=…` accumulates); only the reserved `attributes=`/`children=` names raise. (The reviewer's raw-`Button` fix was an over-correction; StyledButton bakes the app button look.) (Task 3 Step 1.)
 - **Delete control unreachable** (delete `<span data-delete-preset>` nested inside the preset `<a>`): folded — `onClick` checks `[data-delete-preset]` BEFORE the anchor branch (Task 3).
 - **Apply enabled on incomplete prefill** (no change event on seed): folded — added `getIncompleteCount()` to the group (Task 1) and seed it in `filter-builder.connectedCallback` (Task 3).
 - **Double render on seed:** folded — seed goes INSIDE the `if (!this.wired)` block before the single existing trailing `this.render()`; no `seeded` flag, no second render (Task 1 Step 4).
