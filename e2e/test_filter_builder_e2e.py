@@ -3,40 +3,22 @@
 Covers the full browser lifecycle of the builder page:
   1. All four custom elements load and initialize (filter-group, filter-summary,
      filter-count, filter-builder).
-  2. A prefilled ?filter= seeds the filter-group tree so the summary reflects
-     the criterion field (even though the DOM widget is blank — the tree structure
-     is seeded, the DOM widget value is read live on Apply).
-  3. Clicking Apply navigates to the game list.
+  2. A prefilled ?filter= seeds the filter-group tree AND hydrates each leaf's
+     value widget (#263), so the summary reflects the criterion field and the
+     count/Apply read the prefilled values from the live widgets.
+  3. Clicking Apply navigates to the game list carrying the ?filter=.
   4. Navigating to the game list with ?filter= narrows results via the Django
      backend (tests the round-trip: JSON → GameFilter.to_q() → queryset).
 
 Prefill behavior note:
   The filter-group element deserializes the ?filter= JSON into its internal tree
   on connectedCallback, so ``filter-group.serialize()`` returns the original
-  filter.  However ``serializeForQuery()`` — which Apply and filter-count both
-  call — reads values from the live DOM widgets.  Because widget templates are
-  cloned blank (no value is back-propagated from the deserialized tree into the
-  DOM), serializeForQuery() returns {} for a prefilled filter whose widgets have
-  not been touched.  The count badge therefore shows all games (empty query) and
-  Apply navigates to the plain game-list URL without ?filter=.
-
-  What IS tested end-to-end:
-    - the JS loads and upgrades all four custom elements
-    - the filter-group dispatches filter-tree-change on connect, triggering the
-      summary to render "Games where Status …" (criterion field is known)
-    - the count badge reaches a settled non-"Counting…" state
-    - the Apply button triggers a navigation to /tracker/game/list
-    - navigating directly to /tracker/game/list?filter=<JSON> narrows results
-      on the Django side (round-trip GameFilter JSON test)
-
-Known limitation — tracked in #263:
-  Prefill seeds the filter-group tree structure but does NOT yet hydrate the
-  leaf value widgets.  Therefore ``serializeForQuery()`` reads blank widgets and
-  Apply navigates to the list WITHOUT ``?filter=`` — the prefilled filter is
-  dropped.  The full prefill→Apply→filtered-list round-trip is tested below as a
-  strict xfail (``test_prefill_apply_roundtrip_carries_filter``); when #263 lands
-  and that test unexpectedly passes, the suite will fail — forcing removal of the
-  marker and confirming the fix.
+  filter.  ``serializeForQuery()`` — which Apply and filter-count both call —
+  reads values from the live DOM widgets; since #263 each cloned widget is
+  hydrated from its leaf's stored criterion (``writeLeafWidget``), so a prefilled
+  filter round-trips: the count badge reflects the narrowed query and Apply
+  carries the ``?filter=`` through to the list
+  (``test_prefill_apply_roundtrip_carries_filter``).
 """
 
 import json
@@ -91,9 +73,8 @@ def test_builder_page_elements_load_and_initialize(
     Game.objects.create(name="DoneGame", platform=platform, status="f")
     Game.objects.create(name="PlayGame", platform=platform, status="p")
 
-    # The filter JSON seeds the filter-group tree: status INCLUDES finished ("f").
-    # filter-group.serialize() will reflect this field, even though the DOM widget
-    # is blank (serializeForQuery() reads from widgets, not the stored tree).
+    # The filter JSON seeds the filter-group tree AND the leaf's value widget
+    # (#263 hydration): status INCLUDES finished ("f").
     filter_json = {"status": {"modifier": "INCLUDES", "value": ["f"]}}
     filter_param = _encode_filter(filter_json)
 
@@ -116,22 +97,19 @@ def test_builder_page_elements_load_and_initialize(
     expect(page.locator("filter-summary")).to_contain_text("Games where")
 
     # The count badge fetches from the API and settles (stops showing "Counting…").
-    # It uses serializeForQuery() which returns {} for a blank-widget tree, so
-    # the count reflects all seeded games (both finished and playing).
+    # It uses serializeForQuery(), which reads the hydrated widget (#263), so the
+    # count reflects the prefilled filter: only DoneGame (status=f) matches.
     count_badge = page.locator("filter-count")
     expect(count_badge).not_to_contain_text("Counting…")
-    # The count must be numeric — just not still loading. We don't assert the exact
-    # number since serializeForQuery() returns {} (all games match).
-    expect(count_badge).to_contain_text("≈")
+    expect(count_badge).to_contain_text("≈ 1 game")
 
 
 def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> None:
     """Clicking Apply on the builder page triggers navigation to the game list.
 
-    Because serializeForQuery() reads from blank DOM widgets when the filter is
-    seeded only via ?filter=, it returns {} (empty filter) and Apply navigates
-    to the plain game-list URL without ?filter=. This still validates that the
-    Apply button is present, enabled, and wired up correctly."""
+    Validates only that the Apply button is present, enabled, and wired to a
+    navigation; the ?filter= carried by that navigation is asserted separately
+    by test_prefill_apply_roundtrip_carries_filter."""
     page = authenticated_page
 
     platform = Platform.objects.create(name="PC")
@@ -154,8 +132,8 @@ def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> 
     with page.expect_navigation():
         page.locator("filter-builder [data-apply]").click()
 
-    # Apply navigates to the game list (with or without ?filter=, depending on
-    # widget state). The path must contain /tracker/game/list.
+    # Apply navigates to the game list; the path must contain /tracker/game/list
+    # (the carried ?filter= is asserted by the round-trip test below).
     current_url = page.url
     assert "/tracker/game/list" in current_url, (
         f"Expected URL to contain '/tracker/game/list', got: {current_url}"
@@ -192,20 +170,14 @@ def test_game_list_filter_narrows_results(
     expect(page.get_by_text("PlayGame")).not_to_be_visible()
 
 
-@pytest.mark.xfail(
-    reason="prefill value-widget hydration not implemented yet — #263",
-    strict=True,
-)
 def test_prefill_apply_roundtrip_carries_filter(
     authenticated_page: Page, live_server
 ) -> None:
-    """The full prefill → Apply → filtered-list round-trip is NOT yet working.
+    """The full prefill → Apply → filtered-list round-trip (#263).
 
-    When #263 lands (leaf value widgets are hydrated from the deserialized tree),
-    serializeForQuery() will read the hydrated values and Apply will carry the
-    ?filter= through to the game list, narrowing results.  Until then this test
-    is expected to fail (strict xfail): if it unexpectedly passes the suite
-    reports XPASS and fails, forcing removal of the marker."""
+    The leaf value widgets are hydrated from the deserialized tree
+    (writeLeafWidget), so serializeForQuery() reads the prefilled values and
+    Apply carries the ?filter= through to the game list, narrowing results."""
     page = authenticated_page
 
     platform = Platform.objects.create(name="PC")
@@ -255,10 +227,8 @@ def test_load_set_field_preset_reflects_field_without_crash(
     ``reflectFieldSelections()``, called after ``replaceChildren()`` so every
     ``<search-select>`` is live.  This test guards that fix at the browser level.
 
-    Asserted boundary: the field picker shows "Game" selected (a pill with the
-    label "Game" appears in the field-picker's pills area) after the preset
-    loads.  Value/modifier hydration is deferred to issue #263 and is NOT
-    asserted here.
+    Asserted boundary: the field picker shows "Game" selected after the preset
+    loads, and the value widget carries the hydrated include pill (#263).
     """
     page = authenticated_page
 
@@ -343,3 +313,12 @@ def test_load_set_field_preset_reflects_field_without_crash(
         "[data-field-picker] [data-search-select-search]"
     )
     expect(field_search_input).to_have_value("Game", timeout=5_000)
+
+    # -- Assertion 4: the value widget is hydrated (#263) --
+    # writeLeafWidget clones an include pill for the preset's {id, label} value
+    # into the FilterSelect's pills area, so the game's name shows as a pill.
+    value_pill = criterion_row.locator(
+        "[data-value-cell] [data-search-select-pills] [data-pill]"
+    )
+    expect(value_pill).to_be_visible(timeout=5_000)
+    expect(value_pill).to_contain_text("SpyGame")

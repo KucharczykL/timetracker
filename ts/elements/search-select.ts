@@ -715,7 +715,7 @@ const initWidget = (containerElement: Element) => {
 };
 
 /** Minimal escape for use inside an attribute-value selector. */
-const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
+export const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
 
 // The current include/exclude/modifier state of one filter-mode <search-select>,
 // read straight from its pills. Self-contained per element (no flat form) so the
