@@ -72,8 +72,8 @@ export class FilterSummaryElement extends HTMLElement {
     if (raw) {
       try {
         bundles = JSON.parse(raw) as Record<string, ModelBundleJson>;
-      } catch {
-        console.warn("filter-summary: malformed models prop");
+      } catch (error) {
+        console.warn("filter-summary: malformed models prop", error);
       }
     }
     for (const [key, bundle] of Object.entries(bundles)) {

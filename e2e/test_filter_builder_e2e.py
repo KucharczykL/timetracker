@@ -295,13 +295,17 @@ def test_load_set_field_preset_reflects_field_without_crash(
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['session'])}")
 
     # Wait for the builder page to finish initializing (count badge settles).
-    expect(page.locator("filter-count")).not_to_contain_text("Counting…", timeout=10_000)
+    expect(page.locator("filter-count")).not_to_contain_text(
+        "Counting…", timeout=10_000
+    )
 
     # Open the Load-preset dropdown.
     page.locator("filter-builder [data-load-presets]").click()
 
     # Wait for the dropdown to populate with the preset anchor.
-    preset_anchor = page.locator("[data-preset-dropdown] a").filter(has_text="setpreset")
+    preset_anchor = page.locator("[data-preset-dropdown] a").filter(
+        has_text="setpreset"
+    )
     expect(preset_anchor).to_be_visible(timeout=5_000)
 
     # Click the preset anchor to load it into the filter group.
@@ -316,9 +320,10 @@ def test_load_set_field_preset_reflects_field_without_crash(
     # ``onPresetPicked``: "filter-builder: preset load failed".  Assert that
     # exact string is absent.  (A generic "TypeError: Failed to fetch" from
     # filter-bar's auto-load on connect is unrelated and ignored here.)
-    crash_messages = [
-        text for text in console_messages if "preset load failed" in text
-    ]
+    # The builder page has no <filter-bar> and <filter-builder> does not
+    # auto-fetch on connect (only on Load-preset click).  This check simply
+    # guards that loading the preset produced no error/crash.
+    crash_messages = [text for text in console_messages if "preset load failed" in text]
     assert not crash_messages, (
         f"Unexpected crash in console after preset load: {crash_messages}"
     )

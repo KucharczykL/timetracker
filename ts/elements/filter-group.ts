@@ -337,8 +337,8 @@ export class FilterGroupElement extends HTMLElement {
     if (raw) {
       try {
         bundles = JSON.parse(raw) as Record<string, ModelFieldBundleJson>;
-      } catch {
-        console.warn("filter-group: malformed models prop");
+      } catch (error) {
+        console.warn("filter-group: malformed models prop", error);
       }
     }
     for (const [key, bundle] of Object.entries(bundles)) {

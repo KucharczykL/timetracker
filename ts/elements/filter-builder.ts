@@ -18,7 +18,9 @@ function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   if (match) return decodeURIComponent(match[1]);
   const element = document.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]');
-  return element ? element.value : "";
+  if (element) return element.value;
+  console.warn("filter-builder: CSRF token not found — preset save/delete will 403");
+  return "";
 }
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
@@ -155,7 +157,7 @@ export class FilterBuilderElement extends HTMLElement {
       .then((html) => {
         dropdown.innerHTML = html;
       })
-      .catch(() => window.toast("Failed to load presets.", "error"));
+      .catch((error: unknown) => { console.error("filter-builder: load presets failed", error); window.toast("Failed to load presets.", "error"); });
   }
 
   // The list fragment's anchors carry ?filter=<json> in their href (see
@@ -166,11 +168,11 @@ export class FilterBuilderElement extends HTMLElement {
     if (!group) return;
     try {
       group.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+      this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");
     } catch (error) {
       console.error("filter-builder: preset load failed", error);
       window.toast("Preset is not a valid filter.", "error");
     }
-    this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");
   }
 
   private onDeletePreset(button: HTMLElement): void {
@@ -183,7 +185,7 @@ export class FilterBuilderElement extends HTMLElement {
         headers: { "X-CSRFToken": getCsrfToken() },
       })
       .then(() => this.onLoadPresets())
-      .catch(() => window.toast("Failed to delete preset.", "error"));
+      .catch((error: unknown) => { console.error("filter-builder: delete preset failed", error); window.toast("Failed to delete preset.", "error"); });
   }
 
   private onSavePreset(): void {
@@ -209,7 +211,7 @@ export class FilterBuilderElement extends HTMLElement {
       .then(() => {
         input.value = "";
       })
-      .catch(() => window.toast("Failed to save preset.", "error"));
+      .catch((error: unknown) => { console.error("filter-builder: save preset failed", error); window.toast("Failed to save preset.", "error"); });
   }
 }
 
