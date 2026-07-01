@@ -78,9 +78,12 @@ const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
 const VALUE_PLACEHOLDER_CLASS =
   "flex-1 min-w-[12rem] rounded border border-dashed border-gray-300 px-2 py-1 text-sm " +
   "text-gray-500 dark:border-gray-600 dark:text-gray-400";
-// Faded look + "Incomplete" badge for a leaf missing its value (excluded from the
-// count/Apply query). Applied to the whole row.
-const INCOMPLETE_ROW_CLASS = "opacity-60";
+// Incomplete-leaf cue (excluded from the count/Apply query): a subtle amber tint
+// on the row + the "Incomplete" badge. NOT `opacity` — a faded ancestor would make
+// the leaf's own field-picker dropdown 60% transparent *and* create a stacking
+// context that traps its z-10 below sibling rows/footer. A bg tint is safe on both
+// counts. Space-separated → toggled token-by-token (classList.toggle takes one).
+const INCOMPLETE_ROW_CLASS = "bg-amber-50 dark:bg-amber-500/10 rounded";
 const BADGE_CLASS =
   "rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium " +
   "text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300";
@@ -572,7 +575,7 @@ export class FilterGroupElement extends HTMLElement {
   }
 
   private applyIncompleteState(row: HTMLElement, incomplete: boolean): void {
-    row.classList.toggle(INCOMPLETE_ROW_CLASS, incomplete);
+    for (const token of INCOMPLETE_ROW_CLASS.split(" ")) row.classList.toggle(token, incomplete);
     let badge = row.querySelector<HTMLElement>("[data-incomplete-badge]");
     if (incomplete && !badge) {
       badge = element("span", BADGE_CLASS);
