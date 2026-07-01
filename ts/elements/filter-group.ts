@@ -430,6 +430,16 @@ export class FilterGroupElement extends HTMLElement {
     this.dispatchEvent(new CustomEvent(FILTER_TREE_CHANGE_EVENT, { bubbles: true, detail }));
   }
 
+  // Deliberate tradeoff (issue #233): every structural op does a full
+  // `replaceChildren()` re-render, NOT true id-keyed reconciliation. The one thing
+  // that must survive an edit — a leaf's in-progress value — does, because the leaf
+  // cells are cached by `node.id` (`rowCache`/`comparisonCache`) and re-parented into
+  // the rebuilt chrome. What a full re-render does NOT preserve is live interaction
+  // state (focus, open dropdown, scroll) on the reused cell: `replaceChildren` briefly
+  // detaches it, and the browser blurs a detached element. Accepted because every
+  // structural edit originates from a button click, so focus is already off the leaf
+  // widget when render() runs and the loss is not observable. Revisit (and build real
+  // keyed reconciliation) only if an edit can ever fire while a leaf widget is focused.
   private render(): void {
     this.replaceChildren(this.renderGroup(this.tree, [], 0, 1));
     this.pruneRowCache();
