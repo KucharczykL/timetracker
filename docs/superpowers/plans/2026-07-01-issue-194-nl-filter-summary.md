@@ -375,11 +375,13 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
 }
 
 // A bool value's display: the field's matching choice label if present, else yes/no.
+// Accept both the JS boolean the live widget emits and a "true"/"false" string (the
+// deserialized shape), so a stringified true never renders "no".
 function renderBool(value: unknown, meta: FieldMeta | undefined): string {
   const raw = String(value);
   const choice = meta?.choices.find((candidate) => candidate.value === raw);
   if (choice) return choice.label;
-  return value === true ? "yes" : "no";
+  return value === true || raw === "true" ? "yes" : "no";
 }
 ```
 
@@ -759,7 +761,7 @@ git commit -m "feat(filters): NL summary connectives, parens, NOT (#194)"
 
 **Interfaces:**
 - Consumes: `RelationNode`, `RelationMatch` from `./types.js`.
-- Produces: `renderInner` handles `kind==="relation"` — quantifier + relation label + "where <child-body>", switching to the target model's fields; empty child → per-quantifier presence phrasing; unset relation field → placeholder. New helpers `renderRelation`, `targetModelKey`, `emptyRelationPhrase`.
+- Produces: `renderInner` handles `kind==="relation"` — `"<quant> <relationLabel> matching (<child-body>)"`, switching to the target model's fields; empty child → per-quantifier presence phrasing; unset relation field → placeholder. New helpers `renderRelation`, `targetModelKey`, `emptyRelationPhrase`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -805,30 +807,33 @@ describe("summarize — relation descent", () => {
 
   it("phrases ANY with a child body under the target model", () => {
     expect(summarize(relation("ANY", [deviceHandheld]), CTX)).toBe(
-      "Games where any sessions where Device is Handheld.",
+      "Games where any sessions matching (Device is Handheld).",
     );
   });
   it("phrases NONE and ALL quantifiers", () => {
     expect(summarize(relation("NONE", [deviceHandheld]), CTX)).toBe(
-      "Games where no sessions where Device is Handheld.",
+      "Games where no sessions matching (Device is Handheld).",
     );
     expect(summarize(relation("ALL", [deviceHandheld]), CTX)).toBe(
-      "Games where every sessions where Device is Handheld.",
+      "Games where all sessions matching (Device is Handheld).",
     );
   });
   it("phrases an empty ANY child as a presence test", () => {
     expect(summarize(relation("ANY", []), CTX)).toBe(
-      "Games where has related sessions.",
+      "Games where any related sessions.",
     );
   });
   it("phrases an empty NONE child as a no-related test", () => {
     expect(summarize(relation("NONE", []), CTX)).toBe(
-      "Games where has no related sessions.",
+      "Games where no related sessions.",
     );
+  });
+  it("phrases an empty ALL child as the vacuous match-all", () => {
+    expect(summarize(relation("ALL", []), CTX)).toBe("Games where matches all.");
   });
   it("negates a relation descent", () => {
     expect(summarize(relation("ANY", [deviceHandheld], true), CTX)).toBe(
-      "Games where not (any sessions where Device is Handheld).",
+      "Games where not (any sessions matching (Device is Handheld)).",
     );
   });
   it("renders an unset relation field as a placeholder", () => {
@@ -877,17 +882,22 @@ In `renderInner`, replace the `default` with explicit cases:
 Add helpers:
 
 ```ts
-const QUANTIFIERS: Record<RelationMatch, string> = { ANY: "any", NONE: "no", ALL: "every" };
+// "all" (not "every") so the quantifier agrees with the plural, as-is relation
+// label: "all sessions" / "any sessions" / "no sessions" all read grammatically.
+const QUANTIFIERS: Record<RelationMatch, string> = { ANY: "any", NONE: "no", ALL: "all" };
 
+// The relation clause uses "matching (…)" rather than an inner "where": the frame is
+// already "<Model> where …", so a nested "where" would collide. "matching (…)" reads
+// cleanly after the frame's "where" and after a joining "and".
 function renderRelation(node: RelationNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
-  if (!node.field) return PLACEHOLDER;
+  if (!node.field) return PLACEHOLDER; // no field → target model unknown, don't guess a body
   const meta = model?.fields.get(node.field);
   const noun = (meta?.label ?? node.field).toLowerCase();
   const targetKey = targetModelKey(meta, ctx);
   const targetModel = ctx.models[targetKey];
   const body = node.child.children.length ? joinChildren(node.child, targetModel, ctx) : "";
   if (!body) return emptyRelationPhrase(node.match, noun);
-  return `${QUANTIFIERS[node.match]} ${noun} where ${body}`;
+  return `${QUANTIFIERS[node.match]} ${noun} matching (${body})`;
 }
 
 // The model key a relation descends into — its RelationTarget.model lower-cased,
@@ -897,13 +907,13 @@ function targetModelKey(meta: FieldMeta | undefined, ctx: SummaryContext): strin
 }
 
 // What an empty relation child matches, per quantifier — the presence test (#225),
-// model-agnostic beyond the relation noun.
+// model-agnostic beyond the relation noun. ALL over an empty child is vacuously true.
 function emptyRelationPhrase(match: RelationMatch, noun: string): string {
   switch (match) {
     case "ANY":
-      return `has related ${noun}`;
+      return `any related ${noun}`;
     case "NONE":
-      return `has no related ${noun}`;
+      return `no related ${noun}`;
     case "ALL":
       return "matches all";
   }
@@ -1181,6 +1191,7 @@ git commit -m "chore(filters): satisfy check gate for NL summary (#194)"
 
 ## Self-review notes
 
-- **Spec coverage:** frame (T1) · scalar modifiers + bool (T2) · sets (T3) · connectives/parens/NOT (T4) · relations + empty-child presence (T5) · comparison (T6, a small documented superset — spec omitted comparison phrasing; added with `SummaryModel.columns`) · incomplete placeholders (folded into T1/T5/T6) · contract (T7) · pure/DOM-free (all) · no page wiring (none).
-- **Deviation flagged:** `SummaryModel.columns` (comparison labels) is not in the spec's API block; it is the minimal addition needed to render field-comparison leaves readably. If undesired, drop Task 6 and render comparisons as "" — but the tree can contain them, so rendering them is the correct call.
+- **Spec coverage:** frame (T1) · scalar modifiers + bool (T2) · sets (T3) · connectives/parens/NOT (T4) · relations + empty-child presence (T5) · comparison (T6) · incomplete placeholders (folded into T1/T5/T6) · contract (T7) · pure/DOM-free (all) · no page wiring (none).
+- **Comparison (T6) closes a spec gap, not scope creep:** `ComparisonLeaf` is a first-class member of the `FilterNode` union (`types.ts`), so a field-comparison node *can* appear in any tree. The #194 spec's Behaviour section omitted its phrasing; without T6 a comparison node renders `""` and silently vanishes from the sentence. `SummaryModel.columns` (comparison-column value → label) is the minimal metadata needed to render it readably.
+- **Relation phrasing (T5):** uses `"<quant> <noun> matching (<body>)"` with quantifier "all" (not "every") for ALL — chosen to avoid colliding with the frame's "where" and to agree with the plural, as-is relation label. Empty child → per-quantifier presence phrase.
 - **Type consistency:** `SummaryModel`/`SummaryContext`/`summarize`/`MODIFIER_PHRASES` names are stable across all tasks; `renderNode` owns negation, `renderInner` dispatches by kind, `renderCriterion`/`renderSet`/`renderRelation`/`renderComparison` return the bare clause.

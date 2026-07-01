@@ -125,17 +125,24 @@ real `common.criteria.Modifier` value.
 
 ### Relation descent
 
-`"<quantifier> <relationLabel> where <child-body>"`:
+`"<quantifier> <relationLabel> matching (<child-body>)"`:
 
-- Quantifier: `ANY` → "any", `NONE` → "no", `ALL` → "every".
+- Quantifier: `ANY` → "any", `NONE` → "no", `ALL` → "all". (Not "every" — "all"
+  agrees with the plural, as-is relation label so "all sessions" / "any sessions" /
+  "no sessions" all read grammatically.)
 - Relation noun = the relation field's `FieldMeta.label`, **lowercased as-is**
-  (no singularization — e.g. "any sessions where"). A `negate` on the relation node
-  still uses the `"not (…)"` prefix around the whole descent.
-- **Empty child group** (quantifier-only presence test, #225): render the
-  per-quantifier presence phrasing instead of "where …", model-agnostic and echoing
-  `relationEmptyText` in `filter-group.ts`:
-  - `ANY` → "has related <relationLabel>"
-  - `NONE` → "has no related <relationLabel>"
+  (no singularization — e.g. "any sessions matching (…)"). The child body is always
+  parenthesized after "matching" so the sub-filter's scope is unambiguous.
+- The `"matching (…)"` form (rather than the earlier `"where …"`) is deliberate: the
+  top-level frame is already `"<Model> where …"`, so an inner "where" would collide
+  ("Games where any sessions where …"). "matching (…)" reads cleanly after both the
+  frame's "where" and a joining "and".
+- A `negate` on the relation node uses the `"not (…)"` prefix around the whole
+  descent.
+- **Empty child group** (quantifier-only presence test, #225): render a
+  per-quantifier presence phrase, no "matching" clause:
+  - `ANY` → "any related <relationLabel>" (e.g. "any related sessions")
+  - `NONE` → "no related <relationLabel>"
   - `ALL` → (vacuously true) "matches all"
 
 ### Incomplete nodes
@@ -145,8 +152,10 @@ The summary recomputes mid-construction, so it must render partial trees.
 - A criterion leaf with **no field chosen** → `"…"`.
 - A leaf **with a field but no usable value** (empty widget payload / half-filled
   BETWEEN) → `"<label> …"`.
-- A relation node with **no field chosen** → `"… where <child-body>"` (or just
-  `"…"` if child empty).
+- A relation node with **no field chosen** → `"…"`. (The child body is *not*
+  rendered: without the relation field the target model is unknown, so the child's
+  field labels can't be resolved reliably. Once a field is picked the child renders
+  normally.)
 
 Incomplete nodes are **kept in the sentence** (placeholder), not pruned — pruning
 is `serializeForQuery`'s separate concern (the query excludes them; the summary
