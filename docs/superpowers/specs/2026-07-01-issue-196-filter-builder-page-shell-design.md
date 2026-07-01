@@ -150,11 +150,13 @@ same `model_field_registry(model)` JSON.
 
 ### 6. Entry point
 
-`FilterBar` gains an optional `advanced_url` prop → an "Advanced filter →" link rendered in
-the bar (all four lists) pointing at `…/filter?filter=<current ?filter=>` so the builder
-prefills from whatever the flat bar currently has. Each list view passes
-`advanced_url=reverse("games:filter_builder", args=[model])` (or the per-model path) with the
-live `filter_json` appended.
+A shared `AdvancedFilterLink(*, url)` builder (in `common/components/filters.py`) renders an
+"Advanced filter →" link. Each of the four list views renders it as a sibling directly above
+its `FilterBar` (same `Fragment(...)` the views already compose), pointing at
+`reverse("games:filter_builder", args=[model])` with the live `?filter=` appended so the
+builder prefills from whatever the flat bar currently has. Rendering in the view (not
+threading a prop through the five `_FilterBarBase` subclasses) keeps the three non-builder
+bars untouched.
 
 ### 7. Remove the demo page
 
