@@ -23,6 +23,7 @@ import {
   type RelationNode,
 } from "./types.js";
 import { group } from "./serializer.js";
+import { nextNodeId } from "./node-id.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
 export type NodePath = readonly number[];
@@ -37,7 +38,7 @@ export const SOFT_DEPTH_CAP = 5;
 // An empty criterion leaf: field unchosen, payload empty. A leaf widget (comp 4)
 // fills `field`/`criterion` in 2d; until then it is an inert slot in the shell.
 export function emptyCriterion(): CriterionLeaf {
-  return { kind: "criterion", field: "", criterion: {}, negate: false };
+  return { kind: "criterion", id: nextNodeId(), field: "", criterion: {}, negate: false };
 }
 
 // ── Add-criterion field picker contract (issue #191) ─────────────────────────
@@ -62,7 +63,7 @@ export function parseFieldMeta(raw: string): FilterFieldMeta | null {
 export function criterionForField(meta: FilterFieldMeta): CriterionLeaf {
   const [firstModifier] = meta.modifiers;
   const criterion = firstModifier !== undefined ? { modifier: firstModifier } : {};
-  return { kind: "criterion", field: meta.name, criterion, negate: false };
+  return { kind: "criterion", id: nextNodeId(), field: meta.name, criterion, negate: false };
 }
 
 // Whether a single payload slot counts as filled. A bare `""`/null/undefined or an
@@ -93,7 +94,7 @@ export function isCriterionComplete(leaf: CriterionLeaf): boolean {
 // An empty relation descent: ANY over an empty child group is the "has ≥1 related
 // row" presence test (design spec). Relation field + quantifier are set by comp 5.
 export function emptyRelation(): RelationNode {
-  return { kind: "relation", field: "", match: "ANY", child: group("AND", []), negate: false };
+  return { kind: "relation", id: nextNodeId(), field: "", match: "ANY", child: group("AND", []), negate: false };
 }
 
 // A new sub-group seeded with one empty criterion so it is never vacuously empty
@@ -208,9 +209,18 @@ export function removeAt(root: GroupNode, path: NodePath): GroupNode {
 export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {
   const { parentPath, index } = splitPath(path);
   return updateChildren(root, parentPath, (children) => {
-    const clone = structuredClone(children[index]);
+    const clone = reassignIds(structuredClone(children[index]));
     return [...children.slice(0, index + 1), clone, ...children.slice(index + 1)];
   });
+}
+
+// A duplicated subtree must get fresh ids on every node — a structuredClone copies
+// the source ids, which would collide with the originals in the shell's id→DOM map.
+function reassignIds(node: FilterNode): FilterNode {
+  node.id = nextNodeId();
+  if (node.kind === "group") node.children.forEach(reassignIds);
+  else if (node.kind === "relation") reassignIds(node.child);
+  return node;
 }
 
 // Move the node at `path` one slot earlier (-1) or later (+1) among its siblings.
@@ -263,7 +273,9 @@ export function setMatch(root: GroupNode, path: NodePath, match: RelationMatch):
 export function setLeafField(root: GroupNode, path: NodePath, meta: FilterFieldMeta): GroupNode {
   return replaceNodeAt(root, path, (node) => {
     if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
-    return { ...criterionForField(meta), negate: node.negate };
+    // Keep the node's id (and negate): it's the same row, so the shell reuses its
+    // row element and only swaps the value widget for the new field's kind.
+    return { ...criterionForField(meta), id: node.id, negate: node.negate };
   });
 }
 

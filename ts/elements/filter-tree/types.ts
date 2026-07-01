@@ -57,8 +57,13 @@ export type CriterionPayload = Record<string, unknown>;
 // Opaque to the serializer: whatever a field-comparison widget produced.
 export type ComparisonPayload = Record<string, unknown>;
 
+// Every node carries a stable client-only `id` (see node-id.ts): the serializer
+// ignores it (never reaches the wire); <filter-group> reconciles DOM on it so a
+// leaf's live widget survives structural edits. Assigned at construction by the
+// factories + deserialize; preserved through the immutable ops via `{...node}`.
 export interface GroupNode {
   kind: "group";
+  id: string;
   connective: Connective; // negation is a separate flag, never a connective
   // negate on a group with no children is meaningless and serializes away
   // (wrapNegate returns identity for an empty dict). The builder never lets that
@@ -71,6 +76,7 @@ export interface GroupNode {
 
 export interface CriterionLeaf {
   kind: "criterion";
+  id: string;
   field: string;
   criterion: CriterionPayload;
   negate: boolean;
@@ -78,12 +84,14 @@ export interface CriterionLeaf {
 
 export interface ComparisonLeaf {
   kind: "comparison";
+  id: string;
   comparison: ComparisonPayload;
   negate: boolean;
 }
 
 export interface RelationNode {
   kind: "relation";
+  id: string;
   field: string;
   match: RelationMatch;
   child: GroupNode; // exactly one canonical group
