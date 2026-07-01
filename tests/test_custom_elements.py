@@ -57,6 +57,16 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(len(ELEMENT_REGISTRY), before + 1)
         self.assertEqual(ELEMENT_REGISTRY[-1].tag, "x-reg-test")
 
+    def test_register_rejects_non_typeddict(self):
+        # The TypedDictClass alias is transparent, so this guard is the only
+        # enforcement that a registered props class is actually a TypedDict.
+        from common.components.custom_elements import ELEMENT_REGISTRY
+
+        before = len(ELEMENT_REGISTRY)
+        with self.assertRaises(TypeError):
+            register_element("x-bad", "XBad", dict)
+        self.assertEqual(len(ELEMENT_REGISTRY), before)  # nothing registered
+
 
 class GameStatusSelectorRenderTest(unittest.TestCase):
     def test_emits_listbox_and_patch_config(self):
