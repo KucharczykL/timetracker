@@ -9,6 +9,7 @@
  * standalone and fixture-tested, mirroring serializer.ts.
  */
 import type {
+  ComparisonLeaf,
   CriterionLeaf,
   FieldMeta,
   FilterNode,
@@ -16,7 +17,7 @@ import type {
   RelationMatch,
   RelationNode,
 } from "./types.js";
-import { isCriterionComplete } from "./operations.js";
+import { isComparisonComplete, isCriterionComplete } from "./operations.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
 export interface SummaryModel {
@@ -103,9 +104,21 @@ function renderInner(node: FilterNode, model: SummaryModel | undefined, ctx: Sum
       return renderCriterion(node, model);
     case "relation":
       return renderRelation(node, model, ctx);
+    case "comparison":
+      return renderComparison(node, model);
     default:
-      return ""; // comparison handled in Task 6
+      return "";
   }
+}
+
+function renderComparison(leaf: ComparisonLeaf, model: SummaryModel | undefined): string {
+  if (!isComparisonComplete(leaf)) return PLACEHOLDER;
+  const { left, right, modifier, granularity } = leaf.comparison;
+  const leftLabel = model?.columns?.get(left as string) ?? String(left);
+  const rightLabel = model?.columns?.get(right as string) ?? String(right);
+  const phrase = MODIFIER_PHRASES[modifier as string] ?? String(modifier);
+  const suffix = granularity === "date" ? " (by day)" : "";
+  return `${leftLabel} ${phrase} ${rightLabel}${suffix}`;
 }
 
 // "all" (not "every") so the quantifier agrees with the plural, as-is relation

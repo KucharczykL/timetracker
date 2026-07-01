@@ -353,3 +353,39 @@ describe("summarize — relation descent", () => {
     expect(summarize(tree, CTX)).toBe("Games where ….");
   });
 });
+
+describe("summarize — field comparison", () => {
+  const CTX: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map(),
+        columns: new Map([
+          ["year_released", "Release year"],
+          ["original_year_released", "Original release year"],
+        ]),
+      },
+    },
+  };
+  function comparison(payload: Record<string, unknown>): string {
+    return summarize(
+      root({ kind: "comparison", id: "cmp", comparison: payload, negate: false }),
+      CTX,
+    );
+  }
+
+  it("phrases a complete comparison with column labels", () => {
+    expect(
+      comparison({ left: "original_year_released", right: "year_released", modifier: "LESS_THAN" }),
+    ).toBe("Games where Original release year is less than Release year.");
+  });
+  it("appends (by day) for date granularity", () => {
+    expect(
+      comparison({ left: "year_released", right: "original_year_released", modifier: "EQUALS", granularity: "date" }),
+    ).toBe("Games where Release year is Original release year (by day).");
+  });
+  it("renders an incomplete comparison as a placeholder", () => {
+    expect(comparison({ left: "year_released" })).toBe("Games where ….");
+  });
+});
