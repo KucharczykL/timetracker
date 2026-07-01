@@ -18,12 +18,15 @@ import type { ComparisonRow } from "./filter-tree/types.js";
 // completeness check); re-exported here for the widget's existing consumers.
 export type { ComparisonRow };
 
-export interface Column {
-  value: string;
-  label: string;
-  group: string;
-  operators: string[]; // server-supplied allowed operators (#152)
-}
+// The comparable-column shape is codegen'd from the Python `ComparableColumn`
+// (common/criteria.py) by `manage.py gen_element_types`; imported here so the
+// widget body can use it and re-exported under its historical `Column` name for
+// existing consumers. This tightens `group` from a bare string to the
+// `ComparisonGroup` union.
+import type { ComparableColumn } from "../generated/filter-metadata.js";
+
+export type { ComparableColumn };
+export type Column = ComparableColumn;
 
 // Presentation-only glyphs for the operator tokens the server sends. Not a
 // source of truth for *which* operators are valid — that's the per-column

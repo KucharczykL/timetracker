@@ -9,47 +9,31 @@
 export type Connective = "AND" | "OR";
 export type RelationMatch = "ANY" | "NONE" | "ALL";
 
-// A Modifier value, e.g. "EQUALS" — mirrors the Python `ModifierToken` alias.
-export type ModifierToken = string;
+// ── Field-metadata contract (issue #247) ──────────────────────────────────────
+// The parsed shape of the `data-meta` JSON each field-picker option carries.
+// Codegen'd from the Python `FieldMeta` & friends (common/criteria.py) by
+// `manage.py gen_element_types`, so the contract can't drift silently — a Python
+// schema change re-emits these and breaks `tsc`. Imported here (so `ComparisonRow`
+// below can reference `ModifierToken`) and re-exported through this barrel — with
+// `FieldMeta` kept available under its historical `FilterFieldMeta` name — so
+// consumers keep importing from `./types.js`. #192's leaf row consumes it to reset
+// modifier/value.
+import type {
+  ChoiceMeta,
+  FieldMeta,
+  FieldMetaKind,
+  ModifierToken,
+  RelationTarget,
+} from "../../generated/filter-metadata.js";
 
-// The leaf/relation kind of a filter field — mirrors Python `FieldMetaKind`
-// (common/criteria.py). The add-criterion field picker (#191) groups + resets by
-// this; the field-comparison/relation kinds never reach a leaf criterion widget.
-export type FieldMetaKind =
-  | "string"
-  | "number"
-  | "date"
-  | "bool"
-  | "set"
-  | "field-comparison"
-  | "relation";
-
-// ── Field-metadata contract (issue #191) ──────────────────────────────────────
-// The parsed shape of the `data-meta` JSON each field-picker option carries — a
-// faithful mirror of the Python `FieldMeta` (common/criteria.py). NOT codegen-
-// guarded yet (the Python source is the only producer); a follow-up will emit
-// this from the backend. #192's leaf row consumes it to reset modifier/value.
-
-export interface ChoiceMeta {
-  value: string;
-  label: string;
-}
-
-export interface RelationTarget {
-  field: string;
-  filter: string;
-  model: string;
-}
-
-export interface FilterFieldMeta {
-  name: string;
-  label: string;
-  kind: FieldMetaKind;
-  nullable: boolean;
-  choices: ChoiceMeta[];
-  modifiers: ModifierToken[]; // ordered; [0] is the reset default
-  relations: RelationTarget[];
-}
+export type {
+  ChoiceMeta,
+  FieldMeta,
+  FieldMeta as FilterFieldMeta,
+  FieldMetaKind,
+  ModifierToken,
+  RelationTarget,
+};
 
 // Opaque to the serializer: whatever a leaf widget produced. Never inspected.
 export type CriterionPayload = Record<string, unknown>;

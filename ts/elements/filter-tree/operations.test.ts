@@ -48,6 +48,8 @@ function fieldMeta(overrides: Partial<FilterFieldMeta> = {}): FilterFieldMeta {
     choices: [],
     modifiers: ["INCLUDES", "EXCLUDES"],
     relations: [],
+    search_url: "",
+    is_m2m: false,
     ...overrides,
   };
 }
