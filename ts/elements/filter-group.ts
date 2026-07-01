@@ -85,10 +85,23 @@ const FOOTER_CLASS = "flex flex-wrap gap-2";
 // chip on a group with nothing to negate or join (issue #236).
 const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
-// Shown for an empty relation child group: an empty child is meaningful — the
-// quantifier alone is the test (ANY = has ≥1 related row, NONE = has none, ALL =
-// vacuously true) rather than an error (#193).
-const RELATION_EMPTY_TEXT = "No conditions — matches on the related row's existence.";
+// An empty relation child is meaningful, not an error: the quantifier alone is the
+// test. But that intent is invisible until spelled out — an unspelled empty relation
+// silently injects an EXISTS/anti-EXISTS filter the user may not have meant (#225).
+// So state, in plain terms and per quantifier, what an empty child matches. Kept
+// model-agnostic on purpose (no model names).
+function relationEmptyText(match: RelationMatch): string {
+  switch (match) {
+    case "ANY":
+      return "Matches items with 1 or more related items (add a condition to filter them).";
+    case "NONE":
+      return "Matches items with 0 related items (add a condition to filter them).";
+    case "ALL":
+      return "Matches all items (add a condition to filter them).";
+  }
+  const unreachable: never = match; // exhaustive over RelationMatch; a new member fails tsc here
+  return unreachable;
+}
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
@@ -574,6 +587,7 @@ export class FilterGroupElement extends HTMLElement {
     siblingCount: number,
     model: string,
     depth: number,
+    relationEmptyLabel?: string,
   ): HTMLElement {
     const isRelationChild = path[path.length - 1] === RELATION_CHILD;
     const edgeClass = node.connective === "AND" ? GROUP_AND_EDGE_CLASS : GROUP_OR_EDGE_CLASS;
@@ -587,7 +601,9 @@ export class FilterGroupElement extends HTMLElement {
     // nothing to apply to (issue #236).
     if ((path.length === 0 || isRelationChild) && node.children.length === 0) {
       const emptyState = element("div", EMPTY_STATE_CLASS);
-      emptyState.textContent = isRelationChild ? RELATION_EMPTY_TEXT : EMPTY_STATE_TEXT;
+      // Only a relation child supplies a label (its per-quantifier presence-test copy);
+      // the root empty group falls through to the generic "matches all" text.
+      emptyState.textContent = relationEmptyLabel ?? EMPTY_STATE_TEXT;
       card.appendChild(emptyState);
       card.appendChild(this.footer(path, model));
       return card;
@@ -668,9 +684,19 @@ export class FilterGroupElement extends HTMLElement {
     card.appendChild(header);
 
     // The child group is built from the target model; it descends one depth level.
+    // Spell out what an empty child matches for the active quantifier so a presence
+    // test is never applied silently (#225).
     const childModel = this.targetModel(model, node.field);
     card.appendChild(
-      this.renderGroup(node.child, [...path, RELATION_CHILD], 0, 1, childModel, depth + 1),
+      this.renderGroup(
+        node.child,
+        [...path, RELATION_CHILD],
+        0,
+        1,
+        childModel,
+        depth + 1,
+        relationEmptyText(node.match),
+      ),
     );
     this.applyIncompleteState(card, node.field === "");
     return card;

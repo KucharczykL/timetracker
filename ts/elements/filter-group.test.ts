@@ -205,6 +205,18 @@ function pickRelation(host: HTMLElement, path: Path, field: string): void {
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function setRelationMatch(host: HTMLElement, path: Path, value: string): void {
+  const select = relationSelect(host, path, "data-relation-match");
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function relationChildText(host: HTMLElement, path: Path): string {
+  return (
+    host.querySelector(`[data-kind="group"][data-path='${JSON.stringify(path)}']`)?.textContent ?? ""
+  );
+}
+
 describe("<filter-group> relation descent (component 5, #193)", () => {
   it("+ relation adds a live accent block with quantifier + relation pickers", () => {
     const host = mountRelation();
@@ -301,6 +313,47 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     pickRelation(host, [1], "session_filter");
     // session has no relation fields here → its child group shows no + relation.
     expect(button(host, "add-relation", [1, "child"])).toBeNull();
+  });
+
+  // #225: an empty relation child is an appliable presence test, but its intent must
+  // be spelled out per quantifier so it is never applied silently.
+  it("spells out the empty-child presence test, phrased for the active quantifier", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    // ANY (default): 1 or more.
+    expect(relationChildText(host, [1, "child"])).toContain("1 or more related items");
+    // NONE: 0.
+    setRelationMatch(host, [1], "NONE");
+    expect(relationChildText(host, [1, "child"])).toContain("0 related items");
+    // ALL empty: matches all.
+    setRelationMatch(host, [1], "ALL");
+    expect(relationChildText(host, [1, "child"])).toContain("Matches all items");
+    // Back to ANY restores the "1 or more" copy (the switch recomputes each render).
+    setRelationMatch(host, [1], "ANY");
+    expect(relationChildText(host, [1, "child"])).toContain("1 or more related items");
+  });
+
+  it("drops the empty-child presence-test copy once a real condition is added", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter");
+    expect(relationChildText(host, [1, "child"])).toContain("related items");
+    clickAction(host, "add-condition", [1, "child"]);
+    expect(relationChildText(host, [1, "child"])).not.toContain("related items");
+  });
+
+  // #225: the empty child the copy describes must actually survive to the query as a
+  // presence test — a field-set relation is never pruned even with no sub-conditions.
+  it("serializes a field-set empty relation child as a presence test (not pruned)", () => {
+    const host = mountRelation();
+    clickAction(host, "add-relation", []);
+    pickRelation(host, [1], "session_filter"); // field set, child left empty
+    // ANY is the default (omitted from the payload): a bare presence test.
+    expect(host.serializeForQuery()).toEqual({ AND: [{ session_filter: {} }] });
+    // The quantifier still rides along on an empty child.
+    setRelationMatch(host, [1], "NONE");
+    expect(host.serializeForQuery()).toEqual({ AND: [{ session_filter: { match: "NONE" } }] });
   });
 });
 
