@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { summarize, type SummaryContext } from "./summary.js";
+import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { MODIFIER_PHRASES, summarize, type SummaryContext } from "./summary.js";
 import type { FieldMeta, GroupNode } from "./types.js";
 
 // Minimal FieldMeta stub: only the fields summary reads.
@@ -387,5 +389,16 @@ describe("summarize — field comparison", () => {
   });
   it("renders an incomplete comparison as a placeholder", () => {
     expect(comparison({ left: "year_released" })).toBe("Games where ….");
+  });
+});
+
+describe("summary modifier contract artifact", () => {
+  it("writes the canonical modifier list for the Python contract", () => {
+    const keys = Object.keys(MODIFIER_PHRASES).sort();
+    const canonicalPath = fileURLToPath(
+      new URL("./summary-modifiers.canonical.json", import.meta.url),
+    );
+    writeFileSync(canonicalPath, JSON.stringify(keys, null, 2));
+    expect(keys.length).toBeGreaterThan(0);
   });
 });
