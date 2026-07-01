@@ -178,6 +178,10 @@ class FilterGroupProps(TypedDict):
     # each criterion's modifier dropdown + value widget client-side. Mirrors the
     # FieldComparisonSetProps.columns precedent (JSON in a str-typed prop).
     fields: str
+    # JSON of the model's comparable_columns() — the field-comparison leaf (#246)
+    # reads it to build each comparison row's left/right column pickers client-side.
+    # Same precedent as FieldComparisonSetProps.columns.
+    columns: str
 
 
 register_element("filter-group", "FilterGroup", FilterGroupProps)
@@ -191,21 +195,27 @@ def FilterGroup(*, model: str) -> Node:
     group and owns the whole `FilterNode` tree in JS, re-rendering on each
     restructuring op. Behavior + DOM live in ``ts/elements/filter-group.ts``.
 
-    Carries two things the leaf row (#192) needs client-side: the model's
-    ``field_metadata`` (as the ``fields`` JSON prop) and an **id-less**
-    ``FilterFieldPicker`` in a ``<template>`` the shell clones into each leaf's
-    field cell (id-less so per-leaf clones don't collide; the TS assigns a unique
-    id per clone). The filter class is resolved from ``model`` by convention
-    (``filter_for_model``) — no registry. Media is auto-attached by
-    ``custom_element_builder``."""
+    Carries three things the leaf rows need client-side: the model's
+    ``field_metadata`` (as the ``fields`` JSON prop) for criterion leaves (#192),
+    the model's ``comparable_columns`` (as the ``columns`` JSON prop) for the
+    field-comparison leaf (#246), and an **id-less** ``FilterFieldPicker`` in a
+    ``<template>`` the shell clones into each leaf's field cell (id-less so per-leaf
+    clones don't collide; the TS assigns a unique id per clone). The filter class is
+    resolved from ``model`` by convention (``filter_for_model``) — no registry. Media
+    is auto-attached by ``custom_element_builder``."""
     import json
+
+    from django.apps import apps
 
     from common.components.filters import FilterFieldPicker, field_widget_templates
     from common.components.primitives import Template
-    from common.criteria import field_metadata
+    from common.criteria import comparable_columns, field_metadata
     from games.filters import filter_for_model
 
     filter_cls = filter_for_model(model)
+    # comparable_columns() enumerates the Django model's columns (not the filter
+    # class); resolve the model the same way filter_for_model does.
+    model_cls = apps.get_model("games", model)
     # One blank value-widget <template data-field="name"> per leaf field, cloned
     # into a leaf's value cell on field-pick, plus the field-picker combobox
     # template cloned into every leaf's field cell (id-less → the TS assigns a
@@ -214,6 +224,7 @@ def FilterGroup(*, model: str) -> Node:
     return _FilterGroup(
         model=model,
         fields=json.dumps(field_metadata(filter_cls)),
+        columns=json.dumps(comparable_columns(model_cls)),
     )[
         Template(data_field_picker_template="")[FilterFieldPicker(filter_cls)],
         *widget_templates,
