@@ -1745,6 +1745,7 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
 
 type FieldMetaKind = LeafWidgetKind | Literal["relation"]
 type ModelName = str  # a Django model class name, e.g. "Session"
+type ModelKey = str  # a Django model _meta.model_name, e.g. "session"
 type FilterClassName = str  # an OperatorFilter subclass name, e.g. "SessionFilter"
 type ModifierToken = str  # a Modifier value, e.g. "EQUALS"
 
@@ -1792,6 +1793,16 @@ class FieldMeta(TypedDict):
     # from the resolved model field, not stored on ``FilterField``.
     search_url: str
     is_m2m: bool
+
+
+class ModelFieldBundle(TypedDict):
+    """One model's client-side filter metadata: its leaf/relation ``field_metadata``
+    plus its ``comparable_columns``. The nested builder (#193) carries one bundle per
+    relation-reachable model so a relation's child group renders offline from the
+    target model's fields — see ``games.filters.model_field_registry``."""
+
+    fields: list[FieldMeta]
+    columns: list[ComparableColumn]
 
 
 def _resolve_model_field(

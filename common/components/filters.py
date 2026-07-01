@@ -611,16 +611,27 @@ def field_widget(
 
 def field_widget_templates(
     filter_cls: type[OperatorFilter],
+    *,
+    model: str = "",
 ) -> dict[AttrName, Node]:
     """One blank value-widget ``<template>`` per non-relation leaf field, keyed by
-    field name — what ``<filter-group>`` (#192) embeds and clones on field-pick."""
+    field name — what ``<filter-group>`` (#192) embeds and clones on field-pick. When
+    ``model`` is given, each template is tagged ``data-model`` so the multi-model
+    builder (#193) can bucket templates by the model whose child group they belong to."""
     return {
-        meta["name"]: Template(data_field=meta["name"])[
+        meta["name"]: Template(_model_attr(model), data_field=meta["name"])[
             field_widget(filter_cls, meta["name"])
         ]
         for meta in field_metadata(filter_cls)
         if meta["kind"] != "relation"
     }
+
+
+def _model_attr(model: str) -> dict[str, str]:
+    """A dynamic ``data-model`` attribute (positional slot) for a template, or nothing
+    when ``model`` is empty — so single-model flat callers stay byte-for-byte
+    unchanged (#193)."""
+    return {"data-model": model} if model else {}
 
 
 _FILTER_FORM_ID = "filter-bar-form"
@@ -894,17 +905,20 @@ def FieldComparisonSet(
     ]
 
 
-def comparison_row_template(columns: list[ComparableColumn]) -> Node:
+def comparison_row_template(
+    columns: list[ComparableColumn], *, model: str = ""
+) -> Node:
     """A blank field-comparison ``<template>`` for the nested builder (#246).
 
     The nested builder (``<filter-group>``) clones this into each comparison leaf's
     value cell, reusing the single-row widget — the *same* ``_field_comparison_row``
     markup ``FieldComparisonSet`` uses, minus the set container and its AND/OR mode
     toggle (the enclosing group owns the connective now). The row's own ``✕`` remove
-    button is dropped client-side; the group's controls own removal."""
+    button is dropped client-side; the group's controls own removal. ``model`` tags the
+    template ``data-model`` so the multi-model builder (#193) buckets it by model."""
     from games.forms import SELECT_CLASS
 
-    return Template(data_fc_row_template="")[
+    return Template(data_fc_row_template="", **_model_attr(model))[
         _field_comparison_row(columns, None, SELECT_CLASS)
     ]
 
