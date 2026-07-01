@@ -20,17 +20,6 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path
 from django.views.generic import RedirectView
 
-from common.components.core import Document
-from common.components.primitives import (
-    Body,
-    Head,
-    Html,
-    Link,
-    Meta,
-    Script,
-    StyledButton,
-    Title,
-)
 from games.api import api
 from games.views.auth import LoginView
 
@@ -45,47 +34,3 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns.append(path("admin/", admin.site.urls))
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))
-
-    # DEBUG-only eyeball page for the #189 <filter-group> shell — bare element,
-    # no auth/navbar, not linked from nav. Visit /filter-group-demo/ under
-    # `make dev`. The route registers only when DEBUG is on, so it cannot leak
-    # into production. Assets are resolved through static() so they load under
-    # the dev server's /static/ prefix (the element's own module imports resolve
-    # relative to its URL). The "Toggle dark" button flips the dark-mode class.
-    from django.http import HttpResponse
-    from django.templatetags.static import static
-
-    from common.components import FilterGroup
-
-    def filter_group_demo(_request: object) -> HttpResponse:
-        # The leaf rows clone search-select (field picker + set values) and
-        # date-range-picker (date values), so both element modules must load; the
-        # rest of the value widgets are plain markup wired by filter-group.js.
-        page = Document(
-            Html(lang="en")[
-                Head()[
-                    Title()["filter-group demo"],
-                    Meta(charset="utf-8"),
-                    Link(rel="stylesheet", href=static("base.css")),
-                    Script(
-                        type="module", src=static("js/dist/elements/filter-group.js")
-                    ),
-                    Script(
-                        type="module", src=static("js/dist/elements/search-select.js")
-                    ),
-                    Script(
-                        type="module",
-                        src=static("js/dist/elements/date-range-picker.js"),
-                    ),
-                ],
-                Body(class_="bg-body p-6 dark:bg-gray-900")[
-                    StyledButton(
-                        onclick="document.documentElement.classList.toggle('dark')"
-                    )["Toggle dark"],
-                    FilterGroup(model="game"),
-                ],
-            ]
-        )
-        return HttpResponse(page)
-
-    urlpatterns.append(path("filter-group-demo/", filter_group_demo))

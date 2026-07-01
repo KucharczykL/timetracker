@@ -160,6 +160,7 @@ urlpatterns = [
     ),
     path("stats/", general.stats_alltime, name="stats_alltime"),
     path("stats/<int:year>", general.stats, name="stats_by_year"),
+    path("<str:model>/filter", general.filter_builder, name="filter_builder"),
     # Filter presets
     path("filter/presets/list", filter_presets.list_presets, name="list_presets"),
     path("filter/presets/save", filter_presets.save_preset, name="save_preset"),

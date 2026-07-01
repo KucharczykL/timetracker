@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
@@ -12,6 +13,7 @@ from django.urls import reverse
 from common.components import (
     A,
     AddForm,
+    AdvancedFilterLink,
     ButtonGroup,
     Cell,
     Column,
@@ -158,7 +160,10 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         preset_list_url=reverse("games:list_presets") + "?mode=playevents",
         preset_save_url=reverse("games:save_preset") + "?mode=playevents",
     )
-    content = Fragment(filter_bar, content)
+    builder_url = reverse("games:filter_builder", args=["playevent"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
     return render_page(
         request,
         content,

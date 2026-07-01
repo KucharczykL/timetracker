@@ -9,6 +9,7 @@ from common.components.core import BaseComponent, Node, Safe
 from common.components.custom_elements import _FieldComparisonSet, _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
 from common.components.primitives import (
+    A,
     Button,
     Checkbox,
     Div,
@@ -43,6 +44,17 @@ from common.components.search_select import (
     SearchSelect,
     SearchSelectOption,
 )
+
+
+def AdvancedFilterLink(*, url: str) -> Node:
+    """An 'Advanced filter →' link into the nested builder page (#196).
+
+    `url` is the fully-formed builder URL (already carrying ?filter= when the
+    list currently has one). Rendered by each list view above its FilterBar."""
+    return A(
+        href=url,
+        class_="inline-block mb-2 text-sm text-brand hover:underline",
+    )["Advanced filter →"]
 
 
 class FilterChoice(NamedTuple):

@@ -17,7 +17,7 @@
  * module and is vitest-tested; this file is the thin DOM projection over it.
  */
 import { readFilterGroupProps } from "../generated/props.js";
-import { serialize } from "./filter-tree/serializer.js";
+import { deserialize, group, serialize } from "./filter-tree/serializer.js";
 import type {
   ComparisonLeaf,
   ComparisonPayload,
@@ -27,6 +27,8 @@ import type {
   FilterNode,
   FilterTreeChangeDetail,
   GroupNode,
+  MetadataRegistry,
+  ModelMeta,
   RelationMatch,
   RelationNode,
 } from "./filter-tree/types.js";
@@ -297,6 +299,15 @@ export class FilterGroupElement extends HTMLElement {
     if (!this.wired) {
       this.parseModels(props.models);
       this.captureTemplates();
+      // Seed from the server-rendered ?filter= before the first render, so the
+      // summary/count/toolbar read the correct initial tree. Malformed → fail open.
+      if (props.filter) {
+        try {
+          this.tree = deserialize(JSON.parse(props.filter), this.model, this.buildRegistry());
+        } catch (error) {
+          console.warn("filter-group: ignoring malformed filter prop", error);
+        }
+      }
       this.addEventListener("click", this.onClick);
       // Value edits (typing, radios, set pills, date bounds, field pick) bubble
       // here; one delegated listener updates completeness / handles field changes.
@@ -310,6 +321,11 @@ export class FilterGroupElement extends HTMLElement {
       this.wired = true;
     }
     this.render();
+    // Dispatch the initial change event so sibling consumers (<filter-summary>,
+    // <filter-count>) that connected before us sync to the prefilled tree. The group
+    // is the last element in the builder DOM, so every sibling's document listener is
+    // already attached by the time connectedCallback runs here.
+    this.dispatchChange();
   }
 
   // Build one ModelBundle per model in the `models` prop: its field map, comparison
@@ -321,8 +337,8 @@ export class FilterGroupElement extends HTMLElement {
     if (raw) {
       try {
         bundles = JSON.parse(raw) as Record<string, ModelFieldBundleJson>;
-      } catch {
-        console.warn("filter-group: malformed models prop");
+      } catch (error) {
+        console.warn("filter-group: malformed models prop", error);
       }
     }
     for (const [key, bundle] of Object.entries(bundles)) {
@@ -410,6 +426,50 @@ export class FilterGroupElement extends HTMLElement {
    *  query). Used by the builder page (comp 10). */
   serializeForQuery(): Record<string, unknown> {
     return serialize(pruneIncomplete(this.fillCriteria(this.tree, this.model)));
+  }
+
+  /** The filled-but-UNPRUNED tree (leaf values read live from widgets, incomplete
+   *  leaves kept as `…` placeholders). The NL summary (#194) wants this; the count
+   *  (#195) wants serializeForQuery(), which prunes. */
+  getFilledTree(): GroupNode {
+    return this.fillCriteria(this.tree, this.model);
+  }
+
+  /** Replace the whole tree from an OperatorFilter JSON blob (preset load / ?filter=
+   *  import). Re-renders and fires filter-tree-change so summary + count refresh. */
+  loadFilter(json: Record<string, unknown>): void {
+    this.tree = deserialize(json, this.model, this.buildRegistry());
+    this.render();
+    this.dispatchChange();
+  }
+
+  /** Reset to an empty AND root. */
+  clear(): void {
+    this.tree = group("AND", []);
+    this.render();
+    this.dispatchChange();
+  }
+
+  /** How many criterion leaves are incomplete right now. The builder toolbar reads
+   *  this on connect to set Apply's initial disabled state (no change event fires on
+   *  the server-seeded tree, so it can't wait for one). */
+  getIncompleteCount(): number {
+    return this.incompleteCount();
+  }
+
+  // A name-set MetadataRegistry (what deserialize wants) projected from the richer
+  // per-model ModelBundle map this element already parsed from the `models` prop.
+  private buildRegistry(): MetadataRegistry {
+    const registry: Record<string, ModelMeta> = {};
+    for (const [key, bundle] of this.models) {
+      const relations: Record<string, string> = {};
+      for (const [name, meta] of bundle.fields) {
+        const target = meta.relations[0]?.model;
+        if (meta.kind === "relation" && target) relations[name] = target.toLowerCase();
+      }
+      registry[key] = { fields: new Set(bundle.fields.keys()), relations };
+    }
+    return registry;
   }
 
   // Clone the tree with every criterion leaf's `criterion` filled from its live
@@ -556,6 +616,29 @@ export class FilterGroupElement extends HTMLElement {
   private render(): void {
     this.replaceChildren(this.renderGroup(this.tree, [], 0, 1, this.model, 0));
     this.pruneRowCache();
+    // Reflect chosen fields into their field-pickers NOW that the cloned
+    // <search-select> elements are live (connectedCallback → initWidget →
+    // _searchSelectSetSelected exists). During the detached build above they were
+    // not yet upgraded, so setSelected would throw/no-op there (#196 fix).
+    this.reflectFieldSelections();
+  }
+
+  // Walk the live tree (mirroring the model-tracking walk in incompleteCount) and
+  // call showFieldSelection for every criterion leaf whose field is already set.
+  // Safe to call on every render — setSelected is idempotent and renders only happen
+  // on button-click structural edits (no render happens while the picker is open).
+  private reflectFieldSelections(node: GroupNode = this.tree, model: string = this.model): void {
+    for (const child of node.children) {
+      if (child.kind === "group") {
+        this.reflectFieldSelections(child, model);
+      } else if (child.kind === "criterion" && child.field) {
+        const cells = this.rowCache.get(child.id);
+        if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
+      } else if (child.kind === "relation") {
+        this.reflectFieldSelections(child.child, this.targetModel(model, child.field));
+      }
+      // comparison leaves have no field-picker to reflect
+    }
   }
 
   // Drop cached cells for nodes no longer in the tree (their DOM was discarded by
@@ -771,6 +854,12 @@ export class FilterGroupElement extends HTMLElement {
   // Build or reuse a leaf's field + value cells, rebuilding the value cell only when
   // the field changed (or first set). Cached by node id. `model` picks the field
   // picker + value-widget templates from that model's bundle (#193).
+  //
+  // NOTE: field-picker reflection (showFieldSelection) is intentionally NOT called
+  // here. During a prefill/loadFilter the cells are built while the tree is rendered
+  // DETACHED (replaceChildren hasn't run yet), so the cloned <search-select> is not
+  // yet upgraded and setSelected does not exist. Reflection runs in
+  // reflectFieldSelections(), called after replaceChildren() completes (#196 fix).
   private leafCells(node: CriterionLeaf, model: string): LeafCells {
     let cells = this.rowCache.get(node.id);
     if (!cells) {
@@ -784,7 +873,6 @@ export class FilterGroupElement extends HTMLElement {
     if (cells.field !== node.field) {
       cells.valueCell = this.buildValueCell(node.field, model);
       cells.field = node.field;
-      if (node.field) this.showFieldSelection(cells.fieldCell, node.field, model);
     }
     return cells;
   }

@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
@@ -148,7 +149,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import SessionFilterBar
+    from common.components import AdvancedFilterLink, SessionFilterBar
 
     filter_json = request.GET.get("filter", "")
     filter_bar = SessionFilterBar(
@@ -156,7 +157,10 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         preset_list_url=reverse("games:list_presets"),
         preset_save_url=reverse("games:save_preset"),
     )
-    content = Fragment(filter_bar, content)
+    builder_url = reverse("games:filter_builder", args=["session"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
     return render_page(
         request,
         content,

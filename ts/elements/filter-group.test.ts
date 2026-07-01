@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import "./filter-group.js"; // side-effect: customElements.define("filter-group", …)
+import { FILTER_TREE_CHANGE_EVENT } from "./filter-group.js"; // also registers the custom element
 import type { FilterGroupElement } from "./filter-group.js";
 
 // A node path: group-child indices plus the "child" sentinel for descending into a
@@ -735,5 +735,185 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     byDay.checked = true;
     const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
     expect(payload).not.toHaveProperty("granularity");
+  });
+});
+
+// ── Initial dispatch on connect (#196) ──
+describe("<filter-group> initial filter-tree-change on connect (prefill sync)", () => {
+  it("dispatches filter-tree-change on connectedCallback when a filter prop is present", () => {
+    document.body.innerHTML = "";
+    const events: CustomEvent[] = [];
+    const prefillFilter = JSON.stringify({ AND: [{ status: { modifier: "INCLUDES", value: "f" } }] });
+    // Attach the listener BEFORE appending the element — the group is the last sibling
+    // in a real page, so all sibling listeners are already attached when it connects.
+    document.addEventListener(FILTER_TREE_CHANGE_EVENT, (event) => {
+      events.push(event as CustomEvent);
+    });
+    const group = document.createElement("filter-group") as FilterGroupElement;
+    group.setAttribute("model", "game");
+    group.setAttribute("models", MODELS);
+    group.setAttribute("filter", prefillFilter);
+    document.body.appendChild(group); // connectedCallback fires here
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    // The dispatched event must carry the seeded (non-empty) tree
+    const detail = events[0].detail as { tree: { children: unknown[] } };
+    expect(detail.tree.children.length).toBeGreaterThan(0);
+  });
+});
+
+// ── comp-10 additions: prefill + loadFilter/clear/getFilledTree (#196) ──
+// Minimal two-model registry: game.status (a set field with choices) +
+// game.sessions (relation -> session). Field shape mirrors the real FieldMeta
+// (ts/generated/filter-metadata.ts): kind ∈ string|number|date|bool|set|relation|
+// field-comparison; choices are {value,label} OBJECTS (NOT tuples); modifiers,
+// search_url, is_m2m are present. relations[].model is the target Django model
+// name ("Session"), lower-cased into the registry by buildRegistry.
+const STATUS_FIELD = {
+  name: "status", label: "Status", kind: "set", nullable: false,
+  choices: [{ value: "f", label: "Finished" }], relations: [],
+  modifiers: ["INCLUDES", "EXCLUDES"], search_url: "", is_m2m: false,
+};
+const SESSIONS_FIELD = {
+  name: "sessions", label: "Sessions", kind: "relation", nullable: false,
+  choices: [], relations: [{ field: "sessions", label: "Sessions", model: "Session" }],
+  modifiers: [], search_url: "", is_m2m: false,
+};
+const MODELS = JSON.stringify({
+  game: { fields: [STATUS_FIELD, SESSIONS_FIELD], columns: [] },
+  session: { fields: [], columns: [] },
+});
+
+function mountGroup(filter = ""): FilterGroupElement {
+  document.body.innerHTML = "";
+  const group = document.createElement("filter-group") as FilterGroupElement;
+  group.setAttribute("model", "game");
+  group.setAttribute("models", MODELS);
+  if (filter) group.setAttribute("filter", filter);
+  document.body.appendChild(group);
+  return group;
+}
+
+describe("filter-group comp-10 additions", () => {
+  it("seeds the tree from the filter prop on connect", () => {
+    const group = mountGroup(JSON.stringify({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] }));
+    expect(group.serialize()).toEqual({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+  });
+
+  it("loadFilter replaces the tree and clear empties it", () => {
+    const group = mountGroup();
+    group.loadFilter({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    expect(group.serialize()).toEqual({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    group.clear();
+    expect(group.serialize()).toEqual({});
+  });
+
+  it("imports a negated-empty root without throwing (serializes to {})", () => {
+    const group = mountGroup(JSON.stringify({ NOT: [{ AND: [] }] }));
+    // A negated empty root is "matches all": serialize drops the empty group.
+    expect(group.serialize()).toEqual({});
+    expect(() => group.getFilledTree()).not.toThrow();
+  });
+
+  it("getFilledTree keeps incomplete leaves (unpruned)", () => {
+    const group = mountGroup();
+    group.loadFilter({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    const filled = group.getFilledTree();
+    expect(filled.kind).toBe("group");
+    expect(filled.children.length).toBe(1);
+  });
+});
+
+// ── Regression: loadFilter with a set field must not throw (#196 fix) ──
+// Before the fix, leafCells() called showFieldSelection() on a freshly-cloned
+// <search-select> that was still DETACHED (not yet upgraded → connectedCallback
+// had not run → setSelected did not exist). The ?. guard in showFieldSelection
+// silences null, NOT a missing method, so "searchSelect?.setSelected is not a
+// function" was thrown, propagating through loadFilter to onPresetPicked which
+// swallowed it and showed "Preset is not a valid filter."
+//
+// The fix moves showFieldSelection into reflectFieldSelections(), called AFTER
+// replaceChildren() so every cloned <search-select> is live and upgraded.
+function mountWithFieldPickerTemplate(): FilterGroupElement {
+  document.body.innerHTML = "";
+  const group = document.createElement("filter-group") as FilterGroupElement;
+  group.setAttribute("model", "game");
+  group.setAttribute("models", MODELS);
+  // Supply a field-picker template that contains a real <search-select> — this is
+  // what FilterFieldPicker (common/components/filters.py) emits. When leafCells()
+  // clones it during the detached renderGroup() pass the element is NOT upgraded.
+  group.innerHTML = `
+    <template data-model="game" data-field-picker-template>
+      <div data-field-picker>
+        <search-select name="field-picker">
+          <input data-search-select-search />
+        </search-select>
+      </div>
+    </template>
+    <template data-model="game" data-field="status">
+      <div>
+        <select data-modifier-select>
+          <option value="INCLUDES" selected>includes</option>
+          <option value="EXCLUDES">excludes</option>
+        </select>
+      </div>
+    </template>`;
+  document.body.appendChild(group);
+  return group;
+}
+
+describe("loadFilter with a set field — regression for #196 crash", () => {
+  it("does NOT throw when loadFilter introduces a criterion with a set field", () => {
+    // Before the fix this threw "searchSelect?.setSelected is not a function"
+    // because the cloned <search-select> was not yet upgraded when leafCells()
+    // called showFieldSelection() during the detached renderGroup() pass.
+    const group = mountWithFieldPickerTemplate();
+    expect(() =>
+      group.loadFilter({
+        AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("after loadFilter the criterion leaf shows the set field selected in the picker", () => {
+    const group = mountWithFieldPickerTemplate();
+    group.loadFilter({
+      AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+    });
+    // The leaf row at [0] must show the status field — the field-picker's
+    // <search-select> should have setSelected("status", "Status") called on it.
+    // Since jsdom does not fully upgrade custom elements (no shadow DOM), we verify
+    // indirectly: the leaf's cached cells have cells.field === "status", meaning the
+    // tree was applied and the value cell was built for the right field.
+    const leafRow = group.querySelector<HTMLElement>('[data-node-slot][data-node-kind="criterion"]');
+    expect(leafRow).not.toBeNull();
+    // The value cell should be present and hold the status widget (not the placeholder).
+    const valueCell = leafRow!.querySelector("[data-value-cell]");
+    expect(valueCell).not.toBeNull();
+    // The placeholder text "Choose a field…" must be gone — the field is set.
+    expect(valueCell!.textContent).not.toContain("Choose a field");
+  });
+
+  it("loadFilter via filter prop on connect also does not throw", () => {
+    document.body.innerHTML = "";
+    const group = document.createElement("filter-group") as FilterGroupElement;
+    group.setAttribute("model", "game");
+    group.setAttribute("models", MODELS);
+    group.setAttribute(
+      "filter",
+      JSON.stringify({
+        AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+      }),
+    );
+    group.innerHTML = `
+      <template data-model="game" data-field-picker-template>
+        <div data-field-picker>
+          <search-select name="field-picker"><input data-search-select-search /></search-select>
+        </div>
+      </template>
+      <template data-model="game" data-field="status">
+        <div><select data-modifier-select><option value="INCLUDES" selected>includes</option></select></div>
+      </template>`;
+    // connectedCallback calls deserialize + render — must not throw.
+    expect(() => document.body.appendChild(group)).not.toThrow();
   });
 });

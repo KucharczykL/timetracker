@@ -1,21 +1,32 @@
+import json
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
+from django.apps import apps
 from django.contrib.auth.decorators import login_required
 from django.db.models import (
     F,
     Sum,
 )
 
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 
+from common.components import (
+    CsrfInput,
+    FilterBuilder,
+    FilterCount,
+    FilterGroup,
+    FilterSummary,
+    Fragment,
+    PageHeading,
+)
 from common.layout import render_page
 from common.time import format_duration
-from games.filters import SessionFilter, filter_url
+from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Game, Platform, Purchase, Session
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
@@ -108,6 +119,62 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     request.session["return_path"] = request.path
     data = compute_stats(year)
     return render_page(request, stats_content(data), title=data["title"])
+
+
+# The four lists backed by an OperatorFilter + nested builder. Keys are model
+# keys (Model._meta.model_name); `mode` is the plural preset/list mode.
+_BUILDER_MODELS: dict[str, str] = {
+    "game": "games",
+    "session": "sessions",
+    "purchase": "purchases",
+    "playevent": "playevents",
+}
+
+
+@login_required
+def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
+    """Advanced nested-filter builder page for one model (#196).
+
+    Mounts the toolbar + NL summary + live count + root <filter-group>, seeded
+    from ?filter=. Apply navigates back to the model's list with ?filter=.
+    """
+    mode = _BUILDER_MODELS.get(model)
+    if mode is None:
+        raise Http404(f"No filter builder for model {model!r}")
+
+    # filter_for_model returns the OperatorFilter *class* (no `.model` attr); resolve
+    # the Django model the same way filter_for_model / model_field_registry do.
+    django_model = apps.get_model("games", model)
+    meta = django_model._meta
+    label = str(meta.verbose_name_plural).title()
+    filter_json = request.GET.get("filter", "")
+    models_json = json.dumps(model_field_registry(model))
+
+    content = Fragment(
+        PageHeading(f"Filter {label}"),
+        # The preset save/delete fetches send X-CSRFToken (filter-builder.ts reads the
+        # csrftoken cookie, falling back to this hidden input). render_page/Page() do
+        # NOT emit a CSRF token, so a standalone builder page would otherwise have
+        # NEITHER the cookie set NOR a token input → 403 on save/delete. CsrfInput
+        # calls get_token(request), which both sets the cookie and renders the input.
+        CsrfInput(request),
+        FilterBuilder(
+            model=model,
+            mode=mode,
+            apply_url=reverse(f"games:list_{mode}"),
+            preset_list_url=reverse("games:list_presets"),
+            preset_save_url=reverse("games:save_preset"),
+        ),
+        FilterSummary(model=model, model_label=label, models=models_json),
+        FilterCount(
+            model=model,
+            noun_singular=str(meta.verbose_name),
+            noun_plural=str(meta.verbose_name_plural),
+            endpoint=reverse("api-1.0.0:filter_count"),
+        ),
+        FilterGroup(model=model, filter=filter_json),
+    )
+    return render_page(request, content, title=f"Filter {label}")
 
 
 @login_required
