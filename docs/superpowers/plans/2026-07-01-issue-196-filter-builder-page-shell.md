@@ -928,6 +928,8 @@ def test_builder_page_renders(logged_in_client, model):
     assert "<filter-builder" in body
     assert "<filter-summary" in body
     assert "<filter-count" in body
+    # CSRF token present so preset save/delete fetches can send X-CSRFToken.
+    assert "csrfmiddlewaretoken" in body
 
 
 def test_builder_rejects_unknown_model(logged_in_client):
@@ -961,6 +963,7 @@ Add imports at the top of the file (extend the existing `from common.components 
 
 ```python
 from common.components import (
+    CsrfInput,
     FilterBuilder,
     FilterCount,
     FilterGroup,
@@ -969,6 +972,7 @@ from common.components import (
     PageHeading,
 )
 ```
+(If `CsrfInput` is not re-exported from `common.components`, import it from `common.components.primitives`.)
 
 Add the per-model config and view (near the other list-adjacent views):
 
@@ -1004,6 +1008,12 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
 
     content = Fragment(
         PageHeading(f"Filter {label}"),
+        # The preset save/delete fetches send X-CSRFToken (filter-builder.ts reads the
+        # csrftoken cookie, falling back to this hidden input). render_page/Page() do
+        # NOT emit a CSRF token, so a standalone builder page would otherwise have
+        # NEITHER the cookie set NOR a token input → 403 on save/delete. CsrfInput
+        # calls get_token(request), which both sets the cookie and renders the input.
+        CsrfInput(request),
         FilterBuilder(
             model=model,
             mode=mode,
@@ -1239,13 +1249,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:** none (process task).
 
-- [ ] **Step 1: File the deferred follow-up issues**
-
-```bash
-gh issue create --repo KucharczykL/timetracker \
-  --title "Extract shared preset load/save/delete into ts/elements/presets.ts" \
-  --body "filter-bar.ts and filter-builder.ts (#196) now carry near-identical preset load/save/delete flows. Extract onto a shared ts/elements/presets.ts and wire both. Deferred from #196 to keep that PR's blast radius to new files. Part of #168."
-```
+- [x] **Step 1: File the deferred follow-up issues** — DONE:
+  - **#263** — hydrate leaf value widgets on prefill (values lost on Apply/count/presets). **Blocking follow-up**; the shell ships without it as a known limitation (user decision).
+  - **#264** — extract shared preset load/save/delete into `ts/elements/presets.ts`.
 
 (The quick-bar ↔ builder hand-off is already tracked by #197; do not duplicate it — just reference it in the PR.)
 
@@ -1265,7 +1271,11 @@ Assembles the nested-builder parts into a per-model /…/filter page (games, ses
 
 New: <filter-summary>, <filter-builder> elements; filter-group gains getFilledTree/loadFilter/clear + a filter prefill prop.
 
-Preset code is duplicated from filter-bar.ts for now (follow-up filed to extract ts/elements/presets.ts). Quick-bar hand-off tracked by #197.
+## Known limitation (shipped intentionally — #263)
+
+Prefill (preset load / `?filter=` URL / the Advanced-filter entry link) currently seeds the filter-group's **tree structure and field selection** but NOT the leaf **value widgets**. Since `serializeForQuery()` reads the live widgets, a prefilled filter is not yet carried through **Apply** or the live **count** — Apply on a prefilled page navigates without `?filter=`. Building a filter from scratch and applying it works fully. Value-widget hydration is tracked in **#263** and is captured by a `strict=xfail` e2e (`test_prefill_apply_roundtrip_carries_filter`) that will flip to a hard failure the moment #263 lands, forcing removal of the marker.
+
+Preset code is duplicated from filter-bar.ts for now (extraction tracked by #264). Quick-bar hand-off tracked by #197.
 
 Closes #196. Part of #168.
 

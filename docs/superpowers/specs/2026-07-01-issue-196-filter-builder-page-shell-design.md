@@ -183,16 +183,27 @@ Delete the DEBUG-only `/filter-group-demo/` route + `filter_group_demo` view fro
 
 Run the full `direnv exec . make check` (incl. e2e) before the PR.
 
-## Follow-up issues to file
+## Known limitation shipped with this PR (#263)
 
-1. **Extract shared preset flow** — unify `filter-bar.ts` and `filter-builder.ts` preset
-   load/save/delete onto `ts/elements/presets.ts` (deferred from this PR per the blast-radius
-   decision).
-2. **Quick-bar ↔ builder hand-off** — the degrade-to-pill / "Edit in builder" path is tracked
-   by the quick-bar issue (#197); the `advanced_url` entry point here is the first half.
+Prefill seeds the tree structure + field selection but **not** the leaf value widgets, so a
+prefilled filter (preset / `?filter=` URL / Advanced-filter link) is not yet carried through
+**Apply** or the live **count** (`serializeForQuery()` reads the live, still-blank widgets).
+Building a filter from scratch and applying it works fully. Tracked in **#263** and pinned by a
+`strict=xfail` e2e that flips to a hard failure when the fix lands. Discovered at integration
+during this PR (the leaf widgets built in #192/#245 were write-by-user only — never hydrated
+from a model); folded into #263 rather than blocking the shell.
+
+## Follow-up issues filed
+
+1. **#263 — hydrate leaf value widgets on prefill** (blocking follow-up; the known limitation above).
+2. **#264 — extract shared preset flow** — unify `filter-bar.ts` and `filter-builder.ts`
+   preset load/save/delete onto `ts/elements/presets.ts` (deferred per the blast-radius decision).
+3. **Quick-bar ↔ builder hand-off** — degrade-to-pill / "Edit in builder", tracked by **#197**;
+   the `advanced_url` entry point here is the first half.
 
 ## Out of scope
 
+- Leaf value-widget hydration on prefill (**#263**, see above).
 - The single-model quick bar (#197).
 - Per-group count badges (#198).
 - Any new criterion / widget / relation behaviour — all landed.
