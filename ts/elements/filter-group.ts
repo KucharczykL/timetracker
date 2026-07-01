@@ -17,7 +17,7 @@
  * module and is vitest-tested; this file is the thin DOM projection over it.
  */
 import { readFilterGroupProps } from "../generated/props.js";
-import { serialize } from "./filter-tree/serializer.js";
+import { deserialize, group, serialize } from "./filter-tree/serializer.js";
 import type {
   ComparisonLeaf,
   ComparisonPayload,
@@ -27,6 +27,8 @@ import type {
   FilterNode,
   FilterTreeChangeDetail,
   GroupNode,
+  MetadataRegistry,
+  ModelMeta,
   RelationMatch,
   RelationNode,
 } from "./filter-tree/types.js";
@@ -297,6 +299,15 @@ export class FilterGroupElement extends HTMLElement {
     if (!this.wired) {
       this.parseModels(props.models);
       this.captureTemplates();
+      // Seed from the server-rendered ?filter= before the first render, so the
+      // summary/count/toolbar read the correct initial tree. Malformed → fail open.
+      if (props.filter) {
+        try {
+          this.tree = deserialize(JSON.parse(props.filter), this.model, this.buildRegistry());
+        } catch (error) {
+          console.warn("filter-group: ignoring malformed filter prop", error);
+        }
+      }
       this.addEventListener("click", this.onClick);
       // Value edits (typing, radios, set pills, date bounds, field pick) bubble
       // here; one delegated listener updates completeness / handles field changes.
@@ -410,6 +421,50 @@ export class FilterGroupElement extends HTMLElement {
    *  query). Used by the builder page (comp 10). */
   serializeForQuery(): Record<string, unknown> {
     return serialize(pruneIncomplete(this.fillCriteria(this.tree, this.model)));
+  }
+
+  /** The filled-but-UNPRUNED tree (leaf values read live from widgets, incomplete
+   *  leaves kept as `…` placeholders). The NL summary (#194) wants this; the count
+   *  (#195) wants serializeForQuery(), which prunes. */
+  getFilledTree(): GroupNode {
+    return this.fillCriteria(this.tree, this.model);
+  }
+
+  /** Replace the whole tree from an OperatorFilter JSON blob (preset load / ?filter=
+   *  import). Re-renders and fires filter-tree-change so summary + count refresh. */
+  loadFilter(json: Record<string, unknown>): void {
+    this.tree = deserialize(json, this.model, this.buildRegistry());
+    this.render();
+    this.dispatchChange();
+  }
+
+  /** Reset to an empty AND root. */
+  clear(): void {
+    this.tree = group("AND", []);
+    this.render();
+    this.dispatchChange();
+  }
+
+  /** How many criterion leaves are incomplete right now. The builder toolbar reads
+   *  this on connect to set Apply's initial disabled state (no change event fires on
+   *  the server-seeded tree, so it can't wait for one). */
+  getIncompleteCount(): number {
+    return this.incompleteCount();
+  }
+
+  // A name-set MetadataRegistry (what deserialize wants) projected from the richer
+  // per-model ModelBundle map this element already parsed from the `models` prop.
+  private buildRegistry(): MetadataRegistry {
+    const registry: Record<string, ModelMeta> = {};
+    for (const [key, bundle] of this.models) {
+      const relations: Record<string, string> = {};
+      for (const [name, meta] of bundle.fields) {
+        const target = meta.relations[0]?.model;
+        if (meta.kind === "relation" && target) relations[name] = target.toLowerCase();
+      }
+      registry[key] = { fields: new Set(bundle.fields.keys()), relations };
+    }
+    return registry;
   }
 
   // Clone the tree with every criterion leaf's `criterion` filled from its live

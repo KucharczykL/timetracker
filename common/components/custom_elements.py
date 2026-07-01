@@ -186,13 +186,17 @@ class FilterGroupProps(TypedDict):
     # bundle. Mirrors the FieldComparisonSetProps.columns precedent (JSON in a str
     # prop).
     models: str
+    # Initial ?filter= JSON, deserialized on connect so the server-rendered
+    # filter is reflected on parse (comp 10, #196). Empty -> the empty-root
+    # default. The client validates/normalizes; a bad blob fails open (empty).
+    filter: str
 
 
 register_element("filter-group", "FilterGroup", FilterGroupProps)
 _FilterGroup = custom_element_builder("filter-group")
 
 
-def FilterGroup(*, model: str) -> Node:
+def FilterGroup(*, model: str, filter: str = "") -> Node:
     """The recursive nested-filter group shell (issue #189, phase 2c of #168).
 
     A self-seeding client-built tree: the element starts from an empty root AND
@@ -245,6 +249,7 @@ def FilterGroup(*, model: str) -> Node:
     return _FilterGroup(
         model=model,
         models=json.dumps(model_field_registry(model)),
+        filter=filter,
     )[*templates]
 
 

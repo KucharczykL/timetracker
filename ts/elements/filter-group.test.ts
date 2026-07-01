@@ -737,3 +737,65 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     expect(payload).not.toHaveProperty("granularity");
   });
 });
+
+// ── comp-10 additions: prefill + loadFilter/clear/getFilledTree (#196) ──
+// Minimal two-model registry: game.status (a set field with choices) +
+// game.sessions (relation -> session). Field shape mirrors the real FieldMeta
+// (ts/generated/filter-metadata.ts): kind ∈ string|number|date|bool|set|relation|
+// field-comparison; choices are {value,label} OBJECTS (NOT tuples); modifiers,
+// search_url, is_m2m are present. relations[].model is the target Django model
+// name ("Session"), lower-cased into the registry by buildRegistry.
+const STATUS_FIELD = {
+  name: "status", label: "Status", kind: "set", nullable: false,
+  choices: [{ value: "f", label: "Finished" }], relations: [],
+  modifiers: ["INCLUDES", "EXCLUDES"], search_url: "", is_m2m: false,
+};
+const SESSIONS_FIELD = {
+  name: "sessions", label: "Sessions", kind: "relation", nullable: false,
+  choices: [], relations: [{ field: "sessions", label: "Sessions", model: "Session" }],
+  modifiers: [], search_url: "", is_m2m: false,
+};
+const MODELS = JSON.stringify({
+  game: { fields: [STATUS_FIELD, SESSIONS_FIELD], columns: [] },
+  session: { fields: [], columns: [] },
+});
+
+function mountGroup(filter = ""): FilterGroupElement {
+  document.body.innerHTML = "";
+  const group = document.createElement("filter-group") as FilterGroupElement;
+  group.setAttribute("model", "game");
+  group.setAttribute("models", MODELS);
+  if (filter) group.setAttribute("filter", filter);
+  document.body.appendChild(group);
+  return group;
+}
+
+describe("filter-group comp-10 additions", () => {
+  it("seeds the tree from the filter prop on connect", () => {
+    const group = mountGroup(JSON.stringify({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] }));
+    expect(group.serialize()).toEqual({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+  });
+
+  it("loadFilter replaces the tree and clear empties it", () => {
+    const group = mountGroup();
+    group.loadFilter({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    expect(group.serialize()).toEqual({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    group.clear();
+    expect(group.serialize()).toEqual({});
+  });
+
+  it("imports a negated-empty root without throwing (serializes to {})", () => {
+    const group = mountGroup(JSON.stringify({ NOT: [{ AND: [] }] }));
+    // A negated empty root is "matches all": serialize drops the empty group.
+    expect(group.serialize()).toEqual({});
+    expect(() => group.getFilledTree()).not.toThrow();
+  });
+
+  it("getFilledTree keeps incomplete leaves (unpruned)", () => {
+    const group = mountGroup();
+    group.loadFilter({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] });
+    const filled = group.getFilledTree();
+    expect(filled.kind).toBe("group");
+    expect(filled.children.length).toBe(1);
+  });
+});
