@@ -10,7 +10,7 @@ reader so drift fails ``tsc``.
 
 import warnings
 from dataclasses import dataclass
-from typing import Literal, NamedTuple, TypedDict, get_type_hints
+from typing import Literal, NamedTuple, TypedDict, get_type_hints, is_typeddict
 
 from common.components.core import (
     BaseComponent,
@@ -37,18 +37,23 @@ from common.components.primitives import (
 )
 
 
+type TypedDictClass = type  # a TypedDict subclass, e.g. FieldMeta
+
+
 @dataclass(frozen=True)
 class ElementSpec:
     tag: str  # e.g. "drop-down"
     ts_name: str  # e.g. "Dropdown"
-    props: type  # a TypedDict subclass
+    props: TypedDictClass
 
 
 ELEMENT_REGISTRY: list[ElementSpec] = []
 
 
-def register_element(tag: str, ts_name: str, props: type) -> None:
+def register_element(tag: str, ts_name: str, props: TypedDictClass) -> None:
     """Register an element so codegen can emit its TS contract."""
+    if not is_typeddict(props):
+        raise TypeError(f"register_element: {props!r} is not a TypedDict")
     ELEMENT_REGISTRY.append(ElementSpec(tag, ts_name, props))
 
 

@@ -28,9 +28,8 @@ from typing import (
     is_typeddict,
 )
 
-from common.components.custom_elements import _TYPE_MAP
+from common.components.custom_elements import _TYPE_MAP, TypedDictClass
 
-type TypedDictClass = type  # a TypedDict subclass, e.g. FieldMeta
 type TsName = str  # a TS interface/alias identifier, e.g. "FieldMeta"
 type TsTypeExpr = str  # a rendered TS type expression, e.g. "ChoiceMeta[]"
 
