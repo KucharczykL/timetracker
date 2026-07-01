@@ -46,7 +46,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from games.models import Game, Platform
+from games.models import FilterPreset, Game, Platform
 
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
@@ -239,3 +239,102 @@ def test_prefill_apply_roundtrip_carries_filter(
     # With the prefilled filter active, only the finished game should appear.
     expect(page.get_by_text("DoneGame")).to_be_visible()
     expect(page.get_by_text("PlayGame")).not_to_be_visible()
+
+
+def test_load_set_field_preset_reflects_field_without_crash(
+    authenticated_page: Page, live_server, django_user_model
+) -> None:
+    """Loading a preset whose filter contains a set-field criterion (session's
+    ``game`` field) must not throw and must reflect the field in the picker.
+
+    Before Fix-C (commit 3b18252) ``loadFilter`` called ``showFieldSelection``
+    during the detached build phase, before the cloned ``<search-select>``
+    elements were upgraded.  ``setSelected`` did not exist on the detached
+    element, which threw a TypeError and triggered the "Preset is not a valid
+    filter." error toast.  Fix-C defers field reflection to
+    ``reflectFieldSelections()``, called after ``replaceChildren()`` so every
+    ``<search-select>`` is live.  This test guards that fix at the browser level.
+
+    Asserted boundary: the field picker shows "Game" selected (a pill with the
+    label "Game" appears in the field-picker's pills area) after the preset
+    loads.  Value/modifier hydration is deferred to issue #263 and is NOT
+    asserted here.
+    """
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    game = Game.objects.create(name="SpyGame", platform=platform, status="p")
+
+    # Obtain the user created by the authenticated_page fixture (username="tester").
+    user = django_user_model.objects.get(username="tester")
+
+    # A session preset whose object_filter contains a set-field criterion for
+    # the session's ``game`` field.  This is the exact shape that triggered the
+    # Fix-C crash: a ``set`` kind field with an id/label value list.
+    FilterPreset.objects.create(
+        user=user,
+        mode="sessions",
+        name="setpreset",
+        object_filter={
+            "AND": [
+                {
+                    "game": {
+                        "value": [{"id": str(game.pk), "label": game.name}],
+                        "excludes": [],
+                        "modifier": "INCLUDES",
+                    }
+                }
+            ]
+        },
+    )
+
+    # Collect console messages BEFORE navigating so nothing is missed.
+    console_messages: list[str] = []
+    page.on("console", lambda message: console_messages.append(message.text))
+
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['session'])}")
+
+    # Wait for the builder page to finish initializing (count badge settles).
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…", timeout=10_000)
+
+    # Open the Load-preset dropdown.
+    page.locator("filter-builder [data-load-presets]").click()
+
+    # Wait for the dropdown to populate with the preset anchor.
+    preset_anchor = page.locator("[data-preset-dropdown] a").filter(has_text="setpreset")
+    expect(preset_anchor).to_be_visible(timeout=5_000)
+
+    # Click the preset anchor to load it into the filter group.
+    preset_anchor.click()
+
+    # Wait for the filter group to re-render (the criterion row must appear).
+    criterion_row = page.locator("[data-node-kind='criterion']")
+    expect(criterion_row).to_be_attached(timeout=5_000)
+
+    # -- Assertion 1: no crash --
+    # The Fix-C crash was logged as a ``console.error`` by the catch block in
+    # ``onPresetPicked``: "filter-builder: preset load failed".  Assert that
+    # exact string is absent.  (A generic "TypeError: Failed to fetch" from
+    # filter-bar's auto-load on connect is unrelated and ignored here.)
+    crash_messages = [
+        text for text in console_messages if "preset load failed" in text
+    ]
+    assert not crash_messages, (
+        f"Unexpected crash in console after preset load: {crash_messages}"
+    )
+
+    # -- Assertion 2: no error toast --
+    # A crash triggers window.toast("Preset is not a valid filter.", "error").
+    # The toast renders via Alpine.js (x-text="toast.message") as a <p> element.
+    # Assert the error message is NOT visible anywhere on the page.
+    expect(page.get_by_text("Preset is not a valid filter.")).not_to_be_visible()
+
+    # -- Assertion 3: field picker reflects "Game" --
+    # After Fix-C, reflectFieldSelections() calls search-select.setSelected("game",
+    # "Game") once the cloned element is live.  The field picker uses single-select
+    # mode (multi_select=False): setSelected sets search.value = label rather than
+    # inserting a pill.  Assert the search input inside the field picker shows "Game".
+    field_search_input = criterion_row.locator(
+        "[data-field-picker] [data-search-select-search]"
+    )
+    expect(field_search_input).to_have_value("Game", timeout=5_000)
