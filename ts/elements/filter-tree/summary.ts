@@ -15,6 +15,7 @@ import type {
   GroupNode,
 } from "./types.js";
 import { isCriterionComplete } from "./operations.js";
+import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
 export interface SummaryModel {
   fields: Map<string, FieldMeta>;
@@ -87,8 +88,27 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
   if (!isCriterionComplete(leaf)) return `${label} ${PLACEHOLDER}`;
   const modifier = String(leaf.criterion["modifier"]);
   const phrase = MODIFIER_PHRASES[modifier] ?? modifier;
-  const value = renderValue(leaf.criterion["value"], meta);
-  return `${label} ${phrase} ${value}`;
+  // Presence modifiers carry no value: the phrase ("is empty"/"is set") is the whole clause.
+  if (isPresenceModifier(modifier)) return `${label} ${phrase}`;
+  if (meta?.kind === "bool") {
+    return `${label} ${phrase} ${renderBool(leaf.criterion["value"], meta)}`;
+  }
+  if (isRangeModifier(modifier)) {
+    const lower = renderItem(leaf.criterion["value"], meta);
+    const upper = renderItem(leaf.criterion["value2"], meta);
+    return `${label} ${phrase} ${lower} and ${upper}`;
+  }
+  return `${label} ${phrase} ${renderValue(leaf.criterion["value"], meta)}`;
+}
+
+// A bool value's display: the field's matching choice label if present, else yes/no.
+// Accept both the JS boolean the live widget emits and a "true"/"false" string (the
+// deserialized shape), so a stringified true never renders "no".
+function renderBool(value: unknown, meta: FieldMeta | undefined): string {
+  const raw = String(value);
+  const choice = meta?.choices.find((candidate) => candidate.value === raw);
+  if (choice) return choice.label;
+  return value === true || raw === "true" ? "yes" : "no";
 }
 
 // Render one stored value to its display form: a choice value maps to its label; a

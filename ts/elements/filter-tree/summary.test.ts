@@ -77,3 +77,61 @@ describe("summarize — frame + scalar leaf", () => {
     expect(summarize(tree, GAME)).toBe("Games where Name ….");
   });
 });
+
+describe("summarize — modifier families", () => {
+  const CTX: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map([
+          ["name", field({ name: "name", label: "Name", kind: "string" })],
+          ["playtime", field({ name: "playtime", label: "Playtime", kind: "number" })],
+          ["mastered", field({ name: "mastered", label: "Mastered", kind: "bool" })],
+        ]),
+      },
+    },
+  };
+  function one(field: string, criterion: Record<string, unknown>): string {
+    return summarize(
+      root({ kind: "criterion", id: "c", field, criterion, negate: false }),
+      CTX,
+    );
+  }
+
+  it("phrases NOT_EQUALS", () => {
+    expect(one("name", { value: "zelda", modifier: "NOT_EQUALS" })).toBe(
+      "Games where Name is not zelda.",
+    );
+  });
+  it("phrases comparators", () => {
+    expect(one("playtime", { value: "2", modifier: "GREATER_THAN_OR_EQUAL" })).toBe(
+      "Games where Playtime is at least 2.",
+    );
+    expect(one("playtime", { value: "5", modifier: "LESS_THAN" })).toBe(
+      "Games where Playtime is less than 5.",
+    );
+  });
+  it("phrases BETWEEN with both bounds", () => {
+    expect(one("playtime", { value: "2", value2: "5", modifier: "BETWEEN" })).toBe(
+      "Games where Playtime is between 2 and 5.",
+    );
+  });
+  it("phrases presence modifiers with no value", () => {
+    expect(one("name", { modifier: "IS_NULL" })).toBe("Games where Name is empty.");
+    expect(one("name", { modifier: "NOT_NULL" })).toBe("Games where Name is set.");
+  });
+  it("phrases regex modifiers", () => {
+    expect(one("name", { value: "^z", modifier: "MATCHES_REGEX" })).toBe(
+      "Games where Name matches ^z.",
+    );
+  });
+  it("phrases a bool as yes/no", () => {
+    expect(one("mastered", { value: true, modifier: "EQUALS" })).toBe(
+      "Games where Mastered is yes.",
+    );
+    expect(one("mastered", { value: false, modifier: "EQUALS" })).toBe(
+      "Games where Mastered is no.",
+    );
+  });
+});
