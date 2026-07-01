@@ -65,12 +65,35 @@ export function summarize(tree: GroupNode, ctx: SummaryContext): string {
 function joinChildren(node: GroupNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
   const word = node.connective === "AND" ? "and" : "or";
   const parts = node.children
-    .map((child) => renderNode(child, model, ctx))
+    .map((child) => renderChildForGroup(child, node.connective, model, ctx))
     .filter((part) => part.length > 0);
   return parts.join(` ${word} `);
 }
 
+// A child rendered for placement inside a group: wrap a non-negated nested group in
+// parens when it has >1 child or a connective differing from its parent's (a
+// negated group already parenthesizes itself via renderNode).
+function renderChildForGroup(
+  child: FilterNode,
+  parentConnective: GroupNode["connective"],
+  model: SummaryModel | undefined,
+  ctx: SummaryContext,
+): string {
+  const rendered = renderNode(child, model, ctx);
+  if (child.kind === "group" && !child.negate && rendered.length > 0) {
+    const needsParens = child.children.length > 1 || child.connective !== parentConnective;
+    if (needsParens) return `(${rendered})`;
+  }
+  return rendered;
+}
+
 function renderNode(node: FilterNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
+  const inner = renderInner(node, model, ctx);
+  if (!inner) return "";
+  return node.negate ? `not (${inner})` : inner;
+}
+
+function renderInner(node: FilterNode, model: SummaryModel | undefined, ctx: SummaryContext): string {
   switch (node.kind) {
     case "group":
       return joinChildren(node, model, ctx);

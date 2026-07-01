@@ -203,3 +203,72 @@ describe("summarize — set values", () => {
     ).toBe("Games where Device is not Switch.");
   });
 });
+
+describe("summarize — connectives, parens, NOT", () => {
+  const CTX: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map([
+          [
+            "status",
+            field({
+              name: "status",
+              label: "Status",
+              kind: "set",
+              choices: [
+                { value: "f", label: "Finished" },
+                { value: "p", label: "Playing" },
+              ],
+            }),
+          ],
+          [
+            "platform",
+            field({
+              name: "platform",
+              label: "Platform",
+              kind: "set",
+              choices: [
+                { value: "pc", label: "PC" },
+                { value: "sw", label: "Switch" },
+              ],
+            }),
+          ],
+        ]),
+      },
+    },
+  };
+  const finished = { kind: "criterion", id: "a", field: "status", criterion: { value: ["f"], modifier: "INCLUDES" }, negate: false } as const;
+  const pc = { kind: "criterion", id: "b", field: "platform", criterion: { value: ["pc"], modifier: "INCLUDES" }, negate: false } as const;
+  const sw = { kind: "criterion", id: "c", field: "platform", criterion: { value: ["sw"], modifier: "INCLUDES" }, negate: false } as const;
+
+  it("joins two AND leaves", () => {
+    expect(summarize(root(finished, pc), CTX)).toBe(
+      "Games where Status is Finished and Platform is PC.",
+    );
+  });
+  it("parenthesizes a differing-connective child group", () => {
+    const orGroup: GroupNode = { kind: "group", id: "or", connective: "OR", negate: false, children: [pc, sw] };
+    expect(summarize(root(finished, orGroup), CTX)).toBe(
+      "Games where Status is Finished and (Platform is PC or Platform is Switch).",
+    );
+  });
+  it("does not parenthesize a same-connective single-child group", () => {
+    const andGroup: GroupNode = { kind: "group", id: "in", connective: "AND", negate: false, children: [pc] };
+    expect(summarize(root(finished, andGroup), CTX)).toBe(
+      "Games where Status is Finished and Platform is PC.",
+    );
+  });
+  it("prefixes a negated leaf with not (…)", () => {
+    expect(summarize(root({ ...finished, negate: true }), CTX)).toBe(
+      "Games where not (Status is Finished).",
+    );
+  });
+  it("prefixes a negated group with not (…)", () => {
+    const orGroup: GroupNode = { kind: "group", id: "or", connective: "OR", negate: true, children: [pc, sw] };
+    expect(summarize(root(orGroup), CTX)).toBe(
+      "Games where not (Platform is PC or Platform is Switch).",
+    );
+  });
+});
