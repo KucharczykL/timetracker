@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
+from games.filters import parse_game_filter
 from games.models import Device, Game, Platform, Session
 
 pytestmark = pytest.mark.django_db
@@ -327,4 +328,75 @@ def test_session_patch_requires_auth():
     response = _patch_session(
         Client(), session.id, {"timestamp_end": "2026-06-24T19:00:00Z"}
     )
+    assert response.status_code == 401
+
+
+# ── /api/filter/count — live result count for the nested filter builder (#195) ──
+
+
+COUNT_URL = "/api/filter/count"
+
+
+def _make_games(*names):
+    platform = Platform.objects.create(name="PC")
+    return [Game.objects.create(name=name, platform=platform) for name in names]
+
+
+def test_filter_count_empty_filter_counts_all(auth_client):
+    _make_games("Hades", "Celeste", "Braid")
+    response = auth_client.get(COUNT_URL, {"model": "game"})
+    assert response.status_code == 200
+    assert response.json() == {"count": 3}
+
+
+def test_filter_count_empty_object_counts_all(auth_client):
+    # "{}" deserializes to an all-None filter whose to_q() is an empty Q() — the
+    # same "match all" as an absent filter, not an error.
+    _make_games("Hades", "Celeste")
+    response = auth_client.get(COUNT_URL, {"model": "game", "filter": "{}"})
+    assert response.status_code == 200
+    assert response.json() == {"count": 2}
+
+
+def test_filter_count_applies_filter(auth_client):
+    _make_games("Hades", "Celeste", "Braid")
+    filter_json = json.dumps({"name": {"value": "Hades", "modifier": "EQUALS"}})
+    response = auth_client.get(COUNT_URL, {"model": "game", "filter": filter_json})
+    assert response.status_code == 200
+    # Parity with the real queryset the list view would build.
+    parsed = parse_game_filter(filter_json)
+    assert parsed is not None
+    assert response.json() == {"count": Game.objects.filter(parsed.to_q()).count()}
+    assert response.json() == {"count": 1}
+
+
+def test_filter_count_special_characters_round_trip(auth_client):
+    # A value with quotes/ampersand/non-ASCII must survive URL-encoding and match.
+    tricky = "Ni≈\"o & Zelda's"
+    _make_games(tricky, "Other")
+    filter_json = json.dumps({"name": {"value": tricky, "modifier": "EQUALS"}})
+    response = auth_client.get(COUNT_URL, {"model": "game", "filter": filter_json})
+    assert response.status_code == 200
+    assert response.json() == {"count": 1}
+
+
+def test_filter_count_unknown_model_rejected(auth_client):
+    response = auth_client.get(COUNT_URL, {"model": "bogus"})
+    assert response.status_code == 400
+
+
+def test_filter_count_malformed_filter_rejected(auth_client):
+    response = auth_client.get(COUNT_URL, {"model": "game", "filter": "not-json"})
+    assert response.status_code == 400
+
+
+def test_filter_count_invalid_filter_semantics_rejected(auth_client):
+    # Parseable JSON, but a build-time-invalid filter (BETWEEN without value2) → 400.
+    bad = json.dumps({"year_released": {"modifier": "BETWEEN", "value": 1}})
+    response = auth_client.get(COUNT_URL, {"model": "game", "filter": bad})
+    assert response.status_code == 400
+
+
+def test_filter_count_requires_auth():
+    response = Client().get(COUNT_URL, {"model": "game"})
     assert response.status_code == 401
