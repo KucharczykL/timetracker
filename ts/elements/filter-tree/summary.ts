@@ -21,17 +21,27 @@ import type {
 import { isComparisonComplete, isCriterionComplete } from "./operations.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
+// Transparent role aliases (CLAUDE.md "name primitive roles"): say *which* string a
+// bare string is. Zero-cost — they narrow to `string`, so the Python contract, not
+// tsc, remains the drift guard for the modifier keys.
+type ModelKey = string; // lower-cased model key, e.g. "game"
+type ModelLabel = string; // display noun for a model, e.g. "Games"
+type ComparisonColumnValue = string; // a field-comparison column token, e.g. "year_released"
+
+// A richer per-model registry than types.ts's `ModelMeta` (name-set only): the
+// summary needs full `FieldMeta` *values* (labels, choices, relations) to phrase, so
+// this is a deliberate parallel view, not a candidate to unify with `ModelMeta`.
 export interface SummaryModel {
   fields: Map<string, FieldMeta>;
   // Comparison column value -> label (issue #246 leaf); optional — only models that
   // admit a field comparison supply it.
-  columns?: Map<string, string>;
+  columns?: Map<ComparisonColumnValue, string>;
 }
 
 export interface SummaryContext {
-  modelKey: string; // root model key, e.g. "game"
-  modelLabel: string; // root display noun, e.g. "Games"
-  models: Record<string, SummaryModel>; // every reachable model key -> its metadata
+  modelKey: ModelKey; // root model key, e.g. "game"
+  modelLabel: ModelLabel; // root display noun, e.g. "Games"
+  models: Record<ModelKey, SummaryModel>; // every reachable model key -> its metadata
 }
 
 // modifier token -> natural phrase. The SINGLE source the Python contract validates
@@ -155,7 +165,7 @@ function renderRelation(node: RelationNode, model: SummaryModel | undefined, con
 // mirroring filter-group's targetModel. Falls back to the root when the field has no
 // resolvable target (a metadata gap), warning like filter-group does so the fallback
 // render isn't silent.
-function targetModelKey(meta: FieldMeta | undefined, context: SummaryContext): string {
+function targetModelKey(meta: FieldMeta | undefined, context: SummaryContext): ModelKey {
   const target = meta?.relations[0]?.model;
   if (!target) {
     console.warn("filter summary: relation field has no target model; using root");
