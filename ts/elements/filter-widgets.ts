@@ -1,6 +1,6 @@
 /**
  * Shared filter value-widget logic — the per-kind readers (DOM → criterion JSON)
- * and the modifier-radio enable/disable behaviors, used by BOTH the flat filter
+ * and the modifier-select enable/disable behaviors, used by BOTH the flat filter
  * bar (filter-bar.ts) and the nested filter builder's leaf row (filter-group.ts,
  * #192). Extracted verbatim from filter-bar.ts so the tree reuses the exact same
  * widget contract the bars produce via the Python `field_widget` builder (#242).
@@ -59,8 +59,8 @@ export function parseJSONAttr<T>(element: Element, attr: string): T[] {
 
 export function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
   const modifier =
-    element.querySelector<HTMLInputElement>('input[data-string-modifier-radio]:checked')
-      ?.value ?? "EQUALS";
+    element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]")?.value ??
+    "EQUALS";
   if (isPresenceModifier(modifier)) {
     return { modifier };
   }
@@ -73,8 +73,8 @@ export function readStringWidget(element: HTMLElement): Record<string, unknown> 
 
 export function readNumberWidget(element: HTMLElement): Criterion | Record<string, unknown> | null {
   const modifier =
-    element.querySelector<HTMLInputElement>('input[data-number-modifier-radio]:checked')
-      ?.value ?? "EQUALS";
+    element.querySelector<HTMLSelectElement>("select[data-number-modifier-select]")?.value ??
+    "EQUALS";
   if (isPresenceModifier(modifier)) {
     return { modifier };
   }
@@ -167,16 +167,15 @@ export function readLeafWidget(valueCell: HTMLElement, kind: string): Record<str
   }
 }
 
-// ── Modifier-radio behaviors: enable/disable the value input(s) as the string /
+// ── Modifier-select behaviors: enable/disable the value input(s) as the string /
 // number modifier changes (presence → no value; number BETWEEN → reveal value2). ──
 
-export function toggleStringFilterInput(radio: HTMLInputElement): void {
-  const container = radio.closest(".flex-col");
+export function toggleStringFilterInput(select: HTMLSelectElement): void {
+  const container = select.closest(".flex-col");
   if (!container) return;
   const textInput = container.querySelector<HTMLInputElement>('input[type="text"]');
   if (!textInput) return;
-  const checkedRadio = container.querySelector<HTMLInputElement>('input[type="radio"]:checked');
-  const value = checkedRadio ? checkedRadio.value : "";
+  const value = select.value;
   if (value === "IS_NULL" || value === "NOT_NULL") {
     textInput.disabled = true;
     textInput.value = "";
@@ -187,13 +186,12 @@ export function toggleStringFilterInput(radio: HTMLInputElement): void {
   }
 }
 
-export function toggleNumberFilterInput(radio: HTMLInputElement): void {
-  const container = radio.closest(".flex-col");
+export function toggleNumberFilterInput(select: HTMLSelectElement): void {
+  const container = select.closest(".flex-col");
   if (!container) return;
   const inputs = container.querySelectorAll<HTMLInputElement>('input[type="number"]');
   const value2 = container.querySelector<HTMLInputElement>("[data-number-value2]");
-  const checkedRadio = container.querySelector<HTMLInputElement>('input[type="radio"]:checked');
-  const modifier = checkedRadio ? checkedRadio.value : "";
+  const modifier = select.value;
   const isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
   const isBetween = modifier === "BETWEEN" || modifier === "NOT_BETWEEN";
   inputs.forEach((input) => {
@@ -214,10 +212,10 @@ export function toggleNumberFilterInput(radio: HTMLInputElement): void {
 export function setupModifierToggles(root: HTMLElement): void {
   root.addEventListener("change", (event) => {
     const target = event.target as Element;
-    if (target.matches("input[data-string-modifier-radio]")) {
-      toggleStringFilterInput(target as HTMLInputElement);
-    } else if (target.matches("input[data-number-modifier-radio]")) {
-      toggleNumberFilterInput(target as HTMLInputElement);
+    if (target.matches("select[data-string-modifier-select]")) {
+      toggleStringFilterInput(target as HTMLSelectElement);
+    } else if (target.matches("select[data-number-modifier-select]")) {
+      toggleNumberFilterInput(target as HTMLSelectElement);
     }
   });
 }

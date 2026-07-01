@@ -100,7 +100,7 @@ def test_number_filter_between_reveals_second_input(
     value2 = page.locator('input[name="filter-year-value2"]')
     expect(value2).to_be_hidden()
 
-    page.locator('input[name="filter-year-modifier"][value="BETWEEN"]').check()
+    page.locator('select[name="filter-year-modifier"]').select_option("BETWEEN")
     expect(value2).to_be_visible()
 
 
@@ -130,7 +130,7 @@ def test_widgets_initialize_inside_htmx_swapped_content(
 
     value2 = page.locator('input[name="filter-year-value2"]')
     expect(value2).to_be_hidden()
-    page.locator('input[name="filter-year-modifier"][value="BETWEEN"]').check()
+    page.locator('select[name="filter-year-modifier"]').select_option("BETWEEN")
     expect(value2).to_be_visible()
 
 

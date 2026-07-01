@@ -207,7 +207,7 @@ export class FilterGroupElement extends HTMLElement {
       this.addEventListener("change", this.onValueEvent);
       this.addEventListener("search-select:change", this.onValueEvent);
       this.addEventListener("date-range:change", this.onValueEvent);
-      // Reuse the flat bar's modifier-radio enable/disable behavior for the cloned
+      // Reuse the flat bar's modifier-select enable/disable behavior for the cloned
       // string/number widgets (presence hides value; BETWEEN reveals value2).
       setupModifierToggles(this);
       this.wired = true;

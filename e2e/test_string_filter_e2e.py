@@ -65,15 +65,12 @@ def test_string_filter_defaults_and_toggles(live_server, page):
     name_input = page.locator('input[name="filter-name"]')
     assert name_input.is_enabled()
 
-    is_radio = page.locator('input[name="filter-name-modifier"][value="EQUALS"]')
-    assert is_radio.is_checked()
+    modifier_select = page.locator('select[name="filter-name-modifier"]')
+    assert modifier_select.input_value() == "EQUALS"
 
-    # 2. Enter values, click "includes" (INCLUDES), and submit
+    # 2. Enter values, choose "includes" (INCLUDES), and submit
     name_input.fill("PlayStation")
-    includes_radio = page.locator(
-        'input[name="filter-name-modifier"][value="INCLUDES"]'
-    )
-    includes_radio.click()
+    modifier_select.select_option("INCLUDES")
 
     with page.expect_navigation():
         page.evaluate(
@@ -92,9 +89,8 @@ def test_string_filter_null_states(live_server, page):
     name_input = page.locator('input[name="filter-name"]')
     name_input.fill("Xbox")
 
-    # Click "is null"
-    is_null_radio = page.locator('input[name="filter-name-modifier"][value="IS_NULL"]')
-    is_null_radio.click()
+    # Choose "is null"
+    page.locator('select[name="filter-name-modifier"]').select_option("IS_NULL")
 
     # Verification of interactive disabling
     assert not name_input.is_enabled()
@@ -117,33 +113,33 @@ def test_string_filter_prefilled_states(live_server, page):
     name_input = page.locator('input[name="filter-name"]')
     group_input = page.locator('input[name="filter-group"]')
 
-    # Verifies name matches "Switch" and "includes" is checked
+    # Verifies name matches "Switch" and "includes" is selected
     assert name_input.input_value() == "Switch"
     assert name_input.is_enabled()
-    assert page.locator(
-        'input[name="filter-name-modifier"][value="INCLUDES"]'
-    ).is_checked()
+    assert (
+        page.locator('select[name="filter-name-modifier"]').input_value() == "INCLUDES"
+    )
 
-    # Verifies group is empty, disabled, and "is null" is checked
+    # Verifies group is empty, disabled, and "is null" is selected
     assert group_input.input_value() == ""
     assert not group_input.is_enabled()
-    assert page.locator(
-        'input[name="filter-group-modifier"][value="IS_NULL"]'
-    ).is_checked()
+    assert (
+        page.locator('select[name="filter-group-modifier"]').input_value() == "IS_NULL"
+    )
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
-def test_string_filter_deselect_re_enables(live_server, page):
+def test_string_filter_modifier_switch_re_enables(live_server, page):
     page.goto(live_server.url + "/test-string-filter-empty/")
 
     name_input = page.locator('input[name="filter-name"]')
-    is_null_radio = page.locator('input[name="filter-name-modifier"][value="IS_NULL"]')
+    modifier_select = page.locator('select[name="filter-name-modifier"]')
 
-    # 1. Click "is null" -> disables input
-    is_null_radio.click()
+    # 1. Choose "is null" -> disables the text input
+    modifier_select.select_option("IS_NULL")
     assert not name_input.is_enabled()
 
-    # 2. Click "is null" again to deselect/uncheck -> should re-enable the text input
-    is_null_radio.click()
+    # 2. Switch back to a value modifier -> re-enables the text input
+    modifier_select.select_option("EQUALS")
     assert name_input.is_enabled()

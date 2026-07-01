@@ -282,7 +282,11 @@ function mountLive(): FilterGroupElement {
     </template>
     <template data-field="name">
       <div class="flex-col">
-        <input type="radio" data-string-modifier-radio value="EQUALS" checked />
+        <select data-string-modifier-select>
+          <option value="EQUALS" selected>is</option>
+          <option value="INCLUDES">includes</option>
+          <option value="IS_NULL">is null</option>
+        </select>
         <input type="text" />
       </div>
     </template>`;
