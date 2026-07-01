@@ -166,7 +166,8 @@ export class FilterBuilderElement extends HTMLElement {
     if (!group) return;
     try {
       group.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
-    } catch {
+    } catch (error) {
+      console.error("filter-builder: preset load failed", error);
       window.toast("Preset is not a valid filter.", "error");
     }
     this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");

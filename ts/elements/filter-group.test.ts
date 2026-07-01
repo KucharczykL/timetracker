@@ -822,3 +822,98 @@ describe("filter-group comp-10 additions", () => {
     expect(filled.children.length).toBe(1);
   });
 });
+
+// ── Regression: loadFilter with a set field must not throw (#196 fix) ──
+// Before the fix, leafCells() called showFieldSelection() on a freshly-cloned
+// <search-select> that was still DETACHED (not yet upgraded → connectedCallback
+// had not run → setSelected did not exist). The ?. guard in showFieldSelection
+// silences null, NOT a missing method, so "searchSelect?.setSelected is not a
+// function" was thrown, propagating through loadFilter to onPresetPicked which
+// swallowed it and showed "Preset is not a valid filter."
+//
+// The fix moves showFieldSelection into reflectFieldSelections(), called AFTER
+// replaceChildren() so every cloned <search-select> is live and upgraded.
+function mountWithFieldPickerTemplate(): FilterGroupElement {
+  document.body.innerHTML = "";
+  const group = document.createElement("filter-group") as FilterGroupElement;
+  group.setAttribute("model", "game");
+  group.setAttribute("models", MODELS);
+  // Supply a field-picker template that contains a real <search-select> — this is
+  // what FilterFieldPicker (common/components/filters.py) emits. When leafCells()
+  // clones it during the detached renderGroup() pass the element is NOT upgraded.
+  group.innerHTML = `
+    <template data-model="game" data-field-picker-template>
+      <div data-field-picker>
+        <search-select name="field-picker">
+          <input data-search-select-search />
+        </search-select>
+      </div>
+    </template>
+    <template data-model="game" data-field="status">
+      <div>
+        <select data-modifier-select>
+          <option value="INCLUDES" selected>includes</option>
+          <option value="EXCLUDES">excludes</option>
+        </select>
+      </div>
+    </template>`;
+  document.body.appendChild(group);
+  return group;
+}
+
+describe("loadFilter with a set field — regression for #196 crash", () => {
+  it("does NOT throw when loadFilter introduces a criterion with a set field", () => {
+    // Before the fix this threw "searchSelect?.setSelected is not a function"
+    // because the cloned <search-select> was not yet upgraded when leafCells()
+    // called showFieldSelection() during the detached renderGroup() pass.
+    const group = mountWithFieldPickerTemplate();
+    expect(() =>
+      group.loadFilter({
+        AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("after loadFilter the criterion leaf shows the set field selected in the picker", () => {
+    const group = mountWithFieldPickerTemplate();
+    group.loadFilter({
+      AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+    });
+    // The leaf row at [0] must show the status field — the field-picker's
+    // <search-select> should have setSelected("status", "Status") called on it.
+    // Since jsdom does not fully upgrade custom elements (no shadow DOM), we verify
+    // indirectly: the leaf's cached cells have cells.field === "status", meaning the
+    // tree was applied and the value cell was built for the right field.
+    const leafRow = group.querySelector<HTMLElement>('[data-node-slot][data-node-kind="criterion"]');
+    expect(leafRow).not.toBeNull();
+    // The value cell should be present and hold the status widget (not the placeholder).
+    const valueCell = leafRow!.querySelector("[data-value-cell]");
+    expect(valueCell).not.toBeNull();
+    // The placeholder text "Choose a field…" must be gone — the field is set.
+    expect(valueCell!.textContent).not.toContain("Choose a field");
+  });
+
+  it("loadFilter via filter prop on connect also does not throw", () => {
+    document.body.innerHTML = "";
+    const group = document.createElement("filter-group") as FilterGroupElement;
+    group.setAttribute("model", "game");
+    group.setAttribute("models", MODELS);
+    group.setAttribute(
+      "filter",
+      JSON.stringify({
+        AND: [{ status: { modifier: "INCLUDES", value: [{ id: "f", label: "Finished" }] } }],
+      }),
+    );
+    group.innerHTML = `
+      <template data-model="game" data-field-picker-template>
+        <div data-field-picker>
+          <search-select name="field-picker"><input data-search-select-search /></search-select>
+        </div>
+      </template>
+      <template data-model="game" data-field="status">
+        <div><select data-modifier-select><option value="INCLUDES" selected>includes</option></select></div>
+      </template>`;
+    // connectedCallback calls deserialize + render — must not throw.
+    expect(() => document.body.appendChild(group)).not.toThrow();
+  });
+});
