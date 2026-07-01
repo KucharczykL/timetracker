@@ -108,11 +108,11 @@ class TestStringCriterion:
 
     def test_is_null(self):
         c = StringCriterion(value="", modifier=Modifier.IS_NULL)
-        assert c.to_q("name") == Q(name__isnull=True)
+        assert c.to_q("name") == Q(name__isnull=True) | Q(name__exact="")
 
     def test_not_null(self):
         c = StringCriterion(value="", modifier=Modifier.NOT_NULL)
-        assert c.to_q("name") == Q(name__isnull=False)
+        assert c.to_q("name") == ~(Q(name__isnull=True) | Q(name__exact=""))
 
     def test_empty_value_survives_to_json(self):
         """An EQUALS "" match (empty string, not unset — "unset" is the criterion
@@ -4309,3 +4309,127 @@ class _BadLookupStub(OperatorFilter):
         from games.models import Game
 
         return Game
+
+
+@pytest.mark.django_db
+class TestStringCriterionIsNullAgainstDB:
+    """Behavioral tests proving IS_NULL/NOT_NULL on string fields matches
+    blank strings (the repo convention: null=False, default="")."""
+
+    def _seed_sessions(self):
+        import datetime
+
+        from games.models import Device, Game, Platform, Session
+
+        platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="test")
+        game, _ = Game.objects.get_or_create(
+            name="Test Game", defaults={"platform": platform, "status": "u"}
+        )
+        device, _ = Device.objects.get_or_create(name="Test Device", type="PC")
+        start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)
+        end = datetime.datetime(2025, 1, 1, 11, 0, 0, tzinfo=datetime.timezone.utc)
+
+        empty_note_session_1 = Session.objects.create(
+            game=game, device=device, timestamp_start=start, timestamp_end=end, note=""
+        )
+        empty_note_session_2 = Session.objects.create(
+            game=game,
+            device=device,
+            timestamp_start=start + datetime.timedelta(days=1),
+            timestamp_end=end + datetime.timedelta(days=1),
+            note="",
+        )
+        nonempty_note_session = Session.objects.create(
+            game=game,
+            device=device,
+            timestamp_start=start + datetime.timedelta(days=2),
+            timestamp_end=end + datetime.timedelta(days=2),
+            note="Great session",
+        )
+        return empty_note_session_1, empty_note_session_2, nonempty_note_session
+
+    def test_is_null_matches_blank_string_sessions(self):
+        empty_1, empty_2, nonempty = self._seed_sessions()
+        from games.models import Session
+
+        criterion = StringCriterion(value="", modifier=Modifier.IS_NULL)
+        matching_ids = set(
+            Session.objects.filter(criterion.to_q("note")).values_list("id", flat=True)
+        )
+        assert empty_1.id in matching_ids
+        assert empty_2.id in matching_ids
+        assert nonempty.id not in matching_ids
+
+    def test_not_null_matches_nonempty_string_sessions(self):
+        empty_1, empty_2, nonempty = self._seed_sessions()
+        from games.models import Session
+
+        criterion = StringCriterion(value="", modifier=Modifier.NOT_NULL)
+        matching_ids = set(
+            Session.objects.filter(criterion.to_q("note")).values_list("id", flat=True)
+        )
+        assert nonempty.id in matching_ids
+        assert empty_1.id not in matching_ids
+        assert empty_2.id not in matching_ids
+
+    def test_is_null_and_not_null_partition_sessions(self):
+        """IS_NULL and NOT_NULL together must cover exactly every session created here."""
+        empty_1, empty_2, nonempty = self._seed_sessions()
+        from games.models import Session
+
+        is_null_q = StringCriterion(value="", modifier=Modifier.IS_NULL).to_q("note")
+        not_null_q = StringCriterion(value="", modifier=Modifier.NOT_NULL).to_q("note")
+        seeded_ids = {empty_1.id, empty_2.id, nonempty.id}
+        is_null_ids = (
+            set(Session.objects.filter(is_null_q).values_list("id", flat=True))
+            & seeded_ids
+        )
+        not_null_ids = (
+            set(Session.objects.filter(not_null_q).values_list("id", flat=True))
+            & seeded_ids
+        )
+        assert is_null_ids | not_null_ids == seeded_ids
+        assert is_null_ids & not_null_ids == set()
+
+
+class TestStringFieldNullConvention:
+    """Convention guard: every CharField/TextField in the games app must be
+    null=False. The StringCriterion IS_NULL/NOT_NULL fix relies on this (empty
+    is stored as "", never SQL NULL). If anyone adds a nullable string field this
+    test fails loudly so the filter logic can be revisited.
+
+    Known intentional exceptions (pre-existing nullable string fields not used
+    in any filter, listed as "ModelName.field_name"):
+    - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
+    """
+
+    # Fields that are intentionally null=True for domain reasons and are NOT used
+    # in any filter class. If you add a new nullable string field that IS used in a
+    # filter, update StringCriterion.to_q to handle it, then add it here only if
+    # the null=True IS_NULL/NOT_NULL semantics differ from the "" convention.
+    KNOWN_NULLABLE_EXCEPTIONS: frozenset[str] = frozenset(
+        {"GameStatusChange.old_status"}
+    )
+
+    def test_no_nullable_string_fields_in_games_models(self):
+        from django.apps import apps
+        from django.db.models import CharField, TextField
+
+        games_config = apps.get_app_config("games")
+        unexpected_nullable_fields: list[str] = []
+        for model in games_config.get_models():
+            for field in model._meta.get_fields():
+                if isinstance(field, (CharField, TextField)) and field.null:
+                    field_key = f"{model.__name__}.{field.name}"
+                    if field_key not in self.KNOWN_NULLABLE_EXCEPTIONS:
+                        unexpected_nullable_fields.append(field_key)
+
+        assert unexpected_nullable_fields == [], (
+            "Found unexpected nullable string fields in the games app. "
+            "The repo convention is null=False, default='' for all CharField/TextField fields. "
+            "StringCriterion IS_NULL/NOT_NULL matches both NULL and '' — "
+            "if you intentionally add a nullable string field, either update StringCriterion.to_q "
+            "to handle it correctly and add it to KNOWN_NULLABLE_EXCEPTIONS, or reconsider "
+            "whether null=False with default='' would work instead.\n"
+            f"Unexpected nullable fields found: {', '.join(unexpected_nullable_fields)}"
+        )
