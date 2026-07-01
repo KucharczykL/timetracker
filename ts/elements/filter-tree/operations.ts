@@ -13,6 +13,7 @@
  * so a group reached at path `P` always sits at group-nesting depth `P.length`.
  */
 import {
+  type ComparisonLeaf,
   type Connective,
   type CriterionLeaf,
   type CriterionPayload,
@@ -89,6 +90,30 @@ export function isCriterionComplete(leaf: CriterionLeaf): boolean {
   if (!isValuePresent(leaf.criterion["value"])) return false;
   if (isRangeModifier(modifier) && !isValuePresent(leaf.criterion["value2"])) return false;
   return true;
+}
+
+// Whether a field-comparison leaf is complete enough to query/apply: it needs a left
+// column, a right column, and a modifier, and the two columns must DIFFER (a column
+// compared to itself is meaningless — the row widget never offers it). Mirrors
+// isCriterionComplete: an incomplete comparison is excluded from the count/Apply query
+// (a half-filled field_comparisons entry the backend rejects wholesale — see
+// pruneIncomplete). The payload is opaque to the serializer, so this is the one place
+// its shape (left/right/modifier — see field-comparison-set.ts ComparisonRow) is read.
+export function isComparisonComplete(leaf: ComparisonLeaf): boolean {
+  const left = leaf.comparison["left"];
+  const right = leaf.comparison["right"];
+  const modifier = leaf.comparison["modifier"];
+  if (typeof left !== "string" || left === "") return false;
+  if (typeof right !== "string" || right === "") return false;
+  if (typeof modifier !== "string" || modifier === "") return false;
+  return left !== right;
+}
+
+// An empty comparison leaf: no columns/modifier chosen. The field-comparison row
+// widget (#246) fills `comparison` with {left, right, modifier, granularity?} read
+// live from its row; until then it is a structurally-incomplete slot.
+export function emptyComparison(): ComparisonLeaf {
+  return { kind: "comparison", id: nextNodeId(), comparison: {}, negate: false };
 }
 
 // An empty relation descent: ANY over an empty child group is the "has ≥1 related
@@ -320,7 +345,7 @@ function pruneNode(node: FilterNode): FilterNode | null {
     case "criterion":
       return isCriterionComplete(node) ? node : null;
     case "comparison":
-      return node; // comparison completeness lands with the field-comparison leaf
+      return isComparisonComplete(node) ? node : null;
     case "relation":
       return { ...node, child: pruneGroup(node.child) };
     case "group": {

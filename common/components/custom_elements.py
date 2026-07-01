@@ -207,7 +207,12 @@ def FilterGroup(*, model: str) -> Node:
 
     from django.apps import apps
 
-    from common.components.filters import FilterFieldPicker, field_widget_templates
+    from common.components.filters import (
+        FilterFieldPicker,
+        comparison_row_template,
+        field_widget_templates,
+        has_comparable_group,
+    )
     from common.components.primitives import Template
     from common.criteria import comparable_columns, field_metadata
     from games.filters import filter_for_model
@@ -216,18 +221,24 @@ def FilterGroup(*, model: str) -> Node:
     # comparable_columns() enumerates the Django model's columns (not the filter
     # class); resolve the model the same way filter_for_model does.
     model_cls = apps.get_model("games", model)
+    columns = comparable_columns(model_cls)
     # One blank value-widget <template data-field="name"> per leaf field, cloned
     # into a leaf's value cell on field-pick, plus the field-picker combobox
     # template cloned into every leaf's field cell (id-less → the TS assigns a
-    # unique id per clone).
+    # unique id per clone), plus — when the model admits a field comparison — one
+    # blank comparison-row <template> cloned into every comparison leaf (#246).
     widget_templates = list(field_widget_templates(filter_cls).values())
+    comparison_template: list[Node] = (
+        [comparison_row_template(columns)] if has_comparable_group(columns) else []
+    )
     return _FilterGroup(
         model=model,
         fields=json.dumps(field_metadata(filter_cls)),
-        columns=json.dumps(comparable_columns(model_cls)),
+        columns=json.dumps(columns),
     )[
         Template(data_field_picker_template="")[FilterFieldPicker(filter_cls)],
         *widget_templates,
+        *comparison_template,
     ]
 
 

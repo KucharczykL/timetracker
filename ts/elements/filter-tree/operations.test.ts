@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { group } from "./serializer.js";
 import { nextNodeId } from "./node-id.js";
 import { ignoreNodeIds } from "./test-support.js";
-import type { CriterionLeaf, FilterNode, GroupNode } from "./types.js";
+import type { ComparisonLeaf, CriterionLeaf, FilterNode, GroupNode } from "./types.js";
 import type { FilterFieldMeta } from "./types.js";
 
 ignoreNodeIds();
@@ -15,12 +15,14 @@ import {
   criterionForField,
   deepestGroupDepth,
   duplicateAt,
+  emptyComparison,
   emptyCriterion,
   emptyGroup,
   emptyRelation,
   emptyRoot,
   groupDepthAt,
   insertChild,
+  isComparisonComplete,
   isCriterionComplete,
   move,
   nodeAt,
@@ -516,6 +518,30 @@ describe("add-criterion field picker contract (#191)", () => {
       ).toBe(true);
     });
   });
+
+  describe("isComparisonComplete (#246)", () => {
+    const leaf = (comparison: Record<string, unknown>): ComparisonLeaf => ({
+      kind: "comparison",
+      id: "x",
+      comparison,
+      negate: false,
+    });
+
+    it("is incomplete when a column or modifier is missing", () => {
+      expect(isComparisonComplete(emptyComparison())).toBe(false);
+      expect(isComparisonComplete(leaf({ left: "a", modifier: "LESS_THAN" }))).toBe(false);
+      expect(isComparisonComplete(leaf({ left: "a", right: "b" }))).toBe(false);
+      expect(isComparisonComplete(leaf({ left: "", right: "b", modifier: "LESS_THAN" }))).toBe(false);
+    });
+
+    it("is incomplete when the two columns are equal (self-comparison)", () => {
+      expect(isComparisonComplete(leaf({ left: "a", right: "a", modifier: "EQUALS" }))).toBe(false);
+    });
+
+    it("is complete with two distinct columns and a modifier", () => {
+      expect(isComparisonComplete(leaf({ left: "a", right: "b", modifier: "LESS_THAN" }))).toBe(true);
+    });
+  });
 });
 
 describe("leaf payload edits (#192)", () => {
@@ -572,5 +598,16 @@ describe("pruneIncomplete (#192)", () => {
     expect(pruneIncomplete(tree)).toEqual(
       group("AND", [relation("session_filter", group("AND", []))]),
     );
+  });
+
+  it("drops an incomplete comparison leaf, keeps a complete one (#246)", () => {
+    const complete: ComparisonLeaf = {
+      kind: "comparison",
+      id: nextNodeId(),
+      comparison: { left: "a", right: "b", modifier: "LESS_THAN" },
+      negate: false,
+    };
+    const tree = group("AND", [complete, emptyComparison()]);
+    expect(pruneIncomplete(tree)).toEqual(group("AND", [complete]));
   });
 });

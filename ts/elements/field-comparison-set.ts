@@ -13,7 +13,7 @@
  */
 import { readFieldComparisonSetProps } from "../generated/props.js";
 
-interface Column {
+export interface Column {
   value: string;
   label: string;
   group: string;
@@ -67,8 +67,9 @@ function fillSelect(
 }
 
 /** Rebuild a row's operator + right-column options from its left column. The
- * reusable single-row unit (see file header). */
-function refreshRow(row: HTMLElement, columns: Column[]): void {
+ * reusable single-row unit (see file header) — the nested builder's comparison
+ * leaf (#246) calls this directly on a standalone row. */
+export function refreshRow(row: HTMLElement, columns: Column[]): void {
   const left = row.querySelector<HTMLSelectElement>("[data-fc-left]");
   const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
   const right = row.querySelector<HTMLSelectElement>("[data-fc-right]");
@@ -129,6 +130,23 @@ function wireRow(row: HTMLElement, columns: Column[]): void {
     ?.addEventListener("click", () => row.remove());
 }
 
+/** Read one comparison row into its complete value, or null when incomplete (a
+ * missing column/operator, or the two columns equal). The reusable single-row read
+ * the set folds over — the nested builder's comparison leaf (#246) reads its lone
+ * row directly. `granularity` is emitted only when the by-day toggle is on AND
+ * visible (a datetime operand), keeping the filter JSON compact. */
+export function readComparisonRow(row: HTMLElement): ComparisonRow | null {
+  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
+  const modifier = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
+  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+  if (!left || !right || !modifier || left === right) return null;
+  const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
+  const byDayWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
+  const entry: ComparisonRow = { left, right, modifier };
+  if (byDay?.checked && byDayWrap && !byDayWrap.hidden) entry.granularity = "date";
+  return entry;
+}
+
 /** Read the set's mode + complete rows for filter-bar.ts serialization. */
 export function readFieldComparisonSet(element: HTMLElement): {
   mode: string;
@@ -140,17 +158,8 @@ export function readFieldComparisonSet(element: HTMLElement): {
       : "AND";
   const comparisons: ComparisonRow[] = [];
   element.querySelectorAll<HTMLElement>("[data-fc-row]").forEach((row) => {
-    const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
-    const modifier = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
-    const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
-    const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
-    const byDayWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
-    const isDate = Boolean(byDay?.checked && byDayWrap && !byDayWrap.hidden);
-    if (left && right && modifier && left !== right) {
-      const entry: ComparisonRow = { left, right, modifier };
-      if (isDate) entry.granularity = "date";
-      comparisons.push(entry);
-    }
+    const entry = readComparisonRow(row);
+    if (entry) comparisons.push(entry);
   });
   return { mode, comparisons };
 }

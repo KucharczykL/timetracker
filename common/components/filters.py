@@ -894,6 +894,33 @@ def FieldComparisonSet(
     ]
 
 
+def comparison_row_template(columns: list[ComparableColumn]) -> Node:
+    """A blank field-comparison ``<template>`` for the nested builder (#246).
+
+    The nested builder (``<filter-group>``) clones this into each comparison leaf's
+    value cell, reusing the single-row widget — the *same* ``_field_comparison_row``
+    markup ``FieldComparisonSet`` uses, minus the set container and its AND/OR mode
+    toggle (the enclosing group owns the connective now). The row's own ``✕`` remove
+    button is dropped client-side; the group's controls own removal."""
+    from games.forms import SELECT_CLASS
+
+    return Template(data_fc_row_template="")[
+        _field_comparison_row(columns, None, SELECT_CLASS)
+    ]
+
+
+def has_comparable_group(columns: list[ComparableColumn]) -> bool:
+    """Whether ``columns`` admits at least one field comparison: some comparison
+    group with ≥2 columns (a comparison needs two columns of the SAME group). The
+    same gate ``_field_comparison_section`` uses to decide whether to show the flat
+    bar's comparison field — reused so the builder's ``+ comparison`` affordance
+    appears under identical conditions."""
+    group_counts: dict[str, int] = {}
+    for column in columns:
+        group_counts[column["group"]] = group_counts.get(column["group"], 0) + 1
+    return any(count >= 2 for count in group_counts.values())
+
+
 def _field_comparison_section(
     existing: dict, model: type[models.Model] | None
 ) -> Node | None:
@@ -905,10 +932,7 @@ def _field_comparison_section(
     if model is None:
         return None
     columns = comparable_columns(model)
-    group_counts: dict[str, int] = {}
-    for column in columns:
-        group_counts[column["group"]] = group_counts.get(column["group"], 0) + 1
-    if not any(count >= 2 for count in group_counts.values()):
+    if not has_comparable_group(columns):
         return None
     rows, mode = _field_comparison_rows(existing)
     return _filter_field(
