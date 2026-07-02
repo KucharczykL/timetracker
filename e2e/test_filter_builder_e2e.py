@@ -22,6 +22,7 @@ Prefill behavior note:
 """
 
 import json
+import re
 import urllib.parse
 from datetime import datetime, timezone
 
@@ -103,6 +104,25 @@ def test_builder_page_elements_load_and_initialize(
     count_badge = page.locator("filter-count")
     expect(count_badge).not_to_contain_text("Counting…")
     expect(count_badge).to_contain_text("≈ 1 game")
+
+    # Server-template cloning contract (#273/#274): the tree's controls carry the
+    # server-owned classes. A broken template selector would fall back to a
+    # CLASSLESS control (the jsdom fixture path) and everything above would still
+    # pass — so assert the styling actually arrived from the server templates.
+    connective_chip = page.locator(
+        'filter-group button[data-action="toggle-connective"]'
+    ).first
+    expect(connective_chip).to_have_class(re.compile(r"rounded-full"))
+    action_button = page.locator(
+        'filter-group button[data-action="add-condition"]'
+    ).first
+    expect(action_button).not_to_have_class("")
+    add_relation = page.locator('filter-group button[data-action="add-relation"]').first
+    add_relation.click()
+    relation_match_select = page.locator(
+        "filter-group select[data-relation-match]"
+    ).first
+    expect(relation_match_select).to_have_class(re.compile(r"rounded"))
 
 
 def test_apply_navigates_to_game_list(authenticated_page: Page, live_server) -> None:

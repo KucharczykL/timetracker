@@ -225,9 +225,11 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
 
     from common.components.filters import (
         FilterFieldPicker,
+        chip_templates,
         comparison_row_template,
         field_widget_templates,
         has_comparable_group,
+        relation_select_template,
     )
     from common.components.primitives import Template
     from common.criteria import comparable_columns
@@ -253,6 +255,11 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
     templates.append(
         Template(data_action_button_template="")[ControlButton(color="gray")[""]]
     )
+    # Likewise the connective/NOT chips (one template per visual state) and the
+    # relation rows' quantifier/relation-field <select> (#273) — the last
+    # TS-declared control styling in the builder moves server-side.
+    templates.extend(chip_templates())
+    templates.append(relation_select_template())
 
     return _FilterGroup(
         model=model,
