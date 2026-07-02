@@ -327,20 +327,20 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     """'Played N times' split button: a generic outlined Dropdown wrapped in
     <play-event-row>, which owns only the 'Played +1' action."""
     from common.components import (
+        ControlButton,
         DropdownActionItem,
         DropdownLinkItem,
         SplitButtonDropdown,
     )
-    from common.components.custom_elements import DROPDOWN_TOGGLE_OUTLINE, _PlayEventRow
-    from common.components.primitives import Button
+    from common.components.custom_elements import _PlayEventRow
 
     played = game.playevents.count()
 
-    count_button = A(href=reverse("games:add_playevent"))[
-        Button(class_=DROPDOWN_TOGGLE_OUTLINE + " rounded-s-lg")[
-            Span(data_count="")[str(played)], " times"
-        ]
-    ]
+    count_button = ControlButton(
+        [("class", "rounded-s-lg")],
+        variant="outline",
+        href=reverse("games:add_playevent"),
+    )[Span(data_count="")[str(played)], " times"]
     dropdown = SplitButtonDropdown(
         primary=count_button,
         id=f"played-{game.id}",

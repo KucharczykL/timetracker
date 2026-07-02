@@ -39,7 +39,12 @@ from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
-type ButtonVariant = Literal["filled", "segmented"]  # standalone vs ButtonGroup member
+type ButtonVariant = Literal[
+    "filled",  # standalone default
+    "segmented",  # ButtonGroup member
+    "outline",  # bordered dropdown-toggle look (colorless)
+    "plain",  # borderless navbar nav-link look (colorless)
+]
 
 # Shared disabled appearance for every form control, so all form elements look
 # the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
@@ -392,6 +397,25 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 }
 
 
+# Dropdown-toggle variants (issue #272): single-look, no color axis. Their
+# layout contradicts _CONTROL_BASE_CLASS (plain is a nav-link — flex
+# justify-between, no centering; neither wants the container-query sizing), so
+# each carries its complete look and skips the base + color stack.
+_OUTLINE_VARIANT_CLASS = (
+    "px-2 py-1 lg:px-4 lg:py-2 text-xs font-medium bg-white border border-gray-200 "
+    "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
+    "dark:hover:bg-gray-700 hover:cursor-pointer whitespace-nowrap"
+)
+
+_PLAIN_VARIANT_CLASS = (
+    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
+    "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
+    "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
+    "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
+    "md:dark:hover:bg-transparent hover:cursor-pointer"
+)
+
+
 class ControlButton(BaseComponent):
     """The one polymorphic button/link builder — single home for button styling
     and the ``<a>``-vs-``<button>`` choice (issue #235).
@@ -410,6 +434,11 @@ class ControlButton(BaseComponent):
     ancestor at least 28rem wide (``@md``). There is no size parameter — the
     container decides. ``variant="segmented"`` is the ButtonGroup-member look
     (white background, hover hue, viewport-based sizing).
+
+    The dropdown-toggle variants are single-look and ignore ``color``:
+    ``variant="outline"`` is the bordered toggle (split-button carets, value
+    selectors — callers add rounding by shape, e.g. ``rounded-e-lg``);
+    ``variant="plain"`` is the borderless navbar nav-link trigger.
 
     Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
     — which routes into the inner button in post mode. Extra attributes take the
@@ -431,16 +460,28 @@ class ControlButton(BaseComponent):
         _children: Children = None,
         **kwargs: object,
     ) -> None:
-        variant_class = (
-            _FILLED_VARIANT_CLASS if variant == "filled" else _SEGMENTED_VARIANT_CLASS
-        )
-        color_table = (
-            _FILLED_COLOR_CLASSES if variant == "filled" else _SEGMENTED_COLOR_CLASSES
-        )
+        if variant == "outline":
+            class_attrs: list[HTMLAttribute] = [("class", _OUTLINE_VARIANT_CLASS)]
+        elif variant == "plain":
+            class_attrs = [("class", _PLAIN_VARIANT_CLASS)]
+        else:
+            variant_class = (
+                _FILLED_VARIANT_CLASS
+                if variant == "filled"
+                else _SEGMENTED_VARIANT_CLASS
+            )
+            color_table = (
+                _FILLED_COLOR_CLASSES
+                if variant == "filled"
+                else _SEGMENTED_COLOR_CLASSES
+            )
+            class_attrs = [
+                ("class", _CONTROL_BASE_CLASS),
+                ("class", variant_class),
+                ("class", color_table[color]),
+            ]
         self._merged_attributes: list[HTMLAttribute] = [
-            ("class", _CONTROL_BASE_CLASS),
-            ("class", variant_class),
-            ("class", color_table[color]),
+            *class_attrs,
             *_coerce_attrs(attrs),
             *_attrs_from_kwargs(kwargs),
         ]

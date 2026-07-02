@@ -878,6 +878,39 @@ class ControlButtonTest(SimpleTestCase):
         element = components.ControlButton()["Go"].as_element()
         self.assertEqual(element.tag_name, "button")
 
+    def test_outline_variant_is_the_dropdown_toggle_look(self):
+        html = str(components.ControlButton(variant="outline")["x"])
+        self.assertTrue(html.startswith("<button"))
+        self.assertIn("whitespace-nowrap", html)
+        self.assertIn("border-gray-200", html)
+        # single-look variant: no color axis, no container sizing, no focus ring
+        self.assertNotIn("bg-brand", html)
+        self.assertNotIn("@md:", html)
+        self.assertNotIn("focus:ring", html)
+
+    def test_plain_variant_is_the_navbar_nav_link_look(self):
+        html = str(components.ControlButton(variant="plain")["x"])
+        self.assertIn("md:hover:text-blue-700", html)
+        self.assertIn("justify-between", html)
+        # the nav-link layout survives untouched: no centering or inline-flex
+        # from the filled/segmented base, no color table
+        self.assertNotIn("justify-center", html)
+        self.assertNotIn("inline-flex", html)
+        self.assertNotIn("bg-brand", html)
+
+    def test_toggle_variants_ignore_color(self):
+        default = str(components.ControlButton(variant="outline")["x"])
+        red = str(components.ControlButton(variant="outline", color="red")["x"])
+        self.assertEqual(red, default)
+
+    def test_outline_variant_takes_extra_shape_classes(self):
+        html = str(
+            components.ControlButton([("class", "rounded-e-lg")], variant="outline")[
+                "x"
+            ]
+        )
+        self.assertIn("rounded-e-lg", html)
+
 
 class ModalContractTest(SimpleTestCase):
     """Modal injects [] children into the inner panel, not the outer backdrop."""

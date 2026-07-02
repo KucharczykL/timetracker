@@ -479,25 +479,10 @@ _Dropdown = custom_element_builder("drop-down")
 # `outline`: a border on the toggle AND panel for button-like (non-menu)
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
-# attachMenu; these constants are the single source of truth for the look and
-# are reused by the selectors (domain.py) and the played row (game.py).
-
-# Outlined (button-like) toggle: bordered button, no base rounding — Dropdown
-# adds rounded-lg / rounded-e-lg by shape; standalone consumers add their own.
-DROPDOWN_TOGGLE_OUTLINE = (
-    "px-2 py-1 lg:px-4 lg:py-2 text-xs font-medium bg-white border border-gray-200 "
-    "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-    "dark:hover:bg-gray-700 hover:cursor-pointer whitespace-nowrap"
-)
-
-# Plain (menu-like) toggle: the borderless navbar nav-link look.
-_DROPDOWN_TOGGLE_PLAIN = (
-    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
-    "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
-    "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
-    "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
-    "md:dark:hover:bg-transparent hover:cursor-pointer"
-)
+# attachMenu. Toggle looks live on ControlButton (issue #272):
+# variant="outline" is the bordered toggle (no base rounding — Dropdown adds
+# rounded-lg / rounded-e-lg by shape; standalone consumers add their own),
+# variant="plain" the borderless navbar trigger.
 
 # Panel: white (light) / frosted (dark). Keeps the #46 overflow-hidden. Outline
 # adds a border; otherwise a shadow.
@@ -775,9 +760,9 @@ def MenuDropdown(
 ) -> Node:
     """A borderless, navbar-style menu dropdown (the old non-outline look)."""
     trigger = _as_menu_trigger(
-        Button(type="button", class_=_DROPDOWN_TOGGLE_PLAIN)[
+        ControlButton(variant="plain")[
             Span(class_="flex items-center gap-1")[label, Icon("arrowdown")]
-        ]
+        ].as_element()
     )
     return Dropdown(
         trigger_element=trigger,
@@ -824,9 +809,9 @@ def SplitButtonDropdown(
     that opens the menu. The Dropdown attaches to the caret only — ``primary`` is
     a plain sibling, so the core never needs to know it exists."""
     caret = _as_menu_trigger(
-        Button(type="button", class_=DROPDOWN_TOGGLE_OUTLINE + " rounded-e-lg")[
+        ControlButton([("class", "rounded-e-lg")], variant="outline")[
             Icon("arrowdown")
-        ]
+        ].as_element()
     )
     dropdown = Dropdown(
         trigger_element=caret,
@@ -922,17 +907,15 @@ def SelectDropdown(
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
     (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
-    trigger = Button(
-        type="button",
-        class_=(
-            DROPDOWN_TOGGLE_OUTLINE + " rounded-lg" + (f" {class_}" if class_ else "")
-        ),
+    trigger = ControlButton(
+        [("class", "rounded-lg" + (f" {class_}" if class_ else ""))],
+        variant="outline",
         aria_haspopup="listbox",
     )[
         Span(class_="flex flex-row gap-4 justify-between items-center")[
             Span(data_label="")[current_label], Icon("arrowdown")
         ]
-    ]
+    ].as_element()
     config: dict[str, str] = {
         "data_patch_url": patch_url,
         "data_body_key": body_key,

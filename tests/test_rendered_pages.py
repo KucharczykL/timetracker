@@ -236,6 +236,19 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("@@", html)  # token-replace hack gone
         self.assertNotIn("createPlayEvent", html)  # the old Alpine fn is gone
 
+    def test_played_row_count_link_is_a_single_anchor(self):
+        """The 'N times' count control is one styled <a> (ControlButton href
+        mode), not a <button> nested inside an <a> (invalid HTML)."""
+        game = Game.objects.create(name="Anchor Game", platform=self.platform)
+        html = self.get("games:view_game", game.id).content.decode()
+        row = html[html.index("<play-event-row") :]
+        count_at = row.index("data-count")
+        control = row[row.rindex("<a", 0, count_at) : row.index("</a>", count_at)]
+        self.assertNotIn("<button", control)
+        # the anchor itself carries the outline-toggle look and its shape class
+        self.assertIn("border-gray-200", control)
+        self.assertIn("rounded-s-lg", control)
+
     def test_view_game_empty_sections(self):
         """A game with no sessions/purchases/etc shows the empty messages."""
         lonely = Game.objects.create(name="Lonely Game", platform=self.platform)
