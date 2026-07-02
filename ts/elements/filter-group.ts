@@ -148,9 +148,6 @@ const NEGATE_OFF_CLASS =
 const NEGATE_ON_CLASS =
   "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 " +
   "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 dark:ring-amber-500/70";
-const BUTTON_CLASS =
-  "rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-100 disabled:cursor-not-allowed " +
-  "disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700";
 // Relation-descent accent block (component 5, #193): a left-accented indigo card set
 // apart from the gray group chrome so the Game→Session model switch reads explicitly.
 // Header carries the `↳ [quantifier] of [relation] where` row.
@@ -212,26 +209,6 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-// A restructuring action button: carries the action name + the target path so a
-// single delegated listener can route it. `disabled` greys it out; the cap-gated
-// actions (add-group/add-relation/wrap/unwrap) are additionally re-guarded in the
-// handler, so a stale click on a since-invalidated one is harmless.
-function actionButton(
-  action: TreeAction,
-  label: string,
-  path: NodePath,
-  { disabled = false, title = "" } = {},
-): HTMLButtonElement {
-  const button = element("button", BUTTON_CLASS);
-  button.type = "button";
-  button.textContent = label;
-  button.dataset.action = action;
-  button.dataset.path = JSON.stringify(path);
-  if (disabled) button.disabled = true;
-  if (title) button.title = title;
-  return button;
-}
-
 // A leaf's two stateful cells, cached by node id so a structural re-render reuses
 // (re-appends) them — the live value widget's DOM state survives edits elsewhere.
 interface LeafCells {
@@ -290,6 +267,10 @@ export class FilterGroupElement extends HTMLElement {
   // node id -> a comparison leaf's cached row cell, reused across structural
   // re-renders so an in-progress comparison survives edits elsewhere.
   private comparisonCache = new Map<string, HTMLElement>();
+  // The server-rendered ControlButton the tree's action buttons are cloned
+  // from (one model-agnostic template) — the client never declares button
+  // classes itself.
+  private actionButtonTemplate: HTMLTemplateElement | null = null;
   // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
   private cloneSequence = 0;
 
@@ -365,6 +346,9 @@ export class FilterGroupElement extends HTMLElement {
   // row) before the first render() replaces our children, bucketing each into its
   // model's bundle by the template's `data-model` tag (#193).
   private captureTemplates(): void {
+    this.actionButtonTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-action-button-template]",
+    );
     this.querySelectorAll<HTMLTemplateElement>("template[data-model]").forEach((template) => {
       const bundle = this.models.get(template.getAttribute("data-model") ?? "");
       if (!bundle) return;
@@ -1153,7 +1137,8 @@ export class FilterGroupElement extends HTMLElement {
 
   // A chip-style toggle button: a restructuring action (so it rides the existing
   // data-action delegation + applyAction) wearing its own chip classes instead of
-  // BUTTON_CLASS. `pressed` reflects an on/off state via aria-pressed.
+  // the server action-button template. `pressed` reflects an on/off state via
+  // aria-pressed.
   private chip(
     action: TreeAction,
     label: string,
@@ -1189,38 +1174,64 @@ export class FilterGroupElement extends HTMLElement {
     });
   }
 
+  // A restructuring action button: carries the action name + the target path so a
+  // single delegated listener can route it. Cloned from the server-rendered
+  // ControlButton template so styling stays server-owned; the classless bare
+  // <button> fallback keeps template-less fixtures (jsdom tests) functional.
+  // `disabled` greys it out; the cap-gated actions (add-group/add-relation/
+  // wrap/unwrap) are additionally re-guarded in the handler, so a stale click
+  // on a since-invalidated one is harmless.
+  private actionButton(
+    action: TreeAction,
+    label: string,
+    path: NodePath,
+    { disabled = false, title = "" } = {},
+  ): HTMLButtonElement {
+    const cloned =
+      this.actionButtonTemplate?.content.firstElementChild?.cloneNode(true);
+    const button =
+      cloned instanceof HTMLButtonElement ? cloned : element("button");
+    button.type = "button";
+    button.textContent = label;
+    button.dataset.action = action;
+    button.dataset.path = JSON.stringify(path);
+    button.disabled = disabled;
+    if (title) button.title = title;
+    return button;
+  }
+
   private controls(path: NodePath, isGroup: boolean, index: number, siblingCount: number): HTMLElement {
     const bar = element("div", "flex items-center gap-1");
-    bar.appendChild(actionButton("up", "↑", path, { disabled: index === 0, title: "Move up" }));
+    bar.appendChild(this.actionButton("up", "↑", path, { disabled: index === 0, title: "Move up" }));
     bar.appendChild(
-      actionButton("down", "↓", path, { disabled: index >= siblingCount - 1, title: "Move down" }),
+      this.actionButton("down", "↓", path, { disabled: index >= siblingCount - 1, title: "Move down" }),
     );
     const wrappable = canWrap(this.tree, path);
     bar.appendChild(
-      actionButton("wrap", "Wrap", path, {
+      this.actionButton("wrap", "Wrap", path, {
         disabled: !wrappable,
         title: wrappable ? "Wrap in a group" : "Max nesting reached",
       }),
     );
     if (isGroup) {
       bar.appendChild(
-        actionButton("unwrap", "Unwrap", path, {
+        this.actionButton("unwrap", "Unwrap", path, {
           disabled: !canUnwrap(this.tree, path),
           title: "Dissolve this group into its parent",
         }),
       );
     }
-    bar.appendChild(actionButton("duplicate", "Duplicate", path, { title: "Duplicate" }));
-    bar.appendChild(actionButton("remove", "Remove", path, { title: "Remove" }));
+    bar.appendChild(this.actionButton("duplicate", "Duplicate", path, { title: "Duplicate" }));
+    bar.appendChild(this.actionButton("remove", "Remove", path, { title: "Remove" }));
     return bar;
   }
 
   private footer(path: NodePath, model: string): HTMLElement {
     const footer = element("div", FOOTER_CLASS);
     const capReached = !canAddGroup(this.tree, path);
-    footer.appendChild(actionButton("add-condition", "+ condition", path));
+    footer.appendChild(this.actionButton("add-condition", "+ condition", path));
     footer.appendChild(
-      actionButton("add-group", "+ group", path, {
+      this.actionButton("add-group", "+ group", path, {
         disabled: capReached,
         title: capReached ? "Max nesting reached" : "Add a nested group",
       }),
@@ -1229,7 +1240,7 @@ export class FilterGroupElement extends HTMLElement {
     // model actually has relations (a leaf-only model like Device has none).
     if ((this.bundle(model)?.relations.length ?? 0) > 0) {
       footer.appendChild(
-        actionButton("add-relation", "+ relation", path, {
+        this.actionButton("add-relation", "+ relation", path, {
           disabled: !canAddRelation(this.tree, path),
           title: capReached ? "Max nesting reached" : "Add a relation descent",
         }),
@@ -1239,7 +1250,7 @@ export class FilterGroupElement extends HTMLElement {
     // when the model admits one (a comparison group with ≥2 columns).
     if (this.bundle(model)?.hasComparableGroup) {
       footer.appendChild(
-        actionButton("add-comparison", "+ comparison", path, {
+        this.actionButton("add-comparison", "+ comparison", path, {
           title: "Add a field-to-field comparison",
         }),
       );

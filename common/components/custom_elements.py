@@ -247,6 +247,13 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
         if has_comparable_group(columns):
             templates.append(comparison_row_template(columns, model=model_key))
 
+    # The tree's restructure buttons (add/remove/wrap/move …) are cloned from
+    # this server-rendered ControlButton, so the client never re-declares
+    # button classes. Model-agnostic: one template for every action button.
+    templates.append(
+        Template(data_action_button_template="")[ControlButton(color="gray")[""]]
+    )
+
     return _FilterGroup(
         model=model,
         models=json.dumps(model_field_registry(model)),
