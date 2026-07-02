@@ -862,8 +862,9 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_segmented_variant_classes(self):
         html = str(components.ControlButton(variant="segmented", color="gray")["Edit"])
-        self.assertIn("lg:px-4", html)  # viewport-based sizing, not container
-        self.assertNotIn("@md:", html)
+        # container-query sizing, same scale as filled — no viewport sizing
+        self.assertIn("@md:px-5", html)
+        self.assertNotIn("lg:px-4", html)
         self.assertIn("bg-white", html)
 
     def test_color_tables_have_matching_keys(self):
@@ -883,10 +884,21 @@ class ControlButtonTest(SimpleTestCase):
         self.assertTrue(html.startswith("<button"))
         self.assertIn("whitespace-nowrap", html)
         self.assertIn("border-gray-200", html)
-        # single-look variant: no color axis, no container sizing, no focus ring
+        # container-query sizing, same scale as every other button variant
+        self.assertIn("@md:px-5", html)
+        self.assertNotIn("lg:px-4", html)
+        # single-look variant: no color axis, no focus ring
         self.assertNotIn("bg-brand", html)
-        self.assertNotIn("@md:", html)
         self.assertNotIn("focus:ring", html)
+
+    def test_button_variants_share_one_sizing_scale(self):
+        # ALL button-shaped variants size via the container contract; only the
+        # nav-link plain variant keeps its navbar layout
+        for variant in ("filled", "segmented", "outline"):
+            with self.subTest(variant=variant):
+                html = str(components.ControlButton(variant=variant)["x"])
+                self.assertIn("px-3 py-2 text-xs", html)
+                self.assertIn("@md:px-5 @md:py-2.5 @md:text-sm", html)
 
     def test_plain_variant_is_the_navbar_nav_link_look(self):
         html = str(components.ControlButton(variant="plain")["x"])
