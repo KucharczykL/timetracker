@@ -39,7 +39,12 @@ from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
-type ButtonVariant = Literal["filled", "segmented"]  # standalone vs ButtonGroup member
+type ButtonVariant = Literal[
+    "filled",  # standalone default
+    "segmented",  # ButtonGroup member
+    "outline",  # bordered dropdown-toggle look (colorless)
+    "plain",  # borderless navbar nav-link look (colorless)
+]
 
 # Shared disabled appearance for every form control, so all form elements look
 # the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
@@ -332,19 +337,23 @@ _CONTROL_BASE_CLASS = (
     f"{DISABLED_CONTROL_CLASS}"
 )
 
-# Container-query sizing: compact by default (a container-query variant never
-# matches without an `@container` ancestor, so "no wrapper" = compact by
-# construction); form-shaped containers ≥ 28rem (`@md`) upsize to the old
-# default look. There is deliberately no size parameter — the container decides.
+# Container-query sizing, shared by EVERY button-shaped variant: compact by
+# default (a container-query variant never matches without an `@container`
+# ancestor, so "no wrapper" = compact by construction); form-shaped containers
+# ≥ 28rem (`@md`) upsize to the old default look. There is deliberately no
+# size parameter — the container decides. Note this means segmented groups and
+# outline toggles in tables are compact at every viewport width: a
+# shrink-to-fit inline-flex group cannot be its own inline-size container
+# (containment would collapse it to zero width) and table cells can't be
+# containers either — but every button on such a page is compact together.
+_CONTROL_SIZE_CLASS = "px-3 py-2 text-xs @md:px-5 @md:py-2.5 @md:text-sm"
+
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
-    "px-3 py-2 text-xs @md:px-5 @md:py-2.5 @md:text-sm"
+    f"{_CONTROL_SIZE_CLASS}"
 )
 
-# Segmented members keep viewport-based sizing: a shrink-to-fit inline-flex
-# group cannot be its own inline-size container (containment would collapse it
-# to zero width), and its ancestors (table cells) can't be containers either.
-_SEGMENTED_VARIANT_CLASS = "focus:z-10 px-2 py-1 text-xs lg:px-4 lg:py-2 lg:text-sm"
+_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
 
 _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
@@ -392,6 +401,26 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 }
 
 
+# Dropdown-toggle variants (issue #272): single-look, no color axis. Outline
+# is a regular button-shaped control — base + shared sizing + its bordered
+# look. Plain is the navbar nav-link: its layout (flex justify-between,
+# md:p-0) contradicts the base and the sizing scale, so it alone carries its
+# complete look and skips both.
+_OUTLINE_VARIANT_CLASS = (
+    f"{_CONTROL_SIZE_CLASS} bg-white border border-gray-200 "
+    "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
+    "dark:hover:bg-gray-700 whitespace-nowrap"
+)
+
+_PLAIN_VARIANT_CLASS = (
+    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
+    "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
+    "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
+    "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
+    "md:dark:hover:bg-transparent hover:cursor-pointer"
+)
+
+
 class ControlButton(BaseComponent):
     """The one polymorphic button/link builder — single home for button styling
     and the ``<a>``-vs-``<button>`` choice (issue #235).
@@ -408,8 +437,15 @@ class ControlButton(BaseComponent):
 
     Sizing contract: compact by default; upsizes inside an ``@container``
     ancestor at least 28rem wide (``@md``). There is no size parameter — the
-    container decides. ``variant="segmented"`` is the ButtonGroup-member look
-    (white background, hover hue, viewport-based sizing).
+    container decides, and every button-shaped variant follows the same scale.
+    ``variant="segmented"`` is the ButtonGroup-member look (white background,
+    hover hue).
+
+    The dropdown-toggle variants are single-look and ignore ``color``:
+    ``variant="outline"`` is the bordered toggle (split-button carets, value
+    selectors — callers add rounding by shape, e.g. ``rounded-e-lg``);
+    ``variant="plain"`` is the borderless navbar nav-link trigger, the one
+    variant outside the sizing contract (its navbar layout is its own).
 
     Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
     — which routes into the inner button in post mode. Extra attributes take the
@@ -431,16 +467,31 @@ class ControlButton(BaseComponent):
         _children: Children = None,
         **kwargs: object,
     ) -> None:
-        variant_class = (
-            _FILLED_VARIANT_CLASS if variant == "filled" else _SEGMENTED_VARIANT_CLASS
-        )
-        color_table = (
-            _FILLED_COLOR_CLASSES if variant == "filled" else _SEGMENTED_COLOR_CLASSES
-        )
+        if variant == "outline":
+            class_attrs: list[HTMLAttribute] = [
+                ("class", _CONTROL_BASE_CLASS),
+                ("class", _OUTLINE_VARIANT_CLASS),
+            ]
+        elif variant == "plain":
+            class_attrs = [("class", _PLAIN_VARIANT_CLASS)]
+        else:
+            variant_class = (
+                _FILLED_VARIANT_CLASS
+                if variant == "filled"
+                else _SEGMENTED_VARIANT_CLASS
+            )
+            color_table = (
+                _FILLED_COLOR_CLASSES
+                if variant == "filled"
+                else _SEGMENTED_COLOR_CLASSES
+            )
+            class_attrs = [
+                ("class", _CONTROL_BASE_CLASS),
+                ("class", variant_class),
+                ("class", color_table[color]),
+            ]
         self._merged_attributes: list[HTMLAttribute] = [
-            ("class", _CONTROL_BASE_CLASS),
-            ("class", variant_class),
-            ("class", color_table[color]),
+            *class_attrs,
             *_coerce_attrs(attrs),
             *_attrs_from_kwargs(kwargs),
         ]
@@ -1165,7 +1216,9 @@ def get_icon_node(name: str) -> Element:
 # buttons (bigger than the small inline platform icons). Tune sizes here.
 ICON_BASE_CLASS = "text-black dark:text-white"
 ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
-ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
+# Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
+# → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
+ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:

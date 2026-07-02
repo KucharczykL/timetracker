@@ -862,8 +862,9 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_segmented_variant_classes(self):
         html = str(components.ControlButton(variant="segmented", color="gray")["Edit"])
-        self.assertIn("lg:px-4", html)  # viewport-based sizing, not container
-        self.assertNotIn("@md:", html)
+        # container-query sizing, same scale as filled — no viewport sizing
+        self.assertIn("@md:px-5", html)
+        self.assertNotIn("lg:px-4", html)
         self.assertIn("bg-white", html)
 
     def test_color_tables_have_matching_keys(self):
@@ -877,6 +878,50 @@ class ControlButtonTest(SimpleTestCase):
     def test_as_element_unwraps_button(self):
         element = components.ControlButton()["Go"].as_element()
         self.assertEqual(element.tag_name, "button")
+
+    def test_outline_variant_is_the_dropdown_toggle_look(self):
+        html = str(components.ControlButton(variant="outline")["x"])
+        self.assertTrue(html.startswith("<button"))
+        self.assertIn("whitespace-nowrap", html)
+        self.assertIn("border-gray-200", html)
+        # container-query sizing, same scale as every other button variant
+        self.assertIn("@md:px-5", html)
+        self.assertNotIn("lg:px-4", html)
+        # single-look variant: no color axis, no focus ring
+        self.assertNotIn("bg-brand", html)
+        self.assertNotIn("focus:ring", html)
+
+    def test_button_variants_share_one_sizing_scale(self):
+        # ALL button-shaped variants size via the container contract; only the
+        # nav-link plain variant keeps its navbar layout
+        for variant in ("filled", "segmented", "outline"):
+            with self.subTest(variant=variant):
+                html = str(components.ControlButton(variant=variant)["x"])
+                self.assertIn("px-3 py-2 text-xs", html)
+                self.assertIn("@md:px-5 @md:py-2.5 @md:text-sm", html)
+
+    def test_plain_variant_is_the_navbar_nav_link_look(self):
+        html = str(components.ControlButton(variant="plain")["x"])
+        self.assertIn("md:hover:text-blue-700", html)
+        self.assertIn("justify-between", html)
+        # the nav-link layout survives untouched: no centering or inline-flex
+        # from the filled/segmented base, no color table
+        self.assertNotIn("justify-center", html)
+        self.assertNotIn("inline-flex", html)
+        self.assertNotIn("bg-brand", html)
+
+    def test_toggle_variants_ignore_color(self):
+        default = str(components.ControlButton(variant="outline")["x"])
+        red = str(components.ControlButton(variant="outline", color="red")["x"])
+        self.assertEqual(red, default)
+
+    def test_outline_variant_takes_extra_shape_classes(self):
+        html = str(
+            components.ControlButton([("class", "rounded-e-lg")], variant="outline")[
+                "x"
+            ]
+        )
+        self.assertIn("rounded-e-lg", html)
 
 
 class ModalContractTest(SimpleTestCase):

@@ -3,6 +3,9 @@ name: Django CI/CD
 on:
   push:
     paths-ignore: [ 'README.md' ]
+  # allow manual reruns from the Actions tab (an empty retrigger commit
+  # matches no paths, so the push trigger skips it)
+  workflow_dispatch:
 
 jobs:
   test:
