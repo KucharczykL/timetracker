@@ -7,6 +7,11 @@
  */
 import { readFilterBarProps } from "../generated/props.js";
 import { readFieldComparisonSet } from "./field-comparison-set.js";
+import {
+  PresetDropdown,
+  savePreset as requestSavePreset,
+  setupPresetDropdown,
+} from "./presets.js";
 import { readSearchSelect } from "./search-select.js";
 import {
   parseJSONAttr,
@@ -34,15 +39,6 @@ function presetMode(): string {
   if (path.indexOf("platform") !== -1) return "platforms";
   if (path.indexOf("playevent") !== -1) return "playevents";
   return "games";
-}
-
-function getCsrfToken(): string {
-  const cookie = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("csrftoken="));
-  if (cookie) return cookie.split("=")[1];
-  const element = document.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]');
-  return element ? element.value : "";
 }
 
 // Deep-merge a single leaf criterion into `target` by its JSON path. Branch
@@ -243,70 +239,6 @@ function setupDeselectableRadios(root: HTMLElement): void {
   });
 }
 
-function setupPresetDeleteHandlers(container: HTMLElement): void {
-  const deleteLinks = container.querySelectorAll<HTMLAnchorElement>("[data-delete-preset]");
-  deleteLinks.forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      const deleteUrl = link.getAttribute("href");
-      if (!deleteUrl) return;
-      if (!confirm("Delete this preset?")) return;
-      // fetchWithHtmxTriggers so the server's delete success/error toast surfaces;
-      // only remove the row when the server actually deleted it (response.ok),
-      // otherwise a 404/405/500 would desync the UI from the DB.
-      window
-        .fetchWithHtmxTriggers(deleteUrl, {
-          method: "DELETE",
-          credentials: "same-origin",
-          headers: { "X-CSRFToken": getCsrfToken() },
-        })
-        .then((response) => {
-          if (!response.ok) return; // server rejected; its toast already fired
-          const listItem = link.closest("li");
-          if (listItem) listItem.remove();
-          const list = container.querySelector("ul");
-          if (list && list.querySelectorAll("li").length === 0) {
-            list.innerHTML =
-              '<li class="px-4 py-2 text-sm text-body italic">No saved presets</li>';
-          }
-        })
-        .catch((error) => {
-          // Transport failure only (no Response, no HX-Trigger) — surface a toast.
-          console.error("Delete failed:", error);
-          window.toast("Failed to delete preset.", "error");
-        });
-    });
-  });
-}
-
-function loadPresets(root: HTMLElement, presetListUrl: string): void {
-  const dropdown = root.querySelector<HTMLElement>("#preset-dropdown");
-  if (!dropdown) return;
-
-  const mode = presetMode();
-  let query = "";
-  if (presetListUrl.indexOf("mode=") === -1) {
-    query = (presetListUrl.indexOf("?") !== -1 ? "&" : "?") + "mode=" + mode;
-  }
-
-  fetch(presetListUrl + query, { credentials: "same-origin" })
-    .then((response) => {
-      if (!response.ok) throw new Error("Failed to load presets");
-      return response.text();
-    })
-    .then((html) => {
-      dropdown.innerHTML = html;
-      setupPresetDeleteHandlers(dropdown);
-      // Names just (re)arrived; re-check collision in case the input is open.
-      updateOverwriteWarning(root);
-    })
-    .catch((error) => {
-      dropdown.innerHTML =
-        '<span class="text-sm text-body italic">Presets unavailable</span>';
-      console.error(error);
-    });
-}
-
 function showPresetNameInput(root: HTMLElement): void {
   const input = root.querySelector<HTMLElement>("[data-filter-bar-preset-name]");
   const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
@@ -346,8 +278,8 @@ function updateOverwriteWarning(root: HTMLElement): void {
 function savePreset(
   form: HTMLElement,
   presetSaveUrl: string,
-  presetListUrl: string,
   root: HTMLElement,
+  presets: PresetDropdown,
 ): void {
   const input = root.querySelector<HTMLInputElement>("[data-filter-bar-preset-name]");
   const name = input ? input.value.trim() : "";
@@ -356,52 +288,31 @@ function savePreset(
     return;
   }
 
-  const filterObject = buildFilterJSON(form);
-  const body = new URLSearchParams();
-  body.append("name", name);
-  body.append("mode", presetMode());
-  body.append("filter", JSON.stringify(filterObject));
-
-  // fetchWithHtmxTriggers (not plain fetch) so the server's messages — the error
-  // toast on a rejected filter/mode, and the success toast — surface via the
-  // HX-Trigger header the toast middleware sets, for any response that carries a
-  // Django message.
-  window
-    .fetchWithHtmxTriggers(presetSaveUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-CSRFToken": getCsrfToken(),
-      },
-      body: body.toString(),
-    })
-    .then((response) => {
-      // A non-ok response already fired its error toast via the wrapper; leave
-      // the confirm-save UI in place so the user can correct and retry.
-      if (!response.ok) return;
-      if (input) {
-        input.value = "";
-        input.classList.add("hidden");
-        input.classList.remove("border-red-500");
-      }
-      const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
-      const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
-      if (saveButton) saveButton.classList.remove("hidden");
-      if (confirmButton) {
-        confirmButton.classList.add("hidden");
-        confirmButton.textContent = "Save";
-      }
-      const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
-      if (warning) warning.classList.add("hidden");
-      loadPresets(root, presetListUrl);
-    })
-    .catch((error) => {
-      // Reached only on a transport failure (no Response, so no HX-Trigger and no
-      // toast fired). Surface one here so the failure is never invisible.
-      console.error("Failed to save preset:", error);
-      window.toast("Failed to save preset.", "error");
-    });
+  requestSavePreset(presetSaveUrl, {
+    name,
+    mode: presetMode(),
+    filter: buildFilterJSON(form),
+  }).then((response) => {
+    // A non-ok response already fired its error toast via HX-Trigger (and a
+    // transport failure toasted inside the helper); leave the confirm-save UI
+    // in place so the user can correct and retry.
+    if (!response?.ok) return;
+    if (input) {
+      input.value = "";
+      input.classList.add("hidden");
+      input.classList.remove("border-red-500");
+    }
+    const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
+    const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
+    if (saveButton) saveButton.classList.remove("hidden");
+    if (confirmButton) {
+      confirmButton.classList.add("hidden");
+      confirmButton.textContent = "Save";
+    }
+    const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
+    if (warning) warning.classList.add("hidden");
+    void presets.refresh();
+  });
 }
 
 class FilterBarElement extends HTMLElement {
@@ -409,6 +320,16 @@ class FilterBarElement extends HTMLElement {
     const { presetListUrl, presetSaveUrl } = readFilterBarProps(this);
     const form = this.querySelector<HTMLFormElement>("form");
     if (!form) return;
+
+    // No onPick: a preset anchor keeps its native navigation to the list view.
+    const presets = setupPresetDropdown({
+      root: this,
+      dropdownSelector: "#preset-dropdown",
+      listUrl: presetListUrl,
+      mode: presetMode(),
+      // Names just (re)arrived; re-check collision in case the input is open.
+      onListRendered: () => updateOverwriteWarning(this),
+    });
 
     // Delegated on the persistent custom element so the toggle keeps working
     // after the inner #filter-bar body is htmx-swapped — connectedCallback does
@@ -441,7 +362,7 @@ class FilterBarElement extends HTMLElement {
     });
 
     this.querySelector("[data-filter-bar-confirm-save]")?.addEventListener("click", () => {
-      savePreset(form, presetSaveUrl, presetListUrl, this);
+      savePreset(form, presetSaveUrl, this, presets);
     });
 
     this.querySelector("[data-filter-bar-preset-name]")?.addEventListener("input", () => {
@@ -450,7 +371,7 @@ class FilterBarElement extends HTMLElement {
 
     setupDeselectableRadios(this);
     setupModifierToggles(this);
-    if (presetListUrl) loadPresets(this, presetListUrl);
+    if (presetListUrl) void presets.refresh();
   }
 }
 
