@@ -55,6 +55,40 @@ function slots(host: HTMLElement): HTMLElement[] {
   return [...host.querySelectorAll<HTMLElement>("[data-node-slot]")];
 }
 
+describe("<filter-group> action-button template cloning", () => {
+  it("clones the server-rendered action button, keeping wiring attributes", () => {
+    document.body.replaceChildren();
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute("models", JSON.stringify(MODELS_BASE));
+    const template = document.createElement("template");
+    template.setAttribute("data-action-button-template", "");
+    template.innerHTML = '<button type="button" class="from-server"></button>';
+    host.appendChild(template);
+    document.body.appendChild(host);
+
+    const addCondition = button(host, "add-condition", []);
+    expect(addCondition).not.toBeNull();
+    expect(addCondition?.className).toBe("from-server");
+    expect(addCondition?.textContent).toBe("+ condition");
+    expect(addCondition?.type).toBe("button");
+    // disabled/title still applied on the clone (root has no up/down, use wrap
+    // on a nested child instead: add a group, whose child controls render)
+    clickAction(host, "add-group", []);
+    const up = button(host, "up", [1]);
+    expect(up?.className).toBe("from-server");
+    expect(up?.disabled).toBe(false);
+    expect(up?.title).toBe("Move up");
+  });
+
+  it("falls back to a classless bare button without a template", () => {
+    const host = mount();
+    const addCondition = button(host, "add-condition", []);
+    expect(addCondition).not.toBeNull();
+    expect(addCondition?.className).toBe("");
+  });
+});
+
 describe("<filter-group> initial render", () => {
   it("renders a root AND group with one criterion slot and a footer", () => {
     const host = mount();
