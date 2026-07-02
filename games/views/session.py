@@ -11,7 +11,6 @@ from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from common.components import (
-    A,
     AddForm,
     Column,
     Div,
@@ -26,7 +25,7 @@ from common.components import (
     SessionActions,
     SessionDeviceSelector,
     SessionTimestampButtons,
-    StyledButton,
+    ControlButton,
     TableData,
     TableRowData,
     make_row,
@@ -97,35 +96,25 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "header_action": Div(class_="flex justify-end")[
-            Div()[
-                A(
+            Div(class_="flex gap-2")[
+                ControlButton(
                     href=reverse("games:add_session"),
-                )[
-                    StyledButton(
-                        icon=True,
-                        size="xs",
-                    )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"]
-                ],
-                A(
-                    href=reverse(
-                        "games:list_sessions_start_session_from_session",
-                        args=[last_session.pk],
-                    ),
-                )[
-                    Popover(
-                        popover_content=last_session.game.name,
-                        children=[
-                            StyledButton(
-                                icon=True,
-                                color="gray",
-                                size="xs",
-                            )[
-                                Icon("play", size=ICON_BUTTON_SIZE_CLASS),
-                                truncate(f"{last_session.game.name}"),
-                            ]
-                        ],
-                    )
-                ]
+                )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"],
+                Popover(
+                    popover_content=last_session.game.name,
+                    children=[
+                        ControlButton(
+                            href=reverse(
+                                "games:list_sessions_start_session_from_session",
+                                args=[last_session.pk],
+                            ),
+                            color="gray",
+                        )[
+                            Icon("play", size=ICON_BUTTON_SIZE_CLASS),
+                            truncate(f"{last_session.game.name}"),
+                        ]
+                    ],
+                )
                 if last_session and last_session.game
                 else "",
             ],
@@ -176,11 +165,9 @@ def _timestamp_buttons(field_name: str) -> Node:
         class_="flex flex-row gap-3 justify-start mt-3",
         hx_boost="false",
     )[
-        StyledButton(data_target=field_name, data_type="now", size="xs")["Set to now"],
-        StyledButton(data_target=field_name, data_type="toggle", size="xs")[
-            "Toggle text"
-        ],
-        StyledButton(data_target=field_name, data_type="copy", size="xs")[
+        ControlButton(data_target=field_name, data_type="now")["Set to now"],
+        ControlButton(data_target=field_name, data_type="toggle")["Toggle text"],
+        ControlButton(data_target=field_name, data_type="copy")[
             f"Copy {this_side} value to {other_side}"
         ],
     ]

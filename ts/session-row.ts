@@ -99,10 +99,10 @@ function renderSessionRow(session: SessionOut, oldRow: HTMLTableRowElement): HTM
     const actions = newRow.querySelector("session-actions");
     if (actions) {
       actions.setAttribute("is-open", "false");
-      // Finish/reset buttons each sit in a <span> group member — remove the
-      // whole member; the reset-confirm modal is a direct child wrapper.
-      actions.querySelector("[data-finish]")?.closest("span")?.remove();
-      actions.querySelector("[data-reset]")?.closest("span")?.remove();
+      // Finish/reset are bare <button> group members — remove them; the
+      // reset-confirm modal is a direct child wrapper.
+      actions.querySelector("[data-finish]")?.remove();
+      actions.querySelector("[data-reset]")?.remove();
       actions.querySelector("[data-reset-modal]")?.remove();
     }
   }

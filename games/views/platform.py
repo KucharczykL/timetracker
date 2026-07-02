@@ -4,14 +4,13 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
-    A,
     AddForm,
     ButtonGroup,
     Column,
     Fragment,
     Icon,
     PlatformFilterBar,
-    StyledButton,
+    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -41,8 +40,8 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms, page_obj, elided_page_range = paginate(request, platforms)
 
     data: TableData = {
-        "header_action": A(href=reverse("games:add_platform"))[
-            StyledButton()["Add platform"]
+        "header_action": ControlButton(href=reverse("games:add_platform"))[
+            "Add platform"
         ],
         "columns": [
             Column("Name"),

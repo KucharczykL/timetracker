@@ -11,7 +11,6 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
 from common.components import (
-    A,
     AddForm,
     AdvancedFilterLink,
     ButtonGroup,
@@ -23,7 +22,7 @@ from common.components import (
     Icon,
     ModuleScript,
     PlayEventFilterBar,
-    StyledButton,
+    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -94,8 +93,8 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-        "header_action": A(href=reverse("games:add_playevent"))[
-            StyledButton()["Add play event"]
+        "header_action": ControlButton(href=reverse("games:add_playevent"))[
+            "Add play event"
         ],
         "columns": filtered_column_list,
         "rows": [make_row(*cells) for cells in filtered_row_list],

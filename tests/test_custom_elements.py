@@ -176,7 +176,7 @@ class DropdownWrapperTest(unittest.TestCase):
         self.assertIn('aria-current="page"', html)
         self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
-    def test_button_dropdown_uses_styled_button_trigger(self):
+    def test_button_dropdown_uses_control_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render
 
         html = render(
@@ -186,7 +186,7 @@ class DropdownWrapperTest(unittest.TestCase):
         )
         self.assertIn('aria-haspopup="menu"', html)
         self.assertIn('id="actsLink"', html)
-        self.assertIn("rounded-base", html)  # StyledButton styling
+        self.assertIn("rounded-base", html)  # ControlButton styling
 
     def test_split_button_groups_primary_with_caret(self):
         from common.components import (

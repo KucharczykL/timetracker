@@ -152,19 +152,8 @@
 
 /* Form controls (incl. disabled state) and form-field markup (labels, errors,
    rows) are styled by utilities on the elements themselves — see
-   PrimitiveWidgetsMixin and FormFields. No form styling lives here. */
-
-#button-container button {
-  @apply mx-1;
-}
-
-.basic-button-container {
-  @apply flex space-x-2 justify-center;
-}
-
-.basic-button {
-  @apply inline-block px-6 py-2.5 bg-blue-600 text-white font-medium text-xs leading-tight uppercase rounded-sm shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out;
-}
+   PrimitiveWidgetsMixin and FormFields. No form styling lives here. Buttons
+   are styled exclusively by ControlButton (common/components/primitives.py). */
 
 .markdown-content ul {
   list-style-type: disc;

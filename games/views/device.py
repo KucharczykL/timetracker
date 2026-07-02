@@ -4,7 +4,6 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
-    A,
     AddForm,
     ButtonGroup,
     Column,
@@ -12,7 +11,7 @@ from common.components import (
     Fragment,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
-    StyledButton,
+    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -41,9 +40,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     devices, page_obj, elided_page_range = paginate(request, devices)
 
     data: TableData = {
-        "header_action": A(href=reverse("games:add_device"))[
-            StyledButton()["Add device"]
-        ],
+        "header_action": ControlButton(href=reverse("games:add_device"))["Add device"],
         "columns": [
             Column("Name"),
             Column("Type"),

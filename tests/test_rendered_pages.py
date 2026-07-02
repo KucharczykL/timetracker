@@ -183,7 +183,7 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:add_purchase").content.decode()
         self.assertIn("dist/add_purchase.js", html)
         self.assertIn("Submit &amp; Create Session", html)
-        self.assertIn("<tr>", html)
+        self.assertIn('name="submit_and_redirect"', html)
         self.assertNoEscapedTags(html)
 
     def test_add_session_form_has_timestamp_helpers(self):
@@ -325,7 +325,7 @@ class RenderedPagesTest(TestCase):
             "csrfmiddlewaretoken",
             'name="username"',  # auth form fields rendered via FormFields
             'type="submit"',
-            ">Login<",  # StyledButton submit (was an <input value="Login">)
+            ">Login<",  # ControlButton submit (was an <input value="Login">)
             "</html>",
         ]:
             self.assertIn(marker, html)

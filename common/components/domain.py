@@ -265,7 +265,7 @@ def SessionActions(session, csrf_token: str) -> Node:
     plain navigation links. Behavior lives in ``ts/elements/session-actions.ts``;
     this server-renders the full light DOM so the row works on first paint."""
     from common.components.custom_elements import _SessionActions
-    from common.components.primitives import ButtonGroup, Modal, StyledButton
+    from common.components.primitives import ButtonGroup, ControlButton, Modal
 
     is_open = session.timestamp_end is None
     game_name = session.game.name if session.game else "this session"
@@ -317,11 +317,11 @@ def SessionActions(session, csrf_token: str) -> Node:
                         # Reset overwrites the original start time (only
                         # recoverable via Edit) -> red destructive confirm,
                         # gray secondary cancel.
-                        StyledButton(
+                        ControlButton(
                             color="red",
                             data_reset_confirm="",
                         )["Reset to now"],
-                        StyledButton(
+                        ControlButton(
                             color="gray",
                             data_reset_cancel="",
                         )["Cancel"],

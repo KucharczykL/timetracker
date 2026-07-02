@@ -6,13 +6,12 @@ from django.utils.safestring import SafeText
 
 from common.components import (
     CONTENT_MAX_WIDTH_CLASS,
-    A,
     AddForm,
     Column,
     CsrfInput,
     Div,
     Form,
-    StyledButton,
+    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -82,12 +81,13 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
 
 def _delete_statuschange_content(statuschange, request: HttpRequest) -> SafeText:
-    inner = Div()[
+    inner = Div(class_="flex flex-col gap-2 @container")[
         P()["Are you sure you want to delete this status change?"],
-        StyledButton(color="red", type="submit", size="lg", class_="w-full")["Delete"],
-        A(href=reverse("games:view_game", args=[statuschange.game.id]))[
-            StyledButton(color="gray", class_="w-full")["Cancel"]
-        ],
+        ControlButton(color="red", type="submit")["Delete"],
+        ControlButton(
+            href=reverse("games:view_game", args=[statuschange.game.id]),
+            color="gray",
+        )["Cancel"],
     ]
     form = Form(method="post", class_="dark:text-white")[CsrfInput(request), inner]
     return Div(class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")[form]

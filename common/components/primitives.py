@@ -3,7 +3,7 @@
 Generic leaf elements (``Div``, ``Span``, ``Td`` …) are *not* hand-written one
 per tag: they are generated from a whitelist via :func:`_html_element`, each a
 thin builder over the single :class:`Element` node class. Only elements that add
-classes or behaviour (``StyledButton``, ``Pill``, ``Checkbox`` …) are written out.
+classes or behaviour (``ControlButton``, ``Pill``, ``Checkbox`` …) are written out.
 Everything returns a :class:`Node`; string-built widgets return :class:`Safe`.
 """
 
@@ -38,21 +38,8 @@ from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate
 
-_COLOR_CLASSES = {
-    "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium",
-    "red": "bg-red-700 dark:bg-red-600 dark:focus:ring-red-900 dark:hover:bg-red-700 focus:ring-red-300 hover:bg-red-800 text-white",
-    "gray": "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:focus:ring-gray-700 dark:hover:bg-gray-700 dark:hover:text-white dark:text-gray-400 focus:ring-gray-100 hover:bg-gray-100 hover:text-blue-700 text-gray-900 border",
-    "green": "bg-green-700 dark:bg-green-600 dark:focus:ring-green-800 dark:hover:bg-green-700 focus:ring-green-300 hover:bg-green-800 text-white",
-}
-
-
-_SIZE_CLASSES = {
-    "xs": "px-3 py-2 text-xs shadow-xs",
-    "sm": "px-3 py-2 text-sm",
-    "base": "px-5 py-2.5 text-sm",
-    "lg": "px-5 py-3 text-base",
-    "xl": "px-6 py-3.5 text-base",
-}
+type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
+type ButtonVariant = Literal["filled", "segmented"]  # standalone vs ButtonGroup member
 
 # Shared disabled appearance for every form control, so all form elements look
 # the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
@@ -334,76 +321,69 @@ def PopoverTruncated(
             return input_string
 
 
-def StyledButton(
-    attrs: "AttrsArg | None" = None,
-    *,
-    size: str = "base",
-    icon: bool = False,
-    color: str = "blue",
-    type: str = "button",
-    hx_get: str = "",
-    hx_target: str = "",
-    hx_swap: str = "",
-    title: str = "",
-    onclick: str = "",
-    name: str = "",
-    **kwargs: object,
-) -> Element:
-    # Baked semantic attrs come first so the node algebra resolves them with
-    # first-wins precedence (a caller can't override `type`); the several baked
-    # `class` entries accumulate with any caller `class` into one attribute.
-    baked: list[HTMLAttribute] = [
-        ("type", type),
-        (
-            "class",
-            "hover:cursor-pointer leading-5 focus:outline-hidden focus:ring-4 "
-            "font-medium mb-2 me-2 rounded-base",
-        ),
-        ("class", _COLOR_CLASSES.get(color, _COLOR_CLASSES["blue"])),
-        ("class", _SIZE_CLASSES.get(size, _SIZE_CLASSES["base"])),
-    ]
-    if icon:
-        baked.append(("class", "inline-flex text-center items-center gap-2"))
-    if hx_get:
-        baked.append(("hx-get", hx_get))
-    if hx_target:
-        baked.append(("hx-target", hx_target))
-    if hx_swap:
-        baked.append(("hx-swap", hx_swap))
-    if title:
-        baked.append(("title", title))
-    if onclick:
-        baked.append(("onclick", onclick))
-    if name:
-        baked.append(("name", name))
+# The classes both ControlButton variants truly share. Everything else —
+# sizing, rounding, focus treatment — belongs to the variant, so the segmented
+# look stays what ButtonGroup members rendered before the unification.
+# inline-flex keeps every button the same height regardless of content — an
+# icon+text button (e.g. "Log this game") would otherwise sit taller than its
+# text-only siblings and step a segmented group's bottom edge.
+_CONTROL_BASE_CLASS = (
+    "font-medium hover:cursor-pointer inline-flex items-center justify-center "
+    f"{DISABLED_CONTROL_CLASS}"
+)
 
-    merged = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
-    return Element("button", merged)
+# Container-query sizing: compact by default (a container-query variant never
+# matches without an `@container` ancestor, so "no wrapper" = compact by
+# construction); form-shaped containers ≥ 28rem (`@md`) upsize to the old
+# default look. There is deliberately no size parameter — the container decides.
+_FILLED_VARIANT_CLASS = (
+    "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
+    "px-3 py-2 text-xs @md:px-5 @md:py-2.5 @md:text-sm"
+)
 
+# Segmented members keep viewport-based sizing: a shrink-to-fit inline-flex
+# group cannot be its own inline-size container (containment would collapse it
+# to zero width), and its ancestors (table cells) can't be containers either.
+_SEGMENTED_VARIANT_CLASS = "focus:z-10 px-2 py-1 text-xs lg:px-4 lg:py-2 lg:text-sm"
 
-_GROUP_BUTTON_COLORS = {
-    # Every variant uses a hover border one shade darker than its hover fill, so
+_FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
+    "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
+    "red": "bg-red-700 dark:bg-red-600 dark:focus:ring-red-900 dark:hover:bg-red-700 focus:ring-red-300 hover:bg-red-800 text-white",
+    "gray": "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:focus:ring-gray-700 dark:hover:bg-gray-700 dark:hover:text-white dark:text-gray-400 focus:ring-gray-100 hover:bg-gray-100 hover:text-blue-700 text-gray-900 border",
+    "green": "bg-green-700 dark:bg-green-600 dark:focus:ring-green-800 dark:hover:bg-green-700 focus:ring-green-300 hover:bg-green-800 text-white",
+}
+
+_SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
+    # Every color uses a hover border one shade darker than its hover fill, so
     # the segmented buttons share the same "ring" look (only the hue differs).
+    "blue": (
+        "text-gray-900 bg-white border "
+        "border-gray-200 hover:bg-brand hover:border-brand-strong "
+        "hover:text-white focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
+        "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
+        "dark:hover:text-white dark:hover:border-brand-strong "
+        "dark:hover:bg-brand dark:focus:ring-blue-500 dark:focus:text-white"
+    ),
     "gray": (
-        "font-medium text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 "
+        "text-gray-900 bg-white border "
+        "border-gray-200 hover:bg-gray-100 hover:text-blue-700 "
         "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
         "dark:hover:text-white dark:hover:border-gray-800 dark:hover:bg-gray-700 "
         "dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "red": (
-        "font-medium text-gray-900 bg-white border "
+        "text-gray-900 bg-white border "
         "border-gray-200 hover:bg-red-500 hover:border-red-600 hover:text-white "
-        "focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
+        "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
         "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
         "dark:hover:text-white dark:hover:border-red-800 "
         "dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white"
     ),
     "green": (
-        "font-medium text-gray-900 bg-white border "
+        "text-gray-900 bg-white border "
         "border-gray-200 hover:bg-green-500 hover:border-green-600 "
-        "hover:text-white focus:z-10 focus:ring-2 focus:ring-green-700 "
+        "hover:text-white focus:ring-2 focus:ring-green-700 "
         "focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
         "dark:text-white dark:hover:text-white dark:hover:border-green-700 "
         "dark:hover:bg-green-600 dark:focus:ring-green-500 "
@@ -412,135 +392,186 @@ _GROUP_BUTTON_COLORS = {
 }
 
 
-def _button_group_button(
-    href: str,
-    slot: str,
-    color: str = "gray",
-    title: str = "",
-    hx_get: str = "",
-    hx_target: str = "",
-    hx_swap: str = "",
-    hx_confirm: str = "",
-    method: str = "",
-    action: str = "",
-    csrf_token: str = "",
-    button_attributes: list[HTMLAttribute] | None = None,
-) -> Element:
-    """Generate a single button-group member.
+class ControlButton(BaseComponent):
+    """The one polymorphic button/link builder — single home for button styling
+    and the ``<a>``-vs-``<button>`` choice (issue #235).
 
-    Default form is a link: an inner ``<button>`` inside an ``<a href>``. When
-    ``method="post"`` the member is instead a ``<form method="post">`` wrapping a
-    CSRF input + a submit ``<button>`` — a state-changing action that needs no
-    JavaScript. When ``button_attributes`` is given the member is a bare
-    ``<button type="button">`` carrying those extra attributes (e.g. a
-    ``data-finish`` hook a custom element wires) — a JS-driven action with no
-    navigation; it is wrapped in a ``<span>`` so the container's descendant-button
-    rounding still applies. The end-rounding is applied by ``ButtonGroup`` on the
-    container (keyed on child position), so this builder stays tag-agnostic.
+    Renders, by mode:
+
+    - ``href=`` → a single ``<a href>`` carrying the full button classes (a
+      navigation styled as a button — no nested interactive elements);
+    - ``method="post"`` → a ``<form method="post">`` wrapping an optional CSRF
+      input and a ``type="submit"`` button — a state-changing action that needs
+      no JavaScript. Classes and caller attributes land on the inner button;
+      ``action`` defaults to ``href``;
+    - otherwise → a ``<button>`` with ``type`` (default ``"button"``).
+
+    Sizing contract: compact by default; upsizes inside an ``@container``
+    ancestor at least 28rem wide (``@md``). There is no size parameter — the
+    container decides. ``variant="segmented"`` is the ButtonGroup-member look
+    (white background, hover hue, viewport-based sizing).
+
+    Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
+    — which routes into the inner button in post mode. Extra attributes take the
+    usual forms: dynamic pairs through the positional slot, static ones as
+    kwargs (``hx_get=…``, ``data_x=""``, ``title=…``, ``onclick=…``, ``name=…``).
     """
-    color_classes = _GROUP_BUTTON_COLORS.get(color, _GROUP_BUTTON_COLORS["gray"])
-    # inline-flex keeps every button the same height regardless of content — an
-    # icon+text button (e.g. "Log this game") would otherwise sit taller than its
-    # text-only siblings and step the segmented group's bottom edge.
-    button_classes = (
-        f"text-xs px-2 py-1 lg:px-4 lg:py-2 lg:text-sm {color_classes} "
-        "inline-flex items-center justify-center hover:cursor-pointer"
-    )
 
-    if button_attributes is not None:
-        return Span(class_="inline-flex")[
-            Button(
-                [
-                    ("type", "button"),
-                    ("title", title),
-                    ("class", button_classes),
-                    *button_attributes,
-                ]
-            )[slot]
+    def __init__(
+        self,
+        attrs: "AttrsArg | None" = None,
+        *,
+        color: ButtonColor = "blue",
+        variant: ButtonVariant = "filled",
+        href: str = "",
+        method: str = "",
+        action: str = "",
+        csrf_token: str = "",
+        type: str = "button",
+        _children: Children = None,
+        **kwargs: object,
+    ) -> None:
+        variant_class = (
+            _FILLED_VARIANT_CLASS if variant == "filled" else _SEGMENTED_VARIANT_CLASS
+        )
+        color_table = (
+            _FILLED_COLOR_CLASSES if variant == "filled" else _SEGMENTED_COLOR_CLASSES
+        )
+        self._merged_attributes: list[HTMLAttribute] = [
+            ("class", _CONTROL_BASE_CLASS),
+            ("class", variant_class),
+            ("class", color_table[color]),
+            *_coerce_attrs(attrs),
+            *_attrs_from_kwargs(kwargs),
         ]
+        self._href = href
+        self._method = method
+        self._action = action
+        self._csrf_token = csrf_token
+        self._type = type
+        self._children = as_children(_children)
 
-    if method.lower() == "post":
-        submit = Button(
-            [
-                ("type", "submit"),
-                ("title", title),
-                ("class", button_classes),
+    def __getitem__(self, children: Children) -> "ControlButton":
+        # A new instance, never a mutation: `_tree()` memoizes the rendered
+        # subtree, so mutating self after a render would serve a stale tree.
+        clone = ControlButton.__new__(ControlButton)
+        clone.__dict__.update(self.__dict__)
+        clone.__dict__.pop("_tree_cache", None)
+        clone._children = as_children(children)
+        return clone
+
+    def as_element(self) -> Element:
+        """The rendered node as an :class:`Element` — for machinery typed on
+        ``Element`` (e.g. the dropdown trigger stamping), which reads
+        ``tag_name``/``attributes`` off the node directly."""
+        node = self._tree()
+        assert isinstance(node, Element)
+        return node
+
+    def render(self) -> Node:
+        if self._method.lower() == "post":
+            # Forced ("type", "submit") comes first so it wins first-wins over
+            # any caller-supplied type; the form is chrome (inline-flex keeps
+            # its height and alignment right in flex rows and segmented groups).
+            submit = Button([("type", "submit"), *self._merged_attributes])[
+                *self._children
             ]
-        )[slot]
-        form_children: list[Node] = []
-        if csrf_token:
-            form_children.append(
-                Safe(
-                    '<input type="hidden" name="csrfmiddlewaretoken" '
-                    f'value="{csrf_token}">'
+            form_children: list[Node] = []
+            if self._csrf_token:
+                form_children.append(
+                    Safe(
+                        '<input type="hidden" name="csrfmiddlewaretoken" '
+                        f'value="{self._csrf_token}">'
+                    )
                 )
-            )
-        form_children.append(submit)
-        return Form([("method", "post"), ("action", action or href)])[*form_children]
-
-    a_attrs: list[HTMLAttribute] = [("href", href)]
-    if hx_get:
-        a_attrs.append(("hx-get", hx_get))
-    if hx_target:
-        a_attrs.append(("hx-target", hx_target))
-    if hx_swap:
-        a_attrs.append(("hx-swap", hx_swap))
-    if hx_confirm:
-        a_attrs.append(("hx-confirm", hx_confirm))
-
-    button = Button(
-        [
-            ("type", "button"),
-            ("title", title),
-            ("class", button_classes),
-        ]
-    )[slot]
-
-    return A(a_attrs)[button]
+            form_children.append(submit)
+            return Form(
+                method="post",
+                action=self._action or self._href,
+                class_="inline-flex",
+            )[*form_children]
+        if self._href:
+            return A([("href", self._href), *self._merged_attributes])[*self._children]
+        return Button([("type", self._type), *self._merged_attributes])[*self._children]
 
 
-def ButtonGroup(buttons: list[dict] | None = None) -> Element:
-    """Generate a button group div.
+class ButtonGroupMember(TypedDict, total=False):
+    slot: Child
+    href: str
+    color: ButtonColor
+    title: str
+    hx_get: str
+    hx_target: str
+    hx_swap: str
+    method: str
+    action: str
+    csrf_token: str
+    button_attributes: list[HTMLAttribute]
 
-    Each button dict accepts: slot (required), href, color, title, hx_get,
-    hx_target, hx_swap, hx_confirm, and — for a state-changing member — method
-    ("post"), action (URL), csrf_token. A ``method="post"`` member renders as a
-    no-JS ``<form>`` submit button instead of a link.
+
+def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
+    """Generate a button group div of segmented :class:`ControlButton` members.
+
+    Each member dict accepts: slot (required), href, color, title, hx_get,
+    hx_target, hx_swap, and — for a state-changing member — method ("post"),
+    action (URL), csrf_token. A ``method="post"`` member renders as a no-JS
+    ``<form>`` submit button instead of a link; a member with
+    ``button_attributes`` renders as a bare ``<button type="button">`` carrying
+    those attributes (a JS-driven action with no navigation).
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
     Every button uses one responsive size (small on mobile, larger from ``lg``).
     """
     buttons = buttons or []
     children: list[Node] = []
-    for btn in buttons:
-        if not btn or not btn.get("slot"):
+    for member in buttons:
+        slot = member.get("slot", "")
+        if not member or not slot:
             continue
+        # Attributes are added only when non-empty: an empty ``hx-get=""``
+        # would still register with htmx and hijack the link's click into an
+        # AJAX GET of the current URL.
+        member_attributes: list[HTMLAttribute] = []
+        if title := member.get("title", ""):
+            member_attributes.append(("title", title))
+        for attribute_name, value in (
+            ("hx-get", member.get("hx_get", "")),
+            ("hx-target", member.get("hx_target", "")),
+            ("hx-swap", member.get("hx_swap", "")),
+        ):
+            if value:
+                member_attributes.append((attribute_name, value))
+        button_attributes = member.get("button_attributes")
+        is_plain_button = button_attributes is not None
+        if button_attributes:
+            member_attributes.extend(button_attributes)
         children.append(
-            _button_group_button(
-                href=btn.get("href", "#"),
-                slot=btn["slot"],
-                color=btn.get("color", "gray"),
-                title=btn.get("title", ""),
-                hx_get=btn.get("hx_get", ""),
-                hx_target=btn.get("hx_target", ""),
-                hx_swap=btn.get("hx_swap", ""),
-                hx_confirm=btn.get("hx_confirm", ""),
-                method=btn.get("method", ""),
-                action=btn.get("action", ""),
-                csrf_token=btn.get("csrf_token", ""),
-                button_attributes=btn.get("button_attributes"),
-            )
+            ControlButton(
+                member_attributes,
+                variant="segmented",
+                color=member.get("color", "gray"),
+                href="" if is_plain_button else member.get("href", "#"),
+                method="" if is_plain_button else member.get("method", ""),
+                action=member.get("action", ""),
+                csrf_token=member.get("csrf_token", ""),
+            )[slot]
         )
 
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    # End-rounding lives here (keyed on child position, not member tag) so a
-    # group can freely mix <a> links and <form> submit buttons.
+    # End-rounding lives here (keyed on child position, not member tag — the one
+    # documented styling-at-a-distance exception, because a member cannot know
+    # its own position) so a group can freely mix <a> links, <form> submit
+    # buttons, and bare buttons: the direct-child selectors round <a>/<button>
+    # members, the descendant `_button` ones round a <form> member's inner
+    # button.
     return Div(
         class_=(
             "inline-flex rounded-md shadow-xs "
+            "[&>*:first-child]:rounded-s-lg "
             "[&>*:first-child_button]:rounded-s-lg "
+            "[&>*:last-child]:rounded-e-lg "
             "[&>*:last-child_button]:rounded-e-lg"
         ),
         role="group",
@@ -910,8 +941,8 @@ def AddForm(
     )[
         CsrfInput(request),
         field_markup,
-        Div()[StyledButton(submit_attrs, type="submit")["Submit"]],
-        Div(class_="submit-button-container")[
+        Div()[ControlButton(submit_attrs, type="submit")["Submit"]],
+        Div(class_="flex flex-wrap gap-2")[
             *([additional_row] if additional_row else [])
         ],
     ]
@@ -919,7 +950,7 @@ def AddForm(
     return Div(id_="add-form", class_="max-width-container")[
         Div(
             id_="add-form",
-            class_=f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto",
+            class_=f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto @container",
         )[inner_form]
     ]
 
@@ -970,7 +1001,7 @@ class Modal(BaseComponent):
                 class_=(
                     f"relative mx-auto p-5 border-accent border w-full "
                     f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
-                    "dark:bg-gray-900"
+                    "dark:bg-gray-900 @container"
                 ),
             )[*self._children]
         ]
@@ -984,14 +1015,14 @@ def ConfirmPage(
     csrf_token: str,
     cancel_url: str,
     confirm_label: str = "Confirm",
-    confirm_color: str = "red",
+    confirm_color: ButtonColor = "red",
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
     and a cancel link back to the origin. The no-JS replacement for the htmx
     confirmation modals — reusable across delete/refund/split/reset flows.
     """
     return Div(
-        class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5",
+        class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5 @container",
     )[
         Form(method="post", action=action_url)[
             Safe(
@@ -1001,20 +1032,12 @@ def ConfirmPage(
                 class_="text-2xl leading-6 font-medium dark:text-white text-center",
             )[title],
             P(class_="dark:text-white text-center mt-5")[*as_children(message)],
-            Div(class_="items-center mt-6")[
-                StyledButton(
-                    class_="w-full",
+            Div(class_="flex flex-col gap-2 mt-6")[
+                ControlButton(
                     color=confirm_color,
-                    size="lg",
                     type="submit",
                 )[confirm_label],
-                A(href=cancel_url)[
-                    StyledButton(
-                        class_="mt-0 w-full",
-                        color="gray",
-                        size="base",
-                    )["Cancel"]
-                ],
+                ControlButton(href=cancel_url, color="gray")["Cancel"],
             ],
         ]
     ]
