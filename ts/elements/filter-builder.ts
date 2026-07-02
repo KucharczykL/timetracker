@@ -1,26 +1,14 @@
 import { readFilterBuilderProps } from "../generated/props.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
+import { PresetDropdown, savePreset, setupPresetDropdown } from "./presets.js";
 
 // <filter-builder> — the builder-page toolbar (#196). Owns Load/Save preset,
 // Apply, Clear; drives the sibling <filter-group>. Preset load/save/delete is
-// duplicated from filter-bar.ts for now (follow-up: extract to presets.ts).
+// shared with filter-bar.ts via presets.ts (#264).
 
 export function applyUrl(listUrl: string, filter: Record<string, unknown>): string {
   if (Object.keys(filter).length === 0) return listUrl;
   return listUrl + "?filter=" + encodeURIComponent(JSON.stringify(filter));
-}
-
-// fetchWithHtmxTriggers does NOT add CSRF — it only parses HX-Trigger response
-// headers. Django's CSRF middleware rejects unsafe methods (POST/DELETE) without
-// the token, so mirror filter-bar.ts (getCsrfToken + X-CSRFToken header) or the
-// save/delete requests 403.
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
-  const element = document.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]');
-  if (element) return element.value;
-  console.warn("filter-builder: CSRF token not found — preset save/delete will 403");
-  return "";
 }
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
@@ -34,10 +22,10 @@ function isFilterGroup(element: Element | null): element is FilterGroupElement {
 export class FilterBuilderElement extends HTMLElement {
   private mode = "";
   private applyTarget = "";
-  private presetListUrl = "";
   private presetSaveUrl = "";
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
+  private presets: PresetDropdown | null = null;
 
   // Build the toolbar buttons into this element. Called when the element is
   // test-created (no server-rendered children) so tests can querySelector for
@@ -63,11 +51,22 @@ export class FilterBuilderElement extends HTMLElement {
     const props = readFilterBuilderProps(this);
     this.mode = props.mode;
     this.applyTarget = props.applyUrl;
-    this.presetListUrl = props.presetListUrl;
     this.presetSaveUrl = props.presetSaveUrl;
 
     this.ensureToolbar();
     this.addEventListener("click", this.onClick);
+    this.presets = setupPresetDropdown({
+      root: this,
+      dropdownSelector: "[data-preset-dropdown]",
+      listUrl: props.presetListUrl,
+      mode: props.mode,
+      onPick: (filter) => {
+        // A loadFilter throw (valid JSON, bad filter shape) propagates back
+        // into the controller's catch → "not a valid filter" toast.
+        this.group()?.loadFilter(filter);
+        this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");
+      },
+    });
     this.changeListener = (event: Event): void => {
       const detail = (event as CustomEvent<{ incompleteCount: number }>).detail;
       if (detail) {
@@ -89,6 +88,8 @@ export class FilterBuilderElement extends HTMLElement {
       document.removeEventListener(FILTER_TREE_CHANGE_EVENT, this.changeListener);
       this.changeListener = null;
     }
+    this.presets?.dispose();
+    this.presets = null;
   }
 
   // Overridable so tests can assert the target without a real navigation.
@@ -114,21 +115,11 @@ export class FilterBuilderElement extends HTMLElement {
     apply.disabled = this.incompleteCount > 0 && !filterIsEmpty;
   }
 
+  // Preset delete/pick clicks are handled by the presets.ts controller's own
+  // delegated listener; this branch set is disjoint from it (the dropdown is a
+  // sibling of the toolbar buttons, so closest() never crosses between them).
   private onClick = (event: Event): void => {
     const target = event.target as HTMLElement;
-    // Delete FIRST: list_presets renders the delete control as a <span
-    // data-delete-preset> nested INSIDE the preset <a href>, so the anchor branch
-    // would otherwise swallow a delete click and load the preset instead.
-    const deleteButton = target.closest<HTMLElement>("[data-delete-preset]");
-    if (deleteButton) {
-      event.preventDefault();
-      return this.onDeletePreset(deleteButton);
-    }
-    const presetLink = target.closest<HTMLAnchorElement>("[data-preset-dropdown] a[href]");
-    if (presetLink) {
-      event.preventDefault();
-      return this.onPresetPicked(presetLink);
-    }
     if (target.closest("[data-apply]")) return this.onApply();
     if (target.closest("[data-clear]")) return this.group()?.clear();
     if (target.closest("[data-load-presets]")) return this.onLoadPresets();
@@ -146,46 +137,7 @@ export class FilterBuilderElement extends HTMLElement {
     if (!dropdown) return;
     dropdown.classList.toggle("hidden");
     if (dropdown.classList.contains("hidden")) return;
-    const separator = this.presetListUrl.indexOf("?") === -1 ? "?" : "&";
-    fetch(this.presetListUrl + separator + "mode=" + encodeURIComponent(this.mode), {
-      credentials: "same-origin",
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("preset list failed");
-        return response.text();
-      })
-      .then((html) => {
-        dropdown.innerHTML = html;
-      })
-      .catch((error: unknown) => { console.error("filter-builder: load presets failed", error); window.toast("Failed to load presets.", "error"); });
-  }
-
-  // The list fragment's anchors carry ?filter=<json> in their href (see
-  // list_presets). Read it out and feed the group instead of navigating.
-  private onPresetPicked(anchor: HTMLAnchorElement): void {
-    const raw = new URL(anchor.href, window.location.origin).searchParams.get("filter") ?? "";
-    const group = this.group();
-    if (!group) return;
-    try {
-      group.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
-      this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");
-    } catch (error) {
-      console.error("filter-builder: preset load failed", error);
-      window.toast("Preset is not a valid filter.", "error");
-    }
-  }
-
-  private onDeletePreset(button: HTMLElement): void {
-    const deleteUrl = button.getAttribute("href");
-    if (!deleteUrl || !confirm("Delete this preset?")) return;
-    window
-      .fetchWithHtmxTriggers(deleteUrl, {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": getCsrfToken() },
-      })
-      .then(() => this.onLoadPresets())
-      .catch((error: unknown) => { console.error("filter-builder: delete preset failed", error); window.toast("Failed to delete preset.", "error"); });
+    void this.presets?.refresh();
   }
 
   private onSavePreset(): void {
@@ -197,21 +149,15 @@ export class FilterBuilderElement extends HTMLElement {
       window.toast("Preset name is required.", "error");
       return;
     }
-    const body = new FormData();
-    body.append("name", name);
-    body.append("mode", this.mode);
-    body.append("filter", JSON.stringify(group.serialize()));
-    window
-      .fetchWithHtmxTriggers(this.presetSaveUrl, {
-        method: "POST",
-        body,
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": getCsrfToken() },
-      })
-      .then(() => {
-        input.value = "";
-      })
-      .catch((error: unknown) => { console.error("filter-builder: save preset failed", error); window.toast("Failed to save preset.", "error"); });
+    void savePreset(this.presetSaveUrl, {
+      name,
+      mode: this.mode,
+      filter: group.serialize(),
+    }).then((response) => {
+      // Keep the typed name around when the server rejected the save (its
+      // error toast already fired) so the user can correct and retry.
+      if (response?.ok) input.value = "";
+    });
   }
 }
 
