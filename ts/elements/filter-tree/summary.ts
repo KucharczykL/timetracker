@@ -193,8 +193,8 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
   const meta = model?.fields.get(leaf.field);
   const label = meta?.label ?? leaf.field;
   const modifier = String(leaf.criterion["modifier"] ?? "");
-  // Sets gate on include-OR-exclude presence, not isCriterionComplete (which only
-  // inspects `value` and would call an excludes-only set incomplete).
+  // Sets gate on include-OR-exclude presence, not isCriterionComplete (sets
+  // phrase includes and excludes separately, so the gate stays set-shaped).
   if (meta?.kind === "set") {
     if (!setHasSelection(leaf.criterion, modifier)) return `${label} ${PLACEHOLDER}`;
     if (isPresenceModifier(modifier)) return `${label} ${MODIFIER_PHRASES[modifier] ?? modifier}`;
@@ -218,8 +218,7 @@ function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): 
 // A set is worth rendering once it has a modifier and any selection (included,
 // excluded, or a presence test). Like buildSetCriterion's "included OR excluded"
 // non-null condition, but stricter: summary also requires a modifier (there is
-// nothing to phrase without one). Distinct from isCriterionComplete's value-only
-// check, which would reject an excludes-only set.
+// nothing to phrase without one).
 function setHasSelection(criterion: CriterionLeaf["criterion"], modifier: string): boolean {
   if (!modifier) return false;
   if (isPresenceModifier(modifier)) return true;

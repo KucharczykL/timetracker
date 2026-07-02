@@ -205,18 +205,10 @@ const initWidget = (containerElement: Element) => {
 
   // ── Clone a server-rendered <template> prototype by name. The server emits
   //    the mode-appropriate prototypes, so the JS never names a class. ──
-  const cloneTemplate = (templateName: string): HTMLElement | null => {
-    const template = container.querySelector<HTMLTemplateElement>(
-      `template[data-search-select-template="${templateName}"]`
-    );
-    const clone = template?.content.firstElementChild?.cloneNode(true);
-    return (clone as HTMLElement) ?? null;
-  };
+  const cloneTemplate = (templateName: string): HTMLElement | null =>
+    cloneTemplateFrom(container, templateName);
 
-  const setLabel = (node: Element, label: string) => {
-    const slot = node.querySelector("[data-search-select-label]");
-    if (slot) slot.textContent = label;
-  };
+  const setLabel = setLabelSlot;
 
   const applyData = (node: Element, data: Record<string, string> = {}) => {
     Object.keys(data).forEach(key => {
@@ -715,7 +707,24 @@ const initWidget = (containerElement: Element) => {
 };
 
 /** Minimal escape for use inside an attribute-value selector. */
-export const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
+const cssEscape = (value: string | null): string => String(value).replace(/["\\]/g, "\\$&");
+
+// ── Detached-safe pill construction (shared by the click handlers above and the
+//    silent writer below). Parametrized on the container so they work on a
+//    template clone that is not yet connected/upgraded. ──
+
+function cloneTemplateFrom(container: HTMLElement, templateName: string): HTMLElement | null {
+  const template = container.querySelector<HTMLTemplateElement>(
+    `template[data-search-select-template="${templateName}"]`
+  );
+  const clone = template?.content.firstElementChild?.cloneNode(true);
+  return (clone as HTMLElement) ?? null;
+}
+
+function setLabelSlot(node: Element, label: string): void {
+  const slot = node.querySelector("[data-search-select-label]");
+  if (slot) slot.textContent = label;
+}
 
 // The current include/exclude/modifier state of one filter-mode <search-select>,
 // read straight from its pills. Self-contained per element (no flat form) so the
@@ -749,6 +758,45 @@ export function readFilterSelect(container: HTMLElement): FilterSelectValue {
     });
   }
   return { included, excluded, modifier };
+}
+
+/** Silent write mirror of readFilterSelect (#263 prefill hydration): render an
+ * include/exclude/modifier state into a filter-mode widget's pills by cloning
+ * the widget's own pill templates, so hydrated pills are identical to
+ * click-added ones (readFilterSelect and the delegated ×-remove treat them the
+ * same). Works on a detached, not-yet-upgraded clone and dispatches no events.
+ * `modifierLabel` is the pinned modifier row's display label; the modifier pill
+ * is only rendered when it is non-empty (INCLUDES/EXCLUDES have no pill).
+ * Presence modifiers are mutually exclusive with value pills, mirroring
+ * setModifier/addFilterPill above. */
+export function writeFilterSelect(
+  container: HTMLElement,
+  value: FilterSelectValue,
+  modifierLabel = "",
+): void {
+  const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
+  if (!pills) return;
+  const { included, excluded, modifier } = value;
+  if (modifier && modifierLabel) {
+    const pill = cloneTemplateFrom(container, "pill-modifier");
+    if (pill) {
+      pill.setAttribute("data-search-select-modifier", modifier);
+      setLabelSlot(pill, modifierLabel);
+      pills.insertBefore(pill, pills.firstChild);
+      container.setAttribute("data-modifier", modifier);
+    }
+  }
+  if (modifier && isPresenceModifier(modifier)) return;
+  const appendValuePill = (entry: FilterPillEntry, templateName: string): void => {
+    const pill = cloneTemplateFrom(container, templateName);
+    if (!pill) return;
+    pill.setAttribute("data-value", entry.id);
+    pill.setAttribute("data-label", entry.label);
+    setLabelSlot(pill, entry.label);
+    pills.appendChild(pill);
+  };
+  for (const entry of included) appendValuePill(entry, "pill-include");
+  for (const entry of excluded) appendValuePill(entry, "pill-exclude");
 }
 
 // Serialise each widget's current state onto data-* attributes for the caller.

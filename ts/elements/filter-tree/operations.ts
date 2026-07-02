@@ -90,17 +90,22 @@ function isValuePresent(value: unknown): boolean {
 
 // Whether a leaf is complete enough to query/apply: it needs a field, a modifier,
 // and a non-empty value — UNLESS the modifier is a presence test (IS_NULL /
-// NOT_NULL), which is value-less by design. A range modifier (BETWEEN / NOT_BETWEEN)
-// additionally needs the second bound `value2`: a half-filled BETWEEN serializes to a
-// payload the backend rejects *wholesale* (`IntCriterion.to_q` raises FilterError when
-// value2 is None, and `filter_from_json` validates eagerly — so one bad leaf drops the
-// entire filter). Excluding it here keeps it out of both the count query and Apply.
+// NOT_NULL), which is value-less by design, or the payload carries a non-empty
+// set `excludes` list (an excludes-only set is a meaningful ~Q(field__in=…) with
+// no include half — same phrasing exception summary.ts makes). A range modifier
+// (BETWEEN / NOT_BETWEEN) additionally needs the second bound `value2`: a
+// half-filled BETWEEN serializes to a payload the backend rejects *wholesale*
+// (`IntCriterion.to_q` raises FilterError when value2 is None, and
+// `filter_from_json` validates eagerly — so one bad leaf drops the entire
+// filter). Excluding it here keeps it out of both the count query and Apply.
 export function isCriterionComplete(leaf: CriterionLeaf): boolean {
   if (!leaf.field) return false;
   const modifier = leaf.criterion["modifier"];
   if (typeof modifier !== "string" || modifier === "") return false;
   if (isPresenceModifier(modifier)) return true;
-  if (!isValuePresent(leaf.criterion["value"])) return false;
+  if (!isValuePresent(leaf.criterion["value"])) {
+    return !isRangeModifier(modifier) && isValuePresent(leaf.criterion["excludes"]);
+  }
   if (isRangeModifier(modifier) && !isValuePresent(leaf.criterion["value2"])) return false;
   return true;
 }

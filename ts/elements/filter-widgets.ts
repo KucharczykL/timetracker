@@ -5,8 +5,10 @@
  * #192). Extracted verbatim from filter-bar.ts so the tree reuses the exact same
  * widget contract the bars produce via the Python `field_widget` builder (#242).
  */
+import type { LeafWidgetKind } from "../generated/filter-metadata.js";
+import { writeSideValue } from "./date-range-picker.js";
 import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
-import { cssEscape, readFilterSelect } from "./search-select.js";
+import { readFilterSelect, writeFilterSelect } from "./search-select.js";
 
 export interface Criterion {
   value: unknown;
@@ -31,6 +33,14 @@ export function parseNumberInputValue(element: HTMLInputElement | null): number 
   if (!element || element.value === "") return "";
   const value = parseFloat(element.value);
   return isNaN(value) ? "" : value;
+}
+
+// The value2 slot's [data-number-value2] marker may be the input itself or a
+// wrapper around one — the single lookup shared by the reader and the writer.
+function resolveValue2Input(element: HTMLElement): HTMLInputElement | null {
+  const marker = element.querySelector("[data-number-value2]");
+  if (marker instanceof HTMLInputElement) return marker;
+  return marker?.querySelector<HTMLInputElement>("input") ?? null;
 }
 
 export function buildRangeCriterion(
@@ -82,12 +92,7 @@ export function readNumberWidget(element: HTMLElement): Criterion | Record<strin
     element.querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])'),
   );
   if (isRangeModifier(modifier)) {
-    const value2Marker = element.querySelector('[data-number-value2]');
-    const value2Input =
-      value2Marker instanceof HTMLInputElement
-        ? value2Marker
-        : (value2Marker?.querySelector<HTMLInputElement>("input") ?? null);
-    const value2 = parseNumberInputValue(value2Input);
+    const value2 = parseNumberInputValue(resolveValue2Input(element));
     if (value !== "") return criterion(value, value2, modifier);
     return null;
   }
@@ -150,7 +155,10 @@ export function readTreeSetWidget(valueCell: HTMLElement): Record<string, unknow
 // Read one leaf value cell into a criterion payload by kind — the nested builder's
 // entry point. For `set` it self-serializes; for the scalar kinds it reuses the
 // shared readers. Returns null when the widget carries no usable value (incomplete).
-export function readLeafWidget(valueCell: HTMLElement, kind: string): Record<string, unknown> | null {
+export function readLeafWidget(
+  valueCell: HTMLElement,
+  kind: LeafWidgetKind,
+): Record<string, unknown> | null {
   switch (kind) {
     case "string":
       return readStringWidget(valueCell);
@@ -162,8 +170,14 @@ export function readLeafWidget(valueCell: HTMLElement, kind: string): Record<str
       return readBoolWidget(valueCell) as Record<string, unknown> | null;
     case "set":
       return readTreeSetWidget(valueCell);
-    default:
-      return null;
+    case "field-comparison":
+      return null; // comparison leaves are read by readComparisonRow, not here
+    default: {
+      // Exhaustive over LeafWidgetKind: a new widget kind fails tsc here until
+      // it gets BOTH a reader case and a writeLeafWidget case (see below).
+      const unhandled: never = kind;
+      return unhandled;
+    }
   }
 }
 
@@ -250,7 +264,8 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
   const modifier = select?.value ?? "EQUALS";
   if (isPresenceModifier(modifier)) return; // presence carries no value; input stays disabled+empty
   const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
-  const value = scalarToInputValue(criterion["value"]);
+  // Trimmed like the read side (readStringWidget), so hydrate → serialize is stable.
+  const value = scalarToInputValue(criterion["value"]).trim();
   if (textInput && value !== "") textInput.value = value;
 }
 
@@ -266,44 +281,45 @@ export function writeNumberWidget(element: HTMLElement, criterion: Record<string
   const value = scalarToInputValue(criterion["value"]);
   if (valueInput && value !== "") valueInput.value = value;
   if (!isRangeModifier(modifier)) return;
-  const value2Marker = element.querySelector("[data-number-value2]");
-  const value2Input =
-    value2Marker instanceof HTMLInputElement
-      ? value2Marker
-      : (value2Marker?.querySelector<HTMLInputElement>("input") ?? null);
+  const value2Input = resolveValue2Input(element);
   const value2 = scalarToInputValue(criterion["value2"]);
   if (value2Input && value2 !== "") value2Input.value = value2;
 }
 
-// Write one side's hidden input + visible segments. The segments get the split
-// ISO pieces exactly as the server pre-renders them; the date-range element's
-// initField (which runs at connect — always AFTER this detached write) adopts
-// the segment values into its typed-digit buffers, so display and editing state
-// match a server-side prefill.
-function writeDateSide(element: HTMLElement, side: "min" | "max", isoString: string): void {
-  const hidden = element.querySelector<HTMLInputElement>(
-    side === "min" ? "[data-range-min]" : "[data-range-max]",
-  );
-  if (hidden) hidden.value = isoString;
-  if (!isoString) return;
-  const [year = "", month = "", day = ""] = isoString.split("-");
-  const partValues: Record<string, string> = { year, month, day };
-  element
-    .querySelectorAll<HTMLInputElement>(`input[data-date-side="${side}"][data-date-part]`)
-    .forEach((segment) => {
-      segment.value = partValues[segment.dataset.datePart ?? ""] ?? "";
-    });
-}
-
-// Mirrors _range_from_field: a one-sided range stores its single bound in
-// `value` regardless of side, so the modifier decides which slot it fills
-// (LESS_THAN → max, GREATER_THAN → min); only BETWEEN carries value + value2.
+// Hydrate the date range widget ONLY for modifiers the min/max pair can
+// represent faithfully — the read side (readDateWidget → buildRangeCriterion)
+// re-derives the modifier purely from which bounds are set, so writing an
+// unrepresentable modifier's bounds would silently rewrite the query on
+// Apply/count. A one-sided range stores its single bound in `value` regardless
+// of side (the modifier decides the slot, mirroring _range_from_field);
+// EQUALS(d) is written as the exactly-equivalent day range d..d (DateCriterion
+// compiles both to the same rows — every datetime field filters via a __date
+// lookup). NOT_EQUALS (a hole), NOT_BETWEEN (two rays), and presence modifiers
+// have no faithful min/max form: leave the widget blank (the leaf prunes, the
+// pre-hydration behavior) rather than apply a different query.
 export function writeDateWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
   const value = scalarToInputValue(criterion["value"]);
   const value2 = scalarToInputValue(criterion["value2"]);
-  const isLessThan = criterion["modifier"] === "LESS_THAN";
-  writeDateSide(element, "min", isLessThan ? "" : value);
-  writeDateSide(element, "max", isLessThan ? value : value2);
+  let bounds: { min: string; max: string } | null;
+  switch (criterion["modifier"]) {
+    case "LESS_THAN":
+      bounds = { min: "", max: value };
+      break;
+    case "GREATER_THAN":
+      bounds = { min: value, max: "" };
+      break;
+    case "BETWEEN":
+      bounds = { min: value, max: value2 };
+      break;
+    case "EQUALS":
+      bounds = { min: value, max: value };
+      break;
+    default:
+      bounds = null;
+  }
+  if (!bounds) return;
+  writeSideValue(element, "min", bounds.min);
+  writeSideValue(element, "max", bounds.max);
 }
 
 // Mirrors _bool_from_field's coercion (string "true"/"1"/"yes" and friends).
@@ -325,26 +341,24 @@ export function writeBoolWidget(element: HTMLElement, criterion: Record<string, 
   if (radio) radio.checked = true;
 }
 
-// Clone one of the <search-select>'s own pill <template> prototypes (the same
-// ones its click handlers clone), so hydrated pills are byte-identical to
-// user-added ones — readFilterSelect and the delegated ×-remove listener treat
-// them exactly the same, and no element upgrade is needed.
-function cloneSetPillTemplate(searchSelect: HTMLElement, templateName: string): HTMLElement | null {
-  const template = searchSelect.querySelector<HTMLTemplateElement>(
-    `template[data-search-select-template="${templateName}"]`,
+// Escape a user-authored value for use inside a quoted attribute selector.
+// Control characters are CSS parse errors inside quoted strings, so they get
+// hex-escaped (the native CSS.escape treatment); quotes and backslashes are
+// backslash-escaped. Implemented locally rather than via CSS.escape so the
+// behavior is identical in browsers and in jsdom (which lacks the CSS global).
+function escapeSelectorValue(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f"\\]/g, (character) =>
+    character === '"' || character === "\\"
+      ? `\\${character}`
+      : `\\${character.charCodeAt(0).toString(16)} `,
   );
-  const clone = template?.content.firstElementChild?.cloneNode(true);
-  return clone instanceof HTMLElement ? clone : null;
-}
-
-function setPillLabel(pill: HTMLElement, label: string): void {
-  const slot = pill.querySelector("[data-search-select-label]");
-  if (slot) slot.textContent = label;
 }
 
 // The label a value id shows on its pill: the stored label when the payload
 // carries {id, label} entries, else the pre-rendered option row's label, else
-// the id itself (mirrors _extract_labeled's bare-value fallback).
+// the id itself (mirrors _extract_labeled's bare-value fallback). Ids come from
+// user-authored ?filter= JSON, so the selector escape must cover control
+// characters, not just quotes.
 function normalizePillEntries(raw: unknown, searchSelect: HTMLElement): PillEntry[] {
   if (!Array.isArray(raw)) return [];
   const entries: PillEntry[] = [];
@@ -363,7 +377,7 @@ function normalizePillEntries(raw: unknown, searchSelect: HTMLElement): PillEntr
     }
     if (!label) {
       const optionRow = searchSelect.querySelector<HTMLElement>(
-        `[data-search-select-option][data-value="${cssEscape(id)}"]`,
+        `[data-search-select-option][data-value="${escapeSelectorValue(id)}"]`,
       );
       label = optionRow?.getAttribute("data-label") || id;
     }
@@ -372,51 +386,36 @@ function normalizePillEntries(raw: unknown, searchSelect: HTMLElement): PillEntr
   return entries;
 }
 
-function appendValuePill(
-  searchSelect: HTMLElement,
-  pills: HTMLElement,
-  entry: PillEntry,
-  kind: "include" | "exclude",
-): void {
-  const pill = cloneSetPillTemplate(searchSelect, kind === "include" ? "pill-include" : "pill-exclude");
-  if (!pill) return;
-  pill.setAttribute("data-value", entry.id);
-  pill.setAttribute("data-label", entry.label);
-  setPillLabel(pill, entry.label);
-  pills.appendChild(pill);
-}
-
-// Tree set writer — the mirror of readTreeSetWidget/_choice_from_raw: `value`
-// entries become include pills, `excludes` exclude pills, and a modifier that
-// matches one of the widget's pinned modifier rows becomes the sticky modifier
-// pill (INCLUDES/EXCLUDES have no pinned row and no pill — the read side
-// defaults to INCLUDES). A presence modifier excludes value pills entirely.
+// Tree set writer — the mirror of readTreeSetWidget/_choice_from_raw, rendered
+// through the <search-select>'s own writeFilterSelect so hydrated pills are
+// identical to click-added ones. A modifier that matches one of the widget's
+// pinned modifier rows becomes the sticky modifier pill (INCLUDES/EXCLUDES have
+// no pinned row and no pill — the read side defaults to INCLUDES). EXCLUDES and
+// NOT_EQUALS store their values in `value` but mean exclusion — the backend
+// compiles them to exactly ~Q(field__in=…), the same Q the widget's exclude
+// channel produces (criteria.py _value_q/to_q) — so they hydrate as ✗ exclude
+// pills rather than silently inverting into includes.
 export function writeTreeSetWidget(valueCell: HTMLElement, criterion: Record<string, unknown>): void {
   const searchSelect = valueCell.querySelector<HTMLElement>("search-select");
-  const pills = searchSelect?.querySelector<HTMLElement>("[data-search-select-pills]");
-  if (!searchSelect || !pills) return;
+  if (!searchSelect) return;
   const modifier = typeof criterion["modifier"] === "string" ? criterion["modifier"] : "";
   const modifierRow = modifier
     ? searchSelect.querySelector<HTMLElement>(
-        `[data-search-select-modifier-option="${cssEscape(modifier)}"]`,
+        `[data-search-select-modifier-option="${escapeSelectorValue(modifier)}"]`,
       )
     : null;
-  if (modifierRow) {
-    const pill = cloneSetPillTemplate(searchSelect, "pill-modifier");
-    if (pill) {
-      pill.setAttribute("data-search-select-modifier", modifier);
-      setPillLabel(pill, modifierRow.getAttribute("data-label") ?? modifier);
-      pills.insertBefore(pill, pills.firstChild);
-      searchSelect.setAttribute("data-modifier", modifier);
-    }
-  }
-  if (isPresenceModifier(modifier)) return; // presence is mutually exclusive with value pills
-  for (const entry of normalizePillEntries(criterion["value"], searchSelect)) {
-    appendValuePill(searchSelect, pills, entry, "include");
-  }
-  for (const entry of normalizePillEntries(criterion["excludes"], searchSelect)) {
-    appendValuePill(searchSelect, pills, entry, "exclude");
-  }
+  const valueEntries = normalizePillEntries(criterion["value"], searchSelect);
+  const excludeEntries = normalizePillEntries(criterion["excludes"], searchSelect);
+  const isExclusion = modifier === "EXCLUDES" || modifier === "NOT_EQUALS";
+  writeFilterSelect(
+    searchSelect,
+    {
+      included: isExclusion ? [] : valueEntries,
+      excluded: isExclusion ? [...valueEntries, ...excludeEntries] : excludeEntries,
+      modifier: modifierRow ? modifier : "",
+    },
+    modifierRow?.getAttribute("data-label") ?? "",
+  );
 }
 
 // Write one leaf value cell from a criterion payload by kind — the write-mirror
@@ -426,7 +425,7 @@ export function writeTreeSetWidget(valueCell: HTMLElement, criterion: Record<str
 // writer is an idempotent no-op beyond selecting the already-default modifier.
 export function writeLeafWidget(
   valueCell: HTMLElement,
-  kind: string,
+  kind: LeafWidgetKind,
   criterion: Record<string, unknown>,
 ): void {
   if (Object.keys(criterion).length === 0) return;
@@ -446,7 +445,13 @@ export function writeLeafWidget(
     case "set":
       writeTreeSetWidget(valueCell, criterion);
       break;
-    default:
-      break;
+    case "field-comparison":
+      break; // comparison leaves hydrate via seedComparisonRow, not here
+    default: {
+      // Exhaustive over LeafWidgetKind: a new widget kind fails tsc here until
+      // it gets BOTH this writer case and a readLeafWidget case (see above).
+      const unhandled: never = kind;
+      return unhandled;
+    }
   }
 }

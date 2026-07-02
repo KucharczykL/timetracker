@@ -508,6 +508,18 @@ describe("add-criterion field picker contract (#191)", () => {
       ).toBe(false);
     });
 
+    it("treats an excludes-only set as complete (a meaningful NOT-IN filter)", () => {
+      expect(
+        isCriterionComplete({
+          kind: "criterion",
+          id: "c",
+          field:"platform",
+          criterion: { modifier: "INCLUDES", value: [], excludes: [{ id: "2", label: "Switch" }] },
+          negate: false,
+        }),
+      ).toBe(true);
+    });
+
     it("requires both bounds for a range modifier (#192)", () => {
       const halfBetween: CriterionLeaf = {
         kind: "criterion",

@@ -493,7 +493,7 @@ export class FilterGroupElement extends HTMLElement {
   private readLeaf(node: CriterionLeaf, model: string): Record<string, unknown> | null {
     const meta = this.bundle(model)?.fields.get(node.field);
     const cells = this.rowCache.get(node.id);
-    if (!meta || !cells) return null;
+    if (!meta || meta.kind === "relation" || !cells) return null;
     return readLeafWidget(cells.valueCell, meta.kind);
   }
 
@@ -562,7 +562,11 @@ export class FilterGroupElement extends HTMLElement {
         this.tree = removeAt(this.tree, path);
         break;
       case "duplicate":
-        this.tree = duplicateAt(this.tree, path);
+        // Duplicate what the user SEES: fill every leaf's stored payload from
+        // its live widget first, so the copy hydrates from current values
+        // rather than the deserialize-time snapshot (which would resurrect
+        // prefilled values the user has since edited or removed, #263 review).
+        this.tree = duplicateAt(this.fillCriteria(this.tree, this.model), path);
         break;
       case "wrap":
         if (canWrap(this.tree, path)) this.tree = wrapInGroup(this.tree, path);
@@ -929,7 +933,15 @@ export class FilterGroupElement extends HTMLElement {
       this.uniquify(clone);
       cell.appendChild(clone);
       const kind = this.bundle(model)?.fields.get(field)?.kind;
-      if (kind) writeLeafWidget(cell, kind, criterion);
+      if (kind && kind !== "relation") {
+        try {
+          writeLeafWidget(cell, kind, criterion);
+        } catch (error) {
+          // Fail open: a hydration bug on one leaf degrades to a blank widget
+          // (the pre-hydration behavior), never an aborted page render.
+          console.warn("filter-group: leaf hydration failed", error);
+        }
+      }
     }
     return cell;
   }

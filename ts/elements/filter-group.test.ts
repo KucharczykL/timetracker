@@ -948,14 +948,8 @@ const HYDRATION_FIELDS = [
     modifiers: ["INCLUDES", "EXCLUDES"], relations: [], search_url: "", is_m2m: false,
   },
 ];
-const HYDRATION_COLUMNS = [
-  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
-];
 const HYDRATION_MODELS = JSON.stringify({
-  game: { fields: HYDRATION_FIELDS, columns: HYDRATION_COLUMNS },
+  game: { fields: HYDRATION_FIELDS, columns: COLUMNS },
 });
 // The per-kind widget templates. Segment inputs carry the dual hidden-input
 // attributes (data-date-range-hidden + data-range-min/max) exactly like
@@ -1120,6 +1114,32 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     expect(host.serializeForQuery()).toEqual(filter);
   });
 
+  it("date EQUALS: hydrates as the exactly-equivalent same-day range", () => {
+    // DateCriterion EQUALS(d) and BETWEEN(d, d) compile to the same rows
+    // (criteria.py — every datetime field filters via a __date lookup), so the
+    // min/max widget represents EQUALS as d..d and serializes BETWEEN.
+    const host = loadHydration({ AND: [{ released: { value: "2020-01-05", modifier: "EQUALS" } }] });
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2020-01-05");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2020-01-05");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ released: { value: "2020-01-05", value2: "2020-01-05", modifier: "BETWEEN" } }],
+    });
+  });
+
+  it("date NOT_BETWEEN: hydrates blank (pruned) instead of rewriting to the complement range", () => {
+    // NOT_BETWEEN is two open rays — no faithful min/max form. Writing the
+    // bounds would read back as BETWEEN (the exact complement), so the widget
+    // stays blank and the leaf prunes, like before hydration existed.
+    const host = loadHydration({
+      AND: [{ released: { value: "2020-01-01", value2: "2020-12-31", modifier: "NOT_BETWEEN" } }],
+    });
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("");
+    expect(host.serializeForQuery()).toEqual({});
+  });
+
   it("bool: checks the matching radio and round-trips", () => {
     const filter = { AND: [{ mastered: { value: true, modifier: "EQUALS" } }] };
     const host = loadHydration(filter);
@@ -1130,7 +1150,7 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
   });
 
   it("set: renders include + exclude pills and round-trips", () => {
-    const host = loadHydration({
+    const filter = {
       AND: [{
         status: {
           value: [{ id: "f", label: "Finished" }],
@@ -1138,7 +1158,8 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
           modifier: "INCLUDES",
         },
       }],
-    });
+    };
+    const host = loadHydration(filter);
     const pills = valueCell(host, [0]).querySelectorAll<HTMLElement>("[data-pill]");
     expect([...pills].map((pill) => pill.getAttribute("data-search-select-type"))).toEqual([
       "include",
@@ -1146,13 +1167,33 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     ]);
     expect(pills[0].getAttribute("data-value")).toBe("f");
     expect(pills[0].textContent).toContain("Finished");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("set EXCLUDES: values hydrate as exclude pills, never inverted into includes", () => {
+    // {modifier: EXCLUDES, value: [X]} compiles to exactly ~Q(field__in=[X]) —
+    // identical to INCLUDES + excludes (criteria.py _value_q/to_q) — so the
+    // widget's exclude channel is the faithful representation.
+    const host = loadHydration({ AND: [{ status: { modifier: "EXCLUDES", value: ["f"] } }] });
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill]")!;
+    expect(pill.getAttribute("data-search-select-type")).toBe("exclude");
+    expect(pill.getAttribute("data-label")).toBe("Finished");
     expect(host.serializeForQuery()).toEqual({
       AND: [{
-        status: {
-          value: [{ id: "f", label: "Finished" }],
-          excludes: [{ id: "u", label: "Unplayed" }],
-          modifier: "INCLUDES",
-        },
+        status: { value: [], excludes: [{ id: "f", label: "Finished" }], modifier: "INCLUDES" },
+      }],
+    });
+  });
+
+  it("set: a control character in a URL-authored id neither throws nor aborts the render", () => {
+    // A raw newline in a CSS string is a parse error; the option-row label
+    // lookup must escape it (CSS.escape), not crash the whole builder page.
+    const host = loadHydration({ AND: [{ status: { modifier: "INCLUDES", value: ["f\nx"] } }] });
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill]")!;
+    expect(pill.getAttribute("data-value")).toBe("f\nx");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{
+        status: { value: [{ id: "f\nx", label: "f\nx" }], excludes: [], modifier: "INCLUDES" },
       }],
     });
   });
@@ -1230,5 +1271,32 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     const numberInput = valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])')!;
     expect(numberInput.value).toBe("");
     expect(host.serializeForQuery()).toEqual({}); // incomplete leaf → pruned
+  });
+
+  it("string: an untrimmed stored value hydrates trimmed, matching the read side", () => {
+    const host = loadHydration({ AND: [{ name: { value: " Hades ", modifier: "EQUALS" } }] });
+    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(host.serializeForQuery()).toEqual({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+  });
+
+  it("duplicate copies the leaf's CURRENT value, not the stale prefill snapshot", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    typeValue(host, [0], "Celeste"); // live edit — the stored tree still says "Hades"
+    clickAction(host, "duplicate", [0]);
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        { name: { value: "Celeste", modifier: "EQUALS" } },
+        { name: { value: "Celeste", modifier: "EQUALS" } },
+      ],
+    });
+  });
+
+  it("duplicate after clearing a prefilled value stays blank (deleted values never resurrect)", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    typeValue(host, [0], ""); // the user deletes the prefilled value
+    clickAction(host, "duplicate", [0]);
+    const inputs = [...host.querySelectorAll<HTMLInputElement>('[data-value-cell] input[type="text"]')];
+    expect(inputs.map((input) => input.value)).toEqual(["", ""]);
+    expect(host.serializeForQuery()).toEqual({}); // both leaves incomplete → pruned
   });
 });
