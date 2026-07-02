@@ -948,8 +948,32 @@ const HYDRATION_FIELDS = [
     modifiers: ["INCLUDES", "EXCLUDES"], relations: [], search_url: "", is_m2m: false,
   },
 ];
+// Relation chain for prefill: game → session → playevent, so a nested-relation
+// filter (the stats "View all" URL shape — purchase → game → playevent in
+// production, transposed onto the harness models) is expressible here.
+const PLAYEVENT_RELATION = {
+  name: "playevent_filter",
+  label: "PlayEvents",
+  kind: "relation",
+  nullable: false,
+  choices: [],
+  modifiers: [],
+  relations: [{ field: "playevent_filter", filter: "PlayEventFilter", model: "PlayEvent" }],
+  search_url: "",
+  is_m2m: false,
+};
+const ENDED_META = {
+  name: "ended", label: "Ended", kind: "date", nullable: false, choices: [],
+  modifiers: [], relations: [], search_url: "", is_m2m: false,
+};
+const SESSION_NAME_META = {
+  name: "name", label: "Name", kind: "string", nullable: false, choices: [],
+  modifiers: ["EQUALS", "INCLUDES"], relations: [], search_url: "", is_m2m: false,
+};
 const HYDRATION_MODELS = JSON.stringify({
-  game: { fields: HYDRATION_FIELDS, columns: COLUMNS },
+  game: { fields: [...HYDRATION_FIELDS, SESSION_RELATION], columns: COLUMNS },
+  session: { fields: [SESSION_NAME_META, PLAYEVENT_RELATION], columns: [] },
+  playevent: { fields: [ENDED_META], columns: [] },
 });
 // The per-kind widget templates. Segment inputs carry the dual hidden-input
 // attributes (data-date-range-hidden + data-range-min/max) exactly like
@@ -1029,6 +1053,33 @@ const HYDRATION_TEMPLATES = `
       <select data-fc-right data-selected></select>
       <label data-fc-granularity-wrap hidden><input type="checkbox" data-fc-granularity /></label>
       <button data-fc-remove>✕</button>
+    </div>
+  </template>
+  <template data-model="session" data-field-picker-template>
+    <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+  </template>
+  <template data-model="session" data-field="name">
+    <div class="flex-col">
+      <select data-string-modifier-select>
+        <option value="EQUALS" selected>is</option>
+        <option value="INCLUDES">includes</option>
+      </select>
+      <input type="text" />
+    </div>
+  </template>
+  <template data-model="playevent" data-field-picker-template>
+    <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+  </template>
+  <template data-model="playevent" data-field="ended">
+    <div>
+      <input type="hidden" data-date-range-hidden="min" data-range-min />
+      <input type="hidden" data-date-range-hidden="max" data-range-max />
+      <input data-date-side="min" data-date-part="day" maxlength="2" placeholder="dd" />
+      <input data-date-side="min" data-date-part="month" maxlength="2" placeholder="mm" />
+      <input data-date-side="min" data-date-part="year" maxlength="4" placeholder="yyyy" />
+      <input data-date-side="max" data-date-part="day" maxlength="2" placeholder="dd" />
+      <input data-date-side="max" data-date-part="month" maxlength="2" placeholder="mm" />
+      <input data-date-side="max" data-date-part="year" maxlength="4" placeholder="yyyy" />
     </div>
   </template>`;
 
@@ -1298,5 +1349,95 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     const inputs = [...host.querySelectorAll<HTMLInputElement>('[data-value-cell] input[type="text"]')];
     expect(inputs.map((input) => input.value)).toEqual(["", ""]);
     expect(host.serializeForQuery()).toEqual({}); // both leaves incomplete → pruned
+  });
+});
+
+// ── Prefill of relation subtrees ──
+// A prefilled filter whose top-level key is a relation (the stats "View all" →
+// Advanced filter URL shape) must deserialize into a RelationNode with its nested
+// child group intact — not a criterion leaf that swallows the subtree and renders
+// one "Incomplete" row. Regression: buildRegistry() used to put relation-kind
+// fields in the registry's `fields` set, and deserialize resolves criterion-first.
+describe("<filter-group> prefill hydrates relation subtrees", () => {
+  it("single relation: renders the relation row + hydrated child criterion", () => {
+    const filter = {
+      AND: [{ session_filter: { AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] } }],
+    };
+    const host = loadHydration(filter);
+    const card = row(host, [0]);
+    expect(card.dataset.nodeKind).toBe("relation");
+    expect(relationSelect(host, [0], "data-relation-field").value).toBe("session_filter");
+    expect(card.querySelector("[data-incomplete-badge]")).toBeNull();
+    const input = valueCell(host, [0, "child", 0]).querySelector<HTMLInputElement>('input[type="text"]')!;
+    expect(input.value).toBe("Hades");
+    expect(host.getIncompleteCount()).toBe(0);
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("nested relation (stats View-all URL shape): full subtree hydrates and round-trips", () => {
+    // Mirrors ?filter={"game_filter":{"playevent_filter":{"ended":{…BETWEEN…}}}}
+    // from the bug report, expressed in the harness's game→session→playevent chain.
+    const host = loadHydration({
+      session_filter: {
+        playevent_filter: {
+          ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" },
+        },
+      },
+    });
+    const outer = row(host, [0]);
+    expect(outer.dataset.nodeKind).toBe("relation");
+    expect(relationSelect(host, [0], "data-relation-field").value).toBe("session_filter");
+    expect(outer.querySelector("[data-incomplete-badge]")).toBeNull();
+    const inner = row(host, [0, "child", 0]);
+    expect(inner.dataset.nodeKind).toBe("relation");
+    expect(relationSelect(host, [0, "child", 0], "data-relation-field").value).toBe("playevent_filter");
+    const dateCell = valueCell(host, [0, "child", 0, "child", 0]);
+    expect(dateCell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2026-01-01");
+    expect(dateCell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2026-12-31");
+    expect(host.getIncompleteCount()).toBe(0);
+    // The canonical form: groups keep their connective wrapper, default ANY match omitted.
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{
+        session_filter: {
+          AND: [{
+            playevent_filter: {
+              AND: [{ ended: { value: "2026-01-01", modifier: "BETWEEN", value2: "2026-12-31" } }],
+            },
+          }],
+        },
+      }],
+    });
+  });
+
+  it("a relation field with no target stays a fail-visible criterion, never a relations entry", () => {
+    // Malformed metadata (server-side unreachable: field_metadata hard-fails on
+    // a target-less relation). Pins buildRegistry's else-branch: the name lands
+    // in the criterion set → an Incomplete row that prunes, NOT a bogus
+    // relations entry whose undefined target would throw UNKNOWN_MODEL and
+    // fail the whole prefill open to an empty match-all builder.
+    document.body.innerHTML = "";
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute(
+      "models",
+      JSON.stringify({
+        game: {
+          fields: [{
+            name: "broken_filter", label: "Broken", kind: "relation", nullable: false,
+            choices: [], modifiers: [], relations: [], search_url: "", is_m2m: false,
+          }],
+          columns: [],
+        },
+      }),
+    );
+    host.setAttribute(
+      "filter",
+      JSON.stringify({ broken_filter: { name: { value: "x", modifier: "EQUALS" } } }),
+    );
+    document.body.appendChild(host);
+    const card = row(host, [0]);
+    expect(card.dataset.nodeKind).toBe("criterion");
+    expect(card.querySelector("[data-incomplete-badge]")).not.toBeNull();
+    expect(host.serializeForQuery()).toEqual({}); // incomplete → pruned
   });
 });

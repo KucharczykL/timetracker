@@ -23,12 +23,13 @@ Prefill behavior note:
 
 import json
 import urllib.parse
+from datetime import datetime, timezone
 
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from games.models import FilterPreset, Game, Platform
+from games.models import FilterPreset, Game, Platform, PlayEvent, Purchase
 
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
@@ -322,3 +323,76 @@ def test_load_set_field_preset_reflects_field_without_crash(
     )
     expect(value_pill).to_be_visible(timeout=5_000)
     expect(value_pill).to_contain_text("SpyGame")
+
+
+def test_nested_relation_prefill_renders_full_tree(
+    authenticated_page: Page, live_server
+) -> None:
+    """The stats "View all" → Advanced filter URL shape: a purchase filter whose
+    only key is a nested relation chain (game_filter → playevent_filter → ended
+    BETWEEN) must deserialize into two relation rows with the inner date widget
+    hydrated — not one "Incomplete" criterion row whose pruned query matches all
+    purchases.  Regression: buildRegistry() leaked relation-kind field names into
+    the registry's criterion-field set, and deserialize resolves criterion-first,
+    so the relation swallowed its whole subtree as an opaque criterion payload."""
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    done_game = Game.objects.create(name="DoneGame", platform=platform, status="f")
+    other_game = Game.objects.create(name="OtherGame", platform=platform, status="p")
+    PlayEvent.objects.create(
+        game=done_game, ended=datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+    )
+    matching_purchase = Purchase.objects.create(
+        date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+        type=Purchase.GAME,
+    )
+    matching_purchase.games.set([done_game])
+    non_matching_purchase = Purchase.objects.create(
+        date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=timezone.utc),
+        type=Purchase.GAME,
+    )
+    non_matching_purchase.games.set([other_game])
+
+    filter_json = {
+        "game_filter": {
+            "playevent_filter": {
+                "ended": {
+                    "value": "2026-01-01",
+                    "modifier": "BETWEEN",
+                    "value2": "2026-12-31",
+                }
+            }
+        }
+    }
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['purchase'])}"
+        f"?filter={_encode_filter(filter_json)}"
+    )
+
+    group = page.locator("filter-group")
+    expect(group).to_be_attached()
+
+    # Two relation rows (outer game_filter, inner playevent_filter), each with its
+    # field reflected in the relation picker.  The rows nest, so "first" is the
+    # outer card and its own picker is the first select inside it.
+    relation_rows = group.locator('[data-node-slot][data-node-kind="relation"]')
+    expect(relation_rows).to_have_count(2)
+    expect(relation_rows.nth(0).locator("[data-relation-field]").first).to_have_value(
+        "game_filter"
+    )
+    expect(relation_rows.nth(1).locator("[data-relation-field]").first).to_have_value(
+        "playevent_filter"
+    )
+
+    # Nothing is incomplete: the inner date criterion hydrated both bounds.
+    expect(group.locator("[data-incomplete-badge]")).to_have_count(0)
+    expect(group.locator("[data-range-min]").first).to_have_value("2026-01-01")
+    expect(group.locator("[data-range-max]").first).to_have_value("2026-12-31")
+
+    # The count reads the live widgets via serializeForQuery(): only the purchase
+    # of the game with a 2026 PlayEvent matches — not all purchases (the bug
+    # pruned the whole filter and counted everything).
+    count_badge = page.locator("filter-count")
+    expect(count_badge).not_to_contain_text("Counting…")
+    expect(count_badge).to_contain_text("≈ 1 purchase")
