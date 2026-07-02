@@ -100,6 +100,15 @@
       "description": "negated relation (NOT EXISTS)",
       "model": "game",
       "filter": { "NOT": [ { "session_filter": { "device": { "value": [1], "modifier": "INCLUDES" } } } ] }
+    },
+    {
+      "description": "nested relation: game -> session -> game criterion",
+      "model": "game",
+      "filter": {
+        "session_filter": {
+          "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+        }
+      }
     }
   ]
 }

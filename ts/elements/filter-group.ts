@@ -459,15 +459,24 @@ export class FilterGroupElement extends HTMLElement {
 
   // A name-set MetadataRegistry (what deserialize wants) projected from the richer
   // per-model ModelBundle map this element already parsed from the `models` prop.
+  // The registry contract requires `fields` and `relations` to be DISJOINT:
+  // deserialize resolves criterion-first, so a relation name left in `fields`
+  // shadows the relation and swallows its whole subtree as an opaque criterion
+  // payload (the "Incomplete Game Filter" prefill bug). A relation missing its
+  // target (server-side unreachable — field_metadata hard-fails on it) falls
+  // into `fields`, surfacing as an Incomplete criterion row instead of being
+  // silently dropped.
   private buildRegistry(): MetadataRegistry {
     const registry: Record<string, ModelMeta> = {};
     for (const [key, bundle] of this.models) {
+      const fields = new Set<string>();
       const relations: Record<string, string> = {};
       for (const [name, meta] of bundle.fields) {
         const target = meta.relations[0]?.model;
         if (meta.kind === "relation" && target) relations[name] = target.toLowerCase();
+        else fields.add(name);
       }
-      registry[key] = { fields: new Set(bundle.fields.keys()), relations };
+      registry[key] = { fields, relations };
     }
     return registry;
   }
