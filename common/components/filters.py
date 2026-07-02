@@ -1,7 +1,7 @@
 """Stash-style filter bars, built from FilterSelect widgets."""
 
 import json
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from django.db import models
 
@@ -932,6 +932,82 @@ def comparison_row_template(
 
     return Template(data_fc_row_template="", **_model_attr(model))[
         _field_comparison_row(columns, None, SELECT_CLASS)
+    ]
+
+
+# Connective + NOT chips (component 2, issue #190), shipped to the nested builder
+# as one ``<template data-chip-template="<state>">`` per visual state; the client
+# clones the matching state and only wires behavior (#273). Pill shape
+# (rounded-full) + saturated fill sets this cluster apart from the square, gray
+# restructuring buttons so it never reads as "just another button". The connective
+# is color-coded by value with a NON-semantic cool/warm pair — AND = teal, OR =
+# orange — kept out of the action palette (blue/red/green/gray) so it reads as
+# "logic type", not status. The NOT-on look uses an amber FILL + RING so a lit NOT
+# chip stays distinct from an adjacent OR chip (fill-only) — they never read as
+# one blob.
+_CHIP_BASE_CLASS = (
+    "rounded-full border px-2.5 py-0.5 text-xs font-semibold hover:cursor-pointer"
+)
+
+# A chip template's visual state, doubling as its data-chip-template tag; the
+# client's ChipState mirrors it.
+type ChipState = Literal["connective-and", "connective-or", "negate-off", "negate-on"]
+
+_CHIP_STATE_CLASSES: dict[ChipState, str] = {
+    "connective-and": (
+        "border-teal-300 bg-teal-100 text-teal-800 "
+        "dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-200"
+    ),
+    "connective-or": (
+        "border-orange-300 bg-orange-100 text-orange-800 "
+        "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200"
+    ),
+    "negate-off": (
+        "border-gray-200 text-gray-500 hover:bg-gray-100 "
+        "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700"
+    ),
+    "negate-on": (
+        "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 "
+        "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 "
+        "dark:ring-amber-500/70"
+    ),
+}
+
+# No horizontal padding: @tailwindcss/forms styles bare <select> with
+# appearance:none, a right-anchored chevron, and the right padding (~2.5rem) that
+# clears it. A px-*/pr-* utility can't beat the plugin rule for the right side;
+# px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
+# under the chevron. Set only vertical padding here.
+_RELATION_SELECT_CLASS = (
+    "rounded border border-gray-300 bg-white py-1 text-sm dark:border-gray-600 "
+    "dark:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+)
+
+
+def chip_templates() -> list[Node]:
+    """The nested builder's connective/NOT chip templates, one per state (#273).
+
+    Each holds a blank chip ``<button>`` wearing that state's full class set; the
+    client (``ts/elements/filter-group.ts``) clones the state it needs and sets
+    only wiring attributes (label, action, path, title, aria-pressed) — chip
+    styling is exclusively the server's concern. Model-agnostic, like the action
+    button template."""
+    return [
+        Template(data_chip_template=state)[
+            Button(type="button", class_=f"{_CHIP_BASE_CLASS} {state_class}")[""]
+        ]
+        for state, state_class in _CHIP_STATE_CLASSES.items()
+    ]
+
+
+def relation_select_template() -> Node:
+    """The nested builder's quantifier/relation-field ``<select>`` template (#273).
+
+    One blank styled ``<select>``; the client clones it for both the ANY/NONE/ALL
+    quantifier picker and the relation-field picker, then appends its own
+    ``<option>``s (they are data, not styling)."""
+    return Template(data_relation_select_template="")[
+        Select(class_=_RELATION_SELECT_CLASS)
     ]
 
 

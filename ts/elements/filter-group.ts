@@ -120,21 +120,12 @@ const INCOMPLETE_ROW_CLASS = "bg-amber-50 dark:bg-amber-500/10 rounded";
 const BADGE_CLASS =
   "rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium " +
   "text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300";
-// Connective + NOT chips (component 2, issue #190). Pill shape (rounded-full) +
-// saturated fill sets this cluster apart from the square, gray restructuring
-// buttons so it never reads as "just another button". The connective is
-// color-coded by value with a NON-semantic cool/warm pair — AND = teal, OR =
-// orange — kept out of the action palette (blue/red/green/gray) so it reads as
-// "logic type", not status. The NOT-on look uses an amber FILL + RING so a lit
-// NOT chip stays distinct from an adjacent OR chip (fill-only) — they never read
-// as one blob.
-const CHIP_BASE = "rounded-full border px-2.5 py-0.5 text-xs font-semibold hover:cursor-pointer";
-const CONNECTIVE_AND_CLASS =
-  "border-teal-300 bg-teal-100 text-teal-800 " +
-  "dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-200";
-const CONNECTIVE_OR_CLASS =
-  "border-orange-300 bg-orange-100 text-orange-800 " +
-  "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200";
+// Chip and relation-select styling is server-owned (#273): the server ships one
+// <template data-chip-template="<state>"> per chip state and one
+// <template data-relation-select-template>; chip()/relationSelect() clone them.
+// The visual states a chip template can carry; mirrors the server's ChipState
+// (common/components/filters.py), where the class sets live.
+type ChipState = "connective-and" | "connective-or" | "negate-off" | "negate-on";
 // Group left-edge accent, colored by connective — reuses the chip hues (AND=teal,
 // OR=orange) so the card frame echoes the connective chip. Strong 400 edge matches
 // the relation descent's indigo-400 left edge; together `border-l-4` +
@@ -142,12 +133,6 @@ const CONNECTIVE_OR_CLASS =
 // box border into a colored accent.
 const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70";
 const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70";
-const NEGATE_OFF_CLASS =
-  "border-gray-200 text-gray-500 hover:bg-gray-100 " +
-  "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700";
-const NEGATE_ON_CLASS =
-  "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 " +
-  "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 dark:ring-amber-500/70";
 // Relation-descent accent block (component 5, #193): a left-accented indigo card set
 // apart from the gray group chrome so the Game→Session model switch reads explicitly.
 // Header carries the `↳ [quantifier] of [relation] where` row.
@@ -157,14 +142,6 @@ const RELATION_CARD_CLASS =
 const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
 const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
 const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
-// No horizontal padding: @tailwindcss/forms styles bare <select> with
-// appearance:none, a right-anchored chevron, and the right padding (~2.5rem) that
-// clears it. A px-*/pr-* utility can't beat the plugin rule for the right side;
-// px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
-// under the chevron (the old px-2 did this). Set only vertical padding here.
-const RELATION_SELECT_CLASS =
-  "rounded border border-gray-300 bg-white py-1 text-sm dark:border-gray-600 dark:bg-gray-800 " +
-  "disabled:opacity-50 disabled:cursor-not-allowed";
 
 // The closed set of restructuring actions a button can carry; producer
 // (actionButton) and consumer (applyAction's switch) share it so a typo on either
@@ -271,6 +248,11 @@ export class FilterGroupElement extends HTMLElement {
   // from (one model-agnostic template) — the client never declares button
   // classes itself.
   private actionButtonTemplate: HTMLTemplateElement | null = null;
+  // The server-rendered connective/NOT chips, one template per visual state,
+  // and the quantifier/relation <select> — like the action button, the client
+  // clones these and never declares their classes (#273).
+  private chipTemplates = new Map<ChipState, HTMLTemplateElement>();
+  private relationSelectTemplate: HTMLTemplateElement | null = null;
   // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
   private cloneSequence = 0;
 
@@ -348,6 +330,15 @@ export class FilterGroupElement extends HTMLElement {
   private captureTemplates(): void {
     this.actionButtonTemplate = this.querySelector<HTMLTemplateElement>(
       "template[data-action-button-template]",
+    );
+    this.querySelectorAll<HTMLTemplateElement>("template[data-chip-template]").forEach(
+      (template) => {
+        const state = template.getAttribute("data-chip-template") as ChipState;
+        this.chipTemplates.set(state, template);
+      },
+    );
+    this.relationSelectTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-relation-select-template]",
     );
     this.querySelectorAll<HTMLTemplateElement>("template[data-model]").forEach((template) => {
       const bundle = this.models.get(template.getAttribute("data-model") ?? "");
@@ -788,9 +779,17 @@ export class FilterGroupElement extends HTMLElement {
     return span;
   }
 
+  // A relation-row <select>, cloned from the server template so its styling
+  // stays server-owned; the bare fallback keeps template-less fixtures (jsdom
+  // tests) functional. Options are appended by the caller — they are data.
+  private relationSelect(): HTMLSelectElement {
+    const cloned = this.relationSelectTemplate?.content.firstElementChild?.cloneNode(true);
+    return cloned instanceof HTMLSelectElement ? cloned : element("select");
+  }
+
   // The ANY/NONE/ALL quantifier picker; change dispatches setMatch.
   private relationMatchSelect(node: RelationNode): HTMLSelectElement {
-    const select = element("select", RELATION_SELECT_CLASS);
+    const select = this.relationSelect();
     select.dataset.relationMatch = "";
     for (const match of RELATION_MATCHES) {
       const option = element("option");
@@ -805,7 +804,7 @@ export class FilterGroupElement extends HTMLElement {
   // The relation-field picker: the current model's relation options; change
   // dispatches setRelationField (which resets the child group on a model change).
   private relationFieldSelect(node: RelationNode, model: string): HTMLSelectElement {
-    const select = element("select", RELATION_SELECT_CLASS);
+    const select = this.relationSelect();
     select.dataset.relationField = "";
     const placeholder = element("option");
     placeholder.value = "";
@@ -1136,17 +1135,19 @@ export class FilterGroupElement extends HTMLElement {
   }
 
   // A chip-style toggle button: a restructuring action (so it rides the existing
-  // data-action delegation + applyAction) wearing its own chip classes instead of
-  // the server action-button template. `pressed` reflects an on/off state via
-  // aria-pressed.
+  // data-action delegation + applyAction) cloned from the server template of its
+  // visual state — styling stays server-owned; the classless bare <button>
+  // fallback keeps template-less fixtures (jsdom tests) functional. `pressed`
+  // reflects an on/off state via aria-pressed.
   private chip(
     action: TreeAction,
     label: string,
     path: NodePath,
-    className: string,
+    state: ChipState,
     { title = "", pressed }: { title?: string; pressed?: boolean } = {},
   ): HTMLButtonElement {
-    const button = element("button", `${CHIP_BASE} ${className}`);
+    const cloned = this.chipTemplates.get(state)?.content.firstElementChild?.cloneNode(true);
+    const button = cloned instanceof HTMLButtonElement ? cloned : element("button");
     button.type = "button";
     button.textContent = label;
     button.dataset.action = action;
@@ -1159,8 +1160,8 @@ export class FilterGroupElement extends HTMLElement {
   // The connective chip: label is the value itself; clicking flips AND<->OR. Color
   // carries the value (no lit/pressed state — the label already shows it).
   private connectiveChip(connective: Connective, path: NodePath): HTMLButtonElement {
-    const colorClass = connective === "AND" ? CONNECTIVE_AND_CLASS : CONNECTIVE_OR_CLASS;
-    return this.chip("toggle-connective", connective, path, colorClass, {
+    const state: ChipState = connective === "AND" ? "connective-and" : "connective-or";
+    return this.chip("toggle-connective", connective, path, state, {
       title: "Toggle AND/OR for this group",
     });
   }
@@ -1168,7 +1169,7 @@ export class FilterGroupElement extends HTMLElement {
   // The NOT negate chip (groups and leaves): constant label, lit when the node's
   // negate flag is set. Clicking toggles it.
   private negateChip(node: FilterNode, path: NodePath): HTMLButtonElement {
-    return this.chip("toggle-negate", "NOT", path, node.negate ? NEGATE_ON_CLASS : NEGATE_OFF_CLASS, {
+    return this.chip("toggle-negate", "NOT", path, node.negate ? "negate-on" : "negate-off", {
       title: node.negate ? "Remove negation" : "Negate",
       pressed: node.negate,
     });

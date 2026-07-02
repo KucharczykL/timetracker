@@ -89,6 +89,63 @@ describe("<filter-group> action-button template cloning", () => {
   });
 });
 
+describe("<filter-group> chip and relation-select template cloning", () => {
+  function mountWithControlTemplates(): FilterGroupElement {
+    document.body.replaceChildren();
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute("models", JSON.stringify(MODELS_BASE));
+    for (const state of ["connective-and", "connective-or", "negate-on", "negate-off"]) {
+      const template = document.createElement("template");
+      template.setAttribute("data-chip-template", state);
+      template.innerHTML = `<button type="button" class="chip-${state}"></button>`;
+      host.appendChild(template);
+    }
+    const selectTemplate = document.createElement("template");
+    selectTemplate.setAttribute("data-relation-select-template", "");
+    selectTemplate.innerHTML = '<select class="select-from-server"></select>';
+    host.appendChild(selectTemplate);
+    document.body.appendChild(host);
+    return host;
+  }
+
+  it("clones the state-matching chip template, keeping wiring attributes", () => {
+    const host = mountWithControlTemplates();
+    const connective = button(host, "toggle-connective", []);
+    expect(connective?.className).toBe("chip-connective-and");
+    expect(connective?.textContent).toBe("AND");
+    const negate = button(host, "toggle-negate", []);
+    expect(negate?.className).toBe("chip-negate-off");
+    expect(negate?.getAttribute("aria-pressed")).toBe("false");
+
+    clickAction(host, "toggle-connective", []);
+    expect(button(host, "toggle-connective", [])?.className).toBe("chip-connective-or");
+    clickAction(host, "toggle-negate", []);
+    const negated = button(host, "toggle-negate", []);
+    expect(negated?.className).toBe("chip-negate-on");
+    expect(negated?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("clones the relation-select template for both relation-row selects", () => {
+    const host = mountWithControlTemplates();
+    clickAction(host, "add-relation", []);
+    const match = host.querySelector<HTMLSelectElement>("[data-relation-match]");
+    const field = host.querySelector<HTMLSelectElement>("[data-relation-field]");
+    expect(match?.className).toBe("select-from-server");
+    expect(field?.className).toBe("select-from-server");
+    // Options are still the client's data: the quantifier choices arrive on the clone.
+    expect(match?.options.length).toBeGreaterThan(0);
+  });
+
+  it("falls back to classless bare chips and selects without templates", () => {
+    const host = mount();
+    expect(button(host, "toggle-connective", [])?.className).toBe("");
+    expect(button(host, "toggle-negate", [])?.className).toBe("");
+    clickAction(host, "add-relation", []);
+    expect(host.querySelector<HTMLSelectElement>("[data-relation-match]")?.className).toBe("");
+  });
+});
+
 describe("<filter-group> initial render", () => {
   it("renders a root AND group with one criterion slot and a footer", () => {
     const host = mount();
@@ -402,14 +459,9 @@ describe("<filter-group> connective + negate (component 2, #190)", () => {
     expect(button(host, "toggle-connective", [])?.textContent).toBe("AND");
   });
 
-  it("color-codes the connective chip by value (teal AND / orange OR)", () => {
-    const host = mount();
-    expect(button(host, "toggle-connective", [])?.className).toContain("teal");
-    clickAction(host, "toggle-connective", []);
-    const orChip = button(host, "toggle-connective", []);
-    expect(orChip?.className).toContain("orange");
-    expect(orChip?.className).not.toContain("teal");
-  });
+  // Color-by-value (teal AND / orange OR) is asserted via state-template
+  // selection in the "chip and relation-select template cloning" suite —
+  // the classes themselves are server-owned now (#273).
 
   it("negate chip on a group wraps it in {NOT:[…]} and flips aria-pressed", () => {
     const host = mount();

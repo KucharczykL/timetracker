@@ -910,3 +910,14 @@ class FilterGroupComparisonTest(TestCase):
         html = str(FilterGroup(model="session"))
         for marker in _ESCAPED_TAG_MARKERS:
             self.assertNotIn(marker, html)
+
+    def test_emits_chip_and_relation_select_templates(self):
+        """Chip + relation-select styling is server-owned (#273): one chip
+        template per visual state and one styled <select> template, all
+        model-agnostic (emitted once, not per reachable model)."""
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="game"))
+        for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
+            self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
+        self.assertEqual(html.count("data-relation-select-template"), 1)
