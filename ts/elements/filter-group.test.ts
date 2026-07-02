@@ -917,3 +917,386 @@ describe("loadFilter with a set field — regression for #196 crash", () => {
     expect(() => document.body.appendChild(group)).not.toThrow();
   });
 });
+
+// ── Prefill hydration of leaf value widgets (#263) ──
+// Loading a filter (preset / ?filter= import) must write each leaf's stored
+// criterion INTO its cloned value widget, because serializeForQuery() reads the
+// live widgets — before #263 a prefilled filter round-tripped as {} (match all).
+// One model with a field of every widget kind, each widget template mirroring the
+// data hooks of its Python builder (StringFilter / NumberFilter / DateRangeField /
+// _bool_control / FilterSelect), plus comparison columns for the comparison leaf.
+const HYDRATION_FIELDS = [
+  {
+    name: "name", label: "Name", kind: "string", nullable: true, choices: [],
+    modifiers: ["EQUALS", "INCLUDES", "IS_NULL"], relations: [], search_url: "", is_m2m: false,
+  },
+  {
+    name: "year", label: "Year", kind: "number", nullable: true, choices: [],
+    modifiers: ["EQUALS", "GREATER_THAN", "BETWEEN", "IS_NULL"], relations: [], search_url: "", is_m2m: false,
+  },
+  {
+    name: "released", label: "Released", kind: "date", nullable: false, choices: [],
+    modifiers: [], relations: [], search_url: "", is_m2m: false,
+  },
+  {
+    name: "mastered", label: "Mastered", kind: "bool", nullable: false, choices: [],
+    modifiers: ["EQUALS"], relations: [], search_url: "", is_m2m: false,
+  },
+  {
+    name: "status", label: "Status", kind: "set", nullable: true,
+    choices: [{ value: "f", label: "Finished" }, { value: "u", label: "Unplayed" }],
+    modifiers: ["INCLUDES", "EXCLUDES"], relations: [], search_url: "", is_m2m: false,
+  },
+];
+const HYDRATION_MODELS = JSON.stringify({
+  game: { fields: HYDRATION_FIELDS, columns: COLUMNS },
+});
+// The per-kind widget templates. Segment inputs carry the dual hidden-input
+// attributes (data-date-range-hidden + data-range-min/max) exactly like
+// DateRangeField; the set widget carries the pill/option/modifier-row markup and
+// the pill <template>s FilterSelect always ships.
+const HYDRATION_TEMPLATES = `
+  <template data-model="game" data-field-picker-template>
+    <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+  </template>
+  <template data-model="game" data-field="name">
+    <div class="flex-col">
+      <select data-string-modifier-select>
+        <option value="EQUALS" selected>is</option>
+        <option value="INCLUDES">includes</option>
+        <option value="IS_NULL">is empty</option>
+      </select>
+      <input type="text" />
+    </div>
+  </template>
+  <template data-model="game" data-field="year">
+    <div class="flex-col">
+      <select data-number-modifier-select>
+        <option value="EQUALS" selected>=</option>
+        <option value="GREATER_THAN">&gt;</option>
+        <option value="BETWEEN">between</option>
+        <option value="IS_NULL">is empty</option>
+      </select>
+      <div>
+        <input type="number" />
+        <input type="number" data-number-value2 class="hidden" />
+      </div>
+    </div>
+  </template>
+  <template data-model="game" data-field="released">
+    <div>
+      <input type="hidden" data-date-range-hidden="min" data-range-min />
+      <input type="hidden" data-date-range-hidden="max" data-range-max />
+      <input data-date-side="min" data-date-part="day" maxlength="2" placeholder="dd" />
+      <input data-date-side="min" data-date-part="month" maxlength="2" placeholder="mm" />
+      <input data-date-side="min" data-date-part="year" maxlength="4" placeholder="yyyy" />
+      <input data-date-side="max" data-date-part="day" maxlength="2" placeholder="dd" />
+      <input data-date-side="max" data-date-part="month" maxlength="2" placeholder="mm" />
+      <input data-date-side="max" data-date-part="year" maxlength="4" placeholder="yyyy" />
+    </div>
+  </template>
+  <template data-model="game" data-field="mastered">
+    <div>
+      <label><input type="radio" name="mastered" value="true" />True</label>
+      <label><input type="radio" name="mastered" value="false" />False</label>
+    </div>
+  </template>
+  <template data-model="game" data-field="status">
+    <search-select filter-mode="true">
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div>
+        <div data-search-select-modifier-option="NOT_NULL" data-label="(Any)">(Any)</div>
+        <div data-search-select-modifier-option="IS_NULL" data-label="(None)">(None)</div>
+        <div data-search-select-option data-value="f" data-label="Finished"><span data-search-select-label>Finished</span></div>
+        <div data-search-select-option data-value="u" data-label="Unplayed"><span data-search-select-label>Unplayed</span></div>
+      </div>
+      <template data-search-select-template="pill-include"><span data-pill data-value="" data-label="" data-search-select-type="include">✓ <span data-search-select-label></span><button data-pill-remove>×</button></span></template>
+      <template data-search-select-template="pill-exclude"><span data-pill data-value="" data-label="" data-search-select-type="exclude">✗ <span data-search-select-label></span><button data-pill-remove>×</button></span></template>
+      <template data-search-select-template="pill-modifier"><span data-pill data-search-select-modifier=""><span data-search-select-label></span><button data-pill-remove>×</button></span></template>
+    </search-select>
+  </template>
+  <template data-model="game" data-fc-row-template>
+    <div data-fc-row>
+      <select data-fc-left>
+        <option value="">column…</option>
+        <option value="year_released">Year</option>
+        <option value="original_year_released">Orig</option>
+        <option value="created_at">Created</option>
+        <option value="updated_at">Updated</option>
+      </select>
+      <select data-fc-op data-selected></select>
+      <select data-fc-right data-selected></select>
+      <label data-fc-granularity-wrap hidden><input type="checkbox" data-fc-granularity /></label>
+      <button data-fc-remove>✕</button>
+    </div>
+  </template>`;
+
+function mountHydration(filter = ""): FilterGroupElement {
+  document.body.innerHTML = "";
+  const host = document.createElement("filter-group") as FilterGroupElement;
+  host.setAttribute("model", "game");
+  host.setAttribute("models", HYDRATION_MODELS);
+  if (filter) host.setAttribute("filter", filter);
+  host.innerHTML = HYDRATION_TEMPLATES;
+  document.body.appendChild(host);
+  return host;
+}
+
+// Mount + loadFilter (the preset path) in one step. The ?filter=-prop path is
+// covered separately — both funnel into deserialize() + render().
+function loadHydration(filter: Record<string, unknown>): FilterGroupElement {
+  const host = mountHydration();
+  host.loadFilter(filter);
+  return host;
+}
+
+function valueCell(host: HTMLElement, path: Path): HTMLElement {
+  return row(host, path).querySelector<HTMLElement>("[data-value-cell]")!;
+}
+
+describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
+  it("string: writes modifier + value and round-trips serializeForQuery", () => {
+    const filter = { AND: [{ name: { value: "Hades", modifier: "INCLUDES" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLSelectElement>("[data-string-modifier-select]")!.value).toBe("INCLUDES");
+    expect(cell.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("string presence (IS_NULL): disables the text input and round-trips {modifier} only", () => {
+    const filter = { AND: [{ name: { modifier: "IS_NULL" } }] };
+    const host = loadHydration(filter);
+    const input = valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!;
+    expect(input.disabled).toBe(true);
+    expect(input.value).toBe("");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("number GREATER_THAN: writes the value and round-trips", () => {
+    const filter = { AND: [{ year: { value: 1990, modifier: "GREATER_THAN" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])')!.value).toBe("1990");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("number BETWEEN: reveals value2, writes both bounds, and round-trips", () => {
+    const filter = { AND: [{ year: { value: 2000, value2: 2010, modifier: "BETWEEN" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    const value2 = cell.querySelector<HTMLInputElement>("[data-number-value2]")!;
+    expect(value2.classList.contains("hidden")).toBe(false); // BETWEEN reveals value2
+    expect(value2.value).toBe("2010");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("date BETWEEN: writes hidden bounds + visible segments and round-trips", () => {
+    const filter = { AND: [{ released: { value: "2020-01-05", value2: "2021-12-31", modifier: "BETWEEN" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2020-01-05");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2021-12-31");
+    // Segments display the split ISO pieces (what initField adopts at connect).
+    expect(cell.querySelector<HTMLInputElement>('[data-date-side="min"][data-date-part="year"]')!.value).toBe("2020");
+    expect(cell.querySelector<HTMLInputElement>('[data-date-side="min"][data-date-part="day"]')!.value).toBe("05");
+    expect(cell.querySelector<HTMLInputElement>('[data-date-side="max"][data-date-part="month"]')!.value).toBe("12");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("date LESS_THAN: the single bound fills the max side (min stays empty) and round-trips", () => {
+    const filter = { AND: [{ released: { value: "2021-06-30", modifier: "LESS_THAN" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2021-06-30");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("date EQUALS: hydrates as the exactly-equivalent same-day range", () => {
+    // DateCriterion EQUALS(d) and BETWEEN(d, d) compile to the same rows
+    // (criteria.py — every datetime field filters via a __date lookup), so the
+    // min/max widget represents EQUALS as d..d and serializes BETWEEN.
+    const host = loadHydration({ AND: [{ released: { value: "2020-01-05", modifier: "EQUALS" } }] });
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2020-01-05");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2020-01-05");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ released: { value: "2020-01-05", value2: "2020-01-05", modifier: "BETWEEN" } }],
+    });
+  });
+
+  it("date NOT_BETWEEN: hydrates blank (pruned) instead of rewriting to the complement range", () => {
+    // NOT_BETWEEN is two open rays — no faithful min/max form. Writing the
+    // bounds would read back as BETWEEN (the exact complement), so the widget
+    // stays blank and the leaf prunes, like before hydration existed.
+    const host = loadHydration({
+      AND: [{ released: { value: "2020-01-01", value2: "2020-12-31", modifier: "NOT_BETWEEN" } }],
+    });
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("");
+    expect(cell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("");
+    expect(host.serializeForQuery()).toEqual({});
+  });
+
+  it("bool: checks the matching radio and round-trips", () => {
+    const filter = { AND: [{ mastered: { value: true, modifier: "EQUALS" } }] };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLInputElement>('input[type="radio"][value="true"]')!.checked).toBe(true);
+    expect(cell.querySelector<HTMLInputElement>('input[type="radio"][value="false"]')!.checked).toBe(false);
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("set: renders include + exclude pills and round-trips", () => {
+    const filter = {
+      AND: [{
+        status: {
+          value: [{ id: "f", label: "Finished" }],
+          excludes: [{ id: "u", label: "Unplayed" }],
+          modifier: "INCLUDES",
+        },
+      }],
+    };
+    const host = loadHydration(filter);
+    const pills = valueCell(host, [0]).querySelectorAll<HTMLElement>("[data-pill]");
+    expect([...pills].map((pill) => pill.getAttribute("data-search-select-type"))).toEqual([
+      "include",
+      "exclude",
+    ]);
+    expect(pills[0].getAttribute("data-value")).toBe("f");
+    expect(pills[0].textContent).toContain("Finished");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("set EXCLUDES: values hydrate as exclude pills, never inverted into includes", () => {
+    // {modifier: EXCLUDES, value: [X]} compiles to exactly ~Q(field__in=[X]) —
+    // identical to INCLUDES + excludes (criteria.py _value_q/to_q) — so the
+    // widget's exclude channel is the faithful representation.
+    const host = loadHydration({ AND: [{ status: { modifier: "EXCLUDES", value: ["f"] } }] });
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill]")!;
+    expect(pill.getAttribute("data-search-select-type")).toBe("exclude");
+    expect(pill.getAttribute("data-label")).toBe("Finished");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{
+        status: { value: [], excludes: [{ id: "f", label: "Finished" }], modifier: "INCLUDES" },
+      }],
+    });
+  });
+
+  it("set: a control character in a URL-authored id neither throws nor aborts the render", () => {
+    // A raw newline in a CSS string is a parse error; the option-row label
+    // lookup must escape it (CSS.escape), not crash the whole builder page.
+    const host = loadHydration({ AND: [{ status: { modifier: "INCLUDES", value: ["f\nx"] } }] });
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill]")!;
+    expect(pill.getAttribute("data-value")).toBe("f\nx");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{
+        status: { value: [{ id: "f\nx", label: "f\nx" }], excludes: [], modifier: "INCLUDES" },
+      }],
+    });
+  });
+
+  it("set presence modifier: renders the sticky modifier pill and round-trips {modifier} only", () => {
+    const filter = { AND: [{ status: { modifier: "NOT_NULL" } }] };
+    const host = loadHydration(filter);
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill][data-search-select-modifier]")!;
+    expect(pill.getAttribute("data-search-select-modifier")).toBe("NOT_NULL");
+    expect(pill.textContent).toContain("(Any)");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("set with bare string ids (URL-authored JSON) enriches labels from the option rows", () => {
+    // The e2e prefill fixture shape: {"status": {"modifier": "INCLUDES", "value": ["f"]}}
+    const host = loadHydration({ AND: [{ status: { modifier: "INCLUDES", value: ["f"] } }] });
+    const pill = valueCell(host, [0]).querySelector<HTMLElement>("[data-pill]")!;
+    expect(pill.getAttribute("data-label")).toBe("Finished");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{
+        status: { value: [{ id: "f", label: "Finished" }], excludes: [], modifier: "INCLUDES" },
+      }],
+    });
+  });
+
+  it("comparison: restores left/operator/right and round-trips", () => {
+    const filter = {
+      AND: [{
+        field_comparisons: [
+          { left: "year_released", right: "original_year_released", modifier: "LESS_THAN" },
+        ],
+      }],
+    };
+    const host = loadHydration(filter);
+    const cell = valueCell(host, [0]);
+    expect(cell.querySelector<HTMLSelectElement>("[data-fc-left]")!.value).toBe("year_released");
+    expect(cell.querySelector<HTMLSelectElement>("[data-fc-op]")!.value).toBe("LESS_THAN");
+    expect(cell.querySelector<HTMLSelectElement>("[data-fc-right]")!.value).toBe("original_year_released");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("comparison with granularity: restores the by-day toggle and round-trips", () => {
+    const filter = {
+      AND: [{
+        field_comparisons: [
+          { left: "created_at", right: "updated_at", modifier: "LESS_THAN", granularity: "date" },
+        ],
+      }],
+    };
+    const host = loadHydration(filter);
+    const byDay = valueCell(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
+    expect(byDay.checked).toBe(true);
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("hydrates via the ?filter= prop on connect too (the builder-page path)", () => {
+    const filter = { AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] };
+    const host = mountHydration(JSON.stringify(filter));
+    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(host.serializeForQuery()).toEqual(filter);
+  });
+
+  it("a user edit after hydration wins and survives a structural re-render", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    typeValue(host, [0], "Celeste");
+    clickAction(host, "add-condition", []); // structural re-render reuses the cached cell
+    expect(row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!.value).toBe("Celeste");
+    // The new empty leaf is pruned; the edited value — not the hydrated one — serializes.
+    expect(host.serializeForQuery()).toEqual({ AND: [{ name: { value: "Celeste", modifier: "EQUALS" } }] });
+  });
+
+  it("re-picking a different field yields a blank widget (no stale hydration)", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    pickField(host, [0], HYDRATION_FIELDS[1]); // name → year
+    const numberInput = valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="number"]:not([data-number-value2])')!;
+    expect(numberInput.value).toBe("");
+    expect(host.serializeForQuery()).toEqual({}); // incomplete leaf → pruned
+  });
+
+  it("string: an untrimmed stored value hydrates trimmed, matching the read side", () => {
+    const host = loadHydration({ AND: [{ name: { value: " Hades ", modifier: "EQUALS" } }] });
+    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(host.serializeForQuery()).toEqual({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+  });
+
+  it("duplicate copies the leaf's CURRENT value, not the stale prefill snapshot", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    typeValue(host, [0], "Celeste"); // live edit — the stored tree still says "Hades"
+    clickAction(host, "duplicate", [0]);
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        { name: { value: "Celeste", modifier: "EQUALS" } },
+        { name: { value: "Celeste", modifier: "EQUALS" } },
+      ],
+    });
+  });
+
+  it("duplicate after clearing a prefilled value stays blank (deleted values never resurrect)", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    typeValue(host, [0], ""); // the user deletes the prefilled value
+    clickAction(host, "duplicate", [0]);
+    const inputs = [...host.querySelectorAll<HTMLInputElement>('[data-value-cell] input[type="text"]')];
+    expect(inputs.map((input) => input.value)).toEqual(["", ""]);
+    expect(host.serializeForQuery()).toEqual({}); // both leaves incomplete → pruned
+  });
+});

@@ -258,22 +258,32 @@ function syncHiddenFromSegments(picker: HTMLElement, side: string): boolean {
   return changed;
 }
 
-/** Push an ISO value (or "") into a side's segments and hidden input. */
-function setSideValue(picker: HTMLElement, side: string, isoString: string): void {
+/** Push an ISO value (or "") into a side's segments and hidden input WITHOUT
+ * dispatching date-range:change — the write half shared with prefill hydration
+ * (#263), which runs on a detached, not-yet-connected clone and must stay
+ * silent. Returns whether the hidden value changed. Null-guarded so partial
+ * markup (synthetic fixtures, malformed ISO) degrades to a no-op, not a throw. */
+export function writeSideValue(picker: HTMLElement, side: string, isoString: string): boolean {
   const hidden = picker.querySelector<HTMLInputElement>(
     `input[data-date-range-hidden="${side}"]`
-  )!;
+  );
+  if (!hidden) return false;
   const previousValue = hidden.value;
   hidden.value = isoString;
   let partValues: Record<string, string> = { year: "", month: "", day: "" };
   if (isoString) {
     const pieces = isoString.split("-");
-    partValues = { year: pieces[0], month: pieces[1], day: pieces[2] };
+    partValues = { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
   }
   segmentsForSide(picker, side).forEach((segment) => {
-    setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""]);
+    setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""] ?? "");
   });
-  if (hidden.value !== previousValue) dispatchDateRangeChange(picker);
+  return hidden.value !== previousValue;
+}
+
+/** Push an ISO value (or "") into a side's segments and hidden input. */
+function setSideValue(picker: HTMLElement, side: string, isoString: string): void {
+  if (writeSideValue(picker, side, isoString)) dispatchDateRangeChange(picker);
 }
 
 function initField(picker: HTMLElement, calendarState: CalendarState): void {

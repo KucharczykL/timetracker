@@ -66,7 +66,7 @@ import {
   readComparisonRow,
   refreshRow,
 } from "./field-comparison-set.js";
-import { readLeafWidget, setupModifierToggles } from "./filter-widgets.js";
+import { readLeafWidget, setupModifierToggles, writeLeafWidget } from "./filter-widgets.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
 // Full, static class strings only — Tailwind detects complete strings, so the
@@ -493,7 +493,7 @@ export class FilterGroupElement extends HTMLElement {
   private readLeaf(node: CriterionLeaf, model: string): Record<string, unknown> | null {
     const meta = this.bundle(model)?.fields.get(node.field);
     const cells = this.rowCache.get(node.id);
-    if (!meta || !cells) return null;
+    if (!meta || meta.kind === "relation" || !cells) return null;
     return readLeafWidget(cells.valueCell, meta.kind);
   }
 
@@ -562,7 +562,11 @@ export class FilterGroupElement extends HTMLElement {
         this.tree = removeAt(this.tree, path);
         break;
       case "duplicate":
-        this.tree = duplicateAt(this.tree, path);
+        // Duplicate what the user SEES: fill every leaf's stored payload from
+        // its live widget first, so the copy hydrates from current values
+        // rather than the deserialize-time snapshot (which would resurrect
+        // prefilled values the user has since edited or removed, #263 review).
+        this.tree = duplicateAt(this.fillCriteria(this.tree, this.model), path);
         break;
       case "wrap":
         if (canWrap(this.tree, path)) this.tree = wrapInGroup(this.tree, path);
@@ -871,7 +875,12 @@ export class FilterGroupElement extends HTMLElement {
       this.rowCache.set(node.id, cells);
     }
     if (cells.field !== node.field) {
-      cells.valueCell = this.buildValueCell(node.field, model);
+      // First build for this field: hydrate the fresh clone from the node's
+      // stored payload (#263) — non-empty only on a preset load / ?filter=
+      // import (a user field-pick resets the criterion to just its default
+      // modifier). Later renders reuse the cell, so a hydrated value is never
+      // re-written over live user edits.
+      cells.valueCell = this.buildValueCell(node.field, model, node.criterion);
       cells.field = node.field;
     }
     return cells;
@@ -899,9 +908,16 @@ export class FilterGroupElement extends HTMLElement {
     searchSelect?.setSelected(field, label);
   }
 
-  // Build a value cell for `field`: a clone of the field's blank widget template,
-  // or a placeholder prompt when no field is chosen yet.
-  private buildValueCell(field: string, model: string): HTMLElement {
+  // Build a value cell for `field`: a clone of the field's blank widget template
+  // hydrated from `criterion` (the write-mirror of the serialize-time read, #263),
+  // or a placeholder prompt when no field is chosen yet. Hydration is plain DOM
+  // writing that works on this detached clone — no custom-element upgrade needed
+  // (unlike the field-picker's setSelected, deferred to reflectFieldSelections).
+  private buildValueCell(
+    field: string,
+    model: string,
+    criterion: Record<string, unknown> = {},
+  ): HTMLElement {
     if (!field) {
       const placeholder = element("div", VALUE_PLACEHOLDER_CLASS);
       placeholder.dataset.valueCell = "";
@@ -916,6 +932,16 @@ export class FilterGroupElement extends HTMLElement {
       const clone = content.cloneNode(true) as HTMLElement;
       this.uniquify(clone);
       cell.appendChild(clone);
+      const kind = this.bundle(model)?.fields.get(field)?.kind;
+      if (kind && kind !== "relation") {
+        try {
+          writeLeafWidget(cell, kind, criterion);
+        } catch (error) {
+          // Fail open: a hydration bug on one leaf degrades to a blank widget
+          // (the pre-hydration behavior), never an aborted page render.
+          console.warn("filter-group: leaf hydration failed", error);
+        }
+      }
     }
     return cell;
   }
@@ -951,13 +977,13 @@ export class FilterGroupElement extends HTMLElement {
   private comparisonCells(node: ComparisonLeaf, model: string): HTMLElement {
     let cell = this.comparisonCache.get(node.id);
     if (!cell) {
-      cell = this.buildComparisonCell(model);
+      cell = this.buildComparisonCell(model, node.comparison);
       this.comparisonCache.set(node.id, cell);
     }
     return cell;
   }
 
-  private buildComparisonCell(model: string): HTMLElement {
+  private buildComparisonCell(model: string, comparison: ComparisonPayload): HTMLElement {
     const cell = element("div", VALUE_CELL_CLASS);
     cell.dataset.valueCell = "";
     const bundle = this.bundle(model);
@@ -968,12 +994,34 @@ export class FilterGroupElement extends HTMLElement {
       row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
       this.uniquify(row);
       cell.appendChild(row);
-      refreshRow(row, columns); // seed operator/right options from the (blank) left
+      this.seedComparisonRow(row, comparison); // hydrate a prefilled payload (#263)
+      refreshRow(row, columns); // seed operator/right options from the left column
       row
         .querySelector<HTMLSelectElement>("[data-fc-left]")
         ?.addEventListener("change", () => refreshRow(row, columns));
     }
     return cell;
+  }
+
+  // Seed a freshly-cloned comparison row from a stored payload (preset load /
+  // ?filter= import) via the row's server-prefill contract: the left column is a
+  // plain select value (the template ships the full option set), while operator +
+  // right column go through `data-selected`, which the refreshRow call right
+  // after this adopts on first paint (it rebuilds their options from the left
+  // column). Granularity pre-checks the by-day toggle; refreshRow unchecks it
+  // when the left column turns out non-datetime.
+  private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
+    const { left, right, modifier, granularity } = comparison;
+    if (left) {
+      const leftSelect = row.querySelector<HTMLSelectElement>("[data-fc-left]");
+      if (leftSelect) leftSelect.value = left;
+    }
+    if (modifier) row.querySelector("[data-fc-op]")?.setAttribute("data-selected", modifier);
+    if (right) row.querySelector("[data-fc-right]")?.setAttribute("data-selected", right);
+    if (granularity === "date") {
+      const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
+      if (byDay) byDay.checked = true;
+    }
   }
 
   // Suffix every id/for/name in a cloned subtree so repeated clones stay valid HTML

@@ -22,8 +22,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Compute staging name
+        # "github" → "gh": Fly's abuse filter rejects app names containing
+        # "github" (a phishing target), which every claude/github-issue-* branch
+        # would otherwise hit. Keep this sed program identical in all three jobs.
         run: |
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/github/gh/g; s/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
           APP="timetracker-staging-${SLUG}"
           echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
           echo "APP=${APP}" >> "$GITHUB_ENV"
@@ -79,7 +82,7 @@ jobs:
     steps:
       - name: Compute staging host
         run: |
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/github/gh/g; s/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
           echo "HOST=timetracker-staging-${SLUG}.fly.dev" >> "$GITHUB_ENV"
 
       - name: Comment staging URL on PR
@@ -122,6 +125,6 @@ jobs:
 
       - name: Destroy staging app
         run: |
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/github/gh/g; s/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-30 | sed 's/-*$//')
           APP="timetracker-staging-${SLUG}"
           flyctl apps destroy "$APP" --yes 2>/dev/null || true
