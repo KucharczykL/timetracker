@@ -230,12 +230,12 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIn("href=", result)
 
     def test_button_returns_safe_text(self):
-        result = str(components.StyledButton()["click"])
+        result = str(components.ControlButton()["click"])
         self.assertIsInstance(result, SafeText)
         self.assertIn("<button", result)
 
     def test_button_default_colors(self):
-        result = str(components.StyledButton()["click"])
+        result = str(components.ControlButton()["click"])
         self.assertIn("text-white bg-brand", result)
 
     def test_name_with_icon_no_link(self):
@@ -299,7 +299,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     def test_component_output_starts_with_tag(self):
         for label, html in [
             ("A", str(components.A(href="/foo")["link"])),
-            ("Button", str(components.StyledButton()["click"])),
+            ("Button", str(components.ControlButton()["click"])),
             ("Div", str(components.Div()["hello"])),
             ("Input", str(components.Input())),
             ("ButtonGroup", str(components.ButtonGroup([]))),
@@ -325,11 +325,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
                 )
 
     def test_button_with_icon_children_not_escaped(self):
-        result = str(
-            components.StyledButton(icon=True, size="xs")[
-                components.Icon("play"), "LOG"
-            ]
-        )
+        result = str(components.ControlButton()[components.Icon("play"), "LOG"])
         self.assertTrue(str(result).startswith("<button"))
 
     def test_popover_with_button_children_not_escaped(self):
@@ -337,7 +333,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
             components.Popover(
                 popover_content="test tooltip",
                 children=[
-                    components.StyledButton(icon=True, color="gray", size="xs")[
+                    components.ControlButton(color="gray")[
                         components.Icon("play"), "test"
                     ],
                 ],
@@ -703,7 +699,7 @@ class GenericBuilderContractTest(SimpleTestCase):
         # The guard fires on the styled builders too — they no longer have an
         # `attributes=` param, so it lands in **kwargs and is rejected.
         with self.assertRaises(TypeError):
-            components.StyledButton(attributes=[("data-x", "y")])
+            components.ControlButton(attributes=[("data-x", "y")])
         with self.assertRaises(TypeError):
             components.Input(attributes=[("data-x", "y")])
         with self.assertRaises(TypeError):
@@ -766,20 +762,24 @@ class StyledBuilderContractTest(SimpleTestCase):
         result = str(components.Pill(label="hi", extra_class="opacity-50"))
         self.assertIn("opacity-50", result)
 
-    def test_styledbutton_class_appends_and_kwargs_passthrough(self):
+    def test_controlbutton_class_appends_and_kwargs_passthrough(self):
         result = str(
-            components.StyledButton(class_="w-full", aria_label="Go", color="red")["Go"]
+            components.ControlButton(class_="w-full", aria_label="Go", color="red")[
+                "Go"
+            ]
         )
         self.assertIn("w-full", result)
         self.assertIn('aria-label="Go"', result)
         self.assertEqual(result.count("class="), 1)
 
-    def test_styledbutton_baked_type_wins_over_default_but_kwarg_sets(self):
-        self.assertIn('type="submit"', str(components.StyledButton(type="submit")["x"]))
+    def test_controlbutton_type_param_sets_submit(self):
+        self.assertIn(
+            'type="submit"', str(components.ControlButton(type="submit")["x"])
+        )
 
-    def test_styledbutton_baked_type_wins_over_caller_attrs(self):
+    def test_controlbutton_baked_type_wins_over_caller_attrs(self):
         # baked attrs come first -> first-wins -> a caller can't override `type`
-        result = str(components.StyledButton([("type", "reset")])["x"])
+        result = str(components.ControlButton([("type", "reset")])["x"])
         self.assertIn('type="button"', result)
         self.assertNotIn('type="reset"', result)
 
@@ -788,6 +788,95 @@ class StyledBuilderContractTest(SimpleTestCase):
         self.assertIn('name="real"', result)
         self.assertNotIn('name="spoof"', result)
         self.assertEqual(result.count("name="), 1)
+
+
+class ControlButtonTest(SimpleTestCase):
+    """The polymorphic ControlButton: one styling source, three rendered shapes
+    (<button>, <a href>, <form method=post> + submit)."""
+
+    def test_default_mode_is_button_with_filled_classes(self):
+        html = str(components.ControlButton()["Go"])
+        self.assertTrue(html.startswith("<button"))
+        self.assertIn('type="button"', html)
+        self.assertIn("text-white bg-brand", html)
+        # container-query sizing token present; no fixed-size margins baked
+        self.assertIn("@md:px-5", html)
+        self.assertNotIn("mb-2", html)
+        self.assertNotIn("me-2", html)
+        # shared disabled appearance is baked in
+        self.assertIn("disabled:opacity-50", html)
+
+    def test_href_mode_is_single_anchor(self):
+        html = str(components.ControlButton(href="/games/add")["Add game"])
+        self.assertTrue(html.startswith("<a "))
+        self.assertIn('href="/games/add"', html)
+        self.assertIn("text-white bg-brand", html)
+        # a link is not a button: no nested interactive element, no type attr
+        self.assertNotIn("<button", html)
+        self.assertNotIn("type=", html)
+
+    def test_post_mode_wraps_submit_in_form(self):
+        html = str(
+            components.ControlButton(href="/x/delete", method="post", csrf_token="tok")[
+                "Delete"
+            ]
+        )
+        self.assertTrue(html.startswith("<form"))
+        self.assertIn('method="post"', html)
+        # action defaults to href
+        self.assertIn('action="/x/delete"', html)
+        self.assertIn('name="csrfmiddlewaretoken" value="tok"', html)
+        # classes land on the inner button, not the form
+        self.assertIn('<button type="submit"', html)
+        submit_index = html.index("<button")
+        self.assertIn("bg-brand", html[submit_index:])
+        self.assertNotIn("bg-brand", html[:submit_index])
+
+    def test_post_mode_action_overrides_href(self):
+        html = str(
+            components.ControlButton(href="/fallback", method="post", action="/real")[
+                "Save"
+            ]
+        )
+        self.assertIn('action="/real"', html)
+        self.assertNotIn("/fallback", html)
+
+    def test_post_mode_forced_submit_wins_over_caller_type(self):
+        html = str(components.ControlButton([("type", "reset")], method="post")["Save"])
+        self.assertIn('type="submit"', html)
+        self.assertNotIn('type="reset"', html)
+
+    def test_getitem_returns_new_instance(self):
+        base = components.ControlButton(color="gray")
+        first = base["One"]
+        second = base["Two"]
+        self.assertIsNot(first, base)
+        self.assertIn("One", str(first))
+        self.assertIn("Two", str(second))
+        self.assertNotIn("Two", str(first))
+
+    def test_getitem_after_render_does_not_serve_stale_tree(self):
+        base = components.ControlButton()["Old"]
+        str(base)  # populate the memoized tree
+        self.assertIn("New", str(base["New"]))
+
+    def test_segmented_variant_classes(self):
+        html = str(components.ControlButton(variant="segmented", color="gray")["Edit"])
+        self.assertIn("lg:px-4", html)  # viewport-based sizing, not container
+        self.assertNotIn("@md:", html)
+        self.assertIn("bg-white", html)
+
+    def test_color_tables_have_matching_keys(self):
+        from common.components.primitives import (
+            _FILLED_COLOR_CLASSES,
+            _SEGMENTED_COLOR_CLASSES,
+        )
+
+        self.assertEqual(set(_FILLED_COLOR_CLASSES), set(_SEGMENTED_COLOR_CLASSES))
+
+    def test_as_element_unwraps_button(self):
+        element = components.ControlButton()["Go"].as_element()
+        self.assertEqual(element.tag_name, "button")
 
 
 class ModalContractTest(SimpleTestCase):

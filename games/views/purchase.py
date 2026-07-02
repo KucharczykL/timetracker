@@ -41,14 +41,14 @@ from common.components import (
     PriceConverted,
     PurchasePrice,
     SelectionFields,
-    StyledButton,
+    ControlButton,
     TableData,
     TableRow,
     TableRowData,
     make_row,
     paginated_table_content,
 )
-from common.components.primitives import Li, P, Td, Tr, Ul
+from common.components.primitives import Li, P, Ul
 from common.layout import render_page
 from common.time import dateformat
 from common.utils import paginate
@@ -171,8 +171,8 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     purchases, page_obj, elided_page_range = paginate(request, purchases)
 
     data: TableData = {
-        "header_action": A(href=reverse("games:add_purchase"))[
-            StyledButton()["Add purchase"]
+        "header_action": ControlButton(href=reverse("games:add_purchase"))[
+            "Add purchase"
         ],
         "columns": [
             Column("Name", "name"),
@@ -212,18 +212,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _purchase_additional_row() -> SafeText:
-    """The 'Submit & Create Session' row shown below the main Submit button."""
-    return Tr()[
-        Td(),
-        Td()[
-            StyledButton(
-                color="gray",
-                type="submit",
-                name="submit_and_redirect",
-            )["Submit & Create Session"]
-        ],
-    ]
+def _purchase_additional_row() -> Node:
+    """The 'Submit & Create Session' button shown below the main Submit button."""
+    return ControlButton(
+        color="gray",
+        type="submit",
+        name="submit_and_redirect",
+    )["Submit & Create Session"]
 
 
 def _pricing_controls() -> Node:
@@ -427,17 +422,13 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
         P(class_="dark:text-white text-center mt-3 text-sm")[
             "Games will be marked as abandoned."
         ],
-        Div(class_="items-center mt-5")[
-            StyledButton(
-                class_="w-full",
+        Div(class_="flex flex-col gap-2 mt-5")[
+            ControlButton(
                 color="blue",
-                size="lg",
                 type="submit",
             )["Refund"],
-            StyledButton(
-                class_="mt-0 w-full",
+            ControlButton(
                 color="gray",
-                size="base",
                 onclick="this.closest('#refund-confirmation-modal').remove()",
             )["Cancel"],
         ],
@@ -491,17 +482,13 @@ def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
             "price split evenly. Each can then be priced and refunded "
             "independently."
         ],
-        Div(class_="items-center mt-5")[
-            StyledButton(
-                class_="w-full",
+        Div(class_="flex flex-col gap-2 mt-5")[
+            ControlButton(
                 color="blue",
-                size="lg",
                 type="submit",
             )["Split"],
-            StyledButton(
-                class_="mt-0 w-full",
+            ControlButton(
                 color="gray",
-                size="base",
                 onclick="this.closest('#split-confirmation-modal').remove()",
             )["Cancel"],
         ],

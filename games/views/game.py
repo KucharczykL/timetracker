@@ -36,7 +36,7 @@ from common.components import (
     PopoverTruncated,
     PurchasePrice,
     Safe,
-    StyledButton,
+    ControlButton,
     StyledTable,
     TableData,
     Ul,
@@ -105,7 +105,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "header_action": Div(
             class_="flex justify-end",
-        )[A(href=reverse("games:add_game"))[StyledButton()["Add game"]],],
+        )[ControlButton(href=reverse("games:add_game"))["Add game"],],
         "columns": [
             Column("Name", "name"),
             Column("Sort Name", "sort_name"),
@@ -193,12 +193,12 @@ def add_game(request: HttpRequest) -> HttpResponse:
             form,
             request=request,
             additional_row=Fragment(
-                StyledButton(
+                ControlButton(
                     color="gray",
                     type="submit",
                     name="submit_and_redirect",
                 )["Submit & Create Purchase"],
-                StyledButton(
+                ControlButton(
                     color="gray",
                     type="submit",
                     name="submit_and_create_session",
@@ -248,17 +248,13 @@ def _delete_game_confirmation_modal(
             class_="dark:text-white text-center mt-3 text-sm font-medium "
             "text-red-600 dark:text-red-400",
         )["This action cannot be undone."],
-        Div(class_="items-center mt-5")[
-            StyledButton(
-                class_="w-full",
+        Div(class_="flex flex-col gap-2 mt-5")[
+            ControlButton(
                 color="red",
-                size="lg",
                 type="submit",
             )["Delete"],
-            StyledButton(
-                class_="mt-0 w-full",
+            ControlButton(
                 color="gray",
-                size="base",
                 onclick=("this.closest('#delete-game-confirmation-modal').remove()"),
             )["Cancel"],
         ],
@@ -462,16 +458,13 @@ def _game_section(
     view_all_url: str | None = None,
 ) -> Node:
     if view_all_url and count:
-        view_all_link = A(href=view_all_url)[
-            StyledButton(
-                icon=True,
-                color="gray",
-                size="xs",
-                title=f"View all {title.lower()} for this game",
-            )[
-                Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
-                "View all",
-            ]
+        view_all_link = ControlButton(
+            href=view_all_url,
+            color="gray",
+            title=f"View all {title.lower()} for this game",
+        )[
+            Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
+            "View all",
         ]
         header = Div(class_="flex items-center justify-between")[
             PageHeading(children=[title], badge=str(count) if count else ""),

@@ -23,7 +23,7 @@ from common.components.primitives import (
     RelationChild,
     Select,
     Span,
-    StyledButton,
+    ControlButton,
     Template,
     filter_widget_attributes,
 )
@@ -911,7 +911,7 @@ def FieldComparisonSet(
         Template(data_fc_row_template="")[
             _field_comparison_row(columns, None, SELECT_CLASS)
         ],
-        StyledButton(color="gray", data_fc_add="", class_="self-start")[
+        ControlButton(color="gray", data_fc_add="", class_="self-start")[
             "+ Add comparison"
         ],
     ]

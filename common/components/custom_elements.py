@@ -24,13 +24,14 @@ from common.components.core import (
 from common.components.primitives import (
     A,
     Button,
+    ButtonColor,
+    ControlButton,
     Div,
     Icon,
     Input,
     Label,
     Li,
     Span,
-    StyledButton,
     Template,
     Ul,
     custom_element_builder,
@@ -294,7 +295,7 @@ def FilterBuilder(
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
     <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
     clear on Clear). Behavior in ``ts/elements/filter-builder.ts``."""
-    # StyledButton bakes the app's button look (color/size/rounded); per-attribute
+    # ControlButton bakes the app's button look (color/rounded/disabled); per-attr
     # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
     # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
     # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
@@ -306,11 +307,9 @@ def FilterBuilder(
         preset_list_url=preset_list_url,
         preset_save_url=preset_save_url,
     )[
-        Div(class_="flex flex-wrap gap-3 items-center mb-4")[
+        Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[
             Div(class_="relative")[
-                StyledButton(color="gray", type="button", data_load_presets="")[
-                    "Load preset ▾"
-                ],
+                ControlButton(color="gray", data_load_presets="")["Load preset ▾"],
                 Div(
                     {"data-preset-dropdown": ""},
                     class_=(
@@ -328,16 +327,9 @@ def FilterBuilder(
                     "bg-neutral-secondary-medium text-heading"
                 ),
             ),
-            StyledButton(color="gray", type="button", data_save_preset="")[
-                "Save as preset…"
-            ],
-            StyledButton(
-                color="blue",
-                type="button",
-                data_apply="",
-                class_="disabled:opacity-50 disabled:cursor-not-allowed",
-            )["Apply"],
-            StyledButton(color="gray", type="button", data_clear="")["Clear"],
+            ControlButton(color="gray", data_save_preset="")["Save as preset…"],
+            ControlButton(color="blue", data_apply="")["Apply"],
+            ControlButton(color="gray", data_clear="")["Clear"],
         ]
     ]
 
@@ -793,16 +785,17 @@ def ButtonDropdown(
     label: Child,
     items: list[Node],
     id: str,
-    color: str = "gray",
-    size: str = "base",
+    color: ButtonColor = "gray",
     placement: str = "bottom-start",
     aria_label: str = "",
 ) -> Node:
-    """A button-styled menu dropdown; the trigger is a ``StyledButton``."""
+    """A button-styled menu dropdown; the trigger is a ``ControlButton``."""
+    # The stamping machinery is typed on Element (it reads tag_name/attributes
+    # off the node), so unwrap the component to its rendered <button>.
     trigger = _as_menu_trigger(
-        StyledButton(color=color, size=size, icon=True)[
+        ControlButton(color=color)[
             label, Icon("arrowdown", [("class", "h-3 w-3")])
-        ]
+        ].as_element()
     )
     return Dropdown(
         trigger_element=trigger,

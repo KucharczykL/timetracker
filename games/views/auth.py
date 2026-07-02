@@ -12,7 +12,7 @@ from common.components import (
     FormFields,
     H2,
     Node,
-    StyledButton,
+    ControlButton,
 )
 from common.layout import render_page
 from games.forms import LoginForm
@@ -22,11 +22,12 @@ def _login_content(form, request) -> Node:
     return Div(class_="flex items-center flex-col")[
         H2(class_="text-3xl text-white mb-8")["Please log in to continue"],
         Form(
-            method="post", class_=f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS}"
+            method="post",
+            class_=f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS} @container",
         )[
             CsrfInput(request),
             FormFields(form),
-            StyledButton(type="submit")["Login"],
+            ControlButton(type="submit")["Login"],
         ],
     ]
 
