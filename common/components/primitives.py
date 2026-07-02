@@ -1216,7 +1216,9 @@ def get_icon_node(name: str) -> Element:
 # buttons (bigger than the small inline platform icons). Tune sizes here.
 ICON_BASE_CLASS = "text-black dark:text-white"
 ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
-ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
+# Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
+# → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
+ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:
