@@ -774,7 +774,7 @@ class FieldComparisonWidgetTest(TestCase):
 
     def test_left_select_groups_related_options_by_source(self):
         from common.criteria import comparable_columns
-        from common.components.filters import FieldComparisonRow, FieldComparisonSet
+        from common.components.filters import FieldComparisonSet
         from games.models import Session
 
         html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND"))
