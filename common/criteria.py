@@ -786,8 +786,8 @@ class FieldComparisonCriterion(_Criterion):
     # it out of __init__ and from_json iteration, preventing a stray JSON
     # "value" key from being accepted and creating a roundtrip asymmetry.
     value: Any = field(default=None, init=False, repr=False)
-    left: str = ""
-    right: str = ""
+    left: ComparisonOperand = ""
+    right: ComparisonOperand = ""
     modifier: Modifier = Modifier.EQUALS
     granularity: ComparisonGranularity = "raw"
 
@@ -1372,8 +1372,12 @@ class OperatorFilter:
                         f"field comparison needs two different columns"
                         f" (got {comparison.left!r} twice)"
                     )
-                left_group = _comparison_group_for(model, comparison.left)
-                right_group = _comparison_group_for(model, comparison.right)
+                left_group = _comparison_operand_group(
+                    model, comparison.left, side="left"
+                )
+                right_group = _comparison_operand_group(
+                    model, comparison.right, side="right"
+                )
                 if comparison.granularity == "raw":
                     if left_group != right_group:
                         raise FilterError(
@@ -1875,6 +1879,49 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
         )
 
     return group
+
+
+type ComparisonOperand = str  # own column "playtime" or one-hop FK path "game__year_released"
+
+
+def _comparison_operand_group(
+    model: type[models.Model], operand: ComparisonOperand, *, side: str
+) -> ComparisonGroup:
+    """Resolve a comparison operand to its group, enforcing the operand grammar.
+
+    Grammar (#169): a bare comparable column, or exactly one forward to-one FK
+    hop (``relation__column``). M2M and reverse relations are rejected — ``F()``
+    across a multi-valued relation fans out rows (see the spec's follow-up
+    issue for Exists()-based semantics). Terminal classification is delegated
+    to ``_comparison_group_for`` against the related model, so type-group
+    gating and its error vocabulary stay single-sourced. ``side`` ("left"/
+    "right") only decorates error messages.
+    """
+    segments = operand.split("__")
+    if len(segments) == 1:
+        return _comparison_group_for(model, operand)
+    if len(segments) > 2:
+        raise FilterError(
+            f"{side} operand {operand!r} traverses more than one relation"
+            f" (one hop allowed)"
+        )
+    relation, column = segments
+    try:
+        relation_field = model._meta.get_field(relation)
+    except FieldDoesNotExist as exc:
+        raise FilterError(
+            f"{side} operand {operand!r}: {model.__name__}"
+            f" has no relation {relation!r}"
+        ) from exc
+    if not isinstance(relation_field, (models.ForeignKey, models.OneToOneField)):
+        raise FilterError(
+            f"{side} operand {operand!r}: {model.__name__}.{relation}"
+            f" is not a to-one relation (only forward FK hops are comparable)"
+        )
+    try:
+        return _comparison_group_for(relation_field.related_model, column)
+    except FilterError as exc:
+        raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
 
 
 type ModifierValue = str  # a Modifier.value, e.g. "INCLUDES"

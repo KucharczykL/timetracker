@@ -35,6 +35,7 @@ from common.criteria import (
     _ScalarCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
+    _comparison_operand_group,
     _criterion_class_for,
     _field_comparison_to_q,
     _filter_class_for,
@@ -3757,7 +3758,6 @@ class TestStrictNullSemantics:
             timestamp_start=timezone.now(), note="orphan", game=None,
         )
 
-    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
     def test_not_equals_excludes_null_operand_rows_lookup_side(
         self, session_without_game
     ):
@@ -3772,7 +3772,6 @@ class TestStrictNullSemantics:
         ).to_q()
         assert session_without_game not in Session.objects.filter(q)
 
-    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
     def test_not_equals_excludes_null_operand_rows_expression_side(
         self, session_without_game
     ):
@@ -3787,7 +3786,6 @@ class TestStrictNullSemantics:
         ).to_q()
         assert session_without_game not in Session.objects.filter(q)
 
-    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
     def test_not_equals_is_side_symmetric(self, db, game, session_without_game):
         from games.models import Session
 
@@ -3834,7 +3832,6 @@ class TestStrictNullSemantics:
 
 
 class TestYearProjection:
-    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
     def test_year_space_headline_example(self, db):
         # Session started in the game's release year — the #169 headline query.
         from datetime import UTC, datetime
@@ -3857,7 +3854,6 @@ class TestYearProjection:
         results = Session.objects.filter(q)
         assert hit in results and miss not in results
 
-    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
     def test_year_space_number_left_temporal_right(self, db):
         # Symmetric: number on the lookup side, temporal behind F().
         from datetime import UTC, datetime
@@ -5292,3 +5288,87 @@ class TestScopedAggregateReducers:
         assert self._games_matching(scoped("IS_NULL")) == set()
         # …while mixed's deck sessions (1h + 1h calculated) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
+
+
+class TestComparisonOperandPaths:
+    """Tests for _comparison_operand_group: path grammar + validation (#169)."""
+
+    def test_fk_path_resolves_related_group(self):
+        from games.models import Session
+
+        assert _comparison_operand_group(Session, "game__year_released", side="left") == "number"
+
+    def test_own_column_still_resolves(self):
+        from games.models import Session
+
+        assert _comparison_operand_group(Session, "note", side="left") == "string"
+
+    def test_m2m_path_rejected(self):
+        from games.models import Purchase
+
+        with pytest.raises(FilterError, match="games"):
+            _comparison_operand_group(Purchase, "games__name", side="left")
+
+    def test_reverse_accessor_rejected(self):
+        from games.models import Game
+
+        with pytest.raises(FilterError, match="session"):
+            _comparison_operand_group(Game, "session__note", side="right")
+
+    def test_two_hop_rejected(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError, match="game__platform__name"):
+            _comparison_operand_group(Session, "game__platform__name", side="left")
+
+    def test_unknown_relation_names_path_and_side(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError, match=r"right operand.*'nonexistent__name'"):
+            _comparison_operand_group(Session, "nonexistent__name", side="right")
+
+    def test_unknown_related_column_names_full_path(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError, match="game__nonexistent"):
+            _comparison_operand_group(Session, "game__nonexistent", side="left")
+
+    def test_cross_model_wiring_end_to_end(self, db):
+        import datetime
+
+        from games.models import Game, Platform, Purchase
+
+        platform, _ = Platform.objects.get_or_create(
+            name="OperandPathTest", icon="operandpathtest"
+        )
+        game = Game.objects.create(name="Doom", platform=platform)
+        dlc = Purchase.objects.create(
+            name="Doom: Eternal DLC",
+            related_game=game,
+            date_purchased=datetime.date(2024, 1, 1),
+        )
+        query = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="name",
+                    right="related_game__name",
+                    modifier=Modifier.INCLUDES,
+                )
+            ]
+        ).to_q()
+        assert dlc in Purchase.objects.filter(query)
+
+    def test_shared_join_for_both_side_paths(self, db):
+        from games.models import Game
+
+        query = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="platform__name",
+                    right="platform__group",
+                    modifier=Modifier.EQUALS,
+                )
+            ]
+        ).to_q()
+        sql = str(Game.objects.filter(query).query)
+        assert sql.count("JOIN") == 1
