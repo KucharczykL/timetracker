@@ -1,4 +1,4 @@
-"""The device selector's pinned "Unknown" entry clears the device (issue #290).
+"""The device selector's "No device" clear entry clears the device (issue #290).
 
 The entry has data-value=""; in numeric mode the select behavior must send
 {"device_id": null} — Number("") is 0, so this is the end-to-end guard for the
@@ -24,7 +24,7 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.mark.django_db
-def test_pinned_unknown_option_clears_device(authenticated_page: Page, live_server):
+def test_no_device_option_clears_device(authenticated_page: Page, live_server):
     from games.models import Device, Game, Session
 
     game = Game.objects.create(name="Test Game")
@@ -61,8 +61,8 @@ def test_pinned_unknown_option_clears_device(authenticated_page: Page, live_serv
     assert post_data is not None
     assert json.loads(post_data) == {"device_id": None}
 
-    # Optimistic UI: the trigger label swaps to the pinned entry's label.
-    assert host.locator("[data-label]").inner_text().strip() == "Unknown"
+    # Optimistic UI: the trigger label swaps to the clear entry's label.
+    assert host.locator("[data-label]").inner_text().strip() == "No device"
 
     session.refresh_from_db()
     assert session.device is None

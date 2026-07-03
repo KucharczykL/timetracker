@@ -351,6 +351,16 @@ def test_device_patch_assigns_device(auth_client):
     assert session.device == other_device
 
 
+def test_device_patch_unknown_device_404(auth_client):
+    # A stale id (device deleted elsewhere) must 404 cleanly, not IntegrityError.
+    session = _make_session()
+    original_device = session.device
+    response = _patch_device(auth_client, session.id, {"device_id": 999999})
+    assert response.status_code == 404
+    session.refresh_from_db()
+    assert session.device == original_device
+
+
 def test_device_patch_null_clears_device(auth_client):
     session = _make_session()
     assert session.device is not None

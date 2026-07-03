@@ -261,8 +261,9 @@ class TestChoiceCriterion:
         assert c.to_q("status") == Q(status__in=["f", "p"])
 
     def test_excludes(self):
-        # Negative membership carries an isnull arm (issue #290): NOT IN never
-        # matches NULL in SQL, but "exclude X" must keep rows with no value.
+        # Negative membership carries an explicit isnull arm (issue #290) so
+        # NULL-keeping is stated in the Q tree, not left to Django's
+        # negated-lookup guard.
         c = ChoiceCriterion(value=["a"], modifier=Modifier.EXCLUDES)
         assert c.to_q("status") == ~Q(status__in=["a"]) | Q(status__isnull=True)
 
@@ -358,8 +359,8 @@ class TestMultiCriterion:
         nothing); the criterion should mean "all rows except device 11".
         """
         c = MultiCriterion(value=[], excludes=[11], modifier=Modifier.INCLUDES)
-        # The isnull arm (issue #290): "exclude device 11" keeps device-less
-        # sessions, which SQL NOT IN alone would drop.
+        # The explicit isnull arm (issue #290): "exclude device 11" keeps
+        # device-less sessions by construction, not via ORM negation internals.
         assert c.to_q("device_id") == ~Q(device_id__in=[11]) | Q(device_id__isnull=True)
 
     def test_include_and_exclude(self):

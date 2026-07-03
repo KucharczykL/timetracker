@@ -636,7 +636,7 @@ def _sessions_section(game: Game) -> Node:
         make_row(
             session_time_range(session),
             session.duration_formatted_with_mark(),
-            session.device.name if session.device else "Unknown",
+            session.device.name if session.device else "No device",
         )
         for session in sessions[:5]
     ]

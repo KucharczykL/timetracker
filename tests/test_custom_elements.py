@@ -309,7 +309,7 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
         self.assertIn('data-numeric="true"', html)
         self.assertIn('data-value="2"', html)
 
-    def test_pinned_clear_option_present(self):
+    def test_clear_option_present(self):
         from types import SimpleNamespace
         from common.components import SessionDeviceSelector, render
 
@@ -318,9 +318,9 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
             SessionDeviceSelector(session, [SimpleNamespace(id=2, name="Deck")], "tok")
         )
         self.assertIn('data-value=""', html)
-        self.assertIn("Unknown", html)
+        self.assertIn("No device", html)
 
-    def test_null_device_selects_pinned_option_and_labels_unknown(self):
+    def test_null_device_selects_clear_option_and_labels_no_device(self):
         from types import SimpleNamespace
         from common.components import SessionDeviceSelector, render
 
@@ -328,12 +328,12 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
         html = render(
             SessionDeviceSelector(session, [SimpleNamespace(id=2, name="Deck")], "tok")
         )
-        # The pinned clear option is the aria-selected one (attribute order is
+        # The clear option is the aria-selected one (attribute order is
         # deterministic: ListboxPanel emits data-value then aria-selected), and
-        # the trigger label coalesces to "Unknown".
+        # the trigger label coalesces to "No device".
         self.assertIn('data-value="" aria-selected="true"', html)
         self.assertIn('data-value="2" aria-selected="false"', html)
-        self.assertIn("Unknown", html)
+        self.assertIn("No device", html)
 
 
 class SelectDropdownRenderTest(unittest.TestCase):

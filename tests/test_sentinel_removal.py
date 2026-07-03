@@ -84,10 +84,38 @@ def test_platformless_duplicate_name_year_rejected():
         Game.objects.create(name="Tetris", year_released=1984)
 
 
+def test_platformless_duplicate_via_add_game_form_shows_error(
+    client, django_user_model
+):
+    # The conditional UniqueConstraint must surface as a form error through
+    # ModelForm.full_clean's validate_constraints, not an IntegrityError 500.
+    from django.urls import reverse
+
+    user = django_user_model.objects.create_user(username="u", password="p")
+    client.force_login(user)
+    Game.objects.create(name="Tetris", year_released=1984)
+
+    response = client.post(
+        reverse("games:add_game"),
+        {
+            "name": "Tetris",
+            "sort_name": "",
+            "platform": "",
+            "year_released": "1984",
+            "original_year_released": "",
+            "status": Game.Status.UNPLAYED,
+            "wikidata": "",
+        },
+    )
+
+    assert response.status_code == 200  # re-rendered form, not a redirect/500
+    assert Game.objects.count() == 1
+
+
 def test_exclude_platform_keeps_platformless_games():
-    # SQL NOT IN never matches NULL; the criterion layer adds the isnull arm so
-    # "exclude platform X" keeps games with no platform (the visible behavior
-    # the sentinel used to provide by accident).
+    # "Exclude platform X" keeps games with no platform — the visible behavior
+    # the sentinel used to provide by accident, now stated explicitly in the
+    # criterion's Q tree (issue #290).
     from common.criteria import Modifier, MultiCriterion
     from games.filters import GameFilter
 

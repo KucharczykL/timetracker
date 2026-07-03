@@ -564,10 +564,12 @@ class _SetCriterion(_Criterion):
 
     @staticmethod
     def _not_in_q(field_name: str, values: list) -> Q:
-        """Negative membership that also matches NULL rows. SQL ``NOT IN`` is
-        never true for NULL, so a bare ``~Q(field__in=…)`` would silently drop
-        rows with no value — "exclude platform X" must keep platformless games.
-        The isnull arm is vacuous on non-nullable columns."""
+        """Negative membership that explicitly matches NULL rows. Raw SQL
+        ``NOT IN`` is never true for NULL, but Django's negated-lookup
+        compilation already adds an ``IS NOT NULL`` guard that keeps NULL rows
+        — this arm states "exclude platform X keeps platformless games" in the
+        Q tree itself rather than leaving it to ORM negation internals. The
+        isnull arm is vacuous on non-nullable columns."""
         return ~Q(**{f"{field_name}__in": values}) | Q(
             **{f"{field_name}__isnull": True}
         )

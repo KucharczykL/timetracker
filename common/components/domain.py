@@ -264,15 +264,17 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
 
     current = session.device.id if session.device else None
     options: list[SelectOption] = [
-        # Pinned clear entry: empty data-value PATCHes device_id=null.
-        SelectOption("", "Unknown", session.device is None),
+        # Clear entry, always first: empty data-value PATCHes device_id=null.
+        # Labeled "No device" so a real device named "Unknown" can't be
+        # mistaken for it.
+        SelectOption("", "No device", session.device is None),
         *(
             SelectOption(str(device.id), device.name, device.id == current)
             for device in session_devices
         ),
     ]
     return SelectDropdown(
-        current_label=session.device.name if session.device else "Unknown",
+        current_label=session.device.name if session.device else "No device",
         options=options,
         id=f"session-{session.id}-device",
         patch_url=f"/api/session/{session.id}/device",

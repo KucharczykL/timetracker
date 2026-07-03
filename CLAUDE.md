@@ -86,7 +86,7 @@ docs/           — Additional documentation
 - **GameStatusChange** — audit log of status transitions, ordered by `-timestamp`
 - **FilterPreset** — saved filter configuration; `mode` (games/sessions/purchases/playevents), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 
-**Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`, and `Session.device` are nullable and stay NULL when unset — there are no sentinel rows (issue #290 removed the old "Unspecified" platform / "Unknown" device sentinels). "Unspecified"/"Unknown" are render-layer display labels only (`NameWithIcon`'s `PlatformBadge` fallback, `SessionDeviceSelector`, `search_label`, stats). All three FKs use `on_delete=SET_NULL`, exclude-mode set criteria match NULL rows (`_SetCriterion._not_in_q`), and a conditional `UniqueConstraint` keeps (name, year) unique among platformless games.
+**Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`, and `Session.device` are nullable and stay NULL when unset — there are no sentinel rows (issue #290 removed the old "Unspecified" platform / "Unknown" device sentinels). "Unspecified" (platform) and "No device" are render-layer display labels only (e.g. `NameWithIcon`'s `PlatformBadge` fallback, `SessionDeviceSelector`, `search_label`, game detail, stats — the list is not exhaustive). All three FKs use `on_delete=SET_NULL`, exclude-mode set criteria match NULL rows (`_SetCriterion._not_in_q`), and a conditional `UniqueConstraint` keeps (name, year) unique among platformless games.
 
 **GeneratedField constraint**: `duration_calculated`, `duration_total`, `price_per_game`, `days_to_finish` are computed by the database and cannot be written from application code.
 
