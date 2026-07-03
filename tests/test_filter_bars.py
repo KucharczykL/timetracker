@@ -772,6 +772,48 @@ class FieldComparisonWidgetTest(TestCase):
         self.assertRegex(html, r'value="OR"[^>]*checked="true"')
         self.assertIn('data-selected="LESS_THAN"', html)
 
+    def test_left_select_groups_related_options_by_source(self):
+        from common.criteria import comparable_columns
+        from common.components.filters import FieldComparisonRow, FieldComparisonSet
+        from games.models import Session
+
+        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND"))
+        # Own columns stay top-level (source == ""); related sources get optgroups.
+        self.assertIn("<optgroup", html)
+        self.assertIn('value="game__year_released"', html)
+        own_option_position = html.index('value="note"')
+        first_optgroup_position = html.index("<optgroup")
+        self.assertLess(own_option_position, first_optgroup_position)
+
+    def test_saved_year_row_prefills_packed_operator(self):
+        from common.criteria import comparable_columns
+        from common.components.filters import FieldComparisonRow, FieldComparisonSet
+        from games.models import Session
+
+        row = FieldComparisonRow(
+            left="timestamp_start", right="game__year_released",
+            modifier="EQUALS", granularity="year",
+        )
+        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[row], mode="AND"))
+        self.assertIn('data-selected="EQUALS:year"', html)
+
+    def test_raw_row_prefills_bare_modifier(self):
+        from common.criteria import comparable_columns
+        from common.components.filters import FieldComparisonRow, FieldComparisonSet
+        from games.models import Session
+
+        row = FieldComparisonRow(left="a", right="b", modifier="LESS_THAN", granularity="raw")
+        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[row], mode="AND"))
+        self.assertIn('data-selected="LESS_THAN"', html)
+
+    def test_day_granular_checkbox_gone(self):
+        from common.criteria import comparable_columns
+        from common.components.filters import FieldComparisonSet
+        from games.models import Session
+
+        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND"))
+        self.assertNotIn("data-fc-granularity", html)
+
 
 class HasComparableGroupTest(TestCase):
     """The ≥2-columns-of-one-group gate shared by the flat bar's comparison field
