@@ -443,10 +443,37 @@ describe("summarize — field comparison", () => {
       comparison({ left: "original_year_released", right: "year_released", modifier: "LESS_THAN" }),
     ).toBe("Games where Original release year is less than Release year.");
   });
-  it("appends (by day) for date granularity", () => {
+  it("appends (by date) for date granularity", () => {
     expect(
       comparison({ left: "year_released", right: "original_year_released", modifier: "EQUALS", granularity: "date" }),
-    ).toBe("Games where Release year is Original release year (by day).");
+    ).toBe("Games where Release year is Original release year (by date).");
+  });
+  it("renders a year-space comparison with its suffix", () => {
+    const CTX_WITH_CROSS: SummaryContext = {
+      modelKey: "game",
+      modelLabel: "Games",
+      models: {
+        game: {
+          fields: new Map(),
+          columns: new Map([
+            ["year_released", "Release year"],
+            ["timestamp_start", "Timestamp Start"],
+            ["game__year_released", "Game: Year Released"],
+          ]),
+        },
+      },
+    };
+    expect(
+      summarize(
+        root({ kind: "comparison", id: "cmp", comparison: { left: "timestamp_start", right: "game__year_released", modifier: "EQUALS", granularity: "year" }, negate: false }),
+        CTX_WITH_CROSS,
+      ),
+    ).toBe("Games where Timestamp Start is Game: Year Released (by year).");
+  });
+  it("falls back to the raw path when the column map misses it", () => {
+    expect(
+      comparison({ left: "game__nonexistent", right: "year_released", modifier: "EQUALS" }),
+    ).toContain("game__nonexistent");
   });
   it("renders an incomplete comparison as a placeholder", () => {
     expect(comparison({ left: "year_released" })).toBe("Games where ….");
