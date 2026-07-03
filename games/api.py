@@ -272,7 +272,9 @@ def get_session(request, session_id: int):
 
 
 class SessionDeviceUpdate(Schema):
-    device_id: int
+    # Required key, nullable value: null clears the device (renders as
+    # "No device").
+    device_id: int | None
 
 
 @session_router.patch("/{session_id}/device", response={204: None})
@@ -280,6 +282,10 @@ def partial_update_session_device(
     request, session_id: int, payload: SessionDeviceUpdate
 ):
     session = get_object_or_404(Session, id=session_id)
+    if payload.device_id is not None:
+        # A stale id (device deleted in another tab) must 404, not surface as
+        # an IntegrityError 500 the client's retry toast can never resolve.
+        get_object_or_404(Device, id=payload.device_id)
     session.device_id = payload.device_id
     session.save()
     messages.success(request, "Device updated")

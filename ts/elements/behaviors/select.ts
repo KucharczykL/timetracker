@@ -1,6 +1,16 @@
 import { registerBehavior } from "../dropdown-behaviors.js";
 import { MenuOptions } from "../menu-behavior.js";
 
+// In numeric mode an empty data-value means "clear" and must PATCH null —
+// Number("") is 0, not NaN, so without this branch it would silently send 0.
+export function selectPayloadValue(
+  rawValue: string,
+  numeric: boolean,
+): string | number | null {
+  if (!numeric) return rawValue;
+  return rawValue === "" ? null : Number(rawValue);
+}
+
 // Value-selector behavior: pick an option → swap the toggle label, reflect the
 // selection (aria-selected), close, PATCH the server, and fire the body event
 // that drives cross-widget htmx refresh. Config comes from data-* on the host.
@@ -24,7 +34,7 @@ registerBehavior("select", {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         const rawValue = option.dataset.value ?? "";
-        if (numeric && Number.isNaN(Number(rawValue))) {
+        if (numeric && rawValue !== "" && Number.isNaN(Number(rawValue))) {
           // Don't send {key: NaN} (serializes to null) — abort the malformed PATCH.
           console.error("select: non-numeric data-value", rawValue, patchUrl);
           controller.close();
@@ -45,7 +55,7 @@ registerBehavior("select", {
           .fetchWithHtmxTriggers(patchUrl, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
-            body: JSON.stringify({ [bodyKey]: numeric ? Number(rawValue) : rawValue }),
+            body: JSON.stringify({ [bodyKey]: selectPayloadValue(rawValue, numeric) }),
           })
           .then((response) => {
             // fetch resolves on 4xx/5xx, so an unchecked response would make a

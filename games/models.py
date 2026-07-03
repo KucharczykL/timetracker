@@ -21,6 +21,16 @@ logger = logging.getLogger("games")
 class Game(models.Model):
     class Meta:
         unique_together = [["name", "platform", "year_released"]]
+        constraints = [
+            # unique_together never bites for platformless games (SQLite treats
+            # NULLs as pairwise distinct), so this keeps the dedup guarantee the
+            # sentinel platform used to provide.
+            models.UniqueConstraint(
+                fields=["name", "year_released"],
+                condition=Q(platform__isnull=True),
+                name="unique_platformless_game_name_year",
+            )
+        ]
 
     name = models.CharField(max_length=255)
     sort_name = models.CharField(max_length=255, blank=True, default="")
@@ -28,7 +38,7 @@ class Game(models.Model):
     original_year_released = models.IntegerField(null=True, blank=True, default=None)
     wikidata = models.CharField(max_length=50, blank=True, default="")
     platform = models.ForeignKey(
-        "Platform", on_delete=models.SET_DEFAULT, null=True, blank=True, default=None
+        "Platform", on_delete=models.SET_NULL, null=True, blank=True, default=None
     )
 
     playtime = models.DurationField(blank=True, editable=False, default=timedelta(0))
@@ -66,7 +76,11 @@ class Game(models.Model):
 
     @property
     def search_label(self) -> str:
-        return label_with_details(self.name, self.platform, self.year_released)
+        # label_with_details drops falsy details, so coalesce NULL platform to
+        # the display label — otherwise the segment silently vanishes.
+        return label_with_details(
+            self.name, self.platform or "Unspecified", self.year_released
+        )
 
     def finished(self):
         return (
@@ -88,17 +102,6 @@ class Game(models.Model):
 
     def playtime_formatted(self):
         return format_duration(self.playtime, "%2.1H")
-
-    def save(self, *args, **kwargs):
-        if self.platform is None:
-            self.platform = get_sentinel_platform()
-        super().save(*args, **kwargs)
-
-
-def get_sentinel_platform():
-    return Platform.objects.get_or_create(
-        name="Unspecified", icon="unspecified", group="Unspecified"
-    )[0]
 
 
 class Platform(models.Model):
@@ -175,7 +178,7 @@ class Purchase(models.Model):
     games = models.ManyToManyField(Game, related_name="purchases")
 
     platform = models.ForeignKey(
-        Platform, on_delete=models.CASCADE, default=None, null=True, blank=True
+        Platform, on_delete=models.SET_NULL, default=None, null=True, blank=True
     )
     date_purchased = models.DateField(verbose_name="Purchased")
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
@@ -248,8 +251,6 @@ class Purchase(models.Model):
         self.save()
 
     def save(self, *args, **kwargs):
-        if self.platform is None:
-            self.platform = get_sentinel_platform()
         if not self.price_currency:
             self.price_currency = settings.DEFAULT_CURRENCY
         if self.type != Purchase.GAME and not self.related_game:
@@ -313,7 +314,7 @@ class Session(models.Model):
     )
     device = models.ForeignKey(
         "Device",
-        on_delete=models.SET_DEFAULT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         default=None,
@@ -347,12 +348,6 @@ class Session(models.Model):
     def save(self, *args, **kwargs) -> None:
         if not isinstance(self.duration_manual, timedelta):
             self.duration_manual = timedelta(0)
-
-        if not self.device:
-            default_device, _ = Device.objects.get_or_create(
-                type=Device.UNKNOWN, defaults={"name": "Unknown"}
-            )
-            self.device = default_device
         super(Session, self).save(*args, **kwargs)
 
 

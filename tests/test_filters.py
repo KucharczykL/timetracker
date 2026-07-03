@@ -261,33 +261,40 @@ class TestChoiceCriterion:
         assert c.to_q("status") == Q(status__in=["f", "p"])
 
     def test_excludes(self):
+        # Negative membership carries an explicit isnull arm (issue #290) so
+        # NULL-keeping is stated in the Q tree, not left to Django's
+        # negated-lookup guard.
         c = ChoiceCriterion(value=["a"], modifier=Modifier.EXCLUDES)
-        assert c.to_q("status") == ~Q(status__in=["a"])
+        assert c.to_q("status") == ~Q(status__in=["a"]) | Q(status__isnull=True)
 
     def test_excludes_only_empty_value(self):
         """Excluding a single status with no includes — value=[], excludes=["f"]."""
         c = ChoiceCriterion(value=[], excludes=["f"], modifier=Modifier.INCLUDES)
         q = c.to_q("status")
-        assert q == ~Q(status__in=["f"])
+        assert q == ~Q(status__in=["f"]) | Q(status__isnull=True)
 
     def test_excludes_two(self):
         """Excluding two statuses with no includes."""
         c = ChoiceCriterion(value=[], excludes=["f", "a"], modifier=Modifier.INCLUDES)
         q = c.to_q("status")
-        assert q == ~Q(status__in=["f", "a"])
+        assert q == ~Q(status__in=["f", "a"]) | Q(status__isnull=True)
 
     def test_include_and_exclude(self):
         """Include f, exclude a — both lists set."""
         c = ChoiceCriterion(value=["f"], excludes=["a"], modifier=Modifier.INCLUDES)
         q = c.to_q("status")
-        assert q == Q(status__in=["f"]) & ~Q(status__in=["a"])
+        assert q == Q(status__in=["f"]) & (
+            ~Q(status__in=["a"]) | Q(status__isnull=True)
+        )
 
     def test_include_two_and_exclude_one(self):
         c = ChoiceCriterion(
             value=["f", "p"], excludes=["a"], modifier=Modifier.INCLUDES
         )
         q = c.to_q("status")
-        assert q == Q(status__in=["f", "p"]) & ~Q(status__in=["a"])
+        assert q == Q(status__in=["f", "p"]) & (
+            ~Q(status__in=["a"]) | Q(status__isnull=True)
+        )
 
     def test_is_null(self):
         c = ChoiceCriterion(value=[], modifier=Modifier.IS_NULL)
@@ -300,7 +307,7 @@ class TestChoiceCriterion:
     def test_excludes_modifier(self):
         """EXCLUDES modifier with value set."""
         c = ChoiceCriterion(value=["f"], modifier=Modifier.EXCLUDES)
-        assert c.to_q("status") == ~Q(status__in=["f"])
+        assert c.to_q("status") == ~Q(status__in=["f"]) | Q(status__isnull=True)
 
     def test_excludes_modifier_empty_value(self):
         """EXCLUDES modifier with empty value — should produce empty Q."""
@@ -313,7 +320,9 @@ class TestChoiceCriterion:
         an orthogonal AND'd negative — it is *not* swapped into a positive
         include (the old divergent ChoiceCriterion behaviour)."""
         c = ChoiceCriterion(value=["f"], excludes=["a"], modifier=Modifier.EXCLUDES)
-        assert c.to_q("status") == ~Q(status__in=["f"]) & ~Q(status__in=["a"])
+        assert c.to_q("status") == (~Q(status__in=["f"]) | Q(status__isnull=True)) & (
+            ~Q(status__in=["a"]) | Q(status__isnull=True)
+        )
 
     @pytest.mark.parametrize(
         "modifier", [Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY]
@@ -330,7 +339,7 @@ class TestChoiceCriterion:
 
     def test_not_equals(self):
         c = ChoiceCriterion(value=["f"], modifier=Modifier.NOT_EQUALS)
-        assert c.to_q("status") == ~Q(status__in=["f"])
+        assert c.to_q("status") == ~Q(status__in=["f"]) | Q(status__isnull=True)
 
     def test_to_json_emits_bare_codes(self):
         """Enum criteria never set labels, so the shared _SetCriterion.to_json
@@ -350,18 +359,24 @@ class TestMultiCriterion:
         nothing); the criterion should mean "all rows except device 11".
         """
         c = MultiCriterion(value=[], excludes=[11], modifier=Modifier.INCLUDES)
-        assert c.to_q("device_id") == ~Q(device_id__in=[11])
+        # The explicit isnull arm (issue #290): "exclude device 11" keeps
+        # device-less sessions by construction, not via ORM negation internals.
+        assert c.to_q("device_id") == ~Q(device_id__in=[11]) | Q(device_id__isnull=True)
 
     def test_include_and_exclude(self):
         c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.INCLUDES)
-        assert c.to_q("game_id") == Q(game_id__in=[1]) & ~Q(game_id__in=[2])
+        assert c.to_q("game_id") == Q(game_id__in=[1]) & (
+            ~Q(game_id__in=[2]) | Q(game_id__isnull=True)
+        )
 
     def test_excludes_modifier_applies_excludes_channel(self):
         """Harmonized (Stash model): EXCLUDES negates ``value`` AND still applies
         the orthogonal ``excludes`` channel. Previously MultiCriterion.EXCLUDES
         dropped the excludes list entirely."""
         c = MultiCriterion(value=[1], excludes=[2], modifier=Modifier.EXCLUDES)
-        assert c.to_q("game_id") == ~Q(game_id__in=[1]) & ~Q(game_id__in=[2])
+        assert c.to_q("game_id") == (~Q(game_id__in=[1]) | Q(game_id__isnull=True)) & (
+            ~Q(game_id__in=[2]) | Q(game_id__isnull=True)
+        )
 
     @pytest.mark.parametrize(
         "modifier", [Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY]
@@ -390,7 +405,9 @@ class TestMultiCriterion:
         )
         assert c.value == [797]
         assert c.excludes == [11]
-        assert c.to_q("game_id") == Q(game_id__in=[797]) & ~Q(game_id__in=[11])
+        assert c.to_q("game_id") == Q(game_id__in=[797]) & (
+            ~Q(game_id__in=[11]) | Q(game_id__isnull=True)
+        )
 
     def test_to_json_embeds_known_labels(self):
         """to_json folds the labels map back into {id, label} wire shape (#224)."""

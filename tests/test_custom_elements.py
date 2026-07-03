@@ -309,6 +309,32 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
         self.assertIn('data-numeric="true"', html)
         self.assertIn('data-value="2"', html)
 
+    def test_clear_option_present(self):
+        from types import SimpleNamespace
+        from common.components import SessionDeviceSelector, render
+
+        session = SimpleNamespace(id=4, device=SimpleNamespace(id=2, name="Deck"))
+        html = render(
+            SessionDeviceSelector(session, [SimpleNamespace(id=2, name="Deck")], "tok")
+        )
+        self.assertIn('data-value=""', html)
+        self.assertIn("No device", html)
+
+    def test_null_device_selects_clear_option_and_labels_no_device(self):
+        from types import SimpleNamespace
+        from common.components import SessionDeviceSelector, render
+
+        session = SimpleNamespace(id=4, device=None)
+        html = render(
+            SessionDeviceSelector(session, [SimpleNamespace(id=2, name="Deck")], "tok")
+        )
+        # The clear option is the aria-selected one (attribute order is
+        # deterministic: ListboxPanel emits data-value then aria-selected), and
+        # the trigger label coalesces to "No device".
+        self.assertIn('data-value="" aria-selected="true"', html)
+        self.assertIn('data-value="2" aria-selected="false"', html)
+        self.assertIn("No device", html)
+
 
 class SelectDropdownRenderTest(unittest.TestCase):
     def test_renders_listbox_with_select_behavior(self):

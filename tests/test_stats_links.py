@@ -115,6 +115,31 @@ def test_sessions_for_platform_matches_year_scoped_sessions(world):
     )
 
 
+def test_sessions_for_platform_null_bucket_matches_stats_grouping(world):
+    """The stats "Unspecified" bucket groups by the game__platform LEFT JOIN, so
+    it holds sessions of platformless games AND sessions with no game at all
+    (issue #290). The None link must match exactly that set."""
+    platformless_game = Game.objects.create(name="Homebrew")
+    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
+    Session.objects.create(game=None, timestamp_start=_dt(YEAR, 6, 6))
+    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR - 1, 6, 5))
+
+    expected = Session.objects.filter(
+        timestamp_start__year=YEAR, game__platform__isnull=True
+    ).count()
+    assert expected == 2  # guard: game-less session included, out-of-year excluded
+    assert _count(stats_links.sessions_for_platform(None, YEAR), Session) == expected
+
+
+def test_sessions_for_platform_null_bucket_survives_json_round_trip(world):
+    platformless_game = Game.objects.create(name="Homebrew")
+    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
+    Session.objects.create(game=None, timestamp_start=_dt(YEAR, 6, 6))
+
+    link_filter = stats_links.sessions_for_platform(None, YEAR)
+    assert _count_via_json(link_filter, Session) == _count(link_filter, Session)
+
+
 def test_sessions_for_game_embeds_label(world):
     """A game session-link carries the game name as a display label so the
     destination filter bar renders a named pill, not a bare id (#224)."""

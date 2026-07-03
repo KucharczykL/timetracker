@@ -68,10 +68,32 @@ def sessions_for_game(game_id: int, year, label: str = "") -> SessionFilter:
     return session_filter
 
 
-def sessions_for_platform(platform_id: int, year, label: str = "") -> SessionFilter:
+def sessions_for_platform(
+    platform_id: int | None, year, label: str = ""
+) -> SessionFilter:
     # See sessions_for_game: the platform name rides along as a display label so
     # the session bar's (cross-entity) platform pill renders a name, not an id.
     session_filter = SessionFilter.where(**_session_bounds(year))
+    if platform_id is None:
+        # The stats "Unspecified" bucket groups by the game__platform LEFT JOIN,
+        # so it holds both sessions of platformless games AND sessions with no
+        # game at all. The cross-entity game_filter compiles to game_id__in
+        # (subquery) — which a NULL game_id never matches — so the game-less
+        # half needs its own IS_NULL arm, OR-composed under a single AND child
+        # (OR at the top node would swallow the year bounds).
+        session_filter.AND = [
+            SessionFilter(
+                OR=[
+                    SessionFilter(game=MultiCriterion(modifier=Modifier.IS_NULL)),
+                    SessionFilter(
+                        game_filter=GameFilter(
+                            platform=MultiCriterion(modifier=Modifier.IS_NULL)
+                        )
+                    ),
+                ]
+            )
+        ]
+        return session_filter
     session_filter.game_filter = GameFilter(
         platform=MultiCriterion(
             value=[platform_id], labels={platform_id: label} if label else {}
