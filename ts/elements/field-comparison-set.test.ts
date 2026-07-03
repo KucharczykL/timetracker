@@ -107,6 +107,12 @@ describe("unpackOperator", () => {
   it("unknown suffix falls through to raw", () => {
     expect(unpackOperator("EQUALS:unknown")).toEqual({ modifier: "EQUALS", granularity: "raw" });
   });
+
+  it("empty string yields an empty modifier in raw space", () => {
+    // A fresh row's operator <select> has value "" until the user picks one;
+    // unpackOperator must pass that through rather than invent a modifier.
+    expect(unpackOperator("")).toEqual({ modifier: "", granularity: "raw" });
+  });
 });
 
 function optgroupLabels(container: HTMLElement, selector: string): string[] {

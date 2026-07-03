@@ -700,6 +700,13 @@ function mountComparison(): FilterGroupElement {
           <option value="created_at">Created</option>
           <option value="updated_at">Updated</option>
         </select>
+        <!-- Template-attribute contract (matches the server's blank-row template,
+             common/components/filters.py): op/right ship empty with a data-selected
+             attribute present. seedComparisonRow stores the saved values there
+             (the operator packed as modifier:granularity, the right column
+             verbatim). refreshRow adopts the op's on first paint and removes it;
+             the right's is adopted/removed by refreshRowRightList, reached only
+             once a left column is set. -->
         <select data-fc-op data-selected></select>
         <select data-fc-right data-selected></select>
         <button data-fc-remove>✕</button>
@@ -726,7 +733,7 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
   it("+ comparison adds a live comparison row (not an inert slot)", () => {
     const host = mountComparison();
     clickAction(host, "add-comparison", []);
-    const slot = slots(host).find((s) => s.dataset.nodeKind === "comparison")!;
+    const slot = slots(host).find((candidate) => candidate.dataset.nodeKind === "comparison")!;
     expect(slot).toBeDefined();
     expect(slot.querySelector("[data-fc-row]")).not.toBeNull();
     // the row's own ✕ is dropped — the group's controls own removal
@@ -1161,6 +1168,8 @@ const HYDRATION_TEMPLATES = `
         <option value="created_at">Created</option>
         <option value="updated_at">Updated</option>
       </select>
+      <!-- data-selected present-but-empty: see the template-attribute contract
+           comment on mountComparison's fixture above. -->
       <select data-fc-op data-selected></select>
       <select data-fc-right data-selected></select>
       <button data-fc-remove>✕</button>

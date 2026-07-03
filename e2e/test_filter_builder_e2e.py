@@ -618,3 +618,97 @@ def test_cross_model_year_comparison_filters_sessions(
     session_table_rows = page.locator("tr[id^='session-row-']")
     expect(session_table_rows.filter(has_text="MatchGame")).to_be_visible()
     expect(session_table_rows.filter(has_text="MissGame")).not_to_be_visible()
+
+
+def _select_option_values(select_locator) -> list[str]:
+    """The value of every <option> currently in a <select> (optgroups included)."""
+    return select_locator.evaluate(
+        "select => [...select.options].map(option => option.value)"
+    )
+
+
+def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
+    authenticated_page: Page, live_server
+) -> None:
+    """The nested <filter-group> comparison leaf against real server templates
+    (issue #285 follow-up to #169; previously jsdom-only):
+
+    1. Template clone: a prefilled field-comparison deserializes into a
+       comparison leaf whose row is cloned from the server's
+       data-fc-row-template (server-owned select styling present).
+    2. Packed-operator seed: granularity='date' arrives as the packed
+       operator value 'LESS_THAN:date' via the data-selected contract.
+    3. Operator-change right-list rewiring: switching the comparison space
+       rebuilds the right-column options to that space's accepted groups.
+    4. The '+ comparison' action clones a fresh blank row whose dependent
+       selects stay disabled until a left column is picked.
+    """
+    page = authenticated_page
+
+    # created_at/updated_at are Game's datetime columns; year_released is number.
+    filter_json = {
+        "field_comparisons": [
+            {
+                "left": "created_at",
+                "right": "updated_at",
+                "modifier": "LESS_THAN",
+                "granularity": "date",
+            }
+        ]
+    }
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={_encode_filter(filter_json)}"
+    )
+
+    # JS initialized: the count badge settled (serializeForQuery ran end-to-end
+    # over the hydrated comparison leaf without throwing).
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+
+    comparison_row = page.locator('filter-group [data-node-kind="comparison"]')
+    expect(comparison_row).to_have_count(1)
+
+    left_select = comparison_row.locator("[data-fc-left]")
+    operator_select = comparison_row.locator("[data-fc-op]")
+    right_select = comparison_row.locator("[data-fc-right]")
+
+    # 1. Template clone: the row came from the server template, so the selects
+    # carry the server-owned SELECT_CLASS. This pins that the styling really
+    # arrived from the server template — the jsdom suite's synthetic fixtures
+    # are classless, so only a browser test can assert this.
+    expect(left_select).to_have_class(re.compile(r"rounded-base"))
+
+    # 2. Packed-operator seed: the stored {modifier, granularity} pair hydrates
+    # as the packed wire value, and both column selects restore their values.
+    expect(left_select).to_have_value("created_at")
+    expect(operator_select).to_have_value("LESS_THAN:date")
+    expect(right_select).to_have_value("updated_at")
+
+    # Right list under the restored date-space operator: Game's other datetime
+    # column is present, its number columns are not. (A raw datetime comparison
+    # would look the same — the packed-operator assert above pins the space.)
+    date_space_values = _select_option_values(right_select)
+    assert "updated_at" in date_space_values
+    assert "year_released" not in date_space_values
+
+    # 3. Operator-change rewiring: switching to the year space rebuilds the
+    # right list to that space's groups (number joins date/datetime) while the
+    # current right selection survives the rebuild.
+    operator_select.select_option("LESS_THAN:year")
+    expect(right_select).to_have_value("updated_at")
+    year_space_values = _select_option_values(right_select)
+    assert "year_released" in year_space_values
+    assert "original_year_released" in year_space_values
+
+    # 4. '+ comparison' clones a fresh blank row from the same server template:
+    # its dependent selects are disabled until a left column is chosen.
+    page.locator('filter-group button[data-action="add-comparison"]').first.click()
+    expect(comparison_row).to_have_count(2)
+    new_row = comparison_row.nth(1)
+    expect(new_row.locator("[data-fc-op]")).to_be_disabled()
+    expect(new_row.locator("[data-fc-right]")).to_be_disabled()
+    new_row.locator("[data-fc-left]").select_option("year_released")
+    expect(new_row.locator("[data-fc-op]")).to_be_enabled()
+    assert "original_year_released" in _select_option_values(
+        new_row.locator("[data-fc-right]")
+    )
