@@ -272,7 +272,8 @@ def get_session(request, session_id: int):
 
 
 class SessionDeviceUpdate(Schema):
-    device_id: int
+    # Required key, nullable value: null clears the device (renders as "Unknown").
+    device_id: int | None
 
 
 @session_router.patch("/{session_id}/device", response={204: None})

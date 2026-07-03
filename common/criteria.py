@@ -559,8 +559,18 @@ class _SetCriterion(_Criterion):
         # AND'd negative applied for every (non-presence) modifier.
         q = self._value_q(field_name)
         if self.excludes:
-            q &= ~Q(**{f"{field_name}__in": self.excludes})
+            q &= self._not_in_q(field_name, self.excludes)
         return q
+
+    @staticmethod
+    def _not_in_q(field_name: str, values: list) -> Q:
+        """Negative membership that also matches NULL rows. SQL ``NOT IN`` is
+        never true for NULL, so a bare ``~Q(field__in=…)`` would silently drop
+        rows with no value — "exclude platform X" must keep platformless games.
+        The isnull arm is vacuous on non-nullable columns."""
+        return ~Q(**{f"{field_name}__in": values}) | Q(
+            **{f"{field_name}__isnull": True}
+        )
 
     def _value_q(self, field_name: str) -> Q:
         """Build the Q for the include (``value``) set, per the modifier."""
@@ -568,7 +578,7 @@ class _SetCriterion(_Criterion):
         if modifier in (Modifier.INCLUDES, Modifier.EQUALS):
             return Q(**{f"{field_name}__in": self.value}) if self.value else Q()
         if modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
-            return ~Q(**{f"{field_name}__in": self.value}) if self.value else Q()
+            return self._not_in_q(field_name, self.value) if self.value else Q()
         if modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
             # INCLUDES_ALL ("related to all of these") and INCLUDES_ONLY
             # ("related to exactly these, nothing else") are only meaningful

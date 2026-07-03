@@ -85,6 +85,37 @@ def test_platform_row_links_to_platform_sessions(rendered):
     assert url in rendered["html"]
 
 
+def test_unspecified_platform_row_links_to_null_bucket_sessions(
+    db, client, django_user_model
+):
+    """A platformless game's playtime lands in the stats "Unspecified" platform
+    row; its link must carry the IS_NULL composition and match the same
+    sessions (issue #290)."""
+    platformless_game = Game.objects.create(name="Homebrew")
+    start = _dt(6, 1)
+    Session.objects.create(
+        game=platformless_game,
+        timestamp_start=start,
+        timestamp_end=start + timedelta(hours=1),
+    )
+    ctx = compute_stats(YEAR)
+    html = str(stats_content(ctx))
+    assert "Unspecified" in html
+
+    link_filter = stats_links.sessions_for_platform(None, YEAR)
+    assert _href(link_filter) in html
+
+    expected = Session.objects.filter(game__platform__isnull=True).count()
+    assert (
+        Session.objects.filter(link_filter.to_q()).distinct().count() == expected == 1
+    )
+
+    user = django_user_model.objects.create_user(username="u2", password="p")
+    client.force_login(user)
+    response = client.get(filter_url(link_filter), follow=True)
+    assert response.status_code == 200
+
+
 def test_game_row_has_session_link(rendered):
     # at least one games-by-playtime game links to its sessions, with the game
     # name embedded as a display label (#224)

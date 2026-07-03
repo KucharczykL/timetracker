@@ -1,6 +1,6 @@
 """Domain components for games / purchases / sessions."""
 
-from typing import Any
+from typing import NamedTuple
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -148,6 +148,23 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     return A(href=link)[a_content]
 
 
+class PlatformBadge(NamedTuple):
+    """Icon slug + title for a game's platform badge. A game without a platform
+    still gets a badge (the "unspecified" fallback); no game context means no
+    badge at all."""
+
+    icon: str
+    title: str
+
+
+class ResolvedNameWithIcon(NamedTuple):
+    name: str
+    badge: PlatformBadge | None
+    emulated: bool
+    create_link: bool
+    link: str
+
+
 def NameWithIcon(
     name: str = "",
     game: Game | None = None,
@@ -155,22 +172,26 @@ def NameWithIcon(
     linkify: bool = True,
     emulated: bool = False,
 ) -> Node:
-    _name, platform, final_emulated, create_link, link = _resolve_name_with_icon(
-        name, game, session, linkify
-    )
+    resolved = _resolve_name_with_icon(name, game, session, linkify)
 
     content = Div(class_="inline-flex gap-2 items-center")[
         Icon(
-            platform.icon,
-            [("title", platform.name)],
+            resolved.badge.icon,
+            [("title", resolved.badge.title)],
         )
-        if platform
+        if resolved.badge
         else "",
-        Icon("emulated", [("title", "Emulated")]) if final_emulated else "",
-        PopoverTruncated(_name),
+        Icon("emulated", [("title", "Emulated")]) if resolved.emulated else "",
+        PopoverTruncated(resolved.name),
     ]
 
-    return A(href=link)[content] if create_link else content
+    return A(href=resolved.link)[content] if resolved.create_link else content
+
+
+def _platform_badge(game: Game) -> PlatformBadge:
+    if game.platform:
+        return PlatformBadge(icon=game.platform.icon, title=game.platform.name)
+    return PlatformBadge(icon="unspecified", title="Unspecified")
 
 
 def _resolve_name_with_icon(
@@ -178,29 +199,29 @@ def _resolve_name_with_icon(
     game: Game | None,
     session: Session | None,
     linkify: bool,
-) -> tuple[str, Any, bool, bool, str]:
+) -> ResolvedNameWithIcon:
     create_link = False
     link = ""
-    platform = None
+    badge = None
     final_emulated = False
 
     if session is not None:
         game = session.game
         final_emulated = session.emulated
         if game is not None:
-            platform = game.platform
+            badge = _platform_badge(game)
             if linkify:
                 create_link = True
                 link = reverse("games:view_game", args=[int(game.pk)])
     elif game is not None:
-        platform = game.platform
+        badge = _platform_badge(game)
         if linkify:
             create_link = True
             link = reverse("games:view_game", args=[int(game.pk)])
 
     _name = name or (game.name if game else "")
 
-    return _name, platform, final_emulated, create_link, link
+    return ResolvedNameWithIcon(_name, badge, final_emulated, create_link, link)
 
 
 def PurchasePrice(purchase) -> Node:
@@ -243,8 +264,12 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
 
     current = session.device.id if session.device else None
     options: list[SelectOption] = [
-        SelectOption(str(device.id), device.name, device.id == current)
-        for device in session_devices
+        # Pinned clear entry: empty data-value PATCHes device_id=null.
+        SelectOption("", "Unknown", session.device is None),
+        *(
+            SelectOption(str(device.id), device.name, device.id == current)
+            for device in session_devices
+        ),
     ]
     return SelectDropdown(
         current_label=session.device.name if session.device else "Unknown",

@@ -331,6 +331,41 @@ def test_session_patch_requires_auth():
     assert response.status_code == 401
 
 
+# ── PATCH /api/session/{id}/device — nullable device (#290) ──────────────────
+
+
+def _patch_device(client, session_id, body):
+    return client.patch(
+        f"/api/session/{session_id}/device",
+        data=json.dumps(body),
+        content_type="application/json",
+    )
+
+
+def test_device_patch_assigns_device(auth_client):
+    session = _make_session()
+    other_device = Device.objects.create(name="Desktop", type="PC")
+    response = _patch_device(auth_client, session.id, {"device_id": other_device.id})
+    assert response.status_code == 204
+    session.refresh_from_db()
+    assert session.device == other_device
+
+
+def test_device_patch_null_clears_device(auth_client):
+    session = _make_session()
+    assert session.device is not None
+    response = _patch_device(auth_client, session.id, {"device_id": None})
+    assert response.status_code == 204
+    session.refresh_from_db()
+    assert session.device is None
+
+
+def test_session_detail_serializes_null_device(auth_client):
+    session = _make_session(device=None)
+    data = auth_client.get(f"/api/session/{session.id}").json()
+    assert data["device"] is None
+
+
 # ── /api/filter/count — live result count for the nested filter builder (#195) ──
 
 

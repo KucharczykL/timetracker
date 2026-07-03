@@ -2,13 +2,13 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from games.models import Game, Platform, Purchase, get_sentinel_platform
+from games.models import Game, Platform, Purchase
 
 
 class AddPurchaseDefaultsTest(TestCase):
-    """Adding a purchase without a platform or currency falls back to the
-    "Unspecified" platform sentinel (issue #89) and DEFAULT_CURRENCY (issue
-    #88)."""
+    """Adding a purchase without a platform keeps it NULL (issue #290 removed
+    the "Unspecified" sentinel); a missing currency falls back to
+    DEFAULT_CURRENCY (issue #88)."""
 
     def setUp(self):
         self.user = User.objects.create_superuser("u", "u@e.com", "pw")
@@ -37,7 +37,7 @@ class AddPurchaseDefaultsTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         purchase = Purchase.objects.get()
-        self.assertEqual(purchase.platform, get_sentinel_platform())
+        self.assertIsNone(purchase.platform)
         self.assertEqual(purchase.price_currency, "CZK")
 
     @override_settings(DEFAULT_CURRENCY="CZK")
@@ -55,7 +55,7 @@ class AddPurchaseDefaultsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Purchase.objects.count(), 2)
         for purchase in Purchase.objects.all():
-            self.assertEqual(purchase.platform, get_sentinel_platform())
+            self.assertIsNone(purchase.platform)
             self.assertEqual(purchase.price_currency, "CZK")
 
     @override_settings(DEFAULT_CURRENCY="EUR")

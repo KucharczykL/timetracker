@@ -572,7 +572,9 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
         _played_row(game, request),
         _meta_row(
             "Platform",
-            Span(class_=grey_value_class)[str(game.platform)],
+            Span(class_=grey_value_class)[
+                str(game.platform) if game.platform else "Unspecified"
+            ],
         ),
     ]
     return Div(id_="game-info", class_="mb-10")[
@@ -634,7 +636,7 @@ def _sessions_section(game: Game) -> Node:
         make_row(
             session_time_range(session),
             session.duration_formatted_with_mark(),
-            session.device.name if session.device else "",
+            session.device.name if session.device else "Unknown",
         )
         for session in sessions[:5]
     ]
