@@ -753,7 +753,7 @@ class FieldComparisonRow(NamedTuple):
     left: str  # left column name, e.g. "timestamp_end"
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
-    granularity: str  # "raw" or "date" (day-granular datetime compare)
+    granularity: str  # "raw", "date", or "year" (comparison space)
 
 
 def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:

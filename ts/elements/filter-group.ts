@@ -1061,7 +1061,7 @@ export class FilterGroupElement extends HTMLElement {
     return cell;
   }
 
-  // The live field-comparison leaf row (#246): [NOT] [left op right (by-day?)]
+  // The live field-comparison leaf row (#246): [NOT] [left op right]
   // [controls]. The reused single-row widget lives in a cached cell so a structural
   // edit never wipes an in-progress comparison.
   private renderComparisonRow(

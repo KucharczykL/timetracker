@@ -49,7 +49,7 @@ const OPERATOR_LABELS: Record<string, string> = {
 
 // The ordered modifiers used inside each non-raw comparison space. These are the
 // operators that make sense when comparing across spaces (e.g. datetime vs number
-// in year granularity). Must stay in sync with Python _SPACE_MODIFIERS.
+// in year granularity). Mirrors Modifier.for_ordered_field_comparisons() in common/criteria.py.
 const SPACE_ORDERED_MODIFIERS = [
   "EQUALS",
   "NOT_EQUALS",

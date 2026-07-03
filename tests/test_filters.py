@@ -2965,9 +2965,13 @@ class TestFieldComparisonWiring:
             stub.to_q()
 
     def test_includes_on_datetime_rejected_before_granularity(self):
-        """INCLUDES/EXCLUDES (string-only) and date-granular (datetime-only) are
-        mutually exclusive by group: an INCLUDES on a datetime pair is rejected by
-        the modifier gate, so the nonsense __date__icontains query is unreachable."""
+        """INCLUDES in a non-raw space is rejected before SQL is built.
+
+        Non-raw spaces (date, year) restrict modifiers to
+        Modifier.for_ordered_field_comparisons(), which excludes INCLUDES/EXCLUDES
+        (string containment, raw-space/string-group only). The modifier gate fires
+        before any SQL is emitted, so the nonsense __date__icontains query is
+        unreachable."""
         stub = _SessionStub(
             field_comparisons=[
                 FieldComparisonCriterion(
@@ -3901,6 +3905,61 @@ class TestFieldComparisonEndToEnd:
         parsed_filter = parse_game_filter(filter_to_json(game_filter))
         assert parsed_filter is not None
         assert set(Game.objects.filter(parsed_filter.to_q())) == {match}
+
+    def test_cross_model_includes_empty_string_right_operand(self):
+        """INCLUDES where the right operand is a cross-model column with value "".
+
+        Empty-string caveat (documented in FieldComparisonCriterion): "" is a
+        substring of every non-NULL string, so ``left INCLUDES right`` where
+        right == "" matches every row whose left operand is non-NULL — including
+        rows where both operands are "".
+
+        This test pins the behaviour cross-model: Session.note INCLUDES
+        game__wikidata, where the game has wikidata="" (the empty default).
+        - HIT: note is non-empty, game.wikidata is "" → matches (left contains "")
+        - NO_HIT_NULL_GAME: game is None → excluded by the strict NULL guard on
+          game__wikidata.
+        """
+        from django.utils import timezone
+
+        from games.filters import SessionFilter
+        from games.models import Game, Platform, Session
+
+        platform, _ = Platform.objects.get_or_create(
+            name="CrossModelIncludesTest", icon="crossmodelincludestest"
+        )
+        game_with_empty_wikidata = Game.objects.create(
+            name="WikilessGame",
+            platform=platform,
+            wikidata="",  # the default — empty string, not NULL
+        )
+
+        # HIT: note is non-empty; game.wikidata is "" → "" is substring of note
+        session_hit = Session.objects.create(
+            timestamp_start=timezone.now(),
+            note="some note",
+            game=game_with_empty_wikidata,
+        )
+
+        # NULL guard: no game → game__wikidata is NULL → excluded
+        session_no_game = Session.objects.create(
+            timestamp_start=timezone.now(),
+            note="also non-empty",
+            game=None,
+        )
+
+        session_filter = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="note",
+                    right="game__wikidata",
+                    modifier=Modifier.INCLUDES,
+                )
+            ]
+        )
+        result = set(Session.objects.filter(session_filter.to_q()))
+        assert session_hit in result
+        assert session_no_game not in result
 
 
 class TestStrictNullSemantics:
