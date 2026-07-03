@@ -9,6 +9,16 @@
       "fields": ["device", "note"],
       "relations": { "game_filter": "game" },
       "scopes": {}
+    },
+    "purchase": {
+      "fields": ["name"],
+      "relations": {},
+      "scopes": {}
+    },
+    "playevent": {
+      "fields": ["started", "created_at"],
+      "relations": {},
+      "scopes": {}
     }
   },
   "cases": [
@@ -158,6 +168,42 @@
       "description": "scoped aggregate with empty scope normalizes to unscoped",
       "model": "game",
       "filter": { "session_count": { "value": 1, "modifier": "EQUALS", "scope": {} } }
+    },
+    {
+      "description": "session year-space: timestamp_start year vs game__year_released",
+      "model": "session",
+      "filter": {
+        "field_comparisons": [
+          { "left": "timestamp_start", "right": "game__year_released", "modifier": "EQUALS", "granularity": "year" }
+        ]
+      }
+    },
+    {
+      "description": "session both-sides paths: game__name vs device__name (raw string)",
+      "model": "session",
+      "filter": {
+        "field_comparisons": [
+          { "left": "game__name", "right": "device__name", "modifier": "EQUALS" }
+        ]
+      }
+    },
+    {
+      "description": "purchase: name INCLUDES related_game__name",
+      "model": "purchase",
+      "filter": {
+        "field_comparisons": [
+          { "left": "name", "right": "related_game__name", "modifier": "INCLUDES" }
+        ]
+      }
+    },
+    {
+      "description": "playevent date-space: started vs created_at (date-vs-datetime)",
+      "model": "playevent",
+      "filter": {
+        "field_comparisons": [
+          { "left": "started", "right": "created_at", "modifier": "EQUALS", "granularity": "date" }
+        ]
+      }
     }
   ]
 }

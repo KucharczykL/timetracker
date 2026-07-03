@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from common.criteria import filter_from_json
-from games.filters import GameFilter, SessionFilter
+from games.filters import GameFilter, PlayEventFilter, PurchaseFilter, SessionFilter
 
 FILTER_TREE_DIR = (
     Path(__file__).resolve().parent.parent / "ts" / "elements" / "filter-tree"
@@ -23,7 +23,12 @@ FILTER_TREE_DIR = (
 FIXTURES = json.loads((FILTER_TREE_DIR / "fixtures.json").read_text())
 CANONICAL_PATH = FILTER_TREE_DIR / "fixtures.canonical.json"
 
-FILTER_FOR_MODEL = {"game": GameFilter, "session": SessionFilter}
+FILTER_FOR_MODEL = {
+    "game": GameFilter,
+    "session": SessionFilter,
+    "purchase": PurchaseFilter,
+    "playevent": PlayEventFilter,
+}
 
 # Map each original fixture to its TS-emitted canonical form, by description.
 if CANONICAL_PATH.exists():
