@@ -3713,7 +3713,8 @@ class TestFilterFieldDescriptors:
     """Guard the declarative ``fields`` table against drift from the dataclass.
 
     Each concrete filter's generic ``to_q`` walks ``fields`` for its simple
-    criteria and delegates the rest to ``_extra_q``. These tests assert that
+    criteria and the ``aggregates`` table for aggregates, delegating the rest
+    to ``_extra_q``. These tests assert that
     every declared criterion field is accounted for exactly once — in ``fields``,
     as an aggregate, or in ``_IMPERATIVE_CRITERIA`` — so a newly added field can't
     silently fall through (and thus be ignored by ``to_q``).
@@ -3779,7 +3780,15 @@ class TestFilterFieldDescriptors:
         assert set(filter_cls.aggregates) == self._aggregate_fields(filter_cls)
 
     @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
-    def test_descriptor_keys_are_real_criterion_fields(self, filter_cls):
+    def test_aggregate_accessor_reaches_the_scope_filter_model(self, filter_cls):
+        """Each spec's ``accessor`` must reach exactly ``scope_filter``'s model —
+        ``aggregate_to_q`` builds ``Q(accessor__in=<scope_filter's queryset>)``,
+        so a mismatched pair produces a wrong-model pk subquery that returns
+        silently wrong results rather than raising (issue #151)."""
+        parent_model = filter_cls._comparison_model()
+        for name, spec in filter_cls.aggregates.items():
+            related_model = parent_model._meta.get_field(spec.accessor).related_model
+            assert related_model is spec.scope_filter._comparison_model(), name
         declared = self._declared_criterion_fields(filter_cls)
         for key in filter_cls.fields:
             assert key in declared, (
@@ -4774,3 +4783,176 @@ class TestScopedAggregateJSON:
         )
         with pytest.raises(FilterError):
             filter_from_json(GameFilter, blob)
+
+
+@pytest.mark.django_db
+class TestScopedAggregateReducers:
+    """Reducer-specific scoped-aggregate semantics the base class doesn't cover:
+    the distinct M2M count, the avg reducer, a nested relation inside the scope,
+    and the NULL sum for parents whose related rows all fail the scope."""
+
+    def test_scoped_purchase_count_is_distinct_over_the_m2m(self):
+        """A bundle purchase linked to two games must count once per game under
+        a scope — distinct + FILTER + M2M join is the shape most prone to
+        alias/duplication bugs."""
+        import datetime
+
+        from games.filters import GameFilter
+        from games.models import Game, Platform, Purchase
+
+        platform = Platform.objects.create(name="PC")
+        first_game = Game.objects.create(name="First", platform=platform)
+        second_game = Game.objects.create(name="Second", platform=platform)
+
+        def make_purchase(games, ownership_type):
+            purchase = Purchase.objects.create(
+                platform=platform,
+                date_purchased=datetime.date(2026, 1, 1),
+                ownership_type=ownership_type,
+            )
+            purchase.games.set(games)
+            return purchase
+
+        make_purchase([first_game, second_game], Purchase.PHYSICAL)  # the bundle
+        make_purchase([first_game], Purchase.PHYSICAL)
+        make_purchase([first_game], Purchase.DIGITAL)  # fails the scope
+
+        game_filter = GameFilter.from_json(
+            {
+                "purchase_count": {
+                    "value": 2,
+                    "modifier": "EQUALS",
+                    "scope": {
+                        "ownership_type": {
+                            "value": [Purchase.PHYSICAL],
+                            "modifier": "INCLUDES",
+                        }
+                    },
+                }
+            }
+        )
+        assert set(Game.objects.filter(game_filter.to_q())) == {first_game}
+        one_physical = GameFilter.from_json(
+            {
+                "purchase_count": {
+                    "value": 1,
+                    "modifier": "EQUALS",
+                    "scope": {
+                        "ownership_type": {
+                            "value": [Purchase.PHYSICAL],
+                            "modifier": "INCLUDES",
+                        }
+                    },
+                }
+            }
+        )
+        assert set(Game.objects.filter(one_physical.to_q())) == {second_game}
+
+    def _seed_two_device_games(self):
+        import datetime
+        from datetime import timedelta
+
+        from games.models import Device, Game, Platform, Session
+
+        platform = Platform.objects.create(name="PC")
+        deck = Device.objects.create(name="Steam Deck", type="Handheld")
+        desktop = Device.objects.create(name="Desktop", type="PC")
+        mixed = Game.objects.create(name="Mixed", platform=platform)
+        desktop_only = Game.objects.create(name="Desktop Only", platform=platform)
+        first_start = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+
+        def make_session(game, device, index, hours):
+            begin = first_start + timedelta(days=index)
+            return Session.objects.create(
+                game=game,
+                device=device,
+                timestamp_start=begin,
+                timestamp_end=begin + timedelta(hours=hours),
+            )
+
+        # mixed: two 1h sessions on the deck + one 5h on the desktop → the
+        # unscoped average (7/3 ≈ 2.3h) differs from the deck-scoped one (1h).
+        make_session(mixed, deck, 0, hours=1)
+        make_session(mixed, deck, 1, hours=1)
+        make_session(mixed, desktop, 2, hours=5)
+        # desktop_only: one 1h session, never on the deck.
+        make_session(desktop_only, desktop, 3, hours=1)
+        return {
+            "deck": deck,
+            "mixed": mixed,
+            "desktop_only": desktop_only,
+        }
+
+    def _games_matching(self, filter_json: dict) -> set:
+        from games.filters import GameFilter
+        from games.models import Game
+
+        game_filter = GameFilter.from_json(filter_json)
+        assert game_filter is not None
+        return set(Game.objects.filter(game_filter.to_q()))
+
+    def test_scoped_average_executes_against_the_db(self):
+        """The avg reducer with a scope: only the deck sessions feed the mean.
+        This also pins the spec table's avg wiring (source/unit), which the
+        name-coverage drift guard can't."""
+        data = self._seed_two_device_games()
+        deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
+        scoped_hour_average = {
+            "session_average": {"value": 1, "modifier": "EQUALS", "scope": deck_scope}
+        }
+        unscoped_hour_average = {"session_average": {"value": 1, "modifier": "EQUALS"}}
+        # Scoped to the deck, mixed averages exactly 1h; unscoped its 5h desktop
+        # session pulls the mean into the [2, 3) bucket, leaving only desktop_only.
+        assert self._games_matching(scoped_hour_average) == {data["mixed"]}
+        assert self._games_matching(unscoped_hour_average) == {data["desktop_only"]}
+
+    def test_nested_relation_inside_scope_executes_against_the_db(self):
+        """A scope carrying a relation descent with its own quantifier: count
+        sessions whose device does NOT match. This executes the subquery-
+        membership design claim — a key-prefix Q rewrite would break exactly
+        here and nowhere else in the suite."""
+        data = self._seed_two_device_games()
+        off_deck_scope = {
+            "device_filter": {
+                "match": "NONE",
+                "name": {"value": "Steam Deck", "modifier": "EQUALS"},
+            }
+        }
+        one_session_off_deck = {
+            "session_count": {"value": 1, "modifier": "EQUALS", "scope": off_deck_scope}
+        }
+        # mixed has exactly one non-deck session; desktop_only has one too.
+        assert self._games_matching(one_session_off_deck) == {
+            data["mixed"],
+            data["desktop_only"],
+        }
+        two_sessions_off_deck = {
+            "session_count": {"value": 2, "modifier": "EQUALS", "scope": off_deck_scope}
+        }
+        assert self._games_matching(two_sessions_off_deck) == set()
+
+    def test_scoped_sum_is_null_when_no_row_matches_the_scope(self):
+        """SUM with a filter= that matches no rows yields SQL NULL (unlike the
+        count's 0): a game whose sessions all fail the scope matches neither
+        EQUALS 0 (NULL != 0) nor the duration IS_NULL (defined as *zero
+        duration*, see duration_hours_to_q) — identical to the pre-existing
+        unscoped no-session case. Pin it so a future 'coalesce to 0' change is
+        a deliberate decision, with a positive contrast proving the scoped sum
+        itself computes."""
+        data = self._seed_two_device_games()
+        deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
+
+        def scoped(modifier, value=0):
+            return {
+                "calculated_playtime_hours": {
+                    "value": value,
+                    "modifier": modifier,
+                    "scope": deck_scope,
+                }
+            }
+
+        # desktop_only's NULL deck-sum is invisible to both zero tests…
+        assert self._games_matching(scoped("EQUALS", 0)) == set()
+        assert self._games_matching(scoped("IS_NULL")) == set()
+        # …while mixed's deck sessions (1h + 1h calculated) sum normally.
+        assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}

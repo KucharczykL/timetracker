@@ -164,6 +164,9 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
 // empty scope deserializes to no scope at all — backend parity (it normalizes an
 // empty scope to unscoped). On a non-scopable field the payload stays verbatim
 // (opaque-payload principle; the backend equally ignores a stray `scope` key).
+// The backend's two loud rejections are mirrored, not repaired: silently
+// stripping them here would turn a hand-edited/legacy URL into a *different*
+// valid filter with no feedback, while the list view rejects the same URL.
 function criterionNode(
   field: string,
   raw: Json,
@@ -172,8 +175,19 @@ function criterionNode(
   depth: number,
 ): CriterionLeaf {
   const scopeModel = meta.scopes[field];
-  if (scopeModel === undefined || !isObject(raw.scope)) {
+  if (scopeModel === undefined) {
     return { kind: "criterion", id: nextNodeId(), field, criterion: raw, negate: false };
+  }
+  // null mirrors the backend's pop-with-None-default: an explicit null scope is
+  // "no scope", not malformed.
+  if (raw.scope != null && !isObject(raw.scope)) {
+    throw new FilterTreeError(`aggregate scope on ${field} must be an object`, "INVALID_SCOPE");
+  }
+  if (!isObject(raw.scope)) {
+    return { kind: "criterion", id: nextNodeId(), field, criterion: raw, negate: false };
+  }
+  if (raw.scope.match != null && raw.scope.match !== "ANY") {
+    throw new FilterTreeError("aggregate scope does not take a match quantifier", "INVALID_SCOPE");
   }
   const { scope: scopeJson, ...criterion } = raw;
   const child = asGroup(deserializeNode(scopeJson as Json, scopeModel, registry, depth + 1));

@@ -39,6 +39,7 @@ import {
   addScope,
   canAddGroup,
   canAddRelation,
+  canAddScope,
   canUnwrap,
   canWrap,
   criterionForField,
@@ -592,7 +593,7 @@ export class FilterGroupElement extends HTMLElement {
         if (canAddRelation(this.tree, path)) this.tree = insertChild(this.tree, path, emptyRelation());
         break;
       case "add-scope":
-        this.tree = addScope(this.tree, path);
+        if (canAddScope(this.tree, path)) this.tree = addScope(this.tree, path);
         break;
       case "remove-scope":
         this.tree = removeScope(this.tree, path);
@@ -918,9 +919,15 @@ export class FilterGroupElement extends HTMLElement {
     row.appendChild(cells.valueCell);
     const scopeModel = node.field ? this.bundle(model)?.fields.get(node.field)?.scope_model : "";
     if (scopeModel && !node.scope) {
+      // Depth-gated like + group/+ relation: the scope group sits one level
+      // below this leaf's containing group.
+      const scopeAllowed = canAddScope(this.tree, path);
       row.appendChild(
         this.actionButton("add-scope", "+ scope", path, {
-          title: "Only count related items matching extra conditions",
+          disabled: !scopeAllowed,
+          title: scopeAllowed
+            ? "Only count related items matching extra conditions"
+            : "Max nesting reached",
         }),
       );
     }

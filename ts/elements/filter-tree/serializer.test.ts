@@ -525,3 +525,39 @@ describe("aggregate scope (#151)", () => {
     ).toThrow(FilterTreeError);
   });
 });
+
+describe("aggregate scope malformations — backend parity (#151 review)", () => {
+  it("rejects a match quantifier inside a scope instead of stripping it", () => {
+    expect(() =>
+      deserialize(
+        { session_count: { value: 1, scope: { match: "NONE", device: { value: [1] } } } },
+        "game",
+        registry,
+      ),
+    ).toThrow(/match quantifier/);
+  });
+
+  it("accepts an explicit ANY match inside a scope (backend parity)", () => {
+    const tree = deserialize(
+      { session_count: { value: 1, scope: { match: "ANY", device: { value: [1], modifier: "INCLUDES" } } } },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeDefined();
+  });
+
+  it("rejects a non-object scope on a scopable field", () => {
+    expect(() =>
+      deserialize({ session_count: { value: 1, scope: [1, 2] } }, "game", registry),
+    ).toThrow(/must be an object/);
+  });
+
+  it("treats an explicit null scope as no scope (backend pop default)", () => {
+    const tree = deserialize({ session_count: { value: 1, scope: null } }, "game", registry);
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeUndefined();
+  });
+});

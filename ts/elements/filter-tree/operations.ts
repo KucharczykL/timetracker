@@ -550,6 +550,15 @@ export function canAddRelation(root: GroupNode, groupPath: NodePath): boolean {
   return canAddGroup(root, groupPath);
 }
 
+// `+ scope` attaches a group one level below the leaf's containing group — the
+// same depth arithmetic as `+ group`, addressed from the leaf's path (issue
+// #151). Without this gate, deep relation/scope alternation could build a tree
+// serializeNode hard-rejects, leaving Apply dead with console-only feedback.
+export function canAddScope(root: GroupNode, leafPath: NodePath): boolean {
+  if (leafPath.length === 0) return false; // the root is a group, never a leaf
+  return groupDepthAt(root, leafPath.slice(0, -1)) < SOFT_DEPTH_CAP;
+}
+
 // Wrapping pushes the node's whole subtree one level deeper (under a fresh wrapper
 // group at the node's current slot depth). Allowed only when the deepest resulting
 // group stays within the soft cap. Works for every node kind because the wrapper is

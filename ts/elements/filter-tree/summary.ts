@@ -209,7 +209,14 @@ function renderScopeSuffix(
 ): string {
   if (!leaf.scope || leaf.scope.children.length === 0) return "";
   const scopeKey = model?.fields.get(leaf.field)?.scope_model;
-  if (!scopeKey) return "";
+  if (!scopeKey) {
+    // Metadata gap (same warn-and-degrade contract as targetModelKey): the scope
+    // still serializes and applies, so dropping the suffix entirely would make
+    // the sentence understate the filter. Phrase it generically instead.
+    console.warn(`filter summary: no scope model for aggregate field "${leaf.field}"`);
+    const fallbackBody = joinChildren(leaf.scope, undefined, context);
+    return fallbackBody ? `, over related items matching (${fallbackBody})` : "";
+  }
   const scopeModel = context.models[scopeKey];
   if (!scopeModel) {
     // Same gap-warning contract as targetModelKey: a missing scope model would

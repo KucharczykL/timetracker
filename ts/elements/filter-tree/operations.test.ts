@@ -13,6 +13,7 @@ import {
   addScope,
   canAddGroup,
   canAddRelation,
+  canAddScope,
   canUnwrap,
   canWrap,
   criterionForField,
@@ -838,5 +839,23 @@ describe("aggregate scope (#151)", () => {
     const root = group("AND", [scopedLeaf()]);
     expect(groupDepthAt(root, [0, SCOPE_CHILD])).toBe(1);
     expect(deepestGroupDepth(root, 0)).toBe(1);
+  });
+});
+
+describe("canAddScope depth gating (#151 review)", () => {
+  it("allows a scope on a shallow leaf and forbids one at the soft cap", () => {
+    const shallow = group("AND", [criterion("session_count")]);
+    expect(canAddScope(shallow, [0])).toBe(true);
+    expect(canAddScope(shallow, [])).toBe(false); // the root is not a leaf
+
+    // Nest groups down to the soft cap; the leaf inside the deepest group sits
+    // one level past it, so its scope group would exceed the cap.
+    let tree = group("AND", [criterion("session_count")]);
+    let path: (number | typeof SCOPE_CHILD | typeof RELATION_CHILD)[] = [0];
+    for (let level = 0; level < SOFT_DEPTH_CAP; level += 1) {
+      tree = group("AND", [tree]);
+      path = [0, ...path];
+    }
+    expect(canAddScope(tree, path)).toBe(false);
   });
 });

@@ -151,6 +151,7 @@ export type FilterTreeErrorCode =
   | "INVALID_FIELD_COMPARISON"
   | "UNKNOWN_MODEL"
   | "INVALID_MATCH"
+  | "INVALID_SCOPE"
   | "SERIALIZE_DEPTH_EXCEEDED";
 
 export class FilterTreeError extends Error {
