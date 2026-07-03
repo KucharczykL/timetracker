@@ -2792,6 +2792,16 @@ class TestComparableColumns:
             entry["label"] for entry in columns if entry["source"] == own_source
         ]
         assert own_labels == sorted(own_labels, key=str.lower)
+        # Each FK block is internally sorted by column label too.
+        fk_sources = {
+            entry["source"] for entry in columns if entry["source"] != own_source
+        }
+        assert fk_sources  # Session has FK hops (game, device) — guard the loop
+        for fk_source in fk_sources:
+            fk_labels = [
+                entry["label"] for entry in columns if entry["source"] == fk_source
+            ]
+            assert fk_labels == sorted(fk_labels, key=str.lower)
 
 
 class TestComparableColumnsCrossModel:
@@ -5643,7 +5653,7 @@ class TestComparisonOperandPaths:
     def test_two_hop_rejected(self):
         from games.models import Session
 
-        with pytest.raises(FilterError, match="game__platform__name"):
+        with pytest.raises(FilterError, match=r"left operand.*'game__platform__name'"):
             _comparison_operand_group(Session, "game__platform__name", side="left")
 
     def test_unknown_relation_names_path_and_side(self):
@@ -5695,5 +5705,12 @@ class TestComparisonOperandPaths:
                 )
             ]
         ).to_q()
-        sql = str(Game.objects.filter(query).query)
-        assert sql.count("JOIN") == 1
+        # Structural probe: count actual join entries in the compiled query's
+        # alias map instead of substring-counting "JOIN" in rendered SQL, which
+        # is fragile to ORM SQL-rendering changes.
+        from django.db.models.sql.datastructures import Join
+
+        alias_map = Game.objects.filter(query).query.alias_map
+        joins = [entry for entry in alias_map.values() if isinstance(entry, Join)]
+        assert len(joins) == 1
+        assert joins[0].table_name == "games_platform"
