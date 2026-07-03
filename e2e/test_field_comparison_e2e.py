@@ -205,22 +205,24 @@ def test_and_prefill_round_trip(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
-def test_by_day_toggle_serializes_granularity(live_server, page):
+def test_date_space_operator_serializes_granularity(live_server, page):
+    """Selecting a packed 'modifier:date' operator serializes granularity=date.
+
+    The 'By date' optgroup in the operator <select> offers packed values such as
+    'LESS_THAN_OR_EQUAL:date'. Choosing one and applying emits the correct
+    field_comparisons entry with granularity='date'."""
     page.goto(live_server.url + "/test-fc-empty/")
     page.locator("[data-fc-add]").click()
     row = page.locator("[data-fc-row]").first
-    by_day = row.locator("[data-fc-granularity-wrap]")
 
-    # Hidden until a datetime left column is chosen.
-    assert not by_day.is_visible()
+    # A datetime left column enables the operator select and reveals the
+    # 'By date' optgroup with packed values like 'LESS_THAN_OR_EQUAL:date'.
     row.locator("[data-fc-left]").select_option("timestamp_start")
-    assert by_day.is_visible()
-    # >= / <= are offered for the datetime (ordered) set.
     operator = row.locator("[data-fc-op]")
-    assert operator.locator('option[value="LESS_THAN_OR_EQUAL"]').count() == 1
+    assert operator.is_enabled()
+    assert operator.locator('option[value="LESS_THAN_OR_EQUAL:date"]').count() == 1
 
-    by_day.locator("[data-fc-granularity]").check()
-    operator.select_option("LESS_THAN_OR_EQUAL")
+    operator.select_option("LESS_THAN_OR_EQUAL:date")
     row.locator("[data-fc-right]").select_option("timestamp_end")
     _submit(page)
 
@@ -237,31 +239,41 @@ def test_by_day_toggle_serializes_granularity(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
-def test_by_day_hidden_for_non_datetime_left(live_server, page):
+def test_date_space_optgroup_absent_for_non_datetime_left(live_server, page):
+    """Switching left column away from datetime clears the 'By date' optgroup.
+
+    A datetime column (timestamp_start) offers 'By date' and 'By year' optgroups
+    in the operator <select>. Switching to a string column (note) rebuilds the
+    operator list without those optgroups, because string columns do not belong to
+    the date or year comparison spaces."""
     page.goto(live_server.url + "/test-fc-empty/")
     page.locator("[data-fc-add]").click()
     row = page.locator("[data-fc-row]").first
-    by_day = row.locator("[data-fc-granularity-wrap]")
+    operator = row.locator("[data-fc-op]")
 
-    # Datetime → visible; switching to a non-datetime column hides + clears it.
+    # Datetime column → 'By date' packed options exist.
     row.locator("[data-fc-left]").select_option("timestamp_start")
-    by_day.locator("[data-fc-granularity]").check()
-    assert by_day.is_visible()
+    assert operator.locator('option[value="EQUALS:date"]').count() == 1
+
+    # String column → 'By date' packed options gone; raw string ops present.
     row.locator("[data-fc-left]").select_option("note")
-    assert not by_day.is_visible()
-    assert not by_day.locator("[data-fc-granularity]").is_checked()
+    assert operator.locator('option[value="EQUALS:date"]').count() == 0
+    assert operator.locator('option[value="INCLUDES"]').count() == 1
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_field_comparison_e2e")
 def test_granularity_prefill_round_trip(live_server, page):
+    """A prefilled date-granular comparison restores the packed operator value.
+
+    The server renders the operator <select> with data-selected='LESS_THAN_OR_EQUAL:date'
+    (from _pack_operator); the TS restores that packed value on init so the widget
+    reflects the saved granularity without a separate checkbox."""
     page.goto(live_server.url + "/test-fc-prefilled-granularity/")
 
     row = page.locator("[data-fc-row]").first
-    by_day = row.locator("[data-fc-granularity-wrap]")
-    assert by_day.is_visible()
-    assert by_day.locator("[data-fc-granularity]").is_checked()
-    assert row.locator("[data-fc-op]").input_value() == "LESS_THAN_OR_EQUAL"
+    # The packed operator value is restored from the prefilled filter JSON.
+    assert row.locator("[data-fc-op]").input_value() == "LESS_THAN_OR_EQUAL:date"
 
     _submit(page)
     parsed = _filter_from_url(page.url)
