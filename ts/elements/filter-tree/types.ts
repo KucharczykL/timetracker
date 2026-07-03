@@ -78,6 +78,12 @@ export interface CriterionLeaf {
   id: string;
   field: string;
   criterion: CriterionPayload;
+  // Aggregate scope (issue #151): a sub-filter over the related rows the
+  // aggregate reduces, e.g. session_count counting only Steam Deck sessions.
+  // Present only on aggregate fields (ModelMeta.scopes says which, and names the
+  // model the group's rows filter). Serializes as a `scope` key inside the
+  // criterion payload; an empty group serializes away (unscoped is canonical).
+  scope?: GroupNode;
   negate: boolean;
 }
 
@@ -117,6 +123,9 @@ export interface FilterTreeChangeDetail {
 export interface ModelMeta {
   fields: ReadonlySet<string>; // valid criterion field names (includes "search")
   relations: Readonly<Record<string, string>>; // relationField -> targetModelKey
+  // aggregateField -> the model its scope sub-filter targets (issue #151); keys
+  // are a subset of `fields` (an aggregate is still a criterion field).
+  scopes: Readonly<Record<string, string>>;
 }
 
 export type MetadataRegistry = Readonly<Record<string, ModelMeta>>; // modelKey -> meta
@@ -142,6 +151,7 @@ export type FilterTreeErrorCode =
   | "INVALID_FIELD_COMPARISON"
   | "UNKNOWN_MODEL"
   | "INVALID_MATCH"
+  | "INVALID_SCOPE"
   | "SERIALIZE_DEPTH_EXCEEDED";
 
 export class FilterTreeError extends Error {

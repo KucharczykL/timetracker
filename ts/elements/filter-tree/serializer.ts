@@ -7,9 +7,11 @@
  */
 import {
   type Connective,
+  type CriterionLeaf,
   type FilterNode,
   type GroupNode,
   type MetadataRegistry,
+  type ModelMeta,
   type RelationMatch,
   FilterTreeError,
   MAX_FIELD_COMPARISONS,
@@ -49,8 +51,16 @@ function serializeNode(node: FilterNode, depth: number): Json {
       const inner: Json = children.length ? { [node.connective]: children } : {};
       return wrapNegate(inner, node.negate);
     }
-    case "criterion":
-      return wrapNegate({ [node.field]: node.criterion }, node.negate);
+    case "criterion": {
+      // An aggregate's scope group (issue #151) rides inside the criterion payload
+      // as a `scope` key; an empty scope group serializes away entirely (matching
+      // the backend, which normalizes an empty scope to unscoped).
+      const scopeJson = node.scope ? serializeNode(node.scope, depth + 1) : {};
+      const criterion = Object.keys(scopeJson).length
+        ? { ...node.criterion, scope: scopeJson }
+        : node.criterion;
+      return wrapNegate({ [node.field]: criterion }, node.negate);
+    }
     case "comparison":
       return wrapNegate({ field_comparisons: [node.comparison] }, node.negate);
     case "relation": {
@@ -93,7 +103,7 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
     // for well-formed metadata, so order only matters if a key ever appears in both.
     if (meta.fields.has(key)) {
       if (isObject(value)) {
-        baseChildren.push({ kind: "criterion", id: nextNodeId(), field: key, criterion: value, negate: false });
+        baseChildren.push(criterionNode(key, value, meta, registry, depth));
       }
     } else if (key in meta.relations) {
       if (isObject(value)) {
@@ -147,6 +157,48 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
   if (!isEmptyGroup(core)) andChildren.push(core);
   andChildren.push(...tail);
   return collapse(group("AND", andChildren));
+}
+
+// A criterion leaf; on a scopable (aggregate) field, a `scope` key in the payload
+// is split off into a child group over the scope's target model (issue #151). An
+// empty scope deserializes to no scope at all — backend parity (it normalizes an
+// empty scope to unscoped). On a non-scopable field the payload stays verbatim
+// (opaque-payload principle; the backend equally ignores a stray `scope` key).
+// The backend's two loud rejections are mirrored, not repaired: silently
+// stripping them here would turn a hand-edited/legacy URL into a *different*
+// valid filter with no feedback, while the list view rejects the same URL.
+function criterionNode(
+  field: string,
+  raw: Json,
+  meta: ModelMeta,
+  registry: MetadataRegistry,
+  depth: number,
+): CriterionLeaf {
+  const scopeModel = meta.scopes[field];
+  if (scopeModel === undefined) {
+    return { kind: "criterion", id: nextNodeId(), field, criterion: raw, negate: false };
+  }
+  // null mirrors the backend's pop-with-None-default: an explicit null scope is
+  // "no scope", not malformed.
+  if (raw.scope != null && !isObject(raw.scope)) {
+    throw new FilterTreeError(`aggregate scope on ${field} must be an object`, "INVALID_SCOPE");
+  }
+  if (!isObject(raw.scope)) {
+    return { kind: "criterion", id: nextNodeId(), field, criterion: raw, negate: false };
+  }
+  if (raw.scope.match != null && raw.scope.match !== "ANY") {
+    throw new FilterTreeError("aggregate scope does not take a match quantifier", "INVALID_SCOPE");
+  }
+  const { scope: scopeJson, ...criterion } = raw;
+  const child = asGroup(deserializeNode(scopeJson as Json, scopeModel, registry, depth + 1));
+  return {
+    kind: "criterion",
+    id: nextNodeId(),
+    field,
+    criterion,
+    ...(isEmptyGroup(child) ? {} : { scope: child }),
+    negate: false,
+  };
 }
 
 function relationNode(

@@ -8,7 +8,7 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 
 import json
 import types
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
@@ -687,13 +687,25 @@ class AggregateCriterion(_ScalarCriterion):
     a game's purchase prices between X and Y".
 
     The reducer, relation accessor, source field, and unit are *static config*
-    supplied by the filter at query time (see ``aggregate_to_q``); the instance
-    carries only the user's comparison value(s)/modifier.
+    declared on the filter class (its ``aggregates`` table of ``AggregateSpec``,
+    read by ``aggregate_to_q``); the instance carries only the user's comparison
+    value(s)/modifier and an optional ``scope`` sub-filter narrowing which
+    related rows the reducer sees (issue #151) — e.g. "> 5 sessions *on the
+    Steam Deck*" counts only sessions matching ``scope``.
     """
 
     value: int | float = 0
     value2: int | float | None = None
     modifier: Modifier = Modifier.EQUALS
+    # Scope sub-filter over the related rows being reduced. ``init=False`` keeps
+    # it out of the base ``from_json`` field loop — the criterion alone cannot
+    # resolve the concrete filter class (that is fixed by the relation accessor's
+    # ``AggregateSpec``, which lives on the filter class), so only
+    # ``OperatorFilter._aggregate_from_json`` may populate it. Re-adding this as
+    # an init field would recreate the mis-typed dead field #139/#144 removed.
+    # Beware: ``dataclasses.replace()`` re-defaults ``init=False`` fields, so a
+    # replaced criterion silently loses its scope — mutate the attribute instead.
+    scope: "OperatorFilter | None" = field(default=None, init=False)
     # Aggregates compare numerically; coerce so a wrong-typed bound is caught at
     # parse rather than surfacing as a query-execution 500 (the eager build can't
     # catch it: ``aggregate_to_q`` feeds the value straight into Q). ``_coerce_number``
@@ -707,6 +719,18 @@ class AggregateCriterion(_ScalarCriterion):
         raise NotImplementedError(
             "AggregateCriterion is evaluated via aggregate_to_q(), not to_q()"
         )
+
+    def to_json(self) -> dict[str, Any]:
+        # The base loop would emit the raw ``scope`` OperatorFilter object;
+        # replace it with its JSON, omitting an empty scope — an empty sub-filter
+        # matches every related row, so "no scope" is the canonical form.
+        result = super().to_json()
+        result.pop("scope", None)
+        if self.scope is not None:
+            scope_json = self.scope.to_json()
+            if scope_json:
+                result["scope"] = scope_json
+        return result
 
 
 type ComparisonGranularity = Literal["raw", "date"]
@@ -1125,6 +1149,47 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 }
 
 
+type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
+type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
+type RelationAccessor = str  # a relation accessor on the parent model, e.g. "sessions"
+
+
+@dataclass(frozen=True)
+class AggregateSpec:
+    """Static wiring for one aggregate criterion field (issue #151): how to
+    reduce (``reducer``), over which relation (``accessor``), and which filter
+    type scopes the reduced rows (``scope_filter`` — e.g. ``SessionFilter`` for
+    a ``sessions`` aggregate).
+
+    The criterion instance carries only the user's comparison (and optional
+    ``scope`` sub-filter); this spec is the per-field static half, declared on
+    the filter class's ``aggregates`` table. ``scope_filter`` is what lets
+    ``from_json`` resolve the scope's concrete class — the criterion's own
+    annotation cannot name it (the abstract ``OperatorFilter`` says nothing
+    about *which* entity the accessor reaches). It doubles as the related-model
+    resolver for the scope subquery (via ``_comparison_model()``).
+    """
+
+    reducer: Reducer
+    accessor: RelationAccessor
+    scope_filter: "type[OperatorFilter]"
+    source: AttrName | None = None  # summed/averaged related column; None for count
+    unit: DurationUnit | None = None
+
+    def __post_init__(self) -> None:
+        # The reducer/source/unit dependencies are cross-field invariants the
+        # annotations can't say; specs are module-level constants, so validating
+        # here turns a mis-wired table into an import-time failure instead of a
+        # query-time 500 on first use.
+        if self.reducer == "count":
+            if self.source is not None:
+                raise TypeError("a count aggregate takes no source field")
+            if self.unit is not None:
+                raise TypeError("a count aggregate takes no unit")
+        elif self.source is None:
+            raise TypeError(f"a {self.reducer} aggregate requires a source field")
+
+
 @dataclass
 class OperatorFilter:
     """Mixin providing AND/OR/NOT composition for entity filter types.
@@ -1175,10 +1240,19 @@ class OperatorFilter:
 
     # Declarative attr→lookup table consumed by the generic ``to_q``. Each concrete
     # filter overrides this with a ``FilterField`` per simple criterion field (the
-    # single source of truth for the ORM mapping); aggregates, M2M, ``search`` and
-    # relation sub-filters are absent — they live in ``_extra_q``. Declared as a
-    # ClassVar so the dataclass machinery does not treat it as a field.
+    # single source of truth for the ORM mapping); aggregates are absent (they live
+    # in the ``aggregates`` table below); M2M, ``search`` and relation sub-filters
+    # live in ``_extra_q``. Declared as a ClassVar so the dataclass machinery does
+    # not treat it as a field.
     fields: ClassVar[dict[AttrName, FilterField]] = {}
+
+    # Declarative reducer/relation wiring per aggregate criterion field, consumed
+    # by the generic ``to_q`` walk and by ``from_json`` (an aggregate's ``scope``
+    # deserializes via its spec's ``scope_filter`` — issue #151). Empty on the
+    # base; a concrete filter with aggregate fields assigns its table *after* all
+    # filter classes exist (the specs reference sibling filter classes) — see
+    # ``GameFilter.aggregates`` in games/filters.py.
+    aggregates: ClassVar[Mapping[AttrName, AggregateSpec]] = {}
 
     # Criterion fields deliberately handled imperatively in ``_extra_q`` rather than
     # via ``fields`` (e.g. the M2M ``games``). ``search`` is here for every filter.
@@ -1308,9 +1382,10 @@ class OperatorFilter:
         """Build a Django Q object from this filter and its sub-filters.
 
         Generic for every concrete filter: walk the declarative ``fields`` table
-        (each set criterion mapped to its ORM lookup/handler), then fold in the
-        imperative tail (``_extra_q``: aggregates, M2M, free-text search, relation
-        sub-filters), then the AND/OR/NOT operators and field comparisons.
+        (each set criterion mapped to its ORM lookup/handler), then the
+        ``aggregates`` table, then fold in the imperative tail (``_extra_q``:
+        M2M, free-text search, relation sub-filters), then the AND/OR/NOT
+        operators and field comparisons.
         """
         q = Q()
         for attr_name, descriptor in self.fields.items():
@@ -1322,14 +1397,25 @@ class OperatorFilter:
             criterion = getattr(self, attr_name)
             if criterion is not None:
                 q &= descriptor.to_q(attr_name, criterion)
+        if self.aggregates:
+            model = self._comparison_model()
+            if model is None:
+                # Static mis-wiring, never user input — 500, don't FilterError.
+                raise RuntimeError(
+                    f"{type(self).__name__} declares aggregates but no comparison model"
+                )
+            for attr_name, spec in self.aggregates.items():
+                aggregate = getattr(self, attr_name)
+                if aggregate is not None:
+                    q &= aggregate_to_q(aggregate, model=model, spec=spec)
         q &= self._extra_q()
         return self._apply_operators(q)
 
     def _extra_q(self) -> Q:
         """Q for criterion fields handled imperatively rather than via ``fields``.
 
-        Default is empty; concrete filters override to add aggregates, the M2M
-        ``games`` handler, free-text ``search``, and relation sub-filters. Kept a
+        Default is empty; concrete filters override to add the M2M ``games``
+        handler, free-text ``search``, and relation sub-filters. Kept a
         separate hook so the generic ``to_q`` never needs overriding.
         """
         return Q()
@@ -1417,6 +1503,12 @@ class OperatorFilter:
             # whether the module stringizes its annotations.
             criterion_cls = _criterion_class_for(cls, f.name)
             if criterion_cls is not None:
+                # Aggregate fields carry an optional ``scope`` sub-filter whose
+                # concrete class only the field's AggregateSpec knows — split it
+                # off and parse it here rather than in the criterion (issue #151).
+                if f.name in cls.aggregates and isinstance(raw, dict):
+                    kwargs[f.name] = cls._aggregate_from_json(f.name, raw, _depth)
+                    continue
                 kwargs[f.name] = (
                     criterion_cls.from_json(raw) if isinstance(raw, dict) else None
                 )
@@ -1431,6 +1523,51 @@ class OperatorFilter:
                     else None
                 )
         return cls(**kwargs)
+
+    @classmethod
+    def _aggregate_from_json(
+        cls, name: AttrName, raw: dict[str, Any], _depth: int
+    ) -> AggregateCriterion | None:
+        """Parse one aggregate criterion dict, including its optional ``scope``.
+
+        ``scope`` is split off before the generic criterion parse (the field is
+        ``init=False``, so the base loop could never mis-assign the raw dict) and
+        deserialized via the field's ``AggregateSpec.scope_filter`` — only the
+        filter class knows which concrete filter type scopes the aggregate's
+        relation (issue #151). The scope descent consumes the same
+        ``MAX_FILTER_DEPTH`` budget as a relation descent, so a scope-nesting
+        bomb is bounded identically.
+        """
+        payload = dict(raw)
+        scope_raw = payload.pop("scope", None)
+        criterion_cls = _criterion_class_for(cls, name)
+        if criterion_cls is None or not issubclass(criterion_cls, AggregateCriterion):
+            # ``aggregates`` names a non-aggregate field: static mis-wiring the
+            # drift guard should have caught — 500, don't FilterError.
+            raise RuntimeError(
+                f"{cls.__name__}.aggregates[{name!r}] is not an AggregateCriterion field"
+            )
+        criterion = criterion_cls.from_json(payload)
+        if criterion is None or scope_raw is None:
+            return criterion
+        if not isinstance(scope_raw, dict):
+            raise FilterError(
+                f"aggregate scope must be an object, got {type(scope_raw).__name__}"
+            )
+        scope = cls.aggregates[name].scope_filter.from_json(
+            scope_raw, _depth=_depth + 1
+        )
+        if scope is not None and scope.match != RelationMatch.ANY:
+            # A scope is a row predicate over the reduced relation, not a
+            # relation test: a quantifier here would be silently meaningless
+            # (which rows would NONE/ALL count?), so reject rather than ignore.
+            raise FilterError("aggregate scope does not take a match quantifier")
+        if scope is not None and not scope.to_json():
+            # An empty scope matches every related row — normalize to unscoped so
+            # parse → serialize round-trips to the canonical omitted form.
+            scope = None
+        criterion.scope = scope
+        return criterion
 
     def to_json(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -1540,14 +1677,12 @@ def filter_to_json(f: OperatorFilter) -> str:
 
 
 # ── Relation & aggregate query helpers ──────────────────────────────────────
-# Self-contained Q builders for the two cross-entity node kinds. Filters pass the
-# related/parent model and the relation wiring (lookups, accessor, reducer); the
-# algebra lives here so every entity composes the same logic instead of repeating
-# bespoke subqueries in each to_q().
+# Self-contained Q builders for the two cross-entity node kinds. Callers pass the
+# related/parent model and the wiring (relation lookups, or the aggregate's
+# ``AggregateSpec``); the algebra lives here so every entity composes the same
+# logic instead of repeating bespoke subqueries in each to_q().
 
 Number = int | float
-type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
-type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
 
 
 def _numeric_to_q(
@@ -1778,7 +1913,8 @@ class FieldMeta(TypedDict):
     populated only for static-enum fields; ``relations`` is non-empty (a single
     entry) iff ``kind == "relation"``, and a relation entry always has empty
     ``choices``, empty ``modifiers``, and ``nullable=False``. A leaf entry always
-    has a non-empty ``modifiers``. These cross-field invariants are enforced by
+    has a non-empty ``modifiers``. ``scope_model`` is non-empty iff the field is
+    an aggregate (issue #151). These cross-field invariants are enforced by
     ``field_metadata`` (the sole producer), not by the type."""
 
     name: AttrName
@@ -1801,6 +1937,10 @@ class FieldMeta(TypedDict):
     # from the resolved model field, not stored on ``FilterField``.
     search_url: str
     is_m2m: bool
+    # The model key (``_meta.model_name``, e.g. "session") of the related rows an
+    # aggregate field reduces — the model whose fields build the aggregate's
+    # ``scope`` sub-filter (issue #151). ``""`` for every non-aggregate field.
+    scope_model: ModelKey
 
 
 class ModelFieldBundle(TypedDict):
@@ -1967,6 +2107,25 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # from the resolved model field, so a future FK set field needs no flag.
             is_m2m = bool(getattr(model_field, "many_to_many", False))
             search_url = field_spec.search_url if field_spec is not None else None
+            # An aggregate's scope target (issue #151): the model of the related
+            # rows it reduces, resolved from the field's AggregateSpec. Resolving
+            # loudly here matches the mis-typed-lookup contract above — a spec
+            # gap is a wiring bug, not a degraded picker.
+            scope_model: ModelKey = ""
+            if is_aggregate:
+                spec = filter_cls.aggregates.get(name)
+                if spec is None:
+                    raise ValueError(
+                        f"{filter_cls.__name__}.{name} is an aggregate field with "
+                        f"no AggregateSpec in {filter_cls.__name__}.aggregates"
+                    )
+                scope_target = spec.scope_filter._comparison_model()
+                if scope_target is None:
+                    raise ValueError(
+                        f"{filter_cls.__name__}.{name} scope filter "
+                        f"{spec.scope_filter.__name__} has no comparison model"
+                    )
+                scope_model = scope_target._meta.model_name or ""
             entries.append(
                 FieldMeta(
                     name=name,
@@ -1978,6 +2137,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     relations=[],
                     search_url=search_url or "",
                     is_m2m=is_m2m,
+                    scope_model=scope_model,
                 )
             )
             continue
@@ -2008,6 +2168,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     ],
                     search_url="",
                     is_m2m=False,
+                    scope_model="",
                 )
             )
     return entries
@@ -2196,10 +2357,7 @@ def aggregate_to_q(
     criterion: AggregateCriterion,
     *,
     model: ModelClass,
-    reducer: Reducer,
-    accessor: str,
-    source: str | None = None,
-    unit: DurationUnit | None = None,
+    spec: AggregateSpec,
 ) -> Q:
     """Filter ``model`` by a reducer (count / sum / avg) over a relation.
 
@@ -2208,24 +2366,57 @@ def aggregate_to_q(
     ``unit="duration_hours"`` compares an hours value against a DurationField
     aggregate; otherwise a plain numeric comparison is used. ``sum``/``avg``
     require a ``source`` field; ``count`` aggregates whole rows.
+
+    A criterion ``scope`` narrows the reducer to related rows matching the
+    sub-filter (issue #151), via the aggregate's ``filter=`` argument. The
+    condition is a subquery membership test — ``accessor IN (<related rows
+    matching scope>)`` — rather than a rewrite of the scope's Q into the parent
+    namespace: the scope Q is evaluated entirely by the related model's own
+    queryset, so ``F()`` expressions, transforms, and nested subqueries inside
+    it keep their meaning (a key-prefix rewriter would silently re-root them
+    against the wrong model).
     """
     from django.db.models import Avg, Count, Sum
 
-    # ``reducer``/``source`` are hard-coded by each filter's own to_q(), never
-    # user input — a failure here is a wiring bug. Raise RuntimeError (not
-    # ValueError) so filter_from_json's eager-validation catch does NOT reclassify
-    # it to FilterError: a real bug must still 500, not masquerade as bad input.
-    if reducer == "count":
-        aggregate_expression: Any = Count(accessor, distinct=True)
-    elif reducer in ("sum", "avg"):
-        if source is None:
-            raise RuntimeError(f"{reducer!r} aggregate requires a source field")
-        reduce = Sum if reducer == "sum" else Avg
-        aggregate_expression = reduce(f"{accessor}__{source}")
-    else:
-        raise RuntimeError(f"Unknown aggregate reducer {reducer!r}")
+    scope_condition: Q | None = None
+    if criterion.scope is not None:
+        # A hand-assembled criterion could carry a wrong-typed scope; its Q would
+        # be built in the wrong model's namespace and produce a silently-wrong
+        # (or FieldError-ing) subquery, so guard the type loudly. Never user
+        # input — from_json always builds the scope from the spec's class.
+        if not isinstance(criterion.scope, spec.scope_filter):
+            raise RuntimeError(
+                f"aggregate scope must be a {spec.scope_filter.__name__},"
+                f" got {type(criterion.scope).__name__}"
+            )
+        related_model: ModelClass = spec.scope_filter._comparison_model()
+        if related_model is None:
+            raise RuntimeError(
+                f"{spec.scope_filter.__name__} has no comparison model"
+                f" to scope a {spec.accessor!r} aggregate"
+            )
+        matching = related_model.objects.filter(criterion.scope.to_q())
+        scope_condition = Q(**{f"{spec.accessor}__in": matching})
 
-    if unit == "duration_hours":
+    # The spec is static config declared on the filter class, never user input —
+    # a failure here is a wiring bug. Raise RuntimeError (not ValueError) so
+    # filter_from_json's eager-validation catch does NOT reclassify it to
+    # FilterError: a real bug must still 500, not masquerade as bad input.
+    if spec.reducer == "count":
+        aggregate_expression: Any = Count(
+            spec.accessor, distinct=True, filter=scope_condition
+        )
+    elif spec.reducer in ("sum", "avg"):
+        if spec.source is None:
+            raise RuntimeError(f"{spec.reducer!r} aggregate requires a source field")
+        reduce = Sum if spec.reducer == "sum" else Avg
+        aggregate_expression = reduce(
+            f"{spec.accessor}__{spec.source}", filter=scope_condition
+        )
+    else:
+        raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
+
+    if spec.unit == "duration_hours":
         compare = duration_hours_to_q(
             criterion.value, criterion.value2, criterion.modifier, "_agg"
         )

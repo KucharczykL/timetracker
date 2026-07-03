@@ -1527,3 +1527,195 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
     expect(host.serializeForQuery()).toEqual({}); // incomplete → pruned
   });
 });
+
+// ── Aggregate scope (#151) ──
+// game has one aggregate field (session_count, scope over session) plus a plain
+// string field to prove non-scopable fields never offer "+ scope"; session brings
+// its own picker + one string widget so the scope group's rows can be driven live.
+const SESSION_COUNT_META = {
+  name: "session_count",
+  label: "Session Count",
+  kind: "number",
+  nullable: false,
+  choices: [],
+  modifiers: ["EQUALS", "GREATER_THAN"],
+  relations: [],
+  search_url: "",
+  is_m2m: false,
+  scope_model: "session",
+};
+
+const SCOPE_NOTE_META = { ...NAME_META, name: "note", label: "Note" };
+
+function mountScope(): FilterGroupElement {
+  document.body.replaceChildren();
+  const host = document.createElement("filter-group") as FilterGroupElement;
+  host.setAttribute("model", "game");
+  host.setAttribute(
+    "models",
+    JSON.stringify({
+      game: { fields: [SESSION_COUNT_META, NAME_META], columns: [] },
+      session: { fields: [SCOPE_NOTE_META], columns: [] },
+    }),
+  );
+  host.innerHTML = `
+    <template data-model="game" data-field-picker-template>
+      <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+    </template>
+    <template data-model="session" data-field-picker-template>
+      <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
+    </template>
+    <template data-model="game" data-field="session_count">
+      <div class="flex-col">
+        <select data-number-modifier-select>
+          <option value="EQUALS" selected>=</option>
+          <option value="GREATER_THAN">&gt;</option>
+        </select>
+        <div>
+          <input type="number" />
+          <input type="number" data-number-value2 class="hidden" />
+        </div>
+      </div>
+    </template>
+    <template data-model="game" data-field="name">
+      <div class="flex-col">
+        <select data-string-modifier-select><option value="EQUALS" selected>is</option></select>
+        <input type="text" />
+      </div>
+    </template>
+    <template data-model="session" data-field="note">
+      <div class="flex-col">
+        <select data-string-modifier-select><option value="EQUALS" selected>is</option></select>
+        <input type="text" />
+      </div>
+    </template>`;
+  document.body.appendChild(host);
+  return host;
+}
+
+function typeNumber(host: HTMLElement, path: Path, value: string): void {
+  const input = row(host, path).querySelector<HTMLInputElement>(
+    '[data-value-cell] input[type="number"]:not([data-number-value2])',
+  )!;
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("<filter-group> aggregate scope (#151)", () => {
+  it("offers + scope only on a scopable (aggregate) field", () => {
+    const host = mountScope();
+    expect(button(host, "add-scope", [0])).toBeNull(); // no field picked yet
+    pickField(host, [0], NAME_META);
+    expect(button(host, "add-scope", [0])).toBeNull(); // plain string field
+    pickField(host, [0], SESSION_COUNT_META);
+    expect(button(host, "add-scope", [0])).not.toBeNull();
+  });
+
+  it("+ scope opens a scope group over the scope model, with a seeded row", () => {
+    const host = mountScope();
+    pickField(host, [0], SESSION_COUNT_META);
+    clickAction(host, "add-scope", [0]);
+    const scopeGroup = host.querySelector(
+      `[data-kind="group"][data-path='${JSON.stringify([0, "scope"])}']`,
+    );
+    expect(scopeGroup).not.toBeNull();
+    // Seeded with one empty criterion row, addressed through SCOPE_CHILD.
+    expect(row(host, [0, "scope", 0])).not.toBeNull();
+    // The affordance flips: + scope is replaced by − scope on the leaf row.
+    expect(button(host, "add-scope", [0])).toBeNull();
+    expect(button(host, "remove-scope", [0])).not.toBeNull();
+  });
+
+  it("scope rows resolve field pickers/widgets against the scope model", () => {
+    const host = mountScope();
+    pickField(host, [0], SESSION_COUNT_META);
+    typeNumber(host, [0], "5");
+    clickAction(host, "add-scope", [0]);
+    pickField(host, [0, "scope", 0], SCOPE_NOTE_META);
+    typeValue(host, [0, "scope", 0], "docked");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        {
+          session_count: {
+            value: 5,
+            modifier: "EQUALS",
+            scope: { AND: [{ note: { value: "docked", modifier: "EQUALS" } }] },
+          },
+        },
+      ],
+    });
+  });
+
+  it("an empty scope serializes away (unscoped) but keeps its UI", () => {
+    const host = mountScope();
+    pickField(host, [0], SESSION_COUNT_META);
+    typeNumber(host, [0], "3");
+    clickAction(host, "add-scope", [0]); // seeded row left unfilled → pruned
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ session_count: { value: 3, modifier: "EQUALS" } }],
+    });
+    expect(
+      host.querySelector(`[data-kind="group"][data-path='${JSON.stringify([0, "scope"])}']`),
+    ).not.toBeNull();
+  });
+
+  it("− scope drops the scope subtree from tree and query", () => {
+    const host = mountScope();
+    pickField(host, [0], SESSION_COUNT_META);
+    typeNumber(host, [0], "5");
+    clickAction(host, "add-scope", [0]);
+    pickField(host, [0, "scope", 0], SCOPE_NOTE_META);
+    typeValue(host, [0, "scope", 0], "docked");
+    clickAction(host, "remove-scope", [0]);
+    expect(
+      host.querySelector(`[data-kind="group"][data-path='${JSON.stringify([0, "scope"])}']`),
+    ).toBeNull();
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ session_count: { value: 5, modifier: "EQUALS" } }],
+    });
+  });
+
+  it("counts an unfilled scope row as incomplete under the scope model", () => {
+    const host = mountScope();
+    let last = -1;
+    host.addEventListener("filter-tree-change", (event) => {
+      last = (event as CustomEvent).detail.incompleteCount;
+    });
+    pickField(host, [0], SESSION_COUNT_META);
+    typeNumber(host, [0], "5");
+    expect(last).toBe(0);
+    clickAction(host, "add-scope", [0]); // seeded empty scope row
+    expect(last).toBe(1);
+    pickField(host, [0, "scope", 0], SCOPE_NOTE_META);
+    typeValue(host, [0, "scope", 0], "docked");
+    expect(last).toBe(0);
+  });
+
+  it("prefill hydrates a scoped aggregate into the scope UI and round-trips", () => {
+    const host = mountScope();
+    host.loadFilter({
+      session_count: {
+        value: 5,
+        modifier: "GREATER_THAN",
+        scope: { note: { value: "docked", modifier: "EQUALS" } },
+      },
+    });
+    // The scope group renders with its hydrated row.
+    expect(row(host, [0, "scope", 0])).not.toBeNull();
+    expect(
+      row(host, [0, "scope", 0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!
+        .value,
+    ).toBe("docked");
+    expect(host.serializeForQuery()).toEqual({
+      AND: [
+        {
+          session_count: {
+            value: 5,
+            modifier: "GREATER_THAN",
+            scope: { AND: [{ note: { value: "docked", modifier: "EQUALS" } }] },
+          },
+        },
+      ],
+    });
+  });
+});

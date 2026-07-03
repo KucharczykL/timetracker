@@ -116,7 +116,7 @@ function renderInner(node: FilterNode, model: SummaryModel | undefined, context:
     case "group":
       return joinChildren(node, model, context);
     case "criterion":
-      return renderCriterion(node, model);
+      return renderCriterion(node, model, context);
     case "relation":
       return renderRelation(node, model, context);
     case "comparison":
@@ -188,7 +188,49 @@ function emptyRelationPhrase(match: RelationMatch, noun: string): string {
   return unreachable;
 }
 
-function renderCriterion(leaf: CriterionLeaf, model: SummaryModel | undefined): string {
+function renderCriterion(
+  leaf: CriterionLeaf,
+  model: SummaryModel | undefined,
+  context: SummaryContext,
+): string {
+  const clause = renderCriterionClause(leaf, model);
+  if (!clause || clause === PLACEHOLDER) return clause;
+  return `${clause}${renderScopeSuffix(leaf, model, context)}`;
+}
+
+// The aggregate-scope suffix (issue #151): ", over <rows> matching (…)" appended to
+// the aggregate's own clause — "Session Count is more than 5, over sessions matching
+// (Device is Steam Deck)". "over" is reducer-neutral (count / sum / avg all read).
+// An empty or absent scope contributes nothing (unscoped is canonical).
+function renderScopeSuffix(
+  leaf: CriterionLeaf,
+  model: SummaryModel | undefined,
+  context: SummaryContext,
+): string {
+  if (!leaf.scope || leaf.scope.children.length === 0) return "";
+  const scopeKey = model?.fields.get(leaf.field)?.scope_model;
+  if (!scopeKey) {
+    // Metadata gap (same warn-and-degrade contract as targetModelKey): the scope
+    // still serializes and applies, so dropping the suffix entirely would make
+    // the sentence understate the filter. Phrase it generically instead.
+    console.warn(`filter summary: no scope model for aggregate field "${leaf.field}"`);
+    const fallbackBody = joinChildren(leaf.scope, undefined, context);
+    return fallbackBody ? `, over related items matching (${fallbackBody})` : "";
+  }
+  const scopeModel = context.models[scopeKey];
+  if (!scopeModel) {
+    // Same gap-warning contract as targetModelKey: a missing scope model would
+    // silently phrase the body with the wrong labels.
+    console.warn(`filter summary: no metadata for scope model "${scopeKey}"`);
+  }
+  const body = joinChildren(leaf.scope, scopeModel, context);
+  if (!body) return "";
+  // Naive plural (+s) is exact for every current model key (session, purchase,
+  // playevent, …); revisit if a model with irregular plural ever gets aggregates.
+  return `, over ${scopeKey}s matching (${body})`;
+}
+
+function renderCriterionClause(leaf: CriterionLeaf, model: SummaryModel | undefined): string {
   if (!leaf.field) return PLACEHOLDER;
   const meta = model?.fields.get(leaf.field);
   const label = meta?.label ?? leaf.field;

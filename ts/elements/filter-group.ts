@@ -35,8 +35,11 @@ import type {
 import {
   type NodePath,
   RELATION_CHILD,
+  SCOPE_CHILD,
+  addScope,
   canAddGroup,
   canAddRelation,
+  canAddScope,
   canUnwrap,
   canWrap,
   criterionForField,
@@ -53,6 +56,7 @@ import {
   parseFieldMeta,
   pruneIncomplete,
   removeAt,
+  removeScope,
   setLeafField,
   setMatch,
   setRelationField,
@@ -104,6 +108,9 @@ function relationEmptyText(match: RelationMatch): string {
   const unreachable: never = match; // exhaustive over RelationMatch; a new member fails tsc here
   return unreachable;
 }
+// An empty scope group is meaningful too (issue #151): it serializes away, so the
+// aggregate reduces over ALL related rows until a condition lands. Spell that out.
+const SCOPE_EMPTY_TEXT = "Counting all related items. Add a condition to narrow them.";
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
@@ -142,6 +149,12 @@ const RELATION_CARD_CLASS =
 const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
 const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
 const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
+// The aggregate-scope accent block (issue #151): the leaf row plus its nested scope
+// group, teal-accented to read as "narrows this row" rather than a relation descent.
+const SCOPE_CARD_CLASS =
+  "flex flex-col gap-2 rounded-lg border border-l-4 border-teal-200 border-l-teal-400 " +
+  "bg-teal-50/50 p-2 dark:border-teal-500/40 dark:border-l-teal-500/70 dark:bg-teal-500/10";
+const SCOPE_LABEL_CLASS = "text-sm text-teal-700 dark:text-teal-300";
 
 // The closed set of restructuring actions a button can carry; producer
 // (actionButton) and consumer (applyAction's switch) share it so a typo on either
@@ -151,6 +164,8 @@ type TreeAction =
   | "add-comparison"
   | "add-group"
   | "add-relation"
+  | "add-scope"
+  | "remove-scope"
   | "remove"
   | "duplicate"
   | "wrap"
@@ -382,6 +397,17 @@ export class FilterGroupElement extends HTMLElement {
     return meta?.relations[0]?.model?.toLowerCase() ?? model;
   }
 
+  // The model an aggregate field's scope group filters (FieldMeta.scope_model,
+  // issue #151) — the scope-descent analogue of targetModel, with the same
+  // warn-and-fall-back on a metadata gap.
+  private scopeModel(model: string, field: string): string {
+    const scopeModel = this.bundle(model)?.fields.get(field)?.scope_model;
+    if (field && !scopeModel) {
+      console.warn(`filter-group: field "${field}" on model "${model}" has no scope model`);
+    }
+    return scopeModel || model;
+  }
+
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
    *  must go through the pure ops (the change-event dispatch depends on it). The
    *  `Readonly` is shallow — it flags top-level rebinds only; deep mutation of
@@ -446,12 +472,19 @@ export class FilterGroupElement extends HTMLElement {
     for (const [key, bundle] of this.models) {
       const fields = new Set<string>();
       const relations: Record<string, string> = {};
+      const scopes: Record<string, string> = {};
       for (const [name, meta] of bundle.fields) {
         const target = meta.relations[0]?.model;
-        if (meta.kind === "relation" && target) relations[name] = target.toLowerCase();
-        else fields.add(name);
+        if (meta.kind === "relation" && target) {
+          relations[name] = target.toLowerCase();
+        } else {
+          fields.add(name);
+          // Aggregate fields advertise the model their scope sub-filter targets
+          // (FieldMeta.scope_model, non-empty iff aggregate — issue #151).
+          if (meta.scope_model) scopes[name] = meta.scope_model;
+        }
       }
-      registry[key] = { fields, relations };
+      registry[key] = { fields, relations, scopes };
     }
     return registry;
   }
@@ -466,7 +499,18 @@ export class FilterGroupElement extends HTMLElement {
 
   private fillNode(node: FilterNode, model: string): FilterNode {
     if (node.kind === "group") return this.fillCriteria(node, model);
-    if (node.kind === "criterion") return { ...node, criterion: this.readLeaf(node, model) ?? {} };
+    if (node.kind === "criterion") {
+      // An aggregate leaf's scope group holds live leaves too (issue #151) —
+      // fill them under the scope's target model.
+      const scope = node.scope
+        ? this.fillCriteria(node.scope, this.scopeModel(model, node.field))
+        : undefined;
+      return {
+        ...node,
+        criterion: this.readLeaf(node, model) ?? {},
+        ...(scope ? { scope } : {}),
+      };
+    }
     if (node.kind === "comparison") return { ...node, comparison: this.readComparison(node) ?? {} };
     // relation: its child group's leaves are live too — fill them under the target model.
     return { ...node, child: this.fillCriteria(node.child, this.targetModel(model, node.field)) };
@@ -508,8 +552,14 @@ export class FilterGroupElement extends HTMLElement {
     let count = 0;
     for (const child of node.children) {
       if (child.kind === "group") count += this.incompleteCount(child, model);
-      else if (child.kind === "criterion" && !this.leafComplete(child, model)) count += 1;
-      else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
+      else if (child.kind === "criterion") {
+        if (!this.leafComplete(child, model)) count += 1;
+        // An aggregate leaf's scope group has leaves of its own (issue #151),
+        // counted under the scope's target model.
+        if (child.scope) {
+          count += this.incompleteCount(child.scope, this.scopeModel(model, child.field));
+        }
+      } else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
       else if (child.kind === "relation") {
         // A field-unset relation is incomplete (would serialize to `{"": …}`); its
         // child group's leaves count under the target model.
@@ -541,6 +591,12 @@ export class FilterGroupElement extends HTMLElement {
         break;
       case "add-relation":
         if (canAddRelation(this.tree, path)) this.tree = insertChild(this.tree, path, emptyRelation());
+        break;
+      case "add-scope":
+        if (canAddScope(this.tree, path)) this.tree = addScope(this.tree, path);
+        break;
+      case "remove-scope":
+        this.tree = removeScope(this.tree, path);
         break;
       case "remove":
         this.tree = removeAt(this.tree, path);
@@ -619,9 +675,15 @@ export class FilterGroupElement extends HTMLElement {
     for (const child of node.children) {
       if (child.kind === "group") {
         this.reflectFieldSelections(child, model);
-      } else if (child.kind === "criterion" && child.field) {
-        const cells = this.rowCache.get(child.id);
-        if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
+      } else if (child.kind === "criterion") {
+        if (child.field) {
+          const cells = this.rowCache.get(child.id);
+          if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
+        }
+        // The scope group's own leaves have field-pickers too (issue #151).
+        if (child.scope) {
+          this.reflectFieldSelections(child.scope, this.scopeModel(model, child.field));
+        }
       } else if (child.kind === "relation") {
         this.reflectFieldSelections(child.child, this.targetModel(model, child.field));
       }
@@ -636,7 +698,11 @@ export class FilterGroupElement extends HTMLElement {
     const walk = (node: FilterNode): void => {
       if (node.kind === "group") node.children.forEach(walk);
       else if (node.kind === "relation") walk(node.child); // its child group's leaves stay live
-      else live.add(node.id);
+      else {
+        live.add(node.id);
+        // An aggregate leaf's scope group holds live leaf cells too (issue #151).
+        if (node.kind === "criterion" && node.scope) walk(node.scope);
+      }
     };
     walk(this.tree);
     for (const id of [...this.rowCache.keys()]) {
@@ -658,23 +724,27 @@ export class FilterGroupElement extends HTMLElement {
     siblingCount: number,
     model: string,
     depth: number,
-    relationEmptyLabel?: string,
+    ownedEmptyLabel?: string,
   ): HTMLElement {
-    const isRelationChild = path[path.length - 1] === RELATION_CHILD;
+    // A group owned by another node — a relation's child group or an aggregate
+    // leaf's scope group (issue #151) — is not a positional sibling: it carries no
+    // move/remove controls and may sit empty.
+    const lastStep = path[path.length - 1];
+    const isOwnedChild = lastStep === RELATION_CHILD || lastStep === SCOPE_CHILD;
     const edgeClass = node.connective === "AND" ? GROUP_AND_EDGE_CLASS : GROUP_OR_EDGE_CLASS;
     const card = element("div", `${CARD_CLASS} ${depthBackground(depth)} ${edgeClass}`);
     card.dataset.kind = "group";
     card.dataset.path = JSON.stringify(path);
 
-    // The root and every relation child group may sit empty — the root serializes to
-    // {} (matches all), a relation's empty child is the ANY/NONE presence test. A
-    // header-less state keeps an empty group off the NOT/connective chips it has
-    // nothing to apply to (issue #236).
-    if ((path.length === 0 || isRelationChild) && node.children.length === 0) {
+    // The root and every owned child group may sit empty — the root serializes to
+    // {} (matches all), a relation's empty child is the ANY/NONE presence test, an
+    // empty scope serializes away (unscoped). A header-less state keeps an empty
+    // group off the NOT/connective chips it has nothing to apply to (issue #236).
+    if ((path.length === 0 || isOwnedChild) && node.children.length === 0) {
       const emptyState = element("div", EMPTY_STATE_CLASS);
-      // Only a relation child supplies a label (its per-quantifier presence-test copy);
+      // Only an owned child supplies a label (its presence-test / all-rows copy);
       // the root empty group falls through to the generic "matches all" text.
-      emptyState.textContent = relationEmptyLabel ?? EMPTY_STATE_TEXT;
+      emptyState.textContent = ownedEmptyLabel ?? EMPTY_STATE_TEXT;
       card.appendChild(emptyState);
       card.appendChild(this.footer(path, model));
       return card;
@@ -687,9 +757,9 @@ export class FilterGroupElement extends HTMLElement {
     connectiveCluster.appendChild(this.negateChip(node, path));
     connectiveCluster.appendChild(this.connectiveChip(node.connective, path));
     header.appendChild(connectiveCluster);
-    // A relation child group is owned by its relation (not a list sibling), so it
-    // carries no up/down/wrap/unwrap/duplicate/remove — only the relation node does.
-    if (path.length > 0 && !isRelationChild) {
+    // An owned child group (relation child / scope group) carries no
+    // up/down/wrap/unwrap/duplicate/remove — only its owning node does.
+    if (path.length > 0 && !isOwnedChild) {
       header.appendChild(this.controls(path, true, index, siblingCount));
     }
     card.appendChild(header);
@@ -717,7 +787,9 @@ export class FilterGroupElement extends HTMLElement {
     if (child.kind === "group") {
       return this.renderGroup(child, path, index, siblingCount, model, depth + 1);
     }
-    if (child.kind === "criterion") return this.renderCriterionRow(child, path, index, siblingCount, model);
+    if (child.kind === "criterion") {
+      return this.renderCriterionRow(child, path, index, siblingCount, model, depth);
+    }
     if (child.kind === "comparison") {
       return this.renderComparisonRow(child, path, index, siblingCount, model);
     }
@@ -823,14 +895,18 @@ export class FilterGroupElement extends HTMLElement {
   }
 
   // The live criterion leaf row: [NOT] [field combobox] [value widget] [badge?]
-  // [controls]. The two stateful cells are reused across renders via rowCache so a
-  // structural edit never wipes an in-progress widget.
+  // [+ scope?] [controls]. The two stateful cells are reused across renders via
+  // rowCache so a structural edit never wipes an in-progress widget. A scopable
+  // (aggregate) field offers "+ scope" (issue #151); with a scope attached, the row
+  // and its nested scope group render inside a teal accent card, mirroring the
+  // relation-card pattern.
   private renderCriterionRow(
     node: CriterionLeaf,
     path: NodePath,
     index: number,
     siblingCount: number,
     model: string,
+    depth: number,
   ): HTMLElement {
     const cells = this.leafCells(node, model);
     const row = element("div", SLOT_ROW_CLASS);
@@ -841,10 +917,52 @@ export class FilterGroupElement extends HTMLElement {
     row.appendChild(this.negateChip(node, path));
     row.appendChild(cells.fieldCell);
     row.appendChild(cells.valueCell);
+    const scopeModel = node.field ? this.bundle(model)?.fields.get(node.field)?.scope_model : "";
+    if (scopeModel && !node.scope) {
+      // Depth-gated like + group/+ relation: the scope group sits one level
+      // below this leaf's containing group.
+      const scopeAllowed = canAddScope(this.tree, path);
+      row.appendChild(
+        this.actionButton("add-scope", "+ scope", path, {
+          disabled: !scopeAllowed,
+          title: scopeAllowed
+            ? "Only count related items matching extra conditions"
+            : "Max nesting reached",
+        }),
+      );
+    }
+    if (node.scope) {
+      row.appendChild(
+        this.actionButton("remove-scope", "− scope", path, {
+          title: "Remove the scope (count all related items again)",
+        }),
+      );
+    }
     row.appendChild(this.controls(path, false, index, siblingCount));
     // Controls are the row's last child; the badge (if any) is inserted before them.
     this.applyIncompleteState(row, Boolean(node.field) && !this.leafComplete(node, model));
-    return row;
+    if (!node.scope) return row;
+
+    // Scoped: the row plus its scope group in one accent card. Structural data
+    // attributes stay on the ROW (value events resolve their leaf via
+    // closest("[data-node-slot]")); the card is pure layout.
+    const card = element("div", SCOPE_CARD_CLASS);
+    card.appendChild(row);
+    const scopeLabel = element("div", SCOPE_LABEL_CLASS);
+    scopeLabel.textContent = "only counting items where";
+    card.appendChild(scopeLabel);
+    card.appendChild(
+      this.renderGroup(
+        node.scope,
+        [...path, SCOPE_CHILD],
+        0,
+        1,
+        scopeModel || this.scopeModel(model, node.field),
+        depth + 1,
+        SCOPE_EMPTY_TEXT,
+      ),
+    );
+    return card;
   }
 
   // Build or reuse a leaf's field + value cells, rebuilding the value cell only when
@@ -1124,6 +1242,11 @@ export class FilterGroupElement extends HTMLElement {
       if (step === RELATION_CHILD) {
         if (node.kind !== "relation") return null;
         node = node.child;
+        continue;
+      }
+      if (step === SCOPE_CHILD) {
+        if (node.kind !== "criterion" || !node.scope) return null;
+        node = node.scope;
         continue;
       }
       if (node.kind !== "group") return null;

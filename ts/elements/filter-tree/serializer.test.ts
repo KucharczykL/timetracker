@@ -103,10 +103,15 @@ describe("serialize", () => {
   });
 });
 
-// Fixture registry: game has a session relation; session has none used here.
+// Fixture registry: game has a session relation and a session-scoped aggregate
+// (session_count, issue #151); session has neither used here.
 const registry: MetadataRegistry = {
-  game: { fields: new Set(["name", "status", "year_released", "search"]), relations: { session_filter: "session" } },
-  session: { fields: new Set(["device", "note"]), relations: {} },
+  game: {
+    fields: new Set(["name", "status", "year_released", "search", "session_count"]),
+    relations: { session_filter: "session" },
+    scopes: { session_count: "session" },
+  },
+  session: { fields: new Set(["device", "note"]), relations: {}, scopes: {} },
 };
 
 type Json = Record<string, unknown>;
@@ -351,7 +356,11 @@ type CanonicalCase = { description: string; model: string; filter: Record<string
 function buildRegistry(raw: typeof fixtures.registry): MetadataRegistry {
   const registry: Record<string, ModelMeta> = {};
   for (const [model, meta] of Object.entries(raw)) {
-    registry[model] = { fields: new Set(meta.fields), relations: meta.relations } as ModelMeta;
+    registry[model] = {
+      fields: new Set(meta.fields),
+      relations: meta.relations,
+      scopes: "scopes" in meta ? meta.scopes : {},
+    } as ModelMeta;
   }
   return registry;
 }
@@ -373,5 +382,182 @@ describe("round-trip over fixtures + canonical artifact", () => {
     const canonicalPath = fileURLToPath(new URL("./fixtures.canonical.json", import.meta.url));
     writeFileSync(canonicalPath, JSON.stringify({ cases: canonical }, null, 2));
     expect(canonical.length).toBe(fixtures.cases.length);
+  });
+});
+
+describe("aggregate scope (#151)", () => {
+  function deckScope(): GroupNode {
+    return {
+      kind: "group",
+      id: "sg",
+      connective: "AND",
+      negate: false,
+      children: [
+        { kind: "criterion", id: "sc", field: "device", criterion: { value: [1], modifier: "INCLUDES" }, negate: false },
+      ],
+    };
+  }
+
+  it("serializes the scope group inside the criterion payload", () => {
+    const leaf: FilterNode = {
+      kind: "criterion",
+      id: "c",
+      field: "session_count",
+      criterion: { value: 5, modifier: "GREATER_THAN" },
+      scope: deckScope(),
+      negate: false,
+    };
+    expect(serialize(root(leaf))).toEqual({
+      AND: [
+        {
+          session_count: {
+            value: 5,
+            modifier: "GREATER_THAN",
+            scope: { AND: [{ device: { value: [1], modifier: "INCLUDES" } }] },
+          },
+        },
+      ],
+    });
+  });
+
+  it("omits an empty scope group entirely (canonical unscoped)", () => {
+    const leaf: FilterNode = {
+      kind: "criterion",
+      id: "c",
+      field: "session_count",
+      criterion: { value: 5, modifier: "GREATER_THAN" },
+      scope: { kind: "group", id: "sg", connective: "AND", negate: false, children: [] },
+      negate: false,
+    };
+    expect(serialize(root(leaf))).toEqual({
+      AND: [{ session_count: { value: 5, modifier: "GREATER_THAN" } }],
+    });
+  });
+
+  it("deserializes a scoped aggregate into a leaf with a scope group", () => {
+    const tree = deserialize(
+      {
+        session_count: {
+          value: 5,
+          modifier: "GREATER_THAN",
+          scope: { device: { value: [1], modifier: "INCLUDES" } },
+        },
+      },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    // The scope key is split out of the opaque payload…
+    expect(leaf.criterion).toEqual({ value: 5, modifier: "GREATER_THAN" });
+    // …into a child group over the scope's target model.
+    expect(leaf.scope).toBeDefined();
+    expect(leaf.scope!.children).toEqual([
+      expect.objectContaining({
+        kind: "criterion",
+        field: "device",
+        criterion: { value: [1], modifier: "INCLUDES" },
+        negate: false,
+      }),
+    ]);
+  });
+
+  it("deserializes an empty scope as unscoped (backend parity)", () => {
+    const tree = deserialize(
+      { session_count: { value: 1, modifier: "EQUALS", scope: {} } },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeUndefined();
+    expect(leaf.criterion).toEqual({ value: 1, modifier: "EQUALS" });
+  });
+
+  it("keeps a stray scope key verbatim on a non-scopable field", () => {
+    const tree = deserialize(
+      { year_released: { value: 2000, modifier: "EQUALS", scope: { device: { value: [1] } } } },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeUndefined();
+    expect(leaf.criterion).toEqual({
+      value: 2000,
+      modifier: "EQUALS",
+      scope: { device: { value: [1] } },
+    });
+  });
+
+  it("scoped aggregate round-trip is a fixed point", () => {
+    const input = {
+      session_count: {
+        value: 5,
+        modifier: "GREATER_THAN",
+        scope: { OR: [{ device: { value: [1], modifier: "INCLUDES" } }, { note: { value: "docked", modifier: "INCLUDES" } }] },
+      },
+    };
+    const once = serialize(deserialize(input, "game", registry));
+    const twice = serialize(deserialize(once, "game", registry));
+    expect(twice).toEqual(once);
+    expect(JSON.stringify(once)).toContain('"scope"');
+  });
+
+  it("a scope descent consumes depth budget like a relation descent", () => {
+    // A registry with the game<->session relation cycle (the file-level fixture
+    // registry deliberately leaves session without relations).
+    const cyclicRegistry: MetadataRegistry = {
+      ...registry,
+      session: { ...registry.session, relations: { game_filter: "game" } },
+    };
+    // Build a scope whose inner filter nests past MAX_FILTER_DEPTH via
+    // game_filter/session_filter alternation. The scope is a *session* filter, so
+    // the outermost relation must be session's `game_filter` (even final level),
+    // then alternate — a wrong-model relation key would be silently dropped and
+    // the depth guard never reached.
+    let inner: Record<string, unknown> = { device: { value: [1], modifier: "INCLUDES" } };
+    for (let level = 0; level < 11; level += 1) {
+      inner = level % 2 === 0 ? { game_filter: inner } : { session_filter: inner };
+    }
+    expect(() =>
+      deserialize({ session_count: { value: 1, scope: inner } }, "game", cyclicRegistry),
+    ).toThrow(FilterTreeError);
+  });
+});
+
+describe("aggregate scope malformations — backend parity (#151 review)", () => {
+  it("rejects a match quantifier inside a scope instead of stripping it", () => {
+    expect(() =>
+      deserialize(
+        { session_count: { value: 1, scope: { match: "NONE", device: { value: [1] } } } },
+        "game",
+        registry,
+      ),
+    ).toThrow(/match quantifier/);
+  });
+
+  it("accepts an explicit ANY match inside a scope (backend parity)", () => {
+    const tree = deserialize(
+      { session_count: { value: 1, scope: { match: "ANY", device: { value: [1], modifier: "INCLUDES" } } } },
+      "game",
+      registry,
+    );
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeDefined();
+  });
+
+  it("rejects a non-object scope on a scopable field", () => {
+    expect(() =>
+      deserialize({ session_count: { value: 1, scope: [1, 2] } }, "game", registry),
+    ).toThrow(/must be an object/);
+  });
+
+  it("treats an explicit null scope as no scope (backend pop default)", () => {
+    const tree = deserialize({ session_count: { value: 1, scope: null } }, "game", registry);
+    const leaf = tree.children[0];
+    if (leaf.kind !== "criterion") throw new Error("expected a criterion leaf");
+    expect(leaf.scope).toBeUndefined();
   });
 });

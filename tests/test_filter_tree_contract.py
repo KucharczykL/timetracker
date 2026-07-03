@@ -48,7 +48,25 @@ def test_canonical_artifact_present_under_ci():
 
 def _q_str(filter_object) -> str:
     # str(Q) is a stable structural rendering; equal structures compare equal.
-    return str(filter_object.to_q())
+    # QuerySet values (relation/aggregate subqueries) must be expanded to their
+    # compiled SQL: repr() would *evaluate* them, and on the empty test DB every
+    # subquery prints "<QuerySet []>" — making structurally different scoped
+    # aggregates compare equal and the contract vacuous for them (issue #151).
+    return _render_q(filter_object.to_q())
+
+
+def _render_q(node) -> str:
+    from django.db.models import Q, QuerySet
+
+    if isinstance(node, Q):
+        children = ", ".join(_render_q(child) for child in node.children)
+        return f"{'NOT ' if node.negated else ''}{node.connector}({children})"
+    if isinstance(node, tuple):
+        key, value = node
+        if isinstance(value, QuerySet):
+            return f"({key!r}, SQL[{value.query}])"
+        return repr(node)
+    return repr(node)
 
 
 @pytest.mark.django_db

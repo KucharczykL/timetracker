@@ -8,9 +8,12 @@ import type { FilterFieldMeta } from "./types.js";
 ignoreNodeIds();
 import {
   RELATION_CHILD,
+  SCOPE_CHILD,
   SOFT_DEPTH_CAP,
+  addScope,
   canAddGroup,
   canAddRelation,
+  canAddScope,
   canUnwrap,
   canWrap,
   criterionForField,
@@ -30,6 +33,7 @@ import {
   parseFieldMeta,
   pruneIncomplete,
   removeAt,
+  removeScope,
   setConnective,
   setLeafCriterion,
   setLeafField,
@@ -52,6 +56,7 @@ function fieldMeta(overrides: Partial<FilterFieldMeta> = {}): FilterFieldMeta {
     relations: [],
     search_url: "",
     is_m2m: false,
+    scope_model: "",
     ...overrides,
   };
 }
@@ -713,5 +718,144 @@ describe("setRelationField (#193)", () => {
 
   it("throws on a non-relation node", () => {
     expect(() => setRelationField(group("AND", [criterion("a")]), [0], "x")).toThrow();
+  });
+});
+
+describe("aggregate scope (#151)", () => {
+  function scopedLeaf(): CriterionLeaf {
+    return {
+      kind: "criterion",
+      id: nextNodeId(),
+      field: "session_count",
+      criterion: { value: 5, modifier: "GREATER_THAN" },
+      scope: group("AND", [criterion("device")]),
+      negate: false,
+    };
+  }
+
+  it("addScope seeds an AND group with one empty criterion row", () => {
+    const root = group("AND", [criterion("session_count")]);
+    const next = addScope(root, [0]);
+    const leaf = nodeAt(next, [0]) as CriterionLeaf;
+    expect(leaf.scope).toEqual(group("AND", [emptyCriterion()]));
+  });
+
+  it("addScope is a no-op when a scope already exists", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = addScope(root, [0]);
+    expect((nodeAt(next, [0]) as CriterionLeaf).scope).toEqual(
+      (nodeAt(root, [0]) as CriterionLeaf).scope,
+    );
+  });
+
+  it("addScope throws on a non-criterion node", () => {
+    const root = group("AND", [relation("session_filter", group("AND", []))]);
+    expect(() => addScope(root, [0])).toThrow(/not a criterion leaf/);
+  });
+
+  it("removeScope drops the whole scope subtree", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = removeScope(root, [0]);
+    const leaf = nodeAt(next, [0]) as CriterionLeaf;
+    expect(leaf.scope).toBeUndefined();
+    expect(leaf.criterion).toEqual({ value: 5, modifier: "GREATER_THAN" });
+  });
+
+  it("nodeAt descends through SCOPE_CHILD", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const scopeGroup = nodeAt(root, [0, SCOPE_CHILD]);
+    expect(scopeGroup.kind).toBe("group");
+    const scopeRow = nodeAt(root, [0, SCOPE_CHILD, 0]);
+    expect(scopeRow).toEqual(criterion("device"));
+  });
+
+  it("nodeAt throws for SCOPE_CHILD on a scope-less leaf", () => {
+    const root = group("AND", [criterion("session_count")]);
+    expect(() => nodeAt(root, [0, SCOPE_CHILD])).toThrow(/without a scope group/);
+  });
+
+  it("edits inside the scope rewrite the spine immutably", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = setLeafCriterion(root, [0, SCOPE_CHILD, 0], { value: [2], modifier: "INCLUDES" });
+    expect((nodeAt(next, [0, SCOPE_CHILD, 0]) as CriterionLeaf).criterion).toEqual({
+      value: [2],
+      modifier: "INCLUDES",
+    });
+    // The input tree is untouched.
+    expect((nodeAt(root, [0, SCOPE_CHILD, 0]) as CriterionLeaf).criterion).toEqual({
+      value: "device",
+      modifier: "INCLUDES",
+    });
+  });
+
+  it("removing the scope group's last row keeps the emptied scope attached", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = removeAt(root, [0, SCOPE_CHILD, 0]);
+    const leaf = nodeAt(next, [0]) as CriterionLeaf;
+    expect(leaf.scope).toEqual(group("AND", []));
+  });
+
+  it("setLeafField drops the scope with the rest of the old leaf", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = setLeafField(root, [0], fieldMeta({ name: "name", kind: "string" }));
+    expect((nodeAt(next, [0]) as CriterionLeaf).scope).toBeUndefined();
+  });
+
+  it("duplicateAt reassigns ids inside the scope subtree", () => {
+    const root = group("AND", [scopedLeaf()]);
+    const next = duplicateAt(root, [0]);
+    const original = nodeAt(next, [0]) as CriterionLeaf;
+    const clone = nodeAt(next, [1]) as CriterionLeaf;
+    expect(clone.scope).toBeDefined();
+    expect(clone.id).not.toBe(original.id);
+    expect(clone.scope!.id).not.toBe(original.scope!.id);
+    expect(clone.scope!.children[0].id).not.toBe(original.scope!.children[0].id);
+  });
+
+  it("pruneIncomplete prunes the scope's incomplete rows but keeps the group", () => {
+    const withIncompleteScopeRow: CriterionLeaf = {
+      ...scopedLeaf(),
+      scope: group("AND", [criterion("device"), emptyCriterion()]),
+    };
+    const pruned = pruneIncomplete(group("AND", [withIncompleteScopeRow]));
+    const leaf = pruned.children[0] as CriterionLeaf;
+    expect(leaf.scope).toEqual(group("AND", [criterion("device")]));
+
+    const withOnlyIncomplete: CriterionLeaf = {
+      ...scopedLeaf(),
+      scope: group("AND", [emptyCriterion()]),
+    };
+    const emptied = pruneIncomplete(group("AND", [withOnlyIncomplete]));
+    expect((emptied.children[0] as CriterionLeaf).scope).toEqual(group("AND", []));
+  });
+
+  it("pruneIncomplete drops an incomplete aggregate leaf, scope and all", () => {
+    const incomplete: CriterionLeaf = { ...scopedLeaf(), criterion: {} };
+    const pruned = pruneIncomplete(group("AND", [incomplete]));
+    expect(pruned.children).toEqual([]);
+  });
+
+  it("a scope group counts one group level for depth", () => {
+    const root = group("AND", [scopedLeaf()]);
+    expect(groupDepthAt(root, [0, SCOPE_CHILD])).toBe(1);
+    expect(deepestGroupDepth(root, 0)).toBe(1);
+  });
+});
+
+describe("canAddScope depth gating (#151 review)", () => {
+  it("allows a scope on a shallow leaf and forbids one at the soft cap", () => {
+    const shallow = group("AND", [criterion("session_count")]);
+    expect(canAddScope(shallow, [0])).toBe(true);
+    expect(canAddScope(shallow, [])).toBe(false); // the root is not a leaf
+
+    // Nest groups down to the soft cap; the leaf inside the deepest group sits
+    // one level past it, so its scope group would exceed the cap.
+    let tree = group("AND", [criterion("session_count")]);
+    let path: (number | typeof SCOPE_CHILD | typeof RELATION_CHILD)[] = [0];
+    for (let level = 0; level < SOFT_DEPTH_CAP; level += 1) {
+      tree = group("AND", [tree]);
+      path = [0, ...path];
+    }
+    expect(canAddScope(tree, path)).toBe(false);
   });
 });
