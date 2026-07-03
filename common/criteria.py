@@ -733,7 +733,16 @@ class AggregateCriterion(_ScalarCriterion):
         return result
 
 
-type ComparisonGranularity = Literal["raw", "date"]
+type ComparisonGranularity = Literal["raw", "date", "year"]
+
+# Comparison spaces (#169): the operand groups each non-raw granularity accepts.
+# "raw" is special-cased in _apply_operators (both operands must share a group).
+# In "date" space datetime operands are projected to calendar dates; in "year"
+# space temporal operands are projected to their year and compared as numbers.
+_SPACE_GROUPS: dict[ComparisonGranularity, frozenset[ComparisonGroup]] = {
+    "date": frozenset({"date", "datetime"}),
+    "year": frozenset({"date", "datetime", "number"}),
+}
 
 
 @dataclass
@@ -806,7 +815,7 @@ class FieldComparisonCriterion(_Criterion):
         # field) so an unknown value is rejected at parse time rather than
         # silently degrading to a raw comparison — mirrors the modifier coercion.
         result = super().from_json(data)
-        if result is not None and result.granularity not in ("raw", "date"):
+        if result is not None and result.granularity not in ("raw", "date", "year"):
             raise FilterError(f"unknown granularity {result.granularity!r}")
         return result
 
@@ -1360,20 +1369,29 @@ class OperatorFilter:
                     )
                 left_group = _comparison_group_for(model, comparison.left)
                 right_group = _comparison_group_for(model, comparison.right)
-                if left_group != right_group:
-                    raise FilterError(
-                        f"cannot compare {comparison.left!r} ({left_group})"
-                        f" to {comparison.right!r} ({right_group})"
-                    )
-                if comparison.modifier not in _allowed_comparison_modifiers(left_group):
+                if comparison.granularity == "raw":
+                    if left_group != right_group:
+                        raise FilterError(
+                            f"cannot compare {comparison.left!r} ({left_group})"
+                            f" to {comparison.right!r} ({right_group})"
+                        )
+                    allowed_modifiers = _allowed_comparison_modifiers(left_group)
+                else:
+                    accepted_groups = _SPACE_GROUPS[comparison.granularity]
+                    for operand, group in (
+                        (comparison.left, left_group),
+                        (comparison.right, right_group),
+                    ):
+                        if group not in accepted_groups:
+                            raise FilterError(
+                                f"{operand!r} ({group}) cannot take part in a"
+                                f" {comparison.granularity}-granularity comparison"
+                            )
+                    allowed_modifiers = Modifier.for_ordered_field_comparisons()
+                if comparison.modifier not in allowed_modifiers:
                     raise FilterError(
                         f"modifier {comparison.modifier} not allowed"
-                        f" for {left_group} comparison"
-                    )
-                if comparison.granularity == "date" and left_group != "datetime":
-                    raise FilterError(
-                        f"date-granular comparison needs datetime operands"
-                        f" (got {left_group})"
+                        f" for this comparison"
                     )
                 q &= comparison.to_q()
         return q

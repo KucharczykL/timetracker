@@ -2767,18 +2767,20 @@ class TestFieldComparisonWiring:
             timestamp_start__date__lte=TruncDate(F("timestamp_end"))
         )
 
-    def test_date_granularity_on_non_datetime_raises(self):
+    def test_date_granularity_on_non_temporal_raises(self):
+        # Under the new space rules, date space accepts date and datetime
+        # operands; a string field is outside the accepted group set.
         stub = _PurchaseStub(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
+                    left="name",
                     right="date_purchased",
                     modifier=Modifier.EQUALS,
                     granularity="date",
                 )
             ]
         )
-        with pytest.raises(FilterError, match="datetime operands"):
+        with pytest.raises(FilterError, match="cannot take part in"):
             stub.to_q()
 
     def test_includes_on_datetime_rejected_before_granularity(self):
@@ -3105,6 +3107,91 @@ class TestFilterComparisonModels:
             ]
         )
         assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start"))
+
+
+# ── T4b — comparison spaces ───────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestComparisonSpaces:
+    def test_year_space_accepts_two_datetimes(self):
+        filter_object = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_start", right="timestamp_end",
+                    modifier=Modifier.EQUALS, granularity="year",
+                )
+            ]
+        )
+        filter_object.to_q()  # must not raise
+
+    def test_date_space_accepts_date_vs_datetime(self):
+        # PlayEvent.started is a DateField, created_at a DateTimeField
+        filter_object = PlayEventFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="started", right="created_at",
+                    modifier=Modifier.EQUALS, granularity="date",
+                )
+            ]
+        )
+        filter_object.to_q()
+
+    def test_raw_space_keeps_same_group_rule(self):
+        filter_object = PlayEventFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="started", right="created_at", modifier=Modifier.EQUALS,
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="cannot compare"):
+            filter_object.to_q()
+
+    def test_year_space_rejects_string_operand(self):
+        filter_object = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="note", right="timestamp_start",
+                    modifier=Modifier.EQUALS, granularity="year",
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="year"):
+            filter_object.to_q()
+
+    def test_non_raw_space_rejects_containment_modifiers(self):
+        filter_object = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_start", right="timestamp_end",
+                    modifier=Modifier.INCLUDES, granularity="year",
+                )
+            ]
+        )
+        with pytest.raises(FilterError, match="not allowed"):
+            filter_object.to_q()
+
+    def test_from_json_accepts_year_granularity(self):
+        parsed = FieldComparisonCriterion.from_json(
+            {"left": "timestamp_start", "right": "timestamp_end",
+             "modifier": "EQUALS", "granularity": "year"}
+        )
+        assert parsed is not None and parsed.granularity == "year"
+
+    def test_from_json_rejects_unknown_granularity(self):
+        with pytest.raises(FilterError, match="unknown granularity"):
+            FieldComparisonCriterion.from_json(
+                {"left": "a", "right": "b", "modifier": "EQUALS",
+                 "granularity": "month"}
+            )
+
+    def test_year_granularity_roundtrips_json(self):
+        criterion = FieldComparisonCriterion(
+            left="timestamp_start", right="timestamp_end",
+            modifier=Modifier.EQUALS, granularity="year",
+        )
+        assert criterion.to_json()["granularity"] == "year"
 
 
 # ── T5 — end-to-end DB + integration tests ───────────────────────────────────
