@@ -53,6 +53,7 @@ import {
   isComparisonComplete,
   isCriterionComplete,
   move,
+  ownedGroupsOf,
   parseFieldMeta,
   pruneIncomplete,
   removeAt,
@@ -408,6 +409,17 @@ export class FilterGroupElement extends HTMLElement {
     return scopeModel || model;
   }
 
+  // ownedGroupsOf with each group's active model resolved — the model-tracking
+  // walks (incompleteCount, reflectFieldSelections) descend through this so a
+  // walker cannot forget an owned-group kind or mis-resolve its model.
+  private ownedGroupsWithModel(node: FilterNode, model: string): Array<[GroupNode, string]> {
+    if (node.kind === "relation") return [[node.child, this.targetModel(model, node.field)]];
+    if (node.kind === "criterion" && node.scope) {
+      return [[node.scope, this.scopeModel(model, node.field)]];
+    }
+    return [];
+  }
+
   /** The current node tree — for 2d serialize/count. Do not mutate it: every edit
    *  must go through the pure ops (the change-event dispatch depends on it). The
    *  `Readonly` is shallow — it flags top-level rebinds only; deep mutation of
@@ -552,19 +564,14 @@ export class FilterGroupElement extends HTMLElement {
     let count = 0;
     for (const child of node.children) {
       if (child.kind === "group") count += this.incompleteCount(child, model);
-      else if (child.kind === "criterion") {
-        if (!this.leafComplete(child, model)) count += 1;
-        // An aggregate leaf's scope group has leaves of its own (issue #151),
-        // counted under the scope's target model.
-        if (child.scope) {
-          count += this.incompleteCount(child.scope, this.scopeModel(model, child.field));
-        }
-      } else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
-      else if (child.kind === "relation") {
-        // A field-unset relation is incomplete (would serialize to `{"": …}`); its
-        // child group's leaves count under the target model.
-        if (child.field === "") count += 1;
-        count += this.incompleteCount(child.child, this.targetModel(model, child.field));
+      else if (child.kind === "criterion" && !this.leafComplete(child, model)) count += 1;
+      else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
+      // A field-unset relation is incomplete (would serialize to `{"": …}`).
+      else if (child.kind === "relation" && child.field === "") count += 1;
+      // Owned groups (a relation's child, an aggregate leaf's scope) have live
+      // leaves of their own, counted under each group's target model.
+      for (const [ownedGroup, ownedModel] of this.ownedGroupsWithModel(child, model)) {
+        count += this.incompleteCount(ownedGroup, ownedModel);
       }
     }
     return count;
@@ -675,19 +682,15 @@ export class FilterGroupElement extends HTMLElement {
     for (const child of node.children) {
       if (child.kind === "group") {
         this.reflectFieldSelections(child, model);
-      } else if (child.kind === "criterion") {
-        if (child.field) {
-          const cells = this.rowCache.get(child.id);
-          if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
-        }
-        // The scope group's own leaves have field-pickers too (issue #151).
-        if (child.scope) {
-          this.reflectFieldSelections(child.scope, this.scopeModel(model, child.field));
-        }
-      } else if (child.kind === "relation") {
-        this.reflectFieldSelections(child.child, this.targetModel(model, child.field));
+      } else if (child.kind === "criterion" && child.field) {
+        const cells = this.rowCache.get(child.id);
+        if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
       }
-      // comparison leaves have no field-picker to reflect
+      // comparison leaves have no field-picker to reflect; owned groups (a
+      // relation's child, an aggregate leaf's scope) have their own pickers.
+      for (const [ownedGroup, ownedModel] of this.ownedGroupsWithModel(child, model)) {
+        this.reflectFieldSelections(ownedGroup, ownedModel);
+      }
     }
   }
 
@@ -697,12 +700,10 @@ export class FilterGroupElement extends HTMLElement {
     const live = new Set<string>();
     const walk = (node: FilterNode): void => {
       if (node.kind === "group") node.children.forEach(walk);
-      else if (node.kind === "relation") walk(node.child); // its child group's leaves stay live
-      else {
-        live.add(node.id);
-        // An aggregate leaf's scope group holds live leaf cells too (issue #151).
-        if (node.kind === "criterion" && node.scope) walk(node.scope);
-      }
+      else live.add(node.id); // caches are keyed by criterion/comparison ids only
+      // Owned groups (a relation's child, an aggregate leaf's scope) hold live
+      // leaf cells too.
+      ownedGroupsOf(node).forEach(walk);
     };
     walk(this.tree);
     for (const id of [...this.rowCache.keys()]) {

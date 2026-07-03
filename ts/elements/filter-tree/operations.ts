@@ -150,6 +150,26 @@ export function emptyRoot(): GroupNode {
   return group("AND", [emptyCriterion()]);
 }
 
+// ── Owned-group traversal ────────────────────────────────────────────────────
+
+// The child group(s) a non-group node OWNS — a relation's child group, a
+// criterion leaf's aggregate scope group (issue #151); leaves without one own
+// nothing, and a group's children are positional siblings, not owned. This is
+// the single encoding of "which node kinds bear a nested group": a tree walker
+// routed through it cannot forget a descent (the bug class where a new walker
+// compiles clean but silently drops scopes), and a future group-bearing kind is
+// a one-line change here instead of a hunt across every walk.
+export function ownedGroupsOf(node: FilterNode): readonly GroupNode[] {
+  switch (node.kind) {
+    case "relation":
+      return [node.child];
+    case "criterion":
+      return node.scope ? [node.scope] : [];
+    default:
+      return [];
+  }
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 export function nodeAt(root: GroupNode, path: NodePath): FilterNode {
@@ -297,13 +317,11 @@ export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {
 
 // A duplicated subtree must get fresh ids on every node — a structuredClone copies
 // the source ids, which would collide with the originals in the shell's id→DOM map.
-// Every child-bearing kind descends: group children, a relation's child group, and
-// a criterion leaf's aggregate scope group (issue #151).
+// Descends through group children plus every owned group (ownedGroupsOf).
 function reassignIds(node: FilterNode): FilterNode {
   node.id = nextNodeId();
   if (node.kind === "group") node.children.forEach(reassignIds);
-  else if (node.kind === "relation") reassignIds(node.child);
-  else if (node.kind === "criterion" && node.scope) reassignIds(node.scope);
+  ownedGroupsOf(node).forEach(reassignIds);
   return node;
 }
 
@@ -492,19 +510,18 @@ export function unwrapGroup(root: GroupNode, path: NodePath): GroupNode {
 // ── Depth ────────────────────────────────────────────────────────────────────
 
 // The deepest group-nesting depth anywhere in `group`'s subtree, given the group
-// itself sits at `groupDepth`. A child group is +1; a relation's child group is +1
-// (the relation node is not itself a group); a criterion leaf's aggregate scope
-// group is +1 likewise (issue #151); other leaves contribute nothing. This is the
-// single primitive every cap check is derived from.
+// itself sits at `groupDepth`. A child group is +1, and so is every owned group
+// (a relation's child, a criterion leaf's scope — the owning node is not itself
+// a group level); other leaves contribute nothing. This is the single primitive
+// every cap check is derived from.
 export function deepestGroupDepth(node: GroupNode, groupDepth: number): number {
   let deepest = groupDepth;
   for (const child of node.children) {
     if (child.kind === "group") {
       deepest = Math.max(deepest, deepestGroupDepth(child, groupDepth + 1));
-    } else if (child.kind === "relation") {
-      deepest = Math.max(deepest, deepestGroupDepth(child.child, groupDepth + 1));
-    } else if (child.kind === "criterion" && child.scope) {
-      deepest = Math.max(deepest, deepestGroupDepth(child.scope, groupDepth + 1));
+    }
+    for (const ownedGroup of ownedGroupsOf(child)) {
+      deepest = Math.max(deepest, deepestGroupDepth(ownedGroup, groupDepth + 1));
     }
   }
   return deepest;
