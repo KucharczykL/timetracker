@@ -1383,6 +1383,7 @@ class OperatorFilter:
                             f" to {comparison.right!r} ({right_group})"
                         )
                     allowed_modifiers = _allowed_comparison_modifiers(left_group)
+                    vocabulary_hint = f"{left_group} comparison"
                 else:
                     accepted_groups = _SPACE_GROUPS[comparison.granularity]
                     for operand, group in (
@@ -1395,10 +1396,11 @@ class OperatorFilter:
                                 f" {comparison.granularity}-granularity comparison"
                             )
                     allowed_modifiers = Modifier.for_ordered_field_comparisons()
+                    vocabulary_hint = f"{comparison.granularity}-granularity comparison"
                 if comparison.modifier not in allowed_modifiers:
                     raise FilterError(
                         f"modifier {comparison.modifier} not allowed"
-                        f" for this comparison"
+                        f" for {vocabulary_hint}"
                     )
                 q &= _field_comparison_to_q(
                     comparison.left,
