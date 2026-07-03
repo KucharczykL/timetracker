@@ -23,7 +23,7 @@ export type { ComparisonRow };
 // widget body can use it and re-exported under its historical `Column` name for
 // existing consumers. This tightens `group` from a bare string to the
 // `ComparisonGroup` union.
-import type { ComparableColumn } from "../generated/filter-metadata.js";
+import type { ComparableColumn, ComparisonGroup } from "../generated/filter-metadata.js";
 
 export type { ComparableColumn };
 export type Column = ComparableColumn;
@@ -47,9 +47,65 @@ const OPERATOR_LABELS: Record<string, string> = {
   EXCLUDES: "doesn't contain",
 };
 
+// The ordered modifiers used inside each non-raw comparison space. These are the
+// operators that make sense when comparing across spaces (e.g. datetime vs number
+// in year granularity). Must stay in sync with Python _SPACE_MODIFIERS.
+const SPACE_ORDERED_MODIFIERS = [
+  "EQUALS",
+  "NOT_EQUALS",
+  "GREATER_THAN",
+  "LESS_THAN",
+  "GREATER_THAN_OR_EQUAL",
+  "LESS_THAN_OR_EQUAL",
+];
+
+// Mirrors _SPACE_GROUPS in common/criteria.py — the operand groups each
+// non-raw space accepts. Two entries; if this grows, move it into the
+// gen-element-types codegen next to ComparableColumn.
+const SPACE_GROUPS: Record<"date" | "year", ComparisonGroup[]> = {
+  date: ["date", "datetime"],
+  year: ["date", "datetime", "number"],
+};
+
+const SPACE_HEADERS: Record<"date" | "year", string> = {
+  date: "By date",
+  year: "By year",
+};
+
+// The granularity type: "raw" means a plain column-to-column comparison within
+// the same group; "date" and "year" are cross-group comparison spaces.
+export type Granularity = "raw" | "date" | "year";
+
+/** Pack a modifier + granularity into the wire value the server also emits.
+ *  Mirrors _pack_operator in common/components/filters.py. */
+export function packOperator(modifier: string, granularity: Granularity): string {
+  return granularity === "raw" ? modifier : `${modifier}:${granularity}`;
+}
+
+/** Unpack a wire value into its modifier + granularity components.
+ *  Mirrors the inverse of _pack_operator in common/components/filters.py. */
+export function unpackOperator(value: string): { modifier: string; granularity: Granularity } {
+  const colonIndex = value.indexOf(":");
+  if (colonIndex === -1) {
+    return { modifier: value, granularity: "raw" };
+  }
+  const modifier = value.slice(0, colonIndex);
+  const suffix = value.slice(colonIndex + 1);
+  const granularity: Granularity =
+    suffix === "date" || suffix === "year" ? suffix : "raw";
+  return { modifier, granularity };
+}
+
+// A group of options for fillSelect: null header means top-level (no optgroup);
+// non-null header means an optgroup with that label. Empty groups are skipped.
+interface OptionGroup {
+  header: string | null;
+  options: [string, string][]; // [value, label]
+}
+
 function fillSelect(
   select: HTMLSelectElement,
-  options: [string, string][],
+  groups: OptionGroup[],
   selected: string,
   placeholder: string,
 ): void {
@@ -58,13 +114,82 @@ function fillSelect(
   blank.value = "";
   blank.textContent = placeholder;
   select.appendChild(blank);
-  for (const [value, label] of options) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    if (value === selected) option.selected = true;
-    select.appendChild(option);
+  for (const group of groups) {
+    if (group.options.length === 0) continue;
+    if (group.header === null) {
+      // Top-level options, no optgroup wrapper
+      for (const [value, label] of group.options) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        if (value === selected) option.selected = true;
+        select.appendChild(option);
+      }
+    } else {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = group.header;
+      for (const [value, label] of group.options) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        if (value === selected) option.selected = true;
+        optgroup.appendChild(option);
+      }
+      select.appendChild(optgroup);
+    }
   }
+}
+
+/** Rebuild a row's right-column options from its left column + selected operator.
+ *  Called both on initial refreshRow and on operator change, so the right list
+ *  stays filtered to the currently-selected comparison space. */
+function refreshRowRightList(
+  right: HTMLSelectElement,
+  left: HTMLSelectElement,
+  operator: HTMLSelectElement,
+  columns: Column[],
+): void {
+  const rightSaved = right.getAttribute("data-selected") ?? right.value;
+  right.removeAttribute("data-selected");
+
+  const leftColumn = columns.find((column) => column.value === left.value) ?? null;
+  const group = leftColumn?.group ?? null;
+
+  if (!leftColumn || !group) {
+    fillSelect(right, [{ header: null, options: [] }], "", "column…");
+    return;
+  }
+
+  const { granularity } = unpackOperator(operator.value);
+  const allowedGroups: ComparisonGroup[] =
+    granularity === "raw" ? [group] : SPACE_GROUPS[granularity] ?? [group];
+
+  // Partition columns by source: "" = own model (top-level), non-empty = FK source (optgroup).
+  const ownOptions: [string, string][] = [];
+  const sourceOptions = new Map<string, [string, string][]>();
+
+  for (const column of columns) {
+    if (!allowedGroups.includes(column.group)) continue;
+    if (column.value === left.value) continue;
+    const pair: [string, string] = [column.value, column.label];
+    if (column.source === "") {
+      ownOptions.push(pair);
+    } else {
+      let bucket = sourceOptions.get(column.source);
+      if (!bucket) {
+        bucket = [];
+        sourceOptions.set(column.source, bucket);
+      }
+      bucket.push(pair);
+    }
+  }
+
+  const groups: OptionGroup[] = [{ header: null, options: ownOptions }];
+  for (const [source, options] of sourceOptions) {
+    groups.push({ header: source, options });
+  }
+
+  fillSelect(right, groups, rightSaved, "column…");
 }
 
 /** Rebuild a row's operator + right-column options from its left column. The
@@ -78,54 +203,67 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
 
   // Saved values: data-selected on first paint, then the live value afterwards.
   const operatorSaved = operator.getAttribute("data-selected") ?? operator.value;
-  const rightSaved = right.getAttribute("data-selected") ?? right.value;
   operator.removeAttribute("data-selected");
-  right.removeAttribute("data-selected");
 
   const leftColumn = columns.find((column) => column.value === left.value) ?? null;
   const group = leftColumn?.group ?? null;
 
-  // Day-granular toggle is only meaningful for datetime operands.
-  const granularityWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
-  const granularityInput = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
-  const isDatetime = group === "datetime";
-  if (granularityWrap) granularityWrap.hidden = !isDatetime;
-  if (granularityInput && !isDatetime) granularityInput.checked = false;
-
   if (!leftColumn || !group) {
-    fillSelect(operator, [], "", "—");
-    fillSelect(right, [], "", "column…");
+    fillSelect(operator, [{ header: null, options: [] }], "", "—");
+    fillSelect(right, [{ header: null, options: [] }], "", "column…");
     operator.disabled = true;
     right.disabled = true;
     return;
   }
   operator.disabled = false;
   right.disabled = false;
+
+  // Build operator options:
+  //   1. Raw options top-level: the column's own operators with glyph labels.
+  //   2. Per non-raw space: an optgroup with SPACE_ORDERED_MODIFIERS packed values,
+  //      labeled with the space header in parentheses — but only when the left group
+  //      belongs to that space (e.g. datetime is in both "date" and "year").
   // `?? []` defends against a columns prop missing `operators` (server/client
   // skew, a stale cached page): degrade to an empty operator list rather than
   // throwing mid-loop and leaving the rest of the rows unwired.
-  const operators = leftColumn.operators ?? [];
-  fillSelect(
-    operator,
-    operators.map((modifier) => [modifier, OPERATOR_LABELS[modifier] ?? modifier]),
-    operatorSaved,
-    "—",
-  );
-  fillSelect(
-    right,
-    columns
-      .filter((column) => column.group === group && column.value !== left.value)
-      .map((column) => [column.value, column.label]),
-    rightSaved,
-    "column…",
-  );
+  const rawOperators = leftColumn.operators ?? [];
+  const rawOptions: [string, string][] = rawOperators.map((modifier) => [
+    modifier,
+    OPERATOR_LABELS[modifier] ?? modifier,
+  ]);
+
+  const operatorGroups: OptionGroup[] = [{ header: null, options: rawOptions }];
+  for (const space of ["date", "year"] as const) {
+    if (!SPACE_GROUPS[space].includes(group)) continue;
+    const spaceOptions: [string, string][] = SPACE_ORDERED_MODIFIERS.map((modifier) => [
+      packOperator(modifier, space),
+      `${OPERATOR_LABELS[modifier] ?? modifier} (${SPACE_HEADERS[space].toLowerCase()})`,
+    ]);
+    operatorGroups.push({ header: SPACE_HEADERS[space], options: spaceOptions });
+  }
+
+  fillSelect(operator, operatorGroups, operatorSaved, "—");
+
+  // Fill the right list for the current operator value (uses operatorSaved restored above).
+  refreshRowRightList(right, left, operator, columns);
+}
+
+/** Export the row-wiring helper so filter-group.ts can reuse it for the
+ *  nested builder's comparison leaf — giving it the operator-change listener
+ *  without duplicating the logic. */
+export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]): void {
+  const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
+  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]");
+  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]");
+  if (!operator || !left || !right) return;
+
+  left.addEventListener("change", () => refreshRow(row, columns));
+  operator.addEventListener("change", () => refreshRowRightList(right, left, operator, columns));
 }
 
 function wireRow(row: HTMLElement, columns: Column[]): void {
   refreshRow(row, columns);
-  row
-    .querySelector<HTMLSelectElement>("[data-fc-left]")
-    ?.addEventListener("change", () => refreshRow(row, columns));
+  wireComparisonRowListeners(row, columns);
   row
     .querySelector<HTMLElement>("[data-fc-remove]")
     ?.addEventListener("click", () => row.remove());
@@ -134,17 +272,17 @@ function wireRow(row: HTMLElement, columns: Column[]): void {
 /** Read one comparison row into its complete value, or null when incomplete (a
  * missing column/operator, or the two columns equal). The reusable single-row read
  * the set folds over — the nested builder's comparison leaf (#246) reads its lone
- * row directly. `granularity` is emitted only when the by-day toggle is on AND
- * visible (a datetime operand), keeping the filter JSON compact. */
+ * row directly. `granularity` is emitted only when a non-raw packed operator is
+ * selected, keeping the filter JSON compact. */
 export function readComparisonRow(row: HTMLElement): ComparisonRow | null {
   const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
-  const modifier = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
+  const operatorValue = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
   const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
-  if (!left || !right || !modifier || left === right) return null;
-  const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
-  const byDayWrap = row.querySelector<HTMLElement>("[data-fc-granularity-wrap]");
+  if (!left || !right || !operatorValue || left === right) return null;
+  const { modifier, granularity } = unpackOperator(operatorValue);
+  if (!modifier) return null;
   const entry: ComparisonRow = { left, right, modifier };
-  if (byDay?.checked && byDayWrap && !byDayWrap.hidden) entry.granularity = "date";
+  if (granularity !== "raw") entry.granularity = granularity;
   return entry;
 }
 

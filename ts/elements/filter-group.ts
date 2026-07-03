@@ -68,8 +68,10 @@ import {
 } from "./filter-tree/operations.js";
 import {
   type Column,
+  packOperator,
   readComparisonRow,
   refreshRow,
+  wireComparisonRowListeners,
 } from "./field-comparison-set.js";
 import { readLeafWidget, setupModifierToggles, writeLeafWidget } from "./filter-widgets.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
@@ -1109,9 +1111,7 @@ export class FilterGroupElement extends HTMLElement {
       cell.appendChild(row);
       this.seedComparisonRow(row, comparison); // hydrate a prefilled payload (#263)
       refreshRow(row, columns); // seed operator/right options from the left column
-      row
-        .querySelector<HTMLSelectElement>("[data-fc-left]")
-        ?.addEventListener("change", () => refreshRow(row, columns));
+      wireComparisonRowListeners(row, columns); // left-change + operator-change listeners
     }
     return cell;
   }
@@ -1121,20 +1121,19 @@ export class FilterGroupElement extends HTMLElement {
   // plain select value (the template ships the full option set), while operator +
   // right column go through `data-selected`, which the refreshRow call right
   // after this adopts on first paint (it rebuilds their options from the left
-  // column). Granularity pre-checks the by-day toggle; refreshRow unchecks it
-  // when the left column turns out non-datetime.
+  // column). The operator is packed (modifier:granularity) so refreshRow can
+  // restore the correct comparison space and filter the right list accordingly.
   private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
     const { left, right, modifier, granularity } = comparison;
     if (left) {
       const leftSelect = row.querySelector<HTMLSelectElement>("[data-fc-left]");
       if (leftSelect) leftSelect.value = left;
     }
-    if (modifier) row.querySelector("[data-fc-op]")?.setAttribute("data-selected", modifier);
-    if (right) row.querySelector("[data-fc-right]")?.setAttribute("data-selected", right);
-    if (granularity === "date") {
-      const byDay = row.querySelector<HTMLInputElement>("[data-fc-granularity]");
-      if (byDay) byDay.checked = true;
+    if (modifier) {
+      const packed = packOperator(modifier, granularity ?? "raw");
+      row.querySelector("[data-fc-op]")?.setAttribute("data-selected", packed);
     }
+    if (right) row.querySelector("[data-fc-right]")?.setAttribute("data-selected", right);
   }
 
   // Suffix every id/for/name in a cloned subtree so repeated clones stay valid HTML
