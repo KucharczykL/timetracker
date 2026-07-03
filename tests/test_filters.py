@@ -2621,7 +2621,7 @@ class TestComparableColumns:
         from games.models import Game
 
         for entry in comparable_columns(Game):
-            assert set(entry.keys()) == {"value", "label", "group", "operators"}
+            assert set(entry.keys()) == {"value", "label", "group", "operators", "source"}
 
     def test_operators_match_allowed_comparison_modifiers(self):
         """Each column carries the server-derived operator list (#152) so the TS
@@ -2692,10 +2692,67 @@ class TestComparableColumns:
         assert columns["year_released"]["label"] == "Year Released"
 
     def test_sorted_by_label_case_insensitive(self):
+        """Own columns (source=="") are sorted by label; each FK block is sorted
+        by its column label too.  The global list is NOT re-sorted — FK blocks
+        follow own columns in _meta declaration order."""
         from games.models import Session
 
-        labels = [entry["label"] for entry in comparable_columns(Session)]
-        assert labels == sorted(labels, key=str.lower)
+        columns = comparable_columns(Session)
+        own_labels = [entry["label"] for entry in columns if entry["source"] == ""]
+        assert own_labels == sorted(own_labels, key=str.lower)
+
+
+class TestComparableColumnsCrossModel:
+    """comparable_columns enumerates related-model columns via forward FK hops."""
+
+    def test_session_includes_game_and_device_columns(self):
+        from games.models import Session
+
+        columns = comparable_columns(Session)
+        values = {column["value"] for column in columns}
+        assert "game__year_released" in values
+        assert "device__name" in values
+
+    def test_purchase_includes_both_fk_sources(self):
+        # Purchase has TWO forward FKs: platform and related_game.
+        from games.models import Purchase
+
+        sources = {column["source"] for column in comparable_columns(Purchase)}
+        assert "" in sources  # own columns
+        assert len(sources) >= 3
+
+    def test_related_labels_are_qualified_and_own_labels_bare(self):
+        from games.models import Session
+
+        columns = comparable_columns(Session)
+        by_value = {column["value"]: column for column in columns}
+        assert by_value["note"]["source"] == ""
+        assert ": " not in by_value["note"]["label"]
+        related = by_value["game__year_released"]
+        assert related["source"] and related["label"].startswith(related["source"])
+
+    def test_own_columns_first_then_relation_blocks(self):
+        from games.models import Session
+
+        columns = comparable_columns(Session)
+        sources = [column["source"] for column in columns]
+        assert sources == sorted(sources, key=lambda source: (source != "",))  # "" block first
+        own_labels = [column["label"] for column in columns if column["source"] == ""]
+        assert own_labels == sorted(own_labels, key=str.lower)
+
+    def test_m2m_and_reverse_not_enumerated(self):
+        from games.models import Game, Purchase
+
+        purchase_values = {column["value"] for column in comparable_columns(Purchase)}
+        assert not any(value.startswith("games__") for value in purchase_values)
+        game_values = {column["value"] for column in comparable_columns(Game)}
+        assert not any(value.startswith("session__") for value in game_values)
+
+    def test_platform_and_device_have_no_related_columns(self):
+        from games.models import Device, Platform
+
+        for model in (Platform, Device):
+            assert all(column["source"] == "" for column in comparable_columns(model))
 
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────

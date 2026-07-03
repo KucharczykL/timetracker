@@ -1928,24 +1928,54 @@ type ModifierValue = str  # a Modifier.value, e.g. "INCLUDES"
 
 
 class ComparableColumn(TypedDict):
-    """A model column that can take part in a field-to-field comparison, ready for
-    a picker: its field name, a human label, and its comparison group."""
+    """A comparison-operand option, ready for a picker: operand value, human
+    label, comparison group, allowed raw-space operators, and the source
+    optgroup it renders under."""
 
-    value: str  # column name, e.g. "timestamp_end"
-    label: str  # field verbose_name, title-cased, e.g. "Timestamp End"
+    value: ComparisonOperand  # "timestamp_end" or "game__year_released"
+    label: str  # own: "Timestamp End"; related: "Base Game: Year Released"
     group: ComparisonGroup
-    operators: list[ModifierValue]  # valid for this column's group (#152)
+    operators: list[ModifierValue]  # valid for this column's group, raw space (#152)
+    source: str  # optgroup label: "" own columns, else the FK's verbose name
 
 
-def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
-    """Every column of ``model`` with a comparison group, labelled and grouped,
-    sorted by label (case-insensitive).
+def _comparison_relations(
+    model: type[models.Model],
+) -> list[tuple[str, type[models.Model], str]]:
+    """The forward to-one FKs comparison operands may traverse, introspected
+    (never configured): ``(fk_name, related_model, title-cased verbose name)``
+    per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
+    The same acceptance rule ``_comparison_operand_group`` validates against.
+    """
+    relations: list[tuple[str, type[models.Model], str]] = []
+    for model_field in model._meta.get_fields():
+        if (
+            isinstance(model_field, (models.ForeignKey, models.OneToOneField))
+            and model_field.concrete
+            and model_field.related_model is not None
+        ):
+            relations.append(
+                (
+                    model_field.name,
+                    model_field.related_model,
+                    str(model_field.verbose_name).title(),
+                )
+            )
+    return relations
 
-    Iterates ``model._meta.get_fields()`` and keeps the columns that
-    ``_maybe_group_for`` classifies into a group; relations, reverse relations,
-    M2M, the pk/AutoField, generated-without-output, and JSONField all classify to
-    None and so fall out. The label is the field's ``verbose_name`` title-cased to
-    match how Django presents it.
+
+def _own_comparable_columns(
+    model: type[models.Model],
+    *,
+    prefix: str = "",
+    source: str = "",
+) -> list[ComparableColumn]:
+    """The comparable columns of ``model``, optionally prefixed and sourced.
+
+    ``prefix`` is prepended to each ``value`` (e.g. ``"game__"`` for FK-hop
+    entries).  When ``source`` is non-empty it is prepended to each ``label``
+    as ``f"{source}: {label}"`` to qualify related-model columns.  Sorted
+    alphabetically by label (case-insensitive) within the block.
     """
     columns: list[ComparableColumn] = []
     for model_field in model._meta.get_fields():
@@ -1954,19 +1984,45 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
         if group is None:
             continue
         verbose_name = getattr(model_field, "verbose_name", column)
+        raw_label: str = verbose_name.title()
+        label = f"{source}: {raw_label}" if source else raw_label
         columns.append(
             ComparableColumn(
-                value=column,
-                label=verbose_name.title(),
+                value=f"{prefix}{column}",
+                label=label,
                 group=group,
                 # Send the allowed operators as data so the TS widget renders them
                 # directly instead of re-deriving the group->operators mapping (#152).
                 operators=[
                     modifier.value for modifier in _allowed_comparison_modifiers(group)
                 ],
+                source=source,
             )
         )
     columns.sort(key=lambda entry: entry["label"].lower())
+    return columns
+
+
+def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
+    """Every comparable column of ``model`` and its forward to-one FK targets,
+    labelled and grouped, with a ``source`` discriminator for optgroup rendering.
+
+    Own columns (``source=""``) come first, sorted alphabetically by label.
+    Then one block per forward FK in ``_meta`` declaration order — each block
+    sorted alphabetically by its column label, with ``source`` set to the FK's
+    title-cased verbose name.  No global re-sort across blocks.
+
+    Relations, reverse relations, M2M, the pk/AutoField, GeneratedFields without
+    an output type, and JSONField all classify to None in ``_maybe_group_for``
+    and are excluded.  The same one-hop grammar that ``_comparison_operand_group``
+    enforces is what ``_comparison_relations`` enumerates — they stay in sync by
+    sharing the same FK acceptance predicate.
+    """
+    columns = _own_comparable_columns(model)
+    for fk_name, related_model, source in _comparison_relations(model):
+        columns.extend(
+            _own_comparable_columns(related_model, prefix=f"{fk_name}__", source=source)
+        )
     return columns
 
 
