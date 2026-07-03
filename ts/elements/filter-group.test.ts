@@ -818,6 +818,36 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
     expect(payload).not.toHaveProperty("granularity");
   });
+
+  it("operator change re-filters the right-column list via wireComparisonRowListeners (#169)", () => {
+    // Integration check: buildComparisonCell must call wireComparisonRowListeners so
+    // that a change event on the operator select re-runs refreshRowRightList. If the
+    // wiring were dropped the right list would stay stale after an operator change.
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+
+    // Choose a datetime left column — raw comparison only allows other datetime columns.
+    setSelect(host, [0], "data-fc-left", "created_at");
+    const rightSelect = row(host, [0]).querySelector<HTMLSelectElement>("[data-value-cell] [data-fc-right]")!;
+
+    // Under the initial raw operator the right list must NOT contain year_released
+    // (a number-group column excluded from the datetime group).
+    const rawOptions = [...rightSelect.options].map((option) => option.value);
+    expect(rawOptions).not.toContain("year_released");
+
+    // Switching to a year-space packed operator opens the right list to number-group
+    // columns. Use setSelect so the change event fires and wireComparisonRowListeners
+    // triggers refreshRowRightList — the assertion below proves the wiring is present.
+    setSelect(host, [0], "data-fc-op", "EQUALS:year");
+    const yearSpaceOptions = [...rightSelect.options].map((option) => option.value);
+    expect(yearSpaceOptions).toContain("year_released");
+
+    // Switching back to a raw operator must re-exclude year_released again.
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    const rawOptionsAgain = [...rightSelect.options].map((option) => option.value);
+    expect(rawOptionsAgain).not.toContain("year_released");
+  });
 });
 
 // ── Initial dispatch on connect (#196) ──
