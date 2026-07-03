@@ -42,6 +42,10 @@ from common.components.custom_elements import _TYPE_MAP, TypedDictClass
 
 type TsName = str  # a TS interface/alias identifier, e.g. "FieldMeta"
 type TsTypeExpr = str  # a rendered TS type expression, e.g. "ChoiceMeta[]"
+# A runtime type-annotation object, e.g. list[ModifierToken]. `object` because
+# annotation objects (TypeAliasType, types.GenericAlias, plain classes) share no
+# useful static supertype; ts_type() rejects unsupported ones loudly.
+type PyTypeAnnotation = object
 
 
 class TsField(NamedTuple):
@@ -53,7 +57,7 @@ class TsConstant(NamedTuple):
     """One Python value to publish as a typed ``export const``."""
 
     name: TsName  # the exported const identifier, e.g. "SPACE_GROUPS"
-    python_type: object  # its Python type annotation, rendered via ts_type()
+    python_type: PyTypeAnnotation  # rendered to the const's TS type via ts_type()
     value: object  # the runtime value, serialized via _jsonable()
 
 
@@ -66,7 +70,19 @@ def _jsonable(value: object) -> object:
         # total (never a TypeError) should a future set mix member types.
         return sorted((_jsonable(item) for item in value), key=repr)
     if isinstance(value, Mapping):
-        return {_jsonable(key): _jsonable(item) for key, item in value.items()}
+        # JSON object keys must be strings: json.dumps would silently coerce a
+        # non-string key (True -> "true"), and two keys flattening to the same
+        # string (e.g. an Enum member and its value) would silently collapse
+        # last-wins. Both are table-authoring bugs — fail at codegen.
+        result: dict[str, object] = {}
+        for key, item in value.items():
+            json_key = _jsonable(key)
+            if not isinstance(json_key, str):
+                raise TypeError(f"ts_codegen: non-string dict key {key!r}")
+            if json_key in result:
+                raise TypeError(f"ts_codegen: dict keys collide on {json_key!r}")
+            result[json_key] = _jsonable(item)
+        return result
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     return value
@@ -79,8 +95,9 @@ def render_filter_metadata_module(
 
     Each root is a ``TypedDict``; the closure of aliases + nested TypedDicts they
     reference is emitted too — including anything only a ``constants`` type
-    annotation references. Aliases come first, then interfaces, then constants,
-    in discovery order (irrelevant to ``tsc``, but stable output).
+    annotation references. Aliases come first, then interfaces (both in
+    discovery order), then constants in caller order — irrelevant to ``tsc``,
+    but stable output.
     """
     aliases: dict[TsName, TsTypeExpr] = {}
     interfaces: dict[TsName, list[TsField]] = {}
@@ -97,7 +114,7 @@ def render_filter_metadata_module(
             for field_name, field_type in get_type_hints(typed_dict).items()
         ]
 
-    def ts_type(python_type: object) -> TsTypeExpr:
+    def ts_type(python_type: PyTypeAnnotation) -> TsTypeExpr:
         if python_type in _TYPE_MAP:
             return _TYPE_MAP[python_type]
         if isinstance(python_type, TypeAliasType):
@@ -130,16 +147,25 @@ def render_filter_metadata_module(
     for root in roots:
         register_interface(root)
 
-    # Render constant type expressions before assembling blocks: a constant's
-    # annotation may pull in aliases nothing in `roots` references.
-    constant_blocks = [
-        "export const {name}: {ts_type} = {value};".format(
-            name=constant.name,
-            ts_type=ts_type(constant.python_type),
-            value=json.dumps(_jsonable(constant.value), indent=2),
-        )
-        for constant in constants
-    ]
+    def render_constant(constant: TsConstant) -> str:
+        # Contextualize failures: json.dumps/_jsonable errors name only the
+        # offending value, useless once several constants are registered.
+        # allow_nan=False: NaN/Infinity are valid TS `number` expressions but
+        # not JSON — reject rather than emit a not-actually-JSON constant.
+        try:
+            return "export const {name}: {ts_type} = {value};".format(
+                name=constant.name,
+                ts_type=ts_type(constant.python_type),
+                value=json.dumps(_jsonable(constant.value), indent=2, allow_nan=False),
+            )
+        except (TypeError, ValueError) as error:
+            raise TypeError(
+                f"ts_codegen: constant {constant.name!r}: {error}"
+            ) from error
+
+    # Render constants before assembling blocks: a constant's type annotation
+    # may pull in aliases nothing in `roots` references.
+    constant_blocks = [render_constant(constant) for constant in constants]
 
     # No reserve-slot placeholder should survive: every reserved alias/interface is
     # overwritten before the loop returns. Assert it so a future early-return leak

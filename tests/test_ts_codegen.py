@@ -1,6 +1,7 @@
 """Unit tests for the structural TypedDict->TS emitter (issue #247 / #284)."""
 
 import json
+from enum import Enum
 from typing import Literal, TypedDict, get_type_hints
 
 import pytest
@@ -190,8 +191,51 @@ def test_enum_members_flatten_to_their_values_in_order() -> None:
     )
 
 
-def test_unsupported_constant_type_raises() -> None:
-    with pytest.raises(TypeError, match="unsupported type"):
+def test_unsupported_constant_type_raises_naming_the_constant() -> None:
+    # The per-constant wrapper must name which constant failed — with several
+    # registered, a bare "unsupported type" points nowhere.
+    with pytest.raises(TypeError, match="constant 'BAD'.*unsupported type"):
         render_filter_metadata_module(
             [], constants=[TsConstant("BAD", complex, 1 + 2j)]
+        )
+
+
+def test_mixed_type_set_serializes_without_raising_and_deterministically() -> None:
+    # sorted(key=repr) must be total: a heterogeneous set may not support `<`
+    # between members, and its order must still be stable across runs. (The
+    # declared TS type is a lie here; only the value path is under test.)
+    constant = TsConstant("MIXED", frozenset[str], frozenset({1, "a", "b"}))
+    first = render_filter_metadata_module([], constants=[constant])
+    second = render_filter_metadata_module([], constants=[constant])
+    assert first == second
+    assert "export const MIXED" in first
+
+
+def test_non_string_dict_key_raises() -> None:
+    with pytest.raises(TypeError, match="non-string dict key"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", dict[int, str], {1: "a"})]
+        )
+
+
+def test_colliding_dict_keys_raise() -> None:
+    # Two distinct dict keys flattening to the same JSON string (a plain-Enum
+    # member and its value are unequal keys, unlike str-mixin enums) must not
+    # silently collapse last-wins.
+    class Shade(Enum):
+        DARK = "x"
+
+    with pytest.raises(TypeError, match="dict keys collide"):
+        render_filter_metadata_module(
+            [],
+            constants=[TsConstant("BAD", dict[str, str], {Shade.DARK: "a", "x": "b"})],
+        )
+
+
+def test_nan_value_raises_instead_of_emitting_non_json() -> None:
+    # NaN/Infinity are valid TS `number` expressions but not JSON; without
+    # allow_nan=False they'd slip through every guard.
+    with pytest.raises(TypeError, match="constant 'BAD'"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", float, float("nan"))]
         )

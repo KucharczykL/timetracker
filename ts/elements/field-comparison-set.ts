@@ -84,8 +84,12 @@ export function unpackOperator(value: string): { modifier: string; granularity: 
   const modifier = value.slice(0, colonIndex);
   const suffix = value.slice(colonIndex + 1);
   // Validate the suffix against the codegen'd space table, not a literal list.
-  const granularity: Granularity =
-    suffix in SPACE_GROUPS ? (suffix as ComparisonSpace) : "raw";
+  // Object.hasOwn, not `in`: `in` walks the prototype chain, so a crafted
+  // suffix like "toString" would classify as a space and poison downstream
+  // SPACE_GROUPS lookups with inherited Object.prototype members.
+  const granularity: Granularity = Object.hasOwn(SPACE_GROUPS, suffix)
+    ? (suffix as ComparisonSpace)
+    : "raw";
   return { modifier, granularity };
 }
 
@@ -153,9 +157,11 @@ function refreshRowRightList(
     return;
   }
 
+  // No fallback on the space lookup: unpackOperator only returns a granularity
+  // it validated as an own key of SPACE_GROUPS, so the lookup is total.
   const { granularity } = unpackOperator(operator.value);
   const allowedGroups: ComparisonGroup[] =
-    granularity === "raw" ? [group] : SPACE_GROUPS[granularity] ?? [group];
+    granularity === "raw" ? [group] : SPACE_GROUPS[granularity];
 
   // Partition columns by source: every source (own model or FK) renders as an optgroup.
   const sourceOptions = new Map<string, [string, string][]>();

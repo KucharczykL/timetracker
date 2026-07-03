@@ -825,8 +825,10 @@ class FieldComparisonCriterion(_Criterion):
         # Validate granularity here (the base loop assigns it verbatim, like any
         # field) so an unknown value is rejected at parse time rather than
         # silently degrading to a raw comparison — mirrors the modifier coercion.
+        # Derived from SPACE_GROUPS so a new space is accepted the moment it is
+        # added to the table, not when someone remembers this check.
         result = super().from_json(data)
-        if result is not None and result.granularity not in ("raw", "date", "year"):
+        if result is not None and result.granularity not in ("raw", *SPACE_GROUPS):
             raise FilterError(f"unknown granularity {result.granularity!r}")
         return result
 

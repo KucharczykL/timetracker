@@ -41,9 +41,10 @@ export type {
 export type CriterionPayload = Record<string, unknown>;
 
 // The concrete shape one field-comparison row produces (issue #246): two column
-// names + a modifier, plus an optional comparison space (date or year granularity;
-// omitted → raw, so the filter JSON stays compact). Lives here — not the DOM widget
-// module — so the widget, the serializer, and the completeness check share one definition.
+// names + a modifier, plus an optional comparison space (the codegen'd
+// `ComparisonSpace`; omitted → raw, so the filter JSON stays compact). Lives here —
+// not the DOM widget module — so the widget, the serializer, and the completeness
+// check share one definition.
 export interface ComparisonRow {
   left: string;
   right: string;

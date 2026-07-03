@@ -46,7 +46,10 @@ ts: gen-element-types
 ts-check: gen-element-types
 	pnpm exec tsc --noEmit -p tsconfig.check.json
 
-test-ts:
+# gen-element-types prereq: field-comparison-set.ts value-imports the generated
+# filter-metadata module, so vitest needs it present AND current — a stale file
+# would silently validate against outdated vocabulary.
+test-ts: gen-element-types
 	pnpm exec vitest run
 
 dev: gen-element-types
