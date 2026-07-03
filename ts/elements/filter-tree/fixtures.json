@@ -1,12 +1,14 @@
 {
   "registry": {
     "game": {
-      "fields": ["name", "status", "year_released", "search"],
-      "relations": { "session_filter": "session" }
+      "fields": ["name", "status", "year_released", "search", "session_count"],
+      "relations": { "session_filter": "session" },
+      "scopes": { "session_count": "session" }
     },
     "session": {
       "fields": ["device", "note"],
-      "relations": { "game_filter": "game" }
+      "relations": { "game_filter": "game" },
+      "scopes": {}
     }
   },
   "cases": [
@@ -109,6 +111,53 @@
           "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
         }
       }
+    },
+    {
+      "description": "scoped aggregate: session_count over deck sessions",
+      "model": "game",
+      "filter": {
+        "session_count": {
+          "value": 5,
+          "modifier": "GREATER_THAN",
+          "scope": { "device": { "value": [1], "modifier": "INCLUDES" } }
+        }
+      }
+    },
+    {
+      "description": "negated scoped aggregate",
+      "model": "game",
+      "filter": {
+        "NOT": [
+          {
+            "session_count": {
+              "value": 0,
+              "modifier": "EQUALS",
+              "scope": { "device": { "value": [1], "modifier": "INCLUDES" } }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "description": "scoped aggregate with inner OR scope",
+      "model": "game",
+      "filter": {
+        "session_count": {
+          "value": 2,
+          "modifier": "GREATER_THAN",
+          "scope": {
+            "OR": [
+              { "device": { "value": [1], "modifier": "INCLUDES" } },
+              { "note": { "value": "docked", "modifier": "INCLUDES" } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "scoped aggregate with empty scope normalizes to unscoped",
+      "model": "game",
+      "filter": { "session_count": { "value": 1, "modifier": "EQUALS", "scope": {} } }
     }
   ]
 }

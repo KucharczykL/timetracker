@@ -416,3 +416,125 @@ def test_nested_relation_prefill_renders_full_tree(
     count_badge = page.locator("filter-count")
     expect(count_badge).not_to_contain_text("Counting…")
     expect(count_badge).to_contain_text("≈ 1 purchase")
+
+
+def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
+    authenticated_page: Page, live_server
+) -> None:
+    """A scoped aggregate in ?filter= (issue #151) hydrates the builder: the
+    aggregate leaf renders with its nested scope group (the device leaf shown as
+    a pill), the count reads the scoped query from the live widgets, and the
+    "− scope" action drops the scope — widening the count — proving the whole
+    add/remove wiring works against real server templates."""
+    from datetime import timedelta
+
+    from games.models import Device, Session
+
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    deck = Device.objects.create(name="Steam Deck", type="Handheld")
+    desktop = Device.objects.create(name="Desktop", type="PC")
+    deck_game = Game.objects.create(name="DeckGame", platform=platform)
+    desktop_game = Game.objects.create(name="DeskGame", platform=platform)
+    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    for index, (game, device) in enumerate(
+        [
+            (deck_game, deck),
+            (deck_game, deck),
+            (desktop_game, desktop),
+            (desktop_game, desktop),
+        ]
+    ):
+        begin = first_start + timedelta(days=index)
+        Session.objects.create(
+            game=game,
+            device=device,
+            timestamp_start=begin,
+            timestamp_end=begin + timedelta(hours=1),
+        )
+
+    # Both games have 2 sessions; only DeckGame has >1 *on the deck*.
+    filter_json = {
+        "session_count": {
+            "value": 1,
+            "modifier": "GREATER_THAN",
+            "scope": {
+                "device": {
+                    "value": [{"id": str(deck.pk), "label": deck.name}],
+                    "modifier": "INCLUDES",
+                }
+            },
+        }
+    }
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={_encode_filter(filter_json)}"
+    )
+
+    group = page.locator("filter-group")
+    expect(group).to_be_attached()
+
+    # The scope group hydrated: addressed through the "scope" path sentinel, with
+    # the device leaf's include pill rendered from the {id, label} value.
+    scope_group = group.locator('[data-kind="group"][data-path*="scope"]')
+    expect(scope_group).to_be_attached()
+    scope_pill = scope_group.locator("[data-search-select-pills] [data-pill]")
+    expect(scope_pill).to_contain_text("Steam Deck")
+
+    # The count reads the scoped query via serializeForQuery(): only DeckGame.
+    count_badge = page.locator("filter-count")
+    expect(count_badge).not_to_contain_text("Counting…")
+    expect(count_badge).to_contain_text("≈ 1 game")
+
+    # "− scope" drops the scope: unscoped, both games have >1 session.
+    page.locator('filter-group button[data-action="remove-scope"]').click()
+    expect(scope_group).not_to_be_attached()
+    expect(count_badge).to_contain_text("≈ 2 games")
+
+
+def test_scoped_aggregate_narrows_game_list(
+    authenticated_page: Page, live_server
+) -> None:
+    """The list round-trip for a scoped aggregate: ?filter= JSON → GameFilter
+    (scope resolved via the aggregates spec) → filtered aggregate queryset."""
+    from datetime import timedelta
+
+    from games.models import Device, Session
+
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    deck = Device.objects.create(name="Steam Deck", type="Handheld")
+    desktop = Device.objects.create(name="Desktop", type="PC")
+    deck_game = Game.objects.create(name="DeckGame", platform=platform)
+    desktop_game = Game.objects.create(name="DeskGame", platform=platform)
+    first_start = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    for index, (game, device) in enumerate(
+        [
+            (deck_game, deck),
+            (deck_game, deck),
+            (desktop_game, desktop),
+            (desktop_game, desktop),
+        ]
+    ):
+        begin = first_start + timedelta(days=index)
+        Session.objects.create(
+            game=game,
+            device=device,
+            timestamp_start=begin,
+            timestamp_end=begin + timedelta(hours=1),
+        )
+
+    filter_json = {
+        "session_count": {
+            "value": 1,
+            "modifier": "GREATER_THAN",
+            "scope": {"device": {"value": [deck.pk], "modifier": "INCLUDES"}},
+        }
+    }
+    page.goto(
+        f"{live_server.url}{reverse('games:list_games')}?filter={_encode_filter(filter_json)}"
+    )
+    expect(page.get_by_text("DeckGame")).to_be_visible()
+    expect(page.get_by_text("DeskGame")).not_to_be_visible()

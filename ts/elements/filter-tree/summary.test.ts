@@ -16,6 +16,7 @@ function field(partial: Partial<FieldMeta> & { name: string }): FieldMeta {
     relations: partial.relations ?? [],
     search_url: partial.search_url ?? "",
     is_m2m: partial.is_m2m ?? false,
+    scope_model: partial.scope_model ?? "",
   };
 }
 
@@ -465,5 +466,76 @@ describe("summary modifier contract artifact", () => {
     );
     writeFileSync(canonicalPath, JSON.stringify(keys, null, 2));
     expect(keys.length).toBeGreaterThan(0);
+  });
+});
+
+describe("summarize — aggregate scope (#151)", () => {
+  const SCOPED: SummaryContext = {
+    modelKey: "game",
+    modelLabel: "Games",
+    models: {
+      game: {
+        fields: new Map([
+          [
+            "session_count",
+            field({
+              name: "session_count",
+              label: "Session Count",
+              kind: "number",
+              scope_model: "session",
+            }),
+          ],
+        ]),
+      },
+      session: {
+        fields: new Map([
+          [
+            "device",
+            field({
+              name: "device",
+              label: "Device",
+              kind: "set",
+              choices: [{ value: "1", label: "Steam Deck" }],
+            }),
+          ],
+        ]),
+      },
+    },
+  };
+
+  function scopedLeaf(scopeChildren: GroupNode["children"]): GroupNode["children"][number] {
+    return {
+      kind: "criterion",
+      id: "c",
+      field: "session_count",
+      criterion: { value: 5, modifier: "GREATER_THAN" },
+      scope: { kind: "group", id: "sg", connective: "AND", negate: false, children: scopeChildren },
+      negate: false,
+    };
+  }
+
+  it("appends the scope as an 'over … matching' suffix", () => {
+    const tree = root(
+      scopedLeaf([
+        { kind: "criterion", id: "sc", field: "device", criterion: { value: ["1"], modifier: "INCLUDES" }, negate: false },
+      ]),
+    );
+    expect(summarize(tree, SCOPED)).toBe(
+      "Games where Session Count is more than 5, over sessions matching (Device is Steam Deck).",
+    );
+  });
+
+  it("an empty scope group contributes no suffix", () => {
+    const tree = root(scopedLeaf([]));
+    expect(summarize(tree, SCOPED)).toBe("Games where Session Count is more than 5.");
+  });
+
+  it("a scope whose only row is incomplete keeps the placeholder inside the suffix", () => {
+    const tree = root(
+      scopedLeaf([{ kind: "criterion", id: "sc", field: "", criterion: {}, negate: false }]),
+    );
+    expect(summarize(tree, SCOPED)).toBe(
+      "Games where Session Count is more than 5, over sessions matching (…).",
+    );
   });
 });

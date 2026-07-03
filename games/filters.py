@@ -28,6 +28,7 @@ from django.utils.http import urlencode
 
 from common.criteria import (
     AggregateCriterion,
+    AggregateSpec,
     BoolCriterion,
     ChoiceCriterion,
     DateCriterion,
@@ -41,7 +42,6 @@ from common.criteria import (
     MultiCriterion,
     OperatorFilter,
     StringCriterion,
-    aggregate_to_q,
     bool_isnull_handler,
     bool_nonzero_duration_handler,
     comparable_columns,
@@ -96,8 +96,9 @@ class GameFilter(OperatorFilter):
     updated_at: DateCriterion | None = None  # compared via __date
 
     # Aggregates over the game's relations (count / sum / avg). The reducer +
-    # relation accessor + source + unit are supplied at query time via
-    # aggregate_to_q; the criterion carries only the numeric comparison.
+    # relation accessor + source + unit live in ``GameFilter.aggregates`` (the
+    # AggregateSpec table assigned below all filter classes); the criterion
+    # carries only the numeric comparison and an optional scope sub-filter.
     session_count: AggregateCriterion | None = None
     session_average: AggregateCriterion | None = None  # average in hours
     purchase_count: AggregateCriterion | None = None  # distinct purchases per game
@@ -151,75 +152,6 @@ class GameFilter(OperatorFilter):
 
     def _extra_q(self) -> Q:
         q = Q()
-
-        # ── aggregates over the game's relations ──
-        if self.session_count is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.session_count, model=Game, reducer="count", accessor="sessions"
-            )
-
-        if self.session_average is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.session_average,
-                model=Game,
-                reducer="avg",
-                accessor="sessions",
-                source="duration_total",
-                unit="duration_hours",
-            )
-
-        if self.purchase_count is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.purchase_count, model=Game, reducer="count", accessor="purchases"
-            )
-
-        if self.playevent_count is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.playevent_count, model=Game, reducer="count", accessor="playevents"
-            )
-
-        if self.manual_playtime_hours is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.manual_playtime_hours,
-                model=Game,
-                reducer="sum",
-                accessor="sessions",
-                source="duration_manual",
-                unit="duration_hours",
-            )
-
-        if self.calculated_playtime_hours is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.calculated_playtime_hours,
-                model=Game,
-                reducer="sum",
-                accessor="sessions",
-                source="duration_calculated",
-                unit="duration_hours",
-            )
-
-        if self.purchase_price_total is not None:
-            from games.models import Game
-
-            q &= aggregate_to_q(
-                self.purchase_price_total,
-                model=Game,
-                reducer="sum",
-                accessor="purchases",
-                source="converted_price",
-            )
 
         # ── free-text search (OR across multiple fields) ──
         if self.search is not None:
@@ -727,6 +659,42 @@ class PlayEventFilter(OperatorFilter):
         return q
 
 
+# ── Aggregate wiring ───────────────────────────────────────────────────────
+
+# Assigned after the class definitions (not in GameFilter's body) because the
+# specs reference filter classes defined below GameFilter — a class-body dict
+# would NameError on SessionFilter/PurchaseFilter/PlayEventFilter. The generic
+# ``OperatorFilter.to_q`` walks this table; ``from_json`` reads each spec's
+# ``scope_filter`` to deserialize an aggregate's scope. The drift guard in
+# tests/test_filters.py asserts the table covers exactly the
+# AggregateCriterion-annotated fields.
+GameFilter.aggregates = {
+    "session_count": AggregateSpec("count", "sessions", SessionFilter),
+    "session_average": AggregateSpec(
+        "avg", "sessions", SessionFilter, source="duration_total", unit="duration_hours"
+    ),
+    "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
+    "playevent_count": AggregateSpec("count", "playevents", PlayEventFilter),
+    "manual_playtime_hours": AggregateSpec(
+        "sum",
+        "sessions",
+        SessionFilter,
+        source="duration_manual",
+        unit="duration_hours",
+    ),
+    "calculated_playtime_hours": AggregateSpec(
+        "sum",
+        "sessions",
+        SessionFilter,
+        source="duration_calculated",
+        unit="duration_hours",
+    ),
+    "purchase_price_total": AggregateSpec(
+        "sum", "purchases", PurchaseFilter, source="converted_price"
+    ),
+}
+
+
 # ── Convenience helpers ────────────────────────────────────────────────────
 
 
@@ -773,11 +741,14 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:
-    """The closed set of models reachable from ``root_model`` via relation descents,
-    each mapped to its ``OperatorFilter`` subclass (BFS over ``field_metadata``'s
-    relation entries). Relation fields cycle (game↔session, game↔purchase, …), so the
-    result covers every model the nested builder can descend into from the root — the
-    metadata the client needs to render any child group offline (#193)."""
+    """The closed set of models reachable from ``root_model`` via relation descents
+    or aggregate-scope descents, each mapped to its ``OperatorFilter`` subclass (BFS
+    over ``field_metadata``'s relation entries and ``scope_model``s). Relation fields
+    cycle (game↔session, game↔purchase, …), so the result covers every model the
+    nested builder can descend into from the root — the metadata the client needs to
+    render any child group offline (#193). Aggregate scope targets (#151) are
+    enqueued too so a scope group's field bundle always ships, even for a model
+    reachable only through a scope."""
     from collections import deque
 
     result: dict[ModelKey, type[OperatorFilter]] = {}
@@ -793,6 +764,8 @@ def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter
                 target_key = relation["model"].lower()
                 if target_key not in result:
                     queue.append(target_key)
+            if meta["scope_model"] and meta["scope_model"] not in result:
+                queue.append(meta["scope_model"])
     return result
 
 

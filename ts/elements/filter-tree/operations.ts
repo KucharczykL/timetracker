@@ -30,12 +30,15 @@ import { group } from "./serializer.js";
 import { nextNodeId } from "./node-id.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
 
-// A path step is either a positional index into a group's children, or the
-// `RELATION_CHILD` sentinel meaning "descend into the relation node's child group".
-// The string sentinel survives `JSON.stringify`/`JSON.parse` (paths are stored in the
-// DOM as `data-path` JSON), so no custom (de)serialization is needed.
+// A path step is either a positional index into a group's children, or a string
+// sentinel: `RELATION_CHILD` descends from a relation node into its one child
+// group; `SCOPE_CHILD` descends from a criterion leaf into its aggregate scope
+// group (issue #151). The string sentinels survive `JSON.stringify`/`JSON.parse`
+// (paths are stored in the DOM as `data-path` JSON), so no custom
+// (de)serialization is needed.
 export const RELATION_CHILD = "child";
-export type PathStep = number | typeof RELATION_CHILD;
+export const SCOPE_CHILD = "scope";
+export type PathStep = number | typeof RELATION_CHILD | typeof SCOPE_CHILD;
 export type NodePath = readonly PathStep[];
 
 // Soft UI cap on group nesting (design spec): the root group is depth 0; a new
@@ -157,6 +160,13 @@ export function nodeAt(root: GroupNode, path: NodePath): FilterNode {
       node = node.child;
       continue;
     }
+    if (step === SCOPE_CHILD) {
+      if (node.kind !== "criterion" || !node.scope) {
+        throw new Error(`SCOPE_CHILD step on a node without a scope group`);
+      }
+      node = node.scope;
+      continue;
+    }
     if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
     const child: FilterNode | undefined = node.children[step];
     if (child === undefined) throw new Error(`Path index ${step} out of range`);
@@ -196,6 +206,12 @@ function replaceNode(
     if (node.kind !== "relation") throw new Error(`RELATION_CHILD step on a non-relation node`);
     return { ...node, child: replaceNode(node.child, rest, transform) as GroupNode };
   }
+  if (step === SCOPE_CHILD) {
+    if (node.kind !== "criterion" || !node.scope) {
+      throw new Error(`SCOPE_CHILD step on a node without a scope group`);
+    }
+    return { ...node, scope: replaceNode(node.scope, rest, transform) as GroupNode };
+  }
   if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);
   const child = node.children[step];
   if (child === undefined) throw new Error(`Path index ${step} out of range`);
@@ -217,8 +233,9 @@ function updateChildren(
 
 // Split a *positional* node path into its containing group + index. The last step
 // must be a numeric index: only a group's positional children are removed / moved /
-// duplicated / wrapped. A `RELATION_CHILD`-terminated path addresses a relation's
-// child group, which is owned by its relation (never a list slot), so it is rejected.
+// duplicated / wrapped. A `RELATION_CHILD`- or `SCOPE_CHILD`-terminated path
+// addresses a group owned by its relation / criterion leaf (never a list slot),
+// so it is rejected.
 function splitPath(path: NodePath): { parentPath: NodePath; index: number } {
   if (path.length === 0) throw new Error(`Path addresses the root, which has no parent`);
   const last = path[path.length - 1];
@@ -254,6 +271,8 @@ export function removeAt(root: GroupNode, path: NodePath): GroupNode {
   // children (numeric last step). A relation's child group (RELATION_CHILD-terminated)
   // is a boundary like the root: ANY over an empty child group is the meaningful
   // "has ≥1 related row" presence test, so it may sit empty and the relation stays.
+  // A criterion leaf's scope group (SCOPE_CHILD-terminated) is a boundary too: an
+  // emptied scope simply serializes away as unscoped (issue #151).
   while (
     groupPath.length > 0 &&
     typeof groupPath[groupPath.length - 1] === "number" &&
@@ -278,10 +297,13 @@ export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {
 
 // A duplicated subtree must get fresh ids on every node — a structuredClone copies
 // the source ids, which would collide with the originals in the shell's id→DOM map.
+// Every child-bearing kind descends: group children, a relation's child group, and
+// a criterion leaf's aggregate scope group (issue #151).
 function reassignIds(node: FilterNode): FilterNode {
   node.id = nextNodeId();
   if (node.kind === "group") node.children.forEach(reassignIds);
   else if (node.kind === "relation") reassignIds(node.child);
+  else if (node.kind === "criterion" && node.scope) reassignIds(node.scope);
   return node;
 }
 
@@ -339,6 +361,32 @@ export function setRelationField(root: GroupNode, path: NodePath, field: string)
   });
 }
 
+// ── Aggregate scope (issue #151) ─────────────────────────────────────────────
+
+// Attach an empty scope group to the aggregate criterion leaf at `path`, seeded
+// with one empty criterion row (like `emptyGroup`) so the user lands on a
+// fillable row rather than a bare shell. A no-op when a scope already exists.
+// Only the UI knows whether the leaf's field is scopable (ModelMeta.scopes) —
+// the op just requires a criterion leaf.
+export function addScope(root: GroupNode, path: NodePath): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
+    if (node.scope) return node;
+    return { ...node, scope: group("AND", [emptyCriterion()]) };
+  });
+}
+
+// Detach the scope group (back to reducing over all related rows). The subtree is
+// dropped wholesale, mirroring how `setRelationField` resets a relation's child.
+export function removeScope(root: GroupNode, path: NodePath): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
+    if (!node.scope) return node;
+    const { scope: _dropped, ...rest } = node;
+    return rest;
+  });
+}
+
 // ── Leaf payload edits (issue #192) ──────────────────────────────────────────
 
 // Pick (or change) a criterion leaf's field: replace it with a FRESH leaf for the
@@ -392,8 +440,13 @@ function pruneGroup(node: GroupNode): GroupNode {
 
 function pruneNode(node: FilterNode): FilterNode | null {
   switch (node.kind) {
-    case "criterion":
-      return isCriterionComplete(node) ? node : null;
+    case "criterion": {
+      if (!isCriterionComplete(node)) return null;
+      // A complete aggregate leaf keeps its scope group with the group's own
+      // incomplete leaves pruned; an emptied scope group stays attached (it
+      // serializes away — unscoped — while the UI keeps showing it).
+      return node.scope ? { ...node, scope: pruneGroup(node.scope) } : node;
+    }
     case "comparison":
       return isComparisonComplete(node) ? node : null;
     case "relation":
@@ -440,7 +493,8 @@ export function unwrapGroup(root: GroupNode, path: NodePath): GroupNode {
 
 // The deepest group-nesting depth anywhere in `group`'s subtree, given the group
 // itself sits at `groupDepth`. A child group is +1; a relation's child group is +1
-// (the relation node is not itself a group); leaves contribute nothing. This is the
+// (the relation node is not itself a group); a criterion leaf's aggregate scope
+// group is +1 likewise (issue #151); other leaves contribute nothing. This is the
 // single primitive every cap check is derived from.
 export function deepestGroupDepth(node: GroupNode, groupDepth: number): number {
   let deepest = groupDepth;
@@ -449,6 +503,8 @@ export function deepestGroupDepth(node: GroupNode, groupDepth: number): number {
       deepest = Math.max(deepest, deepestGroupDepth(child, groupDepth + 1));
     } else if (child.kind === "relation") {
       deepest = Math.max(deepest, deepestGroupDepth(child.child, groupDepth + 1));
+    } else if (child.kind === "criterion" && child.scope) {
+      deepest = Math.max(deepest, deepestGroupDepth(child.scope, groupDepth + 1));
     }
   }
   return deepest;
@@ -467,6 +523,14 @@ export function groupDepthAt(root: GroupNode, groupPath: NodePath): number {
       if (node.kind !== "relation") throw new Error(`RELATION_CHILD step on a non-relation node`);
       node = node.child;
       depth += 1; // a relation's child group is one level below the relation's group
+      continue;
+    }
+    if (step === SCOPE_CHILD) {
+      if (node.kind !== "criterion" || !node.scope) {
+        throw new Error(`SCOPE_CHILD step on a node without a scope group`);
+      }
+      node = node.scope;
+      depth += 1; // a leaf's scope group is one level below the leaf's group
       continue;
     }
     if (node.kind !== "group") throw new Error(`Path descends into a non-group node`);

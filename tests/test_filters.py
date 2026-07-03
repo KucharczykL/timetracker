@@ -30,6 +30,7 @@ from common.criteria import (
     Modifier,
     MultiCriterion,
     OperatorFilter,
+    RelationMatch,
     StringCriterion,
     _ScalarCriterion,
     _allowed_comparison_modifiers,
@@ -3770,6 +3771,14 @@ class TestFilterFieldDescriptors:
         assert aggregates.isdisjoint(imperative)
 
     @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
+    def test_aggregates_table_matches_aggregate_fields(self, filter_cls):
+        """The ``aggregates`` spec table must cover exactly the
+        AggregateCriterion-annotated fields — a new aggregate field without a
+        spec would silently drop out of ``to_q``; a spec for a non-aggregate
+        field is dead wiring (issue #151)."""
+        assert set(filter_cls.aggregates) == self._aggregate_fields(filter_cls)
+
+    @pytest.mark.parametrize("filter_cls", ALL_FILTERS)
     def test_descriptor_keys_are_real_criterion_fields(self, filter_cls):
         declared = self._declared_criterion_fields(filter_cls)
         for key in filter_cls.fields:
@@ -4108,6 +4117,35 @@ class TestFieldMetadata:
         assert entry["choices"] == []
         assert entry["relations"] == []
 
+    def test_aggregate_scope_model_names_the_reduced_relation(self):
+        by_name = self._by_name(GameFilter)
+        assert by_name["session_count"]["scope_model"] == "session"
+        assert by_name["purchase_price_total"]["scope_model"] == "purchase"
+        assert by_name["playevent_count"]["scope_model"] == "playevent"
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_scope_model_nonempty_iff_aggregate(self, filter_cls):
+        """The FieldMeta invariant (issue #151): ``scope_model`` is populated
+        exactly on aggregate fields."""
+        from common.criteria import AggregateCriterion
+
+        for entry in field_metadata(filter_cls):
+            criterion_cls = _criterion_class_for(filter_cls, entry["name"])
+            is_aggregate = criterion_cls is not None and issubclass(
+                criterion_cls, AggregateCriterion
+            )
+            assert bool(entry["scope_model"]) == is_aggregate, entry["name"]
+
+    def test_reachable_models_include_scope_targets(self):
+        from games.filters import reachable_models
+
+        for root_model in ("game", "session", "purchase", "device", "platform"):
+            reachable = reachable_models(root_model)
+            for filter_cls in reachable.values():
+                for entry in field_metadata(filter_cls):
+                    if entry["scope_model"]:
+                        assert entry["scope_model"] in reachable
+
     def test_relation_entry_targets_subfilter(self):
         entry = self._by_name(GameFilter)["session_filter"]
         assert entry["kind"] == "relation"
@@ -4439,3 +4477,300 @@ class TestStringFieldNullConvention:
             "whether null=False with default='' would work instead.\n"
             f"Unexpected nullable fields found: {', '.join(unexpected_nullable_fields)}"
         )
+
+
+# ── Scoped aggregates (issue #151) ───────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestScopedAggregatesAgainstDB:
+    """``AggregateCriterion.scope`` narrows the reducer to related rows matching
+    the sub-filter — "games with > 2 sessions *on the Steam Deck*", "sum of
+    *physical* purchase prices > 100".
+
+    The session fixture is deliberately shaped to expose join-duplication bugs:
+    ``deck_heavy`` has sessions on two devices, so a cross-join in the filtered
+    aggregate would inflate its per-device counts past the assertions.
+    """
+
+    def _seed_sessions(self):
+        import datetime
+        from datetime import timedelta
+
+        from games.models import Device, Game, Platform, Session
+
+        platform = Platform.objects.create(name="PC")
+        deck = Device.objects.create(name="Steam Deck", type="Handheld")
+        desktop = Device.objects.create(name="Desktop", type="PC")
+        deck_heavy = Game.objects.create(name="Deck Heavy", platform=platform)
+        desktop_only = Game.objects.create(name="Desktop Only", platform=platform)
+        unplayed = Game.objects.create(name="Unplayed", platform=platform)
+
+        first_start = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+
+        def make_session(game, device, index, manual_hours=0):
+            begin = first_start + timedelta(days=index)
+            return Session.objects.create(
+                game=game,
+                device=device,
+                timestamp_start=begin,
+                timestamp_end=begin + timedelta(hours=1),
+                duration_manual=timedelta(hours=manual_hours),
+            )
+
+        # deck_heavy: 3 sessions on the deck (1h manual each) + 1 on the desktop
+        # (4h manual) — mixed devices, the join-duplication canary.
+        for index in range(3):
+            make_session(deck_heavy, deck, index, manual_hours=1)
+        make_session(deck_heavy, desktop, 3, manual_hours=4)
+        # desktop_only: 3 sessions, none on the deck.
+        for index in range(4, 7):
+            make_session(desktop_only, desktop, index)
+
+        return {
+            "deck": deck,
+            "desktop": desktop,
+            "deck_heavy": deck_heavy,
+            "desktop_only": desktop_only,
+            "unplayed": unplayed,
+        }
+
+    def _games_matching(self, filter_json: dict) -> set:
+        from games.filters import GameFilter
+        from games.models import Game
+
+        game_filter = GameFilter.from_json(filter_json)
+        assert game_filter is not None
+        return set(Game.objects.filter(game_filter.to_q()))
+
+    def test_session_count_scoped_to_device(self):
+        data = self._seed_sessions()
+        scoped = {
+            "session_count": {
+                "value": 2,
+                "modifier": "GREATER_THAN",
+                "scope": {
+                    "device": {"value": [data["deck"].id], "modifier": "INCLUDES"}
+                },
+            }
+        }
+        # Unscoped, both played games have 3+ sessions — the scope is what
+        # excludes desktop_only, so this proves it was applied.
+        unscoped = {"session_count": {"value": 2, "modifier": "GREATER_THAN"}}
+        assert self._games_matching(unscoped) == {
+            data["deck_heavy"],
+            data["desktop_only"],
+        }
+        assert self._games_matching(scoped) == {data["deck_heavy"]}
+
+    def test_scoped_count_ignores_other_device_rows(self):
+        """Join-duplication canary: deck_heavy's desktop session must neither
+        count toward its deck total nor multiply it."""
+        data = self._seed_sessions()
+        exactly_three_on_deck = {
+            "session_count": {
+                "value": 3,
+                "modifier": "EQUALS",
+                "scope": {
+                    "device": {"value": [data["deck"].id], "modifier": "INCLUDES"}
+                },
+            }
+        }
+        assert self._games_matching(exactly_three_on_deck) == {data["deck_heavy"]}
+        exactly_one_on_desktop = {
+            "session_count": {
+                "value": 1,
+                "modifier": "EQUALS",
+                "scope": {
+                    "device": {"value": [data["desktop"].id], "modifier": "INCLUDES"}
+                },
+            }
+        }
+        assert self._games_matching(exactly_one_on_desktop) == {data["deck_heavy"]}
+
+    def test_scoped_count_equals_zero(self):
+        """Zero-row parity (#223): games with no matching related rows still
+        compare as count 0 — both the unplayed game and the game whose sessions
+        all fail the scope."""
+        data = self._seed_sessions()
+        zero_on_deck = {
+            "session_count": {
+                "value": 0,
+                "modifier": "EQUALS",
+                "scope": {
+                    "device": {"value": [data["deck"].id], "modifier": "INCLUDES"}
+                },
+            }
+        }
+        assert self._games_matching(zero_on_deck) == {
+            data["desktop_only"],
+            data["unplayed"],
+        }
+
+    def test_scoped_duration_sum(self):
+        """A duration-unit aggregate (manual playtime hours) scoped to a device:
+        deck_heavy has 3h manual on the deck but 7h in total, so EQUALS 3 only
+        matches with the scope applied."""
+        data = self._seed_sessions()
+        scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
+        scoped = {
+            "manual_playtime_hours": {"value": 3, "modifier": "EQUALS", "scope": scope}
+        }
+        unscoped = {"manual_playtime_hours": {"value": 3, "modifier": "EQUALS"}}
+        assert self._games_matching(scoped) == {data["deck_heavy"]}
+        assert self._games_matching(unscoped) == set()
+
+    def test_purchase_price_total_scoped_to_physical(self):
+        """Issue use case: "sum of physical purchase prices > 100". The mixed
+        game's digital purchase pushes its unscoped total past 100, so it only
+        drops out when the scope filters the summed rows."""
+        import datetime
+
+        from games.models import Game, Platform, Purchase
+
+        platform = Platform.objects.create(name="PC")
+        physical_expensive = Game.objects.create(name="Boxed", platform=platform)
+        mixed = Game.objects.create(name="Mixed", platform=platform)
+
+        def make_purchase(game, price, ownership_type):
+            purchase = Purchase.objects.create(
+                platform=platform,
+                date_purchased=datetime.date(2026, 1, 1),
+                price=price,
+                price_currency="CZK",
+                converted_price=price,
+                converted_currency="CZK",
+                ownership_type=ownership_type,
+            )
+            purchase.games.add(game)
+            return purchase
+
+        make_purchase(physical_expensive, 150, Purchase.PHYSICAL)
+        make_purchase(mixed, 50, Purchase.PHYSICAL)
+        make_purchase(mixed, 200, Purchase.DIGITAL)
+
+        scoped = {
+            "purchase_price_total": {
+                "value": 100,
+                "modifier": "GREATER_THAN",
+                "scope": {
+                    "ownership_type": {
+                        "value": [Purchase.PHYSICAL],
+                        "modifier": "INCLUDES",
+                    }
+                },
+            }
+        }
+        unscoped = {"purchase_price_total": {"value": 100, "modifier": "GREATER_THAN"}}
+        assert self._games_matching(unscoped) == {physical_expensive, mixed}
+        assert self._games_matching(scoped) == {physical_expensive}
+
+
+class TestScopedAggregateJSON:
+    """Serialization contract for the aggregate ``scope`` (issue #151)."""
+
+    def _scoped_filter_json(self) -> dict:
+        return {
+            "session_count": {
+                "value": 5,
+                "modifier": "GREATER_THAN",
+                "scope": {"device": {"value": [1], "modifier": "INCLUDES"}},
+            }
+        }
+
+    def test_scope_deserializes_to_the_accessor_filter_class(self):
+        from games.filters import GameFilter, SessionFilter
+
+        game_filter = GameFilter.from_json(self._scoped_filter_json())
+        assert game_filter is not None
+        assert game_filter.session_count is not None
+        assert isinstance(game_filter.session_count.scope, SessionFilter)
+        assert game_filter.session_count.scope.device is not None
+
+    def test_scoped_aggregate_round_trips(self):
+        from games.filters import GameFilter
+
+        original = GameFilter.from_json(self._scoped_filter_json())
+        assert original is not None
+        reparsed = GameFilter.from_json(original.to_json())
+        assert reparsed == original
+        assert "scope" in original.to_json()["session_count"]
+
+    def test_empty_scope_normalizes_to_unscoped(self):
+        from games.filters import GameFilter
+
+        game_filter = GameFilter.from_json({"session_count": {"value": 5, "scope": {}}})
+        assert game_filter is not None
+        assert game_filter.session_count is not None
+        assert game_filter.session_count.scope is None
+        assert "scope" not in game_filter.to_json()["session_count"]
+
+    def test_criterion_alone_ignores_scope_key(self):
+        """AggregateCriterion.from_json can't resolve a scope class — the raw
+        ``scope`` key must not leak onto the instance (the #139/#144 bug)."""
+        criterion = AggregateCriterion.from_json(
+            {"value": 5, "scope": {"device": {"value": [1]}}}
+        )
+        assert criterion is not None
+        assert criterion.scope is None
+
+    def test_scope_must_be_an_object(self):
+        from games.filters import GameFilter
+
+        with pytest.raises(FilterError, match="must be an object"):
+            GameFilter.from_json({"session_count": {"value": 5, "scope": [1, 2]}})
+
+    def test_scope_rejects_match_quantifier(self):
+        from games.filters import GameFilter
+
+        with pytest.raises(FilterError, match="match quantifier"):
+            GameFilter.from_json(
+                {
+                    "session_count": {
+                        "value": 5,
+                        "scope": {"match": "NONE", "emulated": {"value": True}},
+                    }
+                }
+            )
+
+    def test_nested_relation_inside_scope_keeps_its_match(self):
+        from games.filters import GameFilter
+
+        game_filter = GameFilter.from_json(
+            {
+                "session_count": {
+                    "value": 1,
+                    "scope": {"device_filter": {"match": "NONE"}},
+                }
+            }
+        )
+        assert game_filter is not None
+        scope = game_filter.session_count.scope
+        assert scope is not None
+        assert scope.device_filter is not None
+        assert scope.device_filter.match == RelationMatch.NONE
+
+    def test_scope_depth_bomb_rejected(self):
+        from games.filters import GameFilter
+
+        deep: dict = {"emulated": {"value": True}}
+        for _ in range(MAX_FILTER_DEPTH + 1):
+            deep = {"AND": [deep]}
+        with pytest.raises(FilterError, match="too deep"):
+            GameFilter.from_json({"session_count": {"value": 1, "scope": deep}})
+
+    def test_bad_scope_value_is_a_filter_error(self):
+        """Eager validation: a wrong-typed value inside the scope surfaces as
+        FilterError at the filter_from_json boundary, not a 500."""
+        from games.filters import GameFilter
+
+        blob = json.dumps(
+            {
+                "session_count": {
+                    "value": 1,
+                    "scope": {"device": {"value": ["x"], "modifier": "INCLUDES"}},
+                }
+            }
+        )
+        with pytest.raises(FilterError):
+            filter_from_json(GameFilter, blob)
