@@ -733,13 +733,21 @@ class AggregateCriterion(_ScalarCriterion):
         return result
 
 
-type ComparisonGranularity = Literal["raw", "date", "year"]
+# A non-raw comparison space (#169): a query-time projection under which
+# operands of different DB groups become comparable. "raw" is deliberately not
+# a space — it means "compare columns as-is" and requires both operands to
+# share a group (special-cased in _apply_operators).
+type ComparisonSpace = Literal["date", "year"]
 
-# Comparison spaces (#169): the operand groups each non-raw granularity accepts.
-# "raw" is special-cased in _apply_operators (both operands must share a group).
-# In "date" space datetime operands are projected to calendar dates; in "year"
-# space temporal operands are projected to their year and compared as numbers.
-_SPACE_GROUPS: dict[ComparisonGranularity, frozenset[ComparisonGroup]] = {
+type ComparisonGranularity = ComparisonSpace | Literal["raw"]
+
+# The operand groups each comparison space accepts. In "date" space datetime
+# operands are projected to calendar dates; in "year" space temporal operands
+# are projected to their year and compared as numbers. Exported to TS as a
+# typed const by `manage.py gen_element_types` (ts/generated/filter-metadata.ts,
+# issue #284), so the field-comparison widget consumes this table directly
+# rather than a hand-kept mirror.
+SPACE_GROUPS: dict[ComparisonSpace, frozenset[ComparisonGroup]] = {
     "date": frozenset({"date", "datetime"}),
     "year": frozenset({"date", "datetime", "number"}),
 }
@@ -768,7 +776,7 @@ class FieldComparisonCriterion(_Criterion):
     ``left``.
 
     Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
-    whose accepted operand groups are listed in ``_SPACE_GROUPS``.
+    whose accepted operand groups are listed in ``SPACE_GROUPS``.
     ``"date"`` space truncates datetime operands to calendar day at query time
     (``left__date <op> TruncDate(F(right))``) using the active timezone —
     accepts ``date`` and ``datetime`` operands.
@@ -1385,7 +1393,7 @@ class OperatorFilter:
                     allowed_modifiers = _allowed_comparison_modifiers(left_group)
                     vocabulary_hint = f"{left_group} comparison"
                 else:
-                    accepted_groups = _SPACE_GROUPS[comparison.granularity]
+                    accepted_groups = SPACE_GROUPS[comparison.granularity]
                     for operand, group in (
                         (comparison.left, left_group),
                         (comparison.right, right_group),

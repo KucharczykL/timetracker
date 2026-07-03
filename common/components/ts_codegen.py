@@ -11,11 +11,21 @@ regenerated on every ``make ts`` / ``ts-check``, so a Python schema change re-em
 these interfaces and a stale cast fails ``tsc`` — that build step is the drift guard.
 
 Handles: primitives, PEP695 ``type X = ...`` aliases (``TypeAliasType``), nested
-``TypedDict``s, ``list[T]``, ``X | Y`` unions, and ``Literal[...]`` string unions.
+``TypedDict``s, ``list[T]``, ``dict[K, V]`` (→ ``Record``), ``frozenset[T]``/
+``set[T]`` (→ arrays), ``X | Y`` unions, and ``Literal[...]`` string unions.
+
+Besides types, the module can emit *values*: each ``TsConstant`` becomes a typed
+``export const`` whose value is JSON-serialized deterministically (enum members
+flatten to their ``.value``; sets sort — their iteration order varies with hash
+randomization; dict insertion order is meaningful and kept). This is how shared
+vocabulary tables (``SPACE_GROUPS``, the ordered-modifier list, issue #284) reach
+TS without a hand-kept mirror.
 """
 
 import json
 import types
+from collections.abc import Mapping, Sequence
+from enum import Enum
 from typing import (
     Literal,
     NamedTuple,
@@ -39,12 +49,38 @@ class TsField(NamedTuple):
     ts_type: TsTypeExpr  # its rendered TS type, e.g. "string"
 
 
-def render_filter_metadata_module(roots: list[TypedDictClass]) -> str:
+class TsConstant(NamedTuple):
+    """One Python value to publish as a typed ``export const``."""
+
+    name: TsName  # the exported const identifier, e.g. "SPACE_GROUPS"
+    python_type: object  # its Python type annotation, rendered via ts_type()
+    value: object  # the runtime value, serialized via _jsonable()
+
+
+def _jsonable(value: object) -> object:
+    """A constant's runtime value as deterministic JSON-serializable data."""
+    if isinstance(value, Enum):
+        return _jsonable(value.value)
+    if isinstance(value, (frozenset, set)):
+        # key=repr: lexicographic for the string members these tables hold, and
+        # total (never a TypeError) should a future set mix member types.
+        return sorted((_jsonable(item) for item in value), key=repr)
+    if isinstance(value, Mapping):
+        return {_jsonable(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def render_filter_metadata_module(
+    roots: list[TypedDictClass], constants: Sequence[TsConstant] = ()
+) -> str:
     """The full ``ts/generated/filter-metadata.ts`` content for ``roots``.
 
     Each root is a ``TypedDict``; the closure of aliases + nested TypedDicts they
-    reference is emitted too. Aliases come first, then interfaces, in discovery
-    order (irrelevant to ``tsc``, but stable output).
+    reference is emitted too — including anything only a ``constants`` type
+    annotation references. Aliases come first, then interfaces, then constants,
+    in discovery order (irrelevant to ``tsc``, but stable output).
     """
     aliases: dict[TsName, TsTypeExpr] = {}
     interfaces: dict[TsName, list[TsField]] = {}
@@ -82,10 +118,28 @@ def render_filter_metadata_module(roots: list[TypedDictClass]) -> str:
         if origin is list:
             (item_type,) = get_args(python_type)
             return f"{ts_type(item_type)}[]"
+        if origin is frozenset or origin is set:
+            # Sets serialize as (sorted) JSON arrays, so their TS face is an array.
+            (item_type,) = get_args(python_type)
+            return f"{ts_type(item_type)}[]"
+        if origin is dict:
+            key_type, value_type = get_args(python_type)
+            return f"Record<{ts_type(key_type)}, {ts_type(value_type)}>"
         raise TypeError(f"ts_codegen: unsupported type {python_type!r}")
 
     for root in roots:
         register_interface(root)
+
+    # Render constant type expressions before assembling blocks: a constant's
+    # annotation may pull in aliases nothing in `roots` references.
+    constant_blocks = [
+        "export const {name}: {ts_type} = {value};".format(
+            name=constant.name,
+            ts_type=ts_type(constant.python_type),
+            value=json.dumps(_jsonable(constant.value), indent=2),
+        )
+        for constant in constants
+    ]
 
     # No reserve-slot placeholder should survive: every reserved alias/interface is
     # overwritten before the loop returns. Assert it so a future early-return leak
@@ -101,4 +155,9 @@ def render_filter_metadata_module(roots: list[TypedDictClass]) -> str:
         )
         for name, fields in interfaces.items()
     ]
-    return header + "\n" + "\n\n".join(alias_blocks + interface_blocks) + "\n"
+    return (
+        header
+        + "\n"
+        + "\n\n".join(alias_blocks + interface_blocks + constant_blocks)
+        + "\n"
+    )

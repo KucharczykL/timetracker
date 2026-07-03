@@ -18,12 +18,19 @@ import type { ComparisonRow } from "./filter-tree/types.js";
 // completeness check); re-exported here for the widget's existing consumers.
 export type { ComparisonRow };
 
-// The comparable-column shape is codegen'd from the Python `ComparableColumn`
-// (common/criteria.py) by `manage.py gen_element_types`; imported here so the
-// widget body can use it and re-exported under its historical `Column` name for
-// existing consumers. This tightens `group` from a bare string to the
-// `ComparisonGroup` union.
-import type { ComparableColumn, ComparisonGroup } from "../generated/filter-metadata.js";
+// The comparable-column shape AND the comparison-space vocabulary are codegen'd
+// from Python (common/criteria.py) by `manage.py gen_element_types` (#152/#284):
+// `SPACE_GROUPS` is the Python `SPACE_GROUPS` table, `SPACE_ORDERED_MODIFIERS`
+// is `Modifier.for_ordered_field_comparisons()` — so vocabulary drift fails
+// `tsc` instead of hiding behind a hand-kept mirror. `ComparableColumn` is
+// re-exported under its historical `Column` name for existing consumers.
+import {
+  SPACE_GROUPS,
+  SPACE_ORDERED_MODIFIERS,
+  type ComparableColumn,
+  type ComparisonGroup,
+  type ComparisonSpace,
+} from "../generated/filter-metadata.js";
 
 export type { ComparableColumn };
 export type Column = ComparableColumn;
@@ -47,34 +54,19 @@ const OPERATOR_LABELS: Record<string, string> = {
   EXCLUDES: "doesn't contain",
 };
 
-// The ordered modifiers used inside each non-raw comparison space. These are the
-// operators that make sense when comparing across spaces (e.g. datetime vs number
-// in year granularity). Mirrors Modifier.for_ordered_field_comparisons() in common/criteria.py.
-const SPACE_ORDERED_MODIFIERS = [
-  "EQUALS",
-  "NOT_EQUALS",
-  "GREATER_THAN",
-  "LESS_THAN",
-  "GREATER_THAN_OR_EQUAL",
-  "LESS_THAN_OR_EQUAL",
-];
-
-// Mirrors _SPACE_GROUPS in common/criteria.py — the operand groups each
-// non-raw space accepts. Two entries; if this grows, move it into the
-// gen-element-types codegen next to ComparableColumn.
-const SPACE_GROUPS: Record<"date" | "year", ComparisonGroup[]> = {
-  date: ["date", "datetime"],
-  year: ["date", "datetime", "number"],
-};
-
-const SPACE_HEADERS: Record<"date" | "year", string> = {
+// Presentation labels per comparison space. Keyed by the codegen'd
+// `ComparisonSpace`, so a space added in Python fails tsc here until labeled.
+const SPACE_HEADERS: Record<ComparisonSpace, string> = {
   date: "By date",
   year: "By year",
 };
 
 // The granularity type: "raw" means a plain column-to-column comparison within
-// the same group; "date" and "year" are cross-group comparison spaces.
-export type Granularity = "raw" | "date" | "year";
+// the same group; the codegen'd `ComparisonSpace` values are the cross-group
+// comparison spaces. Mirrors `ComparisonGranularity = ComparisonSpace | "raw"`
+// in common/criteria.py — only the trivial `| "raw"` shape is repeated here;
+// the space vocabulary itself is generated.
+export type Granularity = ComparisonSpace | "raw";
 
 /** Pack a modifier + granularity into the wire value the server also emits.
  *  Mirrors _pack_operator in common/components/filters.py. */
@@ -91,8 +83,9 @@ export function unpackOperator(value: string): { modifier: string; granularity: 
   }
   const modifier = value.slice(0, colonIndex);
   const suffix = value.slice(colonIndex + 1);
+  // Validate the suffix against the codegen'd space table, not a literal list.
   const granularity: Granularity =
-    suffix === "date" || suffix === "year" ? suffix : "raw";
+    suffix in SPACE_GROUPS ? (suffix as ComparisonSpace) : "raw";
   return { modifier, granularity };
 }
 
@@ -228,7 +221,7 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
   ]);
 
   const operatorGroups: OptionGroup[] = [{ header: "Exact", options: rawOptions }];
-  for (const space of ["date", "year"] as const) {
+  for (const space of Object.keys(SPACE_GROUPS) as ComparisonSpace[]) {
     if (!SPACE_GROUPS[space].includes(group)) continue;
     const spaceOptions: [string, string][] = SPACE_ORDERED_MODIFIERS.map((modifier) => [
       packOperator(modifier, space),

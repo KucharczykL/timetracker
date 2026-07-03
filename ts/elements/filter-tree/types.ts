@@ -20,6 +20,7 @@ export type RelationMatch = "ANY" | "NONE" | "ALL";
 // modifier/value.
 import type {
   ChoiceMeta,
+  ComparisonSpace,
   FieldMeta,
   FieldMetaKind,
   ModifierToken,
@@ -28,6 +29,7 @@ import type {
 
 export type {
   ChoiceMeta,
+  ComparisonSpace,
   FieldMeta,
   FieldMeta as FilterFieldMeta,
   FieldMetaKind,
@@ -46,7 +48,7 @@ export interface ComparisonRow {
   left: string;
   right: string;
   modifier: ModifierToken;
-  granularity?: "date" | "year";
+  granularity?: ComparisonSpace;
 }
 
 // What a field-comparison leaf carries: a Partial while the user fills it (a fresh

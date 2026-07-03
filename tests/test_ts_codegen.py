@@ -1,11 +1,19 @@
-"""Unit tests for the structural TypedDict->TS emitter (issue #247)."""
+"""Unit tests for the structural TypedDict->TS emitter (issue #247 / #284)."""
 
-from typing import Literal, TypedDict
+import json
+from typing import Literal, TypedDict, get_type_hints
 
 import pytest
 
-from common.components.ts_codegen import render_filter_metadata_module
-from common.criteria import ComparableColumn, FieldMeta
+import common.criteria
+from common.components.ts_codegen import TsConstant, render_filter_metadata_module
+from common.criteria import (
+    SPACE_GROUPS,
+    ComparableColumn,
+    FieldMeta,
+    Modifier,
+    ModifierToken,
+)
 
 
 # Module-level so get_type_hints can resolve the "Tree" forward reference.
@@ -123,3 +131,67 @@ def test_non_typeddict_root_raises() -> None:
 
     with pytest.raises(TypeError, match="not a TypedDict"):
         render_filter_metadata_module([NotATypedDict])
+
+
+# ── Constants (issue #284) ───────────────────────────────────────────────────
+
+
+def _space_constants() -> list[TsConstant]:
+    """The real constants gen_element_types emits, built the same way."""
+    return [
+        TsConstant(
+            "SPACE_GROUPS",
+            get_type_hints(common.criteria)["SPACE_GROUPS"],
+            SPACE_GROUPS,
+        ),
+        TsConstant(
+            "SPACE_ORDERED_MODIFIERS",
+            list[ModifierToken],
+            Modifier.for_ordered_field_comparisons(),
+        ),
+    ]
+
+
+def test_space_groups_constant_is_a_typed_record() -> None:
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert (
+        "export const SPACE_GROUPS: Record<ComparisonSpace, ComparisonGroup[]> ="
+        in output
+    )
+
+
+def test_constant_annotations_pull_in_their_aliases_without_roots() -> None:
+    # ComparisonSpace/ComparisonGroup are referenced only by the constant's type;
+    # they must still be emitted or the const's annotation is a tsc error.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert 'export type ComparisonSpace = "date" | "year";' in output
+    assert "export type ComparisonGroup =" in output
+
+
+def test_frozenset_values_serialize_as_sorted_arrays() -> None:
+    # frozenset iteration order varies with hash randomization; the emitter must
+    # sort so regeneration is byte-stable across runs.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert '"date",\n    "datetime"\n  ]' in output
+    assert '"date",\n    "datetime",\n    "number"\n  ]' in output
+
+
+def test_enum_members_flatten_to_their_values_in_order() -> None:
+    # List order is meaningful (dropdown order) and must survive; enum members
+    # must serialize as their string values, not "Modifier.EQUALS" reprs.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    expected_values = json.dumps(
+        [modifier.value for modifier in Modifier.for_ordered_field_comparisons()],
+        indent=2,
+    )
+    assert (
+        f"export const SPACE_ORDERED_MODIFIERS: ModifierToken[] = {expected_values};"
+        in output
+    )
+
+
+def test_unsupported_constant_type_raises() -> None:
+    with pytest.raises(TypeError, match="unsupported type"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", complex, 1 + 2j)]
+        )
