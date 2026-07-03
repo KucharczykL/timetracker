@@ -2197,65 +2197,116 @@ class TestFieldComparisonCriterion:
 
     def test_helper_equals(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.EQUALS,
-            left_group="date", right_group="date",
-        ) == Q(date_refunded=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.EQUALS,
+                left_group="date",
+                right_group="date",
+            )
+            == Q(date_refunded=F("date_purchased")) & guards
+        )
 
     def test_helper_not_equals(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.NOT_EQUALS,
-            left_group="date", right_group="date",
-        ) == ~Q(date_refunded=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.NOT_EQUALS,
+                left_group="date",
+                right_group="date",
+            )
+            == ~Q(date_refunded=F("date_purchased")) & guards
+        )
 
     def test_helper_greater_than(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.GREATER_THAN,
-            left_group="date", right_group="date",
-        ) == Q(date_refunded__gt=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.GREATER_THAN,
+                left_group="date",
+                right_group="date",
+            )
+            == Q(date_refunded__gt=F("date_purchased")) & guards
+        )
 
     def test_helper_less_than(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.LESS_THAN,
-            left_group="date", right_group="date",
-        ) == Q(date_refunded__lt=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.LESS_THAN,
+                left_group="date",
+                right_group="date",
+            )
+            == Q(date_refunded__lt=F("date_purchased")) & guards
+        )
 
     def test_helper_includes(self):
         guards = Q(name__isnull=False) & Q(sort_name__isnull=False)
-        assert _field_comparison_to_q(
-            "name", "sort_name", Modifier.INCLUDES,
-            left_group="string", right_group="string",
-        ) == Q(name__icontains=F("sort_name")) & guards
+        assert (
+            _field_comparison_to_q(
+                "name",
+                "sort_name",
+                Modifier.INCLUDES,
+                left_group="string",
+                right_group="string",
+            )
+            == Q(name__icontains=F("sort_name")) & guards
+        )
 
     def test_helper_excludes(self):
         guards = Q(name__isnull=False) & Q(sort_name__isnull=False)
-        assert _field_comparison_to_q(
-            "name", "sort_name", Modifier.EXCLUDES,
-            left_group="string", right_group="string",
-        ) == ~Q(name__icontains=F("sort_name")) & guards
+        assert (
+            _field_comparison_to_q(
+                "name",
+                "sort_name",
+                Modifier.EXCLUDES,
+                left_group="string",
+                right_group="string",
+            )
+            == ~Q(name__icontains=F("sort_name")) & guards
+        )
 
     def test_helper_greater_than_or_equal(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.GREATER_THAN_OR_EQUAL,
-            left_group="date", right_group="date",
-        ) == Q(date_refunded__gte=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.GREATER_THAN_OR_EQUAL,
+                left_group="date",
+                right_group="date",
+            )
+            == Q(date_refunded__gte=F("date_purchased")) & guards
+        )
 
     def test_helper_less_than_or_equal(self):
         guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.LESS_THAN_OR_EQUAL,
-            left_group="date", right_group="date",
-        ) == Q(date_refunded__lte=F("date_purchased")) & guards
+        assert (
+            _field_comparison_to_q(
+                "date_refunded",
+                "date_purchased",
+                Modifier.LESS_THAN_OR_EQUAL,
+                left_group="date",
+                right_group="date",
+            )
+            == Q(date_refunded__lte=F("date_purchased")) & guards
+        )
 
     def test_helper_unsupported_modifier_raises(self):
         with pytest.raises(FilterError, match="Unsupported modifier"):
             _field_comparison_to_q(
-                "date_refunded", "date_purchased", Modifier.BETWEEN,
-                left_group="date", right_group="date",
+                "date_refunded",
+                "date_purchased",
+                Modifier.BETWEEN,
+                left_group="date",
+                right_group="date",
             )
 
     # ── date-granular comparison (granularity="date") ────────────────────────
@@ -2264,31 +2315,49 @@ class TestFieldComparisonCriterion:
         from django.db.models.functions import TruncDate
 
         guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.EQUALS, "date",
-            left_group="datetime", right_group="datetime",
-        ) == Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+        assert (
+            _field_comparison_to_q(
+                "timestamp_start",
+                "timestamp_end",
+                Modifier.EQUALS,
+                "date",
+                left_group="datetime",
+                right_group="datetime",
+            )
+            == Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+        )
 
     def test_helper_date_granular_gte(self):
         from django.db.models.functions import TruncDate
 
         guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert _field_comparison_to_q(
-            "timestamp_start",
-            "timestamp_end",
-            Modifier.GREATER_THAN_OR_EQUAL,
-            "date",
-            left_group="datetime", right_group="datetime",
-        ) == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end"))) & guards
+        assert (
+            _field_comparison_to_q(
+                "timestamp_start",
+                "timestamp_end",
+                Modifier.GREATER_THAN_OR_EQUAL,
+                "date",
+                left_group="datetime",
+                right_group="datetime",
+            )
+            == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end"))) & guards
+        )
 
     def test_helper_date_granular_not_equals(self):
         from django.db.models.functions import TruncDate
 
         guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "date",
-            left_group="datetime", right_group="datetime",
-        ) == ~Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+        assert (
+            _field_comparison_to_q(
+                "timestamp_start",
+                "timestamp_end",
+                Modifier.NOT_EQUALS,
+                "date",
+                left_group="datetime",
+                right_group="datetime",
+            )
+            == ~Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+        )
 
     def test_to_q_raises_runtime_error(self):
         """to_q() requires model context; callers must use _apply_operators."""
@@ -2340,14 +2409,28 @@ class TestFieldComparisonCriterion:
         from django.db.models.functions import TruncDate
 
         guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.GREATER_THAN, "date",
-            left_group="datetime", right_group="datetime",
-        ) == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end"))) & guards
-        assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.LESS_THAN, "date",
-            left_group="datetime", right_group="datetime",
-        ) == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end"))) & guards
+        assert (
+            _field_comparison_to_q(
+                "timestamp_start",
+                "timestamp_end",
+                Modifier.GREATER_THAN,
+                "date",
+                left_group="datetime",
+                right_group="datetime",
+            )
+            == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end"))) & guards
+        )
+        assert (
+            _field_comparison_to_q(
+                "timestamp_start",
+                "timestamp_end",
+                Modifier.LESS_THAN,
+                "date",
+                left_group="datetime",
+                right_group="datetime",
+            )
+            == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end"))) & guards
+        )
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
 
@@ -2621,7 +2704,13 @@ class TestComparableColumns:
         from games.models import Game
 
         for entry in comparable_columns(Game):
-            assert set(entry.keys()) == {"value", "label", "group", "operators", "source"}
+            assert set(entry.keys()) == {
+                "value",
+                "label",
+                "group",
+                "operators",
+                "source",
+            }
 
     def test_operators_match_allowed_comparison_modifiers(self):
         """Each column carries the server-derived operator list (#152) so the TS
@@ -2736,7 +2825,9 @@ class TestComparableColumnsCrossModel:
 
         columns = comparable_columns(Session)
         sources = [column["source"] for column in columns]
-        assert sources == sorted(sources, key=lambda source: (source != "",))  # "" block first
+        assert sources == sorted(
+            sources, key=lambda source: (source != "",)
+        )  # "" block first
         own_labels = [column["label"] for column in columns if column["source"] == ""]
         assert own_labels == sorted(own_labels, key=str.lower)
 
@@ -2852,9 +2943,10 @@ class TestFieldComparisonWiring:
             ]
         )
         guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert stub.to_q() == Q(
-            timestamp_start__date__lte=TruncDate(F("timestamp_end"))
-        ) & guards
+        assert (
+            stub.to_q()
+            == Q(timestamp_start__date__lte=TruncDate(F("timestamp_end"))) & guards
+        )
 
     def test_date_granularity_on_non_temporal_raises(self):
         # Under the new space rules, date space accepts date and datetime
@@ -2967,7 +3059,9 @@ class TestFieldComparisonWiring:
             ]
         )
         guards = Q(price_currency__isnull=False) & Q(converted_currency__isnull=False)
-        assert stub.to_q() == Q(price_currency__icontains=F("converted_currency")) & guards
+        assert (
+            stub.to_q() == Q(price_currency__icontains=F("converted_currency")) & guards
+        )
 
     def test_includes_on_number_group_raises(self):
         stub = _PurchaseStub(
@@ -3212,8 +3306,10 @@ class TestComparisonSpaces:
         filter_object = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start", right="timestamp_end",
-                    modifier=Modifier.EQUALS, granularity="year",
+                    left="timestamp_start",
+                    right="timestamp_end",
+                    modifier=Modifier.EQUALS,
+                    granularity="year",
                 )
             ]
         )
@@ -3224,8 +3320,10 @@ class TestComparisonSpaces:
         filter_object = PlayEventFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="started", right="created_at",
-                    modifier=Modifier.EQUALS, granularity="date",
+                    left="started",
+                    right="created_at",
+                    modifier=Modifier.EQUALS,
+                    granularity="date",
                 )
             ]
         )
@@ -3235,7 +3333,9 @@ class TestComparisonSpaces:
         filter_object = PlayEventFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="started", right="created_at", modifier=Modifier.EQUALS,
+                    left="started",
+                    right="created_at",
+                    modifier=Modifier.EQUALS,
                 )
             ]
         )
@@ -3246,8 +3346,10 @@ class TestComparisonSpaces:
         filter_object = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="note", right="timestamp_start",
-                    modifier=Modifier.EQUALS, granularity="year",
+                    left="note",
+                    right="timestamp_start",
+                    modifier=Modifier.EQUALS,
+                    granularity="year",
                 )
             ]
         )
@@ -3258,8 +3360,10 @@ class TestComparisonSpaces:
         filter_object = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start", right="timestamp_end",
-                    modifier=Modifier.INCLUDES, granularity="year",
+                    left="timestamp_start",
+                    right="timestamp_end",
+                    modifier=Modifier.INCLUDES,
+                    granularity="year",
                 )
             ]
         )
@@ -3268,22 +3372,32 @@ class TestComparisonSpaces:
 
     def test_from_json_accepts_year_granularity(self):
         parsed = FieldComparisonCriterion.from_json(
-            {"left": "timestamp_start", "right": "timestamp_end",
-             "modifier": "EQUALS", "granularity": "year"}
+            {
+                "left": "timestamp_start",
+                "right": "timestamp_end",
+                "modifier": "EQUALS",
+                "granularity": "year",
+            }
         )
         assert parsed is not None and parsed.granularity == "year"
 
     def test_from_json_rejects_unknown_granularity(self):
         with pytest.raises(FilterError, match="unknown granularity"):
             FieldComparisonCriterion.from_json(
-                {"left": "a", "right": "b", "modifier": "EQUALS",
-                 "granularity": "month"}
+                {
+                    "left": "a",
+                    "right": "b",
+                    "modifier": "EQUALS",
+                    "granularity": "month",
+                }
             )
 
     def test_year_granularity_roundtrips_json(self):
         criterion = FieldComparisonCriterion(
-            left="timestamp_start", right="timestamp_end",
-            modifier=Modifier.EQUALS, granularity="year",
+            left="timestamp_start",
+            right="timestamp_end",
+            modifier=Modifier.EQUALS,
+            granularity="year",
         )
         assert criterion.to_json()["granularity"] == "year"
 
@@ -3597,9 +3711,7 @@ class TestFieldComparisonEndToEnd:
         # left NULL → EXCLUDED (strict guard)
         PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
         # right NULL → EXCLUDED (strict guard, symmetric)
-        PlayEvent.objects.create(
-            game=game, started=datetime.date(2024, 5, 1)
-        )
+        PlayEvent.objects.create(game=game, started=datetime.date(2024, 5, 1))
 
         play_filter = PlayEventFilter(
             field_comparisons=[
@@ -3812,7 +3924,9 @@ class TestStrictNullSemantics:
         from django.utils import timezone
 
         return Session.objects.create(
-            timestamp_start=timezone.now(), note="orphan", game=None,
+            timestamp_start=timezone.now(),
+            note="orphan",
+            game=None,
         )
 
     def test_not_equals_excludes_null_operand_rows_lookup_side(
@@ -3823,7 +3937,9 @@ class TestStrictNullSemantics:
         q = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__name", right="note", modifier=Modifier.NOT_EQUALS,
+                    left="game__name",
+                    right="note",
+                    modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
@@ -3837,7 +3953,9 @@ class TestStrictNullSemantics:
         q = SessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="note", right="game__name", modifier=Modifier.NOT_EQUALS,
+                    left="note",
+                    right="game__name",
+                    modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
@@ -3849,12 +3967,24 @@ class TestStrictNullSemantics:
         from django.utils import timezone
 
         Session.objects.create(
-            timestamp_start=timezone.now(), note="differs", game=game,
+            timestamp_start=timezone.now(),
+            note="differs",
+            game=game,
         )
-        left_form = SessionFilter(field_comparisons=[FieldComparisonCriterion(
-            left="game__name", right="note", modifier=Modifier.NOT_EQUALS)]).to_q()
-        right_form = SessionFilter(field_comparisons=[FieldComparisonCriterion(
-            left="note", right="game__name", modifier=Modifier.NOT_EQUALS)]).to_q()
+        left_form = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="game__name", right="note", modifier=Modifier.NOT_EQUALS
+                )
+            ]
+        ).to_q()
+        right_form = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="note", right="game__name", modifier=Modifier.NOT_EQUALS
+                )
+            ]
+        ).to_q()
         assert list(Session.objects.filter(left_form)) == list(
             Session.objects.filter(right_form)
         )
@@ -3866,24 +3996,39 @@ class TestStrictNullSemantics:
         from django.utils import timezone
 
         session = Session.objects.create(
-            timestamp_start=timezone.now(), timestamp_end=None,
+            timestamp_start=timezone.now(),
+            timestamp_end=None,
         )
-        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
-            left="timestamp_end", right="timestamp_start",
-            modifier=Modifier.NOT_EQUALS)]).to_q()
+        q = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_end",
+                    right="timestamp_start",
+                    modifier=Modifier.NOT_EQUALS,
+                )
+            ]
+        ).to_q()
         assert session not in Session.objects.filter(q)
 
     def test_equals_includes_null_guards(self):
         q = _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.EQUALS, "raw",
-            left_group="datetime", right_group="datetime",
+            "timestamp_start",
+            "timestamp_end",
+            Modifier.EQUALS,
+            "raw",
+            left_group="datetime",
+            right_group="datetime",
         )
         assert str(q).count("isnull") == 2
 
     def test_not_equals_includes_null_guards(self):
         q = _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "raw",
-            left_group="datetime", right_group="datetime",
+            "timestamp_start",
+            "timestamp_end",
+            Modifier.NOT_EQUALS,
+            "raw",
+            left_group="datetime",
+            right_group="datetime",
         )
         assert str(q).count("isnull") == 2
 
@@ -3900,14 +4045,23 @@ class TestYearProjection:
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
         hit = Session.objects.create(
-            game=game, timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+            game=game,
+            timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
         )
         miss = Session.objects.create(
-            game=game, timestamp_start=datetime(2021, 6, 1, tzinfo=UTC),
+            game=game,
+            timestamp_start=datetime(2021, 6, 1, tzinfo=UTC),
         )
-        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
-            left="timestamp_start", right="game__year_released",
-            modifier=Modifier.EQUALS, granularity="year")]).to_q()
+        q = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="timestamp_start",
+                    right="game__year_released",
+                    modifier=Modifier.EQUALS,
+                    granularity="year",
+                )
+            ]
+        ).to_q()
         results = Session.objects.filter(q)
         assert hit in results and miss not in results
 
@@ -3922,26 +4076,42 @@ class TestYearProjection:
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
         hit = Session.objects.create(
-            game=game, timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+            game=game,
+            timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
         )
-        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
-            left="game__year_released", right="timestamp_start",
-            modifier=Modifier.EQUALS, granularity="year")]).to_q()
+        q = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="game__year_released",
+                    right="timestamp_start",
+                    modifier=Modifier.EQUALS,
+                    granularity="year",
+                )
+            ]
+        ).to_q()
         assert hit in Session.objects.filter(q)
 
     def test_year_projection_datetime_to_year_lookup(self):
         """'year' granularity: datetime on left produces __year suffix."""
         q = _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.EQUALS, "year",
-            left_group="datetime", right_group="datetime",
+            "timestamp_start",
+            "timestamp_end",
+            Modifier.EQUALS,
+            "year",
+            left_group="datetime",
+            right_group="datetime",
         )
         assert "timestamp_start__year" in str(q)
 
     def test_year_projection_number_left_temporal_right(self):
         """'year' granularity: number left is unchanged; temporal right uses ExtractYear."""
         q = _field_comparison_to_q(
-            "year_released", "timestamp_start", Modifier.EQUALS, "year",
-            left_group="number", right_group="datetime",
+            "year_released",
+            "timestamp_start",
+            Modifier.EQUALS,
+            "year",
+            left_group="number",
+            right_group="datetime",
         )
         # number left: no __year suffix on lookup
         assert "year_released__year" not in str(q)
@@ -3951,8 +4121,12 @@ class TestYearProjection:
     def test_year_projection_datetime_left_number_right(self):
         """'year' granularity: datetime left gets __year; number right stays plain F."""
         q = _field_comparison_to_q(
-            "timestamp_start", "year_released", Modifier.EQUALS, "year",
-            left_group="datetime", right_group="number",
+            "timestamp_start",
+            "year_released",
+            Modifier.EQUALS,
+            "year",
+            left_group="datetime",
+            right_group="number",
         )
         # datetime left: __year lookup suffix
         assert "timestamp_start__year" in str(q)
@@ -3962,8 +4136,12 @@ class TestYearProjection:
     def test_year_projection_date_left_date_right(self):
         """'year' granularity: both date operands get projected (left __year, right ExtractYear)."""
         q = _field_comparison_to_q(
-            "started", "ended", Modifier.EQUALS, "year",
-            left_group="date", right_group="date",
+            "started",
+            "ended",
+            Modifier.EQUALS,
+            "year",
+            left_group="date",
+            right_group="date",
         )
         # date left: __year lookup suffix
         assert "started__year" in str(q)
@@ -3973,8 +4151,12 @@ class TestYearProjection:
     def test_year_projection_date_left_number_right(self):
         """'year' granularity: date left gets __year; number right stays plain F."""
         q = _field_comparison_to_q(
-            "started", "year_released", Modifier.EQUALS, "year",
-            left_group="date", right_group="number",
+            "started",
+            "year_released",
+            Modifier.EQUALS,
+            "year",
+            left_group="date",
+            right_group="number",
         )
         # date left: __year lookup suffix
         assert "started__year" in str(q)
@@ -3984,8 +4166,12 @@ class TestYearProjection:
     def test_year_projection_number_left_number_right(self):
         """'year' granularity: both number operands pass through — no projection applied."""
         q = _field_comparison_to_q(
-            "year_released", "year_released", Modifier.EQUALS, "year",
-            left_group="number", right_group="number",
+            "year_released",
+            "year_released",
+            Modifier.EQUALS,
+            "year",
+            left_group="number",
+            right_group="number",
         )
         # neither side gets projected
         assert "year_released__year" not in str(q)
@@ -3996,8 +4182,12 @@ class TestYearProjection:
     def test_date_space_date_left_datetime_right_projects_right(self):
         """'date' granularity: date left passes through; datetime right gets TruncDate."""
         q = _field_comparison_to_q(
-            "started", "created_at", Modifier.EQUALS, "date",
-            left_group="date", right_group="datetime",
+            "started",
+            "created_at",
+            Modifier.EQUALS,
+            "date",
+            left_group="date",
+            right_group="datetime",
         )
         # date left: no __date suffix (only datetime needs truncation)
         assert "started__date" not in str(q)
@@ -5353,7 +5543,10 @@ class TestComparisonOperandPaths:
     def test_fk_path_resolves_related_group(self):
         from games.models import Session
 
-        assert _comparison_operand_group(Session, "game__year_released", side="left") == "number"
+        assert (
+            _comparison_operand_group(Session, "game__year_released", side="left")
+            == "number"
+        )
 
     def test_own_column_still_resolves(self):
         from games.models import Session

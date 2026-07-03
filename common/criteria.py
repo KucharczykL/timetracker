@@ -791,9 +791,7 @@ class FieldComparisonCriterion(_Criterion):
     modifier: Modifier = Modifier.EQUALS
     granularity: ComparisonGranularity = "raw"
 
-    def to_q(
-        self, field_name: str = ""
-    ) -> Q:
+    def to_q(self, field_name: str = "") -> Q:
         # Static mis-wiring, never user input: comparisons are built by
         # OperatorFilter._apply_operators, which resolves operand groups
         # against the filter's model first.
@@ -1881,7 +1879,9 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     return group
 
 
-type ComparisonOperand = str  # own column "playtime" or one-hop FK path "game__year_released"
+type ComparisonOperand = (
+    str  # own column "playtime" or one-hop FK path "game__year_released"
+)
 
 
 def _comparison_operand_group(
@@ -1910,8 +1910,7 @@ def _comparison_operand_group(
         relation_field = model._meta.get_field(relation)
     except FieldDoesNotExist as exc:
         raise FilterError(
-            f"{side} operand {operand!r}: {model.__name__}"
-            f" has no relation {relation!r}"
+            f"{side} operand {operand!r}: {model.__name__} has no relation {relation!r}"
         ) from exc
     if not isinstance(relation_field, (models.ForeignKey, models.OneToOneField)):
         raise FilterError(

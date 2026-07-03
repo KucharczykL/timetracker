@@ -777,7 +777,9 @@ class FieldComparisonWidgetTest(TestCase):
         from common.components.filters import FieldComparisonSet
         from games.models import Session
 
-        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND"))
+        html = str(
+            FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND")
+        )
         # Own columns stay top-level (source == ""); related sources get optgroups.
         self.assertIn("<optgroup", html)
         self.assertIn('value="game__year_released"', html)
@@ -791,10 +793,16 @@ class FieldComparisonWidgetTest(TestCase):
         from games.models import Session
 
         row = FieldComparisonRow(
-            left="timestamp_start", right="game__year_released",
-            modifier="EQUALS", granularity="year",
+            left="timestamp_start",
+            right="game__year_released",
+            modifier="EQUALS",
+            granularity="year",
         )
-        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[row], mode="AND"))
+        html = str(
+            FieldComparisonSet(
+                columns=comparable_columns(Session), rows=[row], mode="AND"
+            )
+        )
         self.assertIn('data-selected="EQUALS:year"', html)
 
     def test_raw_row_prefills_bare_modifier(self):
@@ -802,8 +810,14 @@ class FieldComparisonWidgetTest(TestCase):
         from common.components.filters import FieldComparisonRow, FieldComparisonSet
         from games.models import Session
 
-        row = FieldComparisonRow(left="a", right="b", modifier="LESS_THAN", granularity="raw")
-        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[row], mode="AND"))
+        row = FieldComparisonRow(
+            left="a", right="b", modifier="LESS_THAN", granularity="raw"
+        )
+        html = str(
+            FieldComparisonSet(
+                columns=comparable_columns(Session), rows=[row], mode="AND"
+            )
+        )
         self.assertIn('data-selected="LESS_THAN"', html)
 
     def test_day_granular_checkbox_gone(self):
@@ -811,7 +825,9 @@ class FieldComparisonWidgetTest(TestCase):
         from common.components.filters import FieldComparisonSet
         from games.models import Session
 
-        html = str(FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND"))
+        html = str(
+            FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND")
+        )
         self.assertNotIn("data-fc-granularity", html)
 
 

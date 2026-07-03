@@ -762,9 +762,7 @@ def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
         right=str(raw.get("right", "")),
         modifier=str(raw.get("modifier") or "EQUALS"),
         granularity=(
-            raw["granularity"]
-            if raw.get("granularity") in ("date", "year")
-            else "raw"
+            raw["granularity"] if raw.get("granularity") in ("date", "year") else "raw"
         ),
     )
 
@@ -848,9 +846,7 @@ def _field_comparison_row(
     right_value = row.right if row else ""
     return Div(
         data_fc_row="",
-        class_=(
-            "grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]"
-        ),
+        class_=("grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]"),
     )[
         Select(data_fc_left="", class_=select_class)[
             *_fc_column_options(columns, left_value)
