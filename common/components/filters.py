@@ -29,8 +29,10 @@ from common.components.primitives import (
     filter_widget_attributes,
 )
 from common.criteria import (
+    SPACE_GROUPS,
     AttrName,
     ComparableColumn,
+    ComparisonGranularity,
     FieldMeta,
     FieldMetaKind,
     OperatorFilter,
@@ -753,16 +755,20 @@ class FieldComparisonRow(NamedTuple):
     left: str  # left column name, e.g. "timestamp_end"
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
-    granularity: str  # "raw", "date", or "year" (comparison space)
+    granularity: ComparisonGranularity
 
 
 def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
+    # Unknown granularities coerce to "raw" (this parses a widget round-trip,
+    # not untrusted filter JSON — that path raises in FieldComparisonCriterion
+    # .from_json). Validated against SPACE_GROUPS, not a literal list, so a new
+    # space is recognized here the moment it is added to the table.
     return FieldComparisonRow(
         left=str(raw.get("left", "")),
         right=str(raw.get("right", "")),
         modifier=str(raw.get("modifier") or "EQUALS"),
         granularity=(
-            raw["granularity"] if raw.get("granularity") in ("date", "year") else "raw"
+            raw["granularity"] if raw.get("granularity") in SPACE_GROUPS else "raw"
         ),
     )
 

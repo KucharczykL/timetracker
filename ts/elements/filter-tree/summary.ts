@@ -10,6 +10,7 @@
  */
 import type {
   ComparisonLeaf,
+  ComparisonSpace,
   CriterionLeaf,
   FieldMeta,
   FilterNode,
@@ -126,14 +127,24 @@ function renderInner(node: FilterNode, model: SummaryModel | undefined, context:
   }
 }
 
+// Keyed by the codegen'd ComparisonSpace so a space added in Python fails tsc
+// here until it gets a summary phrasing (same guard as SPACE_HEADERS in
+// field-comparison-set.ts).
+const SPACE_SUMMARY_SUFFIXES: Record<ComparisonSpace, string> = {
+  date: " (by date)",
+  year: " (by year)",
+};
+
 function renderComparison(leaf: ComparisonLeaf, model: SummaryModel | undefined): string {
   if (!isComparisonComplete(leaf)) return PLACEHOLDER;
   const { left, right, modifier, granularity } = leaf.comparison;
   const leftLabel = model?.columns?.get(left as string) ?? String(left);
   const rightLabel = model?.columns?.get(right as string) ?? String(right);
   const phrase = MODIFIER_PHRASES[modifier as string] ?? String(modifier);
+  // `?? ""`: an imported tree's granularity crosses a trust boundary (filter
+  // JSON), so an unknown space degrades to no suffix rather than "undefined".
   const suffix =
-    granularity === "date" ? " (by date)" : granularity === "year" ? " (by year)" : "";
+    granularity === undefined ? "" : (SPACE_SUMMARY_SUFFIXES[granularity] ?? "");
   return `${leftLabel} ${phrase} ${rightLabel}${suffix}`;
 }
 

@@ -1,11 +1,20 @@
-"""Unit tests for the structural TypedDict->TS emitter (issue #247)."""
+"""Unit tests for the structural TypedDict->TS emitter (issue #247 / #284)."""
 
-from typing import Literal, TypedDict
+import json
+from enum import Enum
+from typing import Literal, TypedDict, get_type_hints
 
 import pytest
 
-from common.components.ts_codegen import render_filter_metadata_module
-from common.criteria import ComparableColumn, FieldMeta
+import common.criteria
+from common.components.ts_codegen import TsConstant, render_filter_metadata_module
+from common.criteria import (
+    SPACE_GROUPS,
+    ComparableColumn,
+    FieldMeta,
+    Modifier,
+    ModifierToken,
+)
 
 
 # Module-level so get_type_hints can resolve the "Tree" forward reference.
@@ -123,3 +132,110 @@ def test_non_typeddict_root_raises() -> None:
 
     with pytest.raises(TypeError, match="not a TypedDict"):
         render_filter_metadata_module([NotATypedDict])
+
+
+# ── Constants (issue #284) ───────────────────────────────────────────────────
+
+
+def _space_constants() -> list[TsConstant]:
+    """The real constants gen_element_types emits, built the same way."""
+    return [
+        TsConstant(
+            "SPACE_GROUPS",
+            get_type_hints(common.criteria)["SPACE_GROUPS"],
+            SPACE_GROUPS,
+        ),
+        TsConstant(
+            "SPACE_ORDERED_MODIFIERS",
+            list[ModifierToken],
+            Modifier.for_ordered_field_comparisons(),
+        ),
+    ]
+
+
+def test_space_groups_constant_is_a_typed_record() -> None:
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert (
+        "export const SPACE_GROUPS: Record<ComparisonSpace, ComparisonGroup[]> ="
+        in output
+    )
+
+
+def test_constant_annotations_pull_in_their_aliases_without_roots() -> None:
+    # ComparisonSpace/ComparisonGroup are referenced only by the constant's type;
+    # they must still be emitted or the const's annotation is a tsc error.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert 'export type ComparisonSpace = "date" | "year";' in output
+    assert "export type ComparisonGroup =" in output
+
+
+def test_frozenset_values_serialize_as_sorted_arrays() -> None:
+    # frozenset iteration order varies with hash randomization; the emitter must
+    # sort so regeneration is byte-stable across runs.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    assert '"date",\n    "datetime"\n  ]' in output
+    assert '"date",\n    "datetime",\n    "number"\n  ]' in output
+
+
+def test_enum_members_flatten_to_their_values_in_order() -> None:
+    # List order is meaningful (dropdown order) and must survive; enum members
+    # must serialize as their string values, not "Modifier.EQUALS" reprs.
+    output = render_filter_metadata_module([], constants=_space_constants())
+    expected_values = json.dumps(
+        [modifier.value for modifier in Modifier.for_ordered_field_comparisons()],
+        indent=2,
+    )
+    assert (
+        f"export const SPACE_ORDERED_MODIFIERS: ModifierToken[] = {expected_values};"
+        in output
+    )
+
+
+def test_unsupported_constant_type_raises_naming_the_constant() -> None:
+    # The per-constant wrapper must name which constant failed — with several
+    # registered, a bare "unsupported type" points nowhere.
+    with pytest.raises(TypeError, match="constant 'BAD'.*unsupported type"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", complex, 1 + 2j)]
+        )
+
+
+def test_mixed_type_set_serializes_without_raising_and_deterministically() -> None:
+    # sorted(key=repr) must be total: a heterogeneous set may not support `<`
+    # between members, and its order must still be stable across runs. (The
+    # declared TS type is a lie here; only the value path is under test.)
+    constant = TsConstant("MIXED", frozenset[str], frozenset({1, "a", "b"}))
+    first = render_filter_metadata_module([], constants=[constant])
+    second = render_filter_metadata_module([], constants=[constant])
+    assert first == second
+    assert "export const MIXED" in first
+
+
+def test_non_string_dict_key_raises() -> None:
+    with pytest.raises(TypeError, match="non-string dict key"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", dict[int, str], {1: "a"})]
+        )
+
+
+def test_colliding_dict_keys_raise() -> None:
+    # Two distinct dict keys flattening to the same JSON string (a plain-Enum
+    # member and its value are unequal keys, unlike str-mixin enums) must not
+    # silently collapse last-wins.
+    class Shade(Enum):
+        DARK = "x"
+
+    with pytest.raises(TypeError, match="dict keys collide"):
+        render_filter_metadata_module(
+            [],
+            constants=[TsConstant("BAD", dict[str, str], {Shade.DARK: "a", "x": "b"})],
+        )
+
+
+def test_nan_value_raises_instead_of_emitting_non_json() -> None:
+    # NaN/Infinity are valid TS `number` expressions but not JSON; without
+    # allow_nan=False they'd slip through every guard.
+    with pytest.raises(TypeError, match="constant 'BAD'"):
+        render_filter_metadata_module(
+            [], constants=[TsConstant("BAD", float, float("nan"))]
+        )

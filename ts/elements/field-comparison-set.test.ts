@@ -108,6 +108,16 @@ describe("unpackOperator", () => {
     expect(unpackOperator("EQUALS:unknown")).toEqual({ modifier: "EQUALS", granularity: "raw" });
   });
 
+  it("Object.prototype member names are not spaces", () => {
+    // The suffix check must use own-key semantics: `in` would match inherited
+    // keys like "toString" and misclassify them as comparison spaces.
+    expect(unpackOperator("EQUALS:toString")).toEqual({ modifier: "EQUALS", granularity: "raw" });
+    expect(unpackOperator("EQUALS:constructor")).toEqual({
+      modifier: "EQUALS",
+      granularity: "raw",
+    });
+  });
+
   it("empty string yields an empty modifier in raw space", () => {
     // A fresh row's operator <select> has value "" until the user picks one;
     // unpackOperator must pass that through rather than invent a modifier.

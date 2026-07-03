@@ -20,6 +20,7 @@ export type RelationMatch = "ANY" | "NONE" | "ALL";
 // modifier/value.
 import type {
   ChoiceMeta,
+  ComparisonSpace,
   FieldMeta,
   FieldMetaKind,
   ModifierToken,
@@ -28,6 +29,7 @@ import type {
 
 export type {
   ChoiceMeta,
+  ComparisonSpace,
   FieldMeta,
   FieldMeta as FilterFieldMeta,
   FieldMetaKind,
@@ -39,14 +41,15 @@ export type {
 export type CriterionPayload = Record<string, unknown>;
 
 // The concrete shape one field-comparison row produces (issue #246): two column
-// names + a modifier, plus an optional comparison space (date or year granularity;
-// omitted → raw, so the filter JSON stays compact). Lives here — not the DOM widget
-// module — so the widget, the serializer, and the completeness check share one definition.
+// names + a modifier, plus an optional comparison space (the codegen'd
+// `ComparisonSpace`; omitted → raw, so the filter JSON stays compact). Lives here —
+// not the DOM widget module — so the widget, the serializer, and the completeness
+// check share one definition.
 export interface ComparisonRow {
   left: string;
   right: string;
   modifier: ModifierToken;
-  granularity?: "date" | "year";
+  granularity?: ComparisonSpace;
 }
 
 // What a field-comparison leaf carries: a Partial while the user fills it (a fresh
