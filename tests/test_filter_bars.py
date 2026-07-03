@@ -780,12 +780,13 @@ class FieldComparisonWidgetTest(TestCase):
         html = str(
             FieldComparisonSet(columns=comparable_columns(Session), rows=[], mode="AND")
         )
-        # Own columns stay top-level (source == ""); related sources get optgroups.
-        self.assertIn("<optgroup", html)
+        # Own columns render in an <optgroup label="Session"> before related optgroups.
+        self.assertIn('<optgroup label="Session">', html)
+        self.assertIn('<optgroup label="Game">', html)
         self.assertIn('value="game__year_released"', html)
-        own_option_position = html.index('value="note"')
-        first_optgroup_position = html.index("<optgroup")
-        self.assertLess(own_option_position, first_optgroup_position)
+        session_optgroup_position = html.index('<optgroup label="Session">')
+        game_optgroup_position = html.index('<optgroup label="Game">')
+        self.assertLess(session_optgroup_position, game_optgroup_position)
 
     def test_saved_year_row_prefills_packed_operator(self):
         from common.criteria import comparable_columns

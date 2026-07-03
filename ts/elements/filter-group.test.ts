@@ -679,10 +679,10 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
 // so the reused refreshRow/readComparisonRow drive it. Granularity is now carried
 // by the packed operator value (modifier:space), not a separate checkbox.
 const COLUMNS = [
-  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "" },
-  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "" },
-  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "" },
-  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "" },
+  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
 ];
 
 function mountComparison(): FilterGroupElement {

@@ -1937,7 +1937,7 @@ class ComparableColumn(TypedDict):
     label: str  # own: "Timestamp End"; related: "Base Game: Year Released"
     group: ComparisonGroup
     operators: list[ModifierValue]  # valid for this column's group, raw space (#152)
-    source: str  # optgroup label: "" own columns, else the FK's verbose name
+    source: str  # optgroup label: model verbose name for own columns, FK verbose name for related columns
 
 
 def _comparison_relations(
@@ -1974,9 +1974,11 @@ def _own_comparable_columns(
     """The comparable columns of ``model``, optionally prefixed and sourced.
 
     ``prefix`` is prepended to each ``value`` (e.g. ``"game__"`` for FK-hop
-    entries).  When ``source`` is non-empty it is prepended to each ``label``
-    as ``f"{source}: {label}"`` to qualify related-model columns.  Sorted
-    alphabetically by label (case-insensitive) within the block.
+    entries).  ``source`` is stored on each entry as the optgroup label.
+    When ``prefix`` is non-empty (i.e. these are related-model columns) the
+    source is also prepended to each ``label`` as ``f"{source}: {label}"`` to
+    qualify them — own-model columns (no prefix) always carry bare labels.
+    Sorted alphabetically by label (case-insensitive) within the block.
     """
     columns: list[ComparableColumn] = []
     for model_field in model._meta.get_fields():
@@ -1986,7 +1988,7 @@ def _own_comparable_columns(
             continue
         verbose_name = getattr(model_field, "verbose_name", column)
         raw_label: str = verbose_name.title()
-        label = f"{source}: {raw_label}" if source else raw_label
+        label = f"{source}: {raw_label}" if prefix else raw_label
         columns.append(
             ComparableColumn(
                 value=f"{prefix}{column}",
@@ -2008,10 +2010,17 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
     """Every comparable column of ``model`` and its forward to-one FK targets,
     labelled and grouped, with a ``source`` discriminator for optgroup rendering.
 
-    Own columns (``source=""``) come first, sorted alphabetically by label.
-    Then one block per forward FK in ``_meta`` declaration order — each block
-    sorted alphabetically by its column label, with ``source`` set to the FK's
+    Own columns come first, sorted alphabetically by label, with ``source`` set
+    to the model's title-cased verbose name (e.g. "Session").  Then one block
+    per forward FK in ``_meta`` declaration order — each block sorted
+    alphabetically by its column label, with ``source`` set to the FK's
     title-cased verbose name.  No global re-sort across blocks.
+
+    ``source`` is always non-empty: own columns carry the model's verbose name
+    and related columns carry the FK's verbose name — every source renders as
+    an optgroup label.  Own-column labels are NOT prefixed (label
+    qualification is keyed off the ``prefix`` param in
+    ``_own_comparable_columns``, not off ``source``).
 
     Relations, reverse relations, M2M, the pk/AutoField, GeneratedFields without
     an output type, and JSONField all classify to None in ``_maybe_group_for``
@@ -2019,10 +2028,13 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
     enforces is what ``_comparison_relations`` enumerates — they stay in sync by
     sharing the same FK acceptance predicate.
     """
-    columns = _own_comparable_columns(model)
-    for fk_name, related_model, source in _comparison_relations(model):
+    own_source = str(model._meta.verbose_name).title()
+    columns = _own_comparable_columns(model, source=own_source)
+    for fk_name, related_model, fk_source in _comparison_relations(model):
         columns.extend(
-            _own_comparable_columns(related_model, prefix=f"{fk_name}__", source=source)
+            _own_comparable_columns(
+                related_model, prefix=f"{fk_name}__", source=fk_source
+            )
         )
     return columns
 

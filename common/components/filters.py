@@ -806,11 +806,11 @@ def _pack_operator(modifier: str, granularity: str) -> str:
 def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[Node]:
     """Left-column options, one ``<optgroup>`` per source.
 
-    The bar model's own columns (``source == ""``) render as top-level
-    ``<option>`` elements.  Each distinct related source gets an
-    ``<optgroup label=source>`` wrapping its member options.
-    ``comparable_columns`` returns own columns first, so the order
-    (own → related blocks) is stable without a secondary sort here."""
+    Every source (own model or FK) gets an ``<optgroup label=source>``
+    wrapping its member options.  ``comparable_columns`` returns own columns
+    first (with ``source`` set to the model's verbose name), so the order
+    (own → related blocks) is stable without a secondary sort here.
+    Empty groups are omitted."""
     options: list[Node] = [Option(value="")["column…"]]
     grouped: dict[str, list[ComparableColumn]] = {}
     for column in columns:
@@ -822,10 +822,7 @@ def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[N
             if column["value"] == selected:
                 attributes.append(("selected", ""))
             member_options.append(Option(attributes)[column["label"]])
-        if source == "":
-            options.extend(member_options)
-        else:
-            options.append(Optgroup(label=source)[member_options])
+        options.append(Optgroup(label=source)[member_options])
     return options
 
 

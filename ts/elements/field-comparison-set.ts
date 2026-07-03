@@ -164,27 +164,22 @@ function refreshRowRightList(
   const allowedGroups: ComparisonGroup[] =
     granularity === "raw" ? [group] : SPACE_GROUPS[granularity] ?? [group];
 
-  // Partition columns by source: "" = own model (top-level), non-empty = FK source (optgroup).
-  const ownOptions: [string, string][] = [];
+  // Partition columns by source: every source (own model or FK) renders as an optgroup.
   const sourceOptions = new Map<string, [string, string][]>();
 
   for (const column of columns) {
     if (!allowedGroups.includes(column.group)) continue;
     if (column.value === left.value) continue;
     const pair: [string, string] = [column.value, column.label];
-    if (column.source === "") {
-      ownOptions.push(pair);
-    } else {
-      let bucket = sourceOptions.get(column.source);
-      if (!bucket) {
-        bucket = [];
-        sourceOptions.set(column.source, bucket);
-      }
-      bucket.push(pair);
+    let bucket = sourceOptions.get(column.source);
+    if (!bucket) {
+      bucket = [];
+      sourceOptions.set(column.source, bucket);
     }
+    bucket.push(pair);
   }
 
-  const groups: OptionGroup[] = [{ header: null, options: ownOptions }];
+  const groups: OptionGroup[] = [];
   for (const [source, options] of sourceOptions) {
     groups.push({ header: source, options });
   }
@@ -232,7 +227,7 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
     OPERATOR_LABELS[modifier] ?? modifier,
   ]);
 
-  const operatorGroups: OptionGroup[] = [{ header: null, options: rawOptions }];
+  const operatorGroups: OptionGroup[] = [{ header: "Exact", options: rawOptions }];
   for (const space of ["date", "year"] as const) {
     if (!SPACE_GROUPS[space].includes(group)) continue;
     const spaceOptions: [string, string][] = SPACE_ORDERED_MODIFIERS.map((modifier) => [

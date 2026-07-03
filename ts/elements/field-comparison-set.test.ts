@@ -26,21 +26,21 @@ const COLUMNS: Column[] = [
     label: "Timestamp Start",
     group: "datetime",
     operators: ORDERED_MODIFIERS,
-    source: "",
+    source: "Session",
   },
   {
     value: "timestamp_end",
     label: "Timestamp End",
     group: "datetime",
     operators: ORDERED_MODIFIERS,
-    source: "",
+    source: "Session",
   },
   {
     value: "note",
     label: "Note",
     group: "string",
     operators: STRING_MODIFIERS,
-    source: "",
+    source: "Session",
   },
   {
     value: "game__year_released",
@@ -122,22 +122,26 @@ function optionValues(container: HTMLElement, selector: string): string[] {
 }
 
 describe("refreshRow with a datetime left operand", () => {
-  it("offers raw, date and year operator groups", () => {
+  it("offers Exact, date and year operator groups", () => {
     const row = buildRow("timestamp_start", "", "");
     refreshRow(row, COLUMNS);
-    expect(optgroupLabels(row, "[data-fc-op]")).toEqual(["By date", "By year"]); // raw options are top-level
+    expect(optgroupLabels(row, "[data-fc-op]")).toEqual(["Exact", "By date", "By year"]);
   });
 
-  it("raw operators are top-level (not in optgroup)", () => {
+  it("raw operators sit inside the Exact optgroup", () => {
     const row = buildRow("timestamp_start", "", "");
     refreshRow(row, COLUMNS);
     const operatorSelect = row.querySelector<HTMLSelectElement>("[data-fc-op]")!;
-    // Top-level options (not inside an optgroup) carry the raw modifiers
+    const exactGroup = [...operatorSelect.querySelectorAll("optgroup")].find(
+      (group) => group.label === "Exact",
+    )!;
+    // blank placeholder + N raw modifier options inside the Exact group
+    expect(exactGroup.querySelectorAll("option").length).toBeGreaterThan(0);
+    // No top-level OPTION elements (all raw options are in optgroups)
     const topLevel = [...operatorSelect.children].filter(
       (child) => child.tagName === "OPTION",
     );
-    // blank placeholder + N raw modifier options
-    expect(topLevel.length).toBeGreaterThan(1);
+    expect(topLevel.length).toBe(1); // only the blank placeholder
   });
 
   it("year-space operator admits number columns on the right", () => {
@@ -181,15 +185,19 @@ describe("refreshRow with a datetime left operand", () => {
     expect(optgroupLabels(row, "[data-fc-right]")).toContain("Game");
   });
 
-  it("own columns (source='') render top-level, not in optgroup", () => {
+  it("own columns (non-empty source) render inside their own optgroup", () => {
     const row = buildRow("timestamp_start", "EQUALS", "");
     refreshRow(row, COLUMNS);
+    // timestamp_end is in the datetime group (same group as timestamp_start) under "Session"
+    expect(optgroupLabels(row, "[data-fc-right]")).toContain("Session");
     const rightSelect = row.querySelector<HTMLSelectElement>("[data-fc-right]")!;
-    const topLevelValues = [...rightSelect.children]
-      .filter((child) => child.tagName === "OPTION")
-      .map((child) => (child as HTMLOptionElement).value);
-    // timestamp_end is in the datetime group, same-group as timestamp_start
-    expect(topLevelValues).toContain("timestamp_end");
+    const sessionGroup = [...rightSelect.querySelectorAll("optgroup")].find(
+      (group) => group.label === "Session",
+    )!;
+    const sessionValues = [...sessionGroup.querySelectorAll("option")].map(
+      (option) => option.value,
+    );
+    expect(sessionValues).toContain("timestamp_end");
   });
 
   it("operator change re-filters the right list preserving a still-valid selection", () => {
@@ -227,12 +235,12 @@ describe("refreshRow with a datetime left operand", () => {
 });
 
 describe("refreshRow with a number left operand", () => {
-  it("offers a By year optgroup (number is in the year space)", () => {
+  it("offers Exact and By year operator groups (number is in the year space)", () => {
     // number group is in SPACE_GROUPS.year (["date", "datetime", "number"]),
-    // so a number left column gets a "By year" optgroup for cross-space comparisons.
+    // so a number left column gets an "Exact" group plus a "By year" optgroup.
     const row = buildRow("game__year_released", "", "");
     refreshRow(row, COLUMNS);
-    expect(optgroupLabels(row, "[data-fc-op]")).toEqual(["By year"]);
+    expect(optgroupLabels(row, "[data-fc-op]")).toEqual(["Exact", "By year"]);
   });
 
   it("right list in raw mode only has other number columns", () => {
