@@ -654,3 +654,13 @@ def test_add_purchase_game_selection_autofills_platform(
     expect(
         platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
     ).to_have_value(str(platform.id))
+
+    # Removing the game fires search-select:change with last=null; the handler
+    # must leave the committed platform untouched (and not throw, which would
+    # also kill the price-mode toggle living in the same listener).
+    games_widget.locator("[data-pill] [data-pill-remove]").click()
+    expect(games_widget.locator("[data-pill]")).to_have_count(0)
+    expect(page.locator("#id_platform")).to_have_value("Steam")
+    expect(
+        platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
+    ).to_have_value(str(platform.id))

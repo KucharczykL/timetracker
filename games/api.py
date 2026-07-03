@@ -13,6 +13,7 @@ from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
 from games.filters import filter_for_model, parse_session_filter
+from games.forms import game_option_data
 from games.models import Device, Game, Platform, PlayEvent, Session
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -89,10 +90,7 @@ def search_games(request, q: str = "", limit: int = 10):
         {
             "value": g.id,
             "label": g.search_label,
-            "data": {
-                "platform": g.platform_id or "",
-                "platform_name": g.platform.name if g.platform else "",
-            },
+            "data": game_option_data(g),
         }
         for g in qs[:limit]
     ]

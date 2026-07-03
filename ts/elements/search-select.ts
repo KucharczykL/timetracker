@@ -586,9 +586,10 @@ const initWidget = (containerElement: Element) => {
     if (emit) emitChange(option);
   };
 
-  // Public programmatic setter (issue #192): restore/seed a selection from code
-  // without a round-trip through the option list or a change event. Used by the
-  // nested filter builder to show a leaf's already-chosen field after a re-render.
+  // Public programmatic setter: commit a selection from code without a
+  // round-trip through the option list and without firing search-select:change,
+  // so a consumer's on-change logic cannot loop (origin: #192; also used by the
+  // add-purchase platform auto-fill, #259).
   container._searchSelectSetSelected = (value: string, label?: string) => {
     selectOption({ value, label: label ?? value, data: {} }, false);
   };
@@ -840,8 +841,9 @@ export class SearchSelectElement extends HTMLElement {
     this.onDocumentClick = initWidget(this) as ((event: MouseEvent) => void) | null;
   }
 
-  /** Programmatically set a single-select value without firing a change event
-   *  (issue #192). No-op until the widget has initialised. */
+  /** Programmatically commit a selection without firing a change event.
+   *  Intended for single-selects (on a multi-select it appends a pill).
+   *  No-op until the widget has initialised. */
   setSelected(value: string, label?: string): void {
     (this as SearchSelectContainer)._searchSelectSetSelected?.(value, label);
   }

@@ -39,11 +39,24 @@ document.addEventListener("search-select:change", (event) => {
     const platformSelect = document.querySelector<SearchSelectElement>(
       'search-select[name="platform"]'
     );
-    if (platformSelect)
+    if (!platformSelect) {
+      // The purchase forms always render a platform SearchSelect; a miss means
+      // the form structure regressed. Warn instead of silently skipping.
+      console.warn("[add_purchase] platform search-select not found; autofill skipped");
+    } else {
+      if (!last.data.platform_name) {
+        // Only reachable under version skew (stale JS vs old API): the hidden
+        // value still submits correctly, but the visible label degrades to the id.
+        console.warn(
+          "[add_purchase] game option missing platform_name; showing id as label",
+          last
+        );
+      }
       platformSelect.setSelected(
         String(platformId),
         String(last.data.platform_name || platformId)
       );
+    }
   }
 
   // The combined/per-game choice is only meaningful with 2+ games. Reveal the

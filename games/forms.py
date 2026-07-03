@@ -117,16 +117,23 @@ class SingleGameChoiceField(forms.ModelChoiceField):
         return obj.search_label
 
 
+def game_option_data(game: Game) -> dict[str, str]:
+    """The data-* payload of a game option, shared by the games search API and
+    this module's resolver — one producer, so the two sites cannot drift.
+    Callers must select_related("platform")."""
+    return {
+        "platform": str(game.platform_id) if game.platform_id else "",
+        "platform_name": game.platform.name if game.platform else "",
+    }
+
+
 def _game_options(values) -> list[SearchSelectOption]:
     """Resolve game ids (or instances) to SearchSelectOptions via one pk__in query."""
     return [
         {
             "value": g.id,
             "label": g.search_label,
-            "data": {
-                "platform": g.platform_id or "",
-                "platform_name": g.platform.name if g.platform else "",
-            },
+            "data": game_option_data(g),
         }
         for g in Game.objects.filter(pk__in=values).select_related("platform")
     ]
