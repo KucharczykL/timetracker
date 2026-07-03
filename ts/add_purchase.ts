@@ -1,5 +1,8 @@
 import { disableElementsWhenTrue, onSwap } from "./utils.js";
-import type { SearchSelectChangeDetail } from "./elements/search-select.js";
+import type {
+  SearchSelectChangeDetail,
+  SearchSelectElement,
+} from "./elements/search-select.js";
 
 // Switch between a single bundle price and one price per game. The per-game
 // inputs are the selection-fields element; this only sets the policy: the
@@ -26,12 +29,21 @@ document.addEventListener("search-select:change", (event) => {
   const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
   if (detail.name !== "games") return;
 
-  // Auto-fill platform from the clicked option's data-platform.
+  // Auto-fill platform from the clicked option's data. The platform field is a
+  // SearchSelect (#id_platform is its inner search box), so the selection must
+  // go through the widget's setSelected — writing the raw input value would
+  // display the ID and submit no hidden value (issue #259).
   const last = detail.last;
   const platformId = last && last.data ? last.data.platform : "";
-  if (platformId) {
-    const platformElement = document.querySelector<HTMLInputElement>("#id_platform");
-    if (platformElement) platformElement.value = platformId;
+  if (last && platformId) {
+    const platformSelect = document.querySelector<SearchSelectElement>(
+      'search-select[name="platform"]'
+    );
+    if (platformSelect)
+      platformSelect.setSelected(
+        String(platformId),
+        String(last.data.platform_name || platformId)
+      );
   }
 
   // The combined/per-game choice is only meaningful with 2+ games. Reveal the

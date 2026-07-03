@@ -15,6 +15,8 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from games.models import Game, Platform
+
 
 def _login(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
@@ -626,3 +628,29 @@ def test_preset_name_collision_warns_and_relabels_save_button(
     name_input.fill("Brand new")
     expect(warning).to_be_hidden()
     expect(confirm).to_have_text("Save")
+
+
+def test_add_purchase_game_selection_autofills_platform(
+    authenticated_page: Page, live_server
+):
+    """Selecting a game in the Games SearchSelect auto-fills the Platform
+    SearchSelect with the game's platform: the visible box shows the platform
+    *label* and the committed hidden input carries the id. Guards issue #259,
+    where the raw platform id was written into the visible search box (and no
+    hidden value was committed at all)."""
+    platform = Platform.objects.create(name="Steam")
+    Game.objects.create(name="Crosscode", sort_name="Crosscode", platform=platform)
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+
+    games_widget = page.locator('search-select[name="games"]')
+    games_widget.locator("[data-search-select-search]").click()
+    games_widget.locator("[data-search-select-search]").type("Cross")
+    games_widget.locator("[data-search-select-option][data-value]").first.click()
+
+    expect(page.locator("#id_platform")).to_have_value("Steam")
+    platform_widget = page.locator('search-select[name="platform"]')
+    expect(
+        platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
+    ).to_have_value(str(platform.id))

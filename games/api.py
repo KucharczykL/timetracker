@@ -89,7 +89,10 @@ def search_games(request, q: str = "", limit: int = 10):
         {
             "value": g.id,
             "label": g.search_label,
-            "data": {"platform": g.platform_id or ""},
+            "data": {
+                "platform": g.platform_id or "",
+                "platform_name": g.platform.name if g.platform else "",
+            },
         }
         for g in qs[:limit]
     ]

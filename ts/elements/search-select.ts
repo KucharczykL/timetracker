@@ -822,7 +822,7 @@ export function readSearchSelect(form: HTMLElement): void {
   });
 }
 
-class SearchSelectElement extends HTMLElement {
+export class SearchSelectElement extends HTMLElement {
   private onDocumentClick: ((event: MouseEvent) => void) | null = null;
   private initialized = false;
 

@@ -123,7 +123,10 @@ def _game_options(values) -> list[SearchSelectOption]:
         {
             "value": g.id,
             "label": g.search_label,
-            "data": {"platform": g.platform_id or ""},
+            "data": {
+                "platform": g.platform_id or "",
+                "platform_name": g.platform.name if g.platform else "",
+            },
         }
         for g in Game.objects.filter(pk__in=values).select_related("platform")
     ]
