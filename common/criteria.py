@@ -28,7 +28,7 @@ from typing import (
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import F, Q
-from django.db.models.functions import TruncDate
+from django.db.models.functions import ExtractYear, TruncDate
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -751,36 +751,30 @@ class FieldComparisonCriterion(_Criterion):
 
     ``left`` and ``right`` are model column names (resolved + type-checked against
     the filter's model by the base OperatorFilter before to_q runs). Operands are
-    self-contained, so to_q ignores the inherited ``field_name`` argument.
+    self-contained; ``to_q`` is not callable directly — use
+    ``OperatorFilter._apply_operators``, which resolves operand groups and then
+    calls ``_field_comparison_to_q`` with the required ``left_group``/``right_group``
+    keyword arguments.
 
-    Null semantics: for NOT_EQUALS, Django compiles ``~Q(left=F(right))`` to
-    ``NOT (left = right AND <IS NOT NULL guard per nullable operand>)``, appending
-    ``left IS NOT NULL`` and/or ``right IS NOT NULL`` *only* for operands declared
-    ``null=True`` (it omits the guard for a non-nullable column as an optimization).
-    So when both operands are nullable the result is symmetric —
-    ``left != right OR left IS NULL OR right IS NULL`` — and a NULL on *either* side
-    *includes* the row. When an operand is declared non-nullable its guard is
-    omitted, so only a NULL on the nullable side includes the row (the non-nullable
-    column is NULL only under schema drift / raw inserts). Ordered comparisons
-    (``<``, ``>``) and EQUALS instead *exclude* NULL rows, because the SQL
-    expression is NULL (unknown) when either operand is NULL.
+    NULL semantics are strict two-valued (#169): every Q carries explicit
+    ``__isnull=False`` guards on both operand paths, so a row matches only when
+    both operands exist and the predicate holds — for every modifier, on either
+    side. This is deliberately independent of Django's declared-nullability guard
+    injection (which is asymmetric for join-introduced NULLs) and supersedes the
+    previous NULL-counts-as-not-equal NOT_EQUALS behavior.
 
-    String containment (string operands only, case-insensitive ``__icontains``):
-    INCLUDES (``left__icontains=F(right)``) excludes NULL rows like EQUALS/ordered
-    — the ``LIKE`` is NULL/unknown when either operand is NULL. EXCLUDES
-    (``~Q(left__icontains=F(right))``) mirrors NOT_EQUALS: Django appends an
-    ``IS NOT NULL`` guard per *nullable* operand, so a NULL on a nullable side
-    *includes* the row (symmetric when both are nullable). Empty-string note: an
-    empty ``right`` (``""``, not NULL) is a substring of every non-NULL ``left``,
-    so INCLUDES then matches all rows with a non-NULL ``left``.
+    Empty-string note: an empty ``right`` (``""``, not NULL) is a substring of
+    every non-NULL ``left``, so INCLUDES then matches all rows with a non-NULL
+    ``left``.
 
     Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
     whose accepted operand groups are listed in ``_SPACE_GROUPS``.
-    ``"date"`` space truncates both operands to calendar day at query time
+    ``"date"`` space truncates datetime operands to calendar day at query time
     (``left__date <op> TruncDate(F(right))``) using the active timezone —
     accepts ``date`` and ``datetime`` operands.
-    ``"year"`` space will project operands to their year and compare as numbers
-    (Task 2 of #169) — accepts ``date``, ``datetime``, and ``number`` operands.
+    ``"year"`` space projects temporal operands to their year and compares as
+    numbers (``left__year <op> ExtractYear(F(right))`` / vice-versa) —
+    accepts ``date``, ``datetime``, and ``number`` operands.
     ``"raw"`` (the default) compares columns as-is; both operands must share
     the same comparison group.
     Non-raw spaces restrict modifiers to ``for_ordered_field_comparisons()``
@@ -799,9 +793,13 @@ class FieldComparisonCriterion(_Criterion):
 
     def to_q(
         self, field_name: str = ""
-    ) -> Q:  # field_name ignored; operands self-contained
-        return _field_comparison_to_q(
-            self.left, self.right, self.modifier, self.granularity
+    ) -> Q:
+        # Static mis-wiring, never user input: comparisons are built by
+        # OperatorFilter._apply_operators, which resolves operand groups
+        # against the filter's model first.
+        raise RuntimeError(
+            "FieldComparisonCriterion.to_q needs model context;"
+            " build it via OperatorFilter._apply_operators"
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -1400,7 +1398,14 @@ class OperatorFilter:
                         f"modifier {comparison.modifier} not allowed"
                         f" for this comparison"
                     )
-                q &= comparison.to_q()
+                q &= _field_comparison_to_q(
+                    comparison.left,
+                    comparison.right,
+                    comparison.modifier,
+                    comparison.granularity,
+                    left_group=left_group,
+                    right_group=right_group,
+                )
         return q
 
     def to_q(self) -> Q:
@@ -1750,44 +1755,58 @@ def _field_comparison_to_q(
     right: str,
     modifier: Modifier,
     granularity: ComparisonGranularity = "raw",
+    *,
+    left_group: ComparisonGroup,
+    right_group: ComparisonGroup,
 ) -> Q:
-    """Build a Q comparing two model columns: ``left <op> F(right)``.
+    """Build a Q comparing two operands: ``left <op> right`` in the row's space.
 
-    Used by field-to-field comparison criteria. Eight modifiers are supported: the
-    six ordered/equality ones (EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN,
-    GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL) plus case-insensitive string
-    containment (INCLUDES, EXCLUDES) — the latter two are gated to string operands
-    by ``_allowed_comparison_modifiers``. Anything else raises FilterError. The
-    ``_apply_operators`` caller pre-validates the modifier against the operand
-    group before calling this function, so the final ``raise FilterError`` is a
-    defensive guard not reached in normal use.
+    Operands may be one-hop relation paths (``game__year_released``); the ORM
+    joins for a lookup path on the left and for ``F("relation__column")`` on the
+    right, and both operands on one relation share a single join.
 
-    With ``granularity="date"`` both operands are truncated to calendar day at
-    query time (``left__date <op> TruncDate(F(right))``) using the active timezone;
-    ``_apply_operators`` gates this to the datetime group.
+    Space projection: ``date`` truncates datetime operands to calendar day
+    (``__date`` / ``TruncDate``), ``year`` extracts the year from temporal
+    operands (``__year`` / ``ExtractYear``) so they compare against numbers.
+
+    NULL semantics are strict two-valued (#169): every Q carries explicit
+    ``__isnull=False`` guards on both operand paths, so a row matches only when
+    both operands exist and the predicate holds — for every modifier, on either
+    side. This is deliberately independent of Django's declared-nullability
+    guard injection (which is asymmetric for join-introduced NULLs) and
+    supersedes the previous NULL-counts-as-not-equal NOT_EQUALS behavior.
     """
+    temporal_groups = ("date", "datetime")
+    left_base = left
+    right_expr: F | TruncDate | ExtractYear = F(right)
     if granularity == "date":
-        left_base = f"{left}__date"
-        right_expr: F | TruncDate = TruncDate(F(right))
-    else:
-        left_base = left
-        right_expr = F(right)
+        if left_group == "datetime":
+            left_base = f"{left}__date"
+        if right_group == "datetime":
+            right_expr = TruncDate(F(right))
+    elif granularity == "year":
+        if left_group in temporal_groups:
+            left_base = f"{left}__year"
+        if right_group in temporal_groups:
+            right_expr = ExtractYear(F(right))
+
+    guards = Q(**{f"{left}__isnull": False}) & Q(**{f"{right}__isnull": False})
     if modifier == Modifier.EQUALS:
-        return Q(**{left_base: right_expr})
+        return Q(**{left_base: right_expr}) & guards
     if modifier == Modifier.NOT_EQUALS:
-        return ~Q(**{left_base: right_expr})
+        return ~Q(**{left_base: right_expr}) & guards
     if modifier == Modifier.GREATER_THAN:
-        return Q(**{f"{left_base}__gt": right_expr})
+        return Q(**{f"{left_base}__gt": right_expr}) & guards
     if modifier == Modifier.LESS_THAN:
-        return Q(**{f"{left_base}__lt": right_expr})
+        return Q(**{f"{left_base}__lt": right_expr}) & guards
     if modifier == Modifier.GREATER_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__gte": right_expr})
+        return Q(**{f"{left_base}__gte": right_expr}) & guards
     if modifier == Modifier.LESS_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__lte": right_expr})
+        return Q(**{f"{left_base}__lte": right_expr}) & guards
     if modifier == Modifier.INCLUDES:
-        return Q(**{f"{left_base}__icontains": right_expr})
+        return Q(**{f"{left_base}__icontains": right_expr}) & guards
     if modifier == Modifier.EXCLUDES:
-        return ~Q(**{f"{left_base}__icontains": right_expr})
+        return ~Q(**{f"{left_base}__icontains": right_expr}) & guards
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 

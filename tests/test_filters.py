@@ -2195,87 +2195,110 @@ class TestFieldComparisonCriterion:
     # ── _field_comparison_to_q helper ────────────────────────────────────────
 
     def test_helper_equals(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.EQUALS
-        ) == Q(date_refunded=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.EQUALS,
+            left_group="date", right_group="date",
+        ) == Q(date_refunded=F("date_purchased")) & guards
 
     def test_helper_not_equals(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.NOT_EQUALS
-        ) == ~Q(date_refunded=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.NOT_EQUALS,
+            left_group="date", right_group="date",
+        ) == ~Q(date_refunded=F("date_purchased")) & guards
 
     def test_helper_greater_than(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.GREATER_THAN
-        ) == Q(date_refunded__gt=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.GREATER_THAN,
+            left_group="date", right_group="date",
+        ) == Q(date_refunded__gt=F("date_purchased")) & guards
 
     def test_helper_less_than(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.LESS_THAN
-        ) == Q(date_refunded__lt=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.LESS_THAN,
+            left_group="date", right_group="date",
+        ) == Q(date_refunded__lt=F("date_purchased")) & guards
 
     def test_helper_includes(self):
-        assert _field_comparison_to_q("name", "sort_name", Modifier.INCLUDES) == Q(
-            name__icontains=F("sort_name")
-        )
+        guards = Q(name__isnull=False) & Q(sort_name__isnull=False)
+        assert _field_comparison_to_q(
+            "name", "sort_name", Modifier.INCLUDES,
+            left_group="string", right_group="string",
+        ) == Q(name__icontains=F("sort_name")) & guards
 
     def test_helper_excludes(self):
-        assert _field_comparison_to_q("name", "sort_name", Modifier.EXCLUDES) == ~Q(
-            name__icontains=F("sort_name")
-        )
+        guards = Q(name__isnull=False) & Q(sort_name__isnull=False)
+        assert _field_comparison_to_q(
+            "name", "sort_name", Modifier.EXCLUDES,
+            left_group="string", right_group="string",
+        ) == ~Q(name__icontains=F("sort_name")) & guards
 
     def test_helper_greater_than_or_equal(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.GREATER_THAN_OR_EQUAL
-        ) == Q(date_refunded__gte=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.GREATER_THAN_OR_EQUAL,
+            left_group="date", right_group="date",
+        ) == Q(date_refunded__gte=F("date_purchased")) & guards
 
     def test_helper_less_than_or_equal(self):
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
         assert _field_comparison_to_q(
-            "date_refunded", "date_purchased", Modifier.LESS_THAN_OR_EQUAL
-        ) == Q(date_refunded__lte=F("date_purchased"))
+            "date_refunded", "date_purchased", Modifier.LESS_THAN_OR_EQUAL,
+            left_group="date", right_group="date",
+        ) == Q(date_refunded__lte=F("date_purchased")) & guards
 
     def test_helper_unsupported_modifier_raises(self):
         with pytest.raises(FilterError, match="Unsupported modifier"):
-            _field_comparison_to_q("date_refunded", "date_purchased", Modifier.BETWEEN)
+            _field_comparison_to_q(
+                "date_refunded", "date_purchased", Modifier.BETWEEN,
+                left_group="date", right_group="date",
+            )
 
     # ── date-granular comparison (granularity="date") ────────────────────────
 
     def test_helper_date_granular_equals(self):
         from django.db.models.functions import TruncDate
 
+        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
         assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.EQUALS, "date"
-        ) == Q(timestamp_start__date=TruncDate(F("timestamp_end")))
+            "timestamp_start", "timestamp_end", Modifier.EQUALS, "date",
+            left_group="datetime", right_group="datetime",
+        ) == Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
 
     def test_helper_date_granular_gte(self):
         from django.db.models.functions import TruncDate
 
+        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
         assert _field_comparison_to_q(
             "timestamp_start",
             "timestamp_end",
             Modifier.GREATER_THAN_OR_EQUAL,
             "date",
-        ) == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end")))
+            left_group="datetime", right_group="datetime",
+        ) == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end"))) & guards
 
     def test_helper_date_granular_not_equals(self):
         from django.db.models.functions import TruncDate
 
+        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
         assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "date"
-        ) == ~Q(timestamp_start__date=TruncDate(F("timestamp_end")))
+            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "date",
+            left_group="datetime", right_group="datetime",
+        ) == ~Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
 
-    def test_to_q_passes_granularity(self):
-        from django.db.models.functions import TruncDate
-
+    def test_to_q_raises_runtime_error(self):
+        """to_q() requires model context; callers must use _apply_operators."""
         criterion = FieldComparisonCriterion(
             left="timestamp_start",
             right="timestamp_end",
             modifier=Modifier.LESS_THAN_OR_EQUAL,
             granularity="date",
         )
-        assert criterion.to_q() == Q(
-            timestamp_start__date__lte=TruncDate(F("timestamp_end"))
-        )
+        with pytest.raises(RuntimeError, match="model context"):
+            criterion.to_q()
 
     def test_to_json_emits_granularity_only_when_date(self):
         raw = FieldComparisonCriterion(left="a", right="b")
@@ -2315,27 +2338,33 @@ class TestFieldComparisonCriterion:
     def test_helper_date_granular_strict_ordering(self):
         from django.db.models.functions import TruncDate
 
+        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
         assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.GREATER_THAN, "date"
-        ) == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end")))
+            "timestamp_start", "timestamp_end", Modifier.GREATER_THAN, "date",
+            left_group="datetime", right_group="datetime",
+        ) == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end"))) & guards
         assert _field_comparison_to_q(
-            "timestamp_start", "timestamp_end", Modifier.LESS_THAN, "date"
-        ) == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end")))
+            "timestamp_start", "timestamp_end", Modifier.LESS_THAN, "date",
+            left_group="datetime", right_group="datetime",
+        ) == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end"))) & guards
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
 
-    def test_to_q_delegates_to_helper(self):
+    def test_to_q_raises_runtime_error_no_args(self):
+        """to_q() raises RuntimeError — operand groups needed; use _apply_operators."""
         criterion = FieldComparisonCriterion(
             left="a", right="b", modifier=Modifier.LESS_THAN
         )
-        assert criterion.to_q() == Q(a__lt=F("b"))
+        with pytest.raises(RuntimeError, match="model context"):
+            criterion.to_q()
 
-    def test_to_q_ignores_field_name_argument(self):
-        """field_name is ignored; operands are self-contained in left/right."""
+    def test_to_q_raises_runtime_error_with_field_name(self):
+        """to_q(field_name=...) also raises — context cannot be injected via field_name."""
         criterion = FieldComparisonCriterion(
             left="a", right="b", modifier=Modifier.LESS_THAN
         )
-        assert criterion.to_q("ignored_field") == Q(a__lt=F("b"))
+        with pytest.raises(RuntimeError, match="model context"):
+            criterion.to_q("ignored_field")
 
     # ── JSON roundtrip ───────────────────────────────────────────────────────
 
@@ -2720,7 +2749,8 @@ class TestFieldComparisonWiring:
                 )
             ]
         )
-        assert stub.to_q() == Q(date_refunded__lt=F("date_purchased"))
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
+        assert stub.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
 
     # 2. Serialization roundtrip
 
@@ -2763,9 +2793,10 @@ class TestFieldComparisonWiring:
                 )
             ]
         )
+        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
         assert stub.to_q() == Q(
             timestamp_start__date__lte=TruncDate(F("timestamp_end"))
-        )
+        ) & guards
 
     def test_date_granularity_on_non_temporal_raises(self):
         # Under the new space rules, date space accepts date and datetime
@@ -2877,7 +2908,8 @@ class TestFieldComparisonWiring:
                 )
             ]
         )
-        assert stub.to_q() == Q(price_currency__icontains=F("converted_currency"))
+        guards = Q(price_currency__isnull=False) & Q(converted_currency__isnull=False)
+        assert stub.to_q() == Q(price_currency__icontains=F("converted_currency")) & guards
 
     def test_includes_on_number_group_raises(self):
         stub = _PurchaseStub(
@@ -2948,7 +2980,8 @@ class TestFieldComparisonWiring:
         json_data = stub.to_json()
         restored = _PurchaseStub.from_json(json_data)
         assert restored is not None
-        assert restored.to_q() == Q(date_refunded__lt=F("date_purchased"))
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
+        assert restored.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
 
     def test_integration_bad_column_raises_on_to_q(self):
         bad_json = {
@@ -3051,7 +3084,8 @@ class TestFilterComparisonModels:
                 )
             ]
         )
-        assert pf.to_q() == Q(date_refunded__lt=F("date_purchased"))
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
+        assert pf.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
 
     @pytest.mark.django_db
     def test_purchase_filter_json_parse_roundtrip(self):
@@ -3073,7 +3107,8 @@ class TestFilterComparisonModels:
         assert parsed.field_comparisons[0].left == "date_refunded"
         assert parsed.field_comparisons[0].right == "date_purchased"
         assert parsed.field_comparisons[0].modifier == Modifier.LESS_THAN
-        assert parsed.to_q() == Q(date_refunded__lt=F("date_purchased"))
+        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
+        assert parsed.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
 
     @pytest.mark.django_db
     def test_cross_group_pair_raises_filter_error_via_parse(self):
@@ -3106,7 +3141,8 @@ class TestFilterComparisonModels:
                 )
             ]
         )
-        assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start"))
+        guards = Q(timestamp_end__isnull=False) & Q(timestamp_start__isnull=False)
+        assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start")) & guards
 
 
 # ── T4b — comparison spaces ───────────────────────────────────────────────────
@@ -3426,18 +3462,13 @@ class TestFieldComparisonEndToEnd:
         with pytest.raises(FilterError):
             purchase_filter.to_q()
 
-    def test_not_equals_null_semantics(self):
-        """date_refunded NOT_EQUALS date_purchased:
-        - equal row (B) is excluded by NOT_EQUALS.
-        - NULL row (C) is INCLUDED: Django 6's ~Q on nullable operands generates
-          NOT (date_refunded = date_purchased AND date_refunded IS NOT NULL
-               AND date_purchased IS NOT NULL),
-          i.e. date_refunded != date_purchased OR date_refunded IS NULL
-               OR date_purchased IS NULL.
-        So NOT_EQUALS returns rows A (different dates) and C (NULL date_refunded),
-        but not B (equal dates). This Purchase case only exercises the left-NULL
-        branch because date_purchased is non-nullable; the symmetric right-NULL
-        branch is covered by test_not_equals_null_symmetric (PlayEvent).
+    def test_not_equals_strict_null_semantics(self):
+        """date_refunded NOT_EQUALS date_purchased with strict two-valued NULL semantics (#169):
+        - A (different dates, both set) → included.
+        - B (equal dates) → excluded by NOT_EQUALS.
+        - C (NULL date_refunded) → EXCLUDED: the explicit isnull=False guard fires.
+        Previously C was included (Django's ~Q treated NULL as "not equal"); strict
+        semantics require BOTH operands to be non-NULL for any match.
         """
         import datetime
 
@@ -3460,8 +3491,8 @@ class TestFieldComparisonEndToEnd:
             date_purchased=datetime.date(2024, 2, 1),
             date_refunded=datetime.date(2024, 2, 1),
         )
-        # C: date_refunded is NULL → included (IS NULL branch of Django's ~Q)
-        purchase_c = Purchase.objects.create(
+        # C: date_refunded is NULL → EXCLUDED (strict NULL guard, behavior change from #169)
+        Purchase.objects.create(
             platform=platform,
             date_purchased=datetime.date(2024, 1, 1),
         )
@@ -3476,15 +3507,14 @@ class TestFieldComparisonEndToEnd:
             ]
         )
         result = set(Purchase.objects.filter(purchase_filter.to_q()))
-        assert result == {purchase_a, purchase_c}
+        assert result == {purchase_a}
 
-    def test_not_equals_null_symmetric(self):
-        """NOT_EQUALS NULL inclusion is symmetric across BOTH operands.
+    def test_not_equals_strict_null_symmetric(self):
+        """NOT_EQUALS strict two-valued semantics: BOTH operand NULLs are excluded (#169).
 
-        Django 6 null-guards both sides of the F() comparison, so ~Q includes a
-        row when EITHER operand is NULL — not just the left one. PlayEvent has two
-        nullable date columns (started, ended), letting us exercise the right-NULL
-        branch that the Purchase test cannot (its date_purchased is non-nullable).
+        The explicit isnull=False guards on both operand paths ensure symmetry —
+        a NULL on either side excludes the row, regardless of which side is nullable.
+        Previously ~Q included rows with NULL on either nullable side.
         """
         import datetime
 
@@ -3506,10 +3536,10 @@ class TestFieldComparisonEndToEnd:
             started=datetime.date(2024, 3, 1),
             ended=datetime.date(2024, 3, 1),
         )
-        # left NULL → included
-        left_null = PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
-        # right NULL → included (the symmetric branch)
-        right_null = PlayEvent.objects.create(
+        # left NULL → EXCLUDED (strict guard)
+        PlayEvent.objects.create(game=game, ended=datetime.date(2024, 4, 1))
+        # right NULL → EXCLUDED (strict guard, symmetric)
+        PlayEvent.objects.create(
             game=game, started=datetime.date(2024, 5, 1)
         )
 
@@ -3521,7 +3551,7 @@ class TestFieldComparisonEndToEnd:
             ]
         )
         result = set(PlayEvent.objects.filter(play_filter.to_q()))
-        assert result == {differ, left_null, right_null}
+        assert result == {differ}
 
     def test_two_comparisons_both_must_hold(self):
         """Two field comparisons in one filter AND-accumulate:
@@ -3701,6 +3731,169 @@ class TestFieldComparisonEndToEnd:
         parsed_filter = parse_game_filter(filter_to_json(game_filter))
         assert parsed_filter is not None
         assert set(Game.objects.filter(parsed_filter.to_q())) == {match}
+
+
+class TestStrictNullSemantics:
+    """#169: a row matches only if BOTH operands are non-NULL — every modifier,
+    either side. Kills the raw-ORM asymmetry (A≠B vs B≠A) and supersedes the
+    old NULL-counts-as-not-equal same-model behavior."""
+
+    @pytest.fixture
+    def game(self, db):
+        from games.models import Game, Platform
+
+        platform, _ = Platform.objects.get_or_create(
+            name="NullSemanticsTest", icon="nullsemanticstest"
+        )
+        return Game.objects.create(name="NullGame", platform=platform)
+
+    @pytest.fixture
+    def session_without_game(self, db):
+        from games.models import Session
+
+        from django.utils import timezone
+
+        return Session.objects.create(
+            timestamp_start=timezone.now(), note="orphan", game=None,
+        )
+
+    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
+    def test_not_equals_excludes_null_operand_rows_lookup_side(
+        self, session_without_game
+    ):
+        from games.models import Session
+
+        q = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="game__name", right="note", modifier=Modifier.NOT_EQUALS,
+                )
+            ]
+        ).to_q()
+        assert session_without_game not in Session.objects.filter(q)
+
+    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
+    def test_not_equals_excludes_null_operand_rows_expression_side(
+        self, session_without_game
+    ):
+        from games.models import Session
+
+        q = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="note", right="game__name", modifier=Modifier.NOT_EQUALS,
+                )
+            ]
+        ).to_q()
+        assert session_without_game not in Session.objects.filter(q)
+
+    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
+    def test_not_equals_is_side_symmetric(self, db, game, session_without_game):
+        from games.models import Session
+
+        from django.utils import timezone
+
+        Session.objects.create(
+            timestamp_start=timezone.now(), note="differs", game=game,
+        )
+        left_form = SessionFilter(field_comparisons=[FieldComparisonCriterion(
+            left="game__name", right="note", modifier=Modifier.NOT_EQUALS)]).to_q()
+        right_form = SessionFilter(field_comparisons=[FieldComparisonCriterion(
+            left="note", right="game__name", modifier=Modifier.NOT_EQUALS)]).to_q()
+        assert list(Session.objects.filter(left_form)) == list(
+            Session.objects.filter(right_form)
+        )
+
+    def test_same_model_not_equals_now_excludes_null_rows(self, db):
+        # Behavior change pinned: previously included (NULL counted as "not equal").
+        from games.models import Session
+
+        from django.utils import timezone
+
+        session = Session.objects.create(
+            timestamp_start=timezone.now(), timestamp_end=None,
+        )
+        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
+            left="timestamp_end", right="timestamp_start",
+            modifier=Modifier.NOT_EQUALS)]).to_q()
+        assert session not in Session.objects.filter(q)
+
+    def test_equals_includes_null_guards(self):
+        q = _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.EQUALS, "raw",
+            left_group="datetime", right_group="datetime",
+        )
+        assert str(q).count("isnull") == 2
+
+    def test_not_equals_includes_null_guards(self):
+        q = _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.NOT_EQUALS, "raw",
+            left_group="datetime", right_group="datetime",
+        )
+        assert str(q).count("isnull") == 2
+
+
+class TestYearProjection:
+    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
+    def test_year_space_headline_example(self, db):
+        # Session started in the game's release year — the #169 headline query.
+        from datetime import UTC, datetime
+
+        from games.models import Game, Platform, Session
+
+        platform, _ = Platform.objects.get_or_create(
+            name="YearProjTest", icon="yearprojtest"
+        )
+        game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
+        hit = Session.objects.create(
+            game=game, timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+        )
+        miss = Session.objects.create(
+            game=game, timestamp_start=datetime(2021, 6, 1, tzinfo=UTC),
+        )
+        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
+            left="timestamp_start", right="game__year_released",
+            modifier=Modifier.EQUALS, granularity="year")]).to_q()
+        results = Session.objects.filter(q)
+        assert hit in results and miss not in results
+
+    @pytest.mark.xfail(reason="path operand validation lands in Task 3 (#169)", strict=True)
+    def test_year_space_number_left_temporal_right(self, db):
+        # Symmetric: number on the lookup side, temporal behind F().
+        from datetime import UTC, datetime
+
+        from games.models import Game, Platform, Session
+
+        platform, _ = Platform.objects.get_or_create(
+            name="YearProjTest", icon="yearprojtest"
+        )
+        game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
+        hit = Session.objects.create(
+            game=game, timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+        )
+        q = SessionFilter(field_comparisons=[FieldComparisonCriterion(
+            left="game__year_released", right="timestamp_start",
+            modifier=Modifier.EQUALS, granularity="year")]).to_q()
+        assert hit in Session.objects.filter(q)
+
+    def test_year_projection_datetime_to_year_lookup(self):
+        """'year' granularity: datetime on left produces __year suffix."""
+        q = _field_comparison_to_q(
+            "timestamp_start", "timestamp_end", Modifier.EQUALS, "year",
+            left_group="datetime", right_group="datetime",
+        )
+        assert "timestamp_start__year" in str(q)
+
+    def test_year_projection_number_left_temporal_right(self):
+        """'year' granularity: number left is unchanged; temporal right uses ExtractYear."""
+        q = _field_comparison_to_q(
+            "year_released", "timestamp_start", Modifier.EQUALS, "year",
+            left_group="number", right_group="datetime",
+        )
+        # number left: no __year suffix on lookup
+        assert "year_released__year" not in str(q)
+        # temporal right: ExtractYear wrapper appears
+        assert "ExtractYear" in str(q)
 
 
 class FieldComparisonPrefillTest(TestCase):
