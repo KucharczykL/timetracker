@@ -411,7 +411,9 @@ export class FilterGroupElement extends HTMLElement {
 
   // ownedGroupsOf with each group's active model resolved — the model-tracking
   // walks (incompleteCount, reflectFieldSelections) descend through this so a
-  // walker cannot forget an owned-group kind or mis-resolve its model.
+  // walker cannot forget an owned-group kind or mis-resolve its model. Must
+  // mirror ownedGroupsOf's kind dispatch (kept as a hand-written twin, not a
+  // derivation, because each kind resolves its model differently).
   private ownedGroupsWithModel(node: FilterNode, model: string): Array<[GroupNode, string]> {
     if (node.kind === "relation") return [[node.child, this.targetModel(model, node.field)]];
     if (node.kind === "criterion" && node.scope) {
@@ -568,7 +570,7 @@ export class FilterGroupElement extends HTMLElement {
       else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
       // A field-unset relation is incomplete (would serialize to `{"": …}`).
       else if (child.kind === "relation" && child.field === "") count += 1;
-      // Owned groups (a relation's child, an aggregate leaf's scope) have live
+      // Owned groups (a relation's child, an aggregate leaf's scope) have
       // leaves of their own, counted under each group's target model.
       for (const [ownedGroup, ownedModel] of this.ownedGroupsWithModel(child, model)) {
         count += this.incompleteCount(ownedGroup, ownedModel);
