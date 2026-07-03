@@ -21,6 +21,16 @@ control. ``<label for="id_X">`` therefore focuses the search box, and
 transparent — the widget reads as one faded element, not a nested box. Callers
 toggle only the control's ``disabled`` — never styles.
 
+**ARIA combobox semantics** (issue #154): the search input is a
+``role="combobox"`` with ``aria-expanded``/``aria-autocomplete``; the options
+panel is a ``role="listbox"`` (``aria-multiselectable`` when multi); option and
+modifier rows are ``role="option"`` with ``aria-selected``. The id-based wiring
+(``aria-controls`` on the input, stable ``id``s on the panel and rows, and
+``aria-activedescendant`` tracking the keyboard highlight) is assigned by the
+JS at init — never server-side, because the nested filter builder clones whole
+``<search-select>`` prototypes and server-rendered ids would be duplicated
+across clones.
+
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
 *Completeness*: without a ``search_url`` the inline set is the whole dataset and
@@ -225,6 +235,8 @@ def _option_row(option: SearchSelectOption) -> Node:
         data_search_select_option="",
         data_value=str(option["value"]),
         data_label=option["label"],
+        role="option",
+        aria_selected="false",
         class_=_OPTION_ROW_CLASS,
     )[_label_slot(option["label"])]
 
@@ -253,6 +265,7 @@ def _combobox_children(
     options_children: list[Node],
     always_visible: bool,
     items_visible: int,
+    multi_select: bool = False,
     templates: list[Node] | None = None,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
@@ -260,15 +273,32 @@ def _combobox_children(
     Returns the three content regions (pills, search box, options panel) plus
     any templates — ready to be placed as children of the caller's container
     element. The shell knows nothing about how individual rows or pills look.
-    """
-    search = Input(search_attributes)
 
-    no_results = Div(data_search_select_no_results="", class_=_NO_RESULTS_CLASS)[
-        "No results"
+    The shell owns the ARIA combobox pattern (issue #154): the search input is
+    the combobox, the options panel the listbox. ``aria-controls`` /
+    ``aria-activedescendant`` and the ids they reference are wired by the JS at
+    init (see module docstring); the JS also keeps ``aria-expanded`` in sync
+    with the panel's visibility.
+    """
+    aria_attributes: list[HTMLAttribute] = [
+        ("role", "combobox"),
+        ("aria-expanded", "true" if always_visible else "false"),
+        ("aria-autocomplete", "list"),
     ]
+    search = Input([*search_attributes, *aria_attributes])
+
+    # role="presentation" keeps the message node from being exposed as a
+    # (non-option) child of the listbox.
+    no_results = Div(
+        data_search_select_no_results="",
+        role="presentation",
+        class_=_NO_RESULTS_CLASS,
+    )["No results"]
     options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
     options_panel = Div(
         data_search_select_options="",
+        role="listbox",
+        aria_multiselectable="true" if multi_select else None,
         # Keep the scroller out of the sequential tab order. Chrome makes any
         # overflowing scroll container keyboard-focusable by default, which
         # would steal focus from the search input on Tab (issue #119).
@@ -377,6 +407,7 @@ def SearchSelect(
         options_children=option_rows,
         always_visible=always_visible,
         items_visible=items_visible,
+        multi_select=multi_select,
         templates=templates,
     )
     return _SearchSelect(
@@ -445,6 +476,8 @@ def _filter_option_row(value: str | int, label: str) -> Node:
         data_search_select_option="",
         data_value=str(value),
         data_label=label,
+        role="option",
+        aria_selected="false",
         class_=_FILTER_OPTION_ROW_CLASS,
     )[
         _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
@@ -457,10 +490,16 @@ def _filter_option_row(value: str | int, label: str) -> Node:
 
 def _filter_modifier_row(modifier_value: str, label: str) -> Node:
     """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
-    filter never hides it — modifiers stay visible at the top of the panel."""
+    filter never hides it — modifiers stay visible at the top of the panel.
+
+    Carries ``role="option"`` so the listbox only exposes option/presentation
+    children; it is mouse-only, so ``aria-activedescendant`` never points at it
+    and its ``aria-selected`` stays false."""
     return Div(
         data_search_select_modifier_option=modifier_value,
         data_label=label,
+        role="option",
+        aria_selected="false",
         class_=_FILTER_MODIFIER_ROW_CLASS,
     )[label]
 
@@ -578,6 +617,8 @@ def FilterSelect(
         options_children=[*modifier_rows, *value_rows],
         always_visible=False,
         items_visible=items_visible,
+        # FilterSelect is always multi (include/exclude pill sets).
+        multi_select=True,
         templates=templates,
     )
     # The self-describe root attributes for the generic filter serializer. Only

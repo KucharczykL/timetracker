@@ -14,6 +14,13 @@
  * Filter widgets have no hidden inputs; readSearchSelect serialises their state
  * into data-included / data-excluded / data-modifier for the filter bar.
  *
+ * ARIA (issue #154): the server marks the search input role="combobox" and the
+ * panel role="listbox" with role="option" rows; this module assigns the unique
+ * listbox/option ids, points aria-controls at the panel, keeps aria-expanded in
+ * sync with the panel's visibility, and mirrors the keyboard highlight
+ * (data-search-select-highlighted) into aria-activedescendant + aria-selected so
+ * screen readers announce the active option without moving DOM focus.
+ *
  * Dynamically-added rows and pills are cloned from hidden <template> elements
  * the server renders with the same Python components (Pill / SearchSelect /
  * FilterSelect). The JS only fills in the label slot ([data-search-select-label]),
@@ -55,6 +62,12 @@ interface FilterPillEntry {
 
 const DEBOUNCE_MS = 100;
 
+// Monotonic source for per-widget listbox ids (issue #154). The ids backing
+// aria-controls / aria-activedescendant are assigned here at init — never
+// server-side — because the nested filter builder clones whole <search-select>
+// prototypes, and a server-rendered id would be duplicated across clones.
+let listboxIdCounter = 0;
+
 // Presence modifiers (IS_NULL / NOT_NULL) are mutually exclusive with value
 // pills — selecting one clears all value pills. Non-presence modifiers
 // (INCLUDES_ALL, INCLUDES_ONLY) coexist with value pills. The token set lives in
@@ -81,6 +94,33 @@ const initWidget = (containerElement: Element) => {
   let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
   let hasPrefetched = false;
 
+  // ── ARIA combobox wiring (issue #154). Roles/aria-selected come from the
+  //    server markup (and template clones inherit them); the id plumbing and
+  //    the expanded/activedescendant state live here. ──
+  listboxIdCounter += 1;
+  const listboxId = `search-select-listbox-${listboxIdCounter}`;
+  options.id = listboxId;
+  search.setAttribute("aria-controls", listboxId);
+  let optionIdCounter = 0;
+
+  // Option rows only need an id once aria-activedescendant points at them, so
+  // ids are assigned lazily on first highlight and stay stable for the row's
+  // lifetime (fetched replacements are new elements and get fresh ids).
+  const ensureOptionId = (row: HTMLElement): string => {
+    if (!row.id) {
+      optionIdCounter += 1;
+      row.id = `${listboxId}-option-${optionIdCounter}`;
+    }
+    return row.id;
+  };
+
+  const syncExpanded = () => {
+    search.setAttribute(
+      "aria-expanded",
+      options.classList.contains("hidden") ? "false" : "true"
+    );
+  };
+
   const hasVisibleContent = () => {
     const optionRows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
     for (let i = 0; i < optionRows.length; i++) {
@@ -95,9 +135,16 @@ const initWidget = (containerElement: Element) => {
     if (alwaysVisible || hasVisibleContent()) {
       options.classList.remove("hidden");
     }
+    syncExpanded();
   };
   const hidePanel = () => {
-    if (!alwaysVisible) options.classList.add("hidden");
+    if (!alwaysVisible) {
+      options.classList.add("hidden");
+      // A closed popup has no active option; the visual highlight may persist
+      // for the next reopen, but reopening always re-runs the highlight sync.
+      search.removeAttribute("aria-activedescendant");
+    }
+    syncExpanded();
   };
 
   const setNoResults = (visible: boolean) => {
@@ -113,6 +160,11 @@ const initWidget = (containerElement: Element) => {
     clearHighlight();
     if (!row) return;
     row.setAttribute("data-search-select-highlighted", "");
+    // Screen readers follow the highlight without moving DOM focus:
+    // aria-activedescendant names the active option, aria-selected mirrors the
+    // visual highlight (the APG list-autocomplete combobox pattern).
+    row.setAttribute("aria-selected", "true");
+    search.setAttribute("aria-activedescendant", ensureOptionId(row));
     highlightedRow = row;
     row.scrollIntoView({ block: "nearest" });
   };
@@ -120,8 +172,10 @@ const initWidget = (containerElement: Element) => {
   const clearHighlight = () => {
     if (highlightedRow) {
       highlightedRow.removeAttribute("data-search-select-highlighted");
+      highlightedRow.setAttribute("aria-selected", "false");
       highlightedRow = null;
     }
+    search.removeAttribute("aria-activedescendant");
   };
 
   const getVisibleOptions = (): HTMLElement[] => {
