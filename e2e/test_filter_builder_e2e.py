@@ -410,6 +410,14 @@ def test_nested_relation_prefill_renders_full_tree(
     expect(group.locator("[data-range-min]").first).to_have_value("2026-01-01")
     expect(group.locator("[data-range-max]").first).to_have_value("2026-12-31")
 
+    # reflectFieldSelections must descend into owned (relation-child) groups: the
+    # inner criterion's field picker shows its chosen field. Only assertable in a
+    # real browser — jsdom's un-upgraded search-select makes setSelected a no-op.
+    inner_field_search = group.locator(
+        "[data-node-kind='criterion'] [data-field-picker] [data-search-select-search]"
+    ).first
+    expect(inner_field_search).to_have_value("Ended")
+
     # The count reads the live widgets via serializeForQuery(): only the purchase
     # of the game with a 2026 PlayEvent matches — not all purchases (the bug
     # pruned the whole filter and counted everything).

@@ -390,7 +390,11 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     });
     clickAction(host, "add-relation", []);
     clickAction(host, "remove", [0]); // drop the seed criterion so only the relation counts
+    // The unset relation itself counts as incomplete (it would serialize to
+    // `{"": …}`) — pinned here because no other test attributes a count to it.
+    expect(last).toBe(1);
     pickRelation(host, [0], "session_filter"); // relation complete (field set)
+    expect(last).toBe(0);
     clickAction(host, "add-condition", [0, "child"]);
     pickField(host, [0, "child", 0], NAME_META); // session `name` chosen, value still empty
     expect(last).toBe(1); // the child leaf is incomplete, resolved against the session bundle

@@ -30,6 +30,7 @@ import {
   isCriterionComplete,
   move,
   nodeAt,
+  ownedGroupsOf,
   parseFieldMeta,
   pruneIncomplete,
   removeAt,
@@ -857,5 +858,25 @@ describe("canAddScope depth gating (#151 review)", () => {
       path = [0, ...path];
     }
     expect(canAddScope(tree, path)).toBe(false);
+  });
+});
+
+describe("ownedGroupsOf", () => {
+  it("encodes exactly which node kinds bear a nested group", () => {
+    const child = group("AND", []);
+    expect(ownedGroupsOf(relation("session_filter", child))).toEqual([child]);
+    const scoped: CriterionLeaf = {
+      kind: "criterion",
+      id: nextNodeId(),
+      field: "session_count",
+      criterion: {},
+      scope: child,
+      negate: false,
+    };
+    expect(ownedGroupsOf(scoped)).toEqual([child]);
+    expect(ownedGroupsOf(criterion("name"))).toEqual([]);
+    expect(ownedGroupsOf(emptyComparison())).toEqual([]);
+    // A group's children are positional siblings, not owned groups.
+    expect(ownedGroupsOf(group("AND", [child]))).toEqual([]);
   });
 });

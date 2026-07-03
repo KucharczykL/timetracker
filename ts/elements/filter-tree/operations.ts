@@ -150,6 +150,28 @@ export function emptyRoot(): GroupNode {
   return group("AND", [emptyCriterion()]);
 }
 
+// ── Owned-group traversal ────────────────────────────────────────────────────
+
+// The child group(s) a non-group node OWNS — a relation's child group, a
+// criterion leaf's aggregate scope group (issue #151); leaves without one own
+// nothing, and a group's children are positional siblings, not owned. The one
+// encoding of "which node kinds bear a nested group" for uniform walks: a
+// walker routed through it cannot forget a descent (the bug class where a new
+// walker compiles clean but silently drops scopes). A future group-bearing
+// kind still needs its model-resolving twin (`ownedGroupsWithModel` in
+// filter-group.ts) and the per-kind ops (pruneNode, the path-step machinery)
+// updated in lockstep — this function centralizes the uniform walks only.
+export function ownedGroupsOf(node: FilterNode): readonly GroupNode[] {
+  switch (node.kind) {
+    case "relation":
+      return [node.child];
+    case "criterion":
+      return node.scope ? [node.scope] : [];
+    default:
+      return [];
+  }
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 export function nodeAt(root: GroupNode, path: NodePath): FilterNode {
@@ -297,13 +319,10 @@ export function duplicateAt(root: GroupNode, path: NodePath): GroupNode {
 
 // A duplicated subtree must get fresh ids on every node — a structuredClone copies
 // the source ids, which would collide with the originals in the shell's id→DOM map.
-// Every child-bearing kind descends: group children, a relation's child group, and
-// a criterion leaf's aggregate scope group (issue #151).
 function reassignIds(node: FilterNode): FilterNode {
   node.id = nextNodeId();
   if (node.kind === "group") node.children.forEach(reassignIds);
-  else if (node.kind === "relation") reassignIds(node.child);
-  else if (node.kind === "criterion" && node.scope) reassignIds(node.scope);
+  ownedGroupsOf(node).forEach(reassignIds);
   return node;
 }
 
@@ -492,19 +511,18 @@ export function unwrapGroup(root: GroupNode, path: NodePath): GroupNode {
 // ── Depth ────────────────────────────────────────────────────────────────────
 
 // The deepest group-nesting depth anywhere in `group`'s subtree, given the group
-// itself sits at `groupDepth`. A child group is +1; a relation's child group is +1
-// (the relation node is not itself a group); a criterion leaf's aggregate scope
-// group is +1 likewise (issue #151); other leaves contribute nothing. This is the
-// single primitive every cap check is derived from.
+// itself sits at `groupDepth`. A child group is +1, and so is every owned group
+// (a relation's child, a criterion leaf's scope — the owning node is not itself
+// a group level); other leaves contribute nothing. This is the single primitive
+// every cap check is derived from.
 export function deepestGroupDepth(node: GroupNode, groupDepth: number): number {
   let deepest = groupDepth;
   for (const child of node.children) {
     if (child.kind === "group") {
       deepest = Math.max(deepest, deepestGroupDepth(child, groupDepth + 1));
-    } else if (child.kind === "relation") {
-      deepest = Math.max(deepest, deepestGroupDepth(child.child, groupDepth + 1));
-    } else if (child.kind === "criterion" && child.scope) {
-      deepest = Math.max(deepest, deepestGroupDepth(child.scope, groupDepth + 1));
+    }
+    for (const ownedGroup of ownedGroupsOf(child)) {
+      deepest = Math.max(deepest, deepestGroupDepth(ownedGroup, groupDepth + 1));
     }
   }
   return deepest;
@@ -562,7 +580,7 @@ export function canAddScope(root: GroupNode, leafPath: NodePath): boolean {
 // Wrapping pushes the node's whole subtree one level deeper (under a fresh wrapper
 // group at the node's current slot depth). Allowed only when the deepest resulting
 // group stays within the soft cap. Works for every node kind because the wrapper is
-// a group holding the node, and `deepestGroupDepth` accounts for groups/relations.
+// a group holding the node, and `deepestGroupDepth` accounts for child groups and every owned group.
 export function canWrap(root: GroupNode, path: NodePath): boolean {
   if (path.length === 0) return false; // the root cannot be wrapped
   // The wrapper takes the node's slot, sitting one level below its containing group;
