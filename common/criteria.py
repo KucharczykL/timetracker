@@ -774,10 +774,17 @@ class FieldComparisonCriterion(_Criterion):
     empty ``right`` (``""``, not NULL) is a substring of every non-NULL ``left``,
     so INCLUDES then matches all rows with a non-NULL ``left``.
 
-    Granularity: ``granularity="date"`` truncates *both* operands to calendar day
-    at query time (``left__date <op> TruncDate(F(right))``) using the active
-    timezone — only valid when both operands are the ``datetime`` group (validated
-    by the base OperatorFilter). ``"raw"`` (the default) compares the columns as-is.
+    Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
+    whose accepted operand groups are listed in ``_SPACE_GROUPS``.
+    ``"date"`` space truncates both operands to calendar day at query time
+    (``left__date <op> TruncDate(F(right))``) using the active timezone —
+    accepts ``date`` and ``datetime`` operands.
+    ``"year"`` space will project operands to their year and compare as numbers
+    (Task 2 of #169) — accepts ``date``, ``datetime``, and ``number`` operands.
+    ``"raw"`` (the default) compares columns as-is; both operands must share
+    the same comparison group.
+    Non-raw spaces restrict modifiers to ``for_ordered_field_comparisons()``
+    (no string-containment INCLUDES/EXCLUDES).
     """
 
     # Shadow the inherited `value` field: FieldComparisonCriterion has no
