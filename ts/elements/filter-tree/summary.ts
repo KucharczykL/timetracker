@@ -132,7 +132,8 @@ function renderComparison(leaf: ComparisonLeaf, model: SummaryModel | undefined)
   const leftLabel = model?.columns?.get(left as string) ?? String(left);
   const rightLabel = model?.columns?.get(right as string) ?? String(right);
   const phrase = MODIFIER_PHRASES[modifier as string] ?? String(modifier);
-  const suffix = granularity === "date" ? " (by day)" : "";
+  const suffix =
+    granularity === "date" ? " (by date)" : granularity === "year" ? " (by year)" : "";
   return `${leftLabel} ${phrase} ${rightLabel}${suffix}`;
 }
 

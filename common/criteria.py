@@ -28,7 +28,7 @@ from typing import (
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import F, Q
-from django.db.models.functions import TruncDate
+from django.db.models.functions import ExtractYear, TruncDate
 
 # ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -733,7 +733,16 @@ class AggregateCriterion(_ScalarCriterion):
         return result
 
 
-type ComparisonGranularity = Literal["raw", "date"]
+type ComparisonGranularity = Literal["raw", "date", "year"]
+
+# Comparison spaces (#169): the operand groups each non-raw granularity accepts.
+# "raw" is special-cased in _apply_operators (both operands must share a group).
+# In "date" space datetime operands are projected to calendar dates; in "year"
+# space temporal operands are projected to their year and compared as numbers.
+_SPACE_GROUPS: dict[ComparisonGranularity, frozenset[ComparisonGroup]] = {
+    "date": frozenset({"date", "datetime"}),
+    "year": frozenset({"date", "datetime", "number"}),
+}
 
 
 @dataclass
@@ -742,33 +751,34 @@ class FieldComparisonCriterion(_Criterion):
 
     ``left`` and ``right`` are model column names (resolved + type-checked against
     the filter's model by the base OperatorFilter before to_q runs). Operands are
-    self-contained, so to_q ignores the inherited ``field_name`` argument.
+    self-contained; ``to_q`` is not callable directly — use
+    ``OperatorFilter._apply_operators``, which resolves operand groups and then
+    calls ``_field_comparison_to_q`` with the required ``left_group``/``right_group``
+    keyword arguments.
 
-    Null semantics: for NOT_EQUALS, Django compiles ``~Q(left=F(right))`` to
-    ``NOT (left = right AND <IS NOT NULL guard per nullable operand>)``, appending
-    ``left IS NOT NULL`` and/or ``right IS NOT NULL`` *only* for operands declared
-    ``null=True`` (it omits the guard for a non-nullable column as an optimization).
-    So when both operands are nullable the result is symmetric —
-    ``left != right OR left IS NULL OR right IS NULL`` — and a NULL on *either* side
-    *includes* the row. When an operand is declared non-nullable its guard is
-    omitted, so only a NULL on the nullable side includes the row (the non-nullable
-    column is NULL only under schema drift / raw inserts). Ordered comparisons
-    (``<``, ``>``) and EQUALS instead *exclude* NULL rows, because the SQL
-    expression is NULL (unknown) when either operand is NULL.
+    NULL semantics are strict two-valued (#169): every Q carries explicit
+    ``__isnull=False`` guards on both operand paths, so a row matches only when
+    both operands exist and the predicate holds — for every modifier, on either
+    side. This is deliberately independent of Django's declared-nullability guard
+    injection (which is asymmetric for join-introduced NULLs) and supersedes the
+    previous NULL-counts-as-not-equal NOT_EQUALS behavior.
 
-    String containment (string operands only, case-insensitive ``__icontains``):
-    INCLUDES (``left__icontains=F(right)``) excludes NULL rows like EQUALS/ordered
-    — the ``LIKE`` is NULL/unknown when either operand is NULL. EXCLUDES
-    (``~Q(left__icontains=F(right))``) mirrors NOT_EQUALS: Django appends an
-    ``IS NOT NULL`` guard per *nullable* operand, so a NULL on a nullable side
-    *includes* the row (symmetric when both are nullable). Empty-string note: an
-    empty ``right`` (``""``, not NULL) is a substring of every non-NULL ``left``,
-    so INCLUDES then matches all rows with a non-NULL ``left``.
+    Empty-string note: an empty ``right`` (``""``, not NULL) is a substring of
+    every non-NULL ``left``, so INCLUDES then matches all rows with a non-NULL
+    ``left``.
 
-    Granularity: ``granularity="date"`` truncates *both* operands to calendar day
-    at query time (``left__date <op> TruncDate(F(right))``) using the active
-    timezone — only valid when both operands are the ``datetime`` group (validated
-    by the base OperatorFilter). ``"raw"`` (the default) compares the columns as-is.
+    Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
+    whose accepted operand groups are listed in ``_SPACE_GROUPS``.
+    ``"date"`` space truncates datetime operands to calendar day at query time
+    (``left__date <op> TruncDate(F(right))``) using the active timezone —
+    accepts ``date`` and ``datetime`` operands.
+    ``"year"`` space projects temporal operands to their year and compares as
+    numbers (``left__year <op> ExtractYear(F(right))`` / vice-versa) —
+    accepts ``date``, ``datetime``, and ``number`` operands.
+    ``"raw"`` (the default) compares columns as-is; both operands must share
+    the same comparison group.
+    Non-raw spaces restrict modifiers to ``for_ordered_field_comparisons()``
+    (no string-containment INCLUDES/EXCLUDES).
     """
 
     # Shadow the inherited `value` field: FieldComparisonCriterion has no
@@ -776,16 +786,18 @@ class FieldComparisonCriterion(_Criterion):
     # it out of __init__ and from_json iteration, preventing a stray JSON
     # "value" key from being accepted and creating a roundtrip asymmetry.
     value: Any = field(default=None, init=False, repr=False)
-    left: str = ""
-    right: str = ""
+    left: ComparisonOperand = ""
+    right: ComparisonOperand = ""
     modifier: Modifier = Modifier.EQUALS
     granularity: ComparisonGranularity = "raw"
 
-    def to_q(
-        self, field_name: str = ""
-    ) -> Q:  # field_name ignored; operands self-contained
-        return _field_comparison_to_q(
-            self.left, self.right, self.modifier, self.granularity
+    def to_q(self, field_name: str = "") -> Q:
+        # Static mis-wiring, never user input: comparisons are built by
+        # OperatorFilter._apply_operators, which resolves operand groups
+        # against the filter's model first.
+        raise RuntimeError(
+            "FieldComparisonCriterion.to_q needs model context;"
+            " build it via OperatorFilter._apply_operators"
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -806,7 +818,7 @@ class FieldComparisonCriterion(_Criterion):
         # field) so an unknown value is rejected at parse time rather than
         # silently degrading to a raw comparison — mirrors the modifier coercion.
         result = super().from_json(data)
-        if result is not None and result.granularity not in ("raw", "date"):
+        if result is not None and result.granularity not in ("raw", "date", "year"):
             raise FilterError(f"unknown granularity {result.granularity!r}")
         return result
 
@@ -1358,24 +1370,46 @@ class OperatorFilter:
                         f"field comparison needs two different columns"
                         f" (got {comparison.left!r} twice)"
                     )
-                left_group = _comparison_group_for(model, comparison.left)
-                right_group = _comparison_group_for(model, comparison.right)
-                if left_group != right_group:
-                    raise FilterError(
-                        f"cannot compare {comparison.left!r} ({left_group})"
-                        f" to {comparison.right!r} ({right_group})"
-                    )
-                if comparison.modifier not in _allowed_comparison_modifiers(left_group):
+                left_group = _comparison_operand_group(
+                    model, comparison.left, side="left"
+                )
+                right_group = _comparison_operand_group(
+                    model, comparison.right, side="right"
+                )
+                if comparison.granularity == "raw":
+                    if left_group != right_group:
+                        raise FilterError(
+                            f"cannot compare {comparison.left!r} ({left_group})"
+                            f" to {comparison.right!r} ({right_group})"
+                        )
+                    allowed_modifiers = _allowed_comparison_modifiers(left_group)
+                    vocabulary_hint = f"{left_group} comparison"
+                else:
+                    accepted_groups = _SPACE_GROUPS[comparison.granularity]
+                    for operand, group in (
+                        (comparison.left, left_group),
+                        (comparison.right, right_group),
+                    ):
+                        if group not in accepted_groups:
+                            raise FilterError(
+                                f"{operand!r} ({group}) cannot take part in a"
+                                f" {comparison.granularity}-granularity comparison"
+                            )
+                    allowed_modifiers = Modifier.for_ordered_field_comparisons()
+                    vocabulary_hint = f"{comparison.granularity}-granularity comparison"
+                if comparison.modifier not in allowed_modifiers:
                     raise FilterError(
                         f"modifier {comparison.modifier} not allowed"
-                        f" for {left_group} comparison"
+                        f" for {vocabulary_hint}"
                     )
-                if comparison.granularity == "date" and left_group != "datetime":
-                    raise FilterError(
-                        f"date-granular comparison needs datetime operands"
-                        f" (got {left_group})"
-                    )
-                q &= comparison.to_q()
+                q &= _field_comparison_to_q(
+                    comparison.left,
+                    comparison.right,
+                    comparison.modifier,
+                    comparison.granularity,
+                    left_group=left_group,
+                    right_group=right_group,
+                )
         return q
 
     def to_q(self) -> Q:
@@ -1725,44 +1759,58 @@ def _field_comparison_to_q(
     right: str,
     modifier: Modifier,
     granularity: ComparisonGranularity = "raw",
+    *,
+    left_group: ComparisonGroup,
+    right_group: ComparisonGroup,
 ) -> Q:
-    """Build a Q comparing two model columns: ``left <op> F(right)``.
+    """Build a Q comparing two operands: ``left <op> right`` in the row's space.
 
-    Used by field-to-field comparison criteria. Eight modifiers are supported: the
-    six ordered/equality ones (EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN,
-    GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL) plus case-insensitive string
-    containment (INCLUDES, EXCLUDES) — the latter two are gated to string operands
-    by ``_allowed_comparison_modifiers``. Anything else raises FilterError. The
-    ``_apply_operators`` caller pre-validates the modifier against the operand
-    group before calling this function, so the final ``raise FilterError`` is a
-    defensive guard not reached in normal use.
+    Operands may be one-hop relation paths (``game__year_released``); the ORM
+    joins for a lookup path on the left and for ``F("relation__column")`` on the
+    right, and both operands on one relation share a single join.
 
-    With ``granularity="date"`` both operands are truncated to calendar day at
-    query time (``left__date <op> TruncDate(F(right))``) using the active timezone;
-    ``_apply_operators`` gates this to the datetime group.
+    Space projection: ``date`` truncates datetime operands to calendar day
+    (``__date`` / ``TruncDate``), ``year`` extracts the year from temporal
+    operands (``__year`` / ``ExtractYear``) so they compare against numbers.
+
+    NULL semantics are strict two-valued (#169): every Q carries explicit
+    ``__isnull=False`` guards on both operand paths, so a row matches only when
+    both operands exist and the predicate holds — for every modifier, on either
+    side. This is deliberately independent of Django's declared-nullability
+    guard injection (which is asymmetric for join-introduced NULLs) and
+    supersedes the previous NULL-counts-as-not-equal NOT_EQUALS behavior.
     """
+    temporal_groups = ("date", "datetime")
+    left_base = left
+    right_expr: F | TruncDate | ExtractYear = F(right)
     if granularity == "date":
-        left_base = f"{left}__date"
-        right_expr: F | TruncDate = TruncDate(F(right))
-    else:
-        left_base = left
-        right_expr = F(right)
+        if left_group == "datetime":
+            left_base = f"{left}__date"
+        if right_group == "datetime":
+            right_expr = TruncDate(F(right))
+    elif granularity == "year":
+        if left_group in temporal_groups:
+            left_base = f"{left}__year"
+        if right_group in temporal_groups:
+            right_expr = ExtractYear(F(right))
+
+    guards = Q(**{f"{left}__isnull": False}) & Q(**{f"{right}__isnull": False})
     if modifier == Modifier.EQUALS:
-        return Q(**{left_base: right_expr})
+        return Q(**{left_base: right_expr}) & guards
     if modifier == Modifier.NOT_EQUALS:
-        return ~Q(**{left_base: right_expr})
+        return ~Q(**{left_base: right_expr}) & guards
     if modifier == Modifier.GREATER_THAN:
-        return Q(**{f"{left_base}__gt": right_expr})
+        return Q(**{f"{left_base}__gt": right_expr}) & guards
     if modifier == Modifier.LESS_THAN:
-        return Q(**{f"{left_base}__lt": right_expr})
+        return Q(**{f"{left_base}__lt": right_expr}) & guards
     if modifier == Modifier.GREATER_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__gte": right_expr})
+        return Q(**{f"{left_base}__gte": right_expr}) & guards
     if modifier == Modifier.LESS_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__lte": right_expr})
+        return Q(**{f"{left_base}__lte": right_expr}) & guards
     if modifier == Modifier.INCLUDES:
-        return Q(**{f"{left_base}__icontains": right_expr})
+        return Q(**{f"{left_base}__icontains": right_expr}) & guards
     if modifier == Modifier.EXCLUDES:
-        return ~Q(**{f"{left_base}__icontains": right_expr})
+        return ~Q(**{f"{left_base}__icontains": right_expr}) & guards
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
@@ -1833,28 +1881,104 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
     return group
 
 
+type ComparisonOperand = (
+    str  # own column "playtime" or one-hop FK path "game__year_released"
+)
+
+
+def _comparison_operand_group(
+    model: type[models.Model], operand: ComparisonOperand, *, side: str
+) -> ComparisonGroup:
+    """Resolve a comparison operand to its group, enforcing the operand grammar.
+
+    Grammar (#169): a bare comparable column, or exactly one forward to-one FK
+    hop (``relation__column``). M2M and reverse relations are rejected — ``F()``
+    across a multi-valued relation fans out rows (see the spec's follow-up
+    issue for Exists()-based semantics). Terminal classification is delegated
+    to ``_comparison_group_for`` against the related model, so type-group
+    gating and its error vocabulary stay single-sourced. ``side`` ("left"/
+    "right") only decorates error messages.
+    """
+    segments = operand.split("__")
+    if len(segments) == 1:
+        return _comparison_group_for(model, operand)
+    if len(segments) > 2:
+        raise FilterError(
+            f"{side} operand {operand!r} traverses more than one relation"
+            f" (one hop allowed)"
+        )
+    relation, column = segments
+    try:
+        relation_field = model._meta.get_field(relation)
+    except FieldDoesNotExist as exc:
+        raise FilterError(
+            f"{side} operand {operand!r}: {model.__name__} has no relation {relation!r}"
+        ) from exc
+    if not isinstance(relation_field, (models.ForeignKey, models.OneToOneField)):
+        raise FilterError(
+            f"{side} operand {operand!r}: {model.__name__}.{relation}"
+            f" is not a to-one relation (only forward FK hops are comparable)"
+        )
+    try:
+        return _comparison_group_for(relation_field.related_model, column)
+    except FilterError as exc:
+        raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
+
+
 type ModifierValue = str  # a Modifier.value, e.g. "INCLUDES"
 
 
 class ComparableColumn(TypedDict):
-    """A model column that can take part in a field-to-field comparison, ready for
-    a picker: its field name, a human label, and its comparison group."""
+    """A comparison-operand option, ready for a picker: operand value, human
+    label, comparison group, allowed raw-space operators, and the source
+    optgroup it renders under."""
 
-    value: str  # column name, e.g. "timestamp_end"
-    label: str  # field verbose_name, title-cased, e.g. "Timestamp End"
+    value: ComparisonOperand  # "timestamp_end" or "game__year_released"
+    label: str  # own: "Timestamp End"; related: "Base Game: Year Released"
     group: ComparisonGroup
-    operators: list[ModifierValue]  # valid for this column's group (#152)
+    operators: list[ModifierValue]  # valid for this column's group, raw space (#152)
+    source: str  # optgroup label: model verbose name for own columns, FK verbose name for related columns
 
 
-def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
-    """Every column of ``model`` with a comparison group, labelled and grouped,
-    sorted by label (case-insensitive).
+def _comparison_relations(
+    model: type[models.Model],
+) -> list[tuple[str, type[models.Model], str]]:
+    """The forward to-one FKs comparison operands may traverse, introspected
+    (never configured): ``(fk_name, related_model, title-cased verbose name)``
+    per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
+    The same acceptance rule ``_comparison_operand_group`` validates against.
+    """
+    relations: list[tuple[str, type[models.Model], str]] = []
+    for model_field in model._meta.get_fields():
+        if (
+            isinstance(model_field, (models.ForeignKey, models.OneToOneField))
+            and model_field.concrete
+            and model_field.related_model is not None
+        ):
+            relations.append(
+                (
+                    model_field.name,
+                    model_field.related_model,
+                    str(model_field.verbose_name).title(),
+                )
+            )
+    return relations
 
-    Iterates ``model._meta.get_fields()`` and keeps the columns that
-    ``_maybe_group_for`` classifies into a group; relations, reverse relations,
-    M2M, the pk/AutoField, generated-without-output, and JSONField all classify to
-    None and so fall out. The label is the field's ``verbose_name`` title-cased to
-    match how Django presents it.
+
+def _own_comparable_columns(
+    model: type[models.Model],
+    *,
+    prefix: str = "",
+    source: str = "",
+) -> list[ComparableColumn]:
+    """The comparable columns of ``model``, optionally prefixed and sourced.
+
+    ``prefix`` is prepended to each ``value`` (e.g. ``"game__"`` for FK-hop
+    entries).  ``source`` is stored on each entry as the optgroup label.
+    When ``prefix`` is non-empty (i.e. these are related-model columns) the
+    source is also prepended to each ``label`` as ``f"{source}: {label}"`` to
+    qualify them — own-model columns (no prefix) always carry bare labels.
+    Sorted alphabetically by label (case-insensitive) within the block.
     """
     columns: list[ComparableColumn] = []
     for model_field in model._meta.get_fields():
@@ -1863,19 +1987,55 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
         if group is None:
             continue
         verbose_name = getattr(model_field, "verbose_name", column)
+        raw_label: str = verbose_name.title()
+        label = f"{source}: {raw_label}" if prefix else raw_label
         columns.append(
             ComparableColumn(
-                value=column,
-                label=verbose_name.title(),
+                value=f"{prefix}{column}",
+                label=label,
                 group=group,
                 # Send the allowed operators as data so the TS widget renders them
                 # directly instead of re-deriving the group->operators mapping (#152).
                 operators=[
                     modifier.value for modifier in _allowed_comparison_modifiers(group)
                 ],
+                source=source,
             )
         )
     columns.sort(key=lambda entry: entry["label"].lower())
+    return columns
+
+
+def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
+    """Every comparable column of ``model`` and its forward to-one FK targets,
+    labelled and grouped, with a ``source`` discriminator for optgroup rendering.
+
+    Own columns come first, sorted alphabetically by label, with ``source`` set
+    to the model's title-cased verbose name (e.g. "Session").  Then one block
+    per forward FK in ``_meta`` declaration order — each block sorted
+    alphabetically by its column label, with ``source`` set to the FK's
+    title-cased verbose name.  No global re-sort across blocks.
+
+    ``source`` is always non-empty: own columns carry the model's verbose name
+    and related columns carry the FK's verbose name — every source renders as
+    an optgroup label.  Own-column labels are NOT prefixed (label
+    qualification is keyed off the ``prefix`` param in
+    ``_own_comparable_columns``, not off ``source``).
+
+    Relations, reverse relations, M2M, the pk/AutoField, GeneratedFields without
+    an output type, and JSONField all classify to None in ``_maybe_group_for``
+    and are excluded.  The same one-hop grammar that ``_comparison_operand_group``
+    enforces is what ``_comparison_relations`` enumerates — they stay in sync by
+    sharing the same FK acceptance predicate.
+    """
+    own_source = str(model._meta.verbose_name).title()
+    columns = _own_comparable_columns(model, source=own_source)
+    for fk_name, related_model, fk_source in _comparison_relations(model):
+        columns.extend(
+            _own_comparable_columns(
+                related_model, prefix=f"{fk_name}__", source=fk_source
+            )
+        )
     return columns
 
 

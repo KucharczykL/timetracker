@@ -546,3 +546,75 @@ def test_scoped_aggregate_narrows_game_list(
     )
     expect(page.get_by_text("DeckGame")).to_be_visible()
     expect(page.get_by_text("DeskGame")).not_to_be_visible()
+
+
+def test_cross_model_year_comparison_filters_sessions(
+    authenticated_page: Page, live_server
+) -> None:
+    """Cross-model year-space field comparison round-trip (#169).
+
+    Drives the session list-page filter bar UI: sets left='timestamp_start',
+    operator='EQUALS:year' (year comparison space), right='game__year_released',
+    applies the filter, and asserts that only the session whose play year matches
+    the game's release year remains visible.
+
+    Data:
+    - One game released in 2020.
+    - MatchSession: started in 2020 — timestamp_start year == game.year_released.
+    - MissSession: started in 2021 — timestamp_start year != game.year_released.
+    """
+    from datetime import timedelta
+
+    from games.models import Session
+
+    page = authenticated_page
+
+    platform = Platform.objects.create(name="PC")
+    match_game = Game.objects.create(
+        name="MatchGame", platform=platform, year_released=2020
+    )
+    miss_game = Game.objects.create(
+        name="MissGame", platform=platform, year_released=2020
+    )
+
+    match_start = datetime(2020, 6, 15, 10, 0, tzinfo=timezone.utc)
+    Session.objects.create(
+        game=match_game,
+        timestamp_start=match_start,
+        timestamp_end=match_start + timedelta(hours=2),
+    )
+
+    miss_start = datetime(2021, 3, 10, 14, 0, tzinfo=timezone.utc)
+    Session.objects.create(
+        game=miss_game,
+        timestamp_start=miss_start,
+        timestamp_end=miss_start + timedelta(hours=2),
+    )
+
+    # Navigate to the session list and open the filter bar.
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    page.locator("[data-filter-bar-toggle]").click()
+
+    # The FieldComparisonSet is inside the filter bar body. Add one comparison row.
+    page.locator("[data-fc-add]").click()
+    row = page.locator("[data-fc-row]").first
+
+    # Select left operand, year-space operator, and cross-model right operand.
+    row.locator("[data-fc-left]").select_option("timestamp_start")
+    row.locator("[data-fc-op]").select_option("EQUALS:year")
+    row.locator("[data-fc-right]").select_option("game__year_released")
+
+    # Apply the filter via the form submit.
+    with page.expect_navigation():
+        page.evaluate(
+            "document.getElementById('filter-bar-form')"
+            ".dispatchEvent(new Event('submit', {cancelable: true}))"
+        )
+
+    # Only the session whose play year (2020) matches the game's release year
+    # (also 2020) should appear; the 2021 session should be filtered out.
+    # Use a <tr> scoped locator to avoid matching popover/button text that also
+    # contains the game name but sits outside the session table rows.
+    session_table_rows = page.locator("tr[id^='session-row-']")
+    expect(session_table_rows.filter(has_text="MatchGame")).to_be_visible()
+    expect(session_table_rows.filter(has_text="MissGame")).not_to_be_visible()

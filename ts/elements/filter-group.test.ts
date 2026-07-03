@@ -675,13 +675,14 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
 
 // ── Live field-comparison leaf row (#246) ──
 // Two number columns of the same group so a comparison is buildable. The synthetic
-// row template mirrors _field_comparison_row's data hooks (data-fc-left/op/right +
-// the by-day granularity toggle) so the reused refreshRow/readComparisonRow drive it.
+// row template mirrors _field_comparison_row's data hooks (data-fc-left/op/right)
+// so the reused refreshRow/readComparisonRow drive it. Granularity is now carried
+// by the packed operator value (modifier:space), not a separate checkbox.
 const COLUMNS = [
-  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
-  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"] },
+  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
 ];
 
 function mountComparison(): FilterGroupElement {
@@ -701,7 +702,6 @@ function mountComparison(): FilterGroupElement {
         </select>
         <select data-fc-op data-selected></select>
         <select data-fc-right data-selected></select>
-        <label data-fc-granularity-wrap hidden><input type="checkbox" data-fc-granularity /></label>
         <button data-fc-remove>✕</button>
       </div>
     </template>`;
@@ -794,37 +794,59 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     });
   });
 
-  it("emits granularity:\"date\" only when the by-day toggle is checked and visible", () => {
+  it("emits granularity:\"date\" when the operator is packed with :date", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
-    // A datetime left column unhides the by-day wrapper (refreshRow); check it.
+    // A datetime left column reveals date/year optgroups in the operator select.
     setSelect(host, [0], "data-fc-left", "created_at");
-    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    // Pick a by-date packed operator — refreshRow populates these in the operator optgroup.
+    setSelect(host, [0], "data-fc-op", "LESS_THAN:date");
     setSelect(host, [0], "data-fc-right", "updated_at");
-    const wrap = row(host, [0]).querySelector<HTMLElement>("[data-fc-granularity-wrap]")!;
-    expect(wrap.hidden).toBe(false); // datetime operand → toggle shown
-    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
-    byDay.checked = true;
-    byDay.dispatchEvent(new Event("change", { bubbles: true }));
     expect(host.serializeForQuery()).toEqual({
       AND: [{ field_comparisons: [{ left: "created_at", right: "updated_at", modifier: "LESS_THAN", granularity: "date" }] }],
     });
   });
 
-  it("drops granularity when the by-day wrapper is hidden (non-datetime operand)", () => {
+  it("omits granularity when a raw (unpacked) operator is chosen", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
-    setSelect(host, [0], "data-fc-left", "year_released"); // number group → wrapper stays hidden
-    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    setSelect(host, [0], "data-fc-left", "year_released"); // number group → no space optgroups
+    setSelect(host, [0], "data-fc-op", "LESS_THAN"); // bare modifier, no granularity suffix
     setSelect(host, [0], "data-fc-right", "original_year_released");
-    // Force the checkbox on even though the wrapper is hidden — readComparisonRow
-    // must still omit granularity (guards the `!byDayWrap.hidden` condition).
-    const byDay = row(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
-    byDay.checked = true;
     const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
     expect(payload).not.toHaveProperty("granularity");
+  });
+
+  it("operator change re-filters the right-column list via wireComparisonRowListeners (#169)", () => {
+    // Integration check: buildComparisonCell must call wireComparisonRowListeners so
+    // that a change event on the operator select re-runs refreshRowRightList. If the
+    // wiring were dropped the right list would stay stale after an operator change.
+    const host = mountComparison();
+    clickAction(host, "remove", [0]);
+    clickAction(host, "add-comparison", []);
+
+    // Choose a datetime left column — raw comparison only allows other datetime columns.
+    setSelect(host, [0], "data-fc-left", "created_at");
+    const rightSelect = row(host, [0]).querySelector<HTMLSelectElement>("[data-value-cell] [data-fc-right]")!;
+
+    // Under the initial raw operator the right list must NOT contain year_released
+    // (a number-group column excluded from the datetime group).
+    const rawOptions = [...rightSelect.options].map((option) => option.value);
+    expect(rawOptions).not.toContain("year_released");
+
+    // Switching to a year-space packed operator opens the right list to number-group
+    // columns. Use setSelect so the change event fires and wireComparisonRowListeners
+    // triggers refreshRowRightList — the assertion below proves the wiring is present.
+    setSelect(host, [0], "data-fc-op", "EQUALS:year");
+    const yearSpaceOptions = [...rightSelect.options].map((option) => option.value);
+    expect(yearSpaceOptions).toContain("year_released");
+
+    // Switching back to a raw operator must re-exclude year_released again.
+    setSelect(host, [0], "data-fc-op", "LESS_THAN");
+    const rawOptionsAgain = [...rightSelect.options].map((option) => option.value);
+    expect(rawOptionsAgain).not.toContain("year_released");
   });
 });
 
@@ -1141,7 +1163,6 @@ const HYDRATION_TEMPLATES = `
       </select>
       <select data-fc-op data-selected></select>
       <select data-fc-right data-selected></select>
-      <label data-fc-granularity-wrap hidden><input type="checkbox" data-fc-granularity /></label>
       <button data-fc-remove>✕</button>
     </div>
   </template>
@@ -1376,7 +1397,9 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     expect(host.serializeForQuery()).toEqual(filter);
   });
 
-  it("comparison with granularity: restores the by-day toggle and round-trips", () => {
+  it("comparison with granularity: restores the packed operator and round-trips", () => {
+    // Granularity is now carried by the packed operator (modifier:space) — no checkbox.
+    // seedComparisonRow stores "LESS_THAN:date" in data-selected; refreshRow restores it.
     const filter = {
       AND: [{
         field_comparisons: [
@@ -1385,8 +1408,8 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
       }],
     };
     const host = loadHydration(filter);
-    const byDay = valueCell(host, [0]).querySelector<HTMLInputElement>("[data-fc-granularity]")!;
-    expect(byDay.checked).toBe(true);
+    const operatorSelect = valueCell(host, [0]).querySelector<HTMLSelectElement>("[data-fc-op]")!;
+    expect(operatorSelect.value).toBe("LESS_THAN:date");
     expect(host.serializeForQuery()).toEqual(filter);
   });
 

@@ -19,6 +19,7 @@ from common.components.primitives import (
     Input,
     Label,
     Option,
+    Optgroup,
     Radio,
     RelationChild,
     Select,
@@ -752,7 +753,7 @@ class FieldComparisonRow(NamedTuple):
     left: str  # left column name, e.g. "timestamp_end"
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
-    granularity: str  # "raw" or "date" (day-granular datetime compare)
+    granularity: str  # "raw", "date", or "year" (comparison space)
 
 
 def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
@@ -760,7 +761,9 @@ def _fc_row_from_dict(raw: dict) -> FieldComparisonRow:
         left=str(raw.get("left", "")),
         right=str(raw.get("right", "")),
         modifier=str(raw.get("modifier") or "EQUALS"),
-        granularity="date" if raw.get("granularity") == "date" else "raw",
+        granularity=(
+            raw["granularity"] if raw.get("granularity") in ("date", "year") else "raw"
+        ),
     )
 
 
@@ -793,14 +796,33 @@ def _field_comparison_rows(existing: dict) -> tuple[list[FieldComparisonRow], st
     return [], "AND"
 
 
+def _pack_operator(modifier: str, granularity: str) -> str:
+    """The operator ``<select>`` value: bare modifier in the raw comparison space,
+    else ``modifier:granularity`` — mirrored by ``unpackOperator`` in
+    ts/elements/field-comparison-set.ts."""
+    return modifier if granularity == "raw" else f"{modifier}:{granularity}"
+
+
 def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[Node]:
-    """The shared left-column ``<option>`` set (right/operator are TS-built)."""
+    """Left-column options, one ``<optgroup>`` per source.
+
+    Every source (own model or FK) gets an ``<optgroup label=source>``
+    wrapping its member options.  ``comparable_columns`` returns own columns
+    first (with ``source`` set to the model's verbose name), so the order
+    (own → related blocks) is stable without a secondary sort here.
+    Empty groups are omitted."""
     options: list[Node] = [Option(value="")["column…"]]
+    grouped: dict[str, list[ComparableColumn]] = {}
     for column in columns:
-        attributes = [("value", column["value"]), ("data-group", column["group"])]
-        if column["value"] == selected:
-            attributes.append(("selected", ""))
-        options.append(Option(attributes)[column["label"]])
+        grouped.setdefault(column["source"], []).append(column)
+    for source, members in grouped.items():
+        member_options: list[Node] = []
+        for column in members:
+            attributes = [("value", column["value"]), ("data-group", column["group"])]
+            if column["value"] == selected:
+                attributes.append(("selected", ""))
+            member_options.append(Option(attributes)[column["label"]])
+        options.append(Optgroup(label=source)[member_options])
     return options
 
 
@@ -817,42 +839,17 @@ def _field_comparison_row(
     column's group and restores the selection. This is the reusable single-row
     unit (see TODO(nested-builder) above)."""
     left_value = row.left if row else ""
-    operator_value = row.modifier if row else ""
+    operator_value = _pack_operator(row.modifier, row.granularity) if row else ""
     right_value = row.right if row else ""
-    granularity_date = bool(row and row.granularity == "date")
     return Div(
         data_fc_row="",
-        class_=(
-            "grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto_auto]"
-        ),
+        class_=("grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]"),
     )[
         Select(data_fc_left="", class_=select_class)[
             *_fc_column_options(columns, left_value)
         ],
         Select(data_fc_op="", data_selected=operator_value, class_=select_class),
         Select(data_fc_right="", data_selected=right_value, class_=select_class),
-        # Day-granular toggle — only meaningful for datetime operands, so
-        # field-comparison-set.ts shows/hides it based on the chosen left
-        # column. Hand-rolled (not Checkbox()) because the wrapper Label must
-        # carry data-fc-granularity-wrap + hidden; the input reuses Checkbox's
-        # utility classes so it matches every other checkbox in the app.
-        Label(
-            [] if granularity_date else [("hidden", "")],
-            data_fc_granularity_wrap="",
-            class_="flex items-center gap-1 text-sm text-body cursor-pointer",
-        )[
-            Input(
-                [("checked", "")] if granularity_date else [],
-                type="checkbox",
-                data_fc_granularity="",
-                class_=(
-                    "rounded border-default-medium"
-                    " bg-neutral-secondary-medium text-brand"
-                    " focus:ring-brand cursor-pointer"
-                ),
-            ),
-            "by day",
-        ],
         Button(
             type="button",
             data_fc_remove="",
