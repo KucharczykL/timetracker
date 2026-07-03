@@ -53,7 +53,9 @@ from common.components.primitives import (
 class SearchSelectOption(TypedDict):
     value: str | int
     label: str
-    data: dict[str, str | int]  # becomes data-* attrs on the row / pill
+    # Becomes data-* attrs on the row / pill. Values are str only, matching the
+    # TS SearchSelectOption's Record<string, string> — producers stringify ids.
+    data: dict[str, str]
 
 
 # A lightweight (value, label) pair used wherever only those two fields are
@@ -198,8 +200,8 @@ def _normalize_option(option) -> SearchSelectOption:
     return {"value": value, "label": label, "data": {}}
 
 
-def _data_attributes(data: dict[str, str | int]) -> list[HTMLAttribute]:
-    return [(f"data-{key}", str(value)) for key, value in data.items()]
+def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
+    return [(f"data-{key}", value) for key, value in data.items()]
 
 
 def _hidden_input(name: str, value) -> Node:

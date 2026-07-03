@@ -405,7 +405,8 @@ class GameResolverTest(django.test.TestCase):
         options = searchselect_selected([self.g1.id], _game_options)
         self.assertEqual(len(options), 1)
         self.assertEqual(options[0]["value"], self.g1.id)
-        self.assertEqual(options[0]["data"]["platform"], self.platform.id)
+        self.assertEqual(options[0]["data"]["platform"], str(self.platform.id))
+        self.assertEqual(options[0]["data"]["platform_name"], "Steam")
 
     def test_searchselect_selected_empty(self):
         self.assertEqual(searchselect_selected([], lambda v: []), [])
@@ -434,7 +435,8 @@ class SearchGamesApiTest(django.test.TestCase):
         from games.api import search_games
 
         results = search_games(None, q="Zelda")
-        self.assertEqual(results[0]["data"]["platform"], self.platform.id)
+        self.assertEqual(results[0]["data"]["platform"], str(self.platform.id))
+        self.assertEqual(results[0]["data"]["platform_name"], "Steam")
 
 
 if __name__ == "__main__":
