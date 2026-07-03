@@ -3895,6 +3895,62 @@ class TestYearProjection:
         # temporal right: ExtractYear wrapper appears
         assert "ExtractYear" in str(q)
 
+    def test_year_projection_datetime_left_number_right(self):
+        """'year' granularity: datetime left gets __year; number right stays plain F."""
+        q = _field_comparison_to_q(
+            "timestamp_start", "year_released", Modifier.EQUALS, "year",
+            left_group="datetime", right_group="number",
+        )
+        # datetime left: __year lookup suffix
+        assert "timestamp_start__year" in str(q)
+        # number right: no ExtractYear wrapper
+        assert "ExtractYear" not in str(q)
+
+    def test_year_projection_date_left_date_right(self):
+        """'year' granularity: both date operands get projected (left __year, right ExtractYear)."""
+        q = _field_comparison_to_q(
+            "started", "ended", Modifier.EQUALS, "year",
+            left_group="date", right_group="date",
+        )
+        # date left: __year lookup suffix
+        assert "started__year" in str(q)
+        # date right: ExtractYear wrapper
+        assert "ExtractYear" in str(q)
+
+    def test_year_projection_date_left_number_right(self):
+        """'year' granularity: date left gets __year; number right stays plain F."""
+        q = _field_comparison_to_q(
+            "started", "year_released", Modifier.EQUALS, "year",
+            left_group="date", right_group="number",
+        )
+        # date left: __year lookup suffix
+        assert "started__year" in str(q)
+        # number right: no ExtractYear wrapper
+        assert "ExtractYear" not in str(q)
+
+    def test_year_projection_number_left_number_right(self):
+        """'year' granularity: both number operands pass through — no projection applied."""
+        q = _field_comparison_to_q(
+            "year_released", "year_released", Modifier.EQUALS, "year",
+            left_group="number", right_group="number",
+        )
+        # neither side gets projected
+        assert "year_released__year" not in str(q)
+        assert "ExtractYear" not in str(q)
+        # plain lookup appears without transformation
+        assert "year_released" in str(q)
+
+    def test_date_space_date_left_datetime_right_projects_right(self):
+        """'date' granularity: date left passes through; datetime right gets TruncDate."""
+        q = _field_comparison_to_q(
+            "started", "created_at", Modifier.EQUALS, "date",
+            left_group="date", right_group="datetime",
+        )
+        # date left: no __date suffix (only datetime needs truncation)
+        assert "started__date" not in str(q)
+        # datetime right: TruncDate wrapper
+        assert "TruncDate" in str(q)
+
 
 class FieldComparisonPrefillTest(TestCase):
     """_field_comparison_rows: the two on-disk shapes the widget round-trips."""
