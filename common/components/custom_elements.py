@@ -328,7 +328,7 @@ def FilterBuilder(
                     {"data-preset-dropdown": ""},
                     class_=(
                         "hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border "
-                        "border-default-medium bg-body shadow-lg"
+                        "border-default-medium bg-neutral-secondary-medium shadow-lg"
                     ),
                 )[Ul(class_="py-1")],
             ],

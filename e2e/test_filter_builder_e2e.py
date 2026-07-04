@@ -234,6 +234,51 @@ def test_prefill_apply_roundtrip_carries_filter(
     expect(page.get_by_text("PlayGame")).not_to_be_visible()
 
 
+def test_empty_preset_dropdown_shows_readable_placeholder(
+    authenticated_page: Page, live_server
+) -> None:
+    """With zero saved presets, the Load-preset dropdown must show a readable
+    "No saved presets" row (issue #295).
+
+    The row was present in the DOM but invisible: the dropdown panel used
+    ``bg-body`` — a *text*-color token (gray-600 light / gray-400 dark) — as its
+    background, and the placeholder row uses ``text-body``, the same token, so
+    the text was painted in exactly its background color.  Playwright's
+    ``to_be_visible`` cannot catch same-color-on-same-color, so this test
+    compares the row's computed ``color`` against the panel's computed
+    ``background-color`` directly, in both light and dark mode.
+    """
+    page = authenticated_page
+
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+    expect(page.locator("filter-builder")).to_be_attached()
+
+    for dark_mode in (False, True):
+        page.evaluate(
+            "dark => document.documentElement.classList.toggle('dark', dark)",
+            dark_mode,
+        )
+        page.locator("filter-builder [data-load-presets]").click()
+        placeholder = page.locator("[data-preset-dropdown] li")
+        expect(placeholder).to_have_text("No saved presets", timeout=5_000)
+
+        colors = placeholder.evaluate(
+            """element => {
+                const panel = element.closest('[data-preset-dropdown]');
+                return {
+                    text: getComputedStyle(element).color,
+                    panel: getComputedStyle(panel).backgroundColor,
+                };
+            }"""
+        )
+        assert colors["text"] != colors["panel"], (
+            f"placeholder text invisible (dark={dark_mode}): text color "
+            f"{colors['text']} equals dropdown background {colors['panel']}"
+        )
+        # Close the dropdown again so the next iteration's click re-opens it.
+        page.locator("filter-builder [data-load-presets]").click()
+
+
 def test_load_set_field_preset_reflects_field_without_crash(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:
