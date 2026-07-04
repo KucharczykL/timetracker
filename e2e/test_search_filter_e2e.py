@@ -21,7 +21,7 @@ from common.components import PlatformFilterBar
 from games.models import Game
 
 
-def _bar_page(filter_json: str = "") -> str:
+def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -31,18 +31,18 @@ def _bar_page(filter_json: str = "") -> str:
     <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
 </head>
 <body>
-    {PlatformFilterBar(filter_json=filter_json, preset_api_url="/api/presets/")}
+    {PlatformFilterBar(filter_json=filter_json, preset_api_url="/api/presets/", apply_url=apply_url)}
 </body>
 </html>"""
 
 
 def empty_bar_view(request):
-    return HttpResponse(_bar_page())
+    return HttpResponse(_bar_page(apply_url=request.path))
 
 
 def prefilled_exclude_view(request):
     filter_json = json.dumps({"search": {"value": "Witcher", "modifier": "EXCLUDES"}})
-    return HttpResponse(_bar_page(filter_json=filter_json))
+    return HttpResponse(_bar_page(filter_json=filter_json, apply_url=request.path))
 
 
 urlpatterns = [

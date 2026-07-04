@@ -430,6 +430,7 @@ _SearchSelect = custom_element_builder("search-select")
 
 
 class FilterBarProps(TypedDict):
+    apply_url: str  # list URL Apply/Clear/preset-pick navigates to (#304)
     preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
     preset_mode: str  # FilterPreset.mode this bar scopes to, e.g. "games"
 

@@ -52,6 +52,9 @@ class FilterBarRenderingTest(TestCase):
         # (the client no longer sniffs it from the pathname — #297).
         self.assertIn('preset-api-url="/api/presets/"', html)
         self.assertIn(f'preset-mode="{preset_mode}"', html)
+        # Apply/Clear/preset-pick navigation target is a server-provided typed
+        # prop, not sniffed from window.location.pathname (#304).
+        self.assertIn(f'apply-url="{list_url_for(preset_mode)}"', html)
         self.assertNoEscapedTags(html)
 
     def _assert_number_filter(self, html, field_prefix):
@@ -549,6 +552,18 @@ class FilterBarRenderingTest(TestCase):
         self.assertIn('value="Witcher"', html)
         # Isolate the exclude checkbox's own markup and assert it is unchecked.
         self.assertNotIn("checked", _exclude_input_tag(html))
+
+    def test_apply_url_override_renders_verbatim(self):
+        # Non-canonical mounts (the synthetic e2e harnesses) pin navigation to
+        # their own path; real views never pass this (#304).
+        html = str(
+            FilterBar(
+                filter_json="",
+                preset_api_url="/api/presets/",
+                apply_url="/custom-mount/",
+            )
+        )
+        self.assertIn('apply-url="/custom-mount/"', html)
 
 
 class NumberFilterRenderTest(TestCase):
