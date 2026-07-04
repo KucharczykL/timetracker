@@ -14,6 +14,16 @@
  * Filter widgets have no hidden inputs; readSearchSelect serialises their state
  * into data-included / data-excluded / data-modifier for the filter bar.
  *
+ * ARIA (issue #154): the server marks the search input role="combobox" and the
+ * panel role="listbox" with role="option" rows; this module assigns the unique
+ * listbox/option ids, points aria-controls at the panel, keeps aria-expanded in
+ * sync with the panel's visibility, and mirrors the keyboard highlight
+ * (data-search-select-highlighted) into aria-activedescendant so screen readers
+ * announce the active option without moving DOM focus. aria-selected follows the
+ * highlight only in single-select (the APG list-autocomplete convention); in
+ * multi/filter mode the listbox is aria-multiselectable, so aria-selected
+ * conveys membership instead — synced from the pills by syncSelectedStates.
+ *
  * Dynamically-added rows and pills are cloned from hidden <template> elements
  * the server renders with the same Python components (Pill / SearchSelect /
  * FilterSelect). The JS only fills in the label slot ([data-search-select-label]),
@@ -55,6 +65,12 @@ interface FilterPillEntry {
 
 const DEBOUNCE_MS = 100;
 
+// Monotonic source for per-widget listbox ids (issue #154). The ids backing
+// aria-controls / aria-activedescendant are assigned here at init — never
+// server-side — because the nested filter builder clones whole <search-select>
+// prototypes, and a server-rendered id would be duplicated across clones.
+let listboxIdCounter = 0;
+
 // Presence modifiers (IS_NULL / NOT_NULL) are mutually exclusive with value
 // pills — selecting one clears all value pills. Non-presence modifiers
 // (INCLUDES_ALL, INCLUDES_ONLY) coexist with value pills. The token set lives in
@@ -81,6 +97,33 @@ const initWidget = (containerElement: Element) => {
   let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
   let hasPrefetched = false;
 
+  // ── ARIA combobox wiring (issue #154). Roles/aria-selected come from the
+  //    server markup (and template clones inherit them); the id plumbing and
+  //    the expanded/activedescendant state live here. ──
+  listboxIdCounter += 1;
+  const listboxId = `search-select-listbox-${listboxIdCounter}`;
+  options.id = listboxId;
+  search.setAttribute("aria-controls", listboxId);
+  let optionIdCounter = 0;
+
+  // Option rows only need an id once aria-activedescendant points at them, so
+  // ids are assigned lazily on first highlight and stay stable for the row's
+  // lifetime (fetched replacements are new elements and get fresh ids).
+  const ensureOptionId = (row: HTMLElement): string => {
+    if (!row.id) {
+      optionIdCounter += 1;
+      row.id = `${listboxId}-option-${optionIdCounter}`;
+    }
+    return row.id;
+  };
+
+  const syncExpanded = () => {
+    search.setAttribute(
+      "aria-expanded",
+      options.classList.contains("hidden") ? "false" : "true"
+    );
+  };
+
   const hasVisibleContent = () => {
     const optionRows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
     for (let i = 0; i < optionRows.length; i++) {
@@ -95,9 +138,16 @@ const initWidget = (containerElement: Element) => {
     if (alwaysVisible || hasVisibleContent()) {
       options.classList.remove("hidden");
     }
+    syncExpanded();
   };
   const hidePanel = () => {
+    // Every close/commit path drops the highlight here, so no caller can leave
+    // a collapsed listbox with a stale active or highlight-selected row (and
+    // always-visible panels, which stay open, still lose their phantom active
+    // option after a commit). clearHighlight also removes aria-activedescendant.
+    clearHighlight();
     if (!alwaysVisible) options.classList.add("hidden");
+    syncExpanded();
   };
 
   const setNoResults = (visible: boolean) => {
@@ -113,6 +163,13 @@ const initWidget = (containerElement: Element) => {
     clearHighlight();
     if (!row) return;
     row.setAttribute("data-search-select-highlighted", "");
+    // Screen readers follow the highlight without moving DOM focus:
+    // aria-activedescendant names the active option. aria-selected mirrors the
+    // highlight only in single-select (the APG list-autocomplete convention) —
+    // in multi mode the listbox is aria-multiselectable and aria-selected
+    // conveys pill membership (syncSelectedStates), not the highlight.
+    if (!multi) row.setAttribute("aria-selected", "true");
+    search.setAttribute("aria-activedescendant", ensureOptionId(row));
     highlightedRow = row;
     row.scrollIntoView({ block: "nearest" });
   };
@@ -120,12 +177,19 @@ const initWidget = (containerElement: Element) => {
   const clearHighlight = () => {
     if (highlightedRow) {
       highlightedRow.removeAttribute("data-search-select-highlighted");
+      if (!multi) highlightedRow.setAttribute("aria-selected", "false");
       highlightedRow = null;
     }
+    search.removeAttribute("aria-activedescendant");
   };
 
+  // Keyboard-navigable rows: value rows plus the pinned modifier
+  // pseudo-options — every row advertised as role="option" must be reachable
+  // by ArrowUp/ArrowDown, and modifier rows sit first in document order.
   const getVisibleOptions = (): HTMLElement[] => {
-    const all = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
+    const all = options.querySelectorAll<HTMLElement>(
+      "[data-search-select-option], [data-search-select-modifier-option]"
+    );
     return Array.from(all).filter(row => row.style.display !== "none");
   };
 
@@ -152,8 +216,19 @@ const initWidget = (containerElement: Element) => {
         return;
       }
     }
-    // 3. Fallback: first visible option
-    highlightOption(visible[0]);
+    // 3. Fallback: the first VALUE row. A modifier row is auto-highlighted
+    //    only when the panel has no value rows and no query — never for a
+    //    non-matching query, where Enter would silently set a modifier.
+    const firstValueRow = visible.find(row =>
+      row.hasAttribute("data-search-select-option")
+    );
+    if (firstValueRow) {
+      highlightOption(firstValueRow);
+    } else if (!lower) {
+      highlightOption(visible[0]);
+    } else {
+      clearHighlight();
+    }
   };
 
   // Get active values in both form and filter modes
@@ -167,6 +242,30 @@ const initWidget = (containerElement: Element) => {
       if (value) values.add(value);
     });
     return values;
+  };
+
+  // In multi mode the listbox is aria-multiselectable, so aria-selected conveys
+  // membership: true for value rows whose value has a pill (include or exclude)
+  // and for the active modifier row. Runs on init, after rows render, and on
+  // every change; single-select keeps highlight-driven aria-selected instead.
+  const syncSelectedStates = () => {
+    if (!multi) return;
+    const selectedValues = getSelectedValues();
+    options.querySelectorAll<HTMLElement>("[data-search-select-option]").forEach(row => {
+      row.setAttribute(
+        "aria-selected",
+        selectedValues.has(row.getAttribute("data-value") ?? "") ? "true" : "false"
+      );
+    });
+    const activeModifier = container.getAttribute("data-modifier") ?? "";
+    options.querySelectorAll<HTMLElement>("[data-search-select-modifier-option]").forEach(row => {
+      row.setAttribute(
+        "aria-selected",
+        row.getAttribute("data-search-select-modifier-option") === activeModifier
+          ? "true"
+          : "false"
+      );
+    });
   };
 
   // ── Render server-fetched rows into the panel ──
@@ -200,6 +299,7 @@ const initWidget = (containerElement: Element) => {
       }
     });
 
+    syncSelectedStates();
     showPanel();
   };
 
@@ -298,6 +398,7 @@ const initWidget = (containerElement: Element) => {
     }
     const row = buildRow({ value: query, label: query, data: {} });
     options.insertBefore(row, noResults || null);
+    syncSelectedStates();
     setNoResults(false);
     highlightOption(row as HTMLElement);
   };
@@ -421,6 +522,15 @@ const initWidget = (containerElement: Element) => {
     } else if (key === "Enter") {
       if (highlightedRow) {
         event.preventDefault();
+        const modifierValue = highlightedRow.getAttribute(
+          "data-search-select-modifier-option"
+        );
+        if (modifierValue !== null) {
+          // A highlighted pinned modifier pseudo-option: commit it exactly
+          // like a click on its row would (setModifier hides the panel).
+          setModifier(modifierValue, highlightedRow.getAttribute("data-label") ?? "");
+          return;
+        }
         const option = optionFromRow(highlightedRow);
         if (isFilter) {
           addFilterPill(option, "include");
@@ -428,12 +538,10 @@ const initWidget = (containerElement: Element) => {
         } else {
           selectOption(option);
         }
-        clearHighlight();
-        hidePanel();
+        hidePanel(); // also clears the highlight
       }
     } else if (key === "Escape") {
-      clearHighlight();
-      hidePanel();
+      hidePanel(); // also clears the highlight
     }
   });
 
@@ -647,6 +755,7 @@ const initWidget = (containerElement: Element) => {
   };
 
   const emitChange = (last: SearchSelectOption | null) => {
+    syncSelectedStates();
     const values = currentValues();
     if (syncUrl) syncToUrl(values);
     container.dispatchEvent(
@@ -675,14 +784,17 @@ const initWidget = (containerElement: Element) => {
     });
   }
 
+  // Seed the membership aria-selected state from whatever pills exist at init
+  // (server-rendered, URL-restored, or writeFilterSelect-hydrated).
+  syncSelectedStates();
+
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every
   // mode. Option mousedown preventDefault keeps the input focused during a
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
-      hidePanel();
-      clearHighlight();
+      hidePanel(); // also clears the highlight
       // The search box is a transient query buffer; pills hold the committed
       // values. Drop any uncommitted query on exit so it matches single-select
       // (whose blur handler already clears/restores the box). Reset row

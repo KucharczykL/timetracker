@@ -18,6 +18,12 @@ from games.models import Game, Platform
 # string assertions working).
 
 
+def _tag_around(html: str, marker: str) -> str:
+    """The opening tag (``<`` … ``>``) containing the first occurrence of ``marker``."""
+    marker_position = html.index(marker)
+    return html[html.rindex("<", 0, marker_position) : html.index(">", marker_position)]
+
+
 class PillTest(unittest.TestCase):
     def test_returns_safetext(self):
         self.assertIsInstance(str(Pill(label="hi")), SafeText)
@@ -162,10 +168,7 @@ class SearchSelectComponentTest(unittest.TestCase):
         wrapper_open_end = html.index(">", html.index("<search-select"))
         self.assertNotIn('id="id_games"', html[:wrapper_open_end])
         # must appear on the element that carries data-search-select-search
-        search_pos = html.index("data-search-select-search")
-        tag_start = html.rindex("<", 0, search_pos)
-        tag_end = html.index(">", search_pos)
-        self.assertIn('id="id_games"', html[tag_start:tag_end])
+        self.assertIn('id="id_games"', _tag_around(html, "data-search-select-search"))
 
     def test_no_id_omits_id_attribute(self):
         html = str(SearchSelect(name="games"))
@@ -336,6 +339,153 @@ class FilterSelectComponentTest(unittest.TestCase):
         )
         self.assertNotIn("INCLUDES_ALL", html)
         self.assertNotIn("INCLUDES_ONLY", html)
+
+
+class SearchSelectAriaTest(unittest.TestCase):
+    """ARIA combobox semantics (issue #154). Only the static roles/states render
+    server-side; the id plumbing (aria-controls, row ids, aria-activedescendant)
+    is assigned by the JS at init so cloned widget prototypes never duplicate
+    ids."""
+
+    def test_search_input_is_a_combobox(self):
+        input_tag = _tag_around(
+            str(SearchSelect(name="games", options=[("1", "One")])),
+            "data-search-select-search",
+        )
+        self.assertIn('role="combobox"', input_tag)
+        self.assertIn('aria-expanded="false"', input_tag)
+        self.assertIn('aria-autocomplete="list"', input_tag)
+
+    def test_always_visible_renders_expanded(self):
+        input_tag = _tag_around(
+            str(SearchSelect(name="games", always_visible=True)),
+            "data-search-select-search",
+        )
+        self.assertIn('aria-expanded="true"', input_tag)
+
+    def test_options_panel_is_a_listbox(self):
+        panel_tag = _tag_around(
+            str(SearchSelect(name="games", options=[("1", "One")])),
+            "data-search-select-options",
+        )
+        self.assertIn('role="listbox"', panel_tag)
+        # single-select panel is not multiselectable
+        self.assertNotIn("aria-multiselectable", panel_tag)
+
+    def test_multi_select_panel_is_multiselectable(self):
+        panel_tag = _tag_around(
+            str(SearchSelect(name="games", multi_select=True)),
+            "data-search-select-options",
+        )
+        self.assertIn('aria-multiselectable="true"', panel_tag)
+
+    def test_option_rows_carry_role_and_selected_state(self):
+        row_tag = _tag_around(
+            str(SearchSelect(name="games", options=[("1", "One")])),
+            'data-search-select-option=""',
+        )
+        self.assertIn('role="option"', row_tag)
+        self.assertIn('aria-selected="false"', row_tag)
+
+    def test_no_results_node_is_presentational(self):
+        # The message div must not be exposed as a (non-option) listbox child.
+        no_results_tag = _tag_around(
+            str(SearchSelect(name="games")), "data-search-select-no-results"
+        )
+        self.assertIn('role="presentation"', no_results_tag)
+
+    def test_filter_select_is_a_multiselectable_combobox(self):
+        html = str(FilterSelect(field_name="platform", options=[("1", "Steam")]))
+        self.assertIn('role="combobox"', _tag_around(html, "data-search-select-search"))
+        panel_tag = _tag_around(html, "data-search-select-options")
+        self.assertIn('role="listbox"', panel_tag)
+        self.assertIn('aria-multiselectable="true"', panel_tag)
+        row_tag = _tag_around(html, 'data-search-select-option=""')
+        self.assertIn('role="option"', row_tag)
+        self.assertIn('aria-selected="false"', row_tag)
+
+    def test_modifier_rows_are_options(self):
+        html = str(
+            FilterSelect(
+                field_name="platform",
+                modifier_options=[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")],
+            )
+        )
+        modifier_tag = _tag_around(
+            html, 'data-search-select-modifier-option="NOT_NULL"'
+        )
+        self.assertIn('role="option"', modifier_tag)
+        self.assertIn('aria-selected="false"', modifier_tag)
+
+    def test_multi_select_selected_rows_are_members(self):
+        # aria-multiselectable listbox: aria-selected conveys membership, so a
+        # row whose value is selected pre-renders aria-selected="true".
+        html = str(
+            SearchSelect(
+                name="games",
+                multi_select=True,
+                options=[("1", "One"), ("2", "Two")],
+                selected=[{"value": "1", "label": "One", "data": {}}],
+            )
+        )
+        panel = html[html.index("data-search-select-options") :]
+        self.assertIn('aria-selected="true"', _tag_around(panel, 'data-value="1"'))
+        self.assertIn('aria-selected="false"', _tag_around(panel, 'data-value="2"'))
+
+    def test_single_select_rows_stay_unselected(self):
+        # Single-select aria-selected is highlight-driven (JS); the committed
+        # value's row is not pre-marked.
+        html = str(
+            SearchSelect(
+                name="games",
+                options=[("1", "One")],
+                selected=[{"value": "1", "label": "One", "data": {}}],
+            )
+        )
+        panel = html[html.index("data-search-select-options") :]
+        self.assertIn('aria-selected="false"', _tag_around(panel, 'data-value="1"'))
+
+    def test_filter_pilled_rows_are_members(self):
+        # Include AND exclude pills both make their value a member of the
+        # filter set, so both rows read aria-selected="true".
+        html = str(
+            FilterSelect(
+                field_name="platform",
+                options=[("1", "Steam"), ("2", "GOG"), ("3", "Epic")],
+                included=[("1", "Steam")],
+                excluded=[("2", "GOG")],
+            )
+        )
+        panel = html[html.index("data-search-select-options") :]
+        self.assertIn('aria-selected="true"', _tag_around(panel, 'data-value="1"'))
+        self.assertIn('aria-selected="true"', _tag_around(panel, 'data-value="2"'))
+        self.assertIn('aria-selected="false"', _tag_around(panel, 'data-value="3"'))
+
+    def test_active_modifier_row_is_selected(self):
+        html = str(
+            FilterSelect(
+                field_name="platform",
+                modifier="IS_NULL",
+                modifier_options=[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")],
+            )
+        )
+        self.assertIn(
+            'aria-selected="true"',
+            _tag_around(html, 'data-search-select-modifier-option="IS_NULL"'),
+        )
+        self.assertIn(
+            'aria-selected="false"',
+            _tag_around(html, 'data-search-select-modifier-option="NOT_NULL"'),
+        )
+
+    def test_row_template_clones_inherit_option_role(self):
+        # Fetched rows are cloned from the <template> prototype, so it must
+        # carry the same ARIA semantics as pre-rendered rows.
+        html = str(SearchSelect(name="games", search_url="/api/games/search"))
+        template_part = html[html.index('data-search-select-template="row"') :]
+        row_tag = _tag_around(template_part, 'data-search-select-option=""')
+        self.assertIn('role="option"', row_tag)
+        self.assertIn('aria-selected="false"', row_tag)
 
 
 class SearchLabelTest(django.test.TestCase):
