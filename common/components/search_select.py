@@ -52,12 +52,18 @@ from typing import NamedTuple, TypedDict
 
 
 from common.components.core import Attributes, HTMLAttribute, Node
-from common.components.custom_elements import _SearchSelect
+from common.components.custom_elements import (
+    DROPDOWN_COMBOBOX_PANEL_CLASS,
+    Dropdown,
+    _SearchSelect,
+)
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     Button,
+    ControlButton,
     Div,
     FilterWidgetPath,
+    Icon,
     Input,
     Pill,
     Span,
@@ -280,6 +286,8 @@ def _combobox_children(
     items_visible: int,
     multi_select: bool = False,
     templates: list[Node] | None = None,
+    options_class: str | None = None,
+    no_results_text: str = "No results",
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -292,6 +300,11 @@ def _combobox_children(
     ``aria-activedescendant`` and the ids they reference are wired by the JS at
     init (see module docstring); the JS also keeps ``aria-expanded`` in sync
     with the panel's visibility.
+
+    ``options_class`` overrides the panel's class (``None`` keeps the default
+    absolute-anchored :data:`_OPTIONS_CLASS`); ``no_results_text`` the empty-state
+    label. Both are personality knobs (the preset picker's panel flows statically
+    inside its dropdown dialog and says "No saved presets" — issue #297).
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -306,8 +319,9 @@ def _combobox_children(
         data_search_select_no_results="",
         role="presentation",
         class_=_NO_RESULTS_CLASS,
-    )["No results"]
-    options_class = _OPTIONS_CLASS if always_visible else _OPTIONS_CLASS + " hidden"
+    )[no_results_text]
+    panel_class = _OPTIONS_CLASS if options_class is None else options_class
+    options_class = panel_class if always_visible else panel_class + " hidden"
     options_panel = Div(
         data_search_select_options="",
         role="listbox",
@@ -675,6 +689,144 @@ def FilterSelect(
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
+
+
+# ── PresetSelect styling (issue #297) ────────────────────────────────────────
+# The preset-picker personality lives inside a <drop-down> combobox dialog
+# (LoadPresetDropdown below), so unlike the form/filter personalities it has no
+# bordered field wrapper: the search input is its own bordered field, and the
+# options panel flows statically below it on the dialog surface
+# (GitHub-label-picker layout).
+_PRESET_CONTAINER_CLASS = "block text-sm"
+_PRESET_SEARCH_CLASS = (
+    "w-full px-3 py-2 rounded-base border border-default-medium "
+    "bg-neutral-secondary-medium text-sm text-heading placeholder:text-body "
+    "focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+)
+_PRESET_OPTIONS_CLASS = "mt-2 overflow-y-auto"
+_PRESET_OPTION_ROW_CLASS = (
+    "group flex items-center justify-between px-3 py-2 text-sm text-heading "
+    "cursor-pointer rounded "
+    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
+)
+_PRESET_DELETE_BUTTON_CLASS = (
+    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded "
+    "shrink-0 ml-2 text-body border border-transparent "
+    "hover:bg-red-500/15 hover:text-red-600 hover:border-red-400"
+)
+
+# Fetch-on-open window. A preset collection is per-user and small; one fetch
+# returns it all, and the type-to-filter narrows client-side.
+_PRESET_PREFETCH = 100
+
+
+def _preset_option_row(option: SearchSelectOption) -> Node:
+    """A preset row: a pickable label plus a per-row delete (×) action button.
+
+    The button carries ``data-search-select-action="delete"`` — in form mode the
+    widget dispatches ``search-select:action`` for it instead of picking the row
+    (issue #297). Preset rows are only ever client-built from the ``row``
+    template clone, so the label flows through ``textContent`` and the data
+    attributes through ``setAttribute`` — XSS-safe by construction.
+    """
+    return Div(
+        [*_data_attributes(option["data"]), *_option_role_attributes()],
+        data_search_select_option="",
+        data_value=str(option["value"]),
+        data_label=option["label"],
+        class_=_PRESET_OPTION_ROW_CLASS,
+    )[
+        _label_slot(option["label"], extra_class="truncate"),
+        Button(
+            type="button",
+            # Out of the sequential tab order like every per-row button (#119);
+            # mouse-reachable, and the row itself is the keyboard pick target.
+            tabindex="-1",
+            data_search_select_action="delete",
+            aria_label="Delete preset",
+            title="Delete preset",
+            class_=_PRESET_DELETE_BUTTON_CLASS,
+        )["×"],
+    ]
+
+
+def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
+    """The preset-picker personality of the combobox shell (issue #297).
+
+    An always-visible single-select whose options are fetched from the preset
+    API (``?mode=`` scoped) on every open — the hosting dropdown's ``combobox``
+    behavior calls ``refetchOptions()`` on ``dropdown:show``, so the list is
+    server-fresh after saves and deletes with no refresh plumbing. A pick emits
+    the standard ``search-select:change`` whose ``last.data.filter`` carries the
+    preset's filter JSON; the consumer decides what a pick means (the builder
+    loads it into the tree, the filter bar navigates). The pick is transient —
+    consumers call ``clearSelection()`` after handling it.
+    """
+    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)
+    search_attributes: list[HTMLAttribute] = [
+        ("data-search-select-search", ""),
+        ("placeholder", "Filter presets…"),
+        ("autocomplete", "off"),
+        ("class", _PRESET_SEARCH_CLASS),
+    ]
+    templates: list[Node] = [
+        Template(data_search_select_template="row")[_preset_option_row(_BLANK_OPTION)]
+    ]
+    children = _combobox_children(
+        pills=pills,
+        search_attributes=search_attributes,
+        options_children=[],
+        always_visible=True,
+        items_visible=items_visible,
+        templates=templates,
+        options_class=_PRESET_OPTIONS_CLASS,
+        no_results_text="No saved presets",
+    )
+    return _SearchSelect(
+        name="preset",
+        search_url=f"{api_url}?mode={mode}",
+        multi="false",
+        filter_mode="false",
+        free_text="false",
+        always_visible="true",
+        prefetch=_PRESET_PREFETCH,
+        sync_url="false",
+        class_=_PRESET_CONTAINER_CLASS,
+    )[*children]
+
+
+def LoadPresetDropdown(
+    *, api_url: str, mode: str, id: str = "load-preset-dropdown"
+) -> Node:
+    """The "Load preset ▾" trigger + combobox dialog, composed from the two
+    shared primitives (issue #297): ``<drop-down>`` owns the trigger, open/close,
+    outside-click, Escape and the panel surface; the panel hosts a
+    :func:`PresetSelect`. The ``combobox`` client behavior opts out of the
+    menu's item navigation and focuses the search box on open.
+
+    The wrapper carries ``data-preset-picker`` — the discriminator consumers use
+    to tell the picker's ``search-select:change``/``search-select:action`` events
+    apart from other widgets', and the hook whose ``close()`` they call after a
+    pick.
+    """
+    trigger = ControlButton(color="gray", aria_haspopup="dialog")[
+        "Load preset",
+        Icon("arrowdown", size="h-3 w-3"),
+    ].as_element()
+    panel = Div(
+        # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
+        # inner widget provides the combobox/listbox semantics (#154).
+        role="dialog",
+        aria_label="Load preset",
+        class_=DROPDOWN_COMBOBOX_PANEL_CLASS,
+    )[PresetSelect(api_url=api_url, mode=mode)]
+    return Dropdown(
+        trigger_element=trigger,
+        target_element=panel,
+        id=id,
+        behavior="combobox",
+        config={"data_preset_picker": ""},
+    )
 
 
 def searchselect_selected(

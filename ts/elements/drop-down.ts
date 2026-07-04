@@ -4,6 +4,7 @@ import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
 // Side-effect imports register the built-in behaviors before connectedCallback.
 import "./behaviors/menu.js";
 import "./behaviors/select.js";
+import "./behaviors/combobox.js";
 
 // Finds the element's own [data-toggle]/[data-menu], ignoring any that belong to
 // a nested <drop-down> (so a sub-dropdown never cross-wires its parent).
@@ -45,6 +46,12 @@ class DropdownElement extends HTMLElement {
     this.controller = controller;
     this.teardown =
       behavior?.wire?.({ host: this, toggle, menu, controller }) ?? undefined;
+  }
+
+  /** Close the dropdown programmatically (e.g. after a consumer handles a
+   *  pick inside the panel). Safe to call before connect/upgrade — no-op. */
+  close(): void {
+    this.controller?.close();
   }
 
   disconnectedCallback(): void {

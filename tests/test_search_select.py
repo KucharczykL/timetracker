@@ -9,7 +9,14 @@ from django.utils.safestring import SafeText
 from common.components import (
     searchselect_selected,
 )
-from common.components import FilterSelect, Pill, SearchSelect
+from common.components import (
+    FilterSelect,
+    LoadPresetDropdown,
+    Pill,
+    PresetSelect,
+    SearchSelect,
+)
+from common.components.core import collect_media
 from games.models import Game, Platform
 
 # These components are lazy nodes; the tests below assert on rendered HTML, so
@@ -676,3 +683,84 @@ class FilterFieldPickerTest(unittest.TestCase):
     def test_relation_fields_excluded(self):
         # session_filter is a relation → handled by the relation picker, not here
         self.assertNotIn('data-value="session_filter"', self.html)
+
+
+class PresetSelectComponentTest(unittest.TestCase):
+    """The preset-picker personality (issue #297)."""
+
+    def setUp(self):
+        self.html = str(PresetSelect(api_url="/api/presets/", mode="games"))
+
+    def test_search_url_carries_mode(self):
+        container = _tag_around(self.html, "search-url")
+        self.assertIn('search-url="/api/presets/?mode=games"', container)
+
+    def test_is_an_always_visible_single_select(self):
+        container = _tag_around(self.html, "search-url")
+        self.assertIn('always-visible="true"', container)
+        self.assertIn('multi="false"', container)
+        self.assertIn('filter-mode="false"', container)
+
+    def test_panel_flows_statically(self):
+        # The personality overrides the default absolute-anchored panel: it sits
+        # in flow inside the dropdown dialog (GitHub-label-picker layout).
+        panel_tag = _tag_around(self.html, "data-search-select-options")
+        self.assertNotIn("absolute", panel_tag)
+        self.assertNotIn("hidden", panel_tag)
+
+    def test_empty_state_says_no_saved_presets(self):
+        self.assertIn("No saved presets", self.html)
+
+    def test_row_template_carries_delete_action_contract(self):
+        # Rows are only ever client-built from this template; the delete button
+        # must dispatch search-select:action (not pick) and stay out of the tab
+        # order (#119) with an accessible name.
+        button_tag = _tag_around(self.html, 'data-search-select-action="delete"')
+        self.assertIn('tabindex="-1"', button_tag)
+        self.assertIn('aria-label="Delete preset"', button_tag)
+        self.assertIn('type="button"', button_tag)
+
+    def test_aria_combobox_contract(self):
+        # #154 invariants hold for the third personality too.
+        input_tag = _tag_around(self.html, "data-search-select-search")
+        self.assertIn('role="combobox"', input_tag)
+        self.assertIn('aria-expanded="true"', input_tag)  # always visible
+        self.assertIn('aria-autocomplete="list"', input_tag)
+        panel_tag = _tag_around(self.html, "data-search-select-options")
+        self.assertIn('role="listbox"', panel_tag)
+        row_tag = _tag_around(self.html, 'data-search-select-option=""')
+        self.assertIn('role="option"', row_tag)
+
+
+class LoadPresetDropdownTest(unittest.TestCase):
+    """The composed trigger + combobox dialog (issue #297)."""
+
+    def setUp(self):
+        self.html = str(
+            LoadPresetDropdown(api_url="/api/presets/", mode="games", id="lpd")
+        )
+
+    def test_wrapper_carries_discriminator_and_behavior(self):
+        wrapper_tag = _tag_around(self.html, "data-preset-picker")
+        self.assertIn("<drop-down", wrapper_tag)
+        self.assertIn('behavior="combobox"', wrapper_tag)
+
+    def test_trigger_is_a_dialog_toggle(self):
+        toggle_tag = _tag_around(self.html, "data-toggle")
+        self.assertIn('aria-haspopup="dialog"', toggle_tag)
+        self.assertIn('aria-expanded="false"', toggle_tag)
+        self.assertIn('aria-controls="lpd"', toggle_tag)
+
+    def test_panel_is_a_named_dialog_not_a_menu(self):
+        panel_tag = _tag_around(self.html, "data-menu")
+        self.assertIn('role="dialog"', panel_tag)
+        self.assertIn('aria-label="Load preset"', panel_tag)
+        self.assertNotIn('role="menu"', self.html)
+
+    def test_media_collects_both_elements(self):
+        # Both custom elements declare their compiled JS; Page() collects it from
+        # the tree — no view threading. Hard-coded dist/elements/… paths (the
+        # dist/search_select.js form in older docs is stale).
+        media = collect_media(LoadPresetDropdown(api_url="/api/presets/", mode="games"))
+        self.assertIn("dist/elements/drop-down.js", media.js)
+        self.assertIn("dist/elements/search-select.js", media.js)

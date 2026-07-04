@@ -84,8 +84,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     )
     filter_bar = PlatformFilterBar(
         filter_json=filter_json,
-        preset_list_url=reverse("games:list_presets") + "?mode=platforms",
-        preset_save_url=reverse("games:save_preset") + "?mode=platforms",
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
     content = Fragment(filter_bar, content)
     return render_page(

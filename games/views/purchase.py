@@ -198,8 +198,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
     filter_bar = PurchaseFilterBar(
         filter_json=filter_json,
-        preset_list_url=reverse("games:list_presets"),
-        preset_save_url=reverse("games:save_preset"),
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
     builder_url = reverse("games:filter_builder", args=["purchase"])
     if filter_json:

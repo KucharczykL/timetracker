@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import date, datetime
 from typing import List
@@ -12,9 +13,9 @@ from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
-from games.filters import filter_for_model, parse_session_filter
+from games.filters import MODE_PARSERS, filter_for_model, parse_session_filter
 from games.forms import game_option_data
-from games.models import Device, Game, Platform, PlayEvent, Session
+from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -370,3 +371,117 @@ def filter_count(request, model: str, filter: str = ""):
 
 
 api.add_router("/filter", filter_router)
+
+preset_router = Router()
+
+
+class PresetOption(Schema):
+    """A FilterPreset shaped as a SearchSelectOption for the preset picker.
+
+    ``data`` values are strings (the SearchSelectOption contract — they land as
+    ``data-*`` attributes on the option row): ``data["filter"]`` is the preset's
+    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty preset).
+    """
+
+    value: int
+    label: str
+    data: dict[str, str]
+
+
+class PresetIn(Schema):
+    # ``filter: dict | None`` makes Ninja reject scalar/array payloads with a 422
+    # before the handler runs — the schema subsumes the old hand-rolled
+    # "filter is not an object" guard (issue #206). ``None`` means "no filter".
+    name: str
+    mode: str
+    filter: dict | None = None
+
+
+def _reject_unknown_preset_mode(request, mode: str) -> None:
+    """400 for a mode outside MODE_PARSERS (parity-tested against MODE_CHOICES)."""
+    if mode not in MODE_PARSERS:
+        logger.warning(
+            "rejected preset request (user=%s, path=%s): unknown mode %r",
+            request.user,
+            request.path,
+            mode,
+        )
+        raise HttpError(400, f"Unknown preset mode '{mode}'.")
+
+
+@preset_router.get("/", response=list[PresetOption])
+def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
+    """The current user's presets for one mode, shaped for the combobox picker.
+
+    ``limit=0`` means unbounded — the filter bar's overwrite-collision check
+    fetches every name, so a >limit preset collection can't silently miss a
+    collision and destroy a preset behind the warning's back (issue #212).
+    """
+    _reject_unknown_preset_mode(request, mode)
+    presets = FilterPreset.objects.filter(mode=mode, user=request.user).order_by("name")
+    if q:
+        presets = presets.filter(name__icontains=q)
+    if limit > 0:
+        presets = presets[:limit]
+    return [
+        {
+            "value": preset.id,
+            "label": preset.name,
+            "data": {"filter": json.dumps(preset.object_filter or {})},
+        }
+        for preset in presets
+    ]
+
+
+@preset_router.post("/", response={200: None, 201: None})
+def save_preset(request, payload: PresetIn):
+    """Create or overwrite a preset; 201 on create, 200 on in-place update.
+
+    Upserts on the (user, mode, name) identity (unique at the DB level): re-saving
+    a name overwrites the stored filter rather than creating a duplicate row; the
+    filter bar warns inline before the user confirms an overwrite (issue #212).
+    The client derives its "saved"/"updated" toast from the status code.
+    """
+    name = payload.name.strip()
+    if not name:
+        raise HttpError(400, "Preset name is required.")
+    _reject_unknown_preset_mode(request, payload.mode)
+
+    object_filter = payload.filter or {}
+    try:
+        # Semantic validation: the JSON body is already well-formed (Ninja parsed
+        # it), but the filter tree itself can be invalid (unknown field, BETWEEN
+        # without value2, …) — MODE_PARSERS raises FilterError on those.
+        MODE_PARSERS[payload.mode](json.dumps(object_filter))
+    except FilterError as exc:
+        logger.warning(
+            "rejected preset save (mode=%s, user=%s, path=%s): %s",
+            payload.mode,
+            request.user,
+            request.path,
+            exc,
+        )
+        raise HttpError(400, f"Invalid filter: {exc}") from exc
+
+    _, created = FilterPreset.objects.update_or_create(
+        user=request.user,
+        name=name,
+        mode=payload.mode,
+        defaults={"object_filter": object_filter},
+    )
+    return Status(201 if created else 200, None)
+
+
+@preset_router.delete("/{preset_id}", response={204: None})
+def delete_preset(request, preset_id: int):
+    """Delete one of the current user's presets.
+
+    Scoped to request.user so it cannot touch another user's preset (404
+    instead). DELETE-only by routing; CSRF is enforced by django_auth.
+    """
+    preset = get_object_or_404(FilterPreset, id=preset_id, user=request.user)
+    preset.delete()
+    return Status(204, None)
+
+
+api.add_router("/presets", preset_router)

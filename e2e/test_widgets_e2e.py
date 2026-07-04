@@ -606,11 +606,9 @@ def test_preset_name_collision_warns_and_relabels_save_button(
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_filter_bar(page)
 
-    # The preset list loads via fetch on connect; wait for the row to arrive.
-    expect(
-        page.locator('#preset-dropdown [data-preset-name="Backlog"]')
-    ).to_be_attached()
-
+    # The names fetch fires when the save input is revealed (no fetch on page
+    # load, #297); the warning re-renders when it resolves, so a name typed
+    # before the response lands still warns.
     page.click("[data-filter-bar-save]")
     name_input = page.locator("[data-filter-bar-preset-name]")
     warning = page.locator("[data-filter-bar-overwrite-warning]")
@@ -664,3 +662,37 @@ def test_add_purchase_game_selection_autofills_platform(
     expect(
         platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
     ).to_have_value(str(platform.id))
+
+
+def test_filter_bar_preset_pick_navigates_to_filtered_list(
+    authenticated_page: Page, live_server, django_user_model
+):
+    """Picking a preset in the list page's Load-preset combobox navigates to the
+    list URL carrying ?filter= — the bar consumer's pick semantics (#297)."""
+    from games.models import FilterPreset, Game, Platform
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    Game.objects.create(name="Halo", platform=platform)
+    Game.objects.create(name="Doom", platform=platform)
+    user = django_user_model.objects.get(username="tester")
+    stored_filter = {"name": {"modifier": "INCLUDES", "value": "halo"}}
+    FilterPreset.objects.create(
+        user=user, name="HaloOnly", mode="games", object_filter=stored_filter
+    )
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    open_filter_bar(page)
+
+    picker = page.locator("filter-bar [data-preset-picker]")
+    picker.locator("[data-toggle]").click()
+    row = picker.locator("[data-search-select-option]").filter(has_text="HaloOnly")
+    expect(row).to_be_visible(timeout=5_000)
+
+    with page.expect_navigation():
+        row.click()
+
+    assert "?filter=" in page.url
+    # The navigated list is actually narrowed by the preset's filter.
+    expect(page.locator("table")).to_contain_text("Halo")
+    expect(page.locator("table")).not_to_contain_text("Doom")

@@ -100,7 +100,7 @@ docs/           — Additional documentation
 - **`primitives.py`** — Generic HTML. Plain leaf builders (`A`, `Button`, `Div`, `Span`, `P`, `Ul`, `Li`, `Strong`, `Label`, `Template`, `Td`, `Tr`, `Th`, `Table`, `Thead`, `Tbody`, `Caption`, `Nav`, `Form`, `H1`, `H2`, `H3`, `Option`, `Select`, …) are **generated from a whitelist** via the `_html_element(tag)` factory over `Element` — not hand-written per tag. Builders that add classes/behaviour are written out: `ControlButton()` (the one polymorphic button/link builder: `href=` renders `<a>`, `method="post"` renders a `<form>`+submit, default `<button>`; no size param — sizing is container-query driven), `ButtonGroup()` (segmented `ControlButton` members), `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`, `PopoverTruncated()`, `SearchField()`, `PageHeading()` (the badge page heading; the plain `<h1>` is the generated `H1`), `Modal()`, `StyledTable()`, `TableRow()`, `TableTd()`, `TableHeader()`, `paginated_table_content()`, `AddForm()`, `YearPicker()` (declares datepicker media), `CsrfInput()`/`ModuleScript()`/`StaticScript()` (script-tag string helpers used by `Page()`).
 - **`domain.py`** — Domain-specific: `GameLink()`, `GameStatus()` (colored dot + label), `GameStatusSelector()` (Alpine.js PATCH dropdown), `SessionDeviceSelector()` (Alpine.js PATCH dropdown), `LinkedPurchase()`, `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — Filter UI: `FilterBar()`, `SessionFilterBar()`, `PurchaseFilterBar()` (built from `FilterSelect` widgets)
-- **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `ts/elements/search-select.ts` (compiled to `dist/search_select.js`)
+- **`search_select.py`** — `SearchSelect()` (form combobox) + `FilterSelect()` (include/exclude filter combobox with pinned Any/None modifiers) + `PresetSelect()`/`LoadPresetDropdown()` (the preset picker: an always-visible fetch-on-open personality hosted in a `<drop-down behavior="combobox">` dialog, #297) + `SearchSelectOption`, all built on a shared `_combobox_shell`; wired by `ts/elements/search-select.ts` (compiled to `dist/elements/search-select.js`)
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/`DateRangeCalendar()` custom-element date-range widget (wired by `ts/elements/date-range-picker.ts`); used by filter bars
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired structured filtering.
@@ -118,8 +118,9 @@ docs/           — Additional documentation
 - `stats_data.py` — `compute_stats(year)` returns a `StatsData` TypedDict; pure computation, no HTTP
 - `stats_content.py` — renders stats page content from a `StatsData` dict
 - `stats_links.py` — pure filter-link builders for stats rows/counts (issue #65); parity-tested so each builder's queryset count equals the stat it links from
-- `filter_presets.py` — `list_presets`, `save_preset`, `delete_preset`, `load_preset`
 - `auth.py` — custom `LoginView` subclassing Django's auth view, renders login page via `render_page()`
+
+Filter presets have no classic views: they live on the Ninja API (`/api/presets`, see below); the preset picker UI is the shared combobox dropdown (#297).
 
 **Signals** (`games/signals.py`):
 - `pre_save` on Purchase: snapshots old price/currency for change detection
@@ -139,6 +140,9 @@ docs/           — Additional documentation
 - `GET/POST /api/playevent/` — list/create play events
 - `GET/PATCH/DELETE /api/playevent/{id}` — get/update/delete play event
 - `PATCH /api/session/{id}/device` — update session device
+- `GET /api/presets/` — the user's filter presets for a mode, shaped as combobox options (`limit=0` = unbounded)
+- `POST /api/presets/` — upsert a preset on (user, mode, name); 201 create / 200 update
+- `DELETE /api/presets/{id}` — delete an owned preset (404 for non-owner)
 
 ### Templates
 

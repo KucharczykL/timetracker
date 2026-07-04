@@ -31,7 +31,7 @@ def _bar_page(filter_json: str = "") -> str:
     <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
 </head>
 <body>
-    {PlatformFilterBar(filter_json=filter_json, preset_list_url="/p/l", preset_save_url="/p/s")}
+    {PlatformFilterBar(filter_json=filter_json, preset_api_url="/api/presets/")}
 </body>
 </html>"""
 

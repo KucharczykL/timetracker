@@ -9,6 +9,7 @@ Inspired by Stash's filter architecture: each entity has an OperatorFilter
 with AND/OR/NOT composition and typed criterion fields.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Type  # noqa: UP035 — see _comparison_model below
 
@@ -720,6 +721,21 @@ def parse_platform_filter(json_str: str) -> PlatformFilter | None:
 
 def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
     return filter_from_json(PlayEventFilter, json_str)
+
+
+# Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
+type FilterParser = Callable[[str], OperatorFilter | None]
+
+# Maps a FilterPreset.mode to the parser that validates that mode's filter JSON.
+# Keys must stay in sync with FilterPreset.MODE_CHOICES (games/models.py).
+MODE_PARSERS: dict[str, FilterParser] = {
+    "games": parse_game_filter,
+    "sessions": parse_session_filter,
+    "purchases": parse_purchase_filter,
+    "playevents": parse_playevent_filter,
+    "devices": parse_device_filter,
+    "platforms": parse_platform_filter,
+}
 
 
 # ── Model-key → filter-class resolution ────────────────────────────────────

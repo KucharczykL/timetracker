@@ -2,15 +2,18 @@
  * FilterBar — custom element wrapping the collapsible filter bar.
  *
  * Handles form submission (building filter JSON + URL navigation), preset
- * loading/saving, and string-filter input toggling. Props (preset_list_url,
- * preset_save_url) are read from the element's typed attributes via codegen.
+ * loading/saving, and string-filter input toggling. Props (preset_api_url,
+ * preset_mode) are read from the element's typed attributes via codegen.
+ * The Load-preset dropdown is the shared combobox picker (#297): a pick
+ * bubbles search-select:change and navigates to ?filter=; per-row deletion
+ * goes through wirePresetDelete.
  */
 import { readFilterBarProps } from "../generated/props.js";
 import { readFieldComparisonSet } from "./field-comparison-set.js";
 import {
-  PresetDropdown,
+  fetchPresetNames,
   savePreset as requestSavePreset,
-  setupPresetDropdown,
+  wirePresetDelete,
 } from "./presets.js";
 import { readSearchSelect } from "./search-select.js";
 import {
@@ -29,16 +32,6 @@ interface DeselectableRadio extends HTMLInputElement {
 
 function baseUrl(): string {
   return window.location.pathname;
-}
-
-function presetMode(): string {
-  const path = window.location.pathname;
-  if (path.indexOf("session") !== -1) return "sessions";
-  if (path.indexOf("purchase") !== -1) return "purchases";
-  if (path.indexOf("device") !== -1) return "devices";
-  if (path.indexOf("platform") !== -1) return "platforms";
-  if (path.indexOf("playevent") !== -1) return "playevents";
-  return "games";
 }
 
 // Deep-merge a single leaf criterion into `target` by its JSON path. Branch
@@ -239,97 +232,49 @@ function setupDeselectableRadios(root: HTMLElement): void {
   });
 }
 
-function showPresetNameInput(root: HTMLElement): void {
-  const input = root.querySelector<HTMLElement>("[data-filter-bar-preset-name]");
-  const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
-  const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
-  if (input) input.classList.remove("hidden");
-  if (saveButton) saveButton.classList.add("hidden");
-  if (confirmButton) confirmButton.classList.remove("hidden");
-  if (input instanceof HTMLElement) input.focus();
-  // A name may already be typed (e.g. reopening the input); reflect collision now.
-  updateOverwriteWarning(root);
-}
-
-// Names of the presets currently rendered in the dropdown, trimmed. The match is
-// case-sensitive to mirror the (user, mode, name) unique constraint, which uses
-// SQLite's default BINARY collation ("Backlog" and "backlog" are distinct rows).
-function existingPresetNames(root: HTMLElement): Set<string> {
-  const names = new Set<string>();
-  root.querySelectorAll<HTMLElement>("#preset-dropdown [data-preset-name]").forEach((row) => {
-    const name = row.getAttribute("data-preset-name");
-    if (name !== null) names.add(name.trim());
-  });
-  return names;
-}
-
 // Show the red inline warning and relabel the confirm button to "Overwrite" only
-// when the typed name collides with an existing preset; otherwise restore "Save".
-function updateOverwriteWarning(root: HTMLElement): void {
+// when the typed name collides with a known preset name; otherwise restore
+// "Save". The match is case-sensitive to mirror the (user, mode, name) unique
+// constraint, which uses SQLite's default BINARY collation ("Backlog" and
+// "backlog" are distinct rows).
+function updateOverwriteWarning(root: HTMLElement, knownNames: Set<string>): void {
   const input = root.querySelector<HTMLInputElement>("[data-filter-bar-preset-name]");
   const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
   const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
   const name = input ? input.value.trim() : "";
-  const collides = name !== "" && existingPresetNames(root).has(name);
+  const collides = name !== "" && knownNames.has(name);
   if (warning) warning.classList.toggle("hidden", !collides);
   if (confirmButton) confirmButton.textContent = collides ? "Overwrite" : "Save";
 }
 
-function savePreset(
-  form: HTMLElement,
-  presetSaveUrl: string,
-  root: HTMLElement,
-  presets: PresetDropdown,
-): void {
-  const input = root.querySelector<HTMLInputElement>("[data-filter-bar-preset-name]");
-  const name = input ? input.value.trim() : "";
-  if (!name) {
-    if (input) input.classList.add("border-red-500");
-    return;
-  }
-
-  requestSavePreset(presetSaveUrl, {
-    name,
-    mode: presetMode(),
-    filter: buildFilterJSON(form),
-  }).then((response) => {
-    // A non-ok response already fired its error toast via HX-Trigger (and a
-    // transport failure toasted inside the helper); leave the confirm-save UI
-    // in place so the user can correct and retry.
-    if (!response?.ok) return;
-    if (input) {
-      input.value = "";
-      input.classList.add("hidden");
-      input.classList.remove("border-red-500");
-    }
-    const saveButton = root.querySelector<HTMLElement>("[data-filter-bar-save]");
-    const confirmButton = root.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
-    if (saveButton) saveButton.classList.remove("hidden");
-    if (confirmButton) {
-      confirmButton.classList.add("hidden");
-      confirmButton.textContent = "Save";
-    }
-    const warning = root.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
-    if (warning) warning.classList.add("hidden");
-    void presets.refresh();
-  });
+interface PresetChangeDetail {
+  name: string;
+  values: string[];
+  last: { value: string; label: string; data: Record<string, string> } | null;
 }
 
 class FilterBarElement extends HTMLElement {
+  private presetApiUrl = "";
+  private presetMode = "";
+  // The user's preset names for this mode, fetched on demand when the save
+  // input is revealed (no fetch on page load) — the collision-warning source
+  // (#212). Refetched on every save-click so in-panel deletes can't leave it
+  // stale; updated in place after a successful save.
+  private knownPresetNames = new Set<string>();
+  private disposePresetDelete: (() => void) | null = null;
+
   connectedCallback(): void {
-    const { presetListUrl, presetSaveUrl } = readFilterBarProps(this);
+    const { presetApiUrl, presetMode } = readFilterBarProps(this);
+    this.presetApiUrl = presetApiUrl;
+    this.presetMode = presetMode;
     const form = this.querySelector<HTMLFormElement>("form");
     if (!form) return;
 
-    // No onPick: a preset anchor keeps its native navigation to the list view.
-    const presets = setupPresetDropdown({
-      root: this,
-      dropdownSelector: "#preset-dropdown",
-      listUrl: presetListUrl,
-      mode: presetMode(),
-      // Names just (re)arrived; re-check collision in case the input is open.
-      onListRendered: () => updateOverwriteWarning(this),
-    });
+    // A pick in the preset picker navigates to the preset's filtered list view
+    // (the picker bubbles search-select:change; the guard scopes this listener
+    // to it — the bar's own filter widgets bubble the same event).
+    this.addEventListener("search-select:change", this.onPresetPick);
+    this.disposePresetDelete = wirePresetDelete(this, presetApiUrl);
 
     // Delegated on the persistent custom element so the toggle keeps working
     // after the inner #filter-bar body is htmx-swapped — connectedCallback does
@@ -358,20 +303,99 @@ class FilterBarElement extends HTMLElement {
     });
 
     this.querySelector("[data-filter-bar-save]")?.addEventListener("click", () => {
-      showPresetNameInput(this);
+      this.showPresetNameInput();
     });
 
     this.querySelector("[data-filter-bar-confirm-save]")?.addEventListener("click", () => {
-      savePreset(form, presetSaveUrl, this, presets);
+      this.savePreset(form);
     });
 
     this.querySelector("[data-filter-bar-preset-name]")?.addEventListener("input", () => {
-      updateOverwriteWarning(this);
+      updateOverwriteWarning(this, this.knownPresetNames);
     });
 
     setupDeselectableRadios(this);
     setupModifierToggles(this);
-    if (presetListUrl) void presets.refresh();
+  }
+
+  disconnectedCallback(): void {
+    this.removeEventListener("search-select:change", this.onPresetPick);
+    this.disposePresetDelete?.();
+    this.disposePresetDelete = null;
+  }
+
+  private onPresetPick = (event: Event): void => {
+    const detail = (event as CustomEvent<PresetChangeDetail>).detail;
+    if (!detail?.last) return;
+    const picker = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-preset-picker]",
+    );
+    if (!picker || !this.contains(picker)) return;
+    try {
+      const raw = detail.last.data.filter ?? "";
+      const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      // An empty preset means "show everything": navigate to the bare list.
+      window.location.href =
+        Object.keys(filter).length === 0
+          ? baseUrl()
+          : baseUrl() + "?filter=" + encodeURIComponent(raw);
+    } catch (error) {
+      // Keep the "preset load failed" console substring (e2e crash guard).
+      console.error("filter-bar: preset load failed", error);
+      window.toast("Preset is not a valid filter.", "error");
+    }
+  };
+
+  private showPresetNameInput(): void {
+    const input = this.querySelector<HTMLElement>("[data-filter-bar-preset-name]");
+    const saveButton = this.querySelector<HTMLElement>("[data-filter-bar-save]");
+    const confirmButton = this.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
+    if (input) input.classList.remove("hidden");
+    if (saveButton) saveButton.classList.add("hidden");
+    if (confirmButton) confirmButton.classList.remove("hidden");
+    if (input instanceof HTMLElement) input.focus();
+    // A name may already be typed (e.g. reopening the input); reflect what we
+    // know now, then re-check when the fresh names land — a pre-typed colliding
+    // name must warn without another keystroke.
+    updateOverwriteWarning(this, this.knownPresetNames);
+    void fetchPresetNames(this.presetApiUrl, this.presetMode).then((names) => {
+      this.knownPresetNames = names;
+      updateOverwriteWarning(this, this.knownPresetNames);
+    });
+  }
+
+  private savePreset(form: HTMLElement): void {
+    const input = this.querySelector<HTMLInputElement>("[data-filter-bar-preset-name]");
+    const name = input ? input.value.trim() : "";
+    if (!name) {
+      if (input) input.classList.add("border-red-500");
+      return;
+    }
+
+    void requestSavePreset(this.presetApiUrl, {
+      name,
+      mode: this.presetMode,
+      filter: buildFilterJSON(form),
+    }).then((response) => {
+      // A rejection already fired its error toast inside the helper; leave the
+      // confirm-save UI in place so the user can correct and retry.
+      if (!response?.ok) return;
+      this.knownPresetNames.add(name);
+      if (input) {
+        input.value = "";
+        input.classList.add("hidden");
+        input.classList.remove("border-red-500");
+      }
+      const saveButton = this.querySelector<HTMLElement>("[data-filter-bar-save]");
+      const confirmButton = this.querySelector<HTMLElement>("[data-filter-bar-confirm-save]");
+      if (saveButton) saveButton.classList.remove("hidden");
+      if (confirmButton) {
+        confirmButton.classList.add("hidden");
+        confirmButton.textContent = "Save";
+      }
+      const warning = this.querySelector<HTMLElement>("[data-filter-bar-overwrite-warning]");
+      if (warning) warning.classList.add("hidden");
+    });
   }
 }
 
