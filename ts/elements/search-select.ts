@@ -47,11 +47,23 @@ export interface SearchSelectChangeDetail {
   last: SearchSelectOption | null;
 }
 
+// The contract for the "search-select:action" CustomEvent: a click on a
+// [data-search-select-action] button inside a form-mode option row (e.g. the
+// preset picker's per-row delete ×, issue #297). Filter mode keeps its own
+// include/exclude handling of the same attribute (handleFilterOptionClick).
+export interface SearchSelectActionDetail {
+  name: string;
+  action: string;
+  option: SearchSelectOption;
+}
+
 // The widget stashes per-instance state directly on its DOM elements.
 interface SearchSelectContainer extends HTMLElement {
   _searchSelectLabel?: string;
   _searchSelectDirty?: boolean;
   _searchSelectSetSelected?: (value: string, label?: string) => void;
+  _searchSelectRefetch?: () => void;
+  _searchSelectClear?: () => void;
 }
 
 interface OptionRow extends HTMLElement {
@@ -368,9 +380,12 @@ const initWidget = (containerElement: Element) => {
   const fetchFromServer = (query: string) => {
     if (pendingRequest) pendingRequest.abort();
     pendingRequest = new AbortController();
-    let url = `${searchUrl}?q=${encodeURIComponent(query)}`;
-    if (prefetch && !query) url += `&limit=${prefetch}`;
-    fetch(url, { credentials: "same-origin", signal: pendingRequest.signal })
+    // Built via URL so a search-url that already carries a query string (e.g.
+    // the preset picker's ?mode=games) composes instead of double-`?`ing.
+    const url = new URL(searchUrl ?? "", window.location.origin);
+    url.searchParams.set("q", query);
+    if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
+    fetch(url.toString(), { credentials: "same-origin", signal: pendingRequest.signal })
       .then(response => response.json())
       .then((items: SearchSelectOption[]) => {
         pendingRequest = null;
@@ -564,6 +579,27 @@ const initWidget = (containerElement: Element) => {
       handleFilterOptionClick(event);
       return;
     }
+    // A row action button (e.g. the preset picker's delete ×) is not a pick:
+    // announce it and let the consumer decide (issue #297). Checked before the
+    // row lookup so the action never falls through to selectOption.
+    const actionButton = (event.target as Element).closest<HTMLElement>(
+      "[data-search-select-action]"
+    );
+    if (actionButton) {
+      const actionRow = actionButton.closest<HTMLElement>("[data-search-select-option]");
+      if (!actionRow) return;
+      container.dispatchEvent(
+        new CustomEvent<SearchSelectActionDetail>("search-select:action", {
+          bubbles: true,
+          detail: {
+            name,
+            action: actionButton.getAttribute("data-search-select-action") ?? "",
+            option: optionFromRow(actionRow),
+          },
+        })
+      );
+      return;
+    }
     const row = (event.target as Element).closest<HTMLElement>("[data-search-select-option]");
     if (!row) return;
     selectOption(optionFromRow(row));
@@ -700,6 +736,33 @@ const initWidget = (containerElement: Element) => {
   // add-purchase platform auto-fill, #259).
   container._searchSelectSetSelected = (value: string, label?: string) => {
     selectOption({ value, label: label ?? value, data: {} }, false);
+  };
+
+  // Public refetch: reset to a blank query and re-request the prefetch window.
+  // The query reset matters — a committed single-select pick leaves its label in
+  // the search box, and refetching with that as `q` would return only the
+  // matching subset and present it as the full list. Marks hasPrefetched so a
+  // following focus doesn't double-fetch (the combobox dropdown behavior calls
+  // this on dropdown:show, then focuses the input — issues #297/#94).
+  container._searchSelectRefetch = () => {
+    if (!searchUrl) return;
+    hasPrefetched = true;
+    search.value = "";
+    if (!multi) container._searchSelectDirty = false;
+    fetchFromServer("");
+  };
+
+  // Public silent clear: drop the committed selection (hidden inputs, label,
+  // query text) without firing search-select:change. Consumers whose pick is a
+  // command rather than a persistent value (the preset picker) call this right
+  // after handling the pick, so no lingering selection can pin a stale row
+  // through renderRows' selected-value preservation (issue #297).
+  container._searchSelectClear = () => {
+    pills.innerHTML = "";
+    container._searchSelectLabel = "";
+    container._searchSelectDirty = false;
+    search.value = "";
+    syncSelectedStates();
   };
 
   const addPill = (option: SearchSelectOption) => {
@@ -958,6 +1021,18 @@ export class SearchSelectElement extends HTMLElement {
    *  No-op until the widget has initialised. */
   setSelected(value: string, label?: string): void {
     (this as SearchSelectContainer)._searchSelectSetSelected?.(value, label);
+  }
+
+  /** Reset to a blank query and re-request the prefetch window from search-url.
+   *  No-op without a search-url or until the widget has initialised. */
+  refetchOptions(): void {
+    (this as SearchSelectContainer)._searchSelectRefetch?.();
+  }
+
+  /** Silently drop the committed selection (hidden inputs, label, query text)
+   *  without firing a change event. No-op until the widget has initialised. */
+  clearSelection(): void {
+    (this as SearchSelectContainer)._searchSelectClear?.();
   }
 
   disconnectedCallback(): void {

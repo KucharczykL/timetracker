@@ -500,17 +500,26 @@ _Dropdown = custom_element_builder("drop-down")
 # panel's overflow, growing a transient scrollbar that mis-anchored low submenus.
 # Putting the filter on a childless `::before` keeps the frosted look while
 # leaving the panel filter-free, so submenus still resolve against the viewport.
-_DROPDOWN_PANEL_BASE = (
-    "absolute z-20 w-44 overflow-hidden rounded-lg p-2 "
+# Width-free surface (colors, frosted layer, rounding, padding) shared by every
+# panel constant below — the single source of truth for "what a dropdown panel
+# looks like" (#295: unshared panel styling is how a text token ends up as a
+# background). Width is per-variant.
+_DROPDOWN_PANEL_SURFACE = (
+    "absolute z-20 overflow-hidden rounded-lg p-2 "
     "bg-white dark:bg-gray-800/40 text-sm "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
+_DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
 DROPDOWN_PANEL_OUTLINE_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} border border-gray-200 dark:border-gray-700"
 )
 _DROPDOWN_PANEL_PLAIN_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
+)
+# The combobox dialog (the preset picker, #297): wider than a menu, bordered.
+DROPDOWN_COMBOBOX_PANEL_CLASS = (
+    f"{_DROPDOWN_PANEL_SURFACE} w-72 border border-gray-200 dark:border-gray-700"
 )
 
 # One item look: dark text on white (light), light text on frosted (dark).
@@ -675,7 +684,7 @@ def DropdownDivider() -> Node:
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
-type DropdownBehaviorName = Literal["menu", "select"]
+type DropdownBehaviorName = Literal["menu", "select", "combobox"]
 
 
 def _assemble(

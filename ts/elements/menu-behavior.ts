@@ -297,6 +297,11 @@ export function attachMenu(
     // Let a nested submenu handle its own keys (the event bubbles up to us).
     if ((event.target as HTMLElement).closest("[data-menu]") !== menu) return;
     const items = enabledItems();
+    // An itemless menu (e.g. the combobox behavior's panel, whose inner widget
+    // owns its own keyboard navigation) must not swallow arrow/Home/End — they
+    // would preventDefault caret movement inside an inner input. Escape and Tab
+    // still close below.
+    if (items.length === 0 && event.key !== "Escape" && event.key !== "Tab") return;
     const currentIndex = items.findIndex((item) => item === document.activeElement);
     switch (event.key) {
       case "ArrowDown":
