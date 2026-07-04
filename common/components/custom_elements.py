@@ -12,6 +12,8 @@ import warnings
 from dataclasses import dataclass
 from typing import Literal, NamedTuple, TypedDict, get_type_hints, is_typeddict
 
+from django.urls import reverse
+
 from common.components.core import (
     BaseComponent,
     Child,
@@ -36,6 +38,27 @@ from common.components.primitives import (
     Ul,
     custom_element_builder,
 )
+
+
+type FilterMode = str  # plural preset/list mode, e.g. "games"
+
+# Where a filter UI for each mode navigates (Apply / Clear / preset pick): the
+# mode's list view. An explicit mapping — not an f-string reverse() — so an
+# unknown mode fails loudly and the mode->URL relation is greppable (#304).
+# Keyset is contract-tested against games.filters.MODE_PARSERS.
+FILTER_MODE_LIST_URLS: dict[FilterMode, str] = {
+    "games": "games:list_games",
+    "sessions": "games:list_sessions",
+    "purchases": "games:list_purchases",
+    "playevents": "games:list_playevents",
+    "devices": "games:list_devices",
+    "platforms": "games:list_platforms",
+}
+
+
+def list_url_for(mode: FilterMode) -> str:
+    """The list-view URL a filter UI for ``mode`` navigates to."""
+    return reverse(FILTER_MODE_LIST_URLS[mode])
 
 
 type TypedDictClass = type  # a TypedDict subclass, e.g. FieldMeta

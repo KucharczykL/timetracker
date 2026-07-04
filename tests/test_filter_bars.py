@@ -8,7 +8,10 @@ StringFilter modifier widgets — so refactors stay behaviour-preserving.
 
 import json
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
+
+from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_for
 
 from common.components import (
     FilterBar,
@@ -939,3 +942,30 @@ class FilterGroupComparisonTest(TestCase):
         for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
         self.assertEqual(html.count("data-relation-select-template"), 1)
+
+
+class ListUrlForTest(SimpleTestCase):
+    """list_url_for is the single mode->list-URL source for filter UIs (#304)."""
+
+    def test_known_modes_reverse_to_their_list_views(self):
+        for mode, url_name in [
+            ("games", "games:list_games"),
+            ("sessions", "games:list_sessions"),
+            ("purchases", "games:list_purchases"),
+            ("playevents", "games:list_playevents"),
+            ("devices", "games:list_devices"),
+            ("platforms", "games:list_platforms"),
+        ]:
+            self.assertEqual(list_url_for(mode), reverse(url_name))
+
+    def test_unknown_mode_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            list_url_for("nonsense")
+
+    def test_keyset_matches_mode_parsers(self):
+        # The mode->URL map is the third parallel mode registry (after
+        # MODE_PARSERS and FilterPreset.MODE_CHOICES); pin the keysets so a
+        # future mode cannot silently miss the URL map.
+        from games.filters import MODE_PARSERS
+
+        self.assertEqual(set(FILTER_MODE_LIST_URLS), set(MODE_PARSERS))
