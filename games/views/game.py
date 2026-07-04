@@ -340,7 +340,13 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
         [("class", "rounded-s-lg")],
         variant="outline",
         href=reverse("games:add_playevent"),
-    )[Span(data_count="")[str(played)], " times"]
+    )[
+        # One prose phrase = one flex item: the button is inline-flex, and flex
+        # layout drops whitespace-only text between items, so the space must
+        # live inside a single inline context. The inner span is a write-only
+        # display slot for play-event-row.ts.
+        Span()[Span(data_count="")[str(played)], " times"]
+    ]
     dropdown = SplitButtonDropdown(
         primary=count_button,
         id=f"played-{game.id}",
@@ -355,6 +361,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     )
     return _PlayEventRow(
         game_id=game.id,
+        count=played,
         csrf=get_token(request),
         api_create_url=reverse("api-1.0.0:create_playevent"),
     )[

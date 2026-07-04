@@ -110,6 +110,8 @@ def render_props_module() -> str:
 
 class PlayEventRowProps(TypedDict):
     game_id: int
+    count: int  # initial play count; the client owns it after mount, and the
+    # [data-count] span is a write-only display slot (never parsed back)
     csrf: str
     api_create_url: str
 

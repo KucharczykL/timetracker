@@ -249,6 +249,19 @@ class RenderedPagesTest(TestCase):
         self.assertIn("border-gray-200", control)
         self.assertIn("rounded-s-lg", control)
 
+    def test_played_row_label_is_one_flex_item_and_count_is_a_prop(self):
+        """'N times' is one prose phrase, so it must be a single flex item:
+        the count anchor is inline-flex, and flex layout drops whitespace-only
+        text between items — sibling span + " times" rendered as "0times".
+        The initial count also crosses to play-event-row.ts as the count=""
+        prop; the data-count span is a write-only display slot."""
+        game = Game.objects.create(name="Prose Game", platform=self.platform)
+        html = self.get("games:view_game", game.id).content.decode()
+        row = html[html.index("<play-event-row") :]
+        host_tag = row[: row.index(">") + 1]
+        self.assertIn('count="0"', host_tag)
+        self.assertIn('<span><span data-count="">0</span> times</span>', row)
+
     def test_view_game_empty_sections(self):
         """A game with no sessions/purchases/etc shows the empty messages."""
         lonely = Game.objects.create(name="Lonely Game", platform=self.platform)
