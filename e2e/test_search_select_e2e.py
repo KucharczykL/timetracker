@@ -298,6 +298,54 @@ def test_search_select_aria_combobox_semantics(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_click_commit_clears_highlight(live_server, page):
+    """PR #294 review: committing via option click must not leave the collapsed
+    listbox with a stale highlighted/aria-selected row (the Enter path already
+    cleared it; the click path used to skip clearHighlight)."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
+    search_input.focus()
+    # Focus auto-highlights Game A; commit Game B by mouse instead.
+    page.locator('[data-search-select-option][data-value="8"]').click()
+
+    expect(search_input).to_have_attribute("aria-expanded", "false")
+    assert search_input.get_attribute("aria-activedescendant") is None
+    games_widget = page.locator('search-select[name="games"]')
+    assert games_widget.locator("[data-search-select-highlighted]").count() == 0
+    assert games_widget.locator('[aria-selected="true"]').count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_multi_select_aria_selected_tracks_membership(live_server, page):
+    """PR #294 review: in the aria-multiselectable listbox, aria-selected means
+    membership (a pill exists for the value), not the keyboard highlight."""
+    page.goto(live_server.url + "/test-search-select/")
+
+    multi_search = page.locator("#multi-search")
+    apple_row = page.locator(
+        'search-select[name="tags"] [data-search-select-option][data-value="1"]'
+    )
+    banana_row = page.locator(
+        'search-select[name="tags"] [data-search-select-option][data-value="2"]'
+    )
+
+    multi_search.focus()
+    apple_row.click()
+
+    expect(apple_row).to_have_attribute("aria-selected", "true")
+    expect(banana_row).to_have_attribute("aria-selected", "false")
+
+    # Removing the pill revokes membership.
+    page.locator('search-select[name="tags"] [data-pill-remove]').click()
+    expect(apple_row).to_have_attribute("aria-selected", "false")
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
 def test_multi_select_clears_query_on_tab_out(live_server, page):
     """Issue #119 follow-up: multi-select used to keep an uncommitted query in the
     box after tabbing out (single-select cleared it). Both must clear now."""

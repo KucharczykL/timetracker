@@ -24,12 +24,18 @@ toggle only the control's ``disabled`` — never styles.
 **ARIA combobox semantics** (issue #154): the search input is a
 ``role="combobox"`` with ``aria-expanded``/``aria-autocomplete``; the options
 panel is a ``role="listbox"`` (``aria-multiselectable`` when multi); option and
-modifier rows are ``role="option"`` with ``aria-selected``. The id-based wiring
-(``aria-controls`` on the input, stable ``id``s on the panel and rows, and
-``aria-activedescendant`` tracking the keyboard highlight) is assigned by the
-JS at init — never server-side, because the nested filter builder clones whole
-``<search-select>`` prototypes and server-rendered ids would be duplicated
-across clones.
+modifier rows are ``role="option"`` with ``aria-selected``. What
+``aria-selected`` means depends on the mode: in single-select the JS mirrors
+the keyboard highlight into it (the APG list-autocomplete convention); in
+multi/filter mode — where the listbox is ``aria-multiselectable`` and the
+attribute conveys set membership — it is true for rows whose value has a pill
+(or the active modifier row), the server pre-renders that state, and the
+keyboard highlight is conveyed by ``aria-activedescendant`` alone. The
+id-based wiring (``aria-controls`` on the input, stable ``id``s on the panel
+and rows, and ``aria-activedescendant`` tracking the highlight) is assigned by
+the JS at init — never server-side, because the nested filter builder clones
+whole ``<search-select>`` prototypes and server-rendered ids would be
+duplicated across clones.
 
 Option sourcing follows two axes. *Population*: options are either rendered
 inline up front (``options=``, no ``search_url``) or fetched from ``search_url``.
@@ -194,7 +200,9 @@ _FILTER_ACTION_BUTTON_CLASS = (
     "group-data-[search-select-highlighted]:hover:border-white"
 )
 _FILTER_MODIFIER_ROW_CLASS = (
-    "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer"
+    "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer "
+    "data-[search-select-highlighted]:bg-brand "
+    "data-[search-select-highlighted]:text-white"
 )
 
 
@@ -214,6 +222,13 @@ def _data_attributes(data: dict[str, str]) -> list[HTMLAttribute]:
     return [(f"data-{key}", value) for key, value in data.items()]
 
 
+def _option_role_attributes(selected: bool = False) -> list[HTMLAttribute]:
+    """The ARIA attributes every listbox row carries (issue #154): value rows
+    and modifier rows alike are ``role="option"`` with an ``aria-selected``
+    state, so the listbox exposes only option/presentation children."""
+    return [("role", "option"), ("aria-selected", "true" if selected else "false")]
+
+
 def _hidden_input(name: str, value) -> Node:
     return Input(type="hidden", name=name, value=str(value))
 
@@ -229,14 +244,12 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
-def _option_row(option: SearchSelectOption) -> Node:
+def _option_row(option: SearchSelectOption, *, selected: bool = False) -> Node:
     return Div(
-        _data_attributes(option["data"]),
+        [*_data_attributes(option["data"]), *_option_role_attributes(selected)],
         data_search_select_option="",
         data_value=str(option["value"]),
         data_label=option["label"],
-        role="option",
-        aria_selected="false",
         class_=_OPTION_ROW_CLASS,
     )[_label_slot(option["label"])]
 
@@ -385,7 +398,16 @@ def SearchSelect(
     elif option_groups:
         option_rows = _grouped_option_rows(option_groups)
     else:
-        option_rows = [_option_row(option) for option in options]
+        # In the multi (aria-multiselectable) listbox aria-selected conveys
+        # membership, so pre-render it for already-selected values. Single-select
+        # keeps the highlight-driven aria-selected, owned by the JS.
+        selected_values = (
+            {str(option["value"]) for option in selected} if multi_select else set()
+        )
+        option_rows = [
+            _option_row(option, selected=str(option["value"]) in selected_values)
+            for option in options
+        ]
 
     # ── Templates the JS clones: a row when results are fetched, a pill when
     #    multi-select adds chosen items. ──
@@ -470,14 +492,15 @@ def _filter_action_button(action: str, symbol: str, title: str) -> Node:
     )[symbol]
 
 
-def _filter_option_row(value: str | int, label: str) -> Node:
-    """A value row with include (+) and exclude (−) buttons."""
+def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
+    """A value row with include (+) and exclude (−) buttons. ``selected`` marks
+    the row as a member of the filter set (an include or exclude pill exists),
+    which is what ``aria-selected`` means in this multiselectable listbox."""
     return Div(
+        _option_role_attributes(selected),
         data_search_select_option="",
         data_value=str(value),
         data_label=label,
-        role="option",
-        aria_selected="false",
         class_=_FILTER_OPTION_ROW_CLASS,
     )[
         _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
@@ -488,18 +511,19 @@ def _filter_option_row(value: str | int, label: str) -> Node:
     ]
 
 
-def _filter_modifier_row(modifier_value: str, label: str) -> Node:
+def _filter_modifier_row(
+    modifier_value: str, label: str, *, selected: bool = False
+) -> Node:
     """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
     filter never hides it — modifiers stay visible at the top of the panel.
 
-    Carries ``role="option"`` so the listbox only exposes option/presentation
-    children; it is mouse-only, so ``aria-activedescendant`` never points at it
-    and its ``aria-selected`` stays false."""
+    Carries ``role="option"`` like the value rows, and the JS includes it in
+    arrow-key navigation and Enter selection, so every advertised option is
+    keyboard-reachable. ``selected`` marks the currently active modifier."""
     return Div(
+        _option_role_attributes(selected),
         data_search_select_modifier_option=modifier_value,
         data_label=label,
-        role="option",
-        aria_selected="false",
         class_=_FILTER_MODIFIER_ROW_CLASS,
     )[label]
 
@@ -579,11 +603,21 @@ def FilterSelect(
     # ── Options: pinned modifier rows, then value rows (pre-rendered only when
     #    there is no search_url; otherwise the JS fetches them) ──
     modifier_rows = [
-        _filter_modifier_row(value, label) for value, label in modifier_options
+        _filter_modifier_row(value, label, selected=value == modifier)
+        for value, label in modifier_options
     ]
+    # aria-selected means membership here (the listbox is aria-multiselectable):
+    # a row is selected when an include or exclude pill exists for its value.
+    pilled_values = {
+        str(option["value"]) for option in [*normalized_included, *normalized_excluded]
+    }
     value_rows = (
         [
-            _filter_option_row(option["value"], option["label"])
+            _filter_option_row(
+                option["value"],
+                option["label"],
+                selected=str(option["value"]) in pilled_values,
+            )
             for option in normalized_options
         ]
         if not search_url
