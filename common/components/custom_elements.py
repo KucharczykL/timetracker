@@ -325,9 +325,7 @@ register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
 _FilterBuilder = custom_element_builder("filter-builder")
 
 
-def FilterBuilder(
-    *, model: str, mode: str, apply_url: str, preset_api_url: str
-) -> Node:
+def FilterBuilder(*, model: str, mode: str, preset_api_url: str) -> Node:
     """Toolbar/orchestrator for the nested filter builder page (#196).
 
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
@@ -346,7 +344,7 @@ def FilterBuilder(
     return _FilterBuilder(
         model=model,
         mode=mode,
-        apply_url=apply_url,
+        apply_url=list_url_for(mode),
         preset_api_url=preset_api_url,
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[

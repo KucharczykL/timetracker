@@ -15,6 +15,7 @@ from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_fo
 
 from common.components import (
     FilterBar,
+    FilterBuilder,
     NumberFilter,
     PurchaseFilterBar,
     SessionFilterBar,
@@ -957,6 +958,16 @@ class FilterGroupComparisonTest(TestCase):
         for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
         self.assertEqual(html.count("data-relation-select-template"), 1)
+
+
+class FilterBuilderApplyUrlTest(SimpleTestCase):
+    """FilterBuilder derives apply-url from mode via list_url_for (#304)."""
+
+    def test_apply_url_derived_from_mode(self):
+        html = str(
+            FilterBuilder(model="game", mode="games", preset_api_url="/api/presets/")
+        )
+        self.assertIn(f'apply-url="{list_url_for("games")}"', html)
 
 
 class ListUrlForTest(SimpleTestCase):
