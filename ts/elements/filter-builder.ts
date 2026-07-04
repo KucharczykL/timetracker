@@ -1,6 +1,7 @@
 import { readFilterBuilderProps } from "../generated/props.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
 import { savePreset, wirePresetDelete } from "./presets.js";
+import { applyUrl } from "./filter-url.js";
 
 // <filter-builder> — the builder-page toolbar (#196). Owns Load/Save preset,
 // Apply, Clear; drives the sibling <filter-group>. The Load-preset dropdown is
@@ -8,11 +9,6 @@ import { savePreset, wirePresetDelete } from "./presets.js";
 // "combobox"> hosting a preset search-select, #297): this element only
 // consumes its events — search-select:change to load the picked filter,
 // search-select:action (via wirePresetDelete) for per-row deletion.
-
-export function applyUrl(listUrl: string, filter: Record<string, unknown>): string {
-  if (Object.keys(filter).length === 0) return listUrl;
-  return listUrl + "?filter=" + encodeURIComponent(JSON.stringify(filter));
-}
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
   return (
