@@ -253,20 +253,28 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
     expect(page.locator("filter-builder")).to_be_attached()
 
+    # Open the dropdown exactly once: every open triggers a list refetch that
+    # replaces the panel's innerHTML, so a close/re-open per theme would race
+    # the second fetch against the placeholder locator (a detached-node
+    # getComputedStyle crash on slow CI). The dark-mode toggle only flips a
+    # class on <html>; the already-open panel restyles in place.
+    page.locator("filter-builder [data-load-presets]").click()
+    panel = page.locator("[data-preset-dropdown]")
+    expect(panel.locator("li")).to_have_text("No saved presets", timeout=5_000)
+
     for dark_mode in (False, True):
         page.evaluate(
             "dark => document.documentElement.classList.toggle('dark', dark)",
             dark_mode,
         )
-        page.locator("filter-builder [data-load-presets]").click()
-        placeholder = page.locator("[data-preset-dropdown] li")
-        expect(placeholder).to_have_text("No saved presets", timeout=5_000)
-
-        colors = placeholder.evaluate(
-            """element => {
-                const panel = element.closest('[data-preset-dropdown]');
+        # Query the row inside the evaluate so it is re-resolved from the
+        # stable panel node (only the panel's contents get replaced, never
+        # the panel element itself).
+        colors = panel.evaluate(
+            """panel => {
+                const row = panel.querySelector('li');
                 return {
-                    text: getComputedStyle(element).color,
+                    text: getComputedStyle(row).color,
                     panel: getComputedStyle(panel).backgroundColor,
                 };
             }"""
@@ -275,8 +283,6 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
             f"placeholder text invisible (dark={dark_mode}): text color "
             f"{colors['text']} equals dropdown background {colors['panel']}"
         )
-        # Close the dropdown again so the next iteration's click re-opens it.
-        page.locator("filter-builder [data-load-presets]").click()
 
 
 def test_load_set_field_preset_reflects_field_without_crash(
