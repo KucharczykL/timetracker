@@ -2,13 +2,14 @@
  * FilterBar — custom element wrapping the collapsible filter bar.
  *
  * Handles form submission (building filter JSON + URL navigation), preset
- * loading/saving, and string-filter input toggling. Props (preset_api_url,
- * preset_mode) are read from the element's typed attributes via codegen.
- * The Load-preset dropdown is the shared combobox picker (#297): a pick
- * bubbles search-select:change and navigates to ?filter=; per-row deletion
- * goes through wirePresetDelete.
+ * loading/saving, and string-filter input toggling. Props (apply_url,
+ * preset_api_url, preset_mode) are read from the element's typed attributes
+ * via codegen. The Load-preset dropdown is the shared combobox picker (#297):
+ * a pick bubbles search-select:change and navigates to ?filter=; per-row
+ * deletion goes through wirePresetDelete.
  */
 import { readFilterBarProps } from "../generated/props.js";
+import { applyUrl } from "./filter-url.js";
 import { readFieldComparisonSet } from "./field-comparison-set.js";
 import {
   fetchPresetNames,
@@ -28,10 +29,6 @@ import {
 
 interface DeselectableRadio extends HTMLInputElement {
   wasChecked?: boolean;
-}
-
-function baseUrl(): string {
-  return window.location.pathname;
 }
 
 // Deep-merge a single leaf criterion into `target` by its JSON path. Branch
@@ -256,6 +253,9 @@ interface PresetChangeDetail {
 class FilterBarElement extends HTMLElement {
   private presetApiUrl = "";
   private presetMode = "";
+  // Server-provided list URL for Apply/Clear/preset-pick navigation (#304) —
+  // never derived from window.location.pathname.
+  private applyTarget = "";
   // The user's preset names for this mode, fetched on demand when the save
   // input is revealed (no fetch on page load) — the collision-warning source
   // (#212). Refetched on every save-click so in-panel deletes can't leave it
@@ -264,9 +264,10 @@ class FilterBarElement extends HTMLElement {
   private disposePresetDelete: (() => void) | null = null;
 
   connectedCallback(): void {
-    const { presetApiUrl, presetMode } = readFilterBarProps(this);
-    this.presetApiUrl = presetApiUrl;
-    this.presetMode = presetMode;
+    const props = readFilterBarProps(this);
+    this.presetApiUrl = props.presetApiUrl;
+    this.presetMode = props.presetMode;
+    this.applyTarget = props.applyUrl;
     const form = this.querySelector<HTMLFormElement>("form");
     if (!form) return;
 
@@ -274,7 +275,7 @@ class FilterBarElement extends HTMLElement {
     // (the picker bubbles search-select:change; the guard scopes this listener
     // to it — the bar's own filter widgets bubble the same event).
     this.addEventListener("search-select:change", this.onPresetPick);
-    this.disposePresetDelete = wirePresetDelete(this, presetApiUrl);
+    this.disposePresetDelete = wirePresetDelete(this, this.presetApiUrl);
 
     // Delegated on the persistent custom element so the toggle keeps working
     // after the inner #filter-bar body is htmx-swapped — connectedCallback does
@@ -288,18 +289,12 @@ class FilterBarElement extends HTMLElement {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const filter = buildFilterJSON(form);
-      const filterString = JSON.stringify(filter);
-      let url = baseUrl();
-      if (filterString && filterString !== "{}") {
-        url += "?filter=" + encodeURIComponent(filterString);
-      }
-      window.location.href = url;
+      window.location.href = applyUrl(this.applyTarget, buildFilterJSON(form));
     });
 
     this.querySelector("[data-filter-bar-clear]")?.addEventListener("click", () => {
       form.reset();
-      window.location.href = baseUrl();
+      window.location.href = this.applyTarget;
     });
 
     this.querySelector("[data-filter-bar-save]")?.addEventListener("click", () => {
@@ -334,11 +329,8 @@ class FilterBarElement extends HTMLElement {
     try {
       const raw = detail.last.data.filter ?? "";
       const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      // An empty preset means "show everything": navigate to the bare list.
-      window.location.href =
-        Object.keys(filter).length === 0
-          ? baseUrl()
-          : baseUrl() + "?filter=" + encodeURIComponent(raw);
+      // An empty preset means "show everything": applyUrl returns the bare list.
+      window.location.href = applyUrl(this.applyTarget, filter);
     } catch (error) {
       // Keep the "preset load failed" console substring (e2e crash guard).
       console.error("filter-bar: preset load failed", error);

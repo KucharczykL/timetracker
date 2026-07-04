@@ -6,7 +6,11 @@ from typing import Literal, NamedTuple
 from django.db import models
 
 from common.components.core import BaseComponent, Node, Safe
-from common.components.custom_elements import _FieldComparisonSet, _FilterBarElement
+from common.components.custom_elements import (
+    _FieldComparisonSet,
+    _FilterBarElement,
+    list_url_for,
+)
 from common.components.date_range_picker import DateRangePicker
 from common.components.search_select import LoadPresetDropdown
 from common.components.primitives import (
@@ -1098,9 +1102,15 @@ class _FilterBarBase(BaseComponent):
         self,
         filter_json: str = "",
         preset_api_url: str = "",
+        apply_url: str = "",
     ) -> None:
         self.filter_json = filter_json
         self.preset_api_url = preset_api_url
+        # Where Apply/Clear/preset-pick navigates. Empty (the default, used by
+        # every real view) derives the bar's own list URL from preset_mode at
+        # render time; the explicit override exists for non-canonical mounts
+        # (the synthetic e2e harnesses pass their own request.path) (#304).
+        self.apply_url = apply_url
         # Canonicalize TOP-LEVEL cross-entity sub-filters (stats-links /
         # filter_url) into the bar's AND shape so prefill reads a single shape
         # and stats-link landings pre-fill their widgets (#137).
@@ -1127,6 +1137,7 @@ class _FilterBarBase(BaseComponent):
 
     def render(self) -> Node:
         return _FilterBarElement(
+            apply_url=self.apply_url or list_url_for(self.preset_mode),
             preset_api_url=self.preset_api_url,
             preset_mode=self.preset_mode,
         )[

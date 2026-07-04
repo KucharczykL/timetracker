@@ -8,14 +8,17 @@ StringFilter modifier widgets — so refactors stay behaviour-preserving.
 
 import json
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
 from common.components import (
     FilterBar,
+    FilterBuilder,
     NumberFilter,
     PurchaseFilterBar,
     SessionFilterBar,
 )
+from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_for
 from games.models import Device, Game, Platform
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input", "&lt;a"]
@@ -49,6 +52,9 @@ class FilterBarRenderingTest(TestCase):
         # (the client no longer sniffs it from the pathname — #297).
         self.assertIn('preset-api-url="/api/presets/"', html)
         self.assertIn(f'preset-mode="{preset_mode}"', html)
+        # Apply/Clear/preset-pick navigation target is a server-provided typed
+        # prop, not sniffed from window.location.pathname (#304).
+        self.assertIn(f'apply-url="{list_url_for(preset_mode)}"', html)
         self.assertNoEscapedTags(html)
 
     def _assert_number_filter(self, html, field_prefix):
@@ -547,6 +553,18 @@ class FilterBarRenderingTest(TestCase):
         # Isolate the exclude checkbox's own markup and assert it is unchecked.
         self.assertNotIn("checked", _exclude_input_tag(html))
 
+    def test_apply_url_override_renders_verbatim(self):
+        # Non-canonical mounts (the synthetic e2e harnesses) pin navigation to
+        # their own path; real views never pass this (#304).
+        html = str(
+            FilterBar(
+                filter_json="",
+                preset_api_url="/api/presets/",
+                apply_url="/custom-mount/",
+            )
+        )
+        self.assertIn('apply-url="/custom-mount/"', html)
+
 
 class NumberFilterRenderTest(TestCase):
     """Render-level contract for the Stash-style NumberFilter component."""
@@ -939,3 +957,40 @@ class FilterGroupComparisonTest(TestCase):
         for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
         self.assertEqual(html.count("data-relation-select-template"), 1)
+
+
+class FilterBuilderApplyUrlTest(SimpleTestCase):
+    """FilterBuilder derives apply-url from mode via list_url_for (#304)."""
+
+    def test_apply_url_derived_from_mode(self):
+        html = str(
+            FilterBuilder(model="game", mode="games", preset_api_url="/api/presets/")
+        )
+        self.assertIn(f'apply-url="{list_url_for("games")}"', html)
+
+
+class ListUrlForTest(SimpleTestCase):
+    """list_url_for is the single mode->list-URL source for filter UIs (#304)."""
+
+    def test_known_modes_reverse_to_their_list_views(self):
+        for mode, url_name in [
+            ("games", "games:list_games"),
+            ("sessions", "games:list_sessions"),
+            ("purchases", "games:list_purchases"),
+            ("playevents", "games:list_playevents"),
+            ("devices", "games:list_devices"),
+            ("platforms", "games:list_platforms"),
+        ]:
+            self.assertEqual(list_url_for(mode), reverse(url_name))
+
+    def test_unknown_mode_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            list_url_for("nonsense")
+
+    def test_keyset_matches_mode_parsers(self):
+        # The mode->URL map is the third parallel mode registry (after
+        # MODE_PARSERS and FilterPreset.MODE_CHOICES); pin the keysets so a
+        # future mode cannot silently miss the URL map.
+        from games.filters import MODE_PARSERS
+
+        self.assertEqual(set(FILTER_MODE_LIST_URLS), set(MODE_PARSERS))

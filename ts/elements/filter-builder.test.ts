@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./filter-group.js";
 import "./filter-builder.js";
-import { applyUrl } from "./filter-builder.js";
+import { applyUrl } from "./filter-url.js";
 import { FILTER_TREE_CHANGE_EVENT } from "./filter-group.js";
 import type { FilterGroupElement } from "./filter-group.js";
 
