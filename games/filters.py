@@ -727,7 +727,8 @@ def parse_playevent_filter(json_str: str) -> PlayEventFilter | None:
 type FilterParser = Callable[[str], OperatorFilter | None]
 
 # Maps a FilterPreset.mode to the parser that validates that mode's filter JSON.
-# Keys must stay in sync with FilterPreset.MODE_CHOICES (games/models.py).
+# Keyset is contract-tested against FilterPreset.MODE_CHOICES (games/models.py)
+# in tests/test_filter_presets.py::test_mode_parsers_cover_every_mode_choice.
 MODE_PARSERS: dict[str, FilterParser] = {
     "games": parse_game_filter,
     "sessions": parse_session_filter,
