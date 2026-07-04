@@ -11,8 +11,6 @@ import json
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_for
-
 from common.components import (
     FilterBar,
     FilterBuilder,
@@ -20,6 +18,7 @@ from common.components import (
     PurchaseFilterBar,
     SessionFilterBar,
 )
+from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_for
 from games.models import Device, Game, Platform
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input", "&lt;a"]

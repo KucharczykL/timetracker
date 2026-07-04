@@ -325,7 +325,7 @@ register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
 _FilterBuilder = custom_element_builder("filter-builder")
 
 
-def FilterBuilder(*, model: str, mode: str, preset_api_url: str) -> Node:
+def FilterBuilder(*, model: str, mode: FilterMode, preset_api_url: str) -> Node:
     """Toolbar/orchestrator for the nested filter builder page (#196).
 
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
