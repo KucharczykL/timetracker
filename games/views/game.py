@@ -686,6 +686,7 @@ def _history_section(game: Game) -> Node:
     return Div(
         class_="mb-6",
         id="history-container",
+        hx_get="",
         hx_trigger="status-changed from:body",
         hx_select="#history-container",
         hx_swap="outerHTML",
