@@ -36,7 +36,7 @@ export class FilterBuilderElement extends HTMLElement {
       <div class="flex flex-wrap gap-3 items-center mb-4">
         <div class="relative">
           <button type="button" data-load-presets="">Load preset ▾</button>
-          <div data-preset-dropdown="" class="hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border border-default-medium bg-body shadow-lg">
+          <div data-preset-dropdown="" class="hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border border-default-medium bg-neutral-secondary-medium shadow-lg">
             <ul class="py-1"></ul>
           </div>
         </div>

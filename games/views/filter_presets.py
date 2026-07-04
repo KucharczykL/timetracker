@@ -43,9 +43,12 @@ MODE_PARSERS: dict[str, FilterParser] = {
 }
 
 
+# hover must be a step darker than the dropdown panel's own background
+# (bg-neutral-secondary-medium on <filter-builder>'s [data-preset-dropdown]),
+# or hovering a row changes nothing visually.
 ITEM_CLASS = (
     "flex justify-between items-center px-4 py-2 text-sm "
-    "text-heading hover:bg-neutral-secondary-medium"
+    "text-heading hover:bg-neutral-secondary-strong"
 )
 DELETE_CLASS = "text-red-500 hover:text-red-700 cursor-pointer ml-4"
 EMPTY_CLASS = "px-4 py-2 text-sm text-body italic"

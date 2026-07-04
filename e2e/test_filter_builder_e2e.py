@@ -234,6 +234,57 @@ def test_prefill_apply_roundtrip_carries_filter(
     expect(page.get_by_text("PlayGame")).not_to_be_visible()
 
 
+def test_empty_preset_dropdown_shows_readable_placeholder(
+    authenticated_page: Page, live_server
+) -> None:
+    """With zero saved presets, the Load-preset dropdown must show a readable
+    "No saved presets" row (issue #295).
+
+    The row was present in the DOM but invisible: the dropdown panel used
+    ``bg-body`` — a *text*-color token (gray-600 light / gray-400 dark) — as its
+    background, and the placeholder row uses ``text-body``, the same token, so
+    the text was painted in exactly its background color.  Playwright's
+    ``to_be_visible`` cannot catch same-color-on-same-color, so this test
+    compares the row's computed ``color`` against the panel's computed
+    ``background-color`` directly, in both light and dark mode.
+    """
+    page = authenticated_page
+
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+    expect(page.locator("filter-builder")).to_be_attached()
+
+    # Open the dropdown exactly once: every open triggers a list refetch that
+    # replaces the panel's innerHTML, so a close/re-open per theme would race
+    # the second fetch against the placeholder locator (a detached-node
+    # getComputedStyle crash on slow CI). The dark-mode toggle only flips a
+    # class on <html>; the already-open panel restyles in place.
+    page.locator("filter-builder [data-load-presets]").click()
+    panel = page.locator("[data-preset-dropdown]")
+    expect(panel.locator("li")).to_have_text("No saved presets", timeout=5_000)
+
+    for dark_mode in (False, True):
+        page.evaluate(
+            "dark => document.documentElement.classList.toggle('dark', dark)",
+            dark_mode,
+        )
+        # Query the row inside the evaluate so it is re-resolved from the
+        # stable panel node (only the panel's contents get replaced, never
+        # the panel element itself).
+        colors = panel.evaluate(
+            """panel => {
+                const row = panel.querySelector('li');
+                return {
+                    text: getComputedStyle(row).color,
+                    panel: getComputedStyle(panel).backgroundColor,
+                };
+            }"""
+        )
+        assert colors["text"] != colors["panel"], (
+            f"placeholder text invisible (dark={dark_mode}): text color "
+            f"{colors['text']} equals dropdown background {colors['panel']}"
+        )
+
+
 def test_load_set_field_preset_reflects_field_without_crash(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:
