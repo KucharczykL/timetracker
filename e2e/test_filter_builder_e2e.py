@@ -253,26 +253,23 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
     expect(page.locator("filter-builder")).to_be_attached()
 
-    # Open the dropdown exactly once: every open triggers a list refetch that
-    # replaces the panel's innerHTML, so a close/re-open per theme would race
-    # the second fetch against the placeholder locator (a detached-node
-    # getComputedStyle crash on slow CI). The dark-mode toggle only flips a
-    # class on <html>; the already-open panel restyles in place.
-    page.locator("filter-builder [data-load-presets]").click()
-    panel = page.locator("[data-preset-dropdown]")
-    expect(panel.locator("li")).to_have_text("No saved presets", timeout=5_000)
+    # Open the combobox dialog once; the fetch-on-open returns zero presets and
+    # unhides the widget's no-results row. The dark-mode toggle only flips a
+    # class on <html>; the already-open panel restyles in place. The no-results
+    # node is stable (refetches replace only option rows), so no detach race.
+    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
+    panel = page.locator("filter-builder [data-preset-picker] [data-menu]")
+    placeholder = panel.locator("[data-search-select-no-results]")
+    expect(placeholder).to_have_text("No saved presets", timeout=5_000)
 
     for dark_mode in (False, True):
         page.evaluate(
             "dark => document.documentElement.classList.toggle('dark', dark)",
             dark_mode,
         )
-        # Query the row inside the evaluate so it is re-resolved from the
-        # stable panel node (only the panel's contents get replaced, never
-        # the panel element itself).
         colors = panel.evaluate(
             """panel => {
-                const row = panel.querySelector('li');
+                const row = panel.querySelector('[data-search-select-no-results]');
                 return {
                     text: getComputedStyle(row).color,
                     panel: getComputedStyle(panel).backgroundColor,
@@ -341,17 +338,17 @@ def test_load_set_field_preset_reflects_field_without_crash(
         "Counting…", timeout=10_000
     )
 
-    # Open the Load-preset dropdown.
-    page.locator("filter-builder [data-load-presets]").click()
+    # Open the Load-preset combobox dialog.
+    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
 
-    # Wait for the dropdown to populate with the preset anchor.
-    preset_anchor = page.locator("[data-preset-dropdown] a").filter(
-        has_text="setpreset"
-    )
-    expect(preset_anchor).to_be_visible(timeout=5_000)
+    # Wait for the fetch-on-open to populate the preset row.
+    preset_row = page.locator(
+        "filter-builder [data-preset-picker] [data-search-select-option]"
+    ).filter(has_text="setpreset")
+    expect(preset_row).to_be_visible(timeout=5_000)
 
-    # Click the preset anchor to load it into the filter group.
-    preset_anchor.click()
+    # Click the preset row to load it into the filter group.
+    preset_row.click()
 
     # Wait for the filter group to re-render (the criterion row must appear).
     criterion_row = page.locator("[data-node-kind='criterion']")
@@ -763,3 +760,131 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     assert "original_year_released" in _select_option_values(
         new_row.locator("[data-fc-right]")
     )
+
+
+def test_preset_delete_flow_removes_row_and_db_record(
+    authenticated_page: Page, live_server, django_user_model
+) -> None:
+    """The per-row delete ×: confirm → DELETE /api/presets/{id} → the row
+    vanishes on the refetch and the DB record is gone (#297). The panel must
+    survive the native confirm() — it stays open with focus in the search box,
+    showing the remaining preset."""
+    user = django_user_model.objects.get(username="tester")
+    keep = FilterPreset.objects.create(user=user, mode="games", name="keepme")
+    doomed = FilterPreset.objects.create(user=user, mode="games", name="deleteme")
+
+    page = authenticated_page
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+
+    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
+    picker = page.locator("filter-builder [data-preset-picker]")
+    doomed_row = picker.locator("[data-search-select-option]").filter(
+        has_text="deleteme"
+    )
+    expect(doomed_row).to_be_visible(timeout=5_000)
+
+    doomed_row.locator("[data-search-select-action='delete']").click()
+
+    # Refetch after the DELETE: the deleted row is gone, the other remains,
+    # the dialog is still open with the search box focused.
+    expect(doomed_row).not_to_be_attached(timeout=5_000)
+    expect(
+        picker.locator("[data-search-select-option]").filter(has_text="keepme")
+    ).to_be_visible()
+    expect(picker.locator("[data-menu]")).to_be_visible()
+    assert not FilterPreset.objects.filter(id=doomed.id).exists()
+    assert FilterPreset.objects.filter(id=keep.id).exists()
+
+
+def test_deleting_last_picked_preset_does_not_resurrect(
+    authenticated_page: Page, live_server, django_user_model
+) -> None:
+    """Pick a preset, then delete that same preset on the next open: the row
+    must NOT reappear after the refetch. Guards the transient-pick design —
+    a lingering committed selection would pin the stale row through
+    renderRows' selected-value preservation (#297 review finding)."""
+    user = django_user_model.objects.get(username="tester")
+    FilterPreset.objects.create(
+        user=user,
+        mode="games",
+        name="pickme",
+        object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},
+    )
+
+    page = authenticated_page
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+
+    picker = page.locator("filter-builder [data-preset-picker]")
+    toggle = picker.locator("[data-toggle]")
+
+    # Pick it (loads into the tree and closes the dialog).
+    toggle.click()
+    row = picker.locator("[data-search-select-option]").filter(has_text="pickme")
+    expect(row).to_be_visible(timeout=5_000)
+    row.click()
+    expect(picker.locator("[data-menu]")).to_be_hidden()
+    expect(page.locator("[data-node-kind='criterion']")).to_be_attached(timeout=5_000)
+
+    # Reopen (fresh refetch — the search box must be clean after the transient
+    # pick, not holding the committed label as the query) and delete it.
+    toggle.click()
+    search_box = picker.locator("[data-search-select-search]")
+    expect(search_box).to_have_value("")
+    expect(row).to_be_visible(timeout=5_000)
+    row.locator("[data-search-select-action='delete']").click()
+
+    expect(row).not_to_be_attached(timeout=5_000)
+    expect(picker.locator("[data-search-select-no-results]")).to_have_text(
+        "No saved presets"
+    )
+    assert not FilterPreset.objects.filter(name="pickme").exists()
+
+
+def test_preset_keyboard_pick_and_empty_enter(
+    authenticated_page: Page, live_server, django_user_model
+) -> None:
+    """Keyboard path: Enter on the toggle opens the dialog with focus in the
+    search box; ArrowDown + Enter picks the preset into the tree. With no
+    options (a non-matching query), Enter neither submits nor navigates —
+    free win #297 promised, plus the form-safety guard."""
+    user = django_user_model.objects.get(username="tester")
+    FilterPreset.objects.create(
+        user=user,
+        mode="games",
+        name="kbpreset",
+        object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},
+    )
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+    url_before = page.url
+
+    picker = page.locator("filter-builder [data-preset-picker]")
+    picker.locator("[data-toggle]").focus()
+    page.keyboard.press("Enter")
+
+    search_box = picker.locator("[data-search-select-search]")
+    expect(search_box).to_be_focused()
+    expect(
+        picker.locator("[data-search-select-option]").filter(has_text="kbpreset")
+    ).to_be_visible(timeout=5_000)
+
+    # A non-matching query: Enter must be inert (no submit, no navigation).
+    search_box.fill("zzz-no-match")
+    expect(picker.locator("[data-search-select-no-results]")).to_be_visible()
+    page.keyboard.press("Enter")
+    assert page.url == url_before
+
+    # Clear the query, pick via keyboard.
+    search_box.fill("")
+    expect(
+        picker.locator("[data-search-select-option]").filter(has_text="kbpreset")
+    ).to_be_visible(timeout=5_000)
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+
+    expect(page.locator("[data-node-kind='criterion']")).to_be_attached(timeout=5_000)
+    expect(picker.locator("[data-menu]")).to_be_hidden()
+    assert page.url == url_before  # loaded into the tree, no navigation

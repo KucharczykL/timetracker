@@ -159,9 +159,7 @@ class PurchaseFilterBarDateRangePickerTest(TestCase):
 
     def render(self, filter_json=""):
         return str(
-            PurchaseFilterBar(
-                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
-            )
+            PurchaseFilterBar(filter_json=filter_json, preset_api_url="/api/presets/")
         )
 
     def test_purchased_uses_date_range_picker(self):

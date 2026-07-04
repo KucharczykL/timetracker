@@ -162,8 +162,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             model=model,
             mode=mode,
             apply_url=reverse(f"games:list_{mode}"),
-            preset_list_url=reverse("games:list_presets"),
-            preset_save_url=reverse("games:save_preset"),
+            preset_api_url=reverse("api-1.0.0:list_presets"),
         ),
         FilterSummary(model=model, model_label=label, models=models_json),
         FilterCount(

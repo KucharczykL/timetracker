@@ -8,6 +8,7 @@ from django.db import models
 from common.components.core import BaseComponent, Node, Safe
 from common.components.custom_elements import _FieldComparisonSet, _FilterBarElement
 from common.components.date_range_picker import DateRangePicker
+from common.components.search_select import LoadPresetDropdown
 from common.components.primitives import (
     A,
     Button,
@@ -674,7 +675,7 @@ def _filter_collapse_button() -> Node:
     ]
 
 
-def _filter_action_row() -> Node:
+def _filter_action_row(*, preset_api_url: str, preset_mode: str) -> Node:
     return Div(class_="flex gap-3 items-center")[
         Button(
             type="submit",
@@ -734,9 +735,9 @@ def _filter_action_row() -> Node:
                 class_="hidden text-sm text-red-500",
             )["A preset with this name exists — saving will overwrite it."],
         ],
-        Div(id_="preset-dropdown", class_="relative")[
-            Span(class_="text-sm text-body")["Loading presets..."],
-        ],
+        LoadPresetDropdown(
+            api_url=preset_api_url, mode=preset_mode, id="bar-preset-picker"
+        ),
     ]
 
 
@@ -1088,15 +1089,18 @@ class _FilterBarBase(BaseComponent):
     tree, so the view never threads ``scripts=`` by hand.
     """
 
+    # The FilterPreset.mode this bar scopes preset load/save to. Declared per
+    # subclass — the bar knows its entity, so the client no longer sniffs it
+    # out of window.location.pathname (#297).
+    preset_mode = "games"
+
     def __init__(
         self,
         filter_json: str = "",
-        preset_list_url: str = "",
-        preset_save_url: str = "",
+        preset_api_url: str = "",
     ) -> None:
         self.filter_json = filter_json
-        self.preset_list_url = preset_list_url
-        self.preset_save_url = preset_save_url
+        self.preset_api_url = preset_api_url
         # Canonicalize TOP-LEVEL cross-entity sub-filters (stats-links /
         # filter_url) into the bar's AND shape so prefill reads a single shape
         # and stats-link landings pre-fill their widgets (#137).
@@ -1123,8 +1127,8 @@ class _FilterBarBase(BaseComponent):
 
     def render(self) -> Node:
         return _FilterBarElement(
-            preset_list_url=self.preset_list_url,
-            preset_save_url=self.preset_save_url,
+            preset_api_url=self.preset_api_url,
+            preset_mode=self.preset_mode,
         )[
             Div(id_="filter-bar", class_="mb-6")[
                 _filter_collapse_button(),
@@ -1146,7 +1150,10 @@ class _FilterBarBase(BaseComponent):
                         ),
                         _filter_search_field(self.existing),
                         *self._body_fields(),
-                        _filter_action_row(),
+                        _filter_action_row(
+                            preset_api_url=self.preset_api_url,
+                            preset_mode=self.preset_mode,
+                        ),
                     ],
                 ],
             ]
@@ -1156,13 +1163,7 @@ class _FilterBarBase(BaseComponent):
 class FilterBar(_FilterBarBase):
     """Collapsible filter bar for the Game list."""
 
-    def __init__(
-        self,
-        filter_json: str = "",
-        preset_list_url: str = "",
-        preset_save_url: str = "",
-    ) -> None:
-        super().__init__(filter_json, preset_list_url, preset_save_url)
+    preset_mode = "games"
 
     def build_fields(self) -> list:
         return _game_fields(self.existing)
@@ -1456,6 +1457,8 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
 class SessionFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Session list."""
 
+    preset_mode = "sessions"
+
     def build_fields(self) -> list:
         return _session_fields(self.existing)
 
@@ -1562,6 +1565,8 @@ def _session_fields(existing: dict) -> list:
 
 class PurchaseFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Purchase list."""
+
+    preset_mode = "purchases"
 
     def build_fields(self) -> list:
         return _purchase_fields(self.existing)
@@ -1730,6 +1735,8 @@ def _purchase_fields(existing: dict) -> list:
 class DeviceFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Device list."""
 
+    preset_mode = "devices"
+
     def build_fields(self) -> list:
         return _device_fields(self.existing)
 
@@ -1763,6 +1770,8 @@ def _device_fields(existing: dict) -> list:
 
 class PlatformFilterBar(_FilterBarBase):
     """Collapsible filter bar for the Platform list."""
+
+    preset_mode = "platforms"
 
     def build_fields(self) -> list:
         return _platform_fields(self.existing)
@@ -1808,6 +1817,8 @@ def _platform_fields(existing: dict) -> list:
 
 class PlayEventFilterBar(_FilterBarBase):
     """Collapsible filter bar for the PlayEvent list."""
+
+    preset_mode = "playevents"
 
     def build_fields(self) -> list:
         return _playevent_fields(self.existing)

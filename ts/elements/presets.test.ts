@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCsrfToken, savePreset, setupPresetDropdown } from "./presets.js";
+import { fetchPresetNames, getCsrfToken, savePreset, wirePresetDelete } from "./presets.js";
 
-const LIST_URL = "/tracker/filter/presets/list";
+const API_URL = "/api/presets/";
 
 function clearCsrfCookie(): void {
   document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
@@ -12,48 +12,39 @@ function flushPromises(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-interface MountOptions {
-  listUrl?: string;
-  onPick?: (filter: Record<string, unknown>) => void;
-  onListRendered?: () => void;
-}
-
-function mount(options: MountOptions = {}) {
+// A picker as LoadPresetDropdown renders one: the [data-preset-picker] wrapper
+// hosting a search-select. The widget is deliberately NOT the real custom
+// element (this suite never imports search-select.js), so refetchOptions is a
+// plain stub the delete flow duck-types onto.
+function mountPicker() {
   document.body.innerHTML = "";
   const root = document.createElement("div");
-  const dropdown = document.createElement("div");
-  dropdown.setAttribute("data-preset-dropdown", "");
-  root.appendChild(dropdown);
+  const picker = document.createElement("div");
+  picker.setAttribute("data-preset-picker", "");
+  const widget = document.createElement("search-select") as HTMLElement & {
+    refetchOptions: ReturnType<typeof vi.fn>;
+  };
+  widget.refetchOptions = vi.fn();
+  picker.appendChild(widget);
+  root.appendChild(picker);
   document.body.appendChild(root);
-  const controller = setupPresetDropdown({
-    root,
-    dropdownSelector: "[data-preset-dropdown]",
-    listUrl: options.listUrl ?? LIST_URL,
-    mode: "games",
-    onPick: options.onPick,
-    onListRendered: options.onListRendered,
-  });
-  return { root, dropdown, controller };
+  const dispose = wirePresetDelete(root, API_URL);
+  return { root, picker, widget, dispose };
 }
 
-// A preset row shaped like the list_presets fragment: the delete <span> is
-// nested INSIDE the preset <a href>.
-function injectPresetRow(dropdown: HTMLElement, filter: Record<string, unknown>): void {
-  dropdown.innerHTML = `
-    <ul>
-      <li>
-        <a href="/tracker/game/list?filter=${encodeURIComponent(JSON.stringify(filter))}">
-          My preset
-          <span data-delete-preset="" href="/tracker/filter/presets/delete/42">x</span>
-        </a>
-      </li>
-    </ul>`;
+function dispatchDelete(widget: HTMLElement, value = "42", label = "My preset"): void {
+  widget.dispatchEvent(
+    new CustomEvent("search-select:action", {
+      bubbles: true,
+      detail: { name: "preset", action: "delete", option: { value, label, data: {} } },
+    }),
+  );
 }
 
-function stubListFetch(html = "<ul><li>fresh</li></ul>"): ReturnType<typeof vi.fn> {
-  const fetchStub = vi.fn(() => Promise.resolve(new Response(html)));
-  vi.stubGlobal("fetch", fetchStub);
-  return fetchStub;
+function stubToast(): ReturnType<typeof vi.fn> {
+  const toastStub = vi.fn();
+  (window as unknown as Record<string, unknown>).toast = toastStub;
+  return toastStub;
 }
 
 afterEach(() => {
@@ -75,221 +66,205 @@ describe("getCsrfToken", () => {
   });
 });
 
-describe("refresh", () => {
-  it("appends mode only when the list URL does not already carry one", async () => {
-    const fetchStub = stubListFetch();
-    const { controller } = mount();
-    await controller.refresh();
-    const requested = new URL(fetchStub.mock.calls[0][0] as string);
-    expect(requested.pathname).toBe(LIST_URL);
-    expect(requested.searchParams.get("mode")).toBe("games");
-
-    fetchStub.mockClear();
-    const { controller: second } = mount({ listUrl: `${LIST_URL}?mode=devices` });
-    await second.refresh();
-    const kept = new URL(fetchStub.mock.calls[0][0] as string);
-    expect(kept.searchParams.get("mode")).toBe("devices");
-  });
-
-  it("renders the fragment and calls onListRendered", async () => {
-    stubListFetch("<ul><li>row</li></ul>");
-    const onListRendered = vi.fn();
-    const { dropdown, controller } = mount({ onListRendered });
-    await controller.refresh();
-    expect(dropdown.innerHTML).toBe("<ul><li>row</li></ul>");
-    expect(onListRendered).toHaveBeenCalledOnce();
-  });
-
-  it("no-ops on an empty list URL", async () => {
-    const fetchStub = stubListFetch();
-    const { controller } = mount({ listUrl: "" });
-    await controller.refresh();
-    expect(fetchStub).not.toHaveBeenCalled();
-  });
-
-  it("renders a placeholder on failure without rejecting", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network down"))));
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const { dropdown, controller } = mount();
-    await expect(controller.refresh()).resolves.toBeUndefined();
-    expect(dropdown.innerHTML).toContain("Presets unavailable");
-  });
-});
-
-describe("delete", () => {
-  function stubDeleteEnvironment(deleteResponse: unknown = new Response(null, { status: 200 })) {
+describe("wirePresetDelete", () => {
+  function stubDeleteFetch(status = 204): ReturnType<typeof vi.fn> {
     document.cookie = "csrftoken=testtoken";
-    const deleteStub = vi.fn(() => Promise.resolve(deleteResponse));
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = deleteStub;
-    const toastStub = vi.fn();
-    (window as unknown as Record<string, unknown>).toast = toastStub;
     vi.stubGlobal("confirm", vi.fn(() => true));
-    const listStub = stubListFetch();
-    return { deleteStub, toastStub, listStub };
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status })));
+    vi.stubGlobal("fetch", fetchStub);
+    return fetchStub;
   }
 
-  it("sends DELETE with X-CSRFToken and refetches the list", async () => {
-    const { deleteStub, toastStub, listStub } = stubDeleteEnvironment();
-    const { dropdown } = mount();
-    injectPresetRow(dropdown, {});
+  it("confirms, DELETEs base+id with X-CSRFToken, and refetches the widget", async () => {
+    const fetchStub = stubDeleteFetch();
+    const toastStub = stubToast();
+    const { widget } = mountPicker();
 
-    (dropdown.querySelector("[data-delete-preset]") as HTMLElement).click();
+    dispatchDelete(widget);
     await flushPromises();
 
-    expect(deleteStub).toHaveBeenCalledOnce();
-    const [url, options] = deleteStub.mock.calls[0] as unknown as [
+    expect(fetchStub).toHaveBeenCalledOnce();
+    const [url, options] = fetchStub.mock.calls[0] as unknown as [
       string,
       RequestInit & { headers: Record<string, string> },
     ];
-    expect(url).toBe("/tracker/filter/presets/delete/42");
+    expect(url).toBe("/api/presets/42");
     expect(options.method).toBe("DELETE");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
-    expect(listStub).toHaveBeenCalledOnce();
+    expect(widget.refetchOptions).toHaveBeenCalledOnce();
     expect(toastStub).not.toHaveBeenCalled();
   });
 
   it("does not fetch when the confirm is declined", () => {
-    const { deleteStub } = stubDeleteEnvironment();
+    const fetchStub = stubDeleteFetch();
     vi.stubGlobal("confirm", vi.fn(() => false));
-    const { dropdown } = mount();
-    injectPresetRow(dropdown, {});
+    const { widget } = mountPicker();
 
-    (dropdown.querySelector("[data-delete-preset]") as HTMLElement).click();
+    dispatchDelete(widget);
 
-    expect(deleteStub).not.toHaveBeenCalled();
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it("toasts on a server rejection (no Django message fires for those)", async () => {
-    const { toastStub, listStub } = stubDeleteEnvironment(new Response(null, { status: 404 }));
-    const { dropdown } = mount();
-    injectPresetRow(dropdown, {});
+  it("names the preset in the confirm prompt", () => {
+    stubDeleteFetch();
+    const confirmStub = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmStub);
+    const { widget } = mountPicker();
 
-    (dropdown.querySelector("[data-delete-preset]") as HTMLElement).click();
+    dispatchDelete(widget, "7", "Backlog");
+
+    expect(confirmStub).toHaveBeenCalledWith('Delete preset "Backlog"?');
+  });
+
+  it("toasts on a rejection but still refetches (stale 404 self-corrects)", async () => {
+    stubDeleteFetch(404);
+    const toastStub = stubToast();
+    const { widget } = mountPicker();
+
+    dispatchDelete(widget);
     await flushPromises();
 
     expect(toastStub).toHaveBeenCalledWith("Failed to delete preset.", "error");
-    expect(listStub).toHaveBeenCalledOnce(); // still refetched — self-correcting
+    expect(widget.refetchOptions).toHaveBeenCalledOnce();
   });
 
-  it("wins over the pick branch for a delete span nested inside the anchor", async () => {
-    const { deleteStub } = stubDeleteEnvironment();
-    const onPick = vi.fn();
-    const { dropdown } = mount({ onPick });
-    injectPresetRow(dropdown, {});
+  it("ignores actions from outside a [data-preset-picker] wrapper", () => {
+    const fetchStub = stubDeleteFetch();
+    document.body.innerHTML = "";
+    const root = document.createElement("div");
+    const stray = document.createElement("search-select");
+    root.appendChild(stray);
+    document.body.appendChild(root);
+    wirePresetDelete(root, API_URL);
 
-    (dropdown.querySelector("[data-delete-preset]") as HTMLElement).click();
-    await flushPromises();
+    dispatchDelete(stray);
 
-    expect(deleteStub).toHaveBeenCalledOnce();
-    expect(onPick).not.toHaveBeenCalled();
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it("does not stack listeners when setup runs twice on the same root", () => {
-    const { deleteStub } = stubDeleteEnvironment();
+  it("ignores non-delete actions", () => {
+    const fetchStub = stubDeleteFetch();
+    const { widget } = mountPicker();
+
+    widget.dispatchEvent(
+      new CustomEvent("search-select:action", {
+        bubbles: true,
+        detail: { name: "preset", action: "include", option: { value: "1", label: "x", data: {} } },
+      }),
+    );
+
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("dispose stops listening — a re-wire never stacks a second confirm", () => {
+    const fetchStub = stubDeleteFetch();
     const confirmStub = vi.fn(() => true);
     vi.stubGlobal("confirm", confirmStub);
-    const { root, dropdown } = mount();
-    setupPresetDropdown({
-      root,
-      dropdownSelector: "[data-preset-dropdown]",
-      listUrl: LIST_URL,
-      mode: "games",
-    });
-    injectPresetRow(dropdown, {});
+    const { root, widget, dispose } = mountPicker();
 
-    (dropdown.querySelector("[data-delete-preset]") as HTMLElement).click();
+    // Simulate a disconnect/reconnect cycle: dispose the old wiring first.
+    dispose();
+    wirePresetDelete(root, API_URL);
+    dispatchDelete(widget);
 
     expect(confirmStub).toHaveBeenCalledOnce();
-    expect(deleteStub).toHaveBeenCalledOnce();
-  });
-});
-
-describe("pick", () => {
-  it("parses the anchor's ?filter= JSON into onPick and prevents navigation", () => {
-    const onPick = vi.fn();
-    const { dropdown } = mount({ onPick });
-    const filter = { AND: [{ status: { modifier: "EQUALS", value: "f" } }] };
-    injectPresetRow(dropdown, filter);
-
-    const anchor = dropdown.querySelector("a[href]") as HTMLAnchorElement;
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-    anchor.dispatchEvent(event);
-
-    expect(onPick).toHaveBeenCalledWith(filter);
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  it("leaves anchors alone when no onPick is given (native navigation)", () => {
-    const { dropdown } = mount();
-    injectPresetRow(dropdown, {});
-
-    const anchor = dropdown.querySelector("a[href]") as HTMLAnchorElement;
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-    anchor.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(false);
-  });
-
-  it("toasts and logs 'preset load failed' when onPick throws", () => {
-    const toastStub = vi.fn();
-    (window as unknown as Record<string, unknown>).toast = toastStub;
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const onPick = vi.fn(() => {
-      throw new Error("bad filter shape");
-    });
-    const { dropdown } = mount({ onPick });
-    injectPresetRow(dropdown, {});
-
-    (dropdown.querySelector("a[href]") as HTMLElement).click();
-
-    expect(toastStub).toHaveBeenCalledWith("Preset is not a valid filter.", "error");
-    // The builder e2e greps the console for this substring as its crash guard.
-    expect(String(consoleError.mock.calls[0][0])).toContain("preset load failed");
+    expect(fetchStub).toHaveBeenCalledOnce();
   });
 });
 
 describe("savePreset", () => {
-  it("POSTs an urlencoded body with Content-Type and X-CSRFToken", async () => {
+  it("POSTs a JSON body with Content-Type and X-CSRFToken and toasts 'saved' on 201", async () => {
     document.cookie = "csrftoken=testtoken";
     const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
+    vi.stubGlobal("fetch", fetchStub);
+    const toastStub = stubToast();
 
     const filter = { search: { value: "mario", modifier: "INCLUDES" } };
-    const response = await savePreset("/tracker/filter/presets/save", {
-      name: "My preset",
-      mode: "games",
-      filter,
-    });
+    const response = await savePreset(API_URL, { name: "My preset", mode: "games", filter });
 
     expect(response?.ok).toBe(true);
     const [url, options] = fetchStub.mock.calls[0] as unknown as [
       string,
       RequestInit & { headers: Record<string, string>; body: string },
     ];
-    expect(url).toBe("/tracker/filter/presets/save");
+    expect(url).toBe(API_URL);
     expect(options.method).toBe("POST");
-    expect(options.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(options.headers["Content-Type"]).toBe("application/json");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
-    const body = new URLSearchParams(options.body);
-    expect(body.get("name")).toBe("My preset");
-    expect(body.get("mode")).toBe("games");
-    expect(body.get("filter")).toBe(JSON.stringify(filter));
+    expect(JSON.parse(options.body)).toEqual({ name: "My preset", mode: "games", filter });
+    expect(toastStub).toHaveBeenCalledWith('Filter preset "My preset" saved.', "success");
+  });
+
+  it("toasts 'updated' on a 200 overwrite", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))));
+    const toastStub = stubToast();
+
+    await savePreset(API_URL, { name: "Backlog", mode: "games", filter: {} });
+
+    expect(toastStub).toHaveBeenCalledWith('Filter preset "Backlog" updated.', "success");
+  });
+
+  it("toasts the server's detail on a rejection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ detail: "Unknown preset mode 'bogus'." }), {
+            status: 400,
+          }),
+        ),
+      ),
+    );
+    const toastStub = stubToast();
+
+    const response = await savePreset(API_URL, { name: "X", mode: "bogus", filter: {} });
+
+    expect(response?.ok).toBe(false);
+    expect(toastStub).toHaveBeenCalledWith("Unknown preset mode 'bogus'.", "error");
   });
 
   it("resolves null and toasts on a transport failure", async () => {
-    const fetchStub = vi.fn(() => Promise.reject(new Error("network down")));
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
-    const toastStub = vi.fn();
-    (window as unknown as Record<string, unknown>).toast = toastStub;
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network down"))));
+    const toastStub = stubToast();
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const response = await savePreset("/tracker/filter/presets/save", {
-      name: "My preset",
-      mode: "games",
-      filter: {},
-    });
+    const response = await savePreset(API_URL, { name: "My preset", mode: "games", filter: {} });
 
     expect(response).toBeNull();
     expect(toastStub).toHaveBeenCalledWith("Failed to save preset.", "error");
+  });
+});
+
+describe("fetchPresetNames", () => {
+  it("fetches unbounded (limit=0) for the mode and returns trimmed labels", async () => {
+    const fetchStub = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify([
+            { value: 1, label: " Backlog ", data: { filter: "{}" } },
+            { value: 2, label: "Finished", data: { filter: "{}" } },
+          ]),
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+
+    const names = await fetchPresetNames(API_URL, "sessions");
+
+    const requested = new URL(
+      (fetchStub.mock.calls[0] as unknown as [string])[0],
+      "http://localhost",
+    );
+    expect(requested.pathname).toBe(API_URL);
+    expect(requested.searchParams.get("mode")).toBe("sessions");
+    expect(requested.searchParams.get("limit")).toBe("0"); // never truncate — #212
+    expect(names).toEqual(new Set(["Backlog", "Finished"]));
+  });
+
+  it("degrades to an empty set on failure", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network down"))));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await fetchPresetNames(API_URL, "games")).toEqual(new Set());
   });
 });

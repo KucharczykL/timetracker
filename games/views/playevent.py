@@ -156,8 +156,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     )
     filter_bar = PlayEventFilterBar(
         filter_json=filter_json,
-        preset_list_url=reverse("games:list_presets") + "?mode=playevents",
-        preset_save_url=reverse("games:save_preset") + "?mode=playevents",
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
     builder_url = reverse("games:filter_builder", args=["playevent"])
     if filter_json:

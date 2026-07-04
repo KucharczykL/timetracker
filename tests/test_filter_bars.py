@@ -40,13 +40,15 @@ class FilterBarRenderingTest(TestCase):
         for marker in _ESCAPED_TAG_MARKERS:
             self.assertNotIn(marker, html, f"double-escaped markup ({marker!r})")
 
-    def _assert_shell(self, html, list_url, save_url):
+    def _assert_shell(self, html, preset_mode):
         """Markers every filter bar must keep through the refactor."""
         self.assertIn('id="filter-bar-form"', html)
         self.assertIn('id="filter-json-input"', html)
         self.assertIn('name="filter"', html)
-        self.assertIn(list_url, html)  # preset list URL wired in
-        self.assertIn(save_url, html)  # preset save URL wired in
+        # The preset picker props: one API URL, mode declared by the bar class
+        # (the client no longer sniffs it from the pathname — #297).
+        self.assertIn('preset-api-url="/api/presets/"', html)
+        self.assertIn(f'preset-mode="{preset_mode}"', html)
         self.assertNoEscapedTags(html)
 
     def _assert_number_filter(self, html, field_prefix):
@@ -68,44 +70,37 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             FilterBar(
                 filter_json="",
-                preset_list_url="/presets/games/list",
-                preset_save_url="/presets/games/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/games/list", "/presets/games/save")
+        self._assert_shell(html, "games")
         self._assert_number_filter(html, "filter-year")
 
     def test_session_filter_bar(self):
         html = str(
             SessionFilterBar(
                 filter_json="",
-                preset_list_url="/presets/sessions/list",
-                preset_save_url="/presets/sessions/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/sessions/list", "/presets/sessions/save")
+        self._assert_shell(html, "sessions")
         self._assert_number_filter(html, "filter-duration-total-hours")
 
     def test_purchase_filter_bar(self):
         html = str(
             PurchaseFilterBar(
                 filter_json="",
-                preset_list_url="/presets/purchases/list",
-                preset_save_url="/presets/purchases/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/purchases/list", "/presets/purchases/save")
+        self._assert_shell(html, "purchases")
         self._assert_number_filter(html, "filter-price")
 
     def test_purchase_filter_bar_games_has_m2m_modifiers(self):
         """The many-to-many games field surfaces (All)/(Only) pseudo-options
         in the dropdown alongside the presence (Any)/(None) rows. Single-valued
         fields (platform) do not get M2M modifiers."""
-        html = str(
-            PurchaseFilterBar(
-                filter_json="", preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(PurchaseFilterBar(filter_json="", preset_api_url="/api/presets/"))
         # (All) and (Only) appear as modifier rows in the dropdown.
         self.assertIn('data-search-select-modifier-option="INCLUDES_ALL"', html)
         self.assertIn('data-search-select-modifier-option="INCLUDES_ONLY"', html)
@@ -130,9 +125,7 @@ class FilterBarRenderingTest(TestCase):
             }
         )
         html = str(
-            PurchaseFilterBar(
-                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
-            )
+            PurchaseFilterBar(filter_json=filter_json, preset_api_url="/api/presets/")
         )
         self.assertIn('data-modifier="INCLUDES_ALL"', html)
         self.assertIn("(All)", html)  # modifier pill label
@@ -150,11 +143,7 @@ class FilterBarRenderingTest(TestCase):
                 }
             }
         )
-        html = str(
-            FilterBar(
-                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(FilterBar(filter_json=filter_json, preset_api_url="/api/presets/"))
         self.assertIn('filter-mode="true"', html)
         self.assertIn(
             'data-search-select-type="include"', html
@@ -180,11 +169,7 @@ class FilterBarRenderingTest(TestCase):
                 }
             }
         )
-        html = str(
-            FilterBar(
-                filter_json=filter_json, preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(FilterBar(filter_json=filter_json, preset_api_url="/api/presets/"))
         # The full modifier is stored on data-modifier when there's no match-mode
         # select (enum/choice fields).  No data-match attribute is present.
         self.assertIn('data-modifier="EXCLUDES"', html)
@@ -198,11 +183,10 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             DeviceFilterBar(
                 filter_json="",
-                preset_list_url="/presets/devices/list",
-                preset_save_url="/presets/devices/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/devices/list", "/presets/devices/save")
+        self._assert_shell(html, "devices")
 
     def test_platform_filter_bar(self):
         from common.components import PlatformFilterBar
@@ -210,11 +194,10 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PlatformFilterBar(
                 filter_json="",
-                preset_list_url="/presets/platforms/list",
-                preset_save_url="/presets/platforms/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/platforms/list", "/presets/platforms/save")
+        self._assert_shell(html, "platforms")
 
     def test_playevent_filter_bar(self):
         from common.components import PlayEventFilterBar
@@ -222,11 +205,10 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PlayEventFilterBar(
                 filter_json="",
-                preset_list_url="/presets/playevents/list",
-                preset_save_url="/presets/playevents/save",
+                preset_api_url="/api/presets/",
             )
         )
-        self._assert_shell(html, "/presets/playevents/list", "/presets/playevents/save")
+        self._assert_shell(html, "playevents")
 
     def test_playevent_filter_bar_renders_date_inputs(self):
         """PlayEventFilterBar surfaces started and ended as DateRangePicker
@@ -234,11 +216,7 @@ class FilterBarRenderingTest(TestCase):
         carry the filter-started / filter-ended prefixes, in labelled fields."""
         from common.components import PlayEventFilterBar
 
-        html = str(
-            PlayEventFilterBar(
-                filter_json="", preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(PlayEventFilterBar(filter_json="", preset_api_url="/api/presets/"))
         for name in (
             "filter-started-min",
             "filter-started-max",
@@ -268,8 +246,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PlayEventFilterBar(
                 filter_json=filter_json,
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn(
@@ -286,11 +263,7 @@ class FilterBarRenderingTest(TestCase):
         NumberFilter does not render its own label, so a bare widget shows none."""
         from common.components import PlayEventFilterBar
 
-        html = str(
-            PlayEventFilterBar(
-                filter_json="", preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(PlayEventFilterBar(filter_json="", preset_api_url="/api/presets/"))
         self.assertIn("Days to Finish", html)
         self.assertNoEscapedTags(html)
 
@@ -301,8 +274,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             FilterBar(
                 filter_json="",
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         # New search-backed selects
@@ -337,11 +309,7 @@ class FilterBarRenderingTest(TestCase):
     def test_purchase_filter_bar_renders_date_inputs(self):
         """PurchaseFilterBar surfaces date_purchased and date_refunded as
         <date-range-picker> widgets with -min/-max hidden-input naming."""
-        html = str(
-            PurchaseFilterBar(
-                filter_json="", preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(PurchaseFilterBar(filter_json="", preset_api_url="/api/presets/"))
         for name in (
             "filter-date-purchased-min",
             "filter-date-purchased-max",
@@ -369,8 +337,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PurchaseFilterBar(
                 filter_json=filter_json,
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn(
@@ -397,8 +364,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PurchaseFilterBar(
                 filter_json=filter_json,
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn(
@@ -414,11 +380,7 @@ class FilterBarRenderingTest(TestCase):
 
     def test_purchase_filter_bar_renders_finished_dates(self):
         """PurchaseFilterBar exposes the #121 'Finished' date-range widget."""
-        html = str(
-            PurchaseFilterBar(
-                filter_json="", preset_list_url="/l", preset_save_url="/s"
-            )
-        )
+        html = str(PurchaseFilterBar(filter_json="", preset_api_url="/api/presets/"))
         self.assertIn('name="filter-finished-min"', html)
         self.assertIn('name="filter-finished-max"', html)
 
@@ -454,8 +416,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PurchaseFilterBar(
                 filter_json=filter_json,
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn(
@@ -489,8 +450,7 @@ class FilterBarRenderingTest(TestCase):
         html = str(
             PurchaseFilterBar(
                 filter_json=filter_json,
-                preset_list_url="/l",
-                preset_save_url="/s",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn(
@@ -530,8 +490,7 @@ class FilterBarRenderingTest(TestCase):
         """The free-text search input + exclude toggle are server-rendered."""
         html = str(
             FilterBar(
-                preset_list_url="/presets/list",
-                preset_save_url="/presets/save",
+                preset_api_url="/api/presets/",
             )
         )
         self.assertIn('name="filter-search"', html)

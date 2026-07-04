@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "./filter-group.js";
 import "./filter-builder.js";
 import { applyUrl } from "./filter-builder.js";
@@ -26,21 +26,56 @@ describe("applyUrl", () => {
   });
 });
 
-function mount(): { group: FilterGroupElement; builder: HTMLElement } {
+interface PickerWidgetStub extends HTMLElement {
+  refetchOptions: ReturnType<typeof vi.fn>;
+  clearSelection: ReturnType<typeof vi.fn>;
+}
+
+function mount(): { group: FilterGroupElement; builder: HTMLElement; widget: PickerWidgetStub } {
   document.body.innerHTML = "";
   const builder = document.createElement("filter-builder");
   builder.setAttribute("model", "game");
   builder.setAttribute("mode", "games");
   builder.setAttribute("apply-url", "/tracker/game/list");
-  builder.setAttribute("preset-list-url", "/tracker/filter/presets/list");
-  builder.setAttribute("preset-save-url", "/tracker/filter/presets/save");
+  builder.setAttribute("preset-api-url", "/api/presets/");
   const group = document.createElement("filter-group") as FilterGroupElement;
   group.setAttribute("model", "game");
   group.setAttribute("models", MODELS);
   document.body.appendChild(builder);
   document.body.appendChild(group);
-  return { group, builder };
+  // ensureToolbar leaves [data-preset-picker] empty; give it the widget the
+  // real LoadPresetDropdown would host, with the duck-typed methods stubbed
+  // (this suite deliberately never imports search-select.js).
+  const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
+    close?: ReturnType<typeof vi.fn>;
+  };
+  picker.close = vi.fn();
+  const widget = document.createElement("search-select") as PickerWidgetStub;
+  widget.refetchOptions = vi.fn();
+  widget.clearSelection = vi.fn();
+  picker.appendChild(widget);
+  return { group, builder, widget };
 }
+
+// A pick as the preset search-select emits it: bubbling search-select:change
+// whose last.data.filter carries the preset's filter JSON.
+function dispatchPick(widget: HTMLElement, filterJson: string): void {
+  widget.dispatchEvent(
+    new CustomEvent("search-select:change", {
+      bubbles: true,
+      detail: {
+        name: "preset",
+        values: ["1"],
+        last: { value: "1", label: "Finished games", data: { filter: filterJson } },
+      },
+    }),
+  );
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("<filter-builder>", () => {
   it("Clear empties the group tree", () => {
@@ -58,70 +93,85 @@ describe("<filter-builder>", () => {
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
 
-  it("Preset pick loads filter into the group without navigating", () => {
-    const { group, builder } = mount();
+  it("Preset pick loads the filter, clears the transient pick, and closes", () => {
+    const { group, builder, widget } = mount();
     const navigate = vi.fn();
     (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
+      close: ReturnType<typeof vi.fn>;
+    };
 
-    // Inject a preset dropdown anchor whose href carries a ?filter= param,
-    // mimicking the server's list_presets fragment. The delete span is nested
-    // inside so the click-ordering logic is also exercised (delete check runs
-    // first, but the click is on the anchor itself, not the delete span).
     const filter = { AND: [{ status: { modifier: "INCLUDES", value: ["f"] } }] };
-    const dropdown = builder.querySelector("[data-preset-dropdown]") as HTMLElement;
-    dropdown.classList.remove("hidden");
-    dropdown.innerHTML = `
-      <ul>
-        <li>
-          <a href="/tracker/game/list?filter=${encodeURIComponent(JSON.stringify(filter))}">
-            Finished games
-            <span data-delete-preset href="/tracker/filter/presets/delete/1">×</span>
-          </a>
-        </li>
-      </ul>`;
-
-    const anchor = dropdown.querySelector("a[href]") as HTMLElement;
-    anchor.click();
+    dispatchPick(widget, JSON.stringify(filter));
 
     expect(group.serialize()).toEqual(filter);
     expect(navigate).not.toHaveBeenCalled();
+    // The pick is a command, not a value: the selection is cleared so no stale
+    // row can be pinned through the next refetch, and the dialog closes.
+    expect(widget.clearSelection).toHaveBeenCalledOnce();
+    expect(picker.close).toHaveBeenCalledOnce();
   });
 
-  it("Delete sends X-CSRFToken header and does not load the preset", () => {
-    const { builder } = mount();
+  it("a change event from outside the picker is ignored", () => {
+    const { group, builder } = mount();
+    const untouched = group.serialize(); // pristine tree (one blank leaf)
+    const stray = document.createElement("search-select");
+    builder.appendChild(stray);
 
-    // Set the CSRF cookie so getCsrfToken() returns a known value.
+    dispatchPick(stray, JSON.stringify({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] }));
+
+    expect(group.serialize()).toEqual(untouched);
+  });
+
+  it("bad preset JSON toasts and logs the 'preset load failed' crash-guard line", () => {
+    const { builder, widget } = mount();
+    const toastStub = vi.fn();
+    (window as unknown as Record<string, unknown>).toast = toastStub;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
+      close: ReturnType<typeof vi.fn>;
+    };
+
+    dispatchPick(widget, "{not json");
+
+    expect(toastStub).toHaveBeenCalledWith("Preset is not a valid filter.", "error");
+    // The builder e2e greps the console for this substring as its crash guard.
+    expect(String(consoleError.mock.calls[0][0])).toContain("preset load failed");
+    expect(picker.close).toHaveBeenCalledOnce(); // still closes — nothing hangs open
+  });
+
+  it("Delete action DELETEs base+id with X-CSRFToken and refetches, never picking", async () => {
+    const { group, widget } = mount();
+    const untouched = group.serialize(); // pristine tree (one blank leaf)
     document.cookie = "csrftoken=testtoken";
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal("fetch", fetchStub);
+    vi.stubGlobal("confirm", vi.fn(() => true));
 
-    // Stub window.fetchWithHtmxTriggers and window.confirm.
-    const fetchStub = vi.fn(() => Promise.resolve());
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
-    const confirmStub = vi.fn(() => true);
-    vi.stubGlobal("confirm", confirmStub);
+    widget.dispatchEvent(
+      new CustomEvent("search-select:action", {
+        bubbles: true,
+        detail: {
+          name: "preset",
+          action: "delete",
+          option: { value: "42", label: "My preset", data: { filter: "{}" } },
+        },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Inject a preset anchor containing a nested [data-delete-preset] span.
-    const dropdown = builder.querySelector("[data-preset-dropdown]") as HTMLElement;
-    dropdown.classList.remove("hidden");
-    dropdown.innerHTML = `
-      <ul>
-        <li>
-          <a href="/tracker/game/list?filter=%7B%7D">
-            My preset
-            <span data-delete-preset="" href="/tracker/filter/presets/delete/42">×</span>
-          </a>
-        </li>
-      </ul>`;
-
-    const deleteSpan = dropdown.querySelector("[data-delete-preset]") as HTMLElement;
-    deleteSpan.click();
-
-    expect(confirmStub).toHaveBeenCalled();
     expect(fetchStub).toHaveBeenCalledOnce();
-    const [_url, options] = fetchStub.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
+    const [url, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { headers: Record<string, string> },
+    ];
+    expect(url).toBe("/api/presets/42");
     expect(options.method).toBe("DELETE");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
+    expect(widget.refetchOptions).toHaveBeenCalledOnce();
+    expect(group.serialize()).toEqual(untouched); // a delete is never a pick
 
-    vi.unstubAllGlobals();
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   });
 
   it("Apply disabled when an incomplete leaf coexists with a non-empty filter", () => {
@@ -154,34 +204,36 @@ describe("<filter-builder>", () => {
     expect(applyButton?.disabled).toBe(false);
   });
 
-  it("Save preset POSTs with X-CSRFToken", async () => {
+  it("Save preset POSTs a JSON body with X-CSRFToken to the preset API", () => {
     const { builder } = mount();
-
-    // Set the CSRF cookie so getCsrfToken() returns a known value.
     document.cookie = "csrftoken=testtoken";
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal("fetch", fetchStub);
+    (window as unknown as Record<string, unknown>).toast = vi.fn();
 
-    // Stub window.fetchWithHtmxTriggers to capture the call.
-    const fetchStub = vi.fn(() => Promise.resolve(new Response()));
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
-
-    // Fill in the preset name input.
     const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
     if (nameInput) nameInput.value = "My preset";
-
     (builder.querySelector("[data-save-preset]") as HTMLElement).click();
 
     expect(fetchStub).toHaveBeenCalledOnce();
-    const [_url, options] = fetchStub.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
+    const [url, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { headers: Record<string, string>; body: string },
+    ];
+    expect(url).toBe("/api/presets/");
     expect(options.method).toBe("POST");
+    expect(options.headers["Content-Type"]).toBe("application/json");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
+    expect(JSON.parse(options.body).name).toBe("My preset");
+    expect(JSON.parse(options.body).mode).toBe("games");
+
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   });
 
   it("Save preset with a blank name does not POST", () => {
     const { builder } = mount();
-
-    // Stub fetch and toast so no real network call or error is thrown.
     const fetchStub = vi.fn(() => Promise.resolve(new Response()));
-    (window as unknown as Record<string, unknown>).fetchWithHtmxTriggers = fetchStub;
+    vi.stubGlobal("fetch", fetchStub);
     (window as unknown as Record<string, unknown>).toast = vi.fn();
 
     // Leave the name input empty (default value is "").

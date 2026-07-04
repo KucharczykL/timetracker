@@ -1,10 +1,13 @@
 import { readFilterBuilderProps } from "../generated/props.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
-import { PresetDropdown, savePreset, setupPresetDropdown } from "./presets.js";
+import { savePreset, wirePresetDelete } from "./presets.js";
 
 // <filter-builder> — the builder-page toolbar (#196). Owns Load/Save preset,
-// Apply, Clear; drives the sibling <filter-group>. Preset load/save/delete is
-// shared with filter-bar.ts via presets.ts (#264).
+// Apply, Clear; drives the sibling <filter-group>. The Load-preset dropdown is
+// the shared combobox picker (LoadPresetDropdown / <drop-down behavior=
+// "combobox"> hosting a preset search-select, #297): this element only
+// consumes its events — search-select:change to load the picked filter,
+// search-select:action (via wirePresetDelete) for per-row deletion.
 
 export function applyUrl(listUrl: string, filter: Record<string, unknown>): string {
   if (Object.keys(filter).length === 0) return listUrl;
@@ -19,27 +22,38 @@ function isFilterGroup(element: Element | null): element is FilterGroupElement {
   );
 }
 
+interface PresetPickerHost extends HTMLElement {
+  close?: () => void;
+}
+
+interface PresetWidget extends HTMLElement {
+  clearSelection?: () => void;
+}
+
+interface PresetChangeDetail {
+  name: string;
+  values: string[];
+  last: { value: string; label: string; data: Record<string, string> } | null;
+}
+
 export class FilterBuilderElement extends HTMLElement {
   private mode = "";
   private applyTarget = "";
-  private presetSaveUrl = "";
+  private presetApiUrl = "";
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
-  private presets: PresetDropdown | null = null;
+  private disposePresetDelete: (() => void) | null = null;
 
   // Build the toolbar buttons into this element. Called when the element is
   // test-created (no server-rendered children) so tests can querySelector for
-  // the data-* hooks without needing Python to render the page.
+  // the data-* hooks without needing Python to render the page. The picker
+  // stub is an empty [data-preset-picker] wrapper — tests append their own
+  // search-select stand-ins inside it.
   private ensureToolbar(): void {
     if (this.querySelector("[data-apply]")) return; // already server-rendered
     this.innerHTML = `
       <div class="flex flex-wrap gap-3 items-center mb-4">
-        <div class="relative">
-          <button type="button" data-load-presets="">Load preset ▾</button>
-          <div data-preset-dropdown="" class="hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border border-default-medium bg-neutral-secondary-medium shadow-lg">
-            <ul class="py-1"></ul>
-          </div>
-        </div>
+        <div data-preset-picker=""></div>
         <input type="text" data-preset-name="" placeholder="Preset name…" />
         <button type="button" data-save-preset="">Save as preset…</button>
         <button type="button" data-apply="">Apply</button>
@@ -51,22 +65,12 @@ export class FilterBuilderElement extends HTMLElement {
     const props = readFilterBuilderProps(this);
     this.mode = props.mode;
     this.applyTarget = props.applyUrl;
-    this.presetSaveUrl = props.presetSaveUrl;
+    this.presetApiUrl = props.presetApiUrl;
 
     this.ensureToolbar();
     this.addEventListener("click", this.onClick);
-    this.presets = setupPresetDropdown({
-      root: this,
-      dropdownSelector: "[data-preset-dropdown]",
-      listUrl: props.presetListUrl,
-      mode: props.mode,
-      onPick: (filter) => {
-        // A loadFilter throw (valid JSON, bad filter shape) propagates back
-        // into the controller's catch → "not a valid filter" toast.
-        this.group()?.loadFilter(filter);
-        this.querySelector("[data-preset-dropdown]")?.classList.add("hidden");
-      },
-    });
+    this.addEventListener("search-select:change", this.onPresetPick);
+    this.disposePresetDelete = wirePresetDelete(this, this.presetApiUrl);
     this.changeListener = (event: Event): void => {
       const detail = (event as CustomEvent<{ incompleteCount: number }>).detail;
       if (detail) {
@@ -88,8 +92,9 @@ export class FilterBuilderElement extends HTMLElement {
       document.removeEventListener(FILTER_TREE_CHANGE_EVENT, this.changeListener);
       this.changeListener = null;
     }
-    this.presets?.dispose();
-    this.presets = null;
+    this.removeEventListener("search-select:change", this.onPresetPick);
+    this.disposePresetDelete?.();
+    this.disposePresetDelete = null;
   }
 
   // Overridable so tests can assert the target without a real navigation.
@@ -100,6 +105,10 @@ export class FilterBuilderElement extends HTMLElement {
   private group(): FilterGroupElement | null {
     const found = document.querySelector("filter-group");
     return isFilterGroup(found) ? found : null;
+  }
+
+  private picker(): PresetPickerHost | null {
+    return this.querySelector<PresetPickerHost>("[data-preset-picker]");
   }
 
   private syncApplyDisabled(): void {
@@ -115,29 +124,43 @@ export class FilterBuilderElement extends HTMLElement {
     apply.disabled = this.incompleteCount > 0 && !filterIsEmpty;
   }
 
-  // Preset delete/pick clicks are handled by the presets.ts controller's own
-  // delegated listener; this branch set is disjoint from it (the dropdown is a
-  // sibling of the toolbar buttons, so closest() never crosses between them).
   private onClick = (event: Event): void => {
     const target = event.target as HTMLElement;
     if (target.closest("[data-apply]")) return this.onApply();
     if (target.closest("[data-clear]")) return this.group()?.clear();
-    if (target.closest("[data-load-presets]")) return this.onLoadPresets();
     if (target.closest("[data-save-preset]")) return this.onSavePreset();
+  };
+
+  // A pick inside the preset picker: load the filter into the tree, then clear
+  // the transient selection (a preset pick is a command, not a value — a
+  // lingering committed selection would pin a stale row through renderRows'
+  // selected-value preservation and pollute the next refetch) and close the
+  // dialog. Other search-selects on the page bubble the same event; the
+  // [data-preset-picker] guard scopes this to the picker.
+  private onPresetPick = (event: Event): void => {
+    const detail = (event as CustomEvent<PresetChangeDetail>).detail;
+    if (!detail?.last) return;
+    const picker = (event.target as HTMLElement | null)?.closest<PresetPickerHost>(
+      "[data-preset-picker]",
+    );
+    if (!picker || !this.contains(picker)) return;
+    try {
+      const raw = detail.last.data.filter ?? "";
+      this.group()?.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+    } catch (error) {
+      // Message must keep the "preset load failed" substring — the builder e2e
+      // greps the console for it as its crash guard.
+      console.error("filter-builder: preset load failed", error);
+      window.toast("Preset is not a valid filter.", "error");
+    }
+    picker.querySelector<PresetWidget>("search-select")?.clearSelection?.();
+    picker.close?.();
   };
 
   private onApply(): void {
     const group = this.group();
     if (!group) return;
     this.navigate(applyUrl(this.applyTarget, group.serializeForQuery()));
-  }
-
-  private onLoadPresets(): void {
-    const dropdown = this.querySelector<HTMLElement>("[data-preset-dropdown]");
-    if (!dropdown) return;
-    dropdown.classList.toggle("hidden");
-    if (dropdown.classList.contains("hidden")) return;
-    void this.presets?.refresh();
   }
 
   private onSavePreset(): void {
@@ -149,7 +172,7 @@ export class FilterBuilderElement extends HTMLElement {
       window.toast("Preset name is required.", "error");
       return;
     }
-    void savePreset(this.presetSaveUrl, {
+    void savePreset(this.presetApiUrl, {
       name,
       mode: this.mode,
       filter: group.serialize(),

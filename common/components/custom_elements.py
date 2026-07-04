@@ -293,8 +293,7 @@ class FilterBuilderProps(TypedDict):
     model: str  # root model key
     mode: str  # preset/list mode (plural), e.g. "games"
     apply_url: str  # list URL to navigate to on Apply
-    preset_list_url: str
-    preset_save_url: str
+    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
@@ -302,13 +301,18 @@ _FilterBuilder = custom_element_builder("filter-builder")
 
 
 def FilterBuilder(
-    *, model: str, mode: str, apply_url: str, preset_list_url: str, preset_save_url: str
+    *, model: str, mode: str, apply_url: str, preset_api_url: str
 ) -> Node:
     """Toolbar/orchestrator for the nested filter builder page (#196).
 
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
     <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
-    clear on Clear). Behavior in ``ts/elements/filter-builder.ts``."""
+    clear on Clear). Behavior in ``ts/elements/filter-builder.ts``. The preset
+    dropdown is the shared :func:`LoadPresetDropdown` composition (#297)."""
+    # Function-local import: search_select imports this module (for _SearchSelect
+    # and the panel constant), so a top-level import here would be a cycle.
+    from common.components.search_select import LoadPresetDropdown
+
     # ControlButton bakes the app's button look (color/rounded/disabled); per-attr
     # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
     # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
@@ -318,20 +322,12 @@ def FilterBuilder(
         model=model,
         mode=mode,
         apply_url=apply_url,
-        preset_list_url=preset_list_url,
-        preset_save_url=preset_save_url,
+        preset_api_url=preset_api_url,
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[
-            Div(class_="relative")[
-                ControlButton(color="gray", data_load_presets="")["Load preset ▾"],
-                Div(
-                    {"data-preset-dropdown": ""},
-                    class_=(
-                        "hidden absolute z-10 mt-1 min-w-[12rem] rounded-lg border "
-                        "border-default-medium bg-neutral-secondary-medium shadow-lg"
-                    ),
-                )[Ul(class_="py-1")],
-            ],
+            LoadPresetDropdown(
+                api_url=preset_api_url, mode=mode, id="builder-preset-picker"
+            ),
             Input(
                 type="text",
                 data_preset_name="",
@@ -409,8 +405,8 @@ _SearchSelect = custom_element_builder("search-select")
 
 
 class FilterBarProps(TypedDict):
-    preset_list_url: str
-    preset_save_url: str
+    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
+    preset_mode: str  # FilterPreset.mode this bar scopes to, e.g. "games"
 
 
 register_element("filter-bar", "FilterBar", FilterBarProps)
