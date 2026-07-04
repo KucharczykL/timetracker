@@ -696,16 +696,6 @@ def _history_section(game: Game) -> Node:
     ]
 
 
-_GET_SESSION_COUNT_SCRIPT = Safe(
-    "<script>\n"
-    "            function getSessionCount() {\n"
-    "                return document.getElementById('session-count')"
-    '.textContent.match("[0-9]+");\n'
-    "            }\n"
-    "    </script>"
-)
-
-
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
@@ -717,7 +707,6 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         _sessions_section(game),
         _playevents_section(game),
         _history_section(game),
-        _GET_SESSION_COUNT_SCRIPT,
     ]
     request.session["return_path"] = request.path
     return render_page(
