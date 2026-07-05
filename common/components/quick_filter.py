@@ -92,6 +92,18 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "purchases": [
         QuickFacet("type", "Type"),
         QuickFacet("ownership_type", "Ownership"),
+        QuickFacet("name", "Name", placeholder="e.g. Humble Bundle"),
+        QuickFacet(
+            "converted_price",
+            "Price",
+            placeholder="0",
+            placeholder2="e.g. 100",
+            step="0.01",
+        ),
+        QuickFacet("infinite", "Infinite"),
+        QuickFacet("date_purchased", "Purchased"),
+        QuickFacet("is_refunded", "Refunded"),
+        QuickFacet("created_at", "Created"),
     ],
     "playevents": [
         QuickFacet("game", "Game"),
