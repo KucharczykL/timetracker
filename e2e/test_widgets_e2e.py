@@ -664,6 +664,73 @@ def test_add_purchase_game_selection_autofills_platform(
     ).to_have_value(str(platform.id))
 
 
+def _pick_game(page: Page, widget_name: str, query: str) -> None:
+    # Click the matching row, not `.first`: the panel keeps a currently
+    # selected value's row at the top even when the query filters it out.
+    widget = page.locator(f'search-select[name="{widget_name}"]')
+    widget.locator("[data-search-select-search]").click()
+    widget.locator("[data-search-select-search]").type(query)
+    widget.locator("[data-search-select-option][data-value]").filter(
+        has_text=query
+    ).first.click()
+
+
+def test_add_purchase_related_game_autofills_from_games_selection(
+    authenticated_page: Page, live_server
+):
+    """For add-on types (DLC/Season Pass/Battle Pass) Related game auto-fills
+    from the Games selection — re-picking the base game was pure double-entry.
+    The auto-fill follows the games selection while the field is empty or holds
+    a previous auto-fill, is dropped when the type returns to plain "game"
+    (so no stale hidden input submits), and never overwrites a user's own pick."""
+    platform = Platform.objects.create(name="Steam")
+    base = Game.objects.create(
+        name="Vampire Survivors", sort_name="Vampire Survivors", platform=platform
+    )
+    other = Game.objects.create(name="Brotato", sort_name="Brotato", platform=platform)
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+
+    related_search = page.locator("#id_related_game")
+    related_hidden = page.locator(
+        'search-select[name="related_game"] '
+        '[data-search-select-pills] input[type="hidden"]'
+    )
+
+    # Type "game" (the default): selecting a game must not fill Related game.
+    _pick_game(page, "games", "Vampire")
+    expect(related_hidden).to_have_count(0)
+
+    # Switching to an add-on type anchors Related game to the selected game:
+    # the visible box shows the pill's label (game + platform, the same label a
+    # manual pick would commit), the hidden input carries the id.
+    page.select_option("#id_type", "dlc")
+    expect(related_search).to_have_value("Vampire Survivors (Steam)")
+    expect(related_hidden).to_have_value(str(base.id))
+
+    # While the value is an auto-fill it follows the games selection.
+    games_widget = page.locator('search-select[name="games"]')
+    games_widget.locator("[data-pill] [data-pill-remove]").click()
+    expect(related_hidden).to_have_count(0)
+    _pick_game(page, "games", "Brotato")
+    expect(related_search).to_have_value("Brotato (Steam)")
+    expect(related_hidden).to_have_value(str(other.id))
+
+    # Back to plain "game": the auto-fill is dropped, not left to submit.
+    page.select_option("#id_type", "game")
+    expect(related_hidden).to_have_count(0)
+
+    # A value the user picked themselves is never overwritten by the auto-fill.
+    page.select_option("#id_type", "season_pass")
+    _pick_game(page, "related_game", "Vampire")
+    expect(related_hidden).to_have_value(str(base.id))
+    games_widget.locator("[data-pill] [data-pill-remove]").click()
+    _pick_game(page, "games", "Brotato")
+    expect(related_search).to_have_value("Vampire Survivors (Steam)")
+    expect(related_hidden).to_have_value(str(base.id))
+
+
 def test_filter_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, django_user_model
 ):
