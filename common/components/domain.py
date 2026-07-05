@@ -5,16 +5,22 @@ from typing import NamedTuple
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 
-from common.components.core import Children, Node, Safe, as_children
+from common.components.core import Children, Fragment, Node, as_children
 from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
+    H1,
     A,
+    Br,
     Div,
     Icon,
+    Li,
     Popover,
+    PopoverIf,
     PopoverTruncated,
     Span,
+    Ul,
 )
+from common.utils import truncate_info
 from games.models import Game, Purchase, Session
 
 
@@ -107,26 +113,23 @@ def PriceConverted(
 def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[int(purchase.id)])
     link_content = ""
-    popover_content = ""
+    popover_content: Node | str = ""
     game_count = purchase.games.count()
-    popover_if_not_truncated = False
     if game_count == 1:
         first_game = purchase.games.first()
         if first_game is not None:
-            link_content += first_game.name
+            link_content = first_game.name
             popover_content = link_content
     if game_count > 1:
+        games_list = Ul(class_="list-disc list-inside")[
+            *[Li()[game.name] for game in purchase.games.all()]
+        ]
         if purchase.name:
-            link_content += f"{purchase.name}"
-            popover_content += f"<h1>{purchase.name}</h1><br>"
+            link_content = purchase.name
+            popover_content = Fragment(H1()[purchase.name], Br(), games_list)
         else:
-            link_content += f"{game_count} games"
-            popover_if_not_truncated = True
-        popover_content += f"""
-        <ul class="list-disc list-inside">
-            {"".join(f"<li>{game.name}</li>" for game in purchase.games.all())}
-        </ul>
-        """
+            link_content = f"{game_count} games"
+            popover_content = games_list
     icon = (
         (purchase.platform.icon if purchase.platform else "unspecified")
         if game_count == 1
@@ -134,15 +137,18 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     )
     if link_content == "":
         raise ValueError("link_content is empty!!")
+    truncation = truncate_info(link_content)
     a_content = Div(class_="inline-flex gap-2 items-center")[
         Icon(
             icon,
             [("title", "Multiple")],
         ),
-        PopoverTruncated(
-            input_string=link_content,
-            popover_content=Safe(popover_content),
-            popover_if_not_truncated=popover_if_not_truncated,
+        # Multi-game purchases always show the games list; single-game
+        # purchases only need the popover when the name was cut off.
+        PopoverIf(
+            truncation.was_truncated or game_count > 1,
+            popover_content,
+            truncation.display,
         ),
     ]
     return A(href=link)[a_content]

@@ -191,6 +191,7 @@ Div = _html_element("div")
 P = _html_element("p")
 Ul = _html_element("ul")
 Li = _html_element("li")
+Br = _html_element("br")
 Strong = _html_element("strong")
 Span = _html_element("span")
 Label = _html_element("label")
@@ -312,7 +313,6 @@ def PopoverIf(
 def PopoverTruncated(
     input_string: str,
     popover_content: Child = "",
-    popover_if_not_truncated: bool = False,
     length: int = 30,
     ellipsis: str = "…",
     endpart: str = "",
@@ -322,20 +322,15 @@ def PopoverTruncated(
     and displays the untruncated text in a popover HTML element.
     The truncated text ends in `ellipsis`, and optionally
     an always-visible `endpart` can be specified.
-    `popover_content` can be specified if:
-    1. It needs to be always displayed regardless if text is truncated.
-    2. It needs to differ from `input_string`.
+    `popover_content` can be specified if it needs to differ from
+    `input_string`. For a popover that must appear regardless of
+    truncation, use `PopoverIf` instead.
     """
     truncation = truncate_info(input_string, length, ellipsis, endpart)
     if truncation.display != input_string:
         return Popover(
             wrapped_content=truncation.display,
             popover_content=popover_content if popover_content else input_string,
-        )
-    if popover_content and popover_if_not_truncated:
-        return Popover(
-            wrapped_content=input_string,
-            popover_content=popover_content,
         )
     return input_string
 
