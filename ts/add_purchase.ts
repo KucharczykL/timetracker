@@ -23,10 +23,72 @@ function applyPricingMode(separate: boolean): void {
   }
 }
 
+// ── Related-game auto-fill ──
+// For add-on types (DLC / Season Pass / Battle Pass) the Related game is
+// almost always the game already picked under Games, so re-selecting it was
+// pure double-entry. The auto-fill follows the Games selection while the field
+// is empty or still holds a previous auto-fill; a value the user picked
+// themselves (or the edit form's server-rendered value) is never overwritten.
+// setSelected does not fire search-select:change, so only user picks reach the
+// related_game branch of the change listener below.
+let autofilledRelatedGameValue: string | null = null;
+
+interface SelectedGame {
+  value: string;
+  label: string;
+}
+
+function firstSelectedGame(): SelectedGame | null {
+  const pill = document.querySelector<HTMLElement>(
+    'search-select[name="games"] [data-search-select-pills] [data-pill]'
+  );
+  const value = pill?.getAttribute("data-value");
+  if (!pill || !value) return null;
+  // textContent picks up markup whitespace around the label text — trim it so
+  // the committed label matches what a manual pick of the same game shows.
+  const label =
+    pill.querySelector("[data-search-select-label]")?.textContent?.trim() || value;
+  return { value, label };
+}
+
+function syncRelatedGameFromSelection(): void {
+  const relatedGameSelect = document.querySelector<SearchSelectElement>(
+    'search-select[name="related_game"]'
+  );
+  if (!relatedGameSelect) return;
+  const currentValue =
+    relatedGameSelect.querySelector<HTMLInputElement>(
+      '[data-search-select-pills] input[type="hidden"]'
+    )?.value ?? "";
+  if (currentValue && currentValue !== autofilledRelatedGameValue) return;
+
+  const typeSelect = document.querySelector<HTMLSelectElement>("#id_type");
+  const isAddonType = typeSelect !== null && typeSelect.value !== "game";
+  const game = isAddonType ? firstSelectedGame() : null;
+  if (!game) {
+    // No game to anchor to (or type switched back to plain "game"): drop a
+    // stale auto-fill so its hidden input cannot submit, but keep a user pick.
+    if (currentValue) {
+      relatedGameSelect.clearSelection();
+      autofilledRelatedGameValue = null;
+    }
+    return;
+  }
+  if (game.value !== currentValue) {
+    relatedGameSelect.setSelected(game.value, game.label);
+    autofilledRelatedGameValue = game.value;
+  }
+}
+
 // The games field is a SearchSelect widget (a <div>, not a <select>), so we
 // react to its custom "search-select:change" event instead of syncing a select.
 document.addEventListener("search-select:change", (event) => {
   const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
+  if (detail.name === "related_game") {
+    // A user-driven change: from here on the field belongs to the user.
+    autofilledRelatedGameValue = null;
+    return;
+  }
   if (detail.name !== "games") return;
 
   // Auto-fill platform from the clicked option's data. The platform field is a
@@ -69,6 +131,8 @@ document.addEventListener("search-select:change", (event) => {
     if (checkbox) checkbox.checked = false;
     applyPricingMode(false);
   }
+
+  syncRelatedGameFromSelection();
 });
 
 onSwap("#id_separate_prices", (checkbox) => {
@@ -85,5 +149,6 @@ onSwap("#id_type", (typeSelect) => {
   setupElementHandlers();
   typeSelect.addEventListener("change", () => {
     setupElementHandlers();
+    syncRelatedGameFromSelection();
   });
 });
