@@ -223,6 +223,16 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn("Clear", html)
         self.assertIn(f'href="{list_url_for("games")}"', html)
 
+    def test_degraded_pill_without_builder_url_omits_edit_link(self):
+        """Modes without a nested-builder page (devices/platforms) pass no
+        builder_url; the pill offers only Clear — an Edit link would 404."""
+        filter_json = json.dumps({"session_filter": {"emulated": {"value": True}}})
+        html = str(QuickFilterBar(mode="devices", filter_json=filter_json))
+        self.assertIn("Advanced filter active", html)
+        self.assertNotIn("Edit in builder", html)
+        self.assertIn("Clear", html)
+        self.assertIn(f'href="{list_url_for("devices")}"', html)
+
 
 class QuickFacetsContractTest(TestCase):
     """QUICK_FACETS stays consistent with the filter layer as it evolves."""

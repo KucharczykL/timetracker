@@ -96,6 +96,11 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "playevents": [
         QuickFacet("game", "Game"),
     ],
+    "devices": [
+        QuickFacet("name", "Name", placeholder="e.g. Steam Deck"),
+        QuickFacet("type", "Type"),
+        QuickFacet("created_at", "Created"),
+    ],
 }
 
 
@@ -106,6 +111,7 @@ _MODE_MODELS: dict[FilterMode, str] = {
     "sessions": "session",
     "purchases": "purchase",
     "playevents": "playevent",
+    "devices": "device",
 }
 
 
@@ -214,12 +220,17 @@ class QuickFilterBar(BaseComponent):
         ]
 
     def _degraded(self) -> Node:
-        return Div(class_=_QUICK_PILL_CLASS)[
-            Span(class_="text-body")["Advanced filter active"],
-            A(href=self.builder_url, class_="text-brand hover:underline")[
-                "Edit in builder"
-            ],
-            A(href=list_url_for(self.mode), class_="text-body hover:underline")[
-                "Clear"
-            ],
-        ]
+        children: list[Node] = [Span(class_="text-body")["Advanced filter active"]]
+        # Modes without a nested-builder page (devices/platforms are absent
+        # from _BUILDER_MODELS) pass no builder_url; their pill offers only
+        # Clear — an Edit link would 404.
+        if self.builder_url:
+            children.append(
+                A(href=self.builder_url, class_="text-brand hover:underline")[
+                    "Edit in builder"
+                ]
+            )
+        children.append(
+            A(href=list_url_for(self.mode), class_="text-body hover:underline")["Clear"]
+        )
+        return Div(class_=_QUICK_PILL_CLASS)[children]
