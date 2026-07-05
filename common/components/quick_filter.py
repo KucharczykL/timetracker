@@ -123,6 +123,11 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("type", "Type"),
         QuickFacet("created_at", "Created"),
     ],
+    "platforms": [
+        QuickFacet("name", "Name", placeholder="e.g. Switch"),
+        QuickFacet("group", "Group", placeholder="e.g. Nintendo"),
+        QuickFacet("created_at", "Created"),
+    ],
 }
 
 
@@ -134,6 +139,7 @@ _MODE_MODELS: dict[FilterMode, str] = {
     "purchases": "purchase",
     "playevents": "playevent",
     "devices": "device",
+    "platforms": "platform",
 }
 
 
