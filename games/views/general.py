@@ -26,8 +26,10 @@ from common.components import (
 )
 from common.layout import render_page
 from common.time import format_duration
+from common.components.custom_elements import FILTER_MODE_MODELS
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Game, Platform, Purchase, Session
+from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 
@@ -121,13 +123,12 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     return render_page(request, stats_content(data), title=data["title"])
 
 
-# The four lists backed by an OperatorFilter + nested builder. Keys are model
-# keys (Model._meta.model_name); `mode` is the plural preset/list mode.
+# The lists backed by an OperatorFilter + nested builder. Keys are model keys
+# (Model._meta.model_name); `mode` is the plural preset/list mode. Derived from
+# the canonical FILTER_MODE_MODELS so the pairs cannot drift; which modes have
+# a builder at all is BUILDER_MODES' single say (games/views/filtering.py).
 _BUILDER_MODELS: dict[str, str] = {
-    "game": "games",
-    "session": "sessions",
-    "purchase": "purchases",
-    "playevent": "playevents",
+    FILTER_MODE_MODELS[mode]: mode for mode in BUILDER_MODES
 }
 
 

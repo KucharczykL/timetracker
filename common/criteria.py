@@ -2229,6 +2229,16 @@ def _field_label(filter_cls: type[OperatorFilter], name: AttrName) -> str:
     return name.replace("_", " ").title()
 
 
+# Memoization for field_metadata: the result is pure class/model introspection
+# (dataclass fields + Django _meta), identical for a given filter class for the
+# process lifetime — and per-field callers (field_widget's _field_meta, the
+# quick bar's facet loop) re-invoke it many times per request. An explicit dict
+# rather than lru_cache: mypy rejects `type[X]` against _lru_cache_wrapper's
+# Hashable parameters. Callers treat the returned list/dicts as READ-ONLY;
+# mutating them would poison this shared cache.
+_FIELD_METADATA_CACHE: dict[type[OperatorFilter], list[FieldMeta]] = {}
+
+
 def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     """Per-field filter metadata for ``filter_cls`` — the source of truth the
     add-criterion field picker, leaf widget, and relation-descent picker read.
@@ -2243,6 +2253,9 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     target filter class, which bounds the ``GameFilter`` ↔ ``SessionFilter``
     relation cycle.
     """
+    cached = _FIELD_METADATA_CACHE.get(filter_cls)
+    if cached is not None:
+        return cached
     model = filter_cls._comparison_model()
     entries: list[FieldMeta] = []
     for dataclass_field in dc_fields(filter_cls):
@@ -2353,6 +2366,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     scope_model="",
                 )
             )
+    _FIELD_METADATA_CACHE[filter_cls] = entries
     return entries
 
 

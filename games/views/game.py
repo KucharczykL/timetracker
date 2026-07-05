@@ -1,6 +1,5 @@
 from datetime import timedelta
 from typing import Any
-from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
@@ -36,6 +35,7 @@ from common.components import (
     PopoverTruncated,
     PurchasePrice,
     QuickFilterBar,
+    parse_filter_dict,
     Safe,
     ControlButton,
     StyledTable,
@@ -63,7 +63,11 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
-from games.views.filtering import apply_structured_filter, warn_unknown_sort
+from games.views.filtering import (
+    apply_structured_filter,
+    builder_url_for,
+    warn_unknown_sort,
+)
 from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
 
@@ -157,15 +161,15 @@ def list_games(request: HttpRequest) -> HttpResponse:
     )
     # Prepend the filter tiers above the table: quick facets, builder link,
     # then the flat bar (#197).
-    builder_url = reverse("games:filter_builder", args=["game"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    builder_url = builder_url_for("games", filter_json)
+    parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="games", filter_json=filter_json, builder_url=builder_url
+        mode="games", existing=parsed_filter, builder_url=builder_url
     )
     filter_bar = FilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        existing=parsed_filter,
     )
     content = Fragment(
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content

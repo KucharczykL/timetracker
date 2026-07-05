@@ -9,44 +9,14 @@
  * reloads as editable. The degraded "Advanced filter active" state is
  * server-rendered plain links and never mounts this element.
  */
+import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
-import { readFilterSelect } from "./search-select.js";
 import {
-  buildSetCriterion,
   parseJSONAttr,
-  readBoolWidget,
-  readDateWidget,
-  readNumberWidget,
-  readStringWidget,
+  readLeafWidget,
   setupModifierToggles,
 } from "./filter-widgets.js";
-
-// One facet widget's criterion, dispatched by its data-kind. The set branch
-// reads the <search-select> pills directly (the widget root IS the
-// search-select, so the flat bar's readSearchSelect stamping pass does not
-// apply); the scalar branches reuse the shared flat-bar readers.
-function readFacetWidget(
-  widget: HTMLElement,
-  kind: string,
-): Record<string, unknown> | null {
-  switch (kind) {
-    case "set": {
-      const { included, excluded, modifier } = readFilterSelect(widget);
-      return buildSetCriterion(included, excluded, modifier);
-    }
-    case "number":
-      return readNumberWidget(widget) as Record<string, unknown> | null;
-    case "date":
-      return readDateWidget(widget) as Record<string, unknown> | null;
-    case "string":
-      return readStringWidget(widget);
-    case "bool":
-      return readBoolWidget(widget) as Record<string, unknown> | null;
-    default:
-      return null;
-  }
-}
 
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
@@ -74,15 +44,20 @@ class QuickFilterBarElement extends HTMLElement {
   };
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry
-  // per non-empty flat widget.
+  // per non-empty flat widget. Reading is delegated to the shared
+  // readLeafWidget dispatch (which handles the widget root being the
+  // <search-select> itself), so a new leaf kind serviced there works here
+  // without a parallel switch. The data-kind attribute is trusted as a
+  // LeafWidgetKind — the server only stamps kinds from QUICK_FACET_KINDS,
+  // contract-tested against the same vocabulary.
   private serialize(): Record<string, unknown> {
     const filter: Record<string, unknown> = {};
     this.querySelectorAll<HTMLElement>("[data-filter-widget]").forEach(
       (widget) => {
         const path = parseJSONAttr<string>(widget, "data-path");
         if (path.length !== 1) return; // facets are flat own-model fields
-        const kind = widget.getAttribute("data-kind") ?? "";
-        const criterion = readFacetWidget(widget, kind);
+        const kind = (widget.getAttribute("data-kind") ?? "") as LeafWidgetKind;
+        const criterion = readLeafWidget(widget, kind);
         if (criterion !== null) filter[path[0]] = criterion;
       },
     );

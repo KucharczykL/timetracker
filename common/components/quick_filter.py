@@ -20,18 +20,24 @@ from typing import NamedTuple
 
 from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
+    FILTER_MODE_MODELS,
     FilterMode,
     _QuickFilterBarElement,
     list_url_for,
 )
-from common.components.filters import _FILTER_LABEL_CLASS, _filter_parse, field_widget
+from common.components.filters import (
+    _FILTER_LABEL_CLASS,
+    _field_meta,
+    field_widget,
+    parse_filter_dict,
+)
 from common.components.primitives import A, ControlButton, Div, Form, Span
 from common.criteria import AttrName
 
 
 class QuickFacet(NamedTuple):
     field: AttrName  # own-model leaf field == the top-level ?filter= key
-    label: str  # display label, e.g. "Status"
+    label: str = ""  # compact display override; "" = the FieldMeta-derived label
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
     step: str = "1"  # number-input step, e.g. "0.01" for prices
@@ -50,9 +56,9 @@ QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 # tests/test_quick_filter_bar.py.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
-        QuickFacet("status", "Status"),
-        QuickFacet("platform", "Platform"),
-        QuickFacet("name", "Name", placeholder="e.g. Zelda"),
+        QuickFacet("status"),
+        QuickFacet("platform"),
+        QuickFacet("name", placeholder="e.g. Zelda"),
         QuickFacet(
             "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
         ),
@@ -62,7 +68,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 100",
         ),
-        QuickFacet("mastered", "Mastered"),
+        QuickFacet("mastered"),
         QuickFacet(
             "session_count", "Sessions", placeholder="e.g. 1", placeholder2="e.g. 50"
         ),
@@ -78,8 +84,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         ),
     ],
     "sessions": [
-        QuickFacet("game", "Game"),
-        QuickFacet("device", "Device"),
+        QuickFacet("game"),
+        QuickFacet("device"),
         QuickFacet("timestamp_start", "Started"),
         QuickFacet("timestamp_end", "Ended"),
         QuickFacet(
@@ -90,9 +96,9 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         ),
     ],
     "purchases": [
-        QuickFacet("type", "Type"),
+        QuickFacet("type"),
         QuickFacet("ownership_type", "Ownership"),
-        QuickFacet("name", "Name", placeholder="e.g. Humble Bundle"),
+        QuickFacet("name", placeholder="e.g. Humble Bundle"),
         QuickFacet(
             "converted_price",
             "Price",
@@ -100,46 +106,34 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder2="e.g. 100",
             step="0.01",
         ),
-        QuickFacet("infinite", "Infinite"),
+        QuickFacet("infinite"),
         QuickFacet("date_purchased", "Purchased"),
         QuickFacet("is_refunded", "Refunded"),
         QuickFacet("created_at", "Created"),
     ],
     "playevents": [
-        QuickFacet("game", "Game"),
-        QuickFacet("started", "Started"),
-        QuickFacet("ended", "Ended"),
+        QuickFacet("game"),
+        QuickFacet("started"),
+        QuickFacet("ended"),
         QuickFacet(
             "days_to_finish",
             "Days to finish",
             placeholder="e.g. 1",
             placeholder2="e.g. 30",
         ),
-        QuickFacet("note", "Note", placeholder="e.g. Completed, Started"),
+        QuickFacet("note", placeholder="e.g. Completed, Started"),
         QuickFacet("created_at", "Created"),
     ],
     "devices": [
-        QuickFacet("name", "Name", placeholder="e.g. Steam Deck"),
-        QuickFacet("type", "Type"),
+        QuickFacet("name", placeholder="e.g. Steam Deck"),
+        QuickFacet("type"),
         QuickFacet("created_at", "Created"),
     ],
     "platforms": [
-        QuickFacet("name", "Name", placeholder="e.g. Switch"),
-        QuickFacet("group", "Group", placeholder="e.g. Nintendo"),
+        QuickFacet("name", placeholder="e.g. Switch"),
+        QuickFacet("group", placeholder="e.g. Nintendo"),
         QuickFacet("created_at", "Created"),
     ],
-}
-
-
-# Plural list mode -> root model key for filter_for_model(); mirrors the
-# builder-model args the list views pass to games:filter_builder.
-_MODE_MODELS: dict[FilterMode, str] = {
-    "games": "game",
-    "sessions": "session",
-    "purchases": "purchase",
-    "playevents": "playevent",
-    "devices": "device",
-    "platforms": "platform",
 }
 
 
@@ -196,10 +190,15 @@ class QuickFilterBar(BaseComponent):
         mode: FilterMode,
         filter_json: str = "",
         builder_url: str = "",
+        existing: dict | None = None,
     ) -> None:
         self.mode = mode
         self.builder_url = builder_url
-        self.existing = _filter_parse(filter_json)
+        # ``existing`` lets the view share one parse with the flat bar (both
+        # only read it); otherwise the bar parses its own copy.
+        self.existing = (
+            existing if existing is not None else parse_filter_dict(filter_json)
+        )
 
     def render(self) -> Node:
         facets = QUICK_FACETS[self.mode]
@@ -213,7 +212,7 @@ class QuickFilterBar(BaseComponent):
         # filters.py's own convention.
         from games.filters import filter_for_model
 
-        filter_cls = filter_for_model(_MODE_MODELS[self.mode])
+        filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
         return _QuickFilterBarElement(apply_url=list_url_for(self.mode))[
             # A real <form> so Enter in any facet input applies, mirroring the
             # flat bar; the element intercepts submit and navigates.
@@ -229,6 +228,9 @@ class QuickFilterBar(BaseComponent):
         ]
 
     def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
+        # Label defaults to the FieldMeta-derived one, so a filter-layer rename
+        # propagates here; QuickFacet.label overrides only for compact wording.
+        label = facet.label or _field_meta(filter_cls, facet.field)["label"]
         # The quick- name prefix keeps scalar-widget input names (and the date
         # picker's hidden-input DOM ids) distinct from the flat bar's widgets
         # for the same fields on the same page.
@@ -237,13 +239,13 @@ class QuickFilterBar(BaseComponent):
             facet.field,
             value=self.existing.get(facet.field),
             name_prefix=f"quick-{facet.field}",
-            label=facet.label,
+            label=label,
             placeholder=facet.placeholder,
             placeholder2=facet.placeholder2,
             step=facet.step,
         )
         return Div(class_=_QUICK_FACET_CLASS)[
-            Span(class_=_FILTER_LABEL_CLASS)[f"{facet.label}:"],
+            Span(class_=_FILTER_LABEL_CLASS)[f"{label}:"],
             Div(class_=_QUICK_WIDGET_WRAP_CLASS)[widget],
         ]
 

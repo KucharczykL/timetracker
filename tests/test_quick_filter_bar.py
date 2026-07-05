@@ -14,10 +14,10 @@ from common.components import (
     QuickFilterBar,
     is_quick_editable,
 )
-from common.components.custom_elements import list_url_for
-from common.components.quick_filter import _MODE_MODELS
+from common.components.custom_elements import FILTER_MODE_MODELS, list_url_for
 from common.criteria import field_metadata
 from games.filters import MODE_PARSERS, filter_for_model
+from games.views.filtering import BUILDER_MODES, builder_url_for
 
 _GAME_FACETS = {"status", "platform"}
 
@@ -99,8 +99,13 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn(">Apply<", html)
         self.assertIn(">Clear<", html)
         self.assertIn(f'href="{list_url_for(mode)}"', html)
+        derived_labels = {
+            meta["name"]: meta["label"]
+            for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
+        }
         for facet in QUICK_FACETS[mode]:
-            self.assertIn(f"{facet.label}:", html)
+            expected_label = facet.label or derived_labels[facet.field]
+            self.assertIn(f"{expected_label}:", html)
             # Attribute values are escaped, so the data-path JSON renders with
             # &quot; entities.
             self.assertIn(f'data-path="[&quot;{facet.field}&quot;]"', html)
@@ -223,6 +228,16 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn("Clear", html)
         self.assertIn(f'href="{list_url_for("games")}"', html)
 
+    def test_facet_labels_default_from_field_metadata(self):
+        """A facet without a label override renders the FieldMeta-derived label
+        (e.g. games.status → "Status"), so filter-layer renames propagate."""
+        html = str(QuickFilterBar(mode="games", filter_json="", builder_url="/x"))
+        self.assertIn("Status:", html)
+        self.assertIn("Platform:", html)
+        # And an override still wins where the compact wording differs.
+        self.assertIn("Year:", html)
+        self.assertNotIn("Year Released:", html)
+
     def test_degraded_pill_without_builder_url_omits_edit_link(self):
         """Modes without a nested-builder page (devices/platforms) pass no
         builder_url; the pill offers only Clear — an Edit link would 404."""
@@ -239,15 +254,44 @@ class QuickFacetsContractTest(TestCase):
 
     def test_modes_are_known_filter_modes(self):
         self.assertLessEqual(set(QUICK_FACETS), set(MODE_PARSERS))
-        self.assertEqual(set(QUICK_FACETS), set(_MODE_MODELS))
+        self.assertEqual(set(QUICK_FACETS), set(FILTER_MODE_MODELS))
+        # The canonical mapping resolves every mode to a real filter class.
+        self.assertEqual(set(FILTER_MODE_MODELS), set(MODE_PARSERS))
+        for mode, model in FILTER_MODE_MODELS.items():
+            with self.subTest(mode=mode):
+                filter_for_model(model)
 
     def test_every_facet_is_an_own_model_leaf_field(self):
         for mode, facets in QUICK_FACETS.items():
             metadata = {
                 meta["name"]: meta
-                for meta in field_metadata(filter_for_model(_MODE_MODELS[mode]))
+                for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
             }
             for facet in facets:
                 with self.subTest(mode=mode, facet=facet.field):
                     self.assertIn(facet.field, metadata)
                     self.assertIn(metadata[facet.field]["kind"], QUICK_FACET_KINDS)
+
+
+class BuilderUrlForTest(TestCase):
+    """builder_url_for is the single home of the builder URL format and of
+    which modes have a builder page at all (BUILDER_MODES)."""
+
+    def test_builder_modes_produce_the_builder_url(self):
+        for mode in BUILDER_MODES:
+            with self.subTest(mode=mode):
+                bare = builder_url_for(mode, "")
+                self.assertTrue(bare.endswith("/filter"))
+                self.assertIn(f"/{FILTER_MODE_MODELS[mode]}/", bare)
+                self.assertNotIn("?", bare)
+
+    def test_filter_json_is_quoted_into_the_url(self):
+        filter_json = json.dumps({"status": {"value": ["f"]}})
+        url = builder_url_for("games", filter_json)
+        self.assertIn(f"?filter={quote(filter_json)}", url)
+
+    def test_builderless_modes_raise(self):
+        for mode in ("devices", "platforms"):
+            with self.subTest(mode=mode):
+                with self.assertRaises(LookupError):
+                    builder_url_for(mode, "")

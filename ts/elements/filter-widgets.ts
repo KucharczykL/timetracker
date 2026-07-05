@@ -144,9 +144,13 @@ export function readSetWidget(element: HTMLElement): Record<string, unknown> | n
 }
 
 // Tree set reader: self-serializing, no global pass — reads the <search-select>
-// inside `valueCell` straight from its pills (issue #192's FilterSelect rework).
+// inside `valueCell` (or `valueCell` itself, when the widget root IS the
+// search-select, as in the quick filter bar) straight from its pills (issue
+// #192's FilterSelect rework).
 export function readTreeSetWidget(valueCell: HTMLElement): Record<string, unknown> | null {
-  const searchSelect = valueCell.querySelector<HTMLElement>("search-select");
+  const searchSelect = valueCell.matches("search-select")
+    ? valueCell
+    : valueCell.querySelector<HTMLElement>("search-select");
   if (!searchSelect) return null;
   const { included, excluded, modifier } = readFilterSelect(searchSelect);
   return buildSetCriterion(included, excluded, modifier);

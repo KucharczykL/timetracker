@@ -1,5 +1,4 @@
 from typing import Any
-from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
@@ -142,18 +141,20 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         AdvancedFilterLink,
         QuickFilterBar,
         SessionFilterBar,
+        parse_filter_dict,
     )
+    from games.views.filtering import builder_url_for
 
     filter_json = request.GET.get("filter", "")
-    builder_url = reverse("games:filter_builder", args=["session"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    builder_url = builder_url_for("sessions", filter_json)
+    parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="sessions", filter_json=filter_json, builder_url=builder_url
+        mode="sessions", existing=parsed_filter, builder_url=builder_url
     )
     filter_bar = SessionFilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        existing=parsed_filter,
     )
     content = Fragment(
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content

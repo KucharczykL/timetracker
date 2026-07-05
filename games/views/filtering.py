@@ -10,14 +10,40 @@ mirroring the unknown-sort-field UX: drop the bad filter, warn, render unfiltere
 
 import logging
 from collections.abc import Callable
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.http import HttpRequest
+from django.urls import reverse
 
+from common.components.custom_elements import FILTER_MODE_MODELS, FilterMode
 from common.criteria import FilterError, OperatorFilter
 from games.sorting import SortKey
 
 logger = logging.getLogger("games")
+
+
+# The modes whose model has a nested-builder page (games:filter_builder).
+# devices/platforms deliberately have none — their quick bar's degraded pill
+# offers only Clear. general.py derives the builder's model->mode table from
+# this set + FILTER_MODE_MODELS.
+BUILDER_MODES = frozenset({"games", "sessions", "purchases", "playevents"})
+
+
+def builder_url_for(mode: FilterMode, filter_json: str) -> str:
+    """The fully-formed nested-builder URL for ``mode``, carrying ``?filter=``
+    when one is active — the single home of the URL format the list views and
+    the quick bar's degraded pill rely on.
+
+    Raises ``LookupError`` for a mode without a builder page (``BUILDER_MODES``);
+    those views simply don't call this.
+    """
+    if mode not in BUILDER_MODES:
+        raise LookupError(f"mode {mode!r} has no filter-builder page")
+    url = reverse("games:filter_builder", args=[FILTER_MODE_MODELS[mode]])
+    if filter_json:
+        url = f"{url}?filter={quote(filter_json)}"
+    return url
 
 
 def apply_structured_filter[F: OperatorFilter](

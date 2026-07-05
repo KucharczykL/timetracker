@@ -61,6 +61,22 @@ def list_url_for(mode: FilterMode) -> str:
     return reverse(FILTER_MODE_LIST_URLS[mode])
 
 
+type ModelKey = str  # singular root-model key as filter_for_model takes it, e.g. "game"
+
+# The canonical plural mode -> model key mapping. Derivations live downstream:
+# the quick bar resolves its filter class through it, and games/views derives
+# the builder's model->mode table (_BUILDER_MODELS) from it. Keyset is
+# contract-tested against games.filters.MODE_PARSERS, like the URL table above.
+FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
+    "games": "game",
+    "sessions": "session",
+    "purchases": "purchase",
+    "playevents": "playevent",
+    "devices": "device",
+    "platforms": "platform",
+}
+
+
 type TypedDictClass = type  # a TypedDict subclass, e.g. FieldMeta
 
 

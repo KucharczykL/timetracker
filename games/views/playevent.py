@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
@@ -27,13 +26,14 @@ from common.components import (
     TableData,
     make_row,
     paginated_table_content,
+    parse_filter_dict,
 )
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
 from common.utils import paginate
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
-from games.views.filtering import apply_structured_filter
+from games.views.filtering import apply_structured_filter, builder_url_for
 from games.models import Game, PlayEvent, Session
 
 logger = logging.getLogger("games")
@@ -155,15 +155,15 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    builder_url = reverse("games:filter_builder", args=["playevent"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    builder_url = builder_url_for("playevents", filter_json)
+    parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="playevents", filter_json=filter_json, builder_url=builder_url
+        mode="playevents", existing=parsed_filter, builder_url=builder_url
     )
     filter_bar = PlayEventFilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        existing=parsed_filter,
     )
     content = Fragment(
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
