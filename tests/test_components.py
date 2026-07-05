@@ -991,33 +991,12 @@ class PopoverTruncatedTest(unittest.TestCase):
         # Django template escapes >> to &gt;&gt; in the wrapped_content
         self.assertIn("&gt;&gt;", result)
 
-    def test_popover_if_not_truncated_flag(self):
-        short_text = "hi"
-        result = str(
-            components.PopoverTruncated(
-                short_text,
-                popover_content="full content",
-                popover_if_not_truncated=True,
-            )
-        )
-        # Should be wrapped in popover even though short
-        self.assertNotEqual(result, "hi")
-        self.assertIn("data-popover-target", result)
-
     def test_popover_content_override(self):
         result = str(
             components.PopoverTruncated("short", popover_content="custom popover")
         )
-        # With popover_if_not_truncated=False (default), short text returns as-is
+        # Short text is returned as-is; use PopoverIf for unconditional popovers
         self.assertEqual(result, "short")
-
-    def test_popover_content_override_with_flag(self):
-        result = str(
-            components.PopoverTruncated(
-                "short", popover_content="custom popover", popover_if_not_truncated=True
-            )
-        )
-        self.assertIn("custom popover", result)
 
     def test_endpart_visible_in_output(self):
         long_text = "a" * 50
@@ -1204,6 +1183,20 @@ class ModelDependentComponentsTest(django.test.TestCase):
         result = str(components.LinkedPurchase(purchase))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Bundle", result)
+
+    def test_linked_purchase_named_bundle_shows_games_list(self):
+        """A multi-game purchase shows its games-list popover even when the
+        purchase name is short enough to display untruncated."""
+        platform = self._create_platform(icon="steam")
+        game1 = self._create_game(platform, name="Game A")
+        game2 = self._create_game(platform, name="Game B")
+        purchase = self._create_purchase([game1, game2], price=24.99)
+        purchase.name = "Bundle"
+        purchase.save()
+        result = str(components.LinkedPurchase(purchase))
+        self.assertIn("data-popover-target", result)
+        self.assertIn("Game A", result)
+        self.assertIn("Game B", result)
 
     def test_linked_purchase_renders_game_names_in_popover(self):
         platform = self._create_platform(icon="steam")
