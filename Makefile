@@ -75,7 +75,7 @@ dumpgames:
 	uv run python manage.py dumpdata --format yaml games --output tracker_fixture.yaml
 
 loadplatforms:
-	uv run python manage.py loaddata platforms.yaml
+	uv run python manage.py loadplatforms
 
 loadall:
 	uv run python manage.py loaddata data.yaml
