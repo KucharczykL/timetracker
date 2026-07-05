@@ -44,6 +44,16 @@ function dateFacet(field: string, min: string, max: string): string {
     </div>`;
 }
 
+function boolFacet(field: string, checked: "true" | "false" | "" = ""): string {
+  const check = (value: string): string =>
+    checked === value ? " checked" : "";
+  return `
+    <div data-filter-widget data-path='["${field}"]' data-kind="bool">
+      <input type="radio" name="quick-${field}" value="true"${check("true")}>
+      <input type="radio" name="quick-${field}" value="false"${check("false")}>
+    </div>`;
+}
+
 function mount(facets: string): {
   bar: HTMLElement;
   form: HTMLFormElement;
@@ -92,7 +102,8 @@ describe("<quick-filter-bar>", () => {
     const { form, navigate } = mount(
       setFacet("game", includePill("1", "Outer Wilds")) +
         numberFacet("duration_total_hours", "GREATER_THAN", "2") +
-        dateFacet("timestamp_start", "2026-01-01", ""),
+        dateFacet("timestamp_start", "2026-01-01", "") +
+        boolFacet("mastered", "true"),
     );
     submit(form);
     expect(navigate).toHaveBeenCalledWith(
@@ -104,6 +115,7 @@ describe("<quick-filter-bar>", () => {
         },
         duration_total_hours: { value: 2, modifier: "GREATER_THAN" },
         timestamp_start: { value: "2026-01-01", modifier: "GREATER_THAN" },
+        mastered: { value: true, modifier: "EQUALS" },
       }),
     );
   });
@@ -112,7 +124,8 @@ describe("<quick-filter-bar>", () => {
     const { form, navigate } = mount(
       setFacet("game") +
         numberFacet("duration_total_hours", "EQUALS", "") +
-        dateFacet("timestamp_start", "", ""),
+        dateFacet("timestamp_start", "", "") +
+        boolFacet("mastered"),
     );
     submit(form);
     expect(navigate).toHaveBeenCalledWith(LIST_URL);

@@ -34,6 +34,7 @@ class QuickFacet(NamedTuple):
     label: str  # display label, e.g. "Status"
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
+    step: str = "1"  # number-input step, e.g. "0.01" for prices
 
 
 # The leaf kinds a quick facet may have — the kinds the bar's serializer
@@ -51,6 +52,30 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status", "Status"),
         QuickFacet("platform", "Platform"),
+        QuickFacet("name", "Name", placeholder="e.g. Zelda"),
+        QuickFacet(
+            "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
+        ),
+        QuickFacet(
+            "playtime_hours",
+            "Playtime (hrs)",
+            placeholder="e.g. 1",
+            placeholder2="e.g. 100",
+        ),
+        QuickFacet("mastered", "Mastered"),
+        QuickFacet(
+            "session_count", "Sessions", placeholder="e.g. 1", placeholder2="e.g. 50"
+        ),
+        QuickFacet(
+            "purchase_count", "Purchases", placeholder="e.g. 1", placeholder2="e.g. 5"
+        ),
+        QuickFacet(
+            "purchase_price_total",
+            "Total price",
+            placeholder="0",
+            placeholder2="e.g. 100",
+            step="0.01",
+        ),
     ],
     "sessions": [
         QuickFacet("game", "Game"),
@@ -162,6 +187,9 @@ class QuickFilterBar(BaseComponent):
                 Div(class_=_QUICK_BAR_ROW_CLASS)[
                     *[self._facet(filter_cls, facet) for facet in facets],
                     ControlButton(color="blue", type="submit")["Apply"],
+                    # A plain link, not JS: radios and modifier selects have no
+                    # per-widget "unset", so the bar needs a one-click reset.
+                    ControlButton(color="gray", href=list_url_for(self.mode))["Clear"],
                 ]
             ]
         ]
@@ -178,6 +206,7 @@ class QuickFilterBar(BaseComponent):
             label=facet.label,
             placeholder=facet.placeholder,
             placeholder2=facet.placeholder2,
+            step=facet.step,
         )
         return Div(class_=_QUICK_FACET_CLASS)[
             Span(class_=_FILTER_LABEL_CLASS)[f"{facet.label}:"],

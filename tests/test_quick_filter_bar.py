@@ -3,6 +3,7 @@ render states, and the round-trip guarantee (a filter shaped like the bar's own
 serializer output must reload as editable, never flip to "advanced")."""
 
 import json
+import re
 from urllib.parse import quote
 
 from django.test import SimpleTestCase, TestCase
@@ -90,10 +91,14 @@ class QuickFilterBarRenderingTest(TestCase):
     def _editable_markers(self, html: str, mode: str) -> None:
         self.assertIn("<quick-filter-bar", html)
         self.assertIn(f'apply-url="{list_url_for(mode)}"', html)
-        # The facets live in a form with an Apply submit button (Enter applies).
+        # The facets live in a form with an Apply submit button (Enter applies)
+        # and a Clear link back to the bare list URL (radios/selects have no
+        # per-widget unset).
         self.assertIn("<form", html)
         self.assertIn('type="submit"', html)
         self.assertIn(">Apply<", html)
+        self.assertIn(">Clear<", html)
+        self.assertIn(f'href="{list_url_for(mode)}"', html)
         for facet in QUICK_FACETS[mode]:
             self.assertIn(f"{facet.label}:", html)
             # Attribute values are escaped, so the data-path JSON renders with
@@ -171,6 +176,35 @@ class QuickFilterBarRenderingTest(TestCase):
         # DateRangePicker prefill: both hidden ISO bounds carry the range.
         self.assertIn('value="2026-01-01"', html)
         self.assertIn('value="2026-02-01"', html)
+
+    def test_bool_and_aggregate_round_trip_shapes_are_editable(self):
+        """The games bar's bool facet (readBoolWidget output) and aggregate
+        number facets (readNumberWidget output over flat aggregate keys) must
+        render editable with the values prefilled."""
+        filter_json = json.dumps(
+            {
+                "mastered": {"value": True, "modifier": "EQUALS"},
+                "session_count": {"value": 3, "modifier": "GREATER_THAN"},
+                "purchase_price_total": {
+                    "value": 10,
+                    "value2": 100,
+                    "modifier": "BETWEEN",
+                },
+            }
+        )
+        html = str(
+            QuickFilterBar(mode="games", filter_json=filter_json, builder_url="/x")
+        )
+        self.assertIn("<quick-filter-bar", html)
+        self.assertNotIn("Advanced filter active", html)
+        self.assertIn('value="3"', html)
+        self.assertIn('value="10"', html)
+        self.assertIn('value="100"', html)
+        # The bool prefill checks exactly the True radio.
+        mastered_radios = re.findall(r'<input[^>]*name="quick-mastered"[^>]*>', html)
+        checked = [tag for tag in mastered_radios if "checked" in tag]
+        self.assertEqual(len(checked), 1)
+        self.assertIn('value="true"', checked[0])
 
     def test_advanced_filter_renders_degraded_pill(self):
         filter_json = json.dumps(
