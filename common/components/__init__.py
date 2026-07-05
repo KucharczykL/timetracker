@@ -76,6 +76,12 @@ from common.components.filters import (
     field_widget,
     field_widget_templates,
 )
+from common.components.quick_filter import (
+    QUICK_FACETS,
+    QuickFacet,
+    QuickFilterBar,
+    is_quick_editable,
+)
 from common.components.primitives import (
     H1,
     H2,
@@ -287,6 +293,10 @@ __all__ = [
     "NumberFilter",
     "field_widget",
     "field_widget_templates",
+    "QUICK_FACETS",
+    "QuickFacet",
+    "QuickFilterBar",
+    "is_quick_editable",
     "FieldComparisonSet",
     "FilterBuilder",
     "FilterCount",

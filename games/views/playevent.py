@@ -22,6 +22,7 @@ from common.components import (
     Icon,
     ModuleScript,
     PlayEventFilterBar,
+    QuickFilterBar,
     ControlButton,
     TableData,
     make_row,
@@ -154,14 +155,19 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
+    builder_url = reverse("games:filter_builder", args=["playevent"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    quick_bar = QuickFilterBar(
+        mode="playevents", filter_json=filter_json, builder_url=builder_url
+    )
     filter_bar = PlayEventFilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    builder_url = reverse("games:filter_builder", args=["playevent"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
-    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
+    content = Fragment(
+        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
+    )
     return render_page(
         request,
         content,

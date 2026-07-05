@@ -437,6 +437,14 @@ register_element("filter-bar", "FilterBar", FilterBarProps)
 _FilterBarElement = custom_element_builder("filter-bar")
 
 
+class QuickFilterBarProps(TypedDict):
+    apply_url: str  # list URL a facet change navigates to (#197)
+
+
+register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
+_QuickFilterBarElement = custom_element_builder("quick-filter-bar")
+
+
 class YearPickerProps(TypedDict):
     selected_year: str  # "" for the all-time/empty state
     available_years: str  # csv, e.g. "2019,2020"

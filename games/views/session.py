@@ -138,17 +138,26 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    from common.components import AdvancedFilterLink, SessionFilterBar
+    from common.components import (
+        AdvancedFilterLink,
+        QuickFilterBar,
+        SessionFilterBar,
+    )
 
     filter_json = request.GET.get("filter", "")
+    builder_url = reverse("games:filter_builder", args=["session"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    quick_bar = QuickFilterBar(
+        mode="sessions", filter_json=filter_json, builder_url=builder_url
+    )
     filter_bar = SessionFilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    builder_url = reverse("games:filter_builder", args=["session"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
-    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
+    content = Fragment(
+        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
+    )
     return render_page(
         request,
         content,

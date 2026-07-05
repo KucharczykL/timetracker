@@ -35,6 +35,7 @@ from common.components import (
     Popover,
     PopoverTruncated,
     PurchasePrice,
+    QuickFilterBar,
     Safe,
     ControlButton,
     StyledTable,
@@ -154,15 +155,21 @@ def list_games(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    # Prepend the filter bar above the table
+    # Prepend the filter tiers above the table: quick facets, builder link,
+    # then the flat bar (#197).
+    builder_url = reverse("games:filter_builder", args=["game"])
+    if filter_json:
+        builder_url = f"{builder_url}?filter={quote(filter_json)}"
+    quick_bar = QuickFilterBar(
+        mode="games", filter_json=filter_json, builder_url=builder_url
+    )
     filter_bar = FilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    builder_url = reverse("games:filter_builder", args=["game"])
-    if filter_json:
-        builder_url = f"{builder_url}?filter={quote(filter_json)}"
-    content = Fragment(AdvancedFilterLink(url=builder_url), filter_bar, content)
+    content = Fragment(
+        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
+    )
     return render_page(
         request,
         content,
