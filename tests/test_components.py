@@ -1040,6 +1040,53 @@ class PopoverTruncatedTest(unittest.TestCase):
         self.assertIn("data-popover-target", result)
 
 
+class TruncateInfoTest(unittest.TestCase):
+    """Test the truncate_info() pure helper."""
+
+    def test_short_string_not_truncated(self):
+        truncation = components.truncate_info("hi")
+        self.assertEqual(truncation.display, "hi")
+        self.assertFalse(truncation.was_truncated)
+
+    def test_long_string_truncated(self):
+        truncation = components.truncate_info("a" * 100)
+        self.assertEqual(truncation.display, components.truncate("a" * 100))
+        self.assertTrue(truncation.display.endswith("…"))
+        self.assertTrue(truncation.was_truncated)
+
+    def test_endpart_appended_without_cutting(self):
+        truncation = components.truncate_info("short", endpart="!")
+        self.assertEqual(truncation.display, "short!")
+        self.assertFalse(truncation.was_truncated)
+
+    def test_endpart_with_cutting(self):
+        truncation = components.truncate_info("a" * 50, length=10, endpart="x")
+        self.assertTrue(truncation.was_truncated)
+        self.assertTrue(truncation.display.endswith("x"))
+
+
+class PopoverIfTest(unittest.TestCase):
+    """Test the PopoverIf() conditional wrapper."""
+
+    def test_false_condition_returns_node_untouched(self):
+        button = components.ControlButton()["Click"]
+        result = components.PopoverIf(False, "full text", button)
+        self.assertIs(result, button)
+        self.assertNotIn("data-popover-target", str(result))
+
+    def test_true_condition_wraps_node_in_popover(self):
+        button = components.ControlButton()["Click"]
+        result = str(components.PopoverIf(True, "full text", button))
+        self.assertIn("data-popover-target", result)
+        self.assertIn("<button", result)
+        self.assertIn("full text", result)
+
+    def test_explicit_id_used(self):
+        result = str(components.PopoverIf(True, "content", "wrapped", id="my-popover"))
+        self.assertIn('data-popover-target="my-popover"', result)
+        self.assertIn('id="my-popover"', result)
+
+
 class ModelDependentComponentsTest(django.test.TestCase):
     """Test components that depend on Django models."""
 

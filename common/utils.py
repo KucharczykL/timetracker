@@ -1,6 +1,6 @@
 from datetime import date
 from functools import wraps
-from typing import Any, Generator, TypeVar
+from typing import Any, Generator, NamedTuple, TypeVar
 from urllib.parse import urlencode
 
 from django.core.paginator import Page, Paginator
@@ -85,6 +85,23 @@ def truncate(
         if len(input_string) + len(endpart) <= length
         else f"{input_string[: length - len(ellipsis) - len(endpart)].rstrip()}{ellipsis}{endpart}"
     )
+
+
+class Truncation(NamedTuple):
+    display: str
+    was_truncated: bool
+
+
+def truncate_info(
+    input_string: str, length: int = 30, ellipsis: str = "…", endpart: str = ""
+) -> Truncation:
+    """Truncate like :func:`truncate`, but also report whether content was cut.
+
+    ``was_truncated`` is only True when characters of ``input_string`` were
+    dropped — appending ``endpart`` alone does not count.
+    """
+    display = truncate(input_string, length, ellipsis, endpart)
+    return Truncation(display, was_truncated=display != f"{input_string}{endpart}")
 
 
 T = TypeVar("T", str, int, date)
