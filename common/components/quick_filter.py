@@ -107,6 +107,16 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     ],
     "playevents": [
         QuickFacet("game", "Game"),
+        QuickFacet("started", "Started"),
+        QuickFacet("ended", "Ended"),
+        QuickFacet(
+            "days_to_finish",
+            "Days to finish",
+            placeholder="e.g. 1",
+            placeholder2="e.g. 30",
+        ),
+        QuickFacet("note", "Note", placeholder="e.g. Completed, Started"),
+        QuickFacet("created_at", "Created"),
     ],
     "devices": [
         QuickFacet("name", "Name", placeholder="e.g. Steam Deck"),
