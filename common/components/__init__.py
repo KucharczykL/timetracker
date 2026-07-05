@@ -115,6 +115,7 @@ from common.components.primitives import (
     Pill,
     Popover,
     Column,
+    PopoverIf,
     PopoverTruncated,
     Radio,
     Select,
@@ -151,10 +152,12 @@ from common.components.search_select import (
     SearchSelectOption,
     searchselect_selected,
 )
-from common.utils import truncate
+from common.utils import Truncation, truncate, truncate_info
 
 __all__ = [
     "truncate",
+    "truncate_info",
+    "Truncation",
     "BaseComponent",
     "register_element",
     "Dropdown",
@@ -217,6 +220,7 @@ __all__ = [
     "ModuleScript",
     "Pill",
     "Popover",
+    "PopoverIf",
     "PopoverTruncated",
     "Radio",
     "DEFAULT_PREFETCH",

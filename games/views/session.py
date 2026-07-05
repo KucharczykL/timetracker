@@ -21,7 +21,7 @@ from common.components import (
     ModuleScript,
     NameWithIcon,
     Node,
-    Popover,
+    PopoverIf,
     SessionActions,
     SessionDeviceSelector,
     SessionTimestampButtons,
@@ -36,7 +36,7 @@ from common.time import (
     dateformat,
 )
 from games.formatting import session_time_range
-from common.utils import paginate, truncate
+from common.utils import paginate, truncate_info
 from common.http import HtmxHttpRequest
 from games.forms import SessionForm
 from games.models import Device, Game, Session
@@ -94,29 +94,29 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(request, sessions)
     csrf_token = get_token(request)
 
+    resume_session_link: Node | str = ""
+    if last_session and last_session.game:
+        game_name = last_session.game.name
+        truncation = truncate_info(game_name)
+        resume_session_link = PopoverIf(
+            truncation.was_truncated,
+            game_name,
+            ControlButton(
+                href=reverse(
+                    "games:list_sessions_start_session_from_session",
+                    args=[last_session.pk],
+                ),
+                color="gray",
+            )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), truncation.display],
+        )
+
     data: TableData = {
         "header_action": Div(class_="flex justify-end")[
             Div(class_="flex gap-2")[
                 ControlButton(
                     href=reverse("games:add_session"),
                 )[Icon("play", size=ICON_BUTTON_SIZE_CLASS), "LOG"],
-                Popover(
-                    popover_content=last_session.game.name,
-                    children=[
-                        ControlButton(
-                            href=reverse(
-                                "games:list_sessions_start_session_from_session",
-                                args=[last_session.pk],
-                            ),
-                            color="gray",
-                        )[
-                            Icon("play", size=ICON_BUTTON_SIZE_CLASS),
-                            truncate(f"{last_session.game.name}"),
-                        ]
-                    ],
-                )
-                if last_session and last_session.game
-                else "",
+                resume_session_link,
             ],
         ],
         "columns": [

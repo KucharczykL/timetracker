@@ -36,7 +36,7 @@ from common.components.core import (
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
-from common.utils import truncate
+from common.utils import truncate_info
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
 type ButtonVariant = Literal[
@@ -295,6 +295,20 @@ def Popover(
     )
 
 
+def PopoverIf(
+    condition: bool, popover_content: Child, node: Node | str, id: str = ""
+) -> Node | str:
+    """Wrap `node` in a popover showing `popover_content` when `condition` holds.
+
+    Without an explicit `id`, the popover's DOM id is derived from
+    `popover_content` alone — pass `id` when two popovers on the same page
+    could share the same content.
+    """
+    if condition:
+        return Popover(popover_content=popover_content, children=[node], id=id)
+    return node
+
+
 def PopoverTruncated(
     input_string: str,
     popover_content: Child = "",
@@ -302,7 +316,7 @@ def PopoverTruncated(
     length: int = 30,
     ellipsis: str = "…",
     endpart: str = "",
-) -> "Node | str":
+) -> Node | str:
     """
     Returns `input_string` truncated after `length` of characters
     and displays the untruncated text in a popover HTML element.
@@ -312,19 +326,18 @@ def PopoverTruncated(
     1. It needs to be always displayed regardless if text is truncated.
     2. It needs to differ from `input_string`.
     """
-    if (truncated := truncate(input_string, length, ellipsis, endpart)) != input_string:
+    truncation = truncate_info(input_string, length, ellipsis, endpart)
+    if truncation.display != input_string:
         return Popover(
-            wrapped_content=truncated,
+            wrapped_content=truncation.display,
             popover_content=popover_content if popover_content else input_string,
         )
-    else:
-        if popover_content and popover_if_not_truncated:
-            return Popover(
-                wrapped_content=input_string,
-                popover_content=popover_content if popover_content else "",
-            )
-        else:
-            return input_string
+    if popover_content and popover_if_not_truncated:
+        return Popover(
+            wrapped_content=input_string,
+            popover_content=popover_content,
+        )
+    return input_string
 
 
 # The classes both ControlButton variants truly share. Everything else —
