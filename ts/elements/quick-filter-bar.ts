@@ -1,31 +1,66 @@
 /**
  * QuickFilterBar — the GitHub-style facet row above a list view (#197).
  *
- * Apply-on-change: any search-select:change bubbling from one of the bar's own
- * facet FilterSelects re-serializes ONLY the facet criteria (strict — flat
- * single-segment data-path set widgets, nothing merged from the wider filter)
- * and navigates via applyUrl. That strictness is what guarantees the bar's
- * output always satisfies the server-side is_quick_editable predicate, so a
- * filter the bar produced reloads as editable. The degraded "Advanced filter
- * active" state is server-rendered plain links and never mounts this element.
+ * The facets are a small form: Apply (or Enter in a facet input) serializes
+ * ONLY the facet criteria (strict — flat single-segment data-path widgets,
+ * nothing merged from the wider filter) and navigates via applyUrl. That
+ * strictness is what guarantees the bar's output always satisfies the
+ * server-side is_quick_editable predicate, so a filter the bar produced
+ * reloads as editable. The degraded "Advanced filter active" state is
+ * server-rendered plain links and never mounts this element.
  */
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
 import { readFilterSelect } from "./search-select.js";
-import { buildSetCriterion, parseJSONAttr } from "./filter-widgets.js";
+import {
+  buildSetCriterion,
+  parseJSONAttr,
+  readBoolWidget,
+  readDateWidget,
+  readNumberWidget,
+  readStringWidget,
+  setupModifierToggles,
+} from "./filter-widgets.js";
 
-const FACET_WIDGET_SELECTOR = '[data-filter-widget][data-kind="set"]';
+// One facet widget's criterion, dispatched by its data-kind. The set branch
+// reads the <search-select> pills directly (the widget root IS the
+// search-select, so the flat bar's readSearchSelect stamping pass does not
+// apply); the scalar branches reuse the shared flat-bar readers.
+function readFacetWidget(
+  widget: HTMLElement,
+  kind: string,
+): Record<string, unknown> | null {
+  switch (kind) {
+    case "set": {
+      const { included, excluded, modifier } = readFilterSelect(widget);
+      return buildSetCriterion(included, excluded, modifier);
+    }
+    case "number":
+      return readNumberWidget(widget) as Record<string, unknown> | null;
+    case "date":
+      return readDateWidget(widget) as Record<string, unknown> | null;
+    case "string":
+      return readStringWidget(widget);
+    case "bool":
+      return readBoolWidget(widget) as Record<string, unknown> | null;
+    default:
+      return null;
+  }
+}
 
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
 
   connectedCallback(): void {
     this.applyTarget = readQuickFilterBarProps(this).applyUrl;
-    this.addEventListener("search-select:change", this.onFacetChange);
+    // Wires the number/string modifier selects (presence disables inputs,
+    // BETWEEN reveals the second) — same delegated hook the flat bar uses.
+    setupModifierToggles(this);
+    this.querySelector("form")?.addEventListener("submit", this.onSubmit);
   }
 
   disconnectedCallback(): void {
-    this.removeEventListener("search-select:change", this.onFacetChange);
+    this.querySelector("form")?.removeEventListener("submit", this.onSubmit);
   }
 
   // Overridable so tests can assert the target without a real navigation.
@@ -33,28 +68,21 @@ class QuickFilterBarElement extends HTMLElement {
     window.location.href = url;
   }
 
-  // Only changes from the bar's own facet widgets navigate. Today nothing else
-  // inside <quick-filter-bar> emits search-select:change, but the guard keeps a
-  // future composed child (a preset picker, say) from navigating by accident.
-  private onFacetChange = (event: Event): void => {
-    const target = event.target as HTMLElement | null;
-    const widget = target?.closest<HTMLElement>(FACET_WIDGET_SELECTOR);
-    if (!widget || !this.contains(widget)) return;
+  private onSubmit = (event: Event): void => {
+    event.preventDefault();
     this.navigate(applyUrl(this.applyTarget, this.serialize()));
   };
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry
-  // per non-empty flat set widget. Reads each <search-select>'s pill state
-  // directly (readFilterSelect) — the widget root IS the search-select, so the
-  // flat bar's readSearchSelect stamping pass is unnecessary here.
+  // per non-empty flat widget.
   private serialize(): Record<string, unknown> {
     const filter: Record<string, unknown> = {};
-    this.querySelectorAll<HTMLElement>(FACET_WIDGET_SELECTOR).forEach(
+    this.querySelectorAll<HTMLElement>("[data-filter-widget]").forEach(
       (widget) => {
         const path = parseJSONAttr<string>(widget, "data-path");
         if (path.length !== 1) return; // facets are flat own-model fields
-        const { included, excluded, modifier } = readFilterSelect(widget);
-        const criterion = buildSetCriterion(included, excluded, modifier);
+        const kind = widget.getAttribute("data-kind") ?? "";
+        const criterion = readFacetWidget(widget, kind);
         if (criterion !== null) filter[path[0]] = criterion;
       },
     );

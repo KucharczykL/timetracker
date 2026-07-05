@@ -77,6 +77,7 @@ from common.components.filters import (
     field_widget_templates,
 )
 from common.components.quick_filter import (
+    QUICK_FACET_KINDS,
     QUICK_FACETS,
     QuickFacet,
     QuickFilterBar,
@@ -293,6 +294,7 @@ __all__ = [
     "NumberFilter",
     "field_widget",
     "field_widget_templates",
+    "QUICK_FACET_KINDS",
     "QUICK_FACETS",
     "QuickFacet",
     "QuickFilterBar",

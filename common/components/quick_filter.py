@@ -1,11 +1,12 @@
 """GitHub-style quick filter bar above list views (issue #197).
 
-A row of compact facet dropdowns (``status: [▾] platform: [▾] …``) that reads
+A row of compact facet widgets (``status: [▾] platform: [▾] …``) that reads
 and writes the same ``?filter=`` JSON as the flat FilterBar it coexists with
-(rendered above it) — one source of truth, one backend. A facet change applies
-immediately (``ts/elements/quick-filter-bar.ts`` serializes the facets and
-navigates), so the bar covers the common case in one click; anything richer
-belongs to the flat bar or the nested builder.
+(rendered above it) — one source of truth, one backend. The facets are a form:
+Apply (or Enter) serializes them and navigates
+(``ts/elements/quick-filter-bar.ts``), so the bar covers the common case
+without expanding the flat bar; anything richer belongs to the flat bar or
+the nested builder.
 
 The bar is editable only when :func:`is_quick_editable` accepts the active
 filter; otherwise it degrades to a read-only "Advanced filter active" pill
@@ -24,19 +25,28 @@ from common.components.custom_elements import (
     list_url_for,
 )
 from common.components.filters import _FILTER_LABEL_CLASS, _filter_parse, field_widget
-from common.components.primitives import A, Div, Span
+from common.components.primitives import A, ControlButton, Div, Form, Span
 from common.criteria import AttrName
 
 
 class QuickFacet(NamedTuple):
-    field: AttrName  # own-model set field == the top-level ?filter= key
+    field: AttrName  # own-model leaf field == the top-level ?filter= key
     label: str  # display label, e.g. "Status"
+    placeholder: str = ""  # value-input hint (number/string kinds)
+    placeholder2: str = ""  # second-input hint (BETWEEN)
 
 
-# One facet row per list mode: a few own-model kind="set" fields (enum or
-# model-backed), each rendered as a FilterSelect via field_widget. Own-model
-# only — a cross-entity facet would serialize a relation sub-filter, which the
-# predicate below rejects. Contract-tested in tests/test_quick_filter_bar.py.
+# The leaf kinds a quick facet may have — the kinds the bar's serializer
+# (ts/elements/quick-filter-bar.ts readFacetWidget) can read back. Relations
+# are excluded by construction (a cross-entity facet would serialize a relation
+# sub-filter, which the predicate below rejects).
+QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
+
+
+# One facet row per list mode: a few own-model leaf fields mirroring the
+# list's displayed columns, each rendered via field_widget (set → FilterSelect,
+# number → NumberFilter, date → DateRangePicker, …). Contract-tested in
+# tests/test_quick_filter_bar.py.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status", "Status"),
@@ -45,6 +55,14 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "sessions": [
         QuickFacet("game", "Game"),
         QuickFacet("device", "Device"),
+        QuickFacet("timestamp_start", "Started"),
+        QuickFacet("timestamp_end", "Ended"),
+        QuickFacet(
+            "duration_total_hours",
+            "Duration (hrs)",
+            placeholder="e.g. 1",
+            placeholder2="e.g. 10",
+        ),
     ],
     "purchases": [
         QuickFacet("type", "Type"),
@@ -90,7 +108,9 @@ _QUICK_BAR_ROW_CLASS = "flex flex-wrap items-center gap-x-4 gap-y-2 mb-3"
 
 _QUICK_FACET_CLASS = "flex items-center gap-1.5"
 
-_QUICK_WIDGET_WRAP_CLASS = "w-56"
+# min-w so a facet is never cramped but a wider widget (the date range's
+# segmented field) can grow to its natural size.
+_QUICK_WIDGET_WRAP_CLASS = "min-w-56"
 
 _QUICK_PILL_CLASS = (
     "mb-3 flex flex-wrap items-center gap-3 rounded-base border "
@@ -101,10 +121,11 @@ _QUICK_PILL_CLASS = (
 class QuickFilterBar(BaseComponent):
     """The quick facet bar for one list mode (#197).
 
-    Renders either the editable ``<quick-filter-bar>`` element (facet widgets
-    built via ``field_widget``, prefilled from the filter JSON's embedded
-    labels) or, when :func:`is_quick_editable` rejects the current filter, the
-    degraded pill — plain links, no custom element, so no bar JS is loaded.
+    Renders either the editable ``<quick-filter-bar>`` element (a form of
+    facet widgets built via ``field_widget`` — prefilled from the filter
+    JSON — plus an Apply submit button) or, when :func:`is_quick_editable`
+    rejects the current filter, the degraded pill — plain links, no custom
+    element, so no bar JS is loaded.
     ``builder_url`` is the fully-formed nested-builder URL (already carrying
     ``?filter=`` when one is set), the same URL the view hands
     ``AdvancedFilterLink``.
@@ -135,21 +156,32 @@ class QuickFilterBar(BaseComponent):
 
         filter_cls = filter_for_model(_MODE_MODELS[self.mode])
         return _QuickFilterBarElement(apply_url=list_url_for(self.mode))[
-            Div(class_=_QUICK_BAR_ROW_CLASS)[
-                *[
-                    Div(class_=_QUICK_FACET_CLASS)[
-                        Span(class_=_FILTER_LABEL_CLASS)[f"{facet.label}:"],
-                        Div(class_=_QUICK_WIDGET_WRAP_CLASS)[
-                            field_widget(
-                                filter_cls,
-                                facet.field,
-                                value=self.existing.get(facet.field),
-                            )
-                        ],
-                    ]
-                    for facet in facets
+            # A real <form> so Enter in any facet input applies, mirroring the
+            # flat bar; the element intercepts submit and navigates.
+            Form()[
+                Div(class_=_QUICK_BAR_ROW_CLASS)[
+                    *[self._facet(filter_cls, facet) for facet in facets],
+                    ControlButton(color="blue", type="submit")["Apply"],
                 ]
             ]
+        ]
+
+    def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
+        # The quick- name prefix keeps scalar-widget input names (and the date
+        # picker's hidden-input DOM ids) distinct from the flat bar's widgets
+        # for the same fields on the same page.
+        widget = field_widget(
+            filter_cls,
+            facet.field,
+            value=self.existing.get(facet.field),
+            name_prefix=f"quick-{facet.field}",
+            label=facet.label,
+            placeholder=facet.placeholder,
+            placeholder2=facet.placeholder2,
+        )
+        return Div(class_=_QUICK_FACET_CLASS)[
+            Span(class_=_FILTER_LABEL_CLASS)[f"{facet.label}:"],
+            Div(class_=_QUICK_WIDGET_WRAP_CLASS)[widget],
         ]
 
     def _degraded(self) -> Node:
