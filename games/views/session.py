@@ -14,7 +14,6 @@ from common.components import (
     Column,
     Div,
     FormFields,
-    Fragment,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
@@ -139,6 +138,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
     from common.components import (
         AdvancedFilterLink,
+        ContentContainer,
         QuickFilterBar,
         SessionFilterBar,
         parse_filter_dict,
@@ -156,9 +156,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(
+    content = ContentContainer()[
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    )
+    ]
     return render_page(
         request,
         content,

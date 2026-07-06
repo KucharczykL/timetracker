@@ -790,6 +790,22 @@ class StyledBuilderContractTest(SimpleTestCase):
         self.assertEqual(result.count("name="), 1)
 
 
+class ContentContainerTest(SimpleTestCase):
+    """The page-body width container (issue #313): baked classes, caller class
+    merge, htpy children slot."""
+
+    def test_baked_classes_and_children(self):
+        result = str(components.ContentContainer()["body"])
+        self.assertEqual(result, '<div class="w-full max-w-7xl self-center">body</div>')
+
+    def test_caller_class_appends_to_baked(self):
+        result = str(components.ContentContainer(class_="dark:text-white px-2")["x"])
+        self.assertIn(
+            'class="w-full max-w-7xl self-center dark:text-white px-2"', result
+        )
+        self.assertEqual(result.count("class="), 1)
+
+
 class ControlButtonTest(SimpleTestCase):
     """The polymorphic ControlButton: one styling source, three rendered shapes
     (<button>, <a href>, <form method=post> + submit)."""

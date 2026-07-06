@@ -15,7 +15,7 @@ from common.components import (
     ButtonGroup,
     Cell,
     Column,
-    Fragment,
+    ContentContainer,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
@@ -165,9 +165,9 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(
+    content = ContentContainer()[
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    )
+    ]
     return render_page(
         request,
         content,

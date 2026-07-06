@@ -7,8 +7,8 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Column,
+    ContentContainer,
     DeviceFilterBar,
-    Fragment,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     ControlButton,
@@ -87,7 +87,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(quick_bar, filter_bar, content)
+    content = ContentContainer()[quick_bar, filter_bar, content]
     return render_page(
         request,
         content,

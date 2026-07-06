@@ -11,8 +11,8 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 
 from common.components import (
-    CONTENT_MAX_WIDTH_CLASS,
     A,
+    ContentContainer,
     Div,
     Fragment,
     H1,
@@ -463,6 +463,4 @@ def stats_content(ctx: StatsData) -> Node:
             ),
         ]
 
-    return Div(class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")[
-        *sections
-    ]
+    return ContentContainer(class_="dark:text-white")[*sections]
