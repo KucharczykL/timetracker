@@ -10,10 +10,12 @@ from common.components import (
     Fragment,
     Icon,
     PlatformFilterBar,
+    QuickFilterBar,
     ControlButton,
     TableData,
     make_row,
     paginated_table_content,
+    parse_filter_dict,
 )
 from common.layout import render_page
 from common.time import dateformat, local_strftime
@@ -82,11 +84,16 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
+    # No builder_url: platforms have no nested-builder page (BUILDER_MODES),
+    # so a degraded quick bar offers only Clear.
+    parsed_filter = parse_filter_dict(filter_json)
+    quick_bar = QuickFilterBar(mode="platforms", existing=parsed_filter)
     filter_bar = PlatformFilterBar(
         filter_json=filter_json,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        existing=parsed_filter,
     )
-    content = Fragment(filter_bar, content)
+    content = Fragment(quick_bar, filter_bar, content)
     return render_page(
         request,
         content,

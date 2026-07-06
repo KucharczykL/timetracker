@@ -130,6 +130,17 @@ def _filter_parse(filter_json: str) -> dict:
         return {}
 
 
+def parse_filter_dict(filter_json: str) -> dict:
+    """Lenient ``?filter=`` JSON → dict parse (garbage → ``{}``) for bar prefill.
+
+    The public face of ``_filter_parse``: list views call it once and hand the
+    same dict to both the quick bar and the flat bar (``existing=``), instead of
+    each bar re-parsing the identical string. All consumers treat the dict as
+    read-only.
+    """
+    return _filter_parse(filter_json)
+
+
 def _extract_labeled(items: list) -> list[LabeledOption]:
     """Convert filter values to ``(value, label)`` pairs.
 
@@ -1103,6 +1114,7 @@ class _FilterBarBase(BaseComponent):
         filter_json: str = "",
         preset_api_url: str = "",
         apply_url: str = "",
+        existing: dict | None = None,
     ) -> None:
         self.filter_json = filter_json
         self.preset_api_url = preset_api_url
@@ -1111,10 +1123,14 @@ class _FilterBarBase(BaseComponent):
         # render time; the explicit override exists for non-canonical mounts
         # (the synthetic e2e harnesses pass their own request.path) (#304).
         self.apply_url = apply_url
+        # ``existing`` lets the view share one parse_filter_dict result with
+        # the quick bar (both only read it); otherwise parse here.
         # Canonicalize TOP-LEVEL cross-entity sub-filters (stats-links /
         # filter_url) into the bar's AND shape so prefill reads a single shape
         # and stats-link landings pre-fill their widgets (#137).
-        self.existing = _canonicalize_cross_entity(_filter_parse(filter_json))
+        self.existing = _canonicalize_cross_entity(
+            existing if existing is not None else _filter_parse(filter_json)
+        )
 
     def build_fields(self) -> list:
         """Return the per-entity filter body. Implemented by each subclass."""

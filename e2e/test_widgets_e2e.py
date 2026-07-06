@@ -52,7 +52,10 @@ def open_filter_bar(page: Page) -> None:
 
 
 def status_filter_widget(page: Page):
-    return page.locator('search-select[name="status"]')
+    # Scoped to the flat bar: the quick filter bar (#197) renders a second
+    # search-select[name="status"] on the games list, so the bare selector
+    # would trip Playwright's strict mode.
+    return page.locator('#filter-bar search-select[name="status"]')
 
 
 def test_search_select_initializes_on_page_load(authenticated_page: Page, live_server):

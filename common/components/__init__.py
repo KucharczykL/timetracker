@@ -75,6 +75,14 @@ from common.components.filters import (
     StringFilter,
     field_widget,
     field_widget_templates,
+    parse_filter_dict,
+)
+from common.components.quick_filter import (
+    QUICK_FACET_KINDS,
+    QUICK_FACETS,
+    QuickFacet,
+    QuickFilterBar,
+    is_quick_editable,
 )
 from common.components.primitives import (
     H1,
@@ -287,6 +295,12 @@ __all__ = [
     "NumberFilter",
     "field_widget",
     "field_widget_templates",
+    "parse_filter_dict",
+    "QUICK_FACET_KINDS",
+    "QUICK_FACETS",
+    "QuickFacet",
+    "QuickFilterBar",
+    "is_quick_editable",
     "FieldComparisonSet",
     "FilterBuilder",
     "FilterCount",
