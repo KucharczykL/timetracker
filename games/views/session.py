@@ -137,28 +137,25 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         request=request,
     )
     from common.components import (
-        AdvancedFilterLink,
         ContentContainer,
         QuickFilterBar,
-        SessionFilterBar,
         parse_filter_dict,
     )
     from games.views.filtering import builder_url_for
 
+    # #315 tryout: the quick bar is the sessions list's only filter tier —
+    # the flat SessionFilterBar and the standalone AdvancedFilterLink are
+    # gone; the builder entry point lives in the bar's action group.
     filter_json = request.GET.get("filter", "")
     builder_url = builder_url_for("sessions", filter_json)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="sessions", existing=parsed_filter, builder_url=builder_url
-    )
-    filter_bar = SessionFilterBar(
-        filter_json=filter_json,
-        preset_api_url=reverse("api-1.0.0:list_presets"),
+        mode="sessions",
         existing=parsed_filter,
+        builder_url=builder_url,
+        advanced_button=True,
     )
-    content = ContentContainer()[
-        AdvancedFilterLink(url=builder_url), filter_bar, quick_bar, content
-    ]
+    content = ContentContainer()[quick_bar, content]
     return render_page(
         request,
         content,

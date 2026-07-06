@@ -195,10 +195,13 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("device-changed from:body", html)
 
     def test_list_page_filter_tiers_share_content_container(self):
-        """Issue #313: the quick bar, filter bar, and table all sit inside the
-        same non-navbar ``max-w-7xl`` content container (``ContentContainer``),
-        so the filter tiers align with the table instead of the viewport edge."""
-        html = self.get("games:list_sessions").content.decode()
+        """Issue #313: the filter tiers and the table all sit inside the same
+        non-navbar ``max-w-7xl`` content container (``ContentContainer``), so
+        they align with the table instead of the viewport edge. The games list
+        pins the three-tier layout; the sessions list (#315 tryout) dropped
+        the flat bar, so it pins quick bar + table only — and must NOT render
+        a flat filter-bar at all."""
+        html = self.get("games:list_games").content.decode()
         ancestry = _ContentContainerAncestry(
             ["quick-filter-bar", "filter-bar", "table"]
         )
@@ -206,7 +209,7 @@ class RenderedPagesTest(TestCase):
         self.assertEqual(
             set(ancestry.found),
             {"quick-filter-bar", "filter-bar", "table"},
-            "expected all three tiers on the sessions list page",
+            "expected all three tiers on the games list page",
         )
         self.assertNotIn(
             None,
@@ -217,6 +220,21 @@ class RenderedPagesTest(TestCase):
             len(set(ancestry.found.values())),
             1,
             f"tiers sit in different containers: {ancestry.found}",
+        )
+
+        sessions_html = self.get("games:list_sessions").content.decode()
+        self.assertNotIn("<filter-bar", sessions_html)
+        sessions_ancestry = _ContentContainerAncestry(["quick-filter-bar", "table"])
+        sessions_ancestry.feed(sessions_html)
+        self.assertEqual(
+            set(sessions_ancestry.found),
+            {"quick-filter-bar", "table"},
+            "expected quick bar + table on the sessions list page",
+        )
+        self.assertEqual(
+            len(set(sessions_ancestry.found.values())),
+            1,
+            f"tiers sit in different containers: {sessions_ancestry.found}",
         )
 
     # --- generic forms -------------------------------------------------------

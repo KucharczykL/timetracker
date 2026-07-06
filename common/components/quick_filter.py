@@ -32,7 +32,15 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.custom_elements import Dropdown, dropdown_combobox_panel_class
-from common.components.primitives import A, ButtonGroup, ControlButton, Div, Form, Span
+from common.components.primitives import (
+    A,
+    ButtonGroup,
+    ButtonGroupMember,
+    ControlButton,
+    Div,
+    Form,
+    Span,
+)
 from common.components.search_select import ComboboxDropdown
 from common.criteria import AttrName
 
@@ -198,9 +206,15 @@ class QuickFilterBar(BaseComponent):
         filter_json: str = "",
         builder_url: str = "",
         existing: dict | None = None,
+        advanced_button: bool = False,
     ) -> None:
         self.mode = mode
         self.builder_url = builder_url
+        # When the quick bar is the page's ONLY filter tier (#315 tryout:
+        # sessions dropped the flat FilterBar and its AdvancedFilterLink),
+        # the action group carries the builder entry point as a third
+        # segment: Apply | Clear | Advanced filter….
+        self.advanced_button = advanced_button
         # ``existing`` lets the view share one parse with the flat bar (both
         # only read it); otherwise the bar parses its own copy.
         self.existing = (
@@ -232,17 +246,7 @@ class QuickFilterBar(BaseComponent):
                     # (#315). Apply is a bare submit button; Clear is a plain
                     # link, not JS — radios and modifier selects have no
                     # per-widget "unset", so the bar needs a one-click reset.
-                    ButtonGroup(
-                        [
-                            {
-                                "slot": "Apply",
-                                "color": "blue",
-                                "button_attributes": [],
-                                "type": "submit",
-                            },
-                            {"slot": "Clear", "href": list_url_for(self.mode)},
-                        ]
-                    ),
+                    ButtonGroup(self._action_group_members()),
                 ]
             ]
         ]
@@ -306,6 +310,20 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config={"data_quick_facet": ""},
         )
+
+    def _action_group_members(self) -> list[ButtonGroupMember]:
+        members: list[ButtonGroupMember] = [
+            {
+                "slot": "Apply",
+                "color": "blue",
+                "button_attributes": [],
+                "type": "submit",
+            },
+            {"slot": "Clear", "href": list_url_for(self.mode)},
+        ]
+        if self.advanced_button and self.builder_url:
+            members.append({"slot": "Advanced filter…", "href": self.builder_url})
+        return members
 
     def _overflow_dropdown(self) -> Node:
         """The "⋯" priority-plus overflow menu: a ghost trigger whose panel

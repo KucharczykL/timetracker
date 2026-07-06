@@ -345,3 +345,25 @@ class DropdownFacetGuardTest(TestCase):
                     html,
                     rf'data-search-select-search[^>]*aria-label="{label}"',
                 )
+
+
+class AdvancedButtonTest(TestCase):
+    """The action group's third segment (#315): when the quick bar is the
+    page's only filter tier, the builder entry point joins Apply | Clear."""
+
+    def test_sessions_group_carries_advanced_filter_segment(self):
+        html = str(
+            QuickFilterBar(
+                mode="sessions",
+                filter_json="",
+                builder_url="/builder-url",
+                advanced_button=True,
+            )
+        )
+        group_html = html[html.index('role="group"') :]
+        self.assertIn(">Advanced filter…<", group_html)
+        self.assertIn('href="/builder-url"', group_html)
+
+    def test_default_group_has_no_advanced_segment(self):
+        html = str(QuickFilterBar(mode="games", filter_json="", builder_url="/x"))
+        self.assertNotIn("Advanced filter…", html)
