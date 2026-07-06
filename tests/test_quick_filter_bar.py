@@ -99,6 +99,13 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn(">Apply<", html)
         self.assertIn(">Clear<", html)
         self.assertIn(f'href="{list_url_for(mode)}"', html)
+        # Apply + Clear are one segmented ButtonGroup — a single visual unit
+        # that row wrapping can't separate (#315). Order is asserted inside
+        # the group's slice: the date facets' calendars carry their own
+        # ">Clear<" buttons earlier in the document.
+        self.assertIn('role="group"', html)
+        group_html = html[html.index('role="group"') :]
+        self.assertLess(group_html.index(">Apply<"), group_html.index(">Clear<"))
         derived_labels = {
             meta["name"]: meta["label"]
             for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))

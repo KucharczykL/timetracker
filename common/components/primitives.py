@@ -587,6 +587,10 @@ class ButtonGroupMember(TypedDict, total=False):
     action: str
     csrf_token: str
     button_attributes: list[HTMLAttribute]
+    # The <button type>: "submit" makes a bare-button member submit its
+    # ancestor form (the quick bar's Apply). Only meaningful with
+    # button_attributes; defaults to "button".
+    type: str
 
 
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
@@ -634,6 +638,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
                 method="" if is_plain_button else member.get("method", ""),
                 action=member.get("action", ""),
                 csrf_token=member.get("csrf_token", ""),
+                type=member.get("type", "button"),
             )[slot]
         )
 

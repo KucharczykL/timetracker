@@ -31,7 +31,7 @@ from common.components.filters import (
     field_widget,
     parse_filter_dict,
 )
-from common.components.primitives import A, ControlButton, Div, Form, Span
+from common.components.primitives import A, ButtonGroup, Div, Form, Span
 from common.components.search_select import ComboboxDropdown
 from common.criteria import AttrName
 
@@ -224,10 +224,22 @@ class QuickFilterBar(BaseComponent):
             Form()[
                 Div(class_=_QUICK_BAR_ROW_CLASS)[
                     *[self._facet(filter_cls, facet) for facet in facets],
-                    ControlButton(color="blue", type="submit")["Apply"],
-                    # A plain link, not JS: radios and modifier selects have no
+                    # One segmented group so the bar-level actions read as a
+                    # single unit and can't be separated by row wrapping
+                    # (#315). Apply is a bare submit button; Clear is a plain
+                    # link, not JS — radios and modifier selects have no
                     # per-widget "unset", so the bar needs a one-click reset.
-                    ControlButton(color="gray", href=list_url_for(self.mode))["Clear"],
+                    ButtonGroup(
+                        [
+                            {
+                                "slot": "Apply",
+                                "color": "blue",
+                                "button_attributes": [],
+                                "type": "submit",
+                            },
+                            {"slot": "Clear", "href": list_url_for(self.mode)},
+                        ]
+                    ),
                 ]
             ]
         ]
