@@ -317,21 +317,23 @@ class DropdownFacetGuardTest(TestCase):
     """The two ValueError guards behind the #315 dropdown facets: misuse must
     fail loudly at render, never emit a broken widget."""
 
-    def test_dropdown_facet_requires_a_set_or_date_field(self):
+    def test_dropdown_facet_rejects_panel_less_kinds(self):
+        # bool (and string) have no panel personality yet — only set, date
+        # and number facets may be dropdowns.
         from common.components.quick_filter import QuickFacet
 
-        bar = QuickFilterBar(mode="sessions", filter_json="")
-        filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])
-        number_facet = QuickFacet("duration_total_hours", "Duration", dropdown=True)
+        bar = QuickFilterBar(mode="games", filter_json="")
+        filter_cls = filter_for_model(FILTER_MODE_MODELS["games"])
+        bool_facet = QuickFacet("mastered", dropdown=True)
         with self.assertRaises(ValueError):
-            bar._facet(filter_cls, number_facet)
+            bar._facet(filter_cls, bool_facet)
 
-    def test_field_widget_panel_layout_requires_a_set_or_date_field(self):
+    def test_field_widget_panel_layout_rejects_panel_less_kinds(self):
         from common.components.filters import field_widget
 
-        filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])
+        filter_cls = filter_for_model(FILTER_MODE_MODELS["games"])
         with self.assertRaises(ValueError):
-            field_widget(filter_cls, "duration_total_hours", layout="panel")
+            field_widget(filter_cls, "mastered", layout="panel")
 
     def test_sessions_dropdown_facets_name_their_search_inputs(self):
         # The visible label lives on the trigger, so the combobox input inside

@@ -98,6 +98,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             "Duration (hrs)",
             placeholder="e.g. 1",
             placeholder2="e.g. 10",
+            dropdown=True,
         ),
     ],
     "purchases": [
@@ -276,10 +277,10 @@ class QuickFilterBar(BaseComponent):
         (the trigger is the label) and no min-width wrapper (the whole point
         is the trigger's natural width)."""
         kind = _field_meta(filter_cls, facet.field)["kind"]
-        if kind not in ("set", "date"):
+        if kind not in ("set", "date", "number"):
             raise ValueError(
-                f"QuickFacet {facet.field!r}: dropdown=True requires a set or "
-                "date field (the panel widget personalities)"
+                f"QuickFacet {facet.field!r}: dropdown=True requires a set, "
+                "date or number field (the panel widget personalities)"
             )
         return ComboboxDropdown(
             label=label,
@@ -289,6 +290,9 @@ class QuickFilterBar(BaseComponent):
                 value=self.existing.get(facet.field),
                 name_prefix=f"quick-{facet.field}",
                 label=label,
+                placeholder=facet.placeholder,
+                placeholder2=facet.placeholder2,
+                step=facet.step,
                 layout="panel",
             ),
             id=f"quick-{facet.field}-dropdown",

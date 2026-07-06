@@ -97,6 +97,8 @@ def test_quick_scalar_facet_filters_sessions(authenticated_page: Page, live_serv
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
+    # The Duration facet is a dropdown (#315): open its panel first.
+    page.locator("#quick-duration_total_hours-dropdownLink").click()
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
         "GREATER_THAN"

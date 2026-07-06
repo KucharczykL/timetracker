@@ -592,10 +592,15 @@ def field_widget(
         raise ValueError(
             f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
         )
-    if layout == "panel" and kind not in ("set", "date"):
+    # Panel-hostable kinds: set gets the FilterSelect panel personality, date
+    # the static-calendar DateRangePanel, and number embeds NumberFilter
+    # unchanged — its stacked select-above-inputs layout (too tall inline,
+    # #314) is exactly the natural shape inside a vertical dialog. string/bool
+    # have no panel form yet and still raise.
+    if layout == "panel" and kind not in ("set", "date", "number"):
         raise ValueError(
-            f"field_widget: layout='panel' requires a set or date field, but "
-            f"{filter_cls.__name__}.{field_name} is kind {kind!r}"
+            f"field_widget: layout='panel' requires a set, date or number "
+            f"field, but {filter_cls.__name__}.{field_name} is kind {kind!r}"
         )
     widget_path = path if path is not None else [field_name]
     prefix = name_prefix if name_prefix is not None else f"filter-{field_name}"
