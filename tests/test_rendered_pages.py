@@ -7,6 +7,7 @@ importantly — that nothing is double-escaped (the recurring failure mode when 
 """
 
 from datetime import datetime
+from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -17,6 +18,72 @@ from django.urls import reverse
 from games.models import Game, GameStatusChange, Platform, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+
+# Elements with no end tag — must not be pushed onto the ancestry stack.
+_VOID_ELEMENTS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+}
+
+
+class _ContentContainerAncestry(HTMLParser):
+    """For each target tag, record the nearest ``max-w-7xl`` ancestor *outside*
+    ``<nav>`` — the page-content container. The navbar has its own ``max-w-7xl``
+    div, so a flat "``max-w-7xl`` appears before X" string assertion is vacuous;
+    only real ancestry proves the filter tiers sit in the content container
+    (issue #313).
+    """
+
+    def __init__(self, target_tags: list[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self.target_tags = set(target_tags)
+        # (tag, container_id or None) per open element.
+        self._stack: list[tuple[str, int | None]] = []
+        self._container_count = 0
+        # target tag -> container id of its nearest content-container ancestor
+        # (None = no such ancestor), first occurrence only.
+        self.found: dict[str, int | None] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        ancestor_container = next(
+            (
+                container_id
+                for _, container_id in reversed(self._stack)
+                if container_id is not None
+            ),
+            None,
+        )
+        if tag in self.target_tags and tag not in self.found:
+            self.found[tag] = ancestor_container
+        container_id = None
+        classes = (dict(attrs).get("class") or "").split()
+        inside_nav = tag == "nav" or any(
+            open_tag == "nav" for open_tag, _ in self._stack
+        )
+        if "max-w-7xl" in classes and not inside_nav:
+            self._container_count += 1
+            container_id = self._container_count
+        if tag not in _VOID_ELEMENTS:
+            self._stack.append((tag, container_id))
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index][0] == tag:
+                del self._stack[index:]
+                break
+
 
 # If any of these appear in output, a SafeText lost its safe marker somewhere.
 _ESCAPED_TAG_MARKERS = [
@@ -126,6 +193,31 @@ class RenderedPagesTest(TestCase):
         # row-refresh wiring is gone.
         self.assertIn(f"session-{self.session.pk}-device", html)
         self.assertNotIn("device-changed from:body", html)
+
+    def test_list_page_filter_tiers_share_content_container(self):
+        """Issue #313: the quick bar, filter bar, and table all sit inside the
+        same non-navbar ``max-w-7xl`` content container (``ContentContainer``),
+        so the filter tiers align with the table instead of the viewport edge."""
+        html = self.get("games:list_sessions").content.decode()
+        ancestry = _ContentContainerAncestry(
+            ["quick-filter-bar", "filter-bar", "table"]
+        )
+        ancestry.feed(html)
+        self.assertEqual(
+            set(ancestry.found),
+            {"quick-filter-bar", "filter-bar", "table"},
+            "expected all three tiers on the sessions list page",
+        )
+        self.assertNotIn(
+            None,
+            ancestry.found.values(),
+            f"element(s) outside the content container: {ancestry.found}",
+        )
+        self.assertEqual(
+            len(set(ancestry.found.values())),
+            1,
+            f"tiers sit in different containers: {ancestry.found}",
+        )
 
     # --- generic forms -------------------------------------------------------
 
@@ -387,7 +479,8 @@ class RenderedPagesTest(TestCase):
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()
         for marker in [
-            "dark:text-white w-full",
+            # ContentContainer bakes the width classes; caller class appends.
+            "w-full max-w-7xl self-center dark:text-white",
             "font-bold font-serif",
             "Owned on",
             "Price per game:",

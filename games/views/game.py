@@ -10,13 +10,13 @@ from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 
 from common.components import (
-    CONTENT_MAX_WIDTH_CLASS,
     PageHeading,
     A,
     AddForm,
     AdvancedFilterLink,
     ButtonGroup,
     Column,
+    ContentContainer,
     CsrfInput,
     Div,
     FilterBar,
@@ -171,9 +171,9 @@ def list_games(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(
+    content = ContentContainer()[
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    )
+    ]
     return render_page(
         request,
         content,
@@ -716,9 +716,7 @@ def _history_section(game: Game) -> Node:
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
-    content = Div(
-        class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} self-center px-2",
-    )[
+    content = ContentContainer(class_="dark:text-white px-2")[
         _game_header(game, request, _game_overview_metrics(game)),
         _purchases_section(game),
         _sessions_section(game),

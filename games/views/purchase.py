@@ -12,16 +12,16 @@ from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
-    CONTENT_MAX_WIDTH_CLASS,
     A,
     AddForm,
     ButtonGroup,
     Checkbox,
     Column,
+    ContentContainer,
     CsrfInput,
     Div,
     Form,
@@ -210,9 +210,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(
+    content = ContentContainer()[
         quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    )
+    ]
     return render_page(
         request,
         content,
@@ -372,7 +372,7 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("games:list_purchases")
 
 
-def _view_purchase_content(purchase: Purchase) -> SafeText:
+def _view_purchase_content(purchase: Purchase) -> Node:
     first_game = purchase.first_game
     owned = f"Owned on {date_filter(purchase.date_purchased, 'd/m/Y')}"
     if purchase.date_refunded:
@@ -396,9 +396,7 @@ def _view_purchase_content(purchase: Purchase) -> SafeText:
         Div(class_=row_class)["Games included in this purchase:"],
         Ul()[[Li()[GameLink(game.id, game.name)] for game in purchase.games.all()]],
     ]
-    return Div(class_=f"dark:text-white w-full {CONTENT_MAX_WIDTH_CLASS} mx-auto")[
-        inner
-    ]
+    return ContentContainer(class_="dark:text-white")[inner]
 
 
 @login_required

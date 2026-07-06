@@ -1553,6 +1553,20 @@ def StyledTable(
     return Div(class_="shadow-md", hx_boost="false")[*inner_children]
 
 
+def ContentContainer(attrs: "AttrsArg | None" = None, **kwargs: object) -> Element:
+    """The page-body content container: fills #main-container's flex column
+    (``w-full``), caps at ``CONTENT_MAX_WIDTH_CLASS`` and centres itself
+    (``self-center``). Page bodies only — the navbar and popovers apply the
+    max-width constant with their own layout classes, and form/confirm pages
+    cap narrower via ``FORM_MAX_WIDTH_CLASS``/``AddForm``. Caller ``class``
+    accumulates onto the baked classes; children come via ``[]``.
+    """
+    baked: list[HTMLAttribute] = [
+        ("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")
+    ]
+    return Div(baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs))
+
+
 def paginated_table_content(
     data: TableData,
     *,
@@ -1560,19 +1574,19 @@ def paginated_table_content(
     elided_page_range=None,
     request=None,
 ) -> Node:
-    """Standard list-page body: a max-width Div wrapping a StyledTable.
+    """The list-page table: a StyledTable (+ pagination) built from ``data``.
 
     `data` is the table dict with keys ``columns``, ``rows`` and
-    ``header_action`` (the same shape every list view already builds).
+    ``header_action`` (the same shape every list view already builds). The
+    page-width container is the caller's job — list views wrap this, together
+    with their filter tiers, in :func:`ContentContainer` (issue #313).
     """
-    return Div(class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")[
-        StyledTable(
-            columns=data["columns"],
-            rows=data["rows"],
-            header_action=data["header_action"],
-            page_obj=page_obj,
-            elided_page_range=elided_page_range,
-            request=request,
-            sort_terms=data.get("sort_terms"),
-        )
-    ]
+    return StyledTable(
+        columns=data["columns"],
+        rows=data["rows"],
+        header_action=data["header_action"],
+        page_obj=page_obj,
+        elided_page_range=elided_page_range,
+        request=request,
+        sort_terms=data.get("sort_terms"),
+    )

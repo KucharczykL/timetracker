@@ -7,7 +7,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Column,
-    Fragment,
+    ContentContainer,
     Icon,
     PlatformFilterBar,
     QuickFilterBar,
@@ -93,7 +93,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = Fragment(quick_bar, filter_bar, content)
+    content = ContentContainer()[quick_bar, filter_bar, content]
     return render_page(
         request,
         content,
