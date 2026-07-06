@@ -19,6 +19,7 @@ function mount(): {
   const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
   const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
   const controller = attachMenu(host, toggle, menu);
+  controller.bindDocument();
   return { host, menu, controller };
 }
 

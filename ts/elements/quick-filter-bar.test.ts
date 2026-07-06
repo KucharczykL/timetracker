@@ -166,3 +166,112 @@ describe("<quick-filter-bar>", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 });
+
+// ── Priority-plus overflow (#315): stubbed-width layout math ──────────────
+
+interface OverflowFixture {
+  bar: HTMLElement & { layoutOverflow: () => void };
+  row: HTMLElement;
+  host: HTMLElement;
+  items: HTMLElement;
+  facets: HTMLElement[];
+  setRowWidth: (width: number) => void;
+}
+
+function stubWidth(element: HTMLElement, width: number): void {
+  Object.defineProperty(element, "offsetWidth", {
+    get: () => width,
+    configurable: true,
+  });
+}
+
+function mountOverflow(): OverflowFixture {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <drop-down data-quick-facet id="f1"></drop-down>
+          <drop-down data-quick-facet id="f2"></drop-down>
+          <drop-down data-quick-facet id="f3"></drop-down>
+          <div class="hidden" data-quick-overflow>
+            <div data-quick-overflow-items></div>
+          </div>
+          <div id="group"></div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as OverflowFixture["bar"];
+  const row = bar.querySelector<HTMLElement>("[data-quick-row]")!;
+  const host = bar.querySelector<HTMLElement>("[data-quick-overflow]")!;
+  const items = bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!;
+  const facets = Array.from(bar.querySelectorAll<HTMLElement>("[data-quick-facet]"));
+  // jsdom has no layout: stub the widths the element measures at connect.
+  // Measurement already happened in connectedCallback (all zeros), so stub
+  // and re-run setup by reconnecting the node.
+  facets.forEach((facet) => stubWidth(facet, 100));
+  stubWidth(host, 40);
+  stubWidth(bar.querySelector<HTMLElement>("#group")!, 80);
+  let rowWidth = 1000;
+  Object.defineProperty(row, "clientWidth", {
+    get: () => rowWidth,
+    configurable: true,
+  });
+  // Reconnect so setupOverflow measures the stubbed widths.
+  const parent = bar.parentElement!;
+  parent.removeChild(bar);
+  parent.appendChild(bar);
+  return {
+    bar,
+    row: bar.querySelector<HTMLElement>("[data-quick-row]")!,
+    host: bar.querySelector<HTMLElement>("[data-quick-overflow]")!,
+    items: bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!,
+    facets,
+    setRowWidth: (width: number) => {
+      rowWidth = width;
+    },
+  };
+}
+
+describe("quick-filter-bar priority-plus overflow (#315)", () => {
+  it("keeps all facets in the row when they fit", () => {
+    const fixture = mountOverflow();
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.items.children.length).toBe(0);
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    fixture.facets.forEach((facet) =>
+      expect(facet.parentElement).toBe(fixture.row),
+    );
+  });
+
+  it("spills rightmost facets into the overflow menu as the row narrows", () => {
+    const fixture = mountOverflow();
+    // reserved = group(80) + overflow(40); available = 300 - 120 = 180 → one
+    // 100px facet fits.
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    expect(fixture.facets[0].parentElement).toBe(fixture.row);
+    expect(fixture.facets[1].parentElement).toBe(fixture.items);
+    expect(fixture.facets[2].parentElement).toBe(fixture.items);
+    expect(fixture.host.classList.contains("hidden")).toBe(false);
+    // Spilled facets keep their original order inside the menu.
+    expect(Array.from(fixture.items.children).map((child) => child.id)).toEqual([
+      "f2",
+      "f3",
+    ]);
+  });
+
+  it("moves facets back, in order, when the row widens again", () => {
+    const fixture = mountOverflow();
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.items.children.length).toBe(0);
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    const rowIds = Array.from(
+      fixture.row.querySelectorAll("[data-quick-facet]"),
+    ).map((facet) => facet.id);
+    expect(rowIds).toEqual(["f1", "f2", "f3"]);
+  });
+});

@@ -31,7 +31,8 @@ from common.components.filters import (
     field_widget,
     parse_filter_dict,
 )
-from common.components.primitives import A, ButtonGroup, Div, Form, Span
+from common.components.custom_elements import Dropdown, dropdown_combobox_panel_class
+from common.components.primitives import A, ButtonGroup, ControlButton, Div, Form, Span
 from common.components.search_select import ComboboxDropdown
 from common.criteria import AttrName
 
@@ -223,8 +224,9 @@ class QuickFilterBar(BaseComponent):
             # A real <form> so Enter in any facet input applies, mirroring the
             # flat bar; the element intercepts submit and navigates.
             Form()[
-                Div(class_=_QUICK_BAR_ROW_CLASS)[
+                Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[
                     *[self._facet(filter_cls, facet) for facet in facets],
+                    self._overflow_dropdown(),
                     # One segmented group so the bar-level actions read as a
                     # single unit and can't be separated by row wrapping
                     # (#315). Apply is a bare submit button; Clear is a plain
@@ -299,7 +301,45 @@ class QuickFilterBar(BaseComponent):
             ghost=True,
             # The calendar has an intrinsic width; list panels keep w-72.
             panel_width="w-auto" if kind == "date" else "w-72",
+            # The priority-plus hook: the bar's TS moves overfull facets
+            # (whole <drop-down> nodes, widget state intact) into the "⋯"
+            # overflow menu as the row narrows.
+            config={"data_quick_facet": ""},
         )
+
+    def _overflow_dropdown(self) -> Node:
+        """The "⋯" priority-plus overflow menu: a ghost trigger whose panel
+        receives the facet dropdowns that don't fit the row
+        (``ts/elements/quick-filter-bar.ts``). Server-rendered hidden; the
+        bar's ResizeObserver layout unhides it while any facet is spilled.
+        Facets keep working inside it — the moved nodes are the same
+        elements, and the single-open coordination keeps this menu open when
+        a facet dropdown inside it opens (ancestor check)."""
+        trigger = ControlButton(
+            color="gray",
+            variant="ghost",
+            aria_label="More filters",
+            aria_haspopup="true",
+        )["⋯"].as_element()
+        panel = Div(
+            role="dialog",
+            aria_label="More filters",
+            # The shared dialog surface + a vertical stack for the moved
+            # facet triggers (their own dropdowns open position:fixed, so
+            # the surface's overflow-hidden never clips them).
+            class_=(
+                f"{dropdown_combobox_panel_class('w-auto')} "
+                "flex flex-col items-stretch gap-1"
+            ),
+            data_quick_overflow_items="",
+        )
+        return Div(class_="hidden", data_quick_overflow="")[
+            Dropdown(
+                trigger_element=trigger,
+                target_element=panel,
+                id=f"quick-{self.mode}-overflow",
+            )
+        ]
 
     def _degraded(self) -> Node:
         children: list[Node] = [Span(class_="text-body")["Advanced filter active"]]

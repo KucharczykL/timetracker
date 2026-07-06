@@ -93,7 +93,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         existing=parsed_filter,
     )
-    content = ContentContainer()[quick_bar, filter_bar, content]
+    content = ContentContainer()[filter_bar, quick_bar, content]
     return render_page(
         request,
         content,

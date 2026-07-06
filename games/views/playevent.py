@@ -166,7 +166,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         existing=parsed_filter,
     )
     content = ContentContainer()[
-        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
+        AdvancedFilterLink(url=builder_url), filter_bar, quick_bar, content
     ]
     return render_page(
         request,

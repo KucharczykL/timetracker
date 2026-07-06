@@ -273,3 +273,71 @@ def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
     page.locator("#quick-timestamp_start-dropdownLink").click()
     min_hidden = page.locator("#quick-timestamp_start-dropdown [data-range-min]")
     expect(min_hidden).to_have_value(today_iso)
+
+
+def test_priority_plus_overflow_collapses_and_restores(
+    authenticated_page: Page, live_server
+):
+    """#315 priority-plus: narrowing the viewport moves rightmost facets into
+    the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
+    working from inside it; widening moves them back and hides the menu."""
+    from datetime import datetime, timedelta, timezone
+
+    from games.models import Session
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    game = Game.objects.create(name="Doom", platform=platform)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    long_session = Session.objects.create(
+        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=3)
+    )
+    short_session = Session.objects.create(
+        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    )
+
+    page = authenticated_page
+    page.set_viewport_size({"width": 1400, "height": 900})
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    overflow = page.locator("[data-quick-overflow]")
+    overflow_items = page.locator("[data-quick-overflow-items]")
+    duration_facet = page.locator(
+        "drop-down[data-quick-facet]:has(#quick-duration_total_hours-dropdown)"
+    )
+
+    # Wide: everything inline, no ⋯.
+    expect(overflow).to_be_hidden()
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(0)
+
+    # Narrow: rightmost facets (Duration is last) spill into the ⋯ menu.
+    page.set_viewport_size({"width": 520, "height": 900})
+    expect(overflow).to_be_visible()
+    expect(
+        overflow_items.locator(
+            ":scope > drop-down:has(#quick-duration_total_hours-dropdown)"
+        )
+    ).to_have_count(1)
+
+    # The spilled facet still works: open ⋯ → open Duration → edit → Apply.
+    page.locator("#quick-sessions-overflowLink").click()
+    duration_facet.locator("#quick-duration_total_hours-dropdownLink").click()
+    duration_panel = page.locator("#quick-duration_total_hours-dropdown")
+    expect(duration_panel).to_be_visible()
+    duration_panel.locator("select[data-number-modifier-select]").select_option(
+        "GREATER_THAN"
+    )
+    duration_panel.locator('input[name="quick-duration_total_hours"]').fill("2")
+    _quick_apply(page)
+    page.wait_for_url("**filter=**")
+    assert _filter_from_url(page.url) == {
+        "duration_total_hours": {"value": 2, "modifier": "GREATER_THAN"}
+    }
+    expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
+    expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
+
+    # Widen: facets return to the row in order, ⋯ hides again.
+    page.set_viewport_size({"width": 1400, "height": 900})
+    expect(page.locator("[data-quick-overflow]")).to_be_hidden()
+    expect(
+        page.locator("[data-quick-overflow-items] [data-quick-facet]")
+    ).to_have_count(0)
