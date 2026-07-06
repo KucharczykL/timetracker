@@ -564,12 +564,28 @@ export class FilterGroupElement extends HTMLElement {
     return Boolean(left?.value);
   }
 
+  // Counts only TOUCHED-incomplete rows — the ones the builder's Apply gate
+  // exists for ("field chosen but value missing"). A pristine row (criterion
+  // with no field picked, comparison with no left column) is not incomplete:
+  // it prunes harmlessly at serialize time, and counting it would wrongly
+  // disable Apply whenever a blank starter row sits next to a completed
+  // sibling (the sessions-builder comparison e2e caught exactly that).
   private incompleteCount(node: GroupNode = this.tree, model: string = this.model): number {
     let count = 0;
     for (const child of node.children) {
       if (child.kind === "group") count += this.incompleteCount(child, model);
-      else if (child.kind === "criterion" && !this.leafComplete(child, model)) count += 1;
-      else if (child.kind === "comparison" && !this.comparisonComplete(child)) count += 1;
+      else if (
+        child.kind === "criterion" &&
+        child.field !== "" &&
+        !this.leafComplete(child, model)
+      )
+        count += 1;
+      else if (
+        child.kind === "comparison" &&
+        this.comparisonTouched(child) &&
+        !this.comparisonComplete(child)
+      )
+        count += 1;
       // A field-unset relation is incomplete (would serialize to `{"": …}`).
       else if (child.kind === "relation" && child.field === "") count += 1;
       // Owned groups (a relation's child, an aggregate leaf's scope) have
