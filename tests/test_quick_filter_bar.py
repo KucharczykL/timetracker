@@ -105,9 +105,18 @@ class QuickFilterBarRenderingTest(TestCase):
         }
         for facet in QUICK_FACETS[mode]:
             expected_label = facet.label or derived_labels[facet.field]
-            self.assertIn(f"{expected_label}:", html)
+            if facet.dropdown:
+                # A dropdown facet (#315 tryout) renders a "Label ▾" trigger
+                # opening a combobox dialog — no "Label:" span.
+                self.assertNotIn(f"{expected_label}:", html)
+                self.assertIn(f">{expected_label}<svg", html)
+                self.assertIn(f'id="quick-{facet.field}-dropdown"', html)
+                self.assertIn(f'aria-label="{expected_label}"', html)
+            else:
+                self.assertIn(f"{expected_label}:", html)
             # Attribute values are escaped, so the data-path JSON renders with
-            # &quot; entities.
+            # &quot; entities. Present for every facet — the serializer finds
+            # dropdown-facet widgets inside the (hidden) dialog panel too.
             self.assertIn(f'data-path="[&quot;{facet.field}&quot;]"', html)
 
     def test_blank_filter_renders_editable_for_every_mode(self):
@@ -295,3 +304,35 @@ class BuilderUrlForTest(TestCase):
             with self.subTest(mode=mode):
                 with self.assertRaises(LookupError):
                     builder_url_for(mode, "")
+
+
+class DropdownFacetGuardTest(TestCase):
+    """The two ValueError guards behind the #315 dropdown facets: misuse must
+    fail loudly at render, never emit a broken widget."""
+
+    def test_dropdown_facet_requires_a_set_field(self):
+        from common.components.quick_filter import QuickFacet
+
+        bar = QuickFilterBar(mode="sessions", filter_json="")
+        filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])
+        date_facet = QuickFacet("timestamp_start", "Started", dropdown=True)
+        with self.assertRaises(ValueError):
+            bar._facet(filter_cls, date_facet)
+
+    def test_field_widget_panel_layout_requires_a_set_field(self):
+        from common.components.filters import field_widget
+
+        filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])
+        with self.assertRaises(ValueError):
+            field_widget(filter_cls, "duration_total_hours", layout="panel")
+
+    def test_sessions_dropdown_facets_name_their_search_inputs(self):
+        # The visible label lives on the trigger, so the combobox input inside
+        # the panel must carry the accessible name itself.
+        html = str(QuickFilterBar(mode="sessions", filter_json=""))
+        for label in ("Game", "Device"):
+            with self.subTest(label=label):
+                self.assertRegex(
+                    html,
+                    rf'data-search-select-search[^>]*aria-label="{label}"',
+                )

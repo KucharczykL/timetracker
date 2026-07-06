@@ -141,3 +141,75 @@ def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_serv
     clear_link.click()
     page.wait_for_url(f"{live_server.url}{list_url}")
     assert _filter_from_url(page.url) == {}
+
+
+def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
+    """The #315 dropdown facets on the sessions list: open the Game panel,
+    include a game, remove a pill (the panel must stay open — the composedPath
+    close-guard fix), Apply, and round-trip back into an editable bar with the
+    pill inside the reopened panel."""
+    from datetime import datetime, timedelta, timezone
+
+    from games.models import Session
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    picked = Game.objects.create(name="Picked Game", platform=platform)
+    other = Game.objects.create(name="Other Game", platform=platform)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    picked_session = Session.objects.create(
+        game=picked, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    )
+    other_session = Session.objects.create(
+        game=other, timestamp_start=start, timestamp_end=start + timedelta(hours=1)
+    )
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    # Closed trigger: a ghost "Game ▾" button; the panel is hidden.
+    trigger = page.locator("#quick-game-dropdownLink")
+    panel = page.locator("#quick-game-dropdown")
+    expect(trigger).to_be_visible()
+    expect(panel).to_be_hidden()
+
+    # Open: search focused, options fetched (refetch-on-show), pick two games
+    # then remove one pill — the panel must survive the pill removal.
+    trigger.click()
+    expect(panel).to_be_visible()
+    widget = panel.locator('search-select[name="game"]')
+    expect(widget.locator("[data-search-select-search]")).to_be_focused()
+    widget.locator(
+        '[data-search-select-option][data-label="Picked Game (PC)"] '
+        '[data-search-select-action="include"]'
+    ).click()
+    widget.locator(
+        '[data-search-select-option][data-label="Other Game (PC)"] '
+        '[data-search-select-action="include"]'
+    ).click()
+    expect(widget.locator("[data-pill]")).to_have_count(2)
+    widget.locator(
+        '[data-pill][data-label="Other Game (PC)"] [data-pill-remove]'
+    ).click()
+    expect(widget.locator("[data-pill]")).to_have_count(1)
+    expect(panel).to_be_visible()
+
+    _quick_apply(page)
+    page.wait_for_url("**filter=**")
+    assert _filter_from_url(page.url) == {
+        "game": {
+            "value": [{"id": str(picked.pk), "label": "Picked Game (PC)"}],
+            "excludes": [],
+            "modifier": "INCLUDES",
+        }
+    }
+    expect(page.locator(f"#session-row-{picked_session.pk}")).to_be_visible()
+    expect(page.locator(f"#session-row-{other_session.pk}")).to_have_count(0)
+
+    # Round trip: still an editable bar (no degraded pill), and the include
+    # pill is server-rendered inside the reopened panel.
+    expect(page.get_by_text("Advanced filter active")).to_have_count(0)
+    page.locator("#quick-game-dropdownLink").click()
+    reopened = page.locator('#quick-game-dropdown search-select[name="game"]')
+    pill = reopened.locator("[data-pill]")
+    expect(pill).to_have_count(1)
+    expect(pill).to_contain_text("Picked Game (PC)")

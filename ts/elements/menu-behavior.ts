@@ -370,8 +370,19 @@ export function attachMenu(
     }
   });
 
+  // Containment must consult composedPath(): it is captured at dispatch time,
+  // so a click whose handler synchronously removes its own target (a filter
+  // pill's × inside a combobox panel) still counts as inside — by the time
+  // this document listener runs, `host.contains(event.target)` is already
+  // false for the detached node. The `contains` check stays as fallback for
+  // synthetic events dispatched without a path.
   const onDocumentClick = (event: MouseEvent): void => {
-    if (isOpen() && !host.contains(event.target as Node)) close();
+    if (!isOpen()) return;
+    const path = event.composedPath();
+    const inside = path.length
+      ? path.includes(host)
+      : host.contains(event.target as Node);
+    if (!inside) close();
   };
   document.addEventListener("click", onDocumentClick);
 

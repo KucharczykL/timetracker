@@ -153,7 +153,9 @@ from common.components.primitives import (
 )
 from common.components.search_select import (
     DEFAULT_PREFETCH,
+    ComboboxDropdown,
     FilterSelect,
+    FilterSelectLayout,
     LabeledOption,
     LoadPresetDropdown,
     OptionGroup,
@@ -236,7 +238,9 @@ __all__ = [
     "PopoverTruncated",
     "Radio",
     "DEFAULT_PREFETCH",
+    "ComboboxDropdown",
     "FilterSelect",
+    "FilterSelectLayout",
     "LabeledOption",
     "LoadPresetDropdown",
     "OptionGroup",

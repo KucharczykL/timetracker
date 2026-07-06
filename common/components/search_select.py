@@ -48,7 +48,7 @@ user types.
 """
 
 from collections.abc import Callable, Iterable, Sequence
-from typing import NamedTuple, TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 
 from common.components.core import Attributes, HTMLAttribute, Node
@@ -84,6 +84,12 @@ class SearchSelectOption(TypedDict):
 # needed — e.g. filter pill lists and modifier pseudo-options. The richer
 # SearchSelectOption adds a ``data`` dict for extra row attributes.
 LabeledOption = tuple[str, str]
+
+# FilterSelect's two visual personalities: "field" is the bordered form-field
+# look (flat filter bars); "panel" is the GitHub-label-picker look for widgets
+# hosted inside a ComboboxDropdown dialog (pills row above a self-bordered
+# search box, always-visible statically-flowing options).
+type FilterSelectLayout = Literal["field", "panel"]
 
 
 class OptionGroup(NamedTuple):
@@ -168,16 +174,19 @@ DEFAULT_PREFETCH = 20
 # state is expressed via Tailwind `data-[search-select-highlighted]` and
 # `group-data-[search-select-highlighted]` variants on the row/label/button
 # classes below; the JS only toggles the data attribute on the row.
+# max-w-full + a truncating label slot keep a long value (a full game title)
+# from overflowing a width-capped host — the ComboboxDropdown panel is w-72
+# with overflow-hidden. Applied in both layouts so the pill shape never forks.
 _FILTER_INCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded max-w-full "
     "bg-brand-soft text-heading"
 )
 _FILTER_EXCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded max-w-full "
     "bg-red-500/15 text-red-600 line-through decoration-red-400"
 )
 _FILTER_MODIFIER_PILL_CLASS = (
-    "inline-flex items-center px-2 py-0.5 text-sm rounded "
+    "inline-flex items-center px-2 py-0.5 text-sm rounded max-w-full "
     "bg-amber-500/15 text-amber-600 cursor-pointer"
 )
 _FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -481,7 +490,11 @@ def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
         data_value=str(option["value"]),
         data_label=option["label"],
         data_search_select_type=kind,
-    )[f"{symbol} ", _label_slot(option["label"]), _filter_remove_button()]
+    )[
+        f"{symbol} ",
+        _label_slot(option["label"], extra_class="truncate"),
+        _filter_remove_button(),
+    ]
 
 
 def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
@@ -490,7 +503,7 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
         class_=_FILTER_MODIFIER_PILL_CLASS,
         data_pill="",
         data_search_select_modifier=modifier_value,
-    )[_label_slot(label), _filter_remove_button()]
+    )[_label_slot(label, extra_class="truncate"), _filter_remove_button()]
 
 
 def _filter_action_button(action: str, symbol: str, title: str) -> Node:
@@ -558,6 +571,8 @@ def FilterSelect(
     id: str = "",
     free_text: bool = False,
     path: FilterWidgetPath | None = None,
+    layout: FilterSelectLayout = "field",
+    search_aria_label: str = "",
 ) -> Node:
     """Include/exclude filter combobox built on the shared ``_combobox_shell``.
 
@@ -579,7 +594,19 @@ def FilterSelect(
     option list, the JS builds an ephemeral option row from whatever the user
     types so the +/− buttons (and Enter) commit the typed string itself as an
     include / exclude pill.
+
+    ``layout="panel"`` renders the same widget in the panel personality (see
+    :data:`FilterSelectLayout`): pills in their own wrap row above a
+    self-bordered search box, options always visible and flowing statically —
+    for hosting inside a :func:`ComboboxDropdown` dialog. State logic,
+    templates, every ``data-search-select-*`` hook and the serializer DOM
+    contract are identical to the field layout.
+
+    ``search_aria_label`` names the search input (``aria-label``) — required
+    by panel callers, whose visible facet label lives on the dropdown trigger
+    rather than a ``<label>`` next to the widget.
     """
+    panel_layout = layout == "panel"
     normalized_options = [_normalize_option(option) for option in (options or [])]
     normalized_included = [_normalize_option(option) for option in (included or [])]
     normalized_excluded = [_normalize_option(option) for option in (excluded or [])]
@@ -604,15 +631,20 @@ def FilterSelect(
     for option in normalized_excluded:
         pills_children.append(_filter_value_pill(option, "exclude"))
 
-    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pills_children]
+    pills = Div(
+        data_search_select_pills="",
+        class_=_PANEL_PILLS_CLASS if panel_layout else _PILLS_CLASS,
+    )[*pills_children]
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _SEARCH_CLASS),
+        ("class", _PANEL_SEARCH_CLASS if panel_layout else _SEARCH_CLASS),
     ]
+    if search_aria_label:
+        search_attributes.append(("aria-label", search_aria_label))
 
     # ── Options: pinned modifier rows, then value rows (pre-rendered only when
     #    there is no search_url; otherwise the JS fetches them) ──
@@ -663,11 +695,12 @@ def FilterSelect(
         pills=pills,
         search_attributes=search_attributes,
         options_children=[*modifier_rows, *value_rows],
-        always_visible=False,
+        always_visible=panel_layout,
         items_visible=items_visible,
         # FilterSelect is always multi (include/exclude pill sets).
         multi_select=True,
         templates=templates,
+        options_class=_PANEL_OPTIONS_CLASS if panel_layout else None,
     )
     # The self-describe root attributes for the generic filter serializer. Only
     # filter-bar callers pass ``path``; synthetic/test callers leave it None and
@@ -682,28 +715,31 @@ def FilterSelect(
         multi="true",
         filter_mode="true",
         free_text="true" if free_text else "false",
-        always_visible="false",
+        always_visible="true" if panel_layout else "false",
         prefetch=prefetch,
         sync_url="false",
-        class_=_CONTAINER_CLASS,
+        class_=_PANEL_CONTAINER_CLASS if panel_layout else _CONTAINER_CLASS,
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
 
 
-# ── PresetSelect styling (issue #297) ────────────────────────────────────────
-# The preset-picker personality lives inside a <drop-down> combobox dialog
-# (LoadPresetDropdown below), so unlike the form/filter personalities it has no
-# bordered field wrapper: the search input is its own bordered field, and the
-# options panel flows statically below it on the dialog surface
-# (GitHub-label-picker layout).
-_PRESET_CONTAINER_CLASS = "block text-sm"
-_PRESET_SEARCH_CLASS = (
+# ── Panel personality styling (issues #297, #315) ───────────────────────────
+# The layout shared by every combobox-shell widget hosted inside a <drop-down>
+# combobox dialog (PresetSelect, panel-layout FilterSelect). Unlike the
+# form/filter field personalities it has no bordered field wrapper: the search
+# input is its own bordered field, and the options panel flows statically
+# below it on the dialog surface (GitHub-label-picker layout).
+_PANEL_CONTAINER_CLASS = "block text-sm"
+_PANEL_SEARCH_CLASS = (
     "w-full px-3 py-2 rounded-base border border-default-medium "
     "bg-neutral-secondary-medium text-sm text-heading placeholder:text-body "
     "focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
 )
-_PRESET_OPTIONS_CLASS = "mt-2 overflow-y-auto"
+_PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
+# Pills sit in their own wrap row above the search box; empty:hidden keeps an
+# empty pill set from adding a stray gap.
+_PANEL_PILLS_CLASS = "mb-2 flex flex-wrap gap-1 empty:hidden"
 _PRESET_OPTION_ROW_CLASS = (
     "group flex items-center justify-between px-3 py-2 text-sm text-heading "
     "cursor-pointer rounded "
@@ -767,7 +803,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         ("data-search-select-search", ""),
         ("placeholder", "Filter presets…"),
         ("autocomplete", "off"),
-        ("class", _PRESET_SEARCH_CLASS),
+        ("class", _PANEL_SEARCH_CLASS),
     ]
     templates: list[Node] = [
         Template(data_search_select_template="row")[_preset_option_row(_BLANK_OPTION)]
@@ -779,7 +815,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible=True,
         items_visible=items_visible,
         templates=templates,
-        options_class=_PRESET_OPTIONS_CLASS,
+        options_class=_PANEL_OPTIONS_CLASS,
         no_results_text="No saved presets",
     )
     return _SearchSelect(
@@ -791,40 +827,70 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
-        class_=_PRESET_CONTAINER_CLASS,
+        class_=_PANEL_CONTAINER_CLASS,
     )[*children]
 
 
-def LoadPresetDropdown(
-    *, api_url: str, mode: str, id: str = "load-preset-dropdown"
+def ComboboxDropdown(
+    *,
+    label: str,
+    content: Node,
+    id: str,
+    ghost: bool = False,
+    config: dict[str, str] | None = None,
 ) -> Node:
-    """The "Load preset ▾" trigger + combobox dialog, composed from the two
-    shared primitives (issue #297): ``<drop-down>`` owns the trigger, open/close,
-    outside-click, Escape and the panel surface; the panel hosts a
-    :func:`PresetSelect`. The ``combobox`` client behavior opts out of the
-    menu's item navigation and focuses the search box on open.
+    """A "Label ▾" trigger + combobox dialog, composed from the two shared
+    primitives (issues #297, #315): ``<drop-down>`` owns the trigger,
+    open/close, outside-click, Escape and the panel surface; the panel hosts
+    ``content`` (a combobox-shell widget such as :func:`PresetSelect` or a
+    panel-layout :func:`FilterSelect`). The ``combobox`` client behavior opts
+    out of the menu's item navigation, focuses the search box on open, and
+    refetches its options on every show.
 
-    The wrapper carries ``data-preset-picker`` — the discriminator consumers use
-    to tell the picker's ``search-select:change``/``search-select:action`` events
-    apart from other widgets', and the hook whose ``close()`` they call after a
-    pick.
+    ``ghost=True`` renders the trigger with the transparent-until-hover
+    ``ControlButton`` variant (the quick filter bar's compact facet look);
+    the default is the filled gray button. The dialog's accessible name is
+    always ``label`` — the trigger text names the panel it opens.
     """
-    trigger = ControlButton(color="gray", aria_haspopup="dialog")[
-        "Load preset",
+    trigger = ControlButton(
+        color="gray",
+        variant="ghost" if ghost else "filled",
+        aria_haspopup="dialog",
+    )[
+        label,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
     panel = Div(
         # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
         # inner widget provides the combobox/listbox semantics (#154).
         role="dialog",
-        aria_label="Load preset",
+        aria_label=label,
         class_=DROPDOWN_COMBOBOX_PANEL_CLASS,
-    )[PresetSelect(api_url=api_url, mode=mode)]
+    )[content]
     return Dropdown(
         trigger_element=trigger,
         target_element=panel,
         id=id,
         behavior="combobox",
+        config=config,
+    )
+
+
+def LoadPresetDropdown(
+    *, api_url: str, mode: str, id: str = "load-preset-dropdown"
+) -> Node:
+    """The "Load preset ▾" picker (issue #297): a :func:`ComboboxDropdown`
+    hosting a :func:`PresetSelect`.
+
+    The wrapper carries ``data-preset-picker`` — the discriminator consumers use
+    to tell the picker's ``search-select:change``/``search-select:action`` events
+    apart from other widgets', and the hook whose ``close()`` they call after a
+    pick.
+    """
+    return ComboboxDropdown(
+        label="Load preset",
+        content=PresetSelect(api_url=api_url, mode=mode),
+        id=id,
         config={"data_preset_picker": ""},
     )
 

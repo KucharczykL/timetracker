@@ -32,6 +32,7 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.primitives import A, ControlButton, Div, Form, Span
+from common.components.search_select import ComboboxDropdown
 from common.criteria import AttrName
 
 
@@ -41,10 +42,14 @@ class QuickFacet(NamedTuple):
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
     step: str = "1"  # number-input step, e.g. "0.01" for prices
+    # GitHub-style compact facet (#315 tryout): render a ghost "Label ▾"
+    # trigger whose dropdown panel hosts the widget, instead of the inline
+    # "Label: [widget]" pair. Set-kind facets only (enforced at render).
+    dropdown: bool = False
 
 
 # The leaf kinds a quick facet may have — the kinds the bar's serializer
-# (ts/elements/quick-filter-bar.ts readFacetWidget) can read back. Relations
+# (ts/elements/quick-filter-bar.ts, via the shared readLeafWidget) can read back. Relations
 # are excluded by construction (a cross-entity facet would serialize a relation
 # sub-filter, which the predicate below rejects).
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
@@ -84,8 +89,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         ),
     ],
     "sessions": [
-        QuickFacet("game"),
-        QuickFacet("device"),
+        QuickFacet("game", dropdown=True),
+        QuickFacet("device", dropdown=True),
         QuickFacet("timestamp_start", "Started"),
         QuickFacet("timestamp_end", "Ended"),
         QuickFacet(
@@ -231,6 +236,8 @@ class QuickFilterBar(BaseComponent):
         # Label defaults to the FieldMeta-derived one, so a filter-layer rename
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
+        if facet.dropdown:
+            return self._dropdown_facet(filter_cls, facet, label)
         # The quick- name prefix keeps scalar-widget input names (and the date
         # picker's hidden-input DOM ids) distinct from the flat bar's widgets
         # for the same fields on the same page.
@@ -248,6 +255,30 @@ class QuickFilterBar(BaseComponent):
             Span(class_=_FILTER_LABEL_CLASS)[f"{label}:"],
             Div(class_=_QUICK_WIDGET_WRAP_CLASS)[widget],
         ]
+
+    def _dropdown_facet(self, filter_cls: type, facet: QuickFacet, label: str) -> Node:
+        """A GitHub-style compact facet (#315 tryout): a ghost "Label ▾"
+        trigger whose combobox dialog hosts the panel-layout FilterSelect.
+        Rendered bare — no ``Label:`` span (the trigger is the label) and no
+        min-width wrapper (the whole point is the trigger's natural width)."""
+        if _field_meta(filter_cls, facet.field)["kind"] != "set":
+            raise ValueError(
+                f"QuickFacet {facet.field!r}: dropdown=True requires a set "
+                "field (the panel FilterSelect personality)"
+            )
+        return ComboboxDropdown(
+            label=label,
+            content=field_widget(
+                filter_cls,
+                facet.field,
+                value=self.existing.get(facet.field),
+                name_prefix=f"quick-{facet.field}",
+                label=label,
+                layout="panel",
+            ),
+            id=f"quick-{facet.field}-dropdown",
+            ghost=True,
+        )
 
     def _degraded(self) -> Node:
         children: list[Node] = [Span(class_="text-body")["Advanced filter active"]]

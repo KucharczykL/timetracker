@@ -1,6 +1,7 @@
 """Tests for the SearchSelect component, the Pill primitive, the games resolver,
 the search API endpoint, and the shared Game.search_label."""
 
+import re
 import unittest
 
 import django.test
@@ -10,6 +11,8 @@ from common.components import (
     searchselect_selected,
 )
 from common.components import (
+    ComboboxDropdown,
+    Div,
     FilterSelect,
     LoadPresetDropdown,
     Pill,
@@ -764,3 +767,102 @@ class LoadPresetDropdownTest(unittest.TestCase):
         media = collect_media(LoadPresetDropdown(api_url="/api/presets/", mode="games"))
         self.assertIn("dist/elements/drop-down.js", media.js)
         self.assertIn("dist/elements/search-select.js", media.js)
+
+
+class ComboboxDropdownTest(unittest.TestCase):
+    """The generic trigger + combobox dialog LoadPresetDropdown is built on
+    (#315 tryout)."""
+
+    @staticmethod
+    def _html(**kwargs) -> str:
+        return str(
+            ComboboxDropdown(
+                label="Game", content=Div()["panel content"], id="cbd", **kwargs
+            )
+        )
+
+    def test_structure_and_behavior(self):
+        html = self._html()
+        wrapper_tag = _tag_around(html, 'behavior="combobox"')
+        self.assertIn("<drop-down", wrapper_tag)
+        panel_tag = _tag_around(html, "data-menu")
+        self.assertIn('role="dialog"', panel_tag)
+        self.assertIn('aria-label="Game"', panel_tag)
+        self.assertIn("panel content", html)
+        toggle_tag = _tag_around(html, "data-toggle")
+        self.assertIn('aria-haspopup="dialog"', toggle_tag)
+        self.assertIn('aria-controls="cbd"', toggle_tag)
+
+    def test_default_trigger_is_filled_gray(self):
+        toggle_tag = _tag_around(self._html(), "data-toggle")
+        self.assertIn("bg-white", toggle_tag)
+        self.assertNotIn("border-transparent", toggle_tag)
+
+    def test_ghost_trigger_is_transparent_until_hover(self):
+        toggle_tag = _tag_around(self._html(ghost=True), "data-toggle")
+        self.assertIn("bg-transparent", toggle_tag)
+        self.assertIn("border-transparent", toggle_tag)
+        self.assertIn("hover:border-gray-200", toggle_tag)
+        self.assertIn("hover:bg-gray-100", toggle_tag)
+
+    def test_config_becomes_data_attributes(self):
+        html = self._html(config={"data_marker": ""})
+        wrapper_tag = _tag_around(html, 'behavior="combobox"')
+        self.assertIn("data-marker", wrapper_tag)
+
+
+class FilterSelectPanelLayoutTest(unittest.TestCase):
+    """layout="panel" (#315 tryout): the PresetSelect-style personality for a
+    FilterSelect hosted inside a ComboboxDropdown dialog. Only presentation
+    (and the always-visible flag) may differ from the field layout — the
+    data-* serializer contract must be identical."""
+
+    @staticmethod
+    def _html(layout: str, **kwargs) -> str:
+        return str(
+            FilterSelect(
+                field_name="game",
+                included=[("1", "Zelda")],
+                excluded=[("2", "Doom")],
+                modifier_options=[("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")],
+                search_url="/api/games/search",
+                path=["game"],
+                layout=layout,  # type: ignore[arg-type]
+                **kwargs,
+            )
+        )
+
+    def test_panel_root_is_a_block_not_a_bordered_field(self):
+        root_tag = _tag_around(self._html("panel"), "always-visible=")
+        self.assertIn('class="block text-sm"', root_tag)
+        self.assertIn('always-visible="true"', root_tag)
+
+    def test_field_root_keeps_the_bordered_field_look(self):
+        root_tag = _tag_around(self._html("field"), "always-visible=")
+        self.assertIn("focus-within:border-brand", root_tag)
+        self.assertIn('always-visible="false"', root_tag)
+
+    def test_panel_pills_row_hides_when_empty(self):
+        pills_tag = _tag_around(self._html("panel"), "data-search-select-pills")
+        self.assertIn("flex flex-wrap", pills_tag)
+        self.assertIn("empty:hidden", pills_tag)
+
+    def test_search_aria_label_names_the_input(self):
+        html = self._html("panel", search_aria_label="Game")
+        input_tag = _tag_around(html, "data-search-select-search")
+        self.assertIn('aria-label="Game"', input_tag)
+
+    def test_serializer_contract_is_layout_invariant(self):
+        # Every data-* hook the TS reads must appear identically in both
+        # layouts — the panel personality restyles, never rewires.
+        data_attribute = re.compile(r"data-[a-z-]+")
+        field_hooks = sorted(data_attribute.findall(self._html("field")))
+        panel_hooks = sorted(data_attribute.findall(self._html("panel")))
+        self.assertEqual(field_hooks, panel_hooks)
+
+    def test_pills_truncate_long_labels_in_both_layouts(self):
+        for layout in ("field", "panel"):
+            with self.subTest(layout=layout):
+                html = self._html(layout)
+                pill_tag = _tag_around(html, 'data-search-select-type="include"')
+                self.assertIn("max-w-full", pill_tag)

@@ -44,6 +44,7 @@ type ButtonVariant = Literal[
     "segmented",  # ButtonGroup member
     "outline",  # bordered dropdown-toggle look (colorless)
     "plain",  # borderless navbar nav-link look (colorless)
+    "ghost",  # transparent-until-hover dropdown-toggle look (colorless)
 ]
 
 # Shared disabled appearance for every form control, so all form elements look
@@ -421,6 +422,18 @@ _OUTLINE_VARIANT_CLASS = (
     "dark:hover:bg-gray-700 whitespace-nowrap"
 )
 
+# Ghost is the quiet outline sibling: invisible chrome at rest (transparent
+# background AND transparent border — the border box is always there, so
+# hover adds no layout shift), outline's bordered look on hover. Used by
+# compact triggers that would read as clutter in a row of many (the quick
+# filter bar's facet dropdowns).
+_GHOST_VARIANT_CLASS = (
+    f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    "border-transparent text-gray-900 hover:bg-gray-100 hover:border-gray-200 "
+    "dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:border-gray-600 "
+    "dark:hover:text-white whitespace-nowrap"
+)
+
 _PLAIN_VARIANT_CLASS = (
     "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
     "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
@@ -453,6 +466,8 @@ class ControlButton(BaseComponent):
     The dropdown-toggle variants are single-look and ignore ``color``:
     ``variant="outline"`` is the bordered toggle (split-button carets, value
     selectors — callers add rounding by shape, e.g. ``rounded-e-lg``);
+    ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
+    dropdown triggers) — outline's look on hover, invisible chrome at rest;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
 
@@ -480,6 +495,11 @@ class ControlButton(BaseComponent):
             class_attrs: list[HTMLAttribute] = [
                 ("class", _CONTROL_BASE_CLASS),
                 ("class", _OUTLINE_VARIANT_CLASS),
+            ]
+        elif variant == "ghost":
+            class_attrs = [
+                ("class", _CONTROL_BASE_CLASS),
+                ("class", _GHOST_VARIANT_CLASS),
             ]
         elif variant == "plain":
             class_attrs = [("class", _PLAIN_VARIANT_CLASS)]

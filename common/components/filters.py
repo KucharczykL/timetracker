@@ -47,6 +47,7 @@ from common.criteria import (
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     FilterSelect,
+    FilterSelectLayout,
     LabeledOption,
     OptionGroup,
     SearchSelect,
@@ -380,6 +381,8 @@ def _enum_filter(
     *,
     nullable,
     path: FilterWidgetPath | None = None,
+    layout: FilterSelectLayout = "field",
+    search_aria_label: str = "",
 ) -> Node:
     """A FilterSelect over a small, fully pre-rendered option set (enum field).
 
@@ -404,6 +407,8 @@ def _enum_filter(
         modifier=modifier,
         modifier_options=_modifier_options(nullable),
         path=path if path is not None else [field_name],
+        layout=layout,
+        search_aria_label=search_aria_label,
     )
 
 
@@ -415,6 +420,8 @@ def _model_filter(
     nullable,
     m2m_modifiers: list[LabeledOption] | None = None,
     path: FilterWidgetPath | None = None,
+    layout: FilterSelectLayout = "field",
+    search_aria_label: str = "",
 ) -> Node:
     """A FilterSelect backed by a search endpoint.
 
@@ -434,6 +441,8 @@ def _model_filter(
         search_url=search_url,
         prefetch=DEFAULT_PREFETCH,
         path=path if path is not None else [field_name],
+        layout=layout,
+        search_aria_label=search_aria_label,
     )
 
 
@@ -547,6 +556,7 @@ def field_widget(
     placeholder: str = "",
     placeholder2: str = "",
     step: str = "1",
+    layout: FilterSelectLayout = "field",
 ) -> Node:
     """Build a filter field's value control, dispatching by its ``FieldMeta`` kind.
 
@@ -569,12 +579,23 @@ def field_widget(
     presence (``IS_NULL``) modifier. The one such field is the Game bar's
     cross-entity Device, now correctly nullable (matches the Session bar + the
     ``Session.device`` column).
+
+    ``layout="panel"`` renders the set-kind ``FilterSelect`` in its panel
+    personality (hosted inside a ``ComboboxDropdown``) and names its search
+    input after the facet label. Only set fields have a panel form; any other
+    kind raises — a silent ignore here would hide a wiring bug, since this is
+    the shared dispatcher the bars and the nested builder both call.
     """
     meta = _field_meta(filter_cls, field_name)
     kind = meta["kind"]
     if kind == "relation":
         raise ValueError(
             f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
+        )
+    if layout == "panel" and kind != "set":
+        raise ValueError(
+            f"field_widget: layout='panel' requires a set field, but "
+            f"{filter_cls.__name__}.{field_name} is kind {kind!r}"
         )
     widget_path = path if path is not None else [field_name]
     prefix = name_prefix if name_prefix is not None else f"filter-{field_name}"
@@ -615,6 +636,11 @@ def field_widget(
     if kind == "set":
         choice = _choice_from_raw(blob)
         select_name = field_name_override or field_name
+        # In the panel personality the visible facet label lives on the
+        # dropdown trigger, so the search input carries the accessible name.
+        search_aria_label = (
+            (label if label is not None else meta["label"]) if layout == "panel" else ""
+        )
         if meta["search_url"]:
             return _model_filter(
                 select_name,
@@ -623,6 +649,8 @@ def field_widget(
                 nullable=meta["nullable"],
                 m2m_modifiers=_M2M_MODIFIERS if meta["is_m2m"] else None,
                 path=widget_path,
+                layout=layout,
+                search_aria_label=search_aria_label,
             )
         options = [
             (choice_meta["value"], choice_meta["label"])
@@ -634,6 +662,8 @@ def field_widget(
             choice,
             nullable=meta["nullable"],
             path=widget_path,
+            layout=layout,
+            search_aria_label=search_aria_label,
         )
     raise ValueError(
         f"field_widget: unhandled kind {kind!r} for {filter_cls.__name__}.{field_name}"

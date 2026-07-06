@@ -131,6 +131,29 @@ describe("<quick-filter-bar>", () => {
     expect(navigate).toHaveBeenCalledWith(LIST_URL);
   });
 
+  it("finds a set facet nested inside a hidden dropdown panel", () => {
+    // The #315 dropdown facets host their <search-select> inside a
+    // ComboboxDropdown's hidden [data-menu] dialog — serialization must be
+    // depth- and visibility-agnostic.
+    const { form, navigate } = mount(`
+      <drop-down behavior="combobox">
+        <button data-toggle type="button">Game</button>
+        <div data-menu hidden>
+          ${setFacet("game", includePill("1", "Outer Wilds"))}
+        </div>
+      </drop-down>`);
+    submit(form);
+    expect(navigate).toHaveBeenCalledWith(
+      applyUrl(LIST_URL, {
+        game: {
+          value: [{ id: "1", label: "Outer Wilds" }],
+          excludes: [],
+          modifier: "INCLUDES",
+        },
+      }),
+    );
+  });
+
   it("does not navigate on a facet change without Apply", () => {
     const { bar, navigate } = mount(setFacet("game", includePill("1", "X")));
     const widget = bar.querySelector('search-select[name="game"]') as HTMLElement;
