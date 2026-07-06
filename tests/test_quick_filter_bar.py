@@ -317,16 +317,16 @@ class DropdownFacetGuardTest(TestCase):
     """The two ValueError guards behind the #315 dropdown facets: misuse must
     fail loudly at render, never emit a broken widget."""
 
-    def test_dropdown_facet_requires_a_set_field(self):
+    def test_dropdown_facet_requires_a_set_or_date_field(self):
         from common.components.quick_filter import QuickFacet
 
         bar = QuickFilterBar(mode="sessions", filter_json="")
         filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])
-        date_facet = QuickFacet("timestamp_start", "Started", dropdown=True)
+        number_facet = QuickFacet("duration_total_hours", "Duration", dropdown=True)
         with self.assertRaises(ValueError):
-            bar._facet(filter_cls, date_facet)
+            bar._facet(filter_cls, number_facet)
 
-    def test_field_widget_panel_layout_requires_a_set_field(self):
+    def test_field_widget_panel_layout_requires_a_set_or_date_field(self):
         from common.components.filters import field_widget
 
         filter_cls = filter_for_model(FILTER_MODE_MODELS["sessions"])

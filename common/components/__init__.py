@@ -46,6 +46,7 @@ from common.components.custom_elements import (
 from common.components.date_range_picker import (
     DateRangeCalendar,
     DateRangeField,
+    DateRangePanel,
     DateRangePicker,
 )
 from common.components.domain import (
@@ -288,6 +289,7 @@ __all__ = [
     "_resolve_name_with_icon",
     "DateRangeCalendar",
     "DateRangeField",
+    "DateRangePanel",
     "DateRangePicker",
     "AdvancedFilterLink",
     "FilterBar",

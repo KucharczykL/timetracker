@@ -91,8 +91,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "sessions": [
         QuickFacet("game", dropdown=True),
         QuickFacet("device", dropdown=True),
-        QuickFacet("timestamp_start", "Started"),
-        QuickFacet("timestamp_end", "Ended"),
+        QuickFacet("timestamp_start", "Started", dropdown=True),
+        QuickFacet("timestamp_end", "Ended", dropdown=True),
         QuickFacet(
             "duration_total_hours",
             "Duration (hrs)",
@@ -270,13 +270,16 @@ class QuickFilterBar(BaseComponent):
 
     def _dropdown_facet(self, filter_cls: type, facet: QuickFacet, label: str) -> Node:
         """A GitHub-style compact facet (#315 tryout): a ghost "Label ▾"
-        trigger whose combobox dialog hosts the panel-layout FilterSelect.
-        Rendered bare — no ``Label:`` span (the trigger is the label) and no
-        min-width wrapper (the whole point is the trigger's natural width)."""
-        if _field_meta(filter_cls, facet.field)["kind"] != "set":
+        trigger whose combobox dialog hosts the panel-layout widget — the
+        FilterSelect personality for set facets, the static-calendar
+        DateRangePanel for date facets. Rendered bare — no ``Label:`` span
+        (the trigger is the label) and no min-width wrapper (the whole point
+        is the trigger's natural width)."""
+        kind = _field_meta(filter_cls, facet.field)["kind"]
+        if kind not in ("set", "date"):
             raise ValueError(
-                f"QuickFacet {facet.field!r}: dropdown=True requires a set "
-                "field (the panel FilterSelect personality)"
+                f"QuickFacet {facet.field!r}: dropdown=True requires a set or "
+                "date field (the panel widget personalities)"
             )
         return ComboboxDropdown(
             label=label,
@@ -290,6 +293,8 @@ class QuickFilterBar(BaseComponent):
             ),
             id=f"quick-{facet.field}-dropdown",
             ghost=True,
+            # The calendar has an intrinsic width; list panels keep w-72.
+            panel_width="w-auto" if kind == "date" else "w-72",
         )
 
     def _degraded(self) -> Node:

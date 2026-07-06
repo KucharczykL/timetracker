@@ -562,9 +562,18 @@ _DROPDOWN_PANEL_PLAIN_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
 )
 # The combobox dialog (the preset picker, #297): wider than a menu, bordered.
-DROPDOWN_COMBOBOX_PANEL_CLASS = (
-    f"{_DROPDOWN_PANEL_SURFACE} w-72 border border-gray-200 dark:border-gray-700"
+# Width is a knob: w-72 suits list-shaped content (presets, filter options);
+# content with an intrinsic width (the date facets' calendar) passes w-auto.
+_DROPDOWN_COMBOBOX_PANEL_BASE = (
+    f"{_DROPDOWN_PANEL_SURFACE} border border-gray-200 dark:border-gray-700"
 )
+
+
+def dropdown_combobox_panel_class(width: str = "w-72") -> str:
+    return f"{_DROPDOWN_COMBOBOX_PANEL_BASE} {width}"
+
+
+DROPDOWN_COMBOBOX_PANEL_CLASS = dropdown_combobox_panel_class()
 
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (

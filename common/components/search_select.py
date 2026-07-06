@@ -53,9 +53,9 @@ from typing import Literal, NamedTuple, TypedDict
 
 from common.components.core import Attributes, HTMLAttribute, Node
 from common.components.custom_elements import (
-    DROPDOWN_COMBOBOX_PANEL_CLASS,
     Dropdown,
     _SearchSelect,
+    dropdown_combobox_panel_class,
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
@@ -838,6 +838,7 @@ def ComboboxDropdown(
     id: str,
     ghost: bool = False,
     config: dict[str, str] | None = None,
+    panel_width: str = "w-72",
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives (issues #297, #315): ``<drop-down>`` owns the trigger,
@@ -851,6 +852,9 @@ def ComboboxDropdown(
     ``ControlButton`` variant (the quick filter bar's compact facet look);
     the default is the filled gray button. The dialog's accessible name is
     always ``label`` — the trigger text names the panel it opens.
+    ``panel_width`` sets the dialog width class: the default ``w-72`` suits
+    list-shaped content; content with an intrinsic width (a calendar) passes
+    ``w-auto``.
     """
     trigger = ControlButton(
         color="gray",
@@ -865,7 +869,7 @@ def ComboboxDropdown(
         # inner widget provides the combobox/listbox semantics (#154).
         role="dialog",
         aria_label=label,
-        class_=DROPDOWN_COMBOBOX_PANEL_CLASS,
+        class_=dropdown_combobox_panel_class(panel_width),
     )[content]
     return Dropdown(
         trigger_element=trigger,

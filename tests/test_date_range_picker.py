@@ -193,3 +193,54 @@ class PurchaseFilterBarDateRangePickerTest(TestCase):
         self.assertIn('value="2024-09-20"', html)
         self.assertIn('value="15" data-date-part="day" data-date-side="min"', html)
         self.assertIn('value="20" data-date-part="day" data-date-side="max"', html)
+
+
+class DateRangePanelTest(SimpleTestCase):
+    """The dropdown-panel variant (#315 tryout): same element and hidden-input
+    contract as DateRangePicker, but no calendar toggle, a statically flowing
+    always-visible calendar, and a Clear-only footer."""
+
+    @staticmethod
+    def _html() -> str:
+        from common.components import DateRangePanel
+
+        return str(
+            DateRangePanel(
+                label="Started",
+                input_name_prefix="quick-timestamp_start",
+                min_value="2026-01-01",
+                max_value="2026-02-01",
+                path=["timestamp_start"],
+            )
+        )
+
+    def test_static_discriminator_and_serializer_contract(self):
+        html = self._html()
+        self.assertIn("data-static-calendar", html)
+        self.assertIn('data-kind="date"', html)
+        self.assertIn('data-path="[&quot;timestamp_start&quot;]"', html)
+        self.assertIn('name="quick-timestamp_start-min"', html)
+        self.assertIn('name="quick-timestamp_start-max"', html)
+        self.assertIn('value="2026-01-01"', html)
+
+    def test_no_toggle_and_calendar_flows_statically(self):
+        html = self._html()
+        self.assertNotIn("data-date-range-calendar-toggle", html)
+        self.assertIn("data-date-range-calendar", html)
+        self.assertNotIn("hidden absolute", html)
+
+    def test_footer_is_clear_only(self):
+        html = self._html()
+        self.assertIn("data-date-range-clear", html)
+        self.assertNotIn("data-date-range-cancel", html)
+        self.assertNotIn("data-date-range-select", html)
+
+    def test_popup_variant_is_unchanged(self):
+        # The panel variant must not leak into the existing widget: the flat
+        # bar's DateRangePicker keeps toggle, hidden popup, and full footer.
+        html = str(DateRangePicker(label="Started", input_name_prefix="filter-started"))
+        self.assertIn("data-date-range-calendar-toggle", html)
+        self.assertIn("hidden absolute", html)
+        self.assertIn("data-date-range-cancel", html)
+        self.assertIn("data-date-range-select", html)
+        self.assertNotIn("data-static-calendar", html)

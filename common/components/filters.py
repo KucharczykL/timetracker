@@ -11,7 +11,7 @@ from common.components.custom_elements import (
     _FilterBarElement,
     list_url_for,
 )
-from common.components.date_range_picker import DateRangePicker
+from common.components.date_range_picker import DateRangePanel, DateRangePicker
 from common.components.search_select import LoadPresetDropdown
 from common.components.primitives import (
     A,
@@ -592,9 +592,9 @@ def field_widget(
         raise ValueError(
             f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
         )
-    if layout == "panel" and kind != "set":
+    if layout == "panel" and kind not in ("set", "date"):
         raise ValueError(
-            f"field_widget: layout='panel' requires a set field, but "
+            f"field_widget: layout='panel' requires a set or date field, but "
             f"{filter_cls.__name__}.{field_name} is kind {kind!r}"
         )
     widget_path = path if path is not None else [field_name]
@@ -624,7 +624,8 @@ def field_widget(
         )
     if kind == "date":
         bounds = _range_from_field(blob)
-        return DateRangePicker(
+        date_builder = DateRangePanel if layout == "panel" else DateRangePicker
+        return date_builder(
             label=label if label is not None else meta["label"],
             input_name_prefix=prefix,
             min_value=bounds.min,

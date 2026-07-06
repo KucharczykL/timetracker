@@ -213,3 +213,61 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
     pill = reopened.locator("[data-pill]")
     expect(pill).to_have_count(1)
     expect(pill).to_contain_text("Picked Game (PC)")
+
+
+def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
+    """The Started facet as a dropdown (#315): a ghost "Started ▾" trigger
+    opening a static always-visible calendar (no toggle, no Cancel/Select);
+    picking the Today preset and applying serializes a BETWEEN criterion."""
+    from datetime import date, datetime, timedelta, timezone
+
+    from games.models import Session
+
+    platform = Platform.objects.create(name="PC", icon="pc")
+    game = Game.objects.create(name="Doom", platform=platform)
+    now = datetime.now(timezone.utc)
+    today_session = Session.objects.create(
+        game=game, timestamp_start=now, timestamp_end=now + timedelta(hours=1)
+    )
+    old_start = datetime(2020, 1, 1, 12, 0, tzinfo=timezone.utc)
+    old_session = Session.objects.create(
+        game=game,
+        timestamp_start=old_start,
+        timestamp_end=old_start + timedelta(hours=1),
+    )
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    trigger = page.locator("#quick-timestamp_start-dropdownLink")
+    panel = page.locator("#quick-timestamp_start-dropdown")
+    expect(trigger).to_be_visible()
+    expect(panel).to_be_hidden()
+
+    trigger.click()
+    expect(panel).to_be_visible()
+    # Static calendar: grid rendered, no toggle / Cancel / Select controls.
+    expect(panel.locator("[data-date-range-grid] button[data-date]")).to_have_count(42)
+    expect(panel.locator("[data-date-range-calendar-toggle]")).to_have_count(0)
+    expect(panel.locator("[data-date-range-cancel]")).to_have_count(0)
+    expect(panel.locator("[data-date-range-select]")).to_have_count(0)
+
+    panel.locator('[data-date-range-preset="today"]').click()
+    _quick_apply(page)
+
+    page.wait_for_url("**filter=**")
+    today_iso = date.today().isoformat()
+    assert _filter_from_url(page.url) == {
+        "timestamp_start": {
+            "value": today_iso,
+            "value2": today_iso,
+            "modifier": "BETWEEN",
+        }
+    }
+    expect(page.locator(f"#session-row-{today_session.pk}")).to_be_visible()
+    expect(page.locator(f"#session-row-{old_session.pk}")).to_have_count(0)
+
+    # Round trip: reopened panel shows the committed range in the segments.
+    page.locator("#quick-timestamp_start-dropdownLink").click()
+    min_hidden = page.locator("#quick-timestamp_start-dropdown [data-range-min]")
+    expect(min_hidden).to_have_value(today_iso)

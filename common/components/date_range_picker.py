@@ -153,14 +153,19 @@ def DateRangeField(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
+    calendar_toggle: bool = True,
 ) -> Node:
     """The visible half of the DateRangePicker: a single-input-looking
     container holding two segmented dates, a calendar toggle, and the two
     hidden ISO inputs (``{prefix}-min`` / ``{prefix}-max``) that carry the
-    committed value to ``filter_bar.js``."""
+    committed value to ``filter_bar.js``.
+
+    ``calendar_toggle=False`` omits the toggle icon — the panel variant
+    (:func:`DateRangePanel`) shows its calendar statically, so there is
+    nothing to toggle."""
     min_input_id = f"{input_name_prefix}-min"
     max_input_id = f"{input_name_prefix}-max"
-    return Div(class_=_FIELD_CONTAINER_CLASS, data_date_range_field="")[
+    children: list[Node] = [
         Input(
             type="hidden",
             name=min_input_id,
@@ -180,16 +185,20 @@ def DateRangeField(
         _segment_group(side="min", label=label, iso_value=min_value),
         Span(class_="text-body select-none px-0.5")["–"],
         _segment_group(side="max", label=label, iso_value=max_value),
-        Button(
-            type="button",
-            data_date_range_calendar_toggle="",
-            aria_label=f"Open {label} calendar",
-            class_=(
-                "ms-auto p-1 text-body hover:text-heading rounded "
-                "cursor-pointer shrink-0"
-            ),
-        )[Safe(_CALENDAR_ICON_SVG)],
     ]
+    if calendar_toggle:
+        children.append(
+            Button(
+                type="button",
+                data_date_range_calendar_toggle="",
+                aria_label=f"Open {label} calendar",
+                class_=(
+                    "ms-auto p-1 text-body hover:text-heading rounded "
+                    "cursor-pointer shrink-0"
+                ),
+            )[Safe(_CALENDAR_ICON_SVG)]
+        )
+    return Div(class_=_FIELD_CONTAINER_CLASS, data_date_range_field="")[*children]
 
 
 def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
@@ -207,10 +216,22 @@ def _footer_button(action: str, label: str, button_class: str) -> Node:
     )[label]
 
 
-def DateRangeCalendar(*, input_name_prefix: str) -> Node:
+# The static (panel) calendar surface: no hidden/absolute/shadow — it flows in
+# the document below the field, on a dropdown dialog's own surface.
+_STATIC_CALENDAR_CLASS = (
+    "mt-2 flex rounded-base border border-default-medium bg-neutral-secondary-medium"
+)
+
+
+def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
     """The popup half of the DateRangePicker: preset column, month grid
     (filled client-side into ``[data-date-range-grid]``), and the
-    Cancel / Clear / Select footer. Hidden until the calendar toggle opens it."""
+    Cancel / Clear / Select footer. Hidden until the calendar toggle opens it.
+
+    ``static=True`` is the panel variant (:func:`DateRangePanel`): the
+    calendar flows statically, always visible, and the footer shrinks to
+    Clear alone — Cancel/Select only exist to close the popup, and the
+    hosting dropdown owns open/close."""
     preset_buttons = [
         Button(
             type="button",
@@ -219,8 +240,18 @@ def DateRangeCalendar(*, input_name_prefix: str) -> Node:
         )[preset_label]
         for preset_value, preset_label in _PRESET_OPTIONS
     ]
+    footer_buttons: list[Node] = []
+    if not static:
+        footer_buttons.append(_footer_button("cancel", "Cancel", _FOOTER_BUTTON_CLASS))
+    footer_buttons.append(_footer_button("clear", "Clear", _FOOTER_BUTTON_CLASS))
+    if not static:
+        footer_buttons.append(
+            _footer_button("select", "Select", _FOOTER_SELECT_BUTTON_CLASS)
+        )
     return Div(
-        class_=(
+        class_=_STATIC_CALENDAR_CLASS
+        if static
+        else (
             "hidden absolute z-20 top-full start-0 mt-1 flex "
             "rounded-base border border-default-medium "
             "bg-neutral-secondary-medium shadow-lg"
@@ -249,11 +280,7 @@ def DateRangeCalendar(*, input_name_prefix: str) -> Node:
                 class_=(
                     "flex justify-end gap-2 mt-2 pt-2 border-t border-default-medium"
                 ),
-            )[
-                _footer_button("cancel", "Cancel", _FOOTER_BUTTON_CLASS),
-                _footer_button("clear", "Clear", _FOOTER_BUTTON_CLASS),
-                _footer_button("select", "Select", _FOOTER_SELECT_BUTTON_CLASS),
-            ],
+            )[*footer_buttons],
         ],
     ]
 
@@ -288,4 +315,37 @@ def DateRangePicker(
             max_value=max_value,
         ),
         DateRangeCalendar(input_name_prefix=input_name_prefix),
+    ]
+
+
+def DateRangePanel(
+    *,
+    label: str,
+    input_name_prefix: str,
+    min_value: str = "",
+    max_value: str = "",
+    path: FilterWidgetPath | None = None,
+) -> Node:
+    """The dropdown-panel variant of :func:`DateRangePicker` (#315 tryout):
+    the segmented field (no calendar toggle) above a statically flowing,
+    always-visible calendar — for hosting inside a ``ComboboxDropdown``
+    dialog, whose surface can't host the absolute popup (the dropdown panel
+    clips overflow and scrolls vertically while open).
+
+    Same custom element, same hidden ``{prefix}-min``/``{prefix}-max``
+    contract, same serializer path. ``data-static-calendar`` is the client
+    discriminator: ``ts/elements/date-range-picker.ts`` renders the grid at
+    init, skips toggle/dismiss wiring, and never closes the calendar."""
+    widget_attributes = (
+        filter_widget_attributes(path, "date") if path is not None else []
+    )
+    return _DateRangePicker(widget_attributes, class_="block", data_static_calendar="")[
+        DateRangeField(
+            label=label,
+            input_name_prefix=input_name_prefix,
+            min_value=min_value,
+            max_value=max_value,
+            calendar_toggle=False,
+        ),
+        DateRangeCalendar(input_name_prefix=input_name_prefix, static=True),
     ]
