@@ -127,11 +127,12 @@ class RenderedPagesTest(TestCase):
     # --- scripts auto-collected from component media (Phase 4) ---------------
 
     def test_list_page_auto_loads_widget_scripts(self):
-        """The games list view passes no scripts= argument; the filter bar's
+        """The games list view passes no scripts= argument; the quick bar's
         components declare their JS and Page() collects it."""
         html = self.get("games:list_games").content.decode()
-        self.assertIn("js/dist/elements/filter-bar.js", html)
+        self.assertIn("js/dist/elements/quick-filter-bar.js", html)
         self.assertIn("js/dist/elements/search-select.js", html)
+        self.assertIn("js/dist/elements/drop-down.js", html)
 
     def test_stats_page_auto_loads_datepicker(self):
         """YearPicker declares the datepicker UMD bundle as media; the stats
@@ -195,47 +196,38 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("device-changed from:body", html)
 
     def test_list_page_filter_tiers_share_content_container(self):
-        """Issue #313: the filter tiers and the table all sit inside the same
-        non-navbar ``max-w-7xl`` content container (``ContentContainer``), so
-        they align with the table instead of the viewport edge. The games list
-        pins the three-tier layout; the sessions list (#315 tryout) dropped
-        the flat bar, so it pins quick bar + table only — and must NOT render
-        a flat filter-bar at all."""
-        html = self.get("games:list_games").content.decode()
-        ancestry = _ContentContainerAncestry(
-            ["quick-filter-bar", "filter-bar", "table"]
-        )
-        ancestry.feed(html)
-        self.assertEqual(
-            set(ancestry.found),
-            {"quick-filter-bar", "filter-bar", "table"},
-            "expected all three tiers on the games list page",
-        )
-        self.assertNotIn(
-            None,
-            ancestry.found.values(),
-            f"element(s) outside the content container: {ancestry.found}",
-        )
-        self.assertEqual(
-            len(set(ancestry.found.values())),
-            1,
-            f"tiers sit in different containers: {ancestry.found}",
-        )
-
-        sessions_html = self.get("games:list_sessions").content.decode()
-        self.assertNotIn("<filter-bar", sessions_html)
-        sessions_ancestry = _ContentContainerAncestry(["quick-filter-bar", "table"])
-        sessions_ancestry.feed(sessions_html)
-        self.assertEqual(
-            set(sessions_ancestry.found),
-            {"quick-filter-bar", "table"},
-            "expected quick bar + table on the sessions list page",
-        )
-        self.assertEqual(
-            len(set(sessions_ancestry.found.values())),
-            1,
-            f"tiers sit in different containers: {sessions_ancestry.found}",
-        )
+        """Issues #313/#315: every list page renders exactly one filter tier —
+        the quick bar — inside the same non-navbar ``max-w-7xl`` content
+        container (``ContentContainer``) as its table, and no flat filter-bar
+        at all (the flat-bar layer was deleted in the #315 rollout)."""
+        for url_name in (
+            "games:list_games",
+            "games:list_sessions",
+            "games:list_purchases",
+            "games:list_playevents",
+            "games:list_devices",
+            "games:list_platforms",
+        ):
+            with self.subTest(url_name=url_name):
+                html = self.get(url_name).content.decode()
+                self.assertNotIn("<filter-bar", html)
+                ancestry = _ContentContainerAncestry(["quick-filter-bar", "table"])
+                ancestry.feed(html)
+                self.assertEqual(
+                    set(ancestry.found),
+                    {"quick-filter-bar", "table"},
+                    f"expected quick bar + table on {url_name}",
+                )
+                self.assertNotIn(
+                    None,
+                    ancestry.found.values(),
+                    f"element(s) outside the content container: {ancestry.found}",
+                )
+                self.assertEqual(
+                    len(set(ancestry.found.values())),
+                    1,
+                    f"tiers sit in different containers: {ancestry.found}",
+                )
 
     # --- generic forms -------------------------------------------------------
 
@@ -585,12 +577,12 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("LATE-MARKER", html)
         # Pre-populated date inputs round-trip the filter bounds.
         self.assertIn(
-            'name="filter-date-purchased-min" id="filter-date-purchased-min" '
+            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
             'value="2024-01-01"',
             html,
         )
         self.assertIn(
-            'name="filter-date-purchased-max" id="filter-date-purchased-max" '
+            'name="quick-date_purchased-max" id="quick-date_purchased-max" '
             'value="2024-12-31"',
             html,
         )
@@ -611,12 +603,12 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
         self.assertIn(
-            'name="filter-date-purchased-min" id="filter-date-purchased-min" '
+            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
             'value="2024-06-15"',
             html,
         )
         self.assertIn(
-            'name="filter-date-purchased-max" id="filter-date-purchased-max" value=""',
+            'name="quick-date_purchased-max" id="quick-date_purchased-max" value=""',
             html,
         )
 

@@ -15,8 +15,18 @@ import { applyUrl } from "./filter-url.js";
 import {
   parseJSONAttr,
   readLeafWidget,
+  setupDeselectableRadios,
   setupModifierToggles,
 } from "./filter-widgets.js";
+
+// The preset picker's search-select change payload (issue #297): `last` is
+// the picked row, whose data-filter attribute carries the preset's filter
+// JSON.
+interface PresetChangeDetail {
+  name: string;
+  values: string[];
+  last: { value: string; label: string; data: Record<string, string> } | null;
+}
 
 // One collapsible facet: the <drop-down data-quick-facet> node and its
 // natural width in the row (measured once — ghost triggers have stable,
@@ -40,17 +50,42 @@ class QuickFilterBarElement extends HTMLElement {
   connectedCallback(): void {
     this.applyTarget = readQuickFilterBarProps(this).applyUrl;
     // Wires the number/string modifier selects (presence disables inputs,
-    // BETWEEN reveals the second) — same delegated hook the flat bar uses.
+    // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
+    setupDeselectableRadios(this);
     this.querySelector("form")?.addEventListener("submit", this.onSubmit);
+    this.addEventListener("search-select:change", this.onPresetPick);
     this.setupOverflow();
   }
 
   disconnectedCallback(): void {
     this.querySelector("form")?.removeEventListener("submit", this.onSubmit);
+    this.removeEventListener("search-select:change", this.onPresetPick);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
   }
+
+  // A pick inside the Load-preset picker navigates to the list carrying the
+  // preset's filter JSON. Facet search-selects bubble the same event; the
+  // [data-preset-picker] guard scopes this to the picker.
+  private onPresetPick = (event: Event): void => {
+    const detail = (event as CustomEvent<PresetChangeDetail>).detail;
+    if (!detail?.last) return;
+    const picker = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-preset-picker]",
+    );
+    if (!picker || !this.contains(picker)) return;
+    try {
+      const raw = detail.last.data.filter ?? "";
+      const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      // An empty preset means "show everything": applyUrl returns the bare list.
+      this.navigate(applyUrl(this.applyTarget, filter));
+    } catch (error) {
+      // Keep the "preset load failed" console substring (e2e crash guard).
+      console.error("quick-filter-bar: preset load failed", error);
+      window.toast("Preset is not a valid filter.", "error");
+    }
+  };
 
   // ── Priority-plus facet collapsing (#315) ────────────────────────────────
   // GitHub-style continuous collapse: no breakpoints. The row is watched by a

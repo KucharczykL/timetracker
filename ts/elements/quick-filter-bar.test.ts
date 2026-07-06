@@ -275,3 +275,131 @@ describe("quick-filter-bar priority-plus overflow (#315)", () => {
     expect(rowIds).toEqual(["f1", "f2", "f3"]);
   });
 });
+
+// ── Preset pick navigation (#297 picker as quick-bar row furniture) ────────
+
+function mountWithPicker(): {
+  bar: HTMLElement;
+  navigate: ReturnType<typeof vi.fn>;
+  pick: (filter: string | null) => void;
+} {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <div data-preset-picker>
+            <search-select name="preset"></search-select>
+          </div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as HTMLElement;
+  const navigate = vi.fn();
+  (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
+  const widget = bar.querySelector("search-select") as HTMLElement;
+  const pick = (filter: string | null): void => {
+    widget.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: {
+          name: "preset",
+          values: ["1"],
+          last: {
+            value: "1",
+            label: "My preset",
+            data: filter === null ? {} : { filter },
+          },
+        },
+      }),
+    );
+  };
+  return { bar, navigate, pick };
+}
+
+describe("quick-filter-bar preset pick", () => {
+  it("navigates to the list with the preset's filter JSON", () => {
+    const { navigate, pick } = mountWithPicker();
+    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
+    pick(JSON.stringify(filter));
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter));
+  });
+
+  it("an empty preset navigates to the bare list URL", () => {
+    const { navigate, pick } = mountWithPicker();
+    pick(null);
+    expect(navigate).toHaveBeenCalledWith(LIST_URL);
+  });
+
+  it("invalid preset JSON toasts and stays put", () => {
+    const { navigate, pick } = mountWithPicker();
+    const toast = vi.fn();
+    (window as unknown as { toast: typeof toast }).toast = toast;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    pick("{not json");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalled();
+    expect(consoleError.mock.calls[0][0]).toContain("preset load failed");
+  });
+
+  it("facet search-select changes are not treated as preset picks", () => {
+    document.body.innerHTML = `
+      <quick-filter-bar apply-url="${LIST_URL}">
+        <form><div data-quick-row>
+          <search-select name="game"></search-select>
+        </div></form>
+      </quick-filter-bar>`;
+    const bar = document.querySelector("quick-filter-bar") as HTMLElement;
+    const navigate = vi.fn();
+    (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    bar.querySelector("search-select")!.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "game", values: [], last: { value: "1", label: "X", data: {} } },
+      }),
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+// ── Overflow reserve counts furniture between host and group (#315) ────────
+
+it("reserves width for furniture after the overflow host (preset picker)", () => {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <drop-down data-quick-facet id="f1"></drop-down>
+          <drop-down data-quick-facet id="f2"></drop-down>
+          <div class="hidden" data-quick-overflow>
+            <div data-quick-overflow-items></div>
+          </div>
+          <div id="picker"></div>
+          <div id="group"></div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as HTMLElement & {
+    layoutOverflow: () => void;
+  };
+  const row = bar.querySelector<HTMLElement>("[data-quick-row]")!;
+  const facets = Array.from(bar.querySelectorAll<HTMLElement>("[data-quick-facet]"));
+  facets.forEach((facet) => stubWidth(facet, 100));
+  stubWidth(bar.querySelector<HTMLElement>("[data-quick-overflow]")!, 40);
+  stubWidth(bar.querySelector<HTMLElement>("#picker")!, 120);
+  stubWidth(bar.querySelector<HTMLElement>("#group")!, 80);
+  let rowWidth = 1000;
+  Object.defineProperty(row, "clientWidth", { get: () => rowWidth, configurable: true });
+  const parent = bar.parentElement!;
+  parent.removeChild(bar);
+  parent.appendChild(bar);
+
+  // Without the picker 300px would fit one 100px facet (reserve 120); with the
+  // 120px picker as furniture the reserve grows to 240 → nothing fits.
+  rowWidth = 300;
+  bar.layoutOverflow();
+  const items = bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!;
+  expect(items.children.length).toBe(2);
+  rowWidth = 1000;
+  bar.layoutOverflow();
+  expect(items.children.length).toBe(0);
+});

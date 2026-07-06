@@ -112,15 +112,12 @@ class QuickFilterBarRenderingTest(TestCase):
         }
         for facet in QUICK_FACETS[mode]:
             expected_label = facet.label or derived_labels[facet.field]
-            if facet.dropdown:
-                # A dropdown facet (#315 tryout) renders a "Label ▾" trigger
-                # opening a combobox dialog — no "Label:" span.
-                self.assertNotIn(f"{expected_label}:", html)
-                self.assertIn(f">{expected_label}<svg", html)
-                self.assertIn(f'id="quick-{facet.field}-dropdown"', html)
-                self.assertIn(f'aria-label="{expected_label}"', html)
-            else:
-                self.assertIn(f"{expected_label}:", html)
+            # Every facet is a "Label ▾" dropdown trigger opening a combobox
+            # dialog (#315) — no inline "Label:" span anywhere.
+            self.assertNotIn(f"{expected_label}:", html)
+            self.assertIn(f">{expected_label}<svg", html)
+            self.assertIn(f'id="quick-{facet.field}-dropdown"', html)
+            self.assertIn(f'aria-label="{expected_label}"', html)
             # Attribute values are escaped, so the data-path JSON renders with
             # &quot; entities. Present for every facet — the serializer finds
             # dropdown-facet widgets inside the (hidden) dialog panel too.
@@ -246,13 +243,14 @@ class QuickFilterBarRenderingTest(TestCase):
 
     def test_facet_labels_default_from_field_metadata(self):
         """A facet without a label override renders the FieldMeta-derived label
-        (e.g. games.status → "Status"), so filter-layer renames propagate."""
+        (e.g. games.status → "Status") on the dropdown trigger, so filter-layer
+        renames propagate."""
         html = str(QuickFilterBar(mode="games", filter_json="", builder_url="/x"))
-        self.assertIn("Status:", html)
-        self.assertIn("Platform:", html)
+        self.assertIn(">Status<svg", html)
+        self.assertIn(">Platform<svg", html)
         # And an override still wins where the compact wording differs.
-        self.assertIn("Year:", html)
-        self.assertNotIn("Year Released:", html)
+        self.assertIn(">Year<svg", html)
+        self.assertNotIn("Year Released", html)
 
     def test_degraded_pill_without_builder_url_omits_edit_link(self):
         """Modes without a nested-builder page (devices/platforms) pass no
@@ -313,29 +311,8 @@ class BuilderUrlForTest(TestCase):
                     builder_url_for(mode, "")
 
 
-class DropdownFacetGuardTest(TestCase):
-    """The two ValueError guards behind the #315 dropdown facets: misuse must
-    fail loudly at render, never emit a broken widget."""
-
-    def test_dropdown_facet_rejects_panel_less_kinds(self):
-        # bool (and string) have no panel personality yet — only set, date
-        # and number facets may be dropdowns.
-        from common.components.quick_filter import QuickFacet
-
-        bar = QuickFilterBar(mode="games", filter_json="")
-        filter_cls = filter_for_model(FILTER_MODE_MODELS["games"])
-        bool_facet = QuickFacet("mastered", dropdown=True)
-        with self.assertRaises(ValueError):
-            bar._facet(filter_cls, bool_facet)
-
-    def test_field_widget_panel_layout_rejects_panel_less_kinds(self):
-        from common.components.filters import field_widget
-
-        filter_cls = filter_for_model(FILTER_MODE_MODELS["games"])
-        with self.assertRaises(ValueError):
-            field_widget(filter_cls, "mastered", layout="panel")
-
-    def test_sessions_dropdown_facets_name_their_search_inputs(self):
+class DropdownFacetA11yTest(TestCase):
+    def test_set_facets_name_their_search_inputs(self):
         # The visible label lives on the trigger, so the combobox input inside
         # the panel must carry the accessible name itself.
         html = str(QuickFilterBar(mode="sessions", filter_json=""))
@@ -347,23 +324,60 @@ class DropdownFacetGuardTest(TestCase):
                 )
 
 
-class AdvancedButtonTest(TestCase):
-    """The action group's third segment (#315): when the quick bar is the
-    page's only filter tier, the builder entry point joins Apply | Clear."""
+class ActionGroupTest(TestCase):
+    """The action group (#315): Apply | Clear, plus the builder entry point
+    whenever the mode has a builder page (builder_url non-empty)."""
 
-    def test_sessions_group_carries_advanced_filter_segment(self):
+    def test_builder_url_adds_advanced_filter_segment(self):
         html = str(
-            QuickFilterBar(
-                mode="sessions",
-                filter_json="",
-                builder_url="/builder-url",
-                advanced_button=True,
-            )
+            QuickFilterBar(mode="sessions", filter_json="", builder_url="/builder-url")
         )
         group_html = html[html.index('role="group"') :]
         self.assertIn(">Advanced filter…<", group_html)
         self.assertIn('href="/builder-url"', group_html)
 
-    def test_default_group_has_no_advanced_segment(self):
-        html = str(QuickFilterBar(mode="games", filter_json="", builder_url="/x"))
+    def test_no_builder_url_no_advanced_segment(self):
+        html = str(QuickFilterBar(mode="devices", filter_json=""))
         self.assertNotIn("Advanced filter…", html)
+
+
+class PresetPickerTest(TestCase):
+    """The Load-preset picker rides in the bar as non-collapsible row
+    furniture when a preset API URL is given (#297, #315) — load-only."""
+
+    def test_preset_api_url_renders_the_picker_after_the_overflow_host(self):
+        html = str(
+            QuickFilterBar(mode="games", filter_json="", preset_api_url="/api/presets/")
+        )
+        self.assertIn("data-preset-picker", html)
+        self.assertIn('id="quick-games-preset-picker"', html)
+        self.assertIn('search-url="/api/presets/?mode=games"', html)
+        # Furniture placement: picker AFTER the ⋯ overflow host (the TS
+        # reserve calc treats post-overflow siblings as non-collapsible).
+        self.assertLess(
+            html.index("data-quick-overflow"), html.index("data-preset-picker")
+        )
+
+    def test_no_preset_api_url_no_picker(self):
+        html = str(QuickFilterBar(mode="games", filter_json=""))
+        self.assertNotIn("data-preset-picker", html)
+
+
+class ApplyUrlOverrideTest(TestCase):
+    """apply_url gates every derived list URL (#304): synthetic e2e harnesses
+    render the bar under a stripped ROOT_URLCONF where reverse() would crash."""
+
+    def test_apply_url_reaches_element_and_clear(self):
+        html = str(QuickFilterBar(mode="games", filter_json="", apply_url="/synthetic"))
+        self.assertIn('apply-url="/synthetic"', html)
+        self.assertIn('href="/synthetic"', html)
+
+    def test_apply_url_reaches_the_degraded_pill(self):
+        filter_json = json.dumps({"AND": [{"status": {"value": ["f"]}}]})
+        html = str(
+            QuickFilterBar(
+                mode="games", filter_json=filter_json, apply_url="/synthetic"
+            )
+        )
+        self.assertIn("Advanced filter active", html)
+        self.assertIn('href="/synthetic"', html)

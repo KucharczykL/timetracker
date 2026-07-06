@@ -153,7 +153,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         mode="sessions",
         existing=parsed_filter,
         builder_url=builder_url,
-        advanced_button=True,
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
     content = ContentContainer()[quick_bar, content]
     return render_page(

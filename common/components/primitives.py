@@ -34,7 +34,7 @@ from common.components.core import (
     randomid,
 )
 from common.components.icons_generated import ICON_NODES
-from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
+from common.criteria import FilterWidgetPath, LeafWidgetKind
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate_info
 
@@ -57,39 +57,21 @@ DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-a
 
 def filter_widget_attributes(
     path: FilterWidgetPath,
-    kind: FilterWidgetKind,
-    *,
-    relation_child: RelationChild | None = None,
+    kind: LeafWidgetKind,
 ) -> list[HTMLAttribute]:
-    """The self-describe attributes every filter-bar widget root carries.
+    """The self-describe attributes every filter widget root carries.
 
-    The generic serializer in ``ts/elements/filter-bar.ts`` reads ``data-path``
-    (the widget's filter-JSON key, as a JSON array) and ``data-kind`` off any
-    ``[data-filter-widget]`` root to handle all widgets uniformly. See issue #123
-    Phase 2.
-
-    Cross-entity widgets are recognised by the serializer from their ``data-path``
-    alone: a multi-segment path is a relation chain, so instead of writing the
-    leaf at ``data-path`` top-level the serializer folds ``data-path`` into a
-    nested object and appends it as its own element of the parent's n-ary ``AND``
-    list — several widgets targeting the same relation compose as *independent*
-    EXISTS rather than merging into one shared relation node (issue #123 Phase 2d;
-    issue #138 removed the redundant ``data-compose`` marker).
-
-    ``relation_child`` (with ``kind="relation-bool"``) supplies the fixed child
-    criterion of a relation toggled by a boolean radio: ``data-path`` is the
-    relation chain *without* a leaf and ``data-relation-child`` is the child
-    keyed by field, e.g. ``{"emulated": {"value": True, "modifier": "EQUALS"}}``.
-    A ``True`` radio matches ANY, ``False`` sets ``match: "NONE"``.
+    The generic serializers (``ts/elements/quick-filter-bar.ts`` and the
+    builder's leaf readers in ``ts/elements/filter-widgets.ts``) read
+    ``data-path`` (the widget's filter-JSON key, as a JSON array) and
+    ``data-kind`` off any ``[data-filter-widget]`` root to handle all widgets
+    uniformly. See issue #123 Phase 2.
     """
-    attributes: list[HTMLAttribute] = [
+    return [
         ("data-filter-widget", ""),
         ("data-path", json.dumps(path)),
         ("data-kind", kind),
     ]
-    if relation_child is not None:
-        attributes.append(("data-relation-child", json.dumps(relation_child)))
-    return attributes
 
 
 # The single max-width every content container obeys — navbar, page bodies

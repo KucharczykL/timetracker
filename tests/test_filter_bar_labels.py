@@ -1,6 +1,6 @@
-"""The filter bar must render a filter whose choice/multi values are bare
-(no embedded {id, label}) — e.g. a programmatically built filter from
-stats_links — without crashing (#65)."""
+"""Filter set-criterion labels must survive round-trips whose choice/multi
+values are bare (no embedded {id, label}) — e.g. a programmatically built
+filter from stats_links (#65)."""
 
 from common.components.filters import _extract_labeled
 
@@ -20,15 +20,15 @@ def test_extract_labeled_handles_bare_ints():
 
 def test_stats_link_prefills_labelled_choice():
     """End-to-end (#224): a server-built stats-link that embeds an id's label
-    serializes it into the ``?filter=`` JSON, so the bar prefills a labelled pill
-    rather than a bare id."""
+    serializes it into the ``?filter=`` JSON, so the quick bar prefills a
+    labelled pill rather than a bare id."""
     import json
 
-    from common.components.filters import _filter_get_choice
+    from common.components.filters import _choice_from_raw
     from common.criteria import MultiCriterion
     from games.filters import SessionFilter
 
     link = SessionFilter(game=MultiCriterion(value=[5], labels={5: "Hollow Knight"}))
     existing = json.loads(json.dumps(link.to_json()))
-    choice = _filter_get_choice(existing, "game")
+    choice = _choice_from_raw(existing.get("game") or {})
     assert choice.selected == [("5", "Hollow Knight")]

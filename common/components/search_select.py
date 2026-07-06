@@ -881,10 +881,11 @@ def ComboboxDropdown(
 
 
 def LoadPresetDropdown(
-    *, api_url: str, mode: str, id: str = "load-preset-dropdown"
+    *, api_url: str, mode: str, id: str = "load-preset-dropdown", ghost: bool = False
 ) -> Node:
     """The "Load preset ▾" picker (issue #297): a :func:`ComboboxDropdown`
-    hosting a :func:`PresetSelect`.
+    hosting a :func:`PresetSelect`. ``ghost`` selects the quiet trigger (the
+    quick filter bar); the builder toolbar keeps the filled gray default.
 
     The wrapper carries ``data-preset-picker`` — the discriminator consumers use
     to tell the picker's ``search-select:change``/``search-select:action`` events
@@ -895,6 +896,7 @@ def LoadPresetDropdown(
         label="Load preset",
         content=PresetSelect(api_url=api_url, mode=mode),
         id=id,
+        ghost=ghost,
         config={"data_preset_picker": ""},
     )
 

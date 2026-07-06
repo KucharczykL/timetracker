@@ -54,8 +54,8 @@ def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_serve
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
+    page.locator("#quick-status-dropdownLink").click()
     widget = page.locator('quick-filter-bar search-select[name="status"]')
-    widget.locator("[data-search-select-search]").click()
     widget.locator('[data-search-select-option][data-label="Finished"]').click()
     _quick_apply(page)
 
@@ -341,3 +341,41 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(
         page.locator("[data-quick-overflow-items] [data-quick-facet]")
     ).to_have_count(0)
+
+
+def test_preset_pick_on_builderless_mode(
+    authenticated_page: Page, live_server, django_user_model
+):
+    """The quick bar's Load-preset picker works on a builderless mode
+    (devices): picking navigates with the preset's ?filter=; Enter inside the
+    picker's search box never applies the facet form (#297/#315)."""
+    from games.models import Device, FilterPreset
+
+    Device.objects.create(name="Steam Deck")
+    Device.objects.create(name="Desktop")
+    user = django_user_model.objects.get(username="tester")
+    stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
+    FilterPreset.objects.create(
+        user=user, name="DeckOnly", mode="devices", object_filter=stored_filter
+    )
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_devices')}")
+
+    picker = page.locator("quick-filter-bar [data-preset-picker]")
+    picker.locator("[data-toggle]").click()
+    search = picker.locator("[data-search-select-search]")
+    expect(search).to_be_focused()
+
+    # Enter in the picker's search box must not submit the facet form.
+    search.press("Enter")
+    expect(page).to_have_url(f"{live_server.url}{reverse('games:list_devices')}")
+
+    row = picker.locator("[data-search-select-option]").filter(has_text="DeckOnly")
+    expect(row).to_be_visible(timeout=5_000)
+    with page.expect_navigation():
+        row.click()
+
+    assert "?filter=" in page.url
+    expect(page.locator("table")).to_contain_text("Steam Deck")
+    expect(page.locator("table")).not_to_contain_text("Desktop")

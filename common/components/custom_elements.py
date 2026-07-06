@@ -208,15 +208,6 @@ register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
 _DateRangePicker = custom_element_builder("date-range-picker")
 
 
-class FieldComparisonSetProps(TypedDict):
-    columns: str  # JSON of list[ComparableColumn] — drives client option building
-    mode: str  # "AND" | "OR" — how the comparison rows combine
-
-
-register_element("field-comparison-set", "FieldComparisonSet", FieldComparisonSetProps)
-_FieldComparisonSet = custom_element_builder("field-comparison-set")
-
-
 class FilterGroupProps(TypedDict):
     # Root model key (e.g. "game"); the deserializer selects its serialization model
     # from it and the client reads the root bundle as ``models[model]``.
@@ -225,8 +216,7 @@ class FilterGroupProps(TypedDict):
     # bundle for every relation-reachable model (#193). One normalized source: the
     # leaf row (#192) reads ``fields``, the field-comparison leaf (#246) reads
     # ``columns``, and each relation's child group (#193) reads the *target* model's
-    # bundle. Mirrors the FieldComparisonSetProps.columns precedent (JSON in a str
-    # prop).
+    # bundle (a JSON-in-a-string prop).
     models: str
     # Initial ?filter= JSON, deserialized on connect so the server-rendered
     # filter is reflected on parse (comp 10, #196). Empty -> the empty-root
@@ -441,16 +431,6 @@ class SearchSelectProps(TypedDict):
 
 register_element("search-select", "SearchSelect", SearchSelectProps)
 _SearchSelect = custom_element_builder("search-select")
-
-
-class FilterBarProps(TypedDict):
-    apply_url: str  # list URL Apply/Clear/preset-pick navigates to (#304)
-    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
-    preset_mode: str  # FilterPreset.mode this bar scopes to, e.g. "games"
-
-
-register_element("filter-bar", "FilterBar", FilterBarProps)
-_FilterBarElement = custom_element_builder("filter-bar")
 
 
 class QuickFilterBarProps(TypedDict):

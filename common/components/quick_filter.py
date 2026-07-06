@@ -1,12 +1,18 @@
-"""GitHub-style quick filter bar above list views (issue #197).
+"""GitHub-style quick filter bar — the ONE filter tier above every list view
+(issues #197, #315).
 
-A row of compact facet widgets (``status: [▾] platform: [▾] …``) that reads
-and writes the same ``?filter=`` JSON as the flat FilterBar it coexists with
-(rendered above it) — one source of truth, one backend. The facets are a form:
-Apply (or Enter) serializes them and navigates
-(``ts/elements/quick-filter-bar.ts``), so the bar covers the common case
-without expanding the flat bar; anything richer belongs to the flat bar or
-the nested builder.
+A row of compact ghost "Label ▾" dropdown facets directly above the table.
+Each facet is a :func:`ComboboxDropdown` whose dialog hosts the field's
+panel-layout widget (set → panel ``FilterSelect``, date → ``DateRangePanel``,
+number/string/bool → the stacked widget embedded as-is). The facets are a
+form: Apply (or Enter in a facet input) serializes them and navigates
+(``ts/elements/quick-filter-bar.ts``); anything richer belongs to the nested
+builder, reachable from the action group's "Advanced filter…" segment.
+
+Row anatomy: facets (collapsible), the "⋯" priority-plus overflow menu, the
+Load-preset picker, and the Apply | Clear [| Advanced filter…] ButtonGroup.
+Everything after the overflow host is non-collapsible row furniture — the
+bar's ResizeObserver layout reserves its width and moves only facets.
 
 The bar is editable only when :func:`is_quick_editable` accepts the active
 filter; otherwise it degrades to a read-only "Advanced filter active" pill
@@ -21,17 +27,17 @@ from typing import NamedTuple
 from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
+    Dropdown,
     FilterMode,
     _QuickFilterBarElement,
+    dropdown_combobox_panel_class,
     list_url_for,
 )
 from common.components.filters import (
-    _FILTER_LABEL_CLASS,
     _field_meta,
     field_widget,
     parse_filter_dict,
 )
-from common.components.custom_elements import Dropdown, dropdown_combobox_panel_class
 from common.components.primitives import (
     A,
     ButtonGroup,
@@ -41,7 +47,7 @@ from common.components.primitives import (
     Form,
     Span,
 )
-from common.components.search_select import ComboboxDropdown
+from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
 from common.criteria import AttrName
 
 
@@ -51,10 +57,6 @@ class QuickFacet(NamedTuple):
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
     step: str = "1"  # number-input step, e.g. "0.01" for prices
-    # GitHub-style compact facet (#315 tryout): render a ghost "Label ▾"
-    # trigger whose dropdown panel hosts the widget, instead of the inline
-    # "Label: [widget]" pair. Set-kind facets only (enforced at render).
-    dropdown: bool = False
 
 
 # The leaf kinds a quick facet may have — the kinds the bar's serializer
@@ -98,16 +100,15 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         ),
     ],
     "sessions": [
-        QuickFacet("game", dropdown=True),
-        QuickFacet("device", dropdown=True),
-        QuickFacet("timestamp_start", "Started", dropdown=True),
-        QuickFacet("timestamp_end", "Ended", dropdown=True),
+        QuickFacet("game"),
+        QuickFacet("device"),
+        QuickFacet("timestamp_start", "Started"),
+        QuickFacet("timestamp_end", "Ended"),
         QuickFacet(
             "duration_total_hours",
             "Duration (hrs)",
             placeholder="e.g. 1",
             placeholder2="e.g. 10",
-            dropdown=True,
         ),
     ],
     "purchases": [
@@ -161,7 +162,7 @@ def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
     relation keys (``*_filter``), ``field_comparisons``, ``search``, any
     non-facet flat leaf (e.g. ``year_released``), or a facet key whose value
     is not a dict. Unparseable / absent filter JSON parses to ``{}`` (see
-    ``_filter_parse``) and is therefore editable.
+    ``parse_filter_dict``) and is therefore editable.
 
     Round-trip guarantee: the bar's serializer emits only ``{facet: criterion
     dict}`` entries, so a filter the quick bar itself produced always passes —
@@ -174,12 +175,6 @@ def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
 
 _QUICK_BAR_ROW_CLASS = "flex flex-wrap items-center gap-x-4 gap-y-2 mb-3"
 
-_QUICK_FACET_CLASS = "flex items-center gap-1.5"
-
-# min-w so a facet is never cramped but a wider widget (the date range's
-# segmented field) can grow to its natural size.
-_QUICK_WIDGET_WRAP_CLASS = "min-w-56"
-
 _QUICK_PILL_CLASS = (
     "mb-3 flex flex-wrap items-center gap-3 rounded-base border "
     "border-default-medium bg-neutral-secondary-medium/50 px-3 py-2 text-sm"
@@ -187,16 +182,23 @@ _QUICK_PILL_CLASS = (
 
 
 class QuickFilterBar(BaseComponent):
-    """The quick facet bar for one list mode (#197).
+    """The quick facet bar for one list mode (#197, #315).
 
     Renders either the editable ``<quick-filter-bar>`` element (a form of
-    facet widgets built via ``field_widget`` — prefilled from the filter
-    JSON — plus an Apply submit button) or, when :func:`is_quick_editable`
-    rejects the current filter, the degraded pill — plain links, no custom
-    element, so no bar JS is loaded.
+    dropdown facets built via ``field_widget`` — prefilled from the filter
+    JSON — plus the preset picker and the action ButtonGroup) or, when
+    :func:`is_quick_editable` rejects the current filter, the degraded pill —
+    plain links, no custom element, so no bar JS is loaded.
+
     ``builder_url`` is the fully-formed nested-builder URL (already carrying
-    ``?filter=`` when one is set), the same URL the view hands
-    ``AdvancedFilterLink``.
+    ``?filter=`` when one is set); when non-empty the action group grows the
+    "Advanced filter…" segment and the degraded pill an Edit link.
+    ``preset_api_url`` enables the Load-preset picker (issue #297's dropdown,
+    load-only — saving stays on the builder page).
+    ``apply_url`` overrides every derived list URL (the element's apply
+    target, the Clear link, the degraded pill's Clear) — the #304 override
+    for synthetic e2e harnesses rendered under a stripped ROOT_URLCONF,
+    where ``list_url_for``'s ``reverse()`` would crash.
     """
 
     def __init__(
@@ -206,20 +208,21 @@ class QuickFilterBar(BaseComponent):
         filter_json: str = "",
         builder_url: str = "",
         existing: dict | None = None,
-        advanced_button: bool = False,
+        apply_url: str = "",
+        preset_api_url: str = "",
     ) -> None:
         self.mode = mode
         self.builder_url = builder_url
-        # When the quick bar is the page's ONLY filter tier (#315 tryout:
-        # sessions dropped the flat FilterBar and its AdvancedFilterLink),
-        # the action group carries the builder entry point as a third
-        # segment: Apply | Clear | Advanced filter….
-        self.advanced_button = advanced_button
-        # ``existing`` lets the view share one parse with the flat bar (both
-        # only read it); otherwise the bar parses its own copy.
+        self.apply_url = apply_url
+        self.preset_api_url = preset_api_url
+        # ``existing`` lets the view share one parse with other consumers
+        # (both only read it); otherwise the bar parses its own copy.
         self.existing = (
             existing if existing is not None else parse_filter_dict(filter_json)
         )
+
+    def _list_url(self) -> str:
+        return self.apply_url or list_url_for(self.mode)
 
     def render(self) -> Node:
         facets = QUICK_FACETS[self.mode]
@@ -234,66 +237,53 @@ class QuickFilterBar(BaseComponent):
         from games.filters import filter_for_model
 
         filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
-        return _QuickFilterBarElement(apply_url=list_url_for(self.mode))[
-            # A real <form> so Enter in any facet input applies, mirroring the
-            # flat bar; the element intercepts submit and navigates.
-            Form()[
-                Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[
-                    *[self._facet(filter_cls, facet) for facet in facets],
-                    self._overflow_dropdown(),
-                    # One segmented group so the bar-level actions read as a
-                    # single unit and can't be separated by row wrapping
-                    # (#315). Apply is a bare submit button; Clear is a plain
-                    # link, not JS — radios and modifier selects have no
-                    # per-widget "unset", so the bar needs a one-click reset.
-                    ButtonGroup(self._action_group_members()),
-                ]
-            ]
+        row_children: list[Node] = [
+            *[self._facet(filter_cls, facet) for facet in facets],
+            self._overflow_dropdown(),
+        ]
+        # Everything from the overflow host on is non-collapsible row
+        # furniture (the TS reserve calc walks the host's following
+        # siblings): the preset picker, then the action group.
+        if self.preset_api_url:
+            row_children.append(
+                LoadPresetDropdown(
+                    api_url=self.preset_api_url,
+                    mode=self.mode,
+                    id=f"quick-{self.mode}-preset-picker",
+                    ghost=True,
+                )
+            )
+        # One segmented group so the bar-level actions read as a single unit
+        # and can't be separated by row wrapping (#315). Apply is a bare
+        # submit button; Clear is a plain link, not JS — radios and modifier
+        # selects have no per-widget "unset", so the bar needs a one-click
+        # reset.
+        row_children.append(ButtonGroup(self._action_group_members()))
+        return _QuickFilterBarElement(apply_url=self._list_url())[
+            # A real <form> so Enter in any facet input applies; the element
+            # intercepts submit and navigates.
+            Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
         ]
 
     def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
+        """A GitHub-style compact facet (#315): a ghost "Label ▾" trigger
+        whose combobox dialog hosts the panel-layout widget — the FilterSelect
+        panel personality for set facets, the static-calendar DateRangePanel
+        for date facets, the stacked Number/String/bool widget embedded as-is
+        (their select-above-inputs layout is the natural shape inside a
+        vertical dialog). No ``Label:`` span — the trigger is the label."""
         # Label defaults to the FieldMeta-derived one, so a filter-layer rename
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
-        if facet.dropdown:
-            return self._dropdown_facet(filter_cls, facet, label)
-        # The quick- name prefix keeps scalar-widget input names (and the date
-        # picker's hidden-input DOM ids) distinct from the flat bar's widgets
-        # for the same fields on the same page.
-        widget = field_widget(
-            filter_cls,
-            facet.field,
-            value=self.existing.get(facet.field),
-            name_prefix=f"quick-{facet.field}",
-            label=label,
-            placeholder=facet.placeholder,
-            placeholder2=facet.placeholder2,
-            step=facet.step,
-        )
-        return Div(class_=_QUICK_FACET_CLASS)[
-            Span(class_=_FILTER_LABEL_CLASS)[f"{label}:"],
-            Div(class_=_QUICK_WIDGET_WRAP_CLASS)[widget],
-        ]
-
-    def _dropdown_facet(self, filter_cls: type, facet: QuickFacet, label: str) -> Node:
-        """A GitHub-style compact facet (#315 tryout): a ghost "Label ▾"
-        trigger whose combobox dialog hosts the panel-layout widget — the
-        FilterSelect personality for set facets, the static-calendar
-        DateRangePanel for date facets. Rendered bare — no ``Label:`` span
-        (the trigger is the label) and no min-width wrapper (the whole point
-        is the trigger's natural width)."""
         kind = _field_meta(filter_cls, facet.field)["kind"]
-        if kind not in ("set", "date", "number"):
-            raise ValueError(
-                f"QuickFacet {facet.field!r}: dropdown=True requires a set, "
-                "date or number field (the panel widget personalities)"
-            )
         return ComboboxDropdown(
             label=label,
             content=field_widget(
                 filter_cls,
                 facet.field,
                 value=self.existing.get(facet.field),
+                # The quick- name prefix keeps scalar-widget input names (and
+                # the date picker's hidden-input DOM ids) unique and stable.
                 name_prefix=f"quick-{facet.field}",
                 label=label,
                 placeholder=facet.placeholder,
@@ -319,9 +309,11 @@ class QuickFilterBar(BaseComponent):
                 "button_attributes": [],
                 "type": "submit",
             },
-            {"slot": "Clear", "href": list_url_for(self.mode)},
+            {"slot": "Clear", "href": self._list_url()},
         ]
-        if self.advanced_button and self.builder_url:
+        # The builder entry point rides in the group whenever the mode has a
+        # builder page (devices/platforms don't — no builder_url).
+        if self.builder_url:
             members.append({"slot": "Advanced filter…", "href": self.builder_url})
         return members
 
@@ -361,9 +353,8 @@ class QuickFilterBar(BaseComponent):
 
     def _degraded(self) -> Node:
         children: list[Node] = [Span(class_="text-body")["Advanced filter active"]]
-        # Modes without a nested-builder page (devices/platforms are absent
-        # from _BUILDER_MODELS) pass no builder_url; their pill offers only
-        # Clear — an Edit link would 404.
+        # Modes without a nested-builder page (devices/platforms) pass no
+        # builder_url; their pill offers only Clear — an Edit link would 404.
         if self.builder_url:
             children.append(
                 A(href=self.builder_url, class_="text-brand hover:underline")[
@@ -371,6 +362,6 @@ class QuickFilterBar(BaseComponent):
                 ]
             )
         children.append(
-            A(href=list_url_for(self.mode), class_="text-body hover:underline")["Clear"]
+            A(href=self._list_url(), class_="text-body hover:underline")["Clear"]
         )
         return Div(class_=_QUICK_PILL_CLASS)[children]

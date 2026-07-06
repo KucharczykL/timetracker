@@ -534,7 +534,7 @@ class _SetCriterion(_Criterion):
     #
     # Set pills (platform/game/device) need a human label to render; the id
     # alone ("5") is meaningless to the user. UI-built filters carry the label
-    # inline as ``{id, label}`` dicts (see ``ts/elements/filter-bar.ts``); a
+    # inline as ``{id, label}`` dicts (see ``ts/elements/filter-widgets.ts``); a
     # filter built server-side (stats-page links) only knows the id, so it stashes
     # the labels it has here and ``to_json`` folds them back into the ``{id, label}``
     # wire shape. The filter bar then prefills labelled pills straight from the URL
@@ -1049,30 +1049,16 @@ def _filter_class_for(
 # ["game_filter", "playevent_filter", "ended"]).
 type FilterWidgetPath = list[str]
 
-# The fixed child criterion of a relation-bool widget, keyed by the related field
-# name. The serializer wraps it in the relation sub-filter (adding ``match: NONE``
-# for the False radio).
-type RelationChild = dict[
-    str, dict[str, object]
-]  # {"emulated": {"value": True, "modifier": "EQUALS"}}
-
 # The widget ``data-kind`` tokens for leaf criteria — one token per value shape;
 # several criterion types share a kind (every numeric criterion → "number"). These
 # are the only kinds ``criterion_kind`` / ``resolve_path_kind`` ever produce, with
 # one exception: ``"field-comparison"`` is registered to satisfy the
 # _CRITERION_TYPES/_CRITERION_KINDS parity invariant but is never path-reachable —
-# ``field_comparisons`` is a list field, so no path resolves to it (no widget yet).
+# ``field_comparisons`` is a list field, so no path resolves to it (the builder's
+# comparison leaves carry their own row markup instead).
 type LeafWidgetKind = Literal[
     "string", "number", "date", "bool", "set", "field-comparison"
 ]
-
-# Every widget ``data-kind`` token the filter-bar serializer dispatches on.
-# ``relation-bool`` extends the leaf kinds: it describes not a leaf criterion but
-# a whole cross-entity sub-filter toggled by a boolean radio (ANY vs NONE) over a
-# fixed child criterion, so it is a valid widget kind yet never produced by the
-# leaf resolvers above. See ``filter_widget_attributes`` and
-# ``ts/elements/filter-bar.ts``.
-type FilterWidgetKind = LeafWidgetKind | Literal["relation-bool"]
 
 # The DB type "bucket" used to verify that two columns being compared
 # field-to-field share the same kind (e.g. both "date", both "number").
@@ -2247,7 +2233,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     fields (``kind`` from the criterion type), each cross-entity sub-filter as a
     ``kind="relation"`` entry naming its target. The ``search`` free-text field is
     excluded — it is not a pickable per-field criterion but the filter bar's
-    dedicated free-text box (``_filter_search_field``), applied imperatively in
+    dedicated free-text search criterion (the ``search`` key), applied imperatively in
     each filter's ``_extra_q`` via ``search_q``. Non-recursive: a relation entry
     names its target only; callers descend by calling ``field_metadata`` on the
     target filter class, which bounds the ``GameFilter`` ↔ ``SessionFilter``

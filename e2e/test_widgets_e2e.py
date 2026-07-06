@@ -1,4 +1,4 @@
-"""Browser tests for widget JavaScript (search_select.js, filter-bar.js,
+"""Browser tests for widget JavaScript (search_select.js, quick-filter-bar.js,
 add_purchase.js) and their onSwap() initialization lifecycle.
 
 These run a real Chromium via pytest-playwright against pytest-django's
@@ -46,16 +46,14 @@ def touch_page(live_server, browser, django_user_model):
     context.close()
 
 
-def open_filter_bar(page: Page) -> None:
-    page.click("#filter-bar button:has-text('Filters')")
-    expect(page.locator("#filter-bar-body")).to_be_visible()
+def open_status_facet(page: Page) -> None:
+    """Open the games quick bar's Status facet dropdown (#315)."""
+    page.click("#quick-status-dropdownLink")
+    expect(page.locator("#quick-status-dropdown")).to_be_visible()
 
 
 def status_filter_widget(page: Page):
-    # Scoped to the flat bar: the quick filter bar (#197) renders a second
-    # search-select[name="status"] on the games list, so the bare selector
-    # would trip Playwright's strict mode.
-    return page.locator('#filter-bar search-select[name="status"]')
+    return page.locator('quick-filter-bar search-select[name="status"]')
 
 
 def test_search_select_initializes_on_page_load(authenticated_page: Page, live_server):
@@ -63,11 +61,9 @@ def test_search_select_initializes_on_page_load(authenticated_page: Page, live_s
     proof that onSwap ran the widget initializer on the initial page load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    open_filter_bar(page)
+    open_status_facet(page)
 
     widget = status_filter_widget(page)
-    widget.locator("[data-search-select-search]").click()
-
     options_panel = widget.locator("[data-search-select-options]")
     expect(options_panel).to_be_visible()
     # The pinned "(Any)" modifier pseudo-option is rendered server-side and
@@ -81,10 +77,9 @@ def test_search_select_adds_include_pill(authenticated_page: Page, live_server):
     """Clicking an enum option row adds an include pill (full widget wiring)."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    open_filter_bar(page)
+    open_status_facet(page)
 
     widget = status_filter_widget(page)
-    widget.locator("[data-search-select-search]").click()
     widget.locator('[data-search-select-option][data-label="Finished"]').click()
 
     pill = widget.locator("[data-search-select-pills] [data-pill]")
@@ -100,12 +95,12 @@ def test_number_filter_between_reveals_second_input(
     the initial page load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    open_filter_bar(page)
+    page.click("#quick-year_released-dropdownLink")
 
-    value2 = page.locator('input[name="filter-year-value2"]')
+    value2 = page.locator('input[name="quick-year_released-value2"]')
     expect(value2).to_be_hidden()
 
-    page.locator('select[name="filter-year-modifier"]').select_option("BETWEEN")
+    page.locator('select[name="quick-year_released-modifier"]').select_option("BETWEEN")
     expect(value2).to_be_visible()
 
 
@@ -123,19 +118,20 @@ def test_widgets_initialize_inside_htmx_swapped_content(
 
     page.evaluate(
         "htmx.ajax('GET', window.location.pathname, "
-        "{target: '#filter-bar', select: '#filter-bar', swap: 'outerHTML'})"
+        "{target: 'quick-filter-bar', select: 'quick-filter-bar', "
+        "swap: 'outerHTML'})"
     )
-    # The swapped-in bar arrives collapsed again; opening it proves the swap
-    # happened and the fresh DOM is in place.
-    open_filter_bar(page)
+    # Opening a facet dropdown proves the swap happened and the fresh DOM
+    # (re-upgraded custom elements) is in place.
+    open_status_facet(page)
 
     widget = status_filter_widget(page)
-    widget.locator("[data-search-select-search]").click()
     expect(widget.locator("[data-search-select-options]")).to_be_visible()
 
-    value2 = page.locator('input[name="filter-year-value2"]')
+    page.click("#quick-year_released-dropdownLink")
+    value2 = page.locator('input[name="quick-year_released-value2"]')
     expect(value2).to_be_hidden()
-    page.locator('select[name="filter-year-modifier"]').select_option("BETWEEN")
+    page.locator('select[name="quick-year_released-modifier"]').select_option("BETWEEN")
     expect(value2).to_be_visible()
 
 
@@ -594,43 +590,6 @@ def test_sort_header_shift_click_removes_descending_column(
     expect(page).not_to_have_url(re.compile(r"sort="))
 
 
-def test_preset_name_collision_warns_and_relabels_save_button(
-    authenticated_page: Page, live_server, django_user_model
-):
-    """Typing the name of an existing preset shows the red overwrite warning and
-    relabels the confirm button "Save" -> "Overwrite"; a non-colliding name
-    hides it again (issue #212). The match is case-sensitive."""
-    from games.models import FilterPreset
-
-    user = django_user_model.objects.get(username="tester")
-    FilterPreset.objects.create(user=user, name="Backlog", mode="games")
-
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    open_filter_bar(page)
-
-    # The names fetch fires when the save input is revealed (no fetch on page
-    # load, #297); the warning re-renders when it resolves, so a name typed
-    # before the response lands still warns.
-    page.click("[data-filter-bar-save]")
-    name_input = page.locator("[data-filter-bar-preset-name]")
-    warning = page.locator("[data-filter-bar-overwrite-warning]")
-    confirm = page.locator("[data-filter-bar-confirm-save]")
-
-    name_input.fill("Backlog")
-    expect(warning).to_be_visible()
-    expect(confirm).to_have_text("Overwrite")
-
-    # Case-sensitive: a different casing does not collide.
-    name_input.fill("backlog")
-    expect(warning).to_be_hidden()
-    expect(confirm).to_have_text("Save")
-
-    name_input.fill("Brand new")
-    expect(warning).to_be_hidden()
-    expect(confirm).to_have_text("Save")
-
-
 def test_add_purchase_game_selection_autofills_platform(
     authenticated_page: Page, live_server
 ):
@@ -734,11 +693,11 @@ def test_add_purchase_related_game_autofills_from_games_selection(
     expect(related_hidden).to_have_value(str(base.id))
 
 
-def test_filter_bar_preset_pick_navigates_to_filtered_list(
+def test_quick_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, django_user_model
 ):
-    """Picking a preset in the list page's Load-preset combobox navigates to the
-    list URL carrying ?filter= — the bar consumer's pick semantics (#297)."""
+    """Picking a preset in the quick bar's Load-preset combobox navigates to the
+    list URL carrying ?filter= — the bar consumer's pick semantics (#297/#315)."""
     from games.models import FilterPreset, Game, Platform
 
     platform = Platform.objects.create(name="PC", icon="pc")
@@ -752,9 +711,8 @@ def test_filter_bar_preset_pick_navigates_to_filtered_list(
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    open_filter_bar(page)
 
-    picker = page.locator("filter-bar [data-preset-picker]")
+    picker = page.locator("quick-filter-bar [data-preset-picker]")
     picker.locator("[data-toggle]").click()
     row = picker.locator("[data-search-select-option]").filter(has_text="HaloOnly")
     expect(row).to_be_visible(timeout=5_000)

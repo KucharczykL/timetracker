@@ -1,12 +1,12 @@
 """End-to-end Playwright test for the ``set``-kind FilterSelect widget.
 
 Covers the one layer the Python-side tests cannot reach: the generic
-serializer in ``ts/elements/filter-bar.ts`` reading a FilterSelect's
-include/exclude pills (and pinned presence modifier) off its
-``data-included``/``data-excluded``/``data-modifier`` attributes, building the
-set-criterion JSON, and navigating to ``?filter=<encoded>``.
+serializer in ``ts/elements/quick-filter-bar.ts`` reading a FilterSelect's
+include/exclude pills (and pinned presence modifier) out of the facet
+dropdown's panel, building the set-criterion JSON, and navigating to
+``?filter=<encoded>``.
 
-Uses ``DeviceFilterBar`` because its single ``type`` field is an enum
+Uses the devices quick bar because its ``type`` field is an enum
 FilterSelect with pre-rendered option rows (no search endpoint) and both pinned
 modifiers — ``(Any)`` (NOT_NULL) and ``(None)`` (IS_NULL) — so include, exclude,
 and presence paths are all reachable from a static page. Renders the bar at its
@@ -22,30 +22,47 @@ from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
 
-from common.components import DeviceFilterBar
+from common.components import QuickFilterBar
+
+
+_PAGE_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+    <link rel="stylesheet" href="/static/base.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/dist/elements/search-select.js" type="module"></script>
+    <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
+    <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
+</head>
+<body>
+    {body}
+</body>
+</html>"""
 
 
 def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Set filter E2E</title>
-    <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/dist/elements/search-select.js" type="module"></script>
-    <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
-</head>
-<body>
-    {DeviceFilterBar(filter_json=filter_json, preset_api_url="/api/presets/", apply_url=apply_url)}
-</body>
-</html>"""
+    bar = QuickFilterBar(mode="devices", filter_json=filter_json, apply_url=apply_url)
+    return _PAGE_TEMPLATE.format(body=str(bar), title="Set filter E2E")
 
 
 def empty_bar_view(request):
     return HttpResponse(_bar_page(apply_url=request.path))
 
 
+def sessions_bar_view(request):
+    # The sessions bar's ``device`` facet is a NULLABLE column, so it renders
+    # the (None) presence modifier — devices' own ``type`` column is not
+    # nullable and field_widget derives presence from the real column.
+    bar = QuickFilterBar(mode="sessions", apply_url=request.path)
+    return HttpResponse(
+        _PAGE_TEMPLATE.format(body=str(bar), title="Set filter E2E (sessions)")
+    )
+
+
 urlpatterns = [
     path("test-set-filter/", empty_bar_view),
+    path("test-set-filter-sessions/", sessions_bar_view),
 ]
 
 
@@ -62,8 +79,8 @@ def _widget(page):
 
 
 def _open_panel(page):
-    """Focus the search box so the FilterSelect options panel is interactable."""
-    _widget(page).locator("[data-search-select-search]").click()
+    """Open the Type facet dropdown (its panel hosts the FilterSelect)."""
+    page.locator("#quick-type-dropdownLink").click()
 
 
 def _add_value(page, value: str, action: str):
@@ -81,10 +98,7 @@ def _choose_modifier(page, modifier: str):
 
 def _submit(page):
     with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+        page.locator('quick-filter-bar button[type="submit"]').click()
 
 
 @pytest.mark.django_db
@@ -130,12 +144,14 @@ def test_set_filter_include_and_exclude(live_server, page):
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_set_filter_e2e")
 def test_set_filter_presence_is_null(live_server, page):
-    page.goto(live_server.url + "/test-set-filter/")
-    _open_panel(page)
-    _choose_modifier(page, "IS_NULL")
+    page.goto(live_server.url + "/test-set-filter-sessions/")
+    page.locator("#quick-device-dropdownLink").click()
+    page.locator('search-select[name="device"]').locator(
+        '[data-search-select-modifier-option="IS_NULL"]'
+    ).click()
     _submit(page)
     parsed = _filter_from_url(page.url)
-    assert parsed["type"] == {"modifier": "IS_NULL"}
+    assert parsed["device"] == {"modifier": "IS_NULL"}
 
 
 @pytest.mark.django_db
