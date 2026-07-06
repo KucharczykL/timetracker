@@ -29,9 +29,12 @@ from common.components.primitives import (
 )
 from common.time import DatePartSpec, date_parts
 
+# font-mono: every glyph (placeholder letters and digits alike) is exactly
+# 1ch wide, so the exact segment widths below leave no slack and the gaps
+# around the dashes stay uniform.
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium text-sm text-heading p-1.5 cursor-text "
+    "bg-neutral-secondary-medium font-mono text-sm text-heading p-1.5 cursor-text "
     "focus-within:ring-1 focus-within:ring-brand focus-within:border-brand"
 )
 
@@ -43,7 +46,7 @@ _SEGMENT_INPUT_CLASS = (
     "focus:bg-brand/30 caret-transparent"
 )
 
-_SEGMENT_WIDTH_CLASSES = {2: "w-[2.5ch]", 4: "w-[4.5ch]"}
+_SEGMENT_WIDTH_CLASSES = {2: "w-[2ch]", 4: "w-[4ch]"}
 
 _CALENDAR_ICON_SVG = (
     '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" '
@@ -118,7 +121,7 @@ def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> 
         aria_label=f"{label} {side_label} {part.name}",
         class_=(
             f"{_SEGMENT_INPUT_CLASS} "
-            f"{_SEGMENT_WIDTH_CLASSES.get(part.length, 'w-[4.5ch]')}"
+            f"{_SEGMENT_WIDTH_CLASSES.get(part.length, 'w-[4ch]')}"
         ),
     )
 
