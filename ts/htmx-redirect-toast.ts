@@ -5,9 +5,12 @@
  * navigates immediately (the toast shows on the destination page); otherwise it
  * turns the HX-Trigger header into CustomEvents so toasts fire in place.
  *
- * Classic (non-module) script: it only touches the global htmx and registers an
- * extension, so it stays a plain <script> like the other vendored-adjacent glue.
+ * ES module (not classic): importing the client-error seam forces module scope,
+ * so Page() must load it as a <script type="module"> or the top-level import
+ * SyntaxErrors the file inert.
  */
+import { reportClientError } from "./client-errors.js";
+
 declare const htmx: any;
 
 (() => {
@@ -33,7 +36,19 @@ declare const htmx: any;
 
       // Only dispatch HX-Trigger events for toasts when not redirecting
       if (!hxRedirect && hxTrigger) {
-        const triggers = JSON.parse(hxTrigger);
+        let triggers;
+        try {
+          triggers = JSON.parse(hxTrigger);
+        } catch (error) {
+          // A broken toast trigger can't announce itself via a toast (circular):
+          // report through the seam with the toast suppressed, then bail.
+          reportClientError(
+            "hx-redirect-toast[HX-Trigger]",
+            String((error as Error)?.message ?? error),
+            { toast: false }
+          );
+          return null;
+        }
         const events = Array.isArray(triggers) ? triggers : [triggers];
         events.forEach((triggerObject: Record<string, unknown>) => {
           Object.entries(triggerObject).forEach(([name, rawDetail]) => {

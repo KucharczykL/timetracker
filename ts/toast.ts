@@ -1,3 +1,5 @@
+import { reportClientError } from "./client-errors.js";
+
 declare const Alpine: any;
 
 interface Toast {
@@ -129,8 +131,13 @@ document.addEventListener("alpine:init", () => {
           }
         }
       } catch (error) {
-        console.error("[toast] localStorage restore failed:", error);
-        // ignore parse errors
+        // A failed toast-payload parse can't report via the toast (circular):
+        // route through the client-error seam with the toast suppressed.
+        reportClientError(
+          "toast[django-messages]",
+          String((error as Error)?.message ?? error),
+          { toast: false }
+        );
       }
     },
 
@@ -175,8 +182,14 @@ window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
       let triggers;
       try {
         triggers = JSON.parse(htmxTrigger);
-      } catch {
-        console.warn("[fetchWithHtmxTriggers] failed to parse HX-Trigger JSON");
+      } catch (error) {
+        // Reporting a broken toast trigger via the toast would be circular —
+        // suppress the toast, keep the guaranteed server log line.
+        reportClientError(
+          "fetchWithHtmxTriggers[HX-Trigger]",
+          String((error as Error)?.message ?? error),
+          { toast: false }
+        );
         return response;
       }
       // Handle both single object and array of events
