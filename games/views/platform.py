@@ -59,12 +59,13 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             "Add platform"
         ],
         "columns": [
-            Column("Name"),
+            Column("Name", "name"),
             Column("Icon"),
-            Column("Group"),
-            Column("Created"),
+            Column("Group", "group"),
+            Column("Created", "created"),
             Column("Actions", align="right"),
         ],
+        "sort_terms": sort.terms,
         "rows": [
             make_row(
                 platform.name,

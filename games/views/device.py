@@ -57,11 +57,12 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "header_action": ControlButton(href=reverse("games:add_device"))["Add device"],
         "columns": [
-            Column("Name"),
-            Column("Type"),
-            Column("Created"),
+            Column("Name", "name"),
+            Column("Type", "type"),
+            Column("Created", "created"),
             Column("Actions", align="right"),
         ],
+        "sort_terms": sort.terms,
         "rows": [
             make_row(
                 device.name,

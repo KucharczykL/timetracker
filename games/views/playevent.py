@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -32,6 +33,7 @@ from common.utils import paginate
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
     PLAYEVENT_SORTS,
+    SortTerm,
     apply_sort,
     parse_find_filter,
 )
@@ -51,16 +53,17 @@ def create_playevent_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
+    sort_terms: Sequence[SortTerm] = (),
 ) -> TableData:
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
     column_list = [
-        Column("Game"),
-        Column("Started"),
-        Column("Ended"),
-        Column("Days to finish"),
+        Column("Game", "name"),
+        Column("Started", "started"),
+        Column("Ended", "ended"),
+        Column("Days to finish", "days"),
         Column("Note"),
-        Column("Created"),
+        Column("Created", "created"),
         Column("Actions", align="right"),
     ]
     filtered_column_list = [
@@ -106,6 +109,7 @@ def create_playevent_tabledata(
             "Add play event"
         ],
         "columns": filtered_column_list,
+        "sort_terms": sort_terms,
         "rows": [make_row(*cells) for cells in filtered_row_list],
     }
 
@@ -160,7 +164,9 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     playevents = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="playevent")
     playevents, page_obj, elided_page_range = paginate(playevents, find)
-    data = create_playevent_tabledata(playevents, request=request)
+    data = create_playevent_tabledata(
+        playevents, request=request, sort_terms=sort.terms
+    )
     content = paginated_table_content(
         data,
         page_obj=page_obj,
