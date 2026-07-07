@@ -253,8 +253,9 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertNotIn("Year Released", html)
 
     def test_degraded_pill_without_builder_url_omits_edit_link(self):
-        """Modes without a nested-builder page (devices/platforms) pass no
-        builder_url; the pill offers only Clear — an Edit link would 404."""
+        """With no builder_url the degraded pill offers only Clear — an Edit link
+        would 404. (Every mode now has a builder page, #336; this guards the
+        component's empty-builder_url branch directly.)"""
         filter_json = json.dumps({"session_filter": {"emulated": {"value": True}}})
         html = str(QuickFilterBar(mode="devices", filter_json=filter_json))
         self.assertIn("Advanced filter active", html)
@@ -320,11 +321,18 @@ class BuilderUrlForTest(TestCase):
         self.assertNotIn("sort=", builder_url_for("games", "", None))
         self.assertNotIn("sort=", builder_url_for("games", "", ""))
 
-    def test_builderless_modes_raise(self):
+    def test_devices_and_platforms_have_builder_urls(self):
+        # Every filterable mode now has a builder page (#336); devices/platforms
+        # are sort-less, so their builder URL never carries ?sort=.
         for mode in ("devices", "platforms"):
             with self.subTest(mode=mode):
-                with self.assertRaises(LookupError):
-                    builder_url_for(mode, "")
+                url = builder_url_for(mode, "")
+                self.assertIn(f"/{FILTER_MODE_MODELS[mode]}/", url)
+                self.assertTrue(url.endswith("/filter"))
+
+    def test_unknown_mode_raises(self):
+        with self.assertRaises(LookupError):
+            builder_url_for("nonsense", "")
 
 
 class DropdownFacetA11yTest(TestCase):

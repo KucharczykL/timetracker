@@ -23,11 +23,12 @@ from games.sorting import SortKey
 logger = logging.getLogger("games")
 
 
-# The modes whose model has a nested-builder page (games:filter_builder).
-# devices/platforms deliberately have none — their quick bar's degraded pill
-# offers only Clear. general.py derives the builder's model->mode table from
+# The modes whose model has a nested-builder page (games:filter_builder) — every
+# filterable mode (#336). general.py derives the builder's model->mode table from
 # this set + FILTER_MODE_MODELS.
-BUILDER_MODES = frozenset({"games", "sessions", "purchases", "playevents"})
+BUILDER_MODES = frozenset(
+    {"games", "sessions", "purchases", "playevents", "devices", "platforms"}
+)
 
 
 def builder_url_for(mode: FilterMode, filter_json: str, sort: str | None = None) -> str:
