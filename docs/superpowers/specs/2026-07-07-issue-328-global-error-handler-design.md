@@ -165,23 +165,30 @@ users go through the `parseJSONWithReport` / `readJSONProp` wrappers. None pass 
 ### Loading: `common/layout.py`
 
 Add one line to the `Page()` head script list **first**, before
-`Script(src=static("js/htmx.min.js"))` (currently `common/layout.py:526`), so the
-listeners register before any vendor or `dist/` script executes:
+`Script(src=static("js/htmx.min.js"))` (currently `common/layout.py:526`), using
+`ModuleScript` (the repo's ES-module loader helper):
 
 ```python
-Script(src=static("js/dist/global-error-handler.js")),
+Safe(str(ModuleScript("dist/global-error-handler.js"))),
 ```
 
-A plain classic `<script>` like its neighbors (no `defer` — earliest
-registration; the compiled module runs `installGlobalErrorHandler()` on load).
+This emits `<script type="module" src="…/dist/global-error-handler.js">`. The
+`type="module"` tag is **required** — the compiled output has a top-level
+`import { reportClientError } from "./client-errors.js"`, which is a syntax
+error in a classic `<script>` tag. Using `ModuleScript` matches the repo's idiom
+for every other import-bearing module (custom elements, etc.).
 
-**Coverage is early but not total, and the spec does not overclaim it.** Placing
-first catches load-time throws in htmx/flowbite/redirect-toast/toast and all
-runtime errors after. It does **not** catch: (a) errors in inline `<head>` scripts
-that run *before* this one (the FOUC/theme script, the htmx-config inline block);
-(b) errors before the script has fetched+executed. The `{ capture: true }`
-registration recovers resource-load errors that would otherwise not bubble. This
-is a defense-in-depth net, not a guarantee of catching every possible failure.
+**Timing consequence:** `<script type="module">` is implicitly deferred. The
+handler therefore registers **after** the classic vendor scripts
+(htmx/flowbite/redirect-toast/toast) and after HTML parse — not before them.
+It catches all runtime errors and errors thrown by component element modules
+(which also load as `type="module"`, following document order). It does **not**
+catch: (a) load-time throws in the classic vendor scripts (htmx/flowbite/etc.)
+that run before module scripts resolve; (b) errors in inline `<head>` scripts
+(the FOUC/theme script, the htmx-config block) that run at parse time. The
+`{ capture: true }` registration recovers resource-load errors that would
+otherwise not bubble. This is a defense-in-depth net, not a guarantee of
+catching every possible failure.
 
 ## Data flow
 

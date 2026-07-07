@@ -523,7 +523,7 @@ def TimetrackerDocument(
                             type="image/svg+xml",
                             href=static("icons/tesserae-favicon.svg"),
                         ),
-                        Script(src=static("js/dist/global-error-handler.js")),
+                        Safe(str(ModuleScript("dist/global-error-handler.js"))),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
                         Script(src=static("js/dist/htmx-redirect-toast.js")),

@@ -18,6 +18,7 @@
 - **Hard cap = 25 reports/page**; dedup check precedes cap increment (a deduped repeat spends no budget); reports 1–25 POST, #26 is first suppressed.
 - **`detail` ≤ 500 chars** client-side (`ClientErrorIn.detail` `max_length=500`, `games/api.py:497`); `filename` capped at 200 within it.
 - **Test files** (`*.test.ts`) are emit-excluded by `tsconfig.json`, type-checked via `tsconfig.check.json`; both run under `make ts-check` inside `make check`.
+- **Loading via `ModuleScript`** (not classic `Script`): the compiled output has a top-level `import`, which is a syntax error in a classic `<script>` tag. Load with `Safe(str(ModuleScript("dist/global-error-handler.js")))` in `common/layout.py`. This emits `<script type="module">` which is implicitly deferred — the handler registers AFTER the classic vendor scripts (htmx/flowbite/toast) and after HTML parse, but before component element modules (also `type="module"`, document order). Classic vendor script load-time throws are not caught; that is the accepted trade-off.
 - **Verification gate:** full `direnv exec . make check` green before done (lint + format + mypy + ts-check + vitest + entire pytest incl. e2e).
 
 ---
@@ -519,14 +520,14 @@ Load the compiled module first in the `Page()` head so listeners register before
 In `common/layout.py`, insert one line immediately **before** the existing `Script(src=static("js/htmx.min.js")),` (currently line 526), so the block reads:
 
 ```python
-                        Script(src=static("js/dist/global-error-handler.js")),
+                        Safe(str(ModuleScript("dist/global-error-handler.js"))),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
                         Script(src=static("js/dist/htmx-redirect-toast.js")),
                         Script(src=static("js/dist/toast.js")),
 ```
 
-(First in the list — before vendor and other dist scripts — for earliest registration. No `defer`, matching its neighbors.)
+Use `ModuleScript` (not `Script`) because the compiled module has a top-level `import`; a classic `<script>` throws `SyntaxError` at parse and registers no listeners. `<script type="module">` is implicitly deferred, so the handler registers after the classic vendor scripts and after HTML parse — the accepted trade-off for an ES module that imports the shared seam.
 
 - [ ] **Step 2: Compile TypeScript so dist is fresh**
 
