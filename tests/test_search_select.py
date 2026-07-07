@@ -771,7 +771,7 @@ class LoadPresetDropdownTest(unittest.TestCase):
 
 class ComboboxDropdownTest(unittest.TestCase):
     """The generic trigger + combobox dialog LoadPresetDropdown is built on
-    (#315)."""
+    ."""
 
     @staticmethod
     def _html(**kwargs) -> str:
@@ -812,7 +812,7 @@ class ComboboxDropdownTest(unittest.TestCase):
 
 
 class FilterSelectPanelLayoutTest(unittest.TestCase):
-    """layout="panel" (#315): the PresetSelect-style personality for a
+    """layout="panel": the PresetSelect-style personality for a
     FilterSelect hosted inside a ComboboxDropdown dialog. Only presentation
     (and the always-visible flag) may differ from the field layout — the
     data-* serializer contract must be identical."""

@@ -196,7 +196,7 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("device-changed from:body", html)
 
     def test_list_page_filter_tiers_share_content_container(self):
-        """Issues #313/#315: every list page renders exactly one filter tier —
+        """Every list page renders exactly one filter tier —
         the quick bar — inside the same non-navbar ``max-w-7xl`` content
         container (``ContentContainer``) as its table, and no flat
         filter-bar at all."""

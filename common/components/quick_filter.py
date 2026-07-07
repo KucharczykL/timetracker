@@ -1,5 +1,4 @@
-"""GitHub-style quick filter bar — the ONE filter tier above every list view
-(issues #197, #315).
+"""GitHub-style quick filter bar — the ONE filter tier above every list view.
 
 A row of compact ghost "Label ▾" dropdown facets directly above the table.
 Each facet is a :func:`ComboboxDropdown` whose dialog hosts the field's
@@ -154,7 +153,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
 
 
 def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
-    """Whether the quick bar may edit ``parsed`` — THE pinned predicate (#197).
+    """Whether the quick bar may edit ``parsed`` — THE pinned predicate.
 
     True iff ``parsed`` is empty or every top-level key is one of
     ``facet_fields`` with a dict (criterion) value. Everything else degrades
@@ -182,7 +181,7 @@ _QUICK_PILL_CLASS = (
 
 
 class QuickFilterBar(BaseComponent):
-    """The quick facet bar for one list mode (#197, #315).
+    """The quick facet bar for one list mode.
 
     Renders either the editable ``<quick-filter-bar>`` element (a form of
     dropdown facets built via ``field_widget`` — prefilled from the filter
@@ -193,10 +192,10 @@ class QuickFilterBar(BaseComponent):
     ``builder_url`` is the fully-formed nested-builder URL (already carrying
     ``?filter=`` when one is set); when non-empty the action group grows the
     "Advanced filter…" segment and the degraded pill an Edit link.
-    ``preset_api_url`` enables the Load-preset picker (issue #297's dropdown,
-    load-only — saving stays on the builder page).
+    ``preset_api_url`` enables the Load-preset picker (load-only — saving
+    stays on the builder page).
     ``apply_url`` overrides every derived list URL (the element's apply
-    target, the Clear link, the degraded pill's Clear) — the #304 override
+    target, the Clear link, the degraded pill's Clear) — the override
     for synthetic e2e harnesses rendered under a stripped ROOT_URLCONF,
     where ``list_url_for``'s ``reverse()`` would crash.
     """
@@ -254,7 +253,7 @@ class QuickFilterBar(BaseComponent):
                 )
             )
         # One segmented group so the bar-level actions can't be separated
-        # by row wrapping (#315). Clear is a plain link — radios and modifier
+        # by row wrapping. Clear is a plain link — radios and modifier
         # selects have no per-widget unset, so the bar needs a one-click
         # reset.
         row_children.append(ButtonGroup(self._action_group_members()))
@@ -265,7 +264,7 @@ class QuickFilterBar(BaseComponent):
         ]
 
     def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
-        """A GitHub-style compact facet (#315): a ghost "Label ▾" trigger
+        """A GitHub-style compact facet: a ghost "Label ▾" trigger
         whose combobox dialog hosts the panel-layout widget — the FilterSelect
         panel personality for set facets, the static-calendar DateRangePanel
         for date facets, the stacked Number/String/bool widget embedded as-is

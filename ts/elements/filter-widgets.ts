@@ -2,7 +2,7 @@
  * Shared filter value-widget logic — the per-kind readers (DOM → criterion JSON)
  * and the modifier-select enable/disable behaviors, used by BOTH the flat filter
  * bar (quick-filter-bar.ts) and the nested filter builder's leaf row
- * (filter-group.ts, #192). One home so both consumers reuse the exact same
+ * (filter-group.ts). One home so both consumers reuse the exact same
  * widget contract the bars produce via the Python `field_widget` builder (#242).
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";

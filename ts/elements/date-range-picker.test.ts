@@ -83,7 +83,7 @@ describe("date-range-picker change event (#192)", () => {
   });
 });
 
-// ── Static (panel) variant: DateRangePanel (#315) ─────────────────────────
+// ── Static (panel) variant: DateRangePanel ─────────────────────────
 
 function mountStatic(): HTMLElement {
   document.body.replaceChildren();
@@ -107,7 +107,7 @@ function mountStatic(): HTMLElement {
   return picker;
 }
 
-describe("date-range-picker static-calendar variant (#315)", () => {
+describe("date-range-picker static-calendar variant", () => {
   beforeEach(() => document.body.replaceChildren());
 
   it("initializes without toggle/cancel/select and renders the grid at once", () => {

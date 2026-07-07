@@ -6,8 +6,7 @@ renders each mode's quick filter bar, extracts those attributes from the real
 HTML, and asserts that every path resolves through the Python filter dataclass
 tree (``resolve_path_kind``) to a criterion whose kind matches the widget. A
 widget pointing at a non-existent path or the wrong kind fails here — the
-rendered-widget analogue of ``gen_icons --check`` (issue #123 Phase 2,
-slice 2e; #315).
+rendered-widget analogue of ``gen_icons --check``.
 """
 
 import json

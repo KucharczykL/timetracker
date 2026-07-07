@@ -86,7 +86,7 @@ class SearchSelectOption(TypedDict):
 LabeledOption = tuple[str, str]
 
 # FilterSelect's two visual personalities: "field" is the bordered form-field
-# look (flat filter bars); "panel" is the GitHub-label-picker look for widgets
+# look (the nested builder's leaf rows); "panel" is the GitHub-label-picker look for widgets
 # hosted inside a ComboboxDropdown dialog (pills row above a self-bordered
 # search box, always-visible statically-flowing options).
 type FilterSelectLayout = Literal["field", "panel"]
@@ -703,7 +703,7 @@ def FilterSelect(
         options_class=_PANEL_OPTIONS_CLASS if panel_layout else None,
     )
     # The self-describe root attributes for the generic filter serializer. Only
-    # filter-bar callers pass ``path``; synthetic/test callers leave it None and
+    # Filter-layer callers pass ``path``; synthetic/test callers leave it None and
     # get no extra attributes (kind is always "set" for a FilterSelect).
     widget_attributes = (
         filter_widget_attributes(path, "set") if path is not None else []
@@ -724,7 +724,7 @@ def FilterSelect(
     )[*children]
 
 
-# ── Panel personality styling (issues #297, #315) ───────────────────────────
+# ── Panel personality styling ───────────────────────────
 # The layout shared by every combobox-shell widget hosted inside a <drop-down>
 # combobox dialog (PresetSelect, panel-layout FilterSelect). Unlike the
 # form/filter field personalities it has no bordered field wrapper: the search
@@ -841,7 +841,7 @@ def ComboboxDropdown(
     panel_width: str = "w-72",
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
-    primitives (issues #297, #315): ``<drop-down>`` owns the trigger,
+    primitives: ``<drop-down>`` owns the trigger,
     open/close, outside-click, Escape and the panel surface; the panel hosts
     ``content`` (a combobox-shell widget such as :func:`PresetSelect` or a
     panel-layout :func:`FilterSelect`). The ``combobox`` client behavior opts
@@ -883,7 +883,7 @@ def ComboboxDropdown(
 def LoadPresetDropdown(
     *, api_url: str, mode: str, id: str = "load-preset-dropdown", ghost: bool = False
 ) -> Node:
-    """The "Load preset ▾" picker (issue #297): a :func:`ComboboxDropdown`
+    """The "Load preset ▾" picker: a :func:`ComboboxDropdown`
     hosting a :func:`PresetSelect`. ``ghost`` selects the quiet trigger (the
     quick filter bar); the builder toolbar keeps the filled gray default.
 

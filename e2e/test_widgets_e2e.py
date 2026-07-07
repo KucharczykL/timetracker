@@ -47,7 +47,7 @@ def touch_page(live_server, browser, django_user_model):
 
 
 def open_status_facet(page: Page) -> None:
-    """Open the games quick bar's Status facet dropdown (#315)."""
+    """Open the games quick bar's Status facet dropdown."""
     page.click("#quick-status-dropdownLink")
     expect(page.locator("#quick-status-dropdown")).to_be_visible()
 
@@ -697,7 +697,7 @@ def test_quick_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, django_user_model
 ):
     """Picking a preset in the quick bar's Load-preset combobox navigates to the
-    list URL carrying ?filter= — the bar consumer's pick semantics (#297/#315)."""
+    list URL carrying ?filter= — the bar consumer's pick semantics."""
     from games.models import FilterPreset, Game, Platform
 
     platform = Platform.objects.create(name="PC", icon="pc")

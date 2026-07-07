@@ -3,9 +3,9 @@
 Covers the layers Python tests cannot: the modifier-driven input toggling in
 the real browser (BETWEEN reveals value2, presence modifiers disable+clear)
 and the quick bar serializer reading the widget back into ``?filter=`` JSON.
-The widgets live inside the games quick bar's facet dropdowns (#315); each
+The widgets live inside the games quick bar's facet dropdowns; each
 test opens the facet's panel first. Rendered at a custom URL so the test
-needs no auth (``apply_url`` override, #304).
+needs no auth (``apply_url`` override).
 """
 
 import json

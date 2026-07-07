@@ -1,6 +1,6 @@
 """Filter set-criterion labels must survive round-trips whose choice/multi
 values are bare (no embedded {id, label}) — e.g. a programmatically built
-filter from stats_links (#65)."""
+filter from stats_links."""
 
 from common.components.filters import _extract_labeled
 

@@ -1,4 +1,4 @@
-"""Browser tests for the quick filter bar (#197): Apply-button facet
+"""Browser tests for the quick filter bar: Apply-button facet
 serialization (set facets on the games list, the scalar duration facet on the
 sessions list), and the degraded "Advanced filter active" pill for a filter
 the bar cannot round-trip."""
@@ -71,7 +71,7 @@ def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_serve
     expect(page.get_by_text("Unplayed Game")).to_have_count(0)
 
     # The applied filter round-trips back into an editable quick bar with the
-    # picked value rendered as an include pill (#197's round-trip guarantee).
+    # picked value rendered as an include pill (the round-trip guarantee).
     pill = page.locator("quick-filter-bar [data-search-select-pills] [data-pill]")
     expect(pill).to_have_count(1)
     expect(pill).to_contain_text("Finished")
@@ -97,7 +97,7 @@ def test_quick_scalar_facet_filters_sessions(authenticated_page: Page, live_serv
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    # The Duration facet is a dropdown (#315): open its panel first.
+    # The Duration facet is a dropdown: open its panel first.
     page.locator("#quick-duration_total_hours-dropdownLink").click()
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
@@ -146,7 +146,7 @@ def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_serv
 
 
 def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
-    """The #315 dropdown facets on the sessions list: open the Game panel,
+    """The dropdown facets on the sessions list: open the Game panel,
     include a game, remove a pill (the panel must stay open — the composedPath
     close-guard fix), Apply, and round-trip back into an editable bar with the
     pill inside the reopened panel."""
@@ -218,7 +218,7 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server):
 
 
 def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
-    """The Started facet as a dropdown (#315): a ghost "Started ▾" trigger
+    """The Started facet as a dropdown: a ghost "Started ▾" trigger
     opening a static always-visible calendar (no toggle, no Cancel/Select);
     picking the Today preset and applying serializes a BETWEEN criterion."""
     from datetime import date, datetime, timedelta, timezone
@@ -278,7 +278,7 @@ def test_date_dropdown_facet_preset_flow(authenticated_page: Page, live_server):
 def test_priority_plus_overflow_collapses_and_restores(
     authenticated_page: Page, live_server
 ):
-    """#315 priority-plus: narrowing the viewport moves rightmost facets into
+    """Priority-plus: narrowing the viewport moves rightmost facets into
     the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
     working from inside it; widening moves them back and hides the menu."""
     from datetime import datetime, timedelta, timezone
@@ -348,7 +348,7 @@ def test_preset_pick_on_builderless_mode(
 ):
     """The quick bar's Load-preset picker works on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
-    picker's search box never applies the facet form (#297/#315)."""
+    picker's search box never applies the facet form."""
     from games.models import Device, FilterPreset
 
     Device.objects.create(name="Steam Deck")

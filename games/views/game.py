@@ -157,7 +157,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    # The quick bar is the page's only filter tier (#315): dropdown facets,
+    # The quick bar is the page's only filter tier: dropdown facets,
     # preset picker, and the builder entry point in the action group.
     builder_url = builder_url_for("games", filter_json)
     parsed_filter = parse_filter_dict(filter_json)

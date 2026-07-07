@@ -1,4 +1,4 @@
-"""Tests for the quick filter bar (#197): the pinned degrade predicate, both
+"""Tests for the quick filter bar: the pinned degrade predicate, both
 render states, and the round-trip guarantee (a filter shaped like the bar's own
 serializer output must reload as editable, never flip to "advanced")."""
 
@@ -23,7 +23,7 @@ _GAME_FACETS = {"status", "platform"}
 
 
 class IsQuickEditableTest(SimpleTestCase):
-    """The pinned #197 predicate: editable iff empty or all top-level keys are
+    """The pinned degrade predicate: editable iff empty or all top-level keys are
     facet fields with dict (criterion) values."""
 
     def test_empty_filter_is_editable(self):
@@ -100,7 +100,7 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn(">Clear<", html)
         self.assertIn(f'href="{list_url_for(mode)}"', html)
         # Apply + Clear are one segmented ButtonGroup — a single visual unit
-        # that row wrapping can't separate (#315). Order is asserted inside
+        # that row wrapping can't separate. Order is asserted inside
         # the group's slice: the date facets' calendars carry their own
         # ">Clear<" buttons earlier in the document.
         self.assertIn('role="group"', html)
@@ -113,7 +113,7 @@ class QuickFilterBarRenderingTest(TestCase):
         for facet in QUICK_FACETS[mode]:
             expected_label = facet.label or derived_labels[facet.field]
             # Every facet is a "Label ▾" dropdown trigger opening a combobox
-            # dialog (#315) — no inline "Label:" span anywhere.
+            # dialog — no inline "Label:" span anywhere.
             self.assertNotIn(f"{expected_label}:", html)
             self.assertIn(f">{expected_label}<svg", html)
             self.assertIn(f'id="quick-{facet.field}-dropdown"', html)
@@ -152,7 +152,7 @@ class QuickFilterBarRenderingTest(TestCase):
     def test_round_trip_guarantee_serializer_shape_is_editable(self):
         """A filter shaped exactly like ts/elements/quick-filter-bar.ts emits
         (buildSetCriterion output, incl. the empty excludes list) must render
-        editable — the bar can never lock itself out (#197)."""
+        editable — the bar can never lock itself out."""
         filter_json = json.dumps(
             {
                 "status": {
@@ -325,7 +325,7 @@ class DropdownFacetA11yTest(TestCase):
 
 
 class ActionGroupTest(TestCase):
-    """The action group (#315): Apply | Clear, plus the builder entry point
+    """The action group: Apply | Clear, plus the builder entry point
     whenever the mode has a builder page (builder_url non-empty)."""
 
     def test_builder_url_adds_advanced_filter_segment(self):
@@ -343,7 +343,7 @@ class ActionGroupTest(TestCase):
 
 class PresetPickerTest(TestCase):
     """The Load-preset picker rides in the bar as non-collapsible row
-    furniture when a preset API URL is given (#297, #315) — load-only."""
+    furniture when a preset API URL is given — load-only."""
 
     def test_preset_api_url_renders_the_picker_after_the_overflow_host(self):
         html = str(
@@ -364,7 +364,7 @@ class PresetPickerTest(TestCase):
 
 
 class ApplyUrlOverrideTest(TestCase):
-    """apply_url gates every derived list URL (#304): synthetic e2e harnesses
+    """apply_url gates every derived list URL: synthetic e2e harnesses
     render the bar under a stripped ROOT_URLCONF where reverse() would crash."""
 
     def test_apply_url_reaches_element_and_clear(self):

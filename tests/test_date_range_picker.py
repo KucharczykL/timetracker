@@ -155,7 +155,7 @@ class DateRangePickerTest(SimpleTestCase):
 class QuickBarDateRangePanelTest(TestCase):
     """The purchases quick bar's date facets use the canonical date widget
     (the static-calendar DateRangePanel personality) with the same hidden
-    ``-min``/``-max`` ISO inputs the serializer reads (#242, #315)."""
+    ``-min``/``-max`` ISO inputs the serializer reads."""
 
     def render(self, filter_json=""):
         from common.components import QuickFilterBar
@@ -199,7 +199,7 @@ class QuickBarDateRangePanelTest(TestCase):
 
 
 class DateRangePanelTest(SimpleTestCase):
-    """The dropdown-panel variant (#315): same element and hidden-input
+    """The dropdown-panel variant: same element and hidden-input
     contract as DateRangePicker, but no calendar toggle, a statically flowing
     always-visible calendar, and a Clear-only footer."""
 

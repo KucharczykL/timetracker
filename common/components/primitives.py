@@ -65,7 +65,7 @@ def filter_widget_attributes(
     builder's leaf readers in ``ts/elements/filter-widgets.ts``) read
     ``data-path`` (the widget's filter-JSON key, as a JSON array) and
     ``data-kind`` off any ``[data-filter-widget]`` root to handle all widgets
-    uniformly. See issue #123 Phase 2.
+    uniformly.
     """
     return [
         ("data-filter-widget", ""),

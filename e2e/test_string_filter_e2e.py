@@ -1,6 +1,6 @@
 """End-to-end Playwright test for String multi-mode filter serialization,
 null-state toggling, and prefill behaviors — hosted in the platforms quick
-bar's facet dropdowns (#315)."""
+bar's facet dropdowns."""
 
 import json
 import urllib.parse

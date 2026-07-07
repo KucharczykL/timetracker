@@ -2,7 +2,7 @@
 
 Pins the Stash-style NumberFilter modifier widget, the comparable-columns
 gate + reachable-model registry the nested builder renders from, the
-FilterGroup template emission, and the mode->list-URL table (#304).
+FilterGroup template emission, and the mode->list-URL table.
 """
 
 from django.test import SimpleTestCase, TestCase
@@ -102,7 +102,7 @@ class NumberFilterRenderTest(TestCase):
 
 class HasComparableGroupTest(TestCase):
     """The ≥2-columns-of-one-group gate behind the nested builder's
-    `+ comparison` affordance / row template (#246)."""
+    `+ comparison` affordance / row template."""
 
     def _column(self, value, group):
         return {"value": value, "label": value.title(), "group": group, "operators": []}
@@ -132,7 +132,7 @@ class HasComparableGroupTest(TestCase):
 
 class ReachableModelsTest(TestCase):
     """The relation-reachable model set the nested builder needs to render any
-    relation's child group offline (#193)."""
+    relation's child group offline."""
 
     def test_reachable_models_is_the_closed_relation_set(self):
         from games.filters import reachable_models
@@ -203,7 +203,7 @@ class ReachableModelsTest(TestCase):
 
 
 class FilterGroupComparisonTest(TestCase):
-    """The nested-builder shell (#246, #193): the multi-model `models` prop + the
+    """The nested-builder shell: the multi-model `models` prop + the
     per-model, namespaced templates it emits for the leaf and relation rows."""
 
     def test_models_prop_carries_every_reachable_model(self):
@@ -239,7 +239,7 @@ class FilterGroupComparisonTest(TestCase):
             self.assertNotIn(marker, html)
 
     def test_emits_chip_and_relation_select_templates(self):
-        """Chip + relation-select styling is server-owned (#273): one chip
+        """Chip + relation-select styling is server-owned: one chip
         template per visual state and one styled <select> template, all
         model-agnostic (emitted once, not per reachable model)."""
         from common.components import FilterGroup
@@ -251,7 +251,7 @@ class FilterGroupComparisonTest(TestCase):
 
 
 class FilterBuilderApplyUrlTest(SimpleTestCase):
-    """FilterBuilder derives apply-url from mode via list_url_for (#304)."""
+    """FilterBuilder derives apply-url from mode via list_url_for."""
 
     def test_apply_url_derived_from_mode(self):
         html = str(
@@ -261,7 +261,7 @@ class FilterBuilderApplyUrlTest(SimpleTestCase):
 
 
 class ListUrlForTest(SimpleTestCase):
-    """list_url_for is the single mode->list-URL source for filter UIs (#304)."""
+    """list_url_for is the single mode->list-URL source for filter UIs."""
 
     def test_known_modes_reverse_to_their_list_views(self):
         for mode, url_name in [

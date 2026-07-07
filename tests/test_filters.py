@@ -792,7 +792,7 @@ def _games_bar(filter_json: str = "") -> str:
 
 
 class TestFilterBarRendering:
-    """The games quick bar renders FilterSelect facet widgets (#315)."""
+    """The games quick bar renders FilterSelect facet widgets."""
 
     def test_status_uses_filter_select(self):
         html = _games_bar()

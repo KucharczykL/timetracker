@@ -1,5 +1,5 @@
 /**
- * QuickFilterBar — the GitHub-style facet row above a list view (#197).
+ * QuickFilterBar — the GitHub-style facet row above a list view.
  *
  * The facets are a small form: Apply (or Enter in a facet input) serializes
  * ONLY the facet criteria (strict — flat single-segment data-path widgets,
@@ -19,7 +19,7 @@ import {
   setupModifierToggles,
 } from "./filter-widgets.js";
 
-// The preset picker's search-select change payload (issue #297): `last` is
+// The preset picker's search-select change payload: `last` is
 // the picked row, whose data-filter attribute carries the preset's filter
 // JSON.
 interface PresetChangeDetail {
@@ -87,7 +87,7 @@ class QuickFilterBarElement extends HTMLElement {
     }
   };
 
-  // ── Priority-plus facet collapsing (#315) ────────────────────────────────
+  // ── Priority-plus facet collapsing ────────────────────────────────
   // GitHub-style continuous collapse: no breakpoints. The row is watched by a
   // ResizeObserver; on every width change the facets that no longer fit are
   // MOVED (same DOM nodes — widget state, listeners and serializer scope all

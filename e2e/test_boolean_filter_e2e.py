@@ -1,5 +1,5 @@
 """End-to-end Playwright test for boolean radio facet serialization and
-deselect behavior, hosted in the games quick bar's Mastered dropdown (#315).
+deselect behavior, hosted in the games quick bar's Mastered dropdown.
 
 Covers:
 1. Selecting True/False serializes the boolean field as True/False.

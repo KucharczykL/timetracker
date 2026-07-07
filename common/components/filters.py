@@ -318,7 +318,7 @@ def _bool_control(name: str, value: bool | None, *, path: FilterWidgetPath) -> N
 # ── field_widget: the single per-field value-widget builder (issue #242) ──────
 # One dispatcher that returns a field's value control, keyed off the field's
 # ``FieldMeta`` (kind / nullable / choices / search_url / is_m2m). It reuses the
-# existing builders — no new markup. The quick bar and the #192 nested-builder
+# existing builders — no new markup. The quick bar and the nested-builder
 # leaf row clone the same widget from here, so a field is described once.
 
 
@@ -377,7 +377,7 @@ def field_widget(
         raise ValueError(
             f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
         )
-    # Every leaf kind is panel-hostable (#315): set gets the FilterSelect
+    # Every leaf kind is panel-hostable: set gets the FilterSelect
     # panel personality, date the static-calendar DateRangePanel, and
     # number/string/bool embed their stacked widgets unchanged — the
     # select-above-inputs layout is the natural shape in a vertical dialog.
@@ -570,7 +570,7 @@ def comparison_row_template(
     leaf's value cell (``_field_comparison_row``); the enclosing group owns the
     connective. The row's own ``✕`` remove button is dropped client-side — the
     group's controls own removal. ``model`` tags the template ``data-model`` so
-    the multi-model builder (#193) buckets it by model."""
+    the multi-model builder buckets it by model."""
     from games.forms import SELECT_CLASS
 
     return Template(data_fc_row_template="", **_model_attr(model))[

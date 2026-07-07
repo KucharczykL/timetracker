@@ -1086,7 +1086,7 @@ _GROUP_BY_INTERNAL_TYPE: dict[str, ComparisonGroup] = {
 }
 
 
-# Maps a criterion class to the widget ``data-kind`` token a filter-bar widget
+# Maps a criterion class to the widget ``data-kind`` token a filter widget
 # advertises for it (see ``filter_widget_attributes``). The server↔client
 # contract: a widget's ``data-kind`` must equal the kind of the criterion its
 # ``data-path`` resolves to. Several criterion types share a kind (every numeric

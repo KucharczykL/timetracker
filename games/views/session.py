@@ -143,7 +143,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
     from games.views.filtering import builder_url_for
 
-    # The quick bar is the page's only filter tier (#315); the builder
+    # The quick bar is the page's only filter tier; the builder
     # entry point lives in its action group.
     filter_json = request.GET.get("filter", "")
     builder_url = builder_url_for("sessions", filter_json)

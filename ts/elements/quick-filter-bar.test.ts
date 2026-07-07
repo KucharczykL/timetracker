@@ -132,7 +132,7 @@ describe("<quick-filter-bar>", () => {
   });
 
   it("finds a set facet nested inside a hidden dropdown panel", () => {
-    // The #315 dropdown facets host their <search-select> inside a
+    // The dropdown facets host their <search-select> inside a
     // ComboboxDropdown's hidden [data-menu] dialog — serialization must be
     // depth- and visibility-agnostic.
     const { form, navigate } = mount(`
@@ -167,7 +167,7 @@ describe("<quick-filter-bar>", () => {
   });
 });
 
-// ── Priority-plus overflow (#315): stubbed-width layout math ──────────────
+// ── Priority-plus overflow: stubbed-width layout math ──────────────
 
 interface OverflowFixture {
   bar: HTMLElement & { layoutOverflow: () => void };
@@ -232,7 +232,7 @@ function mountOverflow(): OverflowFixture {
   };
 }
 
-describe("quick-filter-bar priority-plus overflow (#315)", () => {
+describe("quick-filter-bar priority-plus overflow", () => {
   it("keeps all facets in the row when they fit", () => {
     const fixture = mountOverflow();
     fixture.setRowWidth(1000);
@@ -276,7 +276,7 @@ describe("quick-filter-bar priority-plus overflow (#315)", () => {
   });
 });
 
-// ── Preset pick navigation (#297 picker as quick-bar row furniture) ────────
+// ── Preset pick navigation (the picker is quick-bar row furniture) ─────────
 
 function mountWithPicker(): {
   bar: HTMLElement;
@@ -361,7 +361,7 @@ describe("quick-filter-bar preset pick", () => {
   });
 });
 
-// ── Overflow reserve counts furniture between host and group (#315) ────────
+// ── Overflow reserve counts furniture between host and group ────────
 
 it("reserves width for furniture after the overflow host (preset picker)", () => {
   document.body.innerHTML = `

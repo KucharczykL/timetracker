@@ -323,7 +323,7 @@ def DateRangePanel(
     max_value: str = "",
     path: FilterWidgetPath | None = None,
 ) -> Node:
-    """The dropdown-panel variant of :func:`DateRangePicker` (#315): the
+    """The dropdown-panel variant of :func:`DateRangePicker`: the
     segmented field (no calendar toggle) above a statically flowing,
     always-visible calendar — for hosting inside a ``ComboboxDropdown``
     dialog, whose surface can't host the absolute popup (the panel clips
