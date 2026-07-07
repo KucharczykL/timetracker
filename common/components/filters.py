@@ -480,15 +480,12 @@ def _model_attr(model: str) -> dict[str, str]:
     return {"data-model": model} if model else {}
 
 
-# ── Field-to-field comparison widget (#167) ──────────────────────────────────
-# A set of "left <op> right" rows comparing two columns of the bar's own model,
-# combined by a single AND/OR mode toggle.  The dependent option lists (operator
-# + right column react to the left column's group) and the row serialization live
-# client-side in ts/elements/field-comparison-set.ts (builder comparison leaves).
-#
-# TODO(nested-builder, #168): the AND/OR mode toggle and the single-mode shapes
-# are a stepping stone the nested boolean builder subsumes; the single-row markup
-# (_field_comparison_row) is the permanent part it reuses inside a group node.
+# ── Field-to-field comparison widget ──────────────────────────────────────────
+# One "left <op> right" row comparing two columns of the builder's model — the
+# comparison leaf rendered inside a builder group node (the enclosing group owns
+# the AND/OR connective).  The dependent option lists (operator + right column
+# react to the left column's group) and the row serialization live client-side
+# in ts/elements/field-comparison-set.ts.
 
 
 class FieldComparisonRow(NamedTuple):
@@ -539,7 +536,7 @@ def _field_comparison_row(
     selects are rendered empty with the saved value stashed in ``data-selected``
     — ts/elements/field-comparison-set.ts builds their options from the left
     column's group and restores the selection. This is the reusable single-row
-    unit (see TODO(nested-builder) above)."""
+    unit."""
     left_value = row.left if row else ""
     operator_value = _pack_operator(row.modifier, row.granularity) if row else ""
     right_value = row.right if row else ""
@@ -656,10 +653,10 @@ def relation_select_template() -> Node:
 
 def has_comparable_group(columns: list[ComparableColumn]) -> bool:
     """Whether ``columns`` admits at least one field comparison: some comparison
-    group with ≥2 columns (a comparison needs two columns of the SAME group). The
-    same gate ``_field_comparison_section`` uses to decide whether to show the flat
-    bar's comparison field — reused so the builder's ``+ comparison`` affordance
-    appears under identical conditions."""
+    group with ≥2 columns (a comparison needs two columns of the SAME group).
+    Gates whether the builder emits a comparison-row template for a model —
+    mirrored client-side by ts/elements/filter-group.ts, so the ``+ comparison``
+    affordance appears under identical conditions."""
     group_counts: dict[str, int] = {}
     for column in columns:
         group_counts[column["group"]] = group_counts.get(column["group"], 0) + 1
