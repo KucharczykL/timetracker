@@ -77,7 +77,8 @@ describe("global-error-handler pure helpers", () => {
   it("buildDetail caps a huge filename to 200 chars", () => {
     const detail = buildDetail({ ...base, message: "m", filename: "https://site/" + "a".repeat(500), lineno: 1, colno: 1 });
     expect(detail.length).toBeLessThanOrEqual(500);
-    expect(detail).toContain("https://site/" + "a".repeat(180)); // 200-char slice present
+    expect(detail).toContain("https://site/" + "a".repeat(187));
+    expect(detail).not.toContain("https://site/" + "a".repeat(188));
   });
 
   it("buildDetail truncates the whole detail to 500 chars", () => {

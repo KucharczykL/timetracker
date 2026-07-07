@@ -75,13 +75,19 @@ function firstStackFrame(stack: string, message: string): string {
   return lines[0];
 }
 
-function inExtension(value: string): boolean {
-  return EXTENSION_SCHEMES.some((scheme) => value.includes(scheme));
+/** A bare URL whose origin is an extension scheme (checked at the start). */
+function isExtensionUrl(value: string): boolean {
+  return EXTENSION_SCHEMES.some((scheme) => value.startsWith(scheme));
+}
+
+/** A stack frame line embedding an extension URL (scheme appears mid-string). */
+function frameHasExtensionUrl(frame: string): boolean {
+  return EXTENSION_SCHEMES.some((scheme) => frame.includes(scheme));
 }
 
 export function shouldReport(fields: ErrorFields): boolean {
   const frame = firstStackFrame(fields.stack, fields.message);
-  if (inExtension(fields.filename) || inExtension(frame)) return false;
+  if (isExtensionUrl(fields.filename) || frameHasExtensionUrl(frame)) return false;
   if (fields.message.startsWith("Script error") && fields.filename === "" && fields.stack === "") {
     return false;
   }
