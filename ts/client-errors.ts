@@ -18,20 +18,41 @@ const DEGRADED_CLASSES = "ring-2 ring-red-500";
 // One report + one toast per distinct failure per page load.
 const reported = new Set<string>();
 
+const MAX_REPORTS_PER_PAGE = 25;
+let reportCount = 0;
+
+export interface ReportOptions {
+  toast?: boolean;
+}
+
 function errorId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
 /** Log a browser-side error to the server + console, deduped, best-effort toast.
  *  Returns the generated error id. Never throws. */
-export function reportClientError(context: string, detail: string): string {
+export function reportClientError(
+  context: string,
+  detail: string,
+  options: ReportOptions = {},
+): string {
+  const { toast = true } = options;
   const id = errorId();
   const key = `${context}|${detail}`;
   if (reported.has(key)) return id;
   reported.add(key);
 
+  reportCount += 1;
+  if (reportCount > MAX_REPORTS_PER_PAGE) {
+    // One line at the boundary, then silence: bound endpoint load, not page CPU.
+    if (reportCount === MAX_REPORTS_PER_PAGE + 1) {
+      console.error("client error reporting suppressed (cap reached)");
+    }
+    return id;
+  }
+
   console.error(`client error [${id}] ${context}: ${detail}`);
-  if (typeof window !== "undefined") {
+  if (toast && typeof window !== "undefined") {
     window.toast?.(`Filter failed to load (error ${id}) — reload the page`, "error");
   }
 
@@ -46,6 +67,12 @@ export function reportClientError(context: string, detail: string): string {
   }
 
   return id;
+}
+
+/** Test-only: reset the module-level dedup Set and cap counter. Never called in production. */
+export function __resetClientErrorState(): void {
+  reported.clear();
+  reportCount = 0;
 }
 
 function markDegraded(element: HTMLElement, id: string): void {
