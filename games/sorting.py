@@ -36,6 +36,12 @@ __all__ = [
     "SESSION_DEFAULT_SORT",
     "PURCHASE_SORTS",
     "PURCHASE_DEFAULT_SORT",
+    "PLAYEVENT_SORTS",
+    "PLAYEVENT_DEFAULT_SORT",
+    "DEVICE_SORTS",
+    "DEVICE_DEFAULT_SORT",
+    "PLATFORM_SORTS",
+    "PLATFORM_DEFAULT_SORT",
     "MODE_SORTS",
     "SortResult",
     "apply_sort",
@@ -109,16 +115,44 @@ PURCHASE_SORTS: SortMap = {
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
 
+# Every key here is a direct field path or a persisted column (days_to_finish is
+# a db_persist=True GeneratedField), so no aggregate annotation / row-dup concern.
+PLAYEVENT_SORTS: SortMap = {
+    "name": SortSpec("game__sort_name"),
+    "started": SortSpec("started"),
+    "ended": SortSpec("ended"),
+    "days": SortSpec("days_to_finish"),
+    "created": SortSpec("created_at"),
+}
+PLAYEVENT_DEFAULT_SORT: SortString = "-created"
 
-# Maps a FilterPreset.mode to the sort map that mode's list view applies. Only
-# the modes with a *_SORTS map appear; playevents/devices/platforms are absent
-# (their list views ignore ?sort=), so preset save gates sort on membership here
-# and stores nothing for a sort-less mode. Keyset is a subset of MODE_PARSERS /
-# FilterPreset.MODE_CHOICES, contract-tested in tests/test_filter_presets.py.
+DEVICE_SORTS: SortMap = {
+    "name": SortSpec("name"),
+    "type": SortSpec("type"),
+    "created": SortSpec("created_at"),
+}
+DEVICE_DEFAULT_SORT: SortString = "-created"
+
+PLATFORM_SORTS: SortMap = {
+    "name": SortSpec("name"),
+    "group": SortSpec("group"),
+    "created": SortSpec("created_at"),
+}
+PLATFORM_DEFAULT_SORT: SortString = "name"
+
+
+# Maps a FilterPreset.mode to the sort map that mode's list view applies. Every
+# mode has a sort map (all six list views apply ?sort=), so the keyset equals
+# FilterPreset.MODE_CHOICES / MODE_PARSERS — a subset relationship the contract
+# test in tests/test_filter_presets.py guards. Preset save gates sort on
+# membership here, so a mode absent from this map would store no sort.
 MODE_SORTS: dict[str, SortMap] = {
     "games": GAME_SORTS,
     "sessions": SESSION_SORTS,
     "purchases": PURCHASE_SORTS,
+    "playevents": PLAYEVENT_SORTS,
+    "devices": DEVICE_SORTS,
+    "platforms": PLATFORM_SORTS,
 }
 
 

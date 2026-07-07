@@ -12,10 +12,16 @@ from django.test import RequestFactory
 from django.urls import reverse
 
 from games.filters import FindFilter
-from games.models import Game, Platform, Purchase, Session
+from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
 from games.sorting import (
+    DEVICE_DEFAULT_SORT,
+    DEVICE_SORTS,
     GAME_DEFAULT_SORT,
     GAME_SORTS,
+    PLATFORM_DEFAULT_SORT,
+    PLATFORM_SORTS,
+    PLAYEVENT_DEFAULT_SORT,
+    PLAYEVENT_SORTS,
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -172,6 +178,9 @@ class TestSortMapShapes:
             (GAME_DEFAULT_SORT, GAME_SORTS),
             (SESSION_DEFAULT_SORT, SESSION_SORTS),
             (PURCHASE_DEFAULT_SORT, PURCHASE_SORTS),
+            (PLAYEVENT_DEFAULT_SORT, PLAYEVENT_SORTS),
+            (DEVICE_DEFAULT_SORT, DEVICE_SORTS),
+            (PLATFORM_DEFAULT_SORT, PLATFORM_SORTS),
         ]:
             for token in default.split(","):
                 assert token.lstrip("-") in sort_map
@@ -202,8 +211,8 @@ class TestListGamesSort:
         with capture_games_logger() as caplog:
             response = logged_client.get(reverse("games:list_games"), {"sort": "bogus"})
         assert response.status_code == 200
-        warnings = [str(m) for m in get_messages(response.wsgi_request)]
-        assert any("bogus" in w for w in warnings)
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("bogus" in warning for warning in warnings)
         # The view's own entity="game" literal is load-bearing for operator log
         # triage but invisible in the toast/fallback behavior, so assert it here.
         assert any(
@@ -216,7 +225,7 @@ class TestListGamesSort:
 
     def test_valid_sort_emits_no_warning(self, logged_client, two_games):
         response = logged_client.get(reverse("games:list_games"), {"sort": "name"})
-        warnings = [str(m) for m in get_messages(response.wsgi_request)]
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
         assert warnings == []
 
 
@@ -258,8 +267,8 @@ class TestListSessionsSort:
             response = logged_client.get(
                 reverse("games:list_sessions"), {"sort": "nope"}
             )
-        warnings = [str(m) for m in get_messages(response.wsgi_request)]
-        assert any("nope" in w for w in warnings)
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("nope" in warning for warning in warnings)
         assert any(
             "entity=session" in record.getMessage() and "nope" in record.getMessage()
             for record in caplog.records
@@ -319,8 +328,8 @@ class TestListPurchasesSort:
             response = logged_client.get(
                 reverse("games:list_purchases"), {"sort": "nope"}
             )
-        warnings = [str(m) for m in get_messages(response.wsgi_request)]
-        assert any("nope" in w for w in warnings)
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("nope" in warning for warning in warnings)
         assert any(
             "entity=purchase" in record.getMessage() and "nope" in record.getMessage()
             for record in caplog.records
@@ -357,3 +366,140 @@ class TestEverySortKeyReturns200:
         for key in PURCHASE_SORTS:
             response = logged_client.get(reverse("games:list_purchases"), {"sort": key})
             assert response.status_code == 200, key
+
+    def test_all_playevent_keys(self, logged_client, two_playevents):
+        for key in PLAYEVENT_SORTS:
+            for raw in (key, f"-{key}"):
+                response = logged_client.get(
+                    reverse("games:list_playevents"), {"sort": raw}
+                )
+                assert response.status_code == 200, raw
+
+    def test_all_device_keys(self, logged_client, two_devices):
+        for key in DEVICE_SORTS:
+            for raw in (key, f"-{key}"):
+                response = logged_client.get(
+                    reverse("games:list_devices"), {"sort": raw}
+                )
+                assert response.status_code == 200, raw
+
+    def test_all_platform_keys(self, logged_client, two_platforms):
+        for key in PLATFORM_SORTS:
+            for raw in (key, f"-{key}"):
+                response = logged_client.get(
+                    reverse("games:list_platforms"), {"sort": raw}
+                )
+                assert response.status_code == 200, raw
+
+
+@pytest.fixture
+def two_playevents(db, two_games):
+    alpha, beta = two_games
+    early = PlayEvent.objects.create(game=alpha, ended="2022-01-01")
+    late = PlayEvent.objects.create(game=beta, ended="2022-06-01")
+    return early, late
+
+
+@pytest.fixture
+def two_devices(db):
+    # Names deliberately avoid the device-type labels ("Console", "Handheld", …)
+    # so a body substring search can't collide with the type facet's options.
+    first = Device.objects.create(name="Aaa", type=Device.CONSOLE)
+    last = Device.objects.create(name="Zzz", type=Device.HANDHELD)
+    return first, last
+
+
+@pytest.fixture
+def two_platforms(db):
+    switch = Platform.objects.create(name="Switch", icon="switch", group="Nintendo")
+    playstation = Platform.objects.create(name="PS5", icon="ps5", group="Sony")
+    return switch, playstation
+
+
+class TestListPlayEventsSort:
+    def test_sort_by_ended_ascending_overrides_default(
+        self, logged_client, two_playevents
+    ):
+        # default -created puts the later-created row first; ended-ascending must
+        # flip it so the sort param, not creation order, drives the order.
+        response = logged_client.get(
+            reverse("games:list_playevents"), {"sort": "ended"}
+        )
+        assert response.status_code == 200
+        body = response.content.decode()
+        tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert tbody_match
+        tbody = tbody_match.group(1)
+        assert tbody.index("Alpha") < tbody.index("Beta")  # earliest ended first
+
+    def test_unknown_sort_emits_warning(
+        self, logged_client, two_playevents, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(
+                reverse("games:list_playevents"), {"sort": "nope"}
+            )
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("nope" in warning for warning in warnings)
+        assert any(
+            "entity=playevent" in record.getMessage() and "nope" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )
+
+
+class TestListDevicesSort:
+    def test_sort_by_name_ascending_overrides_default(self, logged_client, two_devices):
+        # default -created puts Zzz (created last) first; name-ascending flips it
+        # so Aaa comes first — proving the sort param drives the order.
+        response = logged_client.get(reverse("games:list_devices"), {"sort": "name"})
+        assert response.status_code == 200
+        body = response.content.decode()
+        tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert tbody_match
+        tbody = tbody_match.group(1)
+        assert tbody.index("Aaa") < tbody.index("Zzz")
+
+    def test_unknown_sort_emits_warning(
+        self, logged_client, two_devices, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(
+                reverse("games:list_devices"), {"sort": "nope"}
+            )
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("nope" in warning for warning in warnings)
+        assert any(
+            "entity=device" in record.getMessage() and "nope" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )
+
+
+class TestListPlatformsSort:
+    def test_sort_by_name_descending_overrides_default(
+        self, logged_client, two_platforms
+    ):
+        # default is name ascending (PS5 < Switch); -name must flip it.
+        response = logged_client.get(reverse("games:list_platforms"), {"sort": "-name"})
+        assert response.status_code == 200
+        body = response.content.decode()
+        tbody_match = re.search(r"<tbody[^>]*>(.*?)</tbody>", body, re.DOTALL)
+        assert tbody_match
+        tbody = tbody_match.group(1)
+        assert tbody.index("Switch") < tbody.index("PS5")
+
+    def test_unknown_sort_emits_warning(
+        self, logged_client, two_platforms, capture_games_logger
+    ):
+        with capture_games_logger() as caplog:
+            response = logged_client.get(
+                reverse("games:list_platforms"), {"sort": "nope"}
+            )
+        warnings = [str(message) for message in get_messages(response.wsgi_request)]
+        assert any("nope" in warning for warning in warnings)
+        assert any(
+            "entity=platform" in record.getMessage() and "nope" in record.getMessage()
+            for record in caplog.records
+            if record.name == "games"
+        )

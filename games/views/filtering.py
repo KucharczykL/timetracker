@@ -43,8 +43,8 @@ def builder_url_for(
     the list views and the quick bar's degraded pill rely on.
 
     ``sort`` threads the list's active ``?sort=`` into the builder so a preset
-    saved from the builder can capture it (#77); it is only meaningful for modes
-    with a sort map, so sort-less modes pass ``None``.
+    saved from the builder can capture it (#77); every mode has a sort map now,
+    so a caller passes ``None`` only when no sort is active on the list.
 
     ``per_page`` threads the list's active rows-per-page in so a preset saved
     there pins it and Apply navigates back preserving it (#337). Only a
