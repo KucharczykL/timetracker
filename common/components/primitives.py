@@ -15,7 +15,7 @@ from django.conf import settings
 from django.http import QueryDict
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
-from django.utils.safestring import SafeText, mark_safe
+from django.utils.safestring import SafeText
 
 from common.components.core import (
     Attributes,
@@ -827,22 +827,23 @@ def CsrfInput(request) -> Node:
     )
 
 
-def ModuleScript(filename: str) -> SafeText:
-    """A `<script type="module">` tag pointing at a static JS file."""
-    return mark_safe(
-        f'<script type="module" src="{static("js/" + filename)}"></script>'
-    )
+def ModuleScript(filename: str) -> Node:
+    """A `<script type="module">` node pointing at a static JS file.
+
+    A node (not a safe string) so it drops straight into a tree — head list or
+    `scripts=` — beside the other `Script`/`Link` nodes, no `Safe(str(...))`."""
+    return Script(type="module", src=static("js/" + filename))
 
 
-def ExternalScript(url: str) -> SafeText:
-    """A plain `<script src=...>` tag for an external/CDN script."""
-    return mark_safe(f'<script src="{url}"></script>')
+def ExternalScript(url: str) -> Node:
+    """A plain `<script src=...>` node for an external/CDN script."""
+    return Script(src=url)
 
 
-def StaticScript(filename: str) -> SafeText:
-    """A plain (classic, non-module) `<script src=...>` tag for a static JS
+def StaticScript(filename: str) -> Node:
+    """A plain (classic, non-module) `<script src=...>` node for a static JS
     file — for vendored UMD bundles, which break inside module scope."""
-    return mark_safe(f'<script src="{static("js/" + filename)}"></script>')
+    return Script(src=static("js/" + filename))
 
 
 # The <year-picker> custom element wraps the Flowbite-datepicker year grid.

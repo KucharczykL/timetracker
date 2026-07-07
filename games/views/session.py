@@ -7,7 +7,6 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.safestring import mark_safe
 
 from common.components import (
     AddForm,
@@ -216,7 +215,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Add New Session",
-        scripts=mark_safe(ModuleScript("dist/elements/search-select.js")),
+        scripts=ModuleScript("dist/elements/search-select.js"),
     )
 
 
@@ -231,7 +230,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
         title="Edit Session",
-        scripts=mark_safe(ModuleScript("dist/elements/search-select.js")),
+        scripts=ModuleScript("dist/elements/search-select.js"),
     )
 
 

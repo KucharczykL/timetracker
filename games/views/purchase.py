@@ -12,7 +12,6 @@ from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 from common.components import (
@@ -333,9 +332,9 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             additional_row=_purchase_additional_row(),
         ),
         title="Add New Purchase",
-        scripts=mark_safe(
-            ModuleScript("dist/elements/search-select.js")
-            + ModuleScript("dist/add_purchase.js")
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/add_purchase.js"),
         ),
     )
 
@@ -352,9 +351,9 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Edit Purchase",
-        scripts=mark_safe(
-            ModuleScript("dist/elements/search-select.js")
-            + ModuleScript("dist/add_purchase.js")
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/add_purchase.js"),
         ),
     )
 
