@@ -1,4 +1,5 @@
 import { readFilterSummaryProps } from "../generated/props.js";
+import { parseJSONWithReport } from "../client-errors.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
 import { summarize } from "./filter-tree/summary.js";
 import type { SummaryContext, SummaryModel } from "./filter-tree/summary.js";
@@ -68,14 +69,12 @@ export class FilterSummaryElement extends HTMLElement {
 
   private parseModels(raw: string): Record<string, SummaryModel> {
     const models: Record<string, SummaryModel> = {};
-    let bundles: Record<string, ModelBundleJson> = {};
-    if (raw) {
-      try {
-        bundles = JSON.parse(raw) as Record<string, ModelBundleJson>;
-      } catch (error) {
-        console.warn("filter-summary: malformed models prop", error);
-      }
-    }
+    const bundles = parseJSONWithReport<Record<string, ModelBundleJson>>(
+      raw,
+      {},
+      "filter-summary[models]",
+      this,
+    );
     for (const [key, bundle] of Object.entries(bundles)) {
       const fields = new Map<string, FieldMeta>();
       for (const meta of bundle.fields) fields.set(meta.name, meta);

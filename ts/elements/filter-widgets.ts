@@ -6,6 +6,7 @@
  * widget contract the bars produce via the Python `field_widget` builder (#242).
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
+import { readJSONProp } from "../client-errors.js";
 import { writeSideValue } from "./date-range-picker.js";
 import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readFilterSelect, writeFilterSelect } from "./search-select.js";
@@ -51,17 +52,6 @@ export function buildRangeCriterion(
   if (valueMin !== "") return criterion(valueMin, null, "GREATER_THAN");
   if (valueMax !== "") return criterion(valueMax, null, "LESS_THAN");
   return null;
-}
-
-export function parseJSONAttr<T>(element: Element, attr: string): T[] {
-  const raw = element.getAttribute(attr);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    console.warn("filter-widgets: malformed JSON attribute", attr, raw);
-    return [];
-  }
 }
 
 // ── Per-kind readers: each scoped to a single widget element, returns a criterion
@@ -137,8 +127,8 @@ export function buildSetCriterion(
 // pass writes onto the <search-select> container.
 export function readSetWidget(element: HTMLElement): Record<string, unknown> | null {
   return buildSetCriterion(
-    parseJSONAttr<PillEntry>(element, "data-included"),
-    parseJSONAttr<PillEntry>(element, "data-excluded"),
+    readJSONProp<PillEntry[]>(element, "data-included", []),
+    readJSONProp<PillEntry[]>(element, "data-excluded", []),
     element.getAttribute("data-modifier"),
   );
 }

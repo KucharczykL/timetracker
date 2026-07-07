@@ -13,11 +13,11 @@ import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
 import {
-  parseJSONAttr,
   readLeafWidget,
   setupDeselectableRadios,
   setupModifierToggles,
 } from "./filter-widgets.js";
+import { readJSONProp, reportClientError } from "../client-errors.js";
 
 // The preset picker's search-select change payload: `last` is
 // the picked row, whose data-filter attribute carries the preset's filter
@@ -81,6 +81,7 @@ class QuickFilterBarElement extends HTMLElement {
       // An empty preset means "show everything": applyUrl returns the bare list.
       this.navigate(applyUrl(this.applyTarget, filter));
     } catch (error) {
+      reportClientError("quick-filter-bar[preset]", String(error));
       // Keep the "preset load failed" console substring (e2e crash guard).
       console.error("quick-filter-bar: preset load failed", error);
       window.toast("Preset is not a valid filter.", "error");
@@ -216,7 +217,7 @@ class QuickFilterBarElement extends HTMLElement {
     const filter: Record<string, unknown> = {};
     this.querySelectorAll<HTMLElement>("[data-filter-widget]").forEach(
       (widget) => {
-        const path = parseJSONAttr<string>(widget, "data-path");
+        const path = readJSONProp<string[]>(widget, "data-path", []);
         if (path.length !== 1) return; // facets are flat own-model fields
         const kind = (widget.getAttribute("data-kind") ?? "") as LeafWidgetKind;
         const criterion = readLeafWidget(widget, kind);

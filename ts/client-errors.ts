@@ -31,15 +31,19 @@ export function reportClientError(context: string, detail: string): string {
   reported.add(key);
 
   console.error(`client error [${id}] ${context}: ${detail}`);
-  window.toast?.(`Filter failed to load (error ${id}) — reload the page`, "error");
+  if (typeof window !== "undefined") {
+    window.toast?.(`Filter failed to load (error ${id}) — reload the page`, "error");
+  }
 
-  void fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
-    body: JSON.stringify({ error_id: id, context, detail, url: location.href }),
-  }).catch(() => {
-    // Reporting must never break the page: swallow network/HTTP failure.
-  });
+  if (typeof fetch !== "undefined" && typeof document !== "undefined") {
+    void fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+      body: JSON.stringify({ error_id: id, context, detail, url: location.href }),
+    }).catch(() => {
+      // Reporting must never break the page: swallow network/HTTP failure.
+    });
+  }
 
   return id;
 }

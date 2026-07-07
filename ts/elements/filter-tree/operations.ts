@@ -29,6 +29,7 @@ import {
 import { group } from "./serializer.js";
 import { nextNodeId } from "./node-id.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
+import { parseJSONWithReport } from "../../client-errors.js";
 
 // A path step is either a positional index into a group's children, or a string
 // sentinel: `RELATION_CHILD` descends from a relation node into its one child
@@ -62,15 +63,8 @@ export function emptyCriterion(): CriterionLeaf {
 // it trusts the single server producer (common.criteria.field_metadata).
 export function parseFieldMeta(raw: string): FilterFieldMeta | null {
   if (!raw) return null;
-  try {
-    return JSON.parse(raw) as FilterFieldMeta;
-  } catch {
-    // A non-empty blob that won't parse is a broken Python↔TS contract (not the
-    // normal empty-option case above) — warn so the silently-dropped field pick is
-    // debuggable, consistent with parseModels in filter-group.ts.
-    console.warn("filter-tree: malformed field-picker data-meta blob");
-    return null;
-  }
+  // No element to mark here (raw string only); report + toast still fire.
+  return parseJSONWithReport<FilterFieldMeta | null>(raw, null, "filter-tree[field-meta]");
 }
 
 // The on-field-change reset (design spec / issue #191): a FRESH leaf for the

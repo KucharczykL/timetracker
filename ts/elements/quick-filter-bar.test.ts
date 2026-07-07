@@ -338,7 +338,7 @@ describe("quick-filter-bar preset pick", () => {
     pick("{not json");
     expect(navigate).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalled();
-    expect(consoleError.mock.calls[0][0]).toContain("preset load failed");
+    expect(consoleError.mock.calls.some((call) => String(call[0]).includes("preset load failed"))).toBe(true);
   });
 
   it("facet search-select changes are not treated as preset picks", () => {
