@@ -81,12 +81,16 @@ _FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
 def _filter_parse(filter_json: str) -> dict:
     if not filter_json:
         return {}
+    # Bound to a name rather than written inline as `except (ValueError, TypeError):`
+    # because ruff 0.15.x's formatter rewrites the inline tuple into the Python-2
+    # `except ValueError, TypeError:` form, which is a SyntaxError on Python 3.
+    parse_errors = (ValueError, TypeError)
     try:
         import json
 
         loaded = json.loads(filter_json)
         return loaded if isinstance(loaded, dict) else {}
-    except ValueError, TypeError:
+    except parse_errors:
         return {}
 
 
