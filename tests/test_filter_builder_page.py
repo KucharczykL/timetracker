@@ -13,7 +13,9 @@ def logged_in_client(client, django_user_model):
     return client
 
 
-@pytest.mark.parametrize("model", ["game", "session", "purchase", "playevent"])
+@pytest.mark.parametrize(
+    "model", ["game", "session", "purchase", "playevent", "device", "platform"]
+)
 def test_builder_page_renders(logged_in_client, model):
     response = logged_in_client.get(reverse("games:filter_builder", args=[model]))
     assert response.status_code == 200
@@ -55,6 +57,8 @@ def test_builder_requires_login(client):
         ("list_sessions", "session"),
         ("list_purchases", "purchase"),
         ("list_playevents", "playevent"),
+        ("list_devices", "device"),
+        ("list_platforms", "platform"),
     ],
 )
 def test_list_has_advanced_filter_link(logged_in_client, list_name, model):

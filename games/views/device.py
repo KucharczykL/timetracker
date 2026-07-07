@@ -23,7 +23,7 @@ from common.utils import paginate
 from games.sorting import parse_find_filter
 from games.filters import parse_device_filter
 from games.forms import DeviceForm
-from games.views.filtering import apply_structured_filter
+from games.views.filtering import apply_structured_filter, builder_url_for
 from games.models import Device
 
 
@@ -80,14 +80,15 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    # No builder_url: devices have no nested-builder page (BUILDER_MODES) —
-    # the action group is Apply | Clear and the degraded pill offers only
-    # Clear. Presets are load-only here (saving needs a builder page).
+    # devices are sort-less (absent from MODE_SORTS), so the builder URL carries
+    # no ?sort= — pass sort=None (#336).
+    builder_url = builder_url_for("devices", filter_json)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="devices",
         existing=parsed_filter,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        builder_url=builder_url,
     )
     content = ContentContainer()[quick_bar, content]
     return render_page(
