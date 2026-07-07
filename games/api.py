@@ -485,3 +485,41 @@ def delete_preset(request, preset_id: int):
 
 
 api.add_router("/presets", preset_router)
+
+client_error_logger = logging.getLogger("client_errors")
+
+client_error_router = Router()
+
+
+class ClientErrorIn(Schema):
+    error_id: str = Field(..., max_length=16)
+    context: str = Field(..., max_length=200)
+    detail: str = Field(..., max_length=500)
+    url: str = Field(..., max_length=200)
+
+
+def _one_line(value: str) -> str:
+    """Collapse CR/LF so a client field cannot forge extra log entries."""
+    return value.replace("\r", " ").replace("\n", " ")
+
+
+@client_error_router.post("/", response={204: None})
+def report_client_error(request, payload: ClientErrorIn):
+    """Log a browser-side error so production observability can see it (#232).
+
+    Auth + CSRF are inherited from ``NinjaAPI(auth=django_auth)``. Fields are
+    length-capped by the schema (over-length -> 422) and CRLF-stripped so the
+    single log line cannot be forged.
+    """
+    client_error_logger.error(
+        "client error [%s] user=%s context=%s url=%s detail=%s",
+        _one_line(payload.error_id),
+        request.user,
+        _one_line(payload.context),
+        _one_line(payload.url),
+        _one_line(payload.detail),
+    )
+    return Status(204, None)
+
+
+api.add_router("/client-error", client_error_router)
