@@ -65,10 +65,12 @@ def _delete_url(preset_id: int) -> str:
     return reverse("api-1.0.0:delete_preset", args=[preset_id])
 
 
-def _save(client, *, name, mode="games", filter=None, sort=None):
+def _save(client, *, name, mode="games", filter=None, sort=None, per_page=None):
     body = {"name": name, "mode": mode, "filter": filter}
     if sort is not None:
         body["sort"] = sort
+    if per_page is not None:
+        body["per_page"] = per_page
     return client.post(
         _presets_url(),
         json.dumps(body),
@@ -246,7 +248,7 @@ def test_list_emits_persisted_sort(auth_client):
         {
             "value": preset.id,
             "label": "Sorted",
-            "data": {"filter": "{}", "sort": "-playtime"},
+            "data": {"filter": "{}", "sort": "-playtime", "per_page": ""},
         }
     ]
 
@@ -262,6 +264,88 @@ def test_resaving_without_sort_clears_stored_sort(auth_client):
     # find_filter is part of the upsert defaults, so re-saving with no sort must
     # overwrite a previously-stored sort rather than leaving it stale.
     _save(auth_client, name="V", mode="games", filter=None, sort="-playtime")
+    _save(auth_client, name="V", mode="games", filter=None)
+    preset = FilterPreset.objects.get(name="V")
+    assert preset.find_filter == {}
+
+
+# ── Page-size round-trip (#337) ──────────────────────────────────────────────
+
+
+def test_save_persists_non_default_per_page(auth_client):
+    _save(auth_client, name="Big", mode="games", filter=None, per_page="100")
+    preset = FilterPreset.objects.get(name="Big")
+    assert preset.find_filter == {"per_page": 100}
+
+
+def test_save_default_per_page_stores_nothing(auth_client):
+    # The default size round-trips to the default, so it is not persisted — the
+    # find_filter stays empty (mirrors the default-sort behaviour).
+    from games.filters import FindFilter
+
+    _save(
+        auth_client,
+        name="Default",
+        mode="games",
+        filter=None,
+        per_page=str(FindFilter.per_page),
+    )
+    preset = FilterPreset.objects.get(name="Default")
+    assert preset.find_filter == {}
+
+
+def test_save_zero_per_page_is_persisted(auth_client):
+    # per_page=0 (show all) differs from the default, so it is kept — a truthiness
+    # check would wrongly drop it.
+    _save(auth_client, name="All", mode="games", filter=None, per_page="0")
+    preset = FilterPreset.objects.get(name="All")
+    assert preset.find_filter == {"per_page": 0}
+
+
+def test_save_non_integer_per_page_stores_nothing(auth_client):
+    _save(auth_client, name="Junk", mode="games", filter=None, per_page="lots")
+    preset = FilterPreset.objects.get(name="Junk")
+    assert preset.find_filter == {}
+
+
+def test_save_persists_sort_and_per_page_together(auth_client):
+    _save(
+        auth_client,
+        name="Both",
+        mode="games",
+        filter=None,
+        sort="-playtime",
+        per_page="50",
+    )
+    preset = FilterPreset.objects.get(name="Both")
+    assert preset.find_filter == {"sort": "-playtime", "per_page": 50}
+
+
+def test_save_persists_per_page_for_sortless_mode(auth_client):
+    # per_page is universal (every list paginates), so unlike sort it is NOT
+    # gated on MODE_SORTS — a sort-less mode still pins its page size.
+    _save(auth_client, name="PE", mode="playevents", filter=None, per_page="50")
+    preset = FilterPreset.objects.get(name="PE")
+    assert preset.find_filter == {"per_page": 50}
+
+
+def test_list_emits_persisted_per_page(auth_client):
+    _save(auth_client, name="Big", mode="games", filter=None, per_page="100")
+    preset = FilterPreset.objects.get(name="Big")
+    payload = _list(auth_client).json()
+    assert payload == [
+        {
+            "value": preset.id,
+            "label": "Big",
+            "data": {"filter": "{}", "sort": "", "per_page": "100"},
+        }
+    ]
+
+
+def test_resaving_without_per_page_clears_stored_per_page(auth_client):
+    # find_filter is part of the upsert defaults, so re-saving with no per_page
+    # must overwrite a previously-stored size rather than leaving it stale.
+    _save(auth_client, name="V", mode="games", filter=None, per_page="100")
     _save(auth_client, name="V", mode="games", filter=None)
     preset = FilterPreset.objects.get(name="V")
     assert preset.find_filter == {}
@@ -288,7 +372,7 @@ def test_list_shape_round_trips_object_filter(auth_client):
         {
             "value": preset.id,
             "label": "Shape",
-            "data": {"filter": json.dumps(stored), "sort": ""},
+            "data": {"filter": json.dumps(stored), "sort": "", "per_page": ""},
         }
     ]
 

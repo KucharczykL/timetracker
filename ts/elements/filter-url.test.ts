@@ -32,4 +32,25 @@ describe("applyUrl", () => {
         encodeURIComponent("-playtime"),
     );
   });
+
+  it("emits ?per_page= alone when only a page size is present (#337)", () => {
+    expect(applyUrl(LIST_URL, {}, "", "100")).toBe(LIST_URL + "?per_page=100");
+  });
+
+  it("omits per_page for an empty string but keeps '0' (show all) (#337)", () => {
+    expect(applyUrl(LIST_URL, {}, "", "")).toBe(LIST_URL);
+    expect(applyUrl(LIST_URL, {}, "", "0")).toBe(LIST_URL + "?per_page=0");
+  });
+
+  it("joins filter, sort and per_page in order (#337)", () => {
+    const filter = { name: { modifier: "INCLUDES", value: "x" } };
+    expect(applyUrl(LIST_URL, filter, "-playtime", "50")).toBe(
+      LIST_URL +
+        "?filter=" +
+        encodeURIComponent(JSON.stringify(filter)) +
+        "&sort=" +
+        encodeURIComponent("-playtime") +
+        "&per_page=50",
+    );
+  });
 });

@@ -18,6 +18,7 @@ from django.urls import reverse
 
 from common.components.custom_elements import FILTER_MODE_MODELS, FilterMode
 from common.criteria import FilterError, OperatorFilter
+from games.filters import FindFilter
 from games.sorting import SortKey
 
 logger = logging.getLogger("games")
@@ -31,14 +32,25 @@ BUILDER_MODES = frozenset(
 )
 
 
-def builder_url_for(mode: FilterMode, filter_json: str, sort: str | None = None) -> str:
-    """The fully-formed nested-builder URL for ``mode``, carrying ``?filter=``
-    and ``&sort=`` when active — the single home of the URL format the list views
-    and the quick bar's degraded pill rely on.
+def builder_url_for(
+    mode: FilterMode,
+    filter_json: str,
+    sort: str | None = None,
+    per_page: int | None = None,
+) -> str:
+    """The fully-formed nested-builder URL for ``mode``, carrying ``?filter=``,
+    ``&sort=`` and ``&per_page=`` when active — the single home of the URL format
+    the list views and the quick bar's degraded pill rely on.
 
     ``sort`` threads the list's active ``?sort=`` into the builder so a preset
     saved from the builder can capture it (#77); it is only meaningful for modes
     with a sort map, so sort-less modes pass ``None``.
+
+    ``per_page`` threads the list's active rows-per-page in so a preset saved
+    there pins it and Apply navigates back preserving it (#337). Only a
+    *non-default* size is carried — a default size threads nothing, so a
+    default-size preset round-trips to the default. ``page`` is deliberately not
+    threaded: it is transient (loading a preset resets to page 1).
 
     Raises ``LookupError`` for a mode without a builder page (``BUILDER_MODES``);
     those views simply don't call this.
@@ -51,6 +63,8 @@ def builder_url_for(mode: FilterMode, filter_json: str, sort: str | None = None)
         params.append(f"filter={quote(filter_json)}")
     if sort:
         params.append(f"sort={quote(sort)}")
+    if per_page is not None and per_page != FindFilter.per_page:
+        params.append(f"per_page={per_page}")
     if params:
         url = f"{url}?{'&'.join(params)}"
     return url

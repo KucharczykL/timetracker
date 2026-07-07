@@ -152,6 +152,10 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     # The list's active ?sort= is threaded in so a preset saved here captures it
     # and Apply navigates back preserving it (#77). Empty for a sort-less mode.
     sort = request.GET.get("sort", "")
+    # The list's active rows-per-page threads in the same way so a preset saved
+    # here pins it (#337). builder_url_for only carries a non-default size, so
+    # this is "" (default) or a concrete size; page is transient and never here.
+    per_page = request.GET.get("per_page", "")
     models_json = json.dumps(model_field_registry(model))
 
     content = Fragment(
@@ -167,6 +171,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             mode=mode,
             preset_api_url=reverse("api-1.0.0:list_presets"),
             sort=sort,
+            per_page=per_page,
         ),
         FilterSummary(model=model, model_label=label, models=models_json),
         FilterCount(

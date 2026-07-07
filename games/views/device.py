@@ -81,8 +81,9 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         page_size=find.per_page,
     )
     # devices are sort-less (absent from MODE_SORTS), so the builder URL carries
-    # no ?sort= — pass sort=None (#336).
-    builder_url = builder_url_for("devices", filter_json)
+    # no ?sort= — pass sort=None (#336). per_page still threads through so a
+    # preset saved here pins the rows-per-page (#337).
+    builder_url = builder_url_for("devices", filter_json, per_page=find.per_page)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="devices",

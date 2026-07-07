@@ -197,7 +197,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     )
     from games.views.filtering import builder_url_for
 
-    builder_url = builder_url_for("purchases", filter_json, find.sort)
+    builder_url = builder_url_for("purchases", filter_json, find.sort, find.per_page)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="purchases",

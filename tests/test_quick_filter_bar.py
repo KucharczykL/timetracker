@@ -321,6 +321,27 @@ class BuilderUrlForTest(TestCase):
         self.assertNotIn("sort=", builder_url_for("games", "", None))
         self.assertNotIn("sort=", builder_url_for("games", "", ""))
 
+    def test_non_default_per_page_is_carried(self):
+        # A non-default page size threads into the builder so a preset saved
+        # there pins it (#337).
+        url = builder_url_for("games", "", None, 100)
+        self.assertIn("?per_page=100", url)
+
+    def test_default_per_page_is_not_carried(self):
+        # The default size round-trips to the default, so it threads nothing —
+        # keeping the builder URL clean (mirrors the default-sort behaviour).
+        from games.filters import FindFilter
+
+        self.assertNotIn(
+            "per_page=", builder_url_for("games", "", None, FindFilter.per_page)
+        )
+        self.assertNotIn("per_page=", builder_url_for("games", "", None, None))
+
+    def test_sort_and_per_page_combine_with_ampersand(self):
+        url = builder_url_for("games", "", "-playtime", 50)
+        self.assertIn(f"?sort={quote('-playtime')}", url)
+        self.assertIn("&per_page=50", url)
+
     def test_devices_and_platforms_have_builder_urls(self):
         # Every filterable mode now has a builder page (#336); devices/platforms
         # are sort-less, so their builder URL never carries ?sort=.
