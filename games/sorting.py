@@ -136,7 +136,27 @@ def apply_sort(
     return SortResult(queryset.order_by(*order_by), terms, unknown)
 
 
+def _int_param(raw: str | None, *, default: int) -> int:
+    """Parse an optional integer query param, falling back to ``default``.
+
+    Blank, missing, or non-integer input degrades to ``default`` (matching
+    ``Paginator.get_page``'s forgiving contract) rather than raising. ``0`` is a
+    valid value — it flows through (``per_page=0`` disables pagination)."""
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def parse_find_filter(request: HttpRequest) -> FindFilter:
+    """The single list-view request parser: sort + pagination.
+
+    Free-text search is not here — it rides in the ``?filter=`` JSON as a
+    ``search`` criterion."""
     return FindFilter(
-        sort=request.GET.get("sort") or None
-    )  # FindFilter.sort holds a SortString
+        sort=request.GET.get("sort") or None,  # FindFilter.sort holds a SortString
+        page=_int_param(request.GET.get("page"), default=FindFilter.page),
+        per_page=_int_param(request.GET.get("per_page"), default=FindFilter.per_page),
+    )

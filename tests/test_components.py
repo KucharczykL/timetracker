@@ -1,3 +1,4 @@
+import re
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -1542,6 +1543,37 @@ class StyledTablePaginationTest(SimpleTestCase):
         self.assertIn("</span>—<span", result)
         self.assertIn("</span> of <span", result)
         self.assertNotIn(" — ", result)
+
+
+class PageSizeSelectTest(SimpleTestCase):
+    """The rows-per-page picker: a current-value trigger over ?per_page= links."""
+
+    @staticmethod
+    def _render(current, query=None):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/games", query or {})
+        return str(components.PageSizeSelect(request, current))
+
+    def test_one_link_per_preset(self):
+        result = self._render(25)
+        for size in components.PAGE_SIZE_PRESETS:
+            self.assertIn(f"per_page={size}", result)
+
+    def test_trigger_shows_current_size(self):
+        self.assertIn(">100<", self._render(100))
+
+    def test_current_preset_marked(self):
+        # The active row carries aria-current="page" (DropdownLinkItem current=).
+        result = self._render(50)
+        marked = re.findall(r'<a[^>]*aria-current="page"[^>]*>(\d+)</a>', result)
+        self.assertEqual(marked, ["50"])
+
+    def test_page_param_dropped_and_others_preserved(self):
+        # Switching size resets to page 1 (drops ?page=) but keeps ?sort=.
+        result = self._render(25, {"page": "4", "sort": "-name"})
+        self.assertNotIn("page=4", result)
+        self.assertIn("sort=-name", result)
 
 
 class StyledTableColumnGuardTest(SimpleTestCase):

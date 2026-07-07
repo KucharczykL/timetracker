@@ -1,29 +1,33 @@
 from datetime import date
 from functools import wraps
-from typing import Any, Generator, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, Generator, NamedTuple, TypeVar
 from urllib.parse import urlencode
 
 from django.core.paginator import Page, Paginator
 from django.http import HttpRequest
 from django.shortcuts import redirect
 
+if TYPE_CHECKING:
+    # Type-only import: common/ is the lower layer and must not depend on games/
+    # at runtime. paginate() only duck-reads find.page / find.per_page.
+    from games.filters import FindFilter
 
-def paginate(request: HttpRequest, queryset, per_page: int = 10):
-    """Standard list-view pagination.
 
-    Reads ``page`` and ``limit`` from the query string (``limit=0`` disables
-    pagination) and returns ``(object_list, page_obj, elided_page_range)`` ready
-    to hand to ``paginated_table_content``.
+def paginate(queryset, find: "FindFilter"):
+    """Standard list-view pagination, driven by a resolved ``FindFilter``.
+
+    Slices ``queryset`` to ``find.page`` / ``find.per_page`` and returns
+    ``(object_list, page_obj, elided_page_range)`` ready to hand to
+    ``paginated_table_content``. ``find.per_page == 0`` disables pagination —
+    the whole queryset comes back with ``page_obj=None`` (no nav rendered).
     """
-    page_number = request.GET.get("page", 1)
-    limit = int(request.GET.get("limit", per_page))
     object_list = queryset
     page_obj: Page | None = None
-    if limit != 0:
-        page_obj = Paginator(queryset, limit).get_page(page_number)
+    if find.per_page != 0:
+        page_obj = Paginator(queryset, find.per_page).get_page(find.page)
         object_list = page_obj.object_list
     elided_page_range = (
-        page_obj.paginator.get_elided_page_range(page_number, on_each_side=1, on_ends=1)
+        page_obj.paginator.get_elided_page_range(find.page, on_each_side=1, on_ends=1)
         if page_obj
         else None
     )
