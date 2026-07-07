@@ -1326,7 +1326,6 @@ class ResolveNameWithIconTest(unittest.TestCase):
             )
         self.assertEqual(resolved.name, "Test Game")
         self.assertEqual(resolved.badge, components.PlatformBadge("steam", "Steam"))
-        self.assertTrue(resolved.create_link)
         self.assertEqual(resolved.link, "/game/1")
 
     def test_game_without_platform_gets_unspecified_badge(self):
@@ -1355,19 +1354,17 @@ class ResolveNameWithIconTest(unittest.TestCase):
         resolved = components._resolve_name_with_icon("", None, None, False)
         self.assertEqual(resolved.name, "")
         self.assertIsNone(resolved.badge)
-        self.assertFalse(resolved.create_link)
+        self.assertIsNone(resolved.link)
 
     def test_linkify_false_no_link_created(self):
         resolved = components._resolve_name_with_icon("", self.mock_game, None, False)
-        self.assertFalse(resolved.create_link)
-        self.assertEqual(resolved.link, "")
+        self.assertIsNone(resolved.link)
 
     def test_linkify_true_creates_link(self):
         with patch("common.components.domain.reverse", return_value="/game/42"):
             resolved = components._resolve_name_with_icon(
                 "", self.mock_game, None, True
             )
-        self.assertTrue(resolved.create_link)
         self.assertEqual(resolved.link, "/game/42")
 
     def test_session_emulated_flag_preserved(self):

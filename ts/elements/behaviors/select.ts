@@ -11,6 +11,14 @@ export function selectPayloadValue(
   return rawValue === "" ? null : Number(rawValue);
 }
 
+// A whitespace-only data-value slips both the empty-clear branch (it is not
+// "") and the NaN guard (Number(" ") === 0) and would PATCH e.g. device_id: 0
+// — treat it as malformed alongside the genuinely non-numeric values.
+export function malformedNumericValue(rawValue: string): boolean {
+  if (rawValue === "") return false;
+  return rawValue.trim() === "" || Number.isNaN(Number(rawValue));
+}
+
 // Value-selector behavior: pick an option → swap the toggle label, reflect the
 // selection (aria-selected), close, PATCH the server, and fire the body event
 // that drives cross-widget htmx refresh. Config comes from data-* on the host.
@@ -34,7 +42,7 @@ registerBehavior("select", {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         const rawValue = option.dataset.value ?? "";
-        if (numeric && rawValue !== "" && Number.isNaN(Number(rawValue))) {
+        if (numeric && malformedNumericValue(rawValue)) {
           // Don't send {key: NaN} (serializes to null) — abort the malformed PATCH.
           console.error("select: non-numeric data-value", rawValue, patchUrl);
           controller.close();

@@ -47,6 +47,34 @@ def remove_sentinels(apps, schema_editor):
         Session.objects.using(database).filter(device=sentinel).update(device=None)
         sentinel.delete()
 
+    # The conservative skip above is invisible to the operator: an edited
+    # near-sentinel survives as a second representation of "not set" with no
+    # signal to review it. Print a one-line notice per survivor kind.
+    skipped_platforms = (
+        Platform.objects.using(database)
+        .filter(name=PLATFORM_SENTINEL["name"])
+        .exclude(**PLATFORM_SENTINEL)
+        .count()
+    )
+    if skipped_platforms:
+        print(
+            f"\n  games.0024: kept {skipped_platforms} edited platform(s) named "
+            f'"{PLATFORM_SENTINEL["name"]}" (treated as real user rows) — '
+            "review whether they still mean 'not set'."
+        )
+    skipped_devices = (
+        Device.objects.using(database)
+        .filter(type=DEVICE_SENTINEL["type"])
+        .exclude(**DEVICE_SENTINEL)
+        .count()
+    )
+    if skipped_devices:
+        print(
+            f"\n  games.0024: kept {skipped_devices} renamed device(s) of type "
+            f'"{DEVICE_SENTINEL["type"]}" (treated as real user rows) — '
+            "review whether they still mean 'not set'."
+        )
+
 
 def restore_sentinels(apps, schema_editor):
     database = schema_editor.connection.alias

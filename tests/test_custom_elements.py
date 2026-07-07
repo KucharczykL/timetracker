@@ -1,4 +1,5 @@
 import unittest
+from html.parser import HTMLParser
 from typing import TypedDict
 
 from common.components import custom_element_builder, render
@@ -7,6 +8,30 @@ from common.components.custom_elements import (
     _ts_for_spec,
     register_element,
 )
+
+
+def _option_selection(html: str) -> dict[str | None, str | None]:
+    """Map each ``[data-option]`` element's ``data-value`` to its
+    ``aria-selected``, parsed from the markup so assertions don't couple to
+    attribute emission order."""
+
+    class _Options(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.found: dict[str | None, str | None] = {}
+
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            attributes = dict(attrs)
+            if "data-option" in attributes:
+                self.found[attributes.get("data-value")] = attributes.get(
+                    "aria-selected"
+                )
+
+    parser = _Options()
+    parser.feed(html)
+    return parser.found
 
 
 class SampleProps(TypedDict):
@@ -328,11 +353,9 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
         html = render(
             SessionDeviceSelector(session, [SimpleNamespace(id=2, name="Deck")], "tok")
         )
-        # The clear option is the aria-selected one (attribute order is
-        # deterministic: ListboxPanel emits data-value then aria-selected), and
-        # the trigger label coalesces to "No device".
-        self.assertIn('data-value="" aria-selected="true"', html)
-        self.assertIn('data-value="2" aria-selected="false"', html)
+        # The clear option is the aria-selected one, and the trigger label
+        # coalesces to "No device".
+        self.assertEqual(_option_selection(html), {"": "true", "2": "false"})
         self.assertIn("No device", html)
 
 
