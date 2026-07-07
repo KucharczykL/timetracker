@@ -8,7 +8,7 @@ assert the two things the deploy relies on:
 - filenames are content-hashed (so a changed asset gets a new URL), and
 - the relative ESM ``import`` specifiers inside compiled dist modules are
   rewritten to those hashed filenames — otherwise a hashed module would import
-  a stale, separately-cached dependency (the bug this whole change fixes).
+  a stale, separately-cached dependency (the failure this change prevents).
 
 ``DEBUG=False`` is forced because ``ManifestStaticFilesStorage.url()`` returns
 the *unhashed* name in DEBUG, which the test suite otherwise runs with.
@@ -24,21 +24,27 @@ from django.core.management import call_command
 from django.templatetags.static import static
 from django.test import override_settings
 
-DIST_DIR = Path(settings.BASE_DIR) / "games" / "static" / "js" / "dist"
+VENDORED_JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "js"
+DIST_DIR = VENDORED_JS_DIR / "dist"
 
 # A bare `pytest` doesn't build dist (it's gitignored); `make test`/`make check`
 # do via the `ts` prereq. Skip rather than fail when the artifacts are absent.
-pytestmark = pytest.mark.skipif(
+# Scoped per-test so the vendored-JS check below (which needs no build) always runs.
+needs_dist = pytest.mark.skipif(
     not (DIST_DIR / "elements" / "quick-filter-bar.js").exists(),
     reason="compiled dist not built (run `make ts`)",
 )
 
-# Django's HashedFilesMixin appends a 12-hex-char md5 fragment before the suffix.
-_HASHED_SUFFIX = re.compile(r"\.[0-9a-f]{12}\.js$")
-# Relative ESM specifiers (`./x.js`, `../y/z.js`) inside a module — the ones
-# that must come out rewritten to their hashed targets.
+# Django's HashedFilesMixin inserts a 12-hex-char content-hash fragment into a
+# name (`props.js` -> `props.<hash>.js`).
+_HASHED_FRAGMENT = re.compile(r"\.[0-9a-f]{12}\.")
+# Any relative specifier (`./x`, `../y/z.js`, with or without extension) reached
+# via `import`/`from`/`import(`. Deliberately a *superset* of Django's rewrite
+# matcher: every relative import in a dist module must come out hashed, so a form
+# Django fails to rewrite (extensionless, query/fragment, no semicolon) is caught
+# here rather than silently resolving to a stale, unhashed sibling.
 _RELATIVE_IMPORT = re.compile(
-    r"""(?:from|import)\s*\(?\s*["'](?P<spec>\.\.?/[^"']*\.js)["']"""
+    r"""(?:from|import)\s*\(?\s*["'](?P<spec>\.\.?/[^"']+)["']"""
 )
 
 
@@ -53,14 +59,16 @@ def _collect(static_root: Path):
     return override_settings(DEBUG=False, STORAGES=hashed, STATIC_ROOT=str(static_root))
 
 
+@needs_dist
 def test_asset_urls_are_hashed(tmp_path):
     with _collect(tmp_path):
         call_command("collectstatic", "--no-input", verbosity=0)
         for name in ("js/dist/toast.js", "base.css", "js/flowbite.min.js"):
             url = static(name)
-            assert re.search(r"\.[0-9a-f]{12}\.", url), f"{name} not hashed: {url}"
+            assert _HASHED_FRAGMENT.search(url), f"{name} not hashed: {url}"
 
 
+@needs_dist
 def test_dist_module_imports_are_rewritten_to_hashed(tmp_path):
     with _collect(tmp_path):
         call_command("collectstatic", "--no-input", verbosity=0)
@@ -71,9 +79,10 @@ def test_dist_module_imports_are_rewritten_to_hashed(tmp_path):
         # e.g. `../generated/props.js` must have become `../generated/props.<hash>.js`
         assert any("generated/props" in spec for spec in specifiers)
         for spec in specifiers:
-            assert _HASHED_SUFFIX.search(spec), f"unrewritten import: {spec}"
+            assert _HASHED_FRAGMENT.search(spec), f"unrewritten import: {spec}"
 
 
+@needs_dist
 def test_no_hashed_dist_module_keeps_an_unhashed_import(tmp_path):
     """Completeness: catches any tsc import form Django's regex fails to rewrite,
     which would silently resolve to a stale, unhashed dependency."""
@@ -86,6 +95,23 @@ def test_no_hashed_dist_module_keeps_an_unhashed_import(tmp_path):
             body = (tmp_path / stored).read_text()
             for match in _RELATIVE_IMPORT.finditer(body):
                 spec = match.group("spec")
-                if not _HASHED_SUFFIX.search(spec):
+                if not _HASHED_FRAGMENT.search(spec):
                     offenders.append(f"{stored}: {spec}")
         assert not offenders, "unrewritten relative imports:\n" + "\n".join(offenders)
+
+
+def test_no_vendored_js_has_dangling_sourcemap():
+    """A `//# sourceMappingURL=x.map` whose `.map` isn't shipped fails
+    collectstatic under the hashed storage (Django tries to rewrite the ref).
+    Guards the flowbite fix from silently regressing. Needs no dist build.
+    (The dead-comment fix in session-timestamp-buttons.ts needs no guard: tsc
+    strips comments, so a reintroduced source comment never reaches dist.)"""
+    offenders: list[str] = []
+    for js in VENDORED_JS_DIR.glob("*.js"):
+        for match in re.finditer(r"sourceMappingURL=(\S+)", js.read_text()):
+            reference = match.group(1)
+            if not (js.parent / reference).exists():
+                offenders.append(f"{js.name} -> {reference}")
+    assert not offenders, (
+        "dangling sourceMappingURL (ship the .map or strip it): " + ", ".join(offenders)
+    )
