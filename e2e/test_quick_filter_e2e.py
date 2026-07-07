@@ -367,10 +367,16 @@ def test_preset_pick_on_builderless_mode(
     search = picker.locator("[data-search-select-search]")
     expect(search).to_be_focused()
 
-    # Enter in the picker's search box must not submit the facet form.
+    # Enter in the picker's search box must not submit the facet form. Type a
+    # no-match query first so no preset row can be auto-highlighted — with a
+    # highlight, Enter legitimately PICKS the row (that raced in CI when the
+    # preset fetch resolved before the keypress).
+    search.fill("zzz-no-such-preset")
+    expect(picker.locator("[data-search-select-no-results]")).to_be_visible()
     search.press("Enter")
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_devices')}")
 
+    search.fill("")
     row = picker.locator("[data-search-select-option]").filter(has_text="DeckOnly")
     expect(row).to_be_visible(timeout=5_000)
     with page.expect_navigation():
