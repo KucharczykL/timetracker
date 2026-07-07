@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseJSONWithReport, readJSONProp, reportClientError } from "./client-errors.js";
+import {
+  __resetClientErrorState,
+  parseJSONWithReport,
+  readJSONProp,
+  reportClientError,
+} from "./client-errors.js";
 
 describe("client-errors", () => {
   let toast: ReturnType<typeof vi.fn>;
@@ -80,5 +85,32 @@ describe("client-errors", () => {
   it("never throws when fetch rejects", () => {
     fetchMock.mockReturnValue(Promise.reject(new Error("network down")));
     expect(() => reportClientError("ctx-net", "x")).not.toThrow();
+  });
+
+  it("suppresses the toast when options.toast is false but still POSTs", () => {
+    reportClientError("ctx-notoast", "detail", { toast: false });
+    expect(toast).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps reports at 25 per page; the 26th is suppressed", () => {
+    __resetClientErrorState();
+    for (let index = 0; index < 25; index += 1) {
+      reportClientError("ctx-cap", `detail-${index}`);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(25);
+    reportClientError("ctx-cap", "detail-26");
+    expect(fetchMock).toHaveBeenCalledTimes(25); // no 26th POST
+  });
+
+  it("a deduped repeat does not consume cap budget", () => {
+    __resetClientErrorState();
+    reportClientError("ctx-budget", "same");
+    reportClientError("ctx-budget", "same"); // deduped, no increment
+    for (let index = 0; index < 24; index += 1) {
+      reportClientError("ctx-budget", `distinct-${index}`);
+    }
+    // 1 + 24 = 25 distinct reports, all under the cap.
+    expect(fetchMock).toHaveBeenCalledTimes(25);
   });
 });
