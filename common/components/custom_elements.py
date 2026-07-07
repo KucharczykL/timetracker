@@ -326,6 +326,7 @@ class FilterBuilderProps(TypedDict):
     apply_url: str  # list URL to navigate to on Apply
     preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
     sort: str  # the list's active ?sort= (SortString), "" if none — #77
+    per_page: str  # the list's active rows-per-page, "" if default — #337
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
@@ -333,7 +334,12 @@ _FilterBuilder = custom_element_builder("filter-builder")
 
 
 def FilterBuilder(
-    *, model: str, mode: FilterMode, preset_api_url: str, sort: str = ""
+    *,
+    model: str,
+    mode: FilterMode,
+    preset_api_url: str,
+    sort: str = "",
+    per_page: str = "",
 ) -> Node:
     """Toolbar/orchestrator for the nested filter builder page (#196).
 
@@ -343,7 +349,9 @@ def FilterBuilder(
     dropdown is the shared :func:`LoadPresetDropdown` composition (#297).
 
     ``sort`` is the list's active ?sort= threaded in (#77): Apply re-emits it and
-    Save-as-preset captures it, unless a loaded preset overrides it client-side."""
+    Save-as-preset captures it, unless a loaded preset overrides it client-side.
+    ``per_page`` is the list's active rows-per-page threaded in the same way
+    (#337) — "" when the list is at the default size."""
     # Function-local import: search_select imports this module (for _SearchSelect
     # and the panel constant), so a top-level import here would be a cycle.
     from common.components.search_select import LoadPresetDropdown
@@ -359,6 +367,7 @@ def FilterBuilder(
         apply_url=list_url_for(mode),
         preset_api_url=preset_api_url,
         sort=sort,
+        per_page=per_page,
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[
             LoadPresetDropdown(

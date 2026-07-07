@@ -161,7 +161,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     )
     # The quick bar is the page's only filter tier: dropdown facets,
     # preset picker, and the builder entry point in the action group.
-    builder_url = builder_url_for("games", filter_json, find.sort)
+    builder_url = builder_url_for("games", filter_json, find.sort, find.per_page)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="games",

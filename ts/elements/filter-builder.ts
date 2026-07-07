@@ -40,6 +40,10 @@ export class FilterBuilderElement extends HTMLElement {
   // (#77). Apply re-emits it and Save captures it; loading a preset overwrites
   // it with the preset's stored sort so a subsequent Apply restores that.
   private sort = "";
+  // The active rows-per-page, threaded from the list via the `per_page` prop
+  // (#337), handled exactly like `sort`: Apply re-emits it, Save captures it,
+  // and loading a preset adopts the preset's stored size.
+  private perPage = "";
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
   private disposePresetDelete: (() => void) | null = null;
@@ -67,6 +71,7 @@ export class FilterBuilderElement extends HTMLElement {
     this.applyTarget = props.applyUrl;
     this.presetApiUrl = props.presetApiUrl;
     this.sort = props.sort;
+    this.perPage = props.perPage;
 
     this.ensureToolbar();
     this.addEventListener("click", this.onClick);
@@ -151,6 +156,8 @@ export class FilterBuilderElement extends HTMLElement {
       // Adopt the preset's stored sort so a subsequent Apply restores it rather
       // than the origin list's sort (#77). Missing/empty clears it → default order.
       this.sort = detail.last.data.sort ?? "";
+      // Same for the page size (#337): missing/empty → default rows-per-page.
+      this.perPage = detail.last.data.per_page ?? "";
     } catch (error) {
       // Message must keep the "preset load failed" substring — the builder e2e
       // greps the console for it as its crash guard.
@@ -164,7 +171,9 @@ export class FilterBuilderElement extends HTMLElement {
   private onApply(): void {
     const group = this.group();
     if (!group) return;
-    this.navigate(applyUrl(this.applyTarget, group.serializeForQuery(), this.sort));
+    this.navigate(
+      applyUrl(this.applyTarget, group.serializeForQuery(), this.sort, this.perPage),
+    );
   }
 
   private onSavePreset(): void {
@@ -181,6 +190,7 @@ export class FilterBuilderElement extends HTMLElement {
       mode: this.mode,
       filter: group.serialize(),
       sort: this.sort,
+      per_page: this.perPage,
     }).then((response) => {
       // Keep the typed name around when the server rejected the save (its
       // error toast already fired) so the user can correct and retry.

@@ -215,6 +215,26 @@ describe("savePreset", () => {
     });
   });
 
+  it("forwards the per_page in the POST body when present (#337)", async () => {
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal("fetch", fetchStub);
+    stubToast();
+
+    const filter = { search: { value: "mario", modifier: "INCLUDES" } };
+    await savePreset(API_URL, { name: "P", mode: "games", filter, per_page: "100" });
+
+    const [, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { body: string },
+    ];
+    expect(JSON.parse(options.body)).toEqual({
+      name: "P",
+      mode: "games",
+      filter,
+      per_page: "100",
+    });
+  });
+
   it("toasts 'updated' on a 200 overwrite", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))));
     const toastStub = stubToast();

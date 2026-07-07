@@ -81,7 +81,9 @@ class QuickFilterBarElement extends HTMLElement {
       // Restore the preset's stored sort (not the live URL sort) (#77). Empty
       // filter + empty sort means "show everything": applyUrl returns the bare list.
       const sort = detail.last.data.sort ?? "";
-      this.navigate(applyUrl(this.applyTarget, filter, sort));
+      // Restore the preset's pinned page size the same way (#337); "" → default.
+      const perPage = detail.last.data.per_page ?? "";
+      this.navigate(applyUrl(this.applyTarget, filter, sort, perPage));
     } catch (error) {
       reportClientError("quick-filter-bar[preset]", String(error));
       // Keep the "preset load failed" console substring (e2e crash guard).
@@ -205,10 +207,13 @@ class QuickFilterBarElement extends HTMLElement {
 
   private onSubmit = (event: Event): void => {
     event.preventDefault();
-    // Carry the live ?sort= forward so tweaking a facet keeps the active sort
-    // (the bar has no sort UI of its own; the list page URL is the source) (#77).
-    const sort = new URLSearchParams(window.location.search).get("sort") ?? "";
-    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort));
+    // Carry the live ?sort= and ?per_page= forward so tweaking a facet keeps the
+    // active sort and page size (the bar has no UI for either; the list page URL
+    // is the source) (#77, #337). page is dropped, so the result is page 1.
+    const params = new URLSearchParams(window.location.search);
+    const sort = params.get("sort") ?? "";
+    const perPage = params.get("per_page") ?? "";
+    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort, perPage));
   };
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry

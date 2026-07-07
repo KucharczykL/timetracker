@@ -31,7 +31,7 @@ interface PickerWidgetStub extends HTMLElement {
   clearSelection: ReturnType<typeof vi.fn>;
 }
 
-function mount(sort = ""): {
+function mount(sort = "", perPage = ""): {
   group: FilterGroupElement;
   builder: HTMLElement;
   widget: PickerWidgetStub;
@@ -44,6 +44,7 @@ function mount(sort = ""): {
   builder.setAttribute("preset-api-url", "/api/presets/");
   // Set before append so connectedCallback reads it (attrs aren't re-read).
   if (sort) builder.setAttribute("sort", sort);
+  if (perPage) builder.setAttribute("per-page", perPage);
   const group = document.createElement("filter-group") as FilterGroupElement;
   group.setAttribute("model", "game");
   group.setAttribute("models", MODELS);
@@ -65,9 +66,15 @@ function mount(sort = ""): {
 
 // A pick as the preset search-select emits it: bubbling search-select:change
 // whose last.data.filter carries the preset's filter JSON.
-function dispatchPick(widget: HTMLElement, filterJson: string, sort?: string): void {
+function dispatchPick(
+  widget: HTMLElement,
+  filterJson: string,
+  sort?: string,
+  perPage?: string,
+): void {
   const data: Record<string, string> = { filter: filterJson };
   if (sort !== undefined) data.sort = sort;
+  if (perPage !== undefined) data.per_page = perPage;
   widget.dispatchEvent(
     new CustomEvent("search-select:change", {
       bubbles: true,
@@ -123,6 +130,32 @@ describe("<filter-builder>", () => {
     const navigate = vi.fn();
     (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
     dispatchPick(widget, JSON.stringify({}), "");
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
+  });
+
+  it("Apply carries the per_page threaded from the list (#337)", () => {
+    const { builder } = mount("", "100");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "", "100"));
+  });
+
+  it("a picked preset's per_page overrides the list size on the next Apply (#337)", () => {
+    const { builder, widget } = mount("", "100");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    dispatchPick(widget, JSON.stringify({}), "", "50");
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "", "50"));
+  });
+
+  it("a picked preset with no stored per_page clears the list size (#337)", () => {
+    const { builder, widget } = mount("", "100");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    dispatchPick(widget, JSON.stringify({}), "", "");
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
@@ -280,6 +313,26 @@ describe("<filter-builder>", () => {
       RequestInit & { body: string },
     ];
     expect(JSON.parse(options.body).sort).toBe("-playtime,name");
+
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  });
+
+  it("Save preset includes the active per_page in the POST body (#337)", () => {
+    const { builder } = mount("", "100");
+    document.cookie = "csrftoken=testtoken";
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal("fetch", fetchStub);
+    (window as unknown as Record<string, unknown>).toast = vi.fn();
+
+    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
+    if (nameInput) nameInput.value = "Big";
+    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
+
+    const [, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { body: string },
+    ];
+    expect(JSON.parse(options.body).per_page).toBe("100");
 
     document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   });

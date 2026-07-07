@@ -178,6 +178,26 @@ describe("<quick-filter-bar>", () => {
     expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, {}, "-duration"));
   });
 
+  it("carries the live ?per_page= from the URL through a facet Apply (#337)", () => {
+    // Tweaking a facet must not reset the active page size; the bar reads it from
+    // window.location alongside the sort (it has no page-size UI of its own).
+    window.history.replaceState(
+      {},
+      "",
+      "/tracker/session/list?sort=-duration&per_page=100",
+    );
+    const { form, navigate } = mount(setFacet("game", includePill("1", "X")));
+    submit(form);
+    const filter = {
+      game: {
+        value: [{ id: "1", label: "X" }],
+        excludes: [],
+        modifier: "INCLUDES",
+      },
+    };
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-duration", "100"));
+  });
+
   it("does not navigate on a facet change without Apply", () => {
     const { bar, navigate } = mount(setFacet("game", includePill("1", "X")));
     const widget = bar.querySelector('search-select[name="game"]') as HTMLElement;
@@ -305,7 +325,7 @@ describe("quick-filter-bar priority-plus overflow", () => {
 function mountWithPicker(): {
   bar: HTMLElement;
   navigate: ReturnType<typeof vi.fn>;
-  pick: (filter: string | null, sort?: string) => void;
+  pick: (filter: string | null, sort?: string, perPage?: string) => void;
 } {
   document.body.innerHTML = `
     <quick-filter-bar apply-url="${LIST_URL}">
@@ -321,9 +341,10 @@ function mountWithPicker(): {
   const navigate = vi.fn();
   (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
   const widget = bar.querySelector("search-select") as HTMLElement;
-  const pick = (filter: string | null, sort?: string): void => {
+  const pick = (filter: string | null, sort?: string, perPage?: string): void => {
     const data: Record<string, string> = filter === null ? {} : { filter };
     if (sort !== undefined) data.sort = sort;
+    if (perPage !== undefined) data.per_page = perPage;
     widget.dispatchEvent(
       new CustomEvent("search-select:change", {
         bubbles: true,
@@ -365,6 +386,22 @@ describe("quick-filter-bar preset pick", () => {
     window.history.replaceState({}, "", "/tracker/session/list?sort=name");
     const { navigate, pick } = mountWithPicker();
     pick(null, "");
+    expect(navigate).toHaveBeenCalledWith(LIST_URL);
+  });
+
+  it("restores the preset's stored per_page, not the live URL size (#337)", () => {
+    // The URL per_page is deliberately different to prove the preset's own size wins.
+    window.history.replaceState({}, "", "/tracker/session/list?per_page=25");
+    const { navigate, pick } = mountWithPicker();
+    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
+    pick(JSON.stringify(filter), "", "100");
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "", "100"));
+  });
+
+  it("a preset with no stored per_page navigates without ?per_page= (#337)", () => {
+    window.history.replaceState({}, "", "/tracker/session/list?per_page=100");
+    const { navigate, pick } = mountWithPicker();
+    pick(null, "", "");
     expect(navigate).toHaveBeenCalledWith(LIST_URL);
   });
 

@@ -149,6 +149,13 @@ class TestParseFindFilter:
         request = RequestFactory().get("/x", {"per_page": "0"})
         assert parse_find_filter(request).per_page == 0
 
+    def test_negative_per_page_degrades_to_default(self):
+        # A negative page size would make Django's Paginator slice [0:-n] and
+        # raise EmptyPage → 500. parse_int_param's minimum=0 bound clamps it to
+        # the default so the list still renders (#337).
+        request = RequestFactory().get("/x", {"per_page": "-5"})
+        assert parse_find_filter(request).per_page == FindFilter.per_page
+
     def test_junk_page_degrades_to_default(self):
         request = RequestFactory().get("/x", {"page": "abc"})
         assert parse_find_filter(request).page == FindFilter.page

@@ -37,6 +37,9 @@ export interface SavePresetRequest {
   // The active sort (a SortString) to persist alongside the filter (#77).
   // Omitted/empty means "no sort"; the server gates it to sort-capable modes.
   sort?: string;
+  // The active rows-per-page to persist (#337), as the raw ?per_page= string.
+  // Omitted/empty means "no size"; the server stores only a non-default value.
+  per_page?: string;
 }
 
 /**

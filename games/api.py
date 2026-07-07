@@ -13,7 +13,12 @@ from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from common.criteria import FilterError, filter_from_json
-from games.filters import MODE_PARSERS, filter_for_model, parse_session_filter
+from games.filters import (
+    MODE_PARSERS,
+    FindFilter,
+    filter_for_model,
+    parse_session_filter,
+)
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
 from games.sorting import (
@@ -22,6 +27,7 @@ from games.sorting import (
     SESSION_SORTS,
     apply_sort,
     parse_find_filter,
+    parse_int_param,
 )
 
 logger = logging.getLogger("games")
@@ -381,8 +387,10 @@ class PresetOption(Schema):
 
     ``data`` values are strings (the SearchSelectOption contract — they land as
     ``data-*`` attributes on the option row): ``data["filter"]`` is the preset's
-    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty preset)
-    and ``data["sort"]`` is the persisted sort string (``""`` when none — #77).
+    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty
+    preset), ``data["sort"]`` is the persisted sort string (``""`` when none —
+    #77), and ``data["per_page"]`` is the persisted rows-per-page (``""`` when
+    the preset pins no size — #337).
     """
 
     value: int
@@ -401,6 +409,30 @@ class PresetIn(Schema):
     # Gated to modes with a sort map at save time; re-validated on load via the
     # ?sort= contract, so an unknown value is harmless. None means "no sort".
     sort: str | None = None
+    # The list's active rows-per-page to persist in find_filter (#337), carried
+    # as the raw ?per_page= string. Only a valid, non-default size is stored;
+    # None/blank/default stores nothing. ``page`` is transient — never persisted.
+    per_page: str | None = None
+
+
+def _preset_per_page(raw: str | None) -> int | None:
+    """The rows-per-page to persist in ``find_filter``, or ``None`` to store none.
+
+    Reuses the load-side parser (``parse_int_param`` with the same ``minimum=0``
+    bound and default) so save and load can't disagree on which ``?per_page=``
+    values are valid — a negative size degrades to the default here just as it
+    does on load, so it is never persisted. A blank/missing/non-integer/negative
+    value, or the *default* page size, stores nothing so a default-size preset
+    round-trips to the default (#337). ``0`` (disable pagination / show all)
+    differs from the default, so it is kept."""
+    value = parse_int_param(raw, default=FindFilter.per_page, minimum=0)
+    return value if value != FindFilter.per_page else None
+
+
+def _stored_per_page(find_filter: dict | None) -> str:
+    """The persisted page size as a ``data-*`` string ("" when none) — #337."""
+    per_page = (find_filter or {}).get("per_page")
+    return "" if per_page is None else str(per_page)
 
 
 def _reject_unknown_preset_mode(request, mode: str) -> None:
@@ -439,6 +471,9 @@ def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
                 # client reads a stable key; restored by appending ?sort= on load
                 # and re-validated by the list view's warn_unknown_sort (#77).
                 "sort": (preset.find_filter or {}).get("sort", ""),
+                # Likewise "" when no size is pinned; restored by appending
+                # ?per_page= on load (#337).
+                "per_page": _stored_per_page(preset.find_filter),
             },
         }
         for preset in presets
@@ -475,13 +510,18 @@ def save_preset(request, payload: PresetIn):
         )
         raise HttpError(400, f"Invalid filter: {exc}") from exc
 
-    # Persist the active sort only for modes with a sort map; a sort-less mode
-    # (or no sort) stores {} so no dead data lands in find_filter. The raw value
-    # is stored as-is — it comes from the ?sort= URL contract, not free text, and
-    # is re-validated on load.
-    find_filter = (
-        {"sort": payload.sort} if payload.sort and payload.mode in MODE_SORTS else {}
-    )
+    # find_filter carries the list's sort + pagination alongside the criteria.
+    # Sort is gated to modes with a sort map (a sort-less mode stores nothing);
+    # per_page applies to every paginated list, so it is only gated on being a
+    # valid, non-default size. page is transient and never stored. Both are
+    # re-validated on load (sort via warn_unknown_sort; per_page via the
+    # forgiving Paginator contract), so raw values are safe to store as-is.
+    find_filter: dict[str, object] = {}
+    if payload.sort and payload.mode in MODE_SORTS:
+        find_filter["sort"] = payload.sort
+    per_page = _preset_per_page(payload.per_page)
+    if per_page is not None:
+        find_filter["per_page"] = per_page
     _, created = FilterPreset.objects.update_or_create(
         user=request.user,
         name=name,
