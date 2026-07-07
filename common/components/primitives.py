@@ -1339,7 +1339,20 @@ def _sort_href(request, sort_string: SortString) -> str:
     return _replace_query(request, drop=("sort", "page"))
 
 
-def _pagination_nav(page_obj, elided_page_range, request) -> Node:
+def _page_size_control(request, page_size: int, *, class_: str = "") -> Node:
+    """The rows-per-page label + picker group, embedded in the pagination nav
+    between the summary and the page links."""
+    classes = (
+        f"flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 {class_}"
+    )
+    return Div(class_=classes.strip())[
+        Span()["Rows per page"], PageSizeSelect(request, page_size)
+    ]
+
+
+def _pagination_nav(
+    page_obj, elided_page_range, request, page_size: int | None = None
+) -> Node:
     page_link_class = (
         "flex items-center justify-center px-3 h-8 leading-tight text-gray-500 "
         "bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 "
@@ -1419,13 +1432,21 @@ def _pagination_nav(page_obj, elided_page_range, request) -> Node:
     pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")[
         Li()[prev_link, *page_items, next_link]
     ]
+    nav_children: list[Node] = [summary]
+    # The rows-per-page picker sits between the "1—3 of 3" summary and the
+    # prev/next page links.
+    if page_size is not None and request is not None:
+        nav_children.append(
+            _page_size_control(request, page_size, class_="mb-4 md:mb-0")
+        )
+    nav_children.append(pages)
     return Nav(
         class_=(
             "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
             "dark:bg-gray-900 sm:rounded-b-lg"
         ),
         aria_label="Table navigation",
-    )[summary, pages]
+    )[*nav_children]
 
 
 # <sort-header> wraps a header anchor; its TS intercepts shift-click to navigate
@@ -1585,21 +1606,12 @@ def StyledTable(
     inner_children: list[Node] = [
         Div(class_="relative overflow-x-auto sm:rounded-t-lg")[table]
     ]
+    # The rows-per-page picker lives inside the pagination nav; with no nav
+    # (per_page=0 → whole list shown) there is nothing to page, so no picker.
     if page_obj and elided_page_range:
-        inner_children.append(_pagination_nav(page_obj, elided_page_range, request))
-
-    # The rows-per-page picker sits above the table, rendered independently of the
-    # pagination nav so it stays reachable even when pagination is disabled
-    # (per_page=0 → no nav).
-    if page_size is not None and request is not None:
-        controls = Nav(
-            class_=(
-                "flex items-center justify-end gap-2 px-6 py-3 text-sm "
-                "text-gray-500 dark:text-gray-400"
-            ),
-            aria_label="Rows per page",
-        )[Span()["Rows per page"], PageSizeSelect(request, page_size)]
-        inner_children.insert(0, controls)
+        inner_children.append(
+            _pagination_nav(page_obj, elided_page_range, request, page_size=page_size)
+        )
 
     return Div(class_="shadow-md", hx_boost="false")[*inner_children]
 
