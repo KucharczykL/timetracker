@@ -432,6 +432,14 @@ class PurchaseFilter(OperatorFilter):
         The orthogonal ``excludes`` channel is applied as a negative,
         consistent with every other modifier. All other modifiers delegate
         to the criterion.
+
+        Deliberate asymmetry with ``_SetCriterion._not_in_q``: the negatives
+        here are plain ``~Q(games__in=...)`` without the explicit
+        ``__isnull`` arm. That arm exists to keep NULL rows of a nullable FK
+        *column*; ``games`` is an M2M join, where Django compiles the negation
+        to a NOT-IN-pk subquery that already keeps purchases with no linked
+        games (and an M2M ``games__isnull=True`` arm would add a redundant
+        LEFT JOIN, not change results).
         """
         # Criterion values arrive as strings; the M2M lookups want game PKs.
         # A hand-edited filter can carry a non-integer id — raise FilterError so

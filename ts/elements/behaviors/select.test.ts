@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectPayloadValue } from "./select.js";
+import { malformedNumericValue, selectPayloadValue } from "./select.js";
 
 describe("selectPayloadValue", () => {
   it("maps an empty value to null in numeric mode (the clear entry)", () => {
@@ -19,5 +19,24 @@ describe("selectPayloadValue", () => {
 
   it("passes strings through untouched in non-numeric mode", () => {
     expect(selectPayloadValue("f", false)).toBe("f");
+  });
+});
+
+describe("malformedNumericValue", () => {
+  it("accepts the empty string (the clear entry, handled upstream)", () => {
+    expect(malformedNumericValue("")).toBe(false);
+  });
+
+  it("accepts numeric strings", () => {
+    expect(malformedNumericValue("5")).toBe(false);
+  });
+
+  it("rejects non-numeric strings", () => {
+    expect(malformedNumericValue("abc")).toBe(true);
+  });
+
+  it("rejects whitespace-only values (Number(' ') === 0 would PATCH 0)", () => {
+    expect(malformedNumericValue(" ")).toBe(true);
+    expect(malformedNumericValue("\t\n")).toBe(true);
   });
 });

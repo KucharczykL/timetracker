@@ -68,6 +68,28 @@ def test_sentinel_data_migration_round_trip():
             duration_manual=timedelta(0),
         )
 
+        # Edited-sentinel survivors: sentinels a user has since edited must be
+        # treated as real user rows — the removal matches the exact creation
+        # attributes, so these guard the criteria against a future
+        # "simplification" to name-only (platform) or type-only (device).
+        edited_platform = Platform.objects.create(
+            name=PLATFORM_SENTINEL["name"],
+            group=PLATFORM_SENTINEL["group"],
+            icon="custom-icon",
+        )
+        edited_platform_game = Game.objects.create(
+            name="Edited Sentinel Game", platform=edited_platform
+        )
+        renamed_device = Device.objects.create(
+            name="Renamed Unknown", type=DEVICE_SENTINEL["type"]
+        )
+        renamed_device_session = Session.objects.create(
+            game=edited_platform_game,
+            device=renamed_device,
+            timestamp_start=timezone.now(),
+            duration_manual=timedelta(0),
+        )
+
         new_apps = _migrate([AFTER])
         Game = new_apps.get_model(APP, "Game")
         Purchase = new_apps.get_model(APP, "Purchase")
@@ -81,6 +103,21 @@ def test_sentinel_data_migration_round_trip():
         assert Game.objects.get(pk=leaked_null_game.pk).platform_id is None
         assert Purchase.objects.get(pk=purchase.pk).platform_id is None
         assert Session.objects.get(pk=session.pk).device_id is None
+
+        # Survivors: the edited platform and the renamed Unknown-type device
+        # pass through untouched, FKs intact.
+        surviving_platform = Platform.objects.get(pk=edited_platform.pk)
+        assert surviving_platform.icon == "custom-icon"
+        assert (
+            Game.objects.get(pk=edited_platform_game.pk).platform_id
+            == edited_platform.pk
+        )
+        surviving_device = Device.objects.get(pk=renamed_device.pk)
+        assert surviving_device.name == "Renamed Unknown"
+        assert (
+            Session.objects.get(pk=renamed_device_session.pk).device_id
+            == renamed_device.pk
+        )
 
         old_apps = _migrate([BEFORE])
         Game = old_apps.get_model(APP, "Game")

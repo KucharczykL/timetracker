@@ -1123,6 +1123,52 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in results
         assert data["game2"] in results
 
+    def test_game_filter_platform_group_excludes_keeps_platformless(self):
+        """DB proof of the excludes isnull arm on a join path: the direct FK
+        (``Game.platform``) is covered elsewhere, but ``platform_group``
+        traverses ``platform__group`` (a LEFT JOIN), so excluding a group must
+        keep platformless games too — not just games on other platforms."""
+        from games.filters import GameFilter
+        from games.models import Game
+
+        data = self._setup_entities()
+        platformless = Game.objects.create(name="Homebrew Game", platform=None)
+        gf = GameFilter.from_json(
+            {"platform_group": {"value": ["Nintendo"], "modifier": "EXCLUDES"}}
+        )
+        results = set(Game.objects.filter(gf.to_q()))
+        assert platformless in results
+        assert data["game"] not in results
+        assert data["game2"] not in results
+
+    def test_purchase_games_excludes_keeps_gameless_purchase(self):
+        """DB proof of the deliberate M2M asymmetry: ``games`` excludes go
+        through ``_games_to_q``'s plain ``~Q(games__in=...)``, not
+        ``_SetCriterion._not_in_q`` — the isnull arm is an FK-column device,
+        while ORM negation over the M2M join already keeps purchases with no
+        linked games."""
+        import datetime
+
+        from games.filters import PurchaseFilter
+        from games.models import Purchase
+
+        data = self._setup_entities()
+        gameless = Purchase.objects.create(
+            platform=data["plat"], date_purchased=datetime.date(2026, 2, 1)
+        )
+        pf = PurchaseFilter.from_json(
+            {
+                "games": {
+                    "value": [],
+                    "excludes": [data["game"].pk],
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        results = set(Purchase.objects.filter(pf.to_q()))
+        assert gameless in results
+        assert data["pur"] not in results
+
     def test_game_filter_purchase_price_total(self):
         from games.filters import GameFilter
         from games.models import Game

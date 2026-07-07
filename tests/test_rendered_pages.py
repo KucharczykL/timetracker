@@ -364,6 +364,22 @@ class RenderedPagesTest(TestCase):
         self.assertIn('count="0"', host_tag)
         self.assertIn('<span><span data-count="">0</span> times</span>', row)
 
+    def test_view_game_null_platform_and_null_device_fallbacks(self):
+        """The two view-level fallback expressions on the game detail page:
+        the Platform meta row shows "Unspecified" for a platformless game, and
+        the sessions table shows "No device" for a device-less session."""
+        platformless = Game.objects.create(name="Platformless Game")
+        Session.objects.create(
+            game=platformless,
+            device=None,
+            timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
+            timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
+        )
+        html = self.get("games:view_game", platformless.id).content.decode()
+        self.assertIn("Unspecified", html)
+        self.assertIn("No device", html)
+        self.assertNoEscapedTags(html)
+
     def test_view_game_empty_sections(self):
         """A game with no sessions/purchases/etc shows the empty messages."""
         lonely = Game.objects.create(name="Lonely Game", platform=self.platform)

@@ -155,9 +155,7 @@ def LinkedPurchase(purchase: Purchase) -> Node:
 
 
 class PlatformBadge(NamedTuple):
-    """Icon slug + title for a game's platform badge. A game without a platform
-    still gets a badge (the "unspecified" fallback); no game context means no
-    badge at all."""
+    """Icon slug + title for a game's platform badge (see ``_platform_badge``)."""
 
     icon: str
     title: str
@@ -167,8 +165,7 @@ class ResolvedNameWithIcon(NamedTuple):
     name: str
     badge: PlatformBadge | None
     emulated: bool
-    create_link: bool
-    link: str
+    link: str | None  # None = render unlinked
 
 
 def NameWithIcon(
@@ -176,7 +173,6 @@ def NameWithIcon(
     game: Game | None = None,
     session: Session | None = None,
     linkify: bool = True,
-    emulated: bool = False,
 ) -> Node:
     resolved = _resolve_name_with_icon(name, game, session, linkify)
 
@@ -191,10 +187,14 @@ def NameWithIcon(
         PopoverTruncated(resolved.name),
     ]
 
-    return A(href=resolved.link)[content] if resolved.create_link else content
+    return A(href=resolved.link)[content] if resolved.link is not None else content
 
 
 def _platform_badge(game: Game) -> PlatformBadge:
+    """Badge for a game's platform. A game without a platform still gets a
+    badge (the "unspecified" fallback); only the no-game-context case (a
+    name-only ``NameWithIcon``) gets no badge at all — that decision lives in
+    ``_resolve_name_with_icon``, which returns ``badge=None`` there."""
     if game.platform:
         return PlatformBadge(icon=game.platform.icon, title=game.platform.name)
     return PlatformBadge(icon="unspecified", title="Unspecified")
@@ -206,28 +206,23 @@ def _resolve_name_with_icon(
     session: Session | None,
     linkify: bool,
 ) -> ResolvedNameWithIcon:
-    create_link = False
-    link = ""
+    link: str | None = None
     badge = None
-    final_emulated = False
+    emulated = False
 
     if session is not None:
         game = session.game
-        final_emulated = session.emulated
-        if game is not None:
-            badge = _platform_badge(game)
-            if linkify:
-                create_link = True
-                link = reverse("games:view_game", args=[int(game.pk)])
-    elif game is not None:
+        emulated = session.emulated
+    if game is not None:
         badge = _platform_badge(game)
         if linkify:
-            create_link = True
             link = reverse("games:view_game", args=[int(game.pk)])
 
-    _name = name or (game.name if game else "")
+    resolved_name = name or (game.name if game else "")
 
-    return ResolvedNameWithIcon(_name, badge, final_emulated, create_link, link)
+    return ResolvedNameWithIcon(
+        name=resolved_name, badge=badge, emulated=emulated, link=link
+    )
 
 
 def PurchasePrice(purchase) -> Node:
