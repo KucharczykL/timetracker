@@ -150,7 +150,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     label = str(meta.verbose_name_plural).title()
     filter_json = request.GET.get("filter", "")
     # The list's active ?sort= is threaded in so a preset saved here captures it
-    # and Apply navigates back preserving it (#77). Empty for a sort-less mode.
+    # and Apply navigates back preserving it (#77). Empty when no sort is active.
     sort = request.GET.get("sort", "")
     # The list's active rows-per-page threads in the same way so a preset saved
     # here pins it (#337). builder_url_for only carries a non-default size, so

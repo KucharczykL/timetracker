@@ -343,13 +343,20 @@ class BuilderUrlForTest(TestCase):
         self.assertIn("&per_page=50", url)
 
     def test_devices_and_platforms_have_builder_urls(self):
-        # Every filterable mode now has a builder page (#336); devices/platforms
-        # are sort-less, so their builder URL never carries ?sort=.
+        # Every filterable mode now has a builder page (#336).
         for mode in ("devices", "platforms"):
             with self.subTest(mode=mode):
                 url = builder_url_for(mode, "")
                 self.assertIn(f"/{FILTER_MODE_MODELS[mode]}/", url)
                 self.assertTrue(url.endswith("/filter"))
+
+    def test_devices_and_platforms_carry_active_sort(self):
+        # #335 gave devices/platforms sort maps, so their views thread the active
+        # sort into the builder URL — a preset saved there then captures it.
+        for mode in ("devices", "platforms"):
+            with self.subTest(mode=mode):
+                url = builder_url_for(mode, "", "-created")
+                self.assertIn(f"sort={quote('-created')}", url)
 
     def test_unknown_mode_raises(self):
         with self.assertRaises(LookupError):

@@ -29,10 +29,19 @@ from common.components import (
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
 from common.utils import paginate
-from games.sorting import parse_find_filter
+from games.sorting import (
+    PLAYEVENT_DEFAULT_SORT,
+    PLAYEVENT_SORTS,
+    apply_sort,
+    parse_find_filter,
+)
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
-from games.views.filtering import apply_structured_filter, builder_url_for
+from games.views.filtering import (
+    apply_structured_filter,
+    builder_url_for,
+    warn_unknown_sort,
+)
 from games.models import Game, PlayEvent, Session
 
 logger = logging.getLogger("games")
@@ -136,7 +145,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
-    playevents = PlayEvent.objects.order_by("-created_at")
+    playevents = PlayEvent.objects.all()
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -147,6 +156,9 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
             playevents = playevents.filter(playevent_filter.to_q())
 
     find = parse_find_filter(request)
+    sort = apply_sort(playevents, find, PLAYEVENT_SORTS, PLAYEVENT_DEFAULT_SORT)
+    playevents = sort.queryset
+    warn_unknown_sort(request, sort.unknown, entity="playevent")
     playevents, page_obj, elided_page_range = paginate(playevents, find)
     data = create_playevent_tabledata(playevents, request=request)
     content = paginated_table_content(

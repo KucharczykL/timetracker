@@ -232,12 +232,14 @@ def test_save_without_sort_stores_empty_find_filter(auth_client):
     assert preset.find_filter == {}
 
 
-def test_save_gates_sort_for_sortless_mode(auth_client):
-    # playevents is a valid preset mode but has no sort map, so a POSTed sort is
-    # dropped rather than stored as dead data the list view would ignore.
+def test_save_persists_sort_for_playevents_mode(auth_client):
+    # #335 gave playevents/devices/platforms sort maps, so their presets now
+    # round-trip a sort just like games/sessions/purchases (the MODE_SORTS gate
+    # in save_preset admits them). Previously playevents was sort-less and dropped
+    # the sort.
     _save(auth_client, name="PE", mode="playevents", filter=None, sort="-created")
     preset = FilterPreset.objects.get(name="PE")
-    assert preset.find_filter == {}
+    assert preset.find_filter == {"sort": "-created"}
 
 
 def test_list_emits_persisted_sort(auth_client):
@@ -330,9 +332,9 @@ def test_save_persists_sort_and_per_page_together(auth_client):
     assert preset.find_filter == {"sort": "-playtime", "per_page": 50}
 
 
-def test_save_persists_per_page_for_sortless_mode(auth_client):
-    # per_page is universal (every list paginates), so unlike sort it is NOT
-    # gated on MODE_SORTS — a sort-less mode still pins its page size.
+def test_save_persists_per_page_for_non_games_mode(auth_client):
+    # per_page is universal (every list paginates) and, unlike sort, is not gated
+    # on MODE_SORTS at all — it pins the page size for any mode.
     _save(auth_client, name="PE", mode="playevents", filter=None, per_page="50")
     preset = FilterPreset.objects.get(name="PE")
     assert preset.find_filter == {"per_page": 50}

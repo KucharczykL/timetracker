@@ -19,17 +19,26 @@ from common.components import (
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
-from games.sorting import parse_find_filter
+from games.sorting import (
+    PLATFORM_DEFAULT_SORT,
+    PLATFORM_SORTS,
+    apply_sort,
+    parse_find_filter,
+)
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
-from games.views.filtering import apply_structured_filter, builder_url_for
+from games.views.filtering import (
+    apply_structured_filter,
+    builder_url_for,
+    warn_unknown_sort,
+)
 from games.models import Platform
 from games.views.general import use_custom_redirect
 
 
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
-    platforms = Platform.objects.order_by("name")
+    platforms = Platform.objects.all()
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -40,6 +49,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
             platforms = platforms.filter(platform_filter.to_q())
 
     find = parse_find_filter(request)
+    sort = apply_sort(platforms, find, PLATFORM_SORTS, PLATFORM_DEFAULT_SORT)
+    platforms = sort.queryset
+    warn_unknown_sort(request, sort.unknown, entity="platform")
     platforms, page_obj, elided_page_range = paginate(platforms, find)
 
     data: TableData = {
@@ -86,10 +98,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    # platforms are sort-less (absent from MODE_SORTS), so the builder URL carries
-    # no ?sort= — pass sort=None (#336). per_page still threads through so a
-    # preset saved here pins the rows-per-page (#337).
-    builder_url = builder_url_for("platforms", filter_json, per_page=find.per_page)
+    # Thread the active sort + rows-per-page into the builder so a preset saved
+    # there captures both (#335 sort, #337 per_page).
+    builder_url = builder_url_for("platforms", filter_json, find.sort, find.per_page)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="platforms",
