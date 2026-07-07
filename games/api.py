@@ -17,6 +17,7 @@ from games.filters import MODE_PARSERS, filter_for_model, parse_session_filter
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
 from games.sorting import (
+    MODE_SORTS,
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
     apply_sort,
@@ -380,7 +381,8 @@ class PresetOption(Schema):
 
     ``data`` values are strings (the SearchSelectOption contract — they land as
     ``data-*`` attributes on the option row): ``data["filter"]`` is the preset's
-    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty preset).
+    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty preset)
+    and ``data["sort"]`` is the persisted sort string (``""`` when none — #77).
     """
 
     value: int
@@ -395,6 +397,10 @@ class PresetIn(Schema):
     name: str
     mode: str
     filter: dict | None = None
+    # The list's active ?sort= (a SortString) to persist in find_filter (#77).
+    # Gated to modes with a sort map at save time; re-validated on load via the
+    # ?sort= contract, so an unknown value is harmless. None means "no sort".
+    sort: str | None = None
 
 
 def _reject_unknown_preset_mode(request, mode: str) -> None:
@@ -427,7 +433,13 @@ def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
         {
             "value": preset.id,
             "label": preset.name,
-            "data": {"filter": json.dumps(preset.object_filter or {})},
+            "data": {
+                "filter": json.dumps(preset.object_filter or {}),
+                # Always present ("" for a sort-less/default preset), so the
+                # client reads a stable key; restored by appending ?sort= on load
+                # and re-validated by the list view's warn_unknown_sort (#77).
+                "sort": (preset.find_filter or {}).get("sort", ""),
+            },
         }
         for preset in presets
     ]
@@ -463,11 +475,18 @@ def save_preset(request, payload: PresetIn):
         )
         raise HttpError(400, f"Invalid filter: {exc}") from exc
 
+    # Persist the active sort only for modes with a sort map; a sort-less mode
+    # (or no sort) stores {} so no dead data lands in find_filter. The raw value
+    # is stored as-is — it comes from the ?sort= URL contract, not free text, and
+    # is re-validated on load.
+    find_filter = (
+        {"sort": payload.sort} if payload.sort and payload.mode in MODE_SORTS else {}
+    )
     _, created = FilterPreset.objects.update_or_create(
         user=request.user,
         name=name,
         mode=payload.mode,
-        defaults={"object_filter": object_filter},
+        defaults={"object_filter": object_filter, "find_filter": find_filter},
     )
     return Status(201 if created else 200, None)
 

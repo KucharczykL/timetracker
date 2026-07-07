@@ -149,6 +149,9 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     meta = django_model._meta
     label = str(meta.verbose_name_plural).title()
     filter_json = request.GET.get("filter", "")
+    # The list's active ?sort= is threaded in so a preset saved here captures it
+    # and Apply navigates back preserving it (#77). Empty for a sort-less mode.
+    sort = request.GET.get("sort", "")
     models_json = json.dumps(model_field_registry(model))
 
     content = Fragment(
@@ -163,6 +166,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             model=model,
             mode=mode,
             preset_api_url=reverse("api-1.0.0:list_presets"),
+            sort=sort,
         ),
         FilterSummary(model=model, model_label=label, models=models_json),
         FilterCount(

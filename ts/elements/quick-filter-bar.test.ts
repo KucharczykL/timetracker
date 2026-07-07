@@ -79,6 +79,7 @@ function submit(form: HTMLFormElement): void {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 
 describe("<quick-filter-bar>", () => {
@@ -152,6 +153,29 @@ describe("<quick-filter-bar>", () => {
         },
       }),
     );
+  });
+
+  it("carries the live ?sort= from the URL through a facet Apply", () => {
+    // Tweaking a facet must not reset the active sort (#77); the bar reads it
+    // from window.location since it has no sort UI of its own.
+    window.history.replaceState({}, "", "/tracker/session/list?sort=-duration");
+    const { form, navigate } = mount(setFacet("game", includePill("1", "X")));
+    submit(form);
+    const filter = {
+      game: {
+        value: [{ id: "1", label: "X" }],
+        excludes: [],
+        modifier: "INCLUDES",
+      },
+    };
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-duration"));
+  });
+
+  it("carries the sort even when all facets are empty", () => {
+    window.history.replaceState({}, "", "/tracker/session/list?sort=-duration");
+    const { form, navigate } = mount(setFacet("game"));
+    submit(form);
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, {}, "-duration"));
   });
 
   it("does not navigate on a facet change without Apply", () => {
@@ -281,7 +305,7 @@ describe("quick-filter-bar priority-plus overflow", () => {
 function mountWithPicker(): {
   bar: HTMLElement;
   navigate: ReturnType<typeof vi.fn>;
-  pick: (filter: string | null) => void;
+  pick: (filter: string | null, sort?: string) => void;
 } {
   document.body.innerHTML = `
     <quick-filter-bar apply-url="${LIST_URL}">
@@ -297,18 +321,16 @@ function mountWithPicker(): {
   const navigate = vi.fn();
   (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
   const widget = bar.querySelector("search-select") as HTMLElement;
-  const pick = (filter: string | null): void => {
+  const pick = (filter: string | null, sort?: string): void => {
+    const data: Record<string, string> = filter === null ? {} : { filter };
+    if (sort !== undefined) data.sort = sort;
     widget.dispatchEvent(
       new CustomEvent("search-select:change", {
         bubbles: true,
         detail: {
           name: "preset",
           values: ["1"],
-          last: {
-            value: "1",
-            label: "My preset",
-            data: filter === null ? {} : { filter },
-          },
+          last: { value: "1", label: "My preset", data },
         },
       }),
     );
@@ -327,6 +349,22 @@ describe("quick-filter-bar preset pick", () => {
   it("an empty preset navigates to the bare list URL", () => {
     const { navigate, pick } = mountWithPicker();
     pick(null);
+    expect(navigate).toHaveBeenCalledWith(LIST_URL);
+  });
+
+  it("restores the preset's stored sort, not the live URL sort", () => {
+    // The URL sort is deliberately different to prove the preset's own sort wins.
+    window.history.replaceState({}, "", "/tracker/session/list?sort=name");
+    const { navigate, pick } = mountWithPicker();
+    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
+    pick(JSON.stringify(filter), "-playtime");
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-playtime"));
+  });
+
+  it("a preset with an empty sort navigates without ?sort=", () => {
+    window.history.replaceState({}, "", "/tracker/session/list?sort=name");
+    const { navigate, pick } = mountWithPicker();
+    pick(null, "");
     expect(navigate).toHaveBeenCalledWith(LIST_URL);
   });
 

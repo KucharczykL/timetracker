@@ -36,6 +36,7 @@ __all__ = [
     "SESSION_DEFAULT_SORT",
     "PURCHASE_SORTS",
     "PURCHASE_DEFAULT_SORT",
+    "MODE_SORTS",
     "SortResult",
     "apply_sort",
     "parse_find_filter",
@@ -106,6 +107,18 @@ PURCHASE_SORTS: SortMap = {
     ),
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"
+
+
+# Maps a FilterPreset.mode to the sort map that mode's list view applies. Only
+# the modes with a *_SORTS map appear; playevents/devices/platforms are absent
+# (their list views ignore ?sort=), so preset save gates sort on membership here
+# and stores nothing for a sort-less mode. Keyset is a subset of MODE_PARSERS /
+# FilterPreset.MODE_CHOICES, contract-tested in tests/test_filter_presets.py.
+MODE_SORTS: dict[str, SortMap] = {
+    "games": GAME_SORTS,
+    "sessions": SESSION_SORTS,
+    "purchases": PURCHASE_SORTS,
+}
 
 
 # ── Apply ───────────────────────────────────────────────────────────────────

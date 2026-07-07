@@ -156,7 +156,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    builder_url = builder_url_for("playevents", filter_json)
+    builder_url = builder_url_for("playevents", filter_json, find.sort)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="playevents",

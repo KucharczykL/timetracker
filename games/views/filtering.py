@@ -30,10 +30,14 @@ logger = logging.getLogger("games")
 BUILDER_MODES = frozenset({"games", "sessions", "purchases", "playevents"})
 
 
-def builder_url_for(mode: FilterMode, filter_json: str) -> str:
+def builder_url_for(mode: FilterMode, filter_json: str, sort: str | None = None) -> str:
     """The fully-formed nested-builder URL for ``mode``, carrying ``?filter=``
-    when one is active — the single home of the URL format the list views and
-    the quick bar's degraded pill rely on.
+    and ``&sort=`` when active — the single home of the URL format the list views
+    and the quick bar's degraded pill rely on.
+
+    ``sort`` threads the list's active ``?sort=`` into the builder so a preset
+    saved from the builder can capture it (#77); it is only meaningful for modes
+    with a sort map, so sort-less modes pass ``None``.
 
     Raises ``LookupError`` for a mode without a builder page (``BUILDER_MODES``);
     those views simply don't call this.
@@ -41,8 +45,13 @@ def builder_url_for(mode: FilterMode, filter_json: str) -> str:
     if mode not in BUILDER_MODES:
         raise LookupError(f"mode {mode!r} has no filter-builder page")
     url = reverse("games:filter_builder", args=[FILTER_MODE_MODELS[mode]])
+    params: list[str] = []
     if filter_json:
-        url = f"{url}?filter={quote(filter_json)}"
+        params.append(f"filter={quote(filter_json)}")
+    if sort:
+        params.append(f"sort={quote(sort)}")
+    if params:
+        url = f"{url}?{'&'.join(params)}"
     return url
 
 

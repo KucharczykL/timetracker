@@ -34,6 +34,9 @@ export interface SavePresetRequest {
   name: string;
   mode: string;
   filter: Record<string, unknown>;
+  // The active sort (a SortString) to persist alongside the filter (#77).
+  // Omitted/empty means "no sort"; the server gates it to sort-capable modes.
+  sort?: string;
 }
 
 /**

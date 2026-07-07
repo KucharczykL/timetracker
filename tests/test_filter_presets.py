@@ -65,10 +65,13 @@ def _delete_url(preset_id: int) -> str:
     return reverse("api-1.0.0:delete_preset", args=[preset_id])
 
 
-def _save(client, *, name, mode="games", filter=None):
+def _save(client, *, name, mode="games", filter=None, sort=None):
+    body = {"name": name, "mode": mode, "filter": filter}
+    if sort is not None:
+        body["sort"] = sort
     return client.post(
         _presets_url(),
-        json.dumps({"name": name, "mode": mode, "filter": filter}),
+        json.dumps(body),
         content_type="application/json",
     )
 
@@ -204,6 +207,66 @@ def test_mode_parsers_cover_every_mode_choice():
     assert set(MODE_PARSERS) == {value for value, _label in FilterPreset.MODE_CHOICES}
 
 
+def test_mode_sorts_is_a_subset_of_mode_choices():
+    # MODE_SORTS gates which modes persist a preset sort. Every key must be a
+    # real mode, or save_preset would gate on a mode that can never match (#77).
+    from games.sorting import MODE_SORTS
+
+    assert set(MODE_SORTS) <= {value for value, _label in FilterPreset.MODE_CHOICES}
+
+
+# ── Sort round-trip (#77) ────────────────────────────────────────────────────
+
+
+def test_save_persists_sort_in_find_filter(auth_client):
+    _save(auth_client, name="Sorted", mode="games", filter=None, sort="-playtime,name")
+    preset = FilterPreset.objects.get(name="Sorted")
+    assert preset.find_filter == {"sort": "-playtime,name"}
+
+
+def test_save_without_sort_stores_empty_find_filter(auth_client):
+    _save(auth_client, name="Unsorted", mode="games", filter=None)
+    preset = FilterPreset.objects.get(name="Unsorted")
+    assert preset.find_filter == {}
+
+
+def test_save_gates_sort_for_sortless_mode(auth_client):
+    # playevents is a valid preset mode but has no sort map, so a POSTed sort is
+    # dropped rather than stored as dead data the list view would ignore.
+    _save(auth_client, name="PE", mode="playevents", filter=None, sort="-created")
+    preset = FilterPreset.objects.get(name="PE")
+    assert preset.find_filter == {}
+
+
+def test_list_emits_persisted_sort(auth_client):
+    _save(auth_client, name="Sorted", mode="games", filter=None, sort="-playtime")
+    preset = FilterPreset.objects.get(name="Sorted")
+    payload = _list(auth_client).json()
+    assert payload == [
+        {
+            "value": preset.id,
+            "label": "Sorted",
+            "data": {"filter": "{}", "sort": "-playtime"},
+        }
+    ]
+
+
+def test_resaving_updates_sort_in_place(auth_client):
+    _save(auth_client, name="V", mode="games", filter=None, sort="-playtime")
+    _save(auth_client, name="V", mode="games", filter=None, sort="name")
+    preset = FilterPreset.objects.get(name="V")
+    assert preset.find_filter == {"sort": "name"}
+
+
+def test_resaving_without_sort_clears_stored_sort(auth_client):
+    # find_filter is part of the upsert defaults, so re-saving with no sort must
+    # overwrite a previously-stored sort rather than leaving it stale.
+    _save(auth_client, name="V", mode="games", filter=None, sort="-playtime")
+    _save(auth_client, name="V", mode="games", filter=None)
+    preset = FilterPreset.objects.get(name="V")
+    assert preset.find_filter == {}
+
+
 def test_missing_name_rejected(auth_client):
     response = _save(auth_client, name="   ", filter=None)
     assert response.status_code == 400
@@ -222,7 +285,11 @@ def test_list_shape_round_trips_object_filter(auth_client):
 
     payload = _list(auth_client).json()
     assert payload == [
-        {"value": preset.id, "label": "Shape", "data": {"filter": json.dumps(stored)}}
+        {
+            "value": preset.id,
+            "label": "Shape",
+            "data": {"filter": json.dumps(stored), "sort": ""},
+        }
     ]
 
 

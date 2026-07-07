@@ -195,6 +195,26 @@ describe("savePreset", () => {
     expect(toastStub).toHaveBeenCalledWith('Filter preset "My preset" saved.', "success");
   });
 
+  it("forwards the sort in the POST body when present", async () => {
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal("fetch", fetchStub);
+    stubToast();
+
+    const filter = { search: { value: "mario", modifier: "INCLUDES" } };
+    await savePreset(API_URL, { name: "P", mode: "games", filter, sort: "-playtime,name" });
+
+    const [, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { body: string },
+    ];
+    expect(JSON.parse(options.body)).toEqual({
+      name: "P",
+      mode: "games",
+      filter,
+      sort: "-playtime,name",
+    });
+  });
+
   it("toasts 'updated' on a 200 overwrite", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))));
     const toastStub = stubToast();
