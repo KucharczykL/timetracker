@@ -40,6 +40,7 @@ __all__ = [
     "SortResult",
     "apply_sort",
     "parse_find_filter",
+    "parse_int_param",
 ]
 
 type AnnotationName = (
@@ -149,18 +150,30 @@ def apply_sort(
     return SortResult(queryset.order_by(*order_by), terms, unknown)
 
 
-def _int_param(raw: str | None, *, default: int) -> int:
+def parse_int_param(
+    raw: str | None, *, default: int, minimum: int | None = None
+) -> int:
     """Parse an optional integer query param, falling back to ``default``.
 
     Blank, missing, or non-integer input degrades to ``default`` (matching
     ``Paginator.get_page``'s forgiving contract) rather than raising. ``0`` is a
-    valid value — it flows through (``per_page=0`` disables pagination)."""
+    valid value — it flows through (``per_page=0`` disables pagination).
+
+    ``minimum`` rejects out-of-range integers: a parsed value below it degrades
+    to ``default`` too. ``per_page`` passes ``minimum=0`` because Django's
+    ``Paginator`` raises on a negative page size (it slices ``[0:-n]``), so a
+    negative ``?per_page=`` — hand-typed or restored from a saved preset — would
+    otherwise 500 the list (#337). This is the single load-side gate; the preset
+    save path reuses it so it can't disagree on which sizes are valid."""
     if raw is None:
         return default
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError:
         return default
+    if minimum is not None and value < minimum:
+        return default
+    return value
 
 
 def parse_find_filter(request: HttpRequest) -> FindFilter:
@@ -170,6 +183,8 @@ def parse_find_filter(request: HttpRequest) -> FindFilter:
     ``search`` criterion."""
     return FindFilter(
         sort=request.GET.get("sort") or None,  # FindFilter.sort holds a SortString
-        page=_int_param(request.GET.get("page"), default=FindFilter.page),
-        per_page=_int_param(request.GET.get("per_page"), default=FindFilter.per_page),
+        page=parse_int_param(request.GET.get("page"), default=FindFilter.page),
+        per_page=parse_int_param(
+            request.GET.get("per_page"), default=FindFilter.per_page, minimum=0
+        ),
     )

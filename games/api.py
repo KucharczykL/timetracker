@@ -27,6 +27,7 @@ from games.sorting import (
     SESSION_SORTS,
     apply_sort,
     parse_find_filter,
+    parse_int_param,
 )
 
 logger = logging.getLogger("games")
@@ -417,15 +418,14 @@ class PresetIn(Schema):
 def _preset_per_page(raw: str | None) -> int | None:
     """The rows-per-page to persist in ``find_filter``, or ``None`` to store none.
 
-    A blank/missing/non-integer value, or the *default* page size, stores nothing
-    so a default-size preset round-trips to the default order (#337). ``0``
-    (disable pagination / show all) differs from the default, so it is kept."""
-    if not raw:
-        return None
-    try:
-        value = int(raw)
-    except ValueError:
-        return None
+    Reuses the load-side parser (``parse_int_param`` with the same ``minimum=0``
+    bound and default) so save and load can't disagree on which ``?per_page=``
+    values are valid — a negative size degrades to the default here just as it
+    does on load, so it is never persisted. A blank/missing/non-integer/negative
+    value, or the *default* page size, stores nothing so a default-size preset
+    round-trips to the default (#337). ``0`` (disable pagination / show all)
+    differs from the default, so it is kept."""
+    value = parse_int_param(raw, default=FindFilter.per_page, minimum=0)
     return value if value != FindFilter.per_page else None
 
 

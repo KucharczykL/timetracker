@@ -308,6 +308,15 @@ def test_save_non_integer_per_page_stores_nothing(auth_client):
     assert preset.find_filter == {}
 
 
+def test_save_negative_per_page_stores_nothing(auth_client):
+    # A negative size would 500 the list on load (Paginator slices [0:-n]); the
+    # save path reuses parse_int_param's minimum=0 bound, so it degrades to the
+    # default and is not persisted (#337).
+    _save(auth_client, name="Neg", mode="games", filter=None, per_page="-5")
+    preset = FilterPreset.objects.get(name="Neg")
+    assert preset.find_filter == {}
+
+
 def test_save_persists_sort_and_per_page_together(auth_client):
     _save(
         auth_client,

@@ -62,13 +62,20 @@ list's page size, so `per_page` threads the same route sort does:
   the active page size; **quick-bar preset pick** restores the preset's stored
   `per_page`.
 
-## Validation — none new
+## Validation — one shared bound
 
-`per_page` is re-parsed on load by the destination list view's existing
-`_int_param` (`games/sorting.py`), whose forgiving `Paginator.get_page` contract
-degrades a blank/garbage value to the default. A stale stored size therefore
-self-heals with no preset-specific validation code, exactly as a stale sort key
-does through `warn_unknown_sort`. No model change, so **no migration**.
+`per_page` is re-parsed on load by the destination list view's `parse_int_param`
+(`games/sorting.py`), whose forgiving `Paginator.get_page` contract degrades a
+blank/garbage value to the default. A stale stored size therefore self-heals with
+no preset-specific validation code, exactly as a stale sort key does through
+`warn_unknown_sort`.
+
+One value the forgiving contract does **not** absorb on its own is a *negative*
+size: `Paginator(qs, -5)` slices `[0:-5]` and raises `EmptyPage`, so a negative
+`?per_page=` would 500 the list. `parse_int_param` therefore takes a `minimum=0`
+bound for `per_page` (a negative degrades to the default), and the preset save
+path (`_preset_per_page`) reuses the same parser + bound so it never persists a
+size the load path would choke on. No model change, so **no migration**.
 
 ## Testing
 
