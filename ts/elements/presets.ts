@@ -9,14 +9,9 @@
  * /api/presets/ collection URL; DELETE appends the preset id.
  */
 
-export function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
-  const element = document.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]');
-  if (element) return element.value;
-  console.warn("presets: CSRF token not found — preset save/delete will 403");
-  return "";
-}
+import { getCsrfToken } from "../csrf.js";
+
+export { getCsrfToken };
 
 // The /api/presets/ list item (a SearchSelectOption: value/label/data).
 interface PresetOption {

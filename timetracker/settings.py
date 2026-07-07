@@ -207,5 +207,10 @@ LOGGING = {
             "level": "WARNING",
         },
         "games": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "client_errors": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
     },
 }

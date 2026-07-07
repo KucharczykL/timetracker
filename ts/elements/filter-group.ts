@@ -74,6 +74,7 @@ import {
   wireComparisonRowListeners,
 } from "./field-comparison-set.js";
 import { readLeafWidget, setupModifierToggles, writeLeafWidget } from "./filter-widgets.js";
+import { parseJSONWithReport, reportClientError } from "../client-errors.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
 // Full, static class strings only — Tailwind detects complete strings, so the
@@ -286,7 +287,7 @@ export class FilterGroupElement extends HTMLElement {
         try {
           this.tree = deserialize(JSON.parse(props.filter), this.model, this.buildRegistry());
         } catch (error) {
-          console.warn("filter-group: ignoring malformed filter prop", error);
+          reportClientError("filter-group[filter]", String(error));
         }
       }
       this.addEventListener("click", this.onClick);
@@ -314,14 +315,12 @@ export class FilterGroupElement extends HTMLElement {
   // (derived from its `kind === "relation"` fields). Templates are attached later by
   // captureTemplates.
   private parseModels(raw: string): void {
-    let bundles: Record<string, ModelFieldBundleJson> = {};
-    if (raw) {
-      try {
-        bundles = JSON.parse(raw) as Record<string, ModelFieldBundleJson>;
-      } catch (error) {
-        console.warn("filter-group: malformed models prop", error);
-      }
-    }
+    const bundles = parseJSONWithReport<Record<string, ModelFieldBundleJson>>(
+      raw,
+      {},
+      "filter-group[models]",
+      this,
+    );
     for (const [key, bundle] of Object.entries(bundles)) {
       const fields = new Map<string, FilterFieldMeta>();
       const relations: RelationOption[] = [];
@@ -1068,9 +1067,8 @@ export class FilterGroupElement extends HTMLElement {
         try {
           writeLeafWidget(cell, kind, criterion);
         } catch (error) {
-          // Fail open: a hydration bug on one leaf degrades to a blank widget
-          // (the pre-hydration behavior), never an aborted page render.
-          console.warn("filter-group: leaf hydration failed", error);
+          // Fail open: a hydration bug on one leaf degrades to a blank widget.
+          reportClientError("filter-group[leaf-hydration]", String((error as Error)?.message ?? error));
         }
       }
     }
