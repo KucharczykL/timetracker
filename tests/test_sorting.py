@@ -139,6 +139,24 @@ class TestParseFindFilter:
         request = RequestFactory().get("/x")
         assert parse_find_filter(request).sort is None
 
+    def test_reads_page_and_per_page(self):
+        request = RequestFactory().get("/x", {"page": "3", "per_page": "50"})
+        find = parse_find_filter(request)
+        assert (find.page, find.per_page) == (3, 50)
+
+    def test_per_page_zero_flows_through(self):
+        # 0 is meaningful (disables pagination) — not coerced to the default.
+        request = RequestFactory().get("/x", {"per_page": "0"})
+        assert parse_find_filter(request).per_page == 0
+
+    def test_junk_page_degrades_to_default(self):
+        request = RequestFactory().get("/x", {"page": "abc"})
+        assert parse_find_filter(request).page == FindFilter.page
+
+    def test_absent_pagination_uses_dataclass_defaults(self):
+        find = parse_find_filter(RequestFactory().get("/x"))
+        assert (find.page, find.per_page) == (FindFilter.page, FindFilter.per_page)
+
 
 class TestSortMapShapes:
     def test_default_sort_keys_exist_in_maps(self):

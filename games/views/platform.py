@@ -19,6 +19,7 @@ from common.components import (
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
+from games.sorting import parse_find_filter
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
 from games.views.filtering import apply_structured_filter
@@ -38,7 +39,8 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         if platform_filter is not None:
             platforms = platforms.filter(platform_filter.to_q())
 
-    platforms, page_obj, elided_page_range = paginate(request, platforms)
+    find = parse_find_filter(request)
+    platforms, page_obj, elided_page_range = paginate(platforms, find)
 
     data: TableData = {
         "header_action": ControlButton(href=reverse("games:add_platform"))[
@@ -82,6 +84,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,
+        page_size=find.per_page,
     )
     # No builder_url: platforms have no nested-builder page (BUILDER_MODES) —
     # the action group is Apply | Clear and the degraded pill offers only

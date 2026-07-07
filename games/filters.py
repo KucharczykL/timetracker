@@ -68,8 +68,7 @@ class FindFilter:
 
     page: int = 1
     per_page: int = 25
-    sort: str | None = None  # e.g. "-created_at"
-    direction: str = "desc"  # asc / desc
+    sort: str | None = None  # e.g. "-created_at" (a signed SortString)
 
 
 # ── GameFilter ─────────────────────────────────────────────────────────────

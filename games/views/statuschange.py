@@ -19,6 +19,7 @@ from common.components.primitives import P
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
+from games.sorting import parse_find_filter
 from games.forms import GameStatusChangeForm
 from games.models import GameStatusChange
 
@@ -48,8 +49,9 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
 
 @login_required
 def list_statuschanges(request: HttpRequest) -> HttpResponse:
+    find = parse_find_filter(request)
     statuschanges, page_obj, elided_page_range = paginate(
-        request, GameStatusChange.objects.select_related("game").all()
+        GameStatusChange.objects.select_related("game").all(), find
     )
 
     data: TableData = {
@@ -76,6 +78,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
             page_obj=page_obj,
             elided_page_range=elided_page_range,
             request=request,
+            page_size=find.per_page,
         )
     ]
     return render_page(request, content, title="Status changes")

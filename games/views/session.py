@@ -83,12 +83,11 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         last_session = sessions.latest()
     except Session.DoesNotExist:
         last_session = None
-    sort = apply_sort(
-        sessions, parse_find_filter(request), SESSION_SORTS, SESSION_DEFAULT_SORT
-    )
+    find = parse_find_filter(request)
+    sort = apply_sort(sessions, find, SESSION_SORTS, SESSION_DEFAULT_SORT)
     sessions = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="session")
-    sessions, page_obj, elided_page_range = paginate(request, sessions)
+    sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
 
     resume_session_link: Node | str = ""
@@ -134,6 +133,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,
+        page_size=find.per_page,
     )
     from common.components import (
         ContentContainer,

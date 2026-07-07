@@ -29,6 +29,7 @@ from common.components import (
 from common.layout import render_page
 from common.time import dateformat, format_duration, local_strftime
 from common.utils import paginate
+from games.sorting import parse_find_filter
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
 from games.views.filtering import apply_structured_filter, builder_url_for
@@ -145,13 +146,15 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         if playevent_filter is not None:
             playevents = playevents.filter(playevent_filter.to_q())
 
-    playevents, page_obj, elided_page_range = paginate(request, playevents)
+    find = parse_find_filter(request)
+    playevents, page_obj, elided_page_range = paginate(playevents, find)
     data = create_playevent_tabledata(playevents, request=request)
     content = paginated_table_content(
         data,
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,
+        page_size=find.per_page,
     )
     builder_url = builder_url_for("playevents", filter_json)
     parsed_filter = parse_filter_dict(filter_json)

@@ -40,7 +40,7 @@ def test_flush_tolerates_inflight_request(
 
     real_paginate = game_views.paginate
 
-    def slow_paginate(request, queryset, per_page=10):
+    def slow_paginate(queryset, find):
         from django.db import connection
 
         # Fetch one row of several, then sleep: the SELECT statement stays
@@ -52,7 +52,7 @@ def test_flush_tolerates_inflight_request(
         time.sleep(1.5)
         cursor.fetchall()
         cursor.close()
-        return real_paginate(request, queryset, per_page)
+        return real_paginate(queryset, find)
 
     monkeypatch.setattr(game_views, "paginate", slow_paginate)
 

@@ -159,13 +159,12 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         if purchase_filter is not None:
             purchases = purchases.filter(purchase_filter.to_q())
 
-    sort = apply_sort(
-        purchases, parse_find_filter(request), PURCHASE_SORTS, PURCHASE_DEFAULT_SORT
-    )
+    find = parse_find_filter(request)
+    sort = apply_sort(purchases, find, PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
     purchases = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="purchase")
 
-    purchases, page_obj, elided_page_range = paginate(request, purchases)
+    purchases, page_obj, elided_page_range = paginate(purchases, find)
 
     data: TableData = {
         "header_action": ControlButton(href=reverse("games:add_purchase"))[
@@ -190,6 +189,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,
+        page_size=find.per_page,
     )
     from common.components import (
         QuickFilterBar,

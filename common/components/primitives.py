@@ -1480,6 +1480,35 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
     return Th(scope="col", class_=base_class, aria_sort=aria_sort)[_SortHeader()[link]]
 
 
+# The per-page sizes offered by the list-view rows-per-page picker.
+PAGE_SIZE_PRESETS = (10, 25, 50, 100, 500, 1000)
+
+
+def PageSizeSelect(request, current: int) -> Node:
+    """A rows-per-page menu: a current-value trigger over ``?per_page=`` links.
+
+    Pure navigation — each preset is an ``<a href>`` produced by ``_replace_query``
+    (so ``sort``/``filter`` ride along and ``page`` resets), and ``<drop-down>``
+    owns open/close. No new JS. The dropdown builders are imported lazily to avoid
+    a module-load cycle (``custom_elements`` imports this module)."""
+    from common.components.custom_elements import ButtonDropdown, DropdownLinkItem
+
+    items = [
+        DropdownLinkItem(
+            _replace_query(request, set_params={"per_page": str(size)}, drop=("page",)),
+            str(size),
+            current=size == current,
+        )
+        for size in PAGE_SIZE_PRESETS
+    ]
+    return ButtonDropdown(
+        label=str(current),
+        items=items,
+        id="page-size",
+        aria_label="Rows per page",
+    )
+
+
 def StyledTable(
     columns: list[Column] | None = None,
     rows: Sequence[TableRowData] | None = None,
@@ -1488,6 +1517,7 @@ def StyledTable(
     elided_page_range=None,
     request=None,
     sort_terms: Sequence[SortTerm] | None = None,
+    page_size: int | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -1558,6 +1588,19 @@ def StyledTable(
     if page_obj and elided_page_range:
         inner_children.append(_pagination_nav(page_obj, elided_page_range, request))
 
+    # The rows-per-page picker sits above the table, rendered independently of the
+    # pagination nav so it stays reachable even when pagination is disabled
+    # (per_page=0 → no nav).
+    if page_size is not None and request is not None:
+        controls = Nav(
+            class_=(
+                "flex items-center justify-end gap-2 px-6 py-3 text-sm "
+                "text-gray-500 dark:text-gray-400"
+            ),
+            aria_label="Rows per page",
+        )[Span()["Rows per page"], PageSizeSelect(request, page_size)]
+        inner_children.insert(0, controls)
+
     return Div(class_="shadow-md", hx_boost="false")[*inner_children]
 
 
@@ -1581,6 +1624,7 @@ def paginated_table_content(
     page_obj=None,
     elided_page_range=None,
     request=None,
+    page_size: int | None = None,
 ) -> Node:
     """The list-page table: a StyledTable (+ pagination) built from ``data``.
 
@@ -1588,6 +1632,9 @@ def paginated_table_content(
     ``header_action`` (the same shape every list view already builds). The
     page-width container is the caller's job — list views wrap this, together
     with their filter tiers, in :func:`ContentContainer` (issue #313).
+
+    Pass ``page_size`` (the resolved ``FindFilter.per_page``) to render the
+    rows-per-page picker above the table.
     """
     return StyledTable(
         columns=data["columns"],
@@ -1597,4 +1644,5 @@ def paginated_table_content(
         elided_page_range=elided_page_range,
         request=request,
         sort_terms=data.get("sort_terms"),
+        page_size=page_size,
     )

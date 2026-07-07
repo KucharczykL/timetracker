@@ -99,11 +99,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
     )
     games = games.annotate(filtered_playtime=Subquery(windowed_playtime))
 
-    sort = apply_sort(games, parse_find_filter(request), GAME_SORTS, GAME_DEFAULT_SORT)
+    find = parse_find_filter(request)
+    sort = apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
     games = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="game")
 
-    games, page_obj, elided_page_range = paginate(request, games)
+    games, page_obj, elided_page_range = paginate(games, find)
 
     data: TableData = {
         "header_action": Div(
@@ -156,6 +157,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,
+        page_size=find.per_page,
     )
     # The quick bar is the page's only filter tier: dropdown facets,
     # preset picker, and the builder entry point in the action group.
