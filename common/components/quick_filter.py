@@ -215,8 +215,8 @@ class QuickFilterBar(BaseComponent):
         self.builder_url = builder_url
         self.apply_url = apply_url
         self.preset_api_url = preset_api_url
-        # ``existing`` lets the view share one parse with other consumers
-        # (both only read it); otherwise the bar parses its own copy.
+        # ``existing`` lets the view hand over an already-parsed filter
+        # (read-only); otherwise the bar parses its own copy.
         self.existing = (
             existing if existing is not None else parse_filter_dict(filter_json)
         )
@@ -253,10 +253,9 @@ class QuickFilterBar(BaseComponent):
                     ghost=True,
                 )
             )
-        # One segmented group so the bar-level actions read as a single unit
-        # and can't be separated by row wrapping (#315). Apply is a bare
-        # submit button; Clear is a plain link, not JS — radios and modifier
-        # selects have no per-widget "unset", so the bar needs a one-click
+        # One segmented group so the bar-level actions can't be separated
+        # by row wrapping (#315). Clear is a plain link — radios and modifier
+        # selects have no per-widget unset, so the bar needs a one-click
         # reset.
         row_children.append(ButtonGroup(self._action_group_members()))
         return _QuickFilterBarElement(apply_url=self._list_url())[

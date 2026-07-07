@@ -1,4 +1,6 @@
-"""Stash-style filter bars, built from FilterSelect widgets."""
+"""Filter widget layer: criterion-blob parse helpers, the per-kind value
+widgets, and ``field_widget`` — the single dispatcher the quick filter bar
+and the nested builder render every leaf field through."""
 
 import json
 from typing import Literal, NamedTuple
@@ -91,10 +93,8 @@ def _filter_parse(filter_json: str) -> dict:
 def parse_filter_dict(filter_json: str) -> dict:
     """Lenient ``?filter=`` JSON → dict parse (garbage → ``{}``) for bar prefill.
 
-    The public face of ``_filter_parse``: list views call it once and hand the
-    same dict to both the quick bar and the flat bar (``existing=``), instead of
-    each bar re-parsing the identical string. All consumers treat the dict as
-    read-only.
+    The public face of ``_filter_parse``: list views parse once and hand the
+    dict to the quick bar (``existing=``). Consumers treat it as read-only.
     """
     return _filter_parse(filter_json)
 
@@ -318,7 +318,7 @@ def _bool_control(name: str, value: bool | None, *, path: FilterWidgetPath) -> N
 # ── field_widget: the single per-field value-widget builder (issue #242) ──────
 # One dispatcher that returns a field's value control, keyed off the field's
 # ``FieldMeta`` (kind / nullable / choices / search_url / is_m2m). It reuses the
-# existing builders — no new markup. Both the flat bars and the #192 nested-builder
+# existing builders — no new markup. The quick bar and the #192 nested-builder
 # leaf row clone the same widget from here, so a field is described once.
 
 
@@ -377,11 +377,10 @@ def field_widget(
         raise ValueError(
             f"{filter_cls.__name__}.{field_name} is a relation, not a leaf value field"
         )
-    # Every leaf kind is panel-hostable (#315 rollout): set gets the
-    # FilterSelect panel personality, date the static-calendar DateRangePanel,
-    # and number/string/bool embed their stacked widgets unchanged — the
-    # select-above-inputs layout (too tall inline, #314) is exactly the
-    # natural shape inside a vertical dialog.
+    # Every leaf kind is panel-hostable (#315): set gets the FilterSelect
+    # panel personality, date the static-calendar DateRangePanel, and
+    # number/string/bool embed their stacked widgets unchanged — the
+    # select-above-inputs layout is the natural shape in a vertical dialog.
     widget_path = path if path is not None else [field_name]
     prefix = name_prefix if name_prefix is not None else f"filter-{field_name}"
     blob = value if isinstance(value, dict) else {}
@@ -567,12 +566,11 @@ def comparison_row_template(
 ) -> Node:
     """A blank field-comparison ``<template>`` for the nested builder (#246).
 
-    The nested builder (``<filter-group>``) clones this into each comparison leaf's
-    value cell, reusing the single-row widget — the *same* ``_field_comparison_row``
-    markup ``FieldComparisonSet`` uses, minus the set container and its AND/OR mode
-    toggle (the enclosing group owns the connective now). The row's own ``✕`` remove
-    button is dropped client-side; the group's controls own removal. ``model`` tags the
-    template ``data-model`` so the multi-model builder (#193) buckets it by model."""
+    The nested builder (``<filter-group>``) clones this into each comparison
+    leaf's value cell (``_field_comparison_row``); the enclosing group owns the
+    connective. The row's own ``✕`` remove button is dropped client-side — the
+    group's controls own removal. ``model`` tags the template ``data-model`` so
+    the multi-model builder (#193) buckets it by model."""
     from games.forms import SELECT_CLASS
 
     return Template(data_fc_row_template="", **_model_attr(model))[
@@ -701,8 +699,8 @@ def StringFilter(
         ("NOT_NULL", "is not null"),
     ]
 
-    # A compact modifier dropdown (was an 8-radio grid): one control reads well both
-    # in the flat bar and nested in the filter builder's tree.
+    # A compact modifier dropdown: one control reads well both as a quick-bar
+    # facet and nested in the filter builder's tree.
     modifier_select = Select(
         [
             ("name", f"{input_name_prefix}-modifier"),

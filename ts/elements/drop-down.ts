@@ -24,12 +24,10 @@ class DropdownElement extends HTMLElement {
 
   connectedCallback(): void {
     if (this.controller) {
-      // Reconnection — e.g. the quick bar's priority-plus layout moving this
-      // node into/out of the "⋯" overflow panel. All element-local wiring
-      // (toggle click, behavior listeners) traveled with the subtree; only
-      // the document-level listeners were detached, so re-attaching them here
-      // is the whole job. Re-running attachMenu would stack a second toggle
-      // handler and every click would open-then-close.
+      // Reconnection (e.g. a moved node): element-local wiring traveled
+      // with the subtree, so only the document listeners need re-attaching.
+      // Re-running attachMenu would stack a second toggle handler and every
+      // click would open-then-close.
       this.unbindDocument = this.controller.bindDocument();
       return;
     }
@@ -65,10 +63,9 @@ class DropdownElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    // Close (a mid-move open panel would linger at stale fixed coordinates;
-    // close also detaches the open-only scroll/resize listeners) and drop the
-    // document listeners. The controller and element-local wiring persist for
-    // reconnection.
+    // Close (an open panel would linger at stale fixed coordinates) and
+    // drop the document listeners; the controller and element-local wiring
+    // persist for reconnection.
     this.controller?.close();
     this.unbindDocument?.();
     this.unbindDocument = undefined;

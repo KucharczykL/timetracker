@@ -130,7 +130,7 @@ class QuickFilterBarRenderingTest(TestCase):
                 self._editable_markers(html, mode)
 
     def test_unparseable_json_renders_editable(self):
-        # Same leniency as the flat bar's _filter_parse: garbage parses to {}.
+        # parse_filter_dict is lenient: garbage parses to {}.
         html = str(QuickFilterBar(mode="games", filter_json="{oops", builder_url="/x"))
         self.assertIn("<quick-filter-bar", html)
 

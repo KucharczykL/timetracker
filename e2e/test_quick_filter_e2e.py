@@ -369,8 +369,7 @@ def test_preset_pick_on_builderless_mode(
 
     # Enter in the picker's search box must not submit the facet form. Type a
     # no-match query first so no preset row can be auto-highlighted — with a
-    # highlight, Enter legitimately PICKS the row (that raced in CI when the
-    # preset fetch resolved before the keypress).
+    # highlight, Enter legitimately PICKS the row.
     search.fill("zzz-no-such-preset")
     expect(picker.locator("[data-search-select-no-results]")).to_be_visible()
     search.press("Enter")

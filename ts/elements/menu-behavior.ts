@@ -37,10 +37,9 @@ export interface MenuController {
   isOpen: () => boolean;
   focusFirst: () => void;
   // Attaches the document-level listeners (outside-click close, single-open
-  // coordination) and returns their detacher. Called once per CONNECTION by
-  // <drop-down> — element-local wiring persists with the subtree across
-  // moves (the quick bar's priority-plus layout relocates whole dropdowns),
-  // so reconnection must re-bind only what disconnection removed.
+  // coordination) and returns their detacher. Called once per connection by
+  // <drop-down>: element-local wiring persists with the subtree across DOM
+  // moves, so reconnection re-binds only what disconnection removed.
   bindDocument: () => () => void;
 }
 
@@ -396,10 +395,9 @@ export function attachMenu(
     close();
   };
 
-  // The document listeners outlive the host's DOM, so they are bound per
-  // connection: <drop-down> calls bindDocument on (re)connect and the
-  // returned detacher on disconnect — they'd otherwise accumulate across
-  // htmx re-mounts, or dangle after a permanent removal.
+  // Bound per connection (see MenuController.bindDocument): unbound
+  // document listeners would accumulate across htmx re-mounts or dangle
+  // after a permanent removal.
   const bindDocument = (): (() => void) => {
     document.addEventListener("click", onDocumentClick);
     document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);

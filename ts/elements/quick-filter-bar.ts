@@ -116,7 +116,7 @@ class QuickFilterBarElement extends HTMLElement {
     this.overflowHost.classList.remove("hidden");
     const overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
-    // Everything after the overflow host (the Apply/Clear group) is
+    // Everything after the overflow host (preset picker, action group) is
     // permanent row furniture the facets must leave room for.
     let furnitureWidth = 0;
     let sibling = this.overflowHost.nextElementSibling;

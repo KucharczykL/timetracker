@@ -198,8 +198,8 @@ class RenderedPagesTest(TestCase):
     def test_list_page_filter_tiers_share_content_container(self):
         """Issues #313/#315: every list page renders exactly one filter tier —
         the quick bar — inside the same non-navbar ``max-w-7xl`` content
-        container (``ContentContainer``) as its table, and no flat filter-bar
-        at all (the flat-bar layer was deleted in the #315 rollout)."""
+        container (``ContentContainer``) as its table, and no flat
+        filter-bar at all."""
         for url_name in (
             "games:list_games",
             "games:list_sessions",

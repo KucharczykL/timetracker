@@ -601,9 +601,8 @@ def test_cross_model_year_comparison_filters_sessions(
 ) -> None:
     """Cross-model year-space field comparison round-trip (#169).
 
-    Drives the sessions filter BUILDER UI (the sessions list page dropped its
-    flat bar in the #315 tryout — the builder is now the comparison UI for
-    sessions): adds a comparison leaf with left='timestamp_start',
+    Drives the sessions filter BUILDER UI (the builder is the comparison UI
+    for sessions, #315): adds a comparison leaf with left='timestamp_start',
     operator='EQUALS:year' (year comparison space), right='game__year_released',
     applies, and asserts that only the session whose play year matches
     the game's release year remains visible on the list.

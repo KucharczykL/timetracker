@@ -199,7 +199,7 @@ class QuickBarDateRangePanelTest(TestCase):
 
 
 class DateRangePanelTest(SimpleTestCase):
-    """The dropdown-panel variant (#315 tryout): same element and hidden-input
+    """The dropdown-panel variant (#315): same element and hidden-input
     contract as DateRangePicker, but no calendar toggle, a statically flowing
     always-visible calendar, and a Clear-only footer."""
 

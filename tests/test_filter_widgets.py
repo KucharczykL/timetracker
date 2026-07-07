@@ -3,8 +3,6 @@
 Pins the Stash-style NumberFilter modifier widget, the comparable-columns
 gate + reachable-model registry the nested builder renders from, the
 FilterGroup template emission, and the mode->list-URL table (#304).
-(The flat filter bars these tests once covered were deleted in the #315
-rollout — the quick bar + builder are the only filter UIs.)
 """
 
 from django.test import SimpleTestCase, TestCase
@@ -103,8 +101,8 @@ class NumberFilterRenderTest(TestCase):
 
 
 class HasComparableGroupTest(TestCase):
-    """The ≥2-columns-of-one-group gate shared by the flat bar's comparison field
-    and the nested builder's `+ comparison` affordance / row template (#246)."""
+    """The ≥2-columns-of-one-group gate behind the nested builder's
+    `+ comparison` affordance / row template (#246)."""
 
     def _column(self, value, group):
         return {"value": value, "label": value.title(), "group": group, "operators": []}

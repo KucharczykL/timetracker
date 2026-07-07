@@ -11,10 +11,9 @@
   Cancel / Clear / Select footer.
 
 The committed value lives in two hidden ISO-date inputs named
-``{input_name_prefix}-min`` / ``{input_name_prefix}-max`` — the same contract
-as the older ``DateRangeFilter``, so ``filter_bar.ts`` serializes either
-widget into a ``DateCriterion`` unchanged. All behaviour is wired by
-``ts/date_range_picker.ts`` (compiled to ``dist/date_range_picker.js``).
+``{input_name_prefix}-min`` / ``{input_name_prefix}-max``, which the filter
+serializers read into a ``DateCriterion``. All behaviour is wired by
+``ts/elements/date-range-picker.ts``.
 """
 
 from common.components.core import Node, Safe
@@ -158,7 +157,7 @@ def DateRangeField(
     """The visible half of the DateRangePicker: a single-input-looking
     container holding two segmented dates, a calendar toggle, and the two
     hidden ISO inputs (``{prefix}-min`` / ``{prefix}-max``) that carry the
-    committed value to ``filter_bar.js``.
+    committed value to the filter serializers.
 
     ``calendar_toggle=False`` omits the toggle icon — the panel variant
     (:func:`DateRangePanel`) shows its calendar statically, so there is
@@ -295,15 +294,13 @@ def DateRangePicker(
 ) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
 
-    Drop-in replacement for ``DateRangeFilter`` — exposes the same hidden
-    ``{prefix}-min`` / ``{prefix}-max`` ISO inputs, so the filter-bar
-    serializer needs no changes. ``min_value`` / ``max_value`` are ISO
-    ``YYYY-MM-DD`` strings used to prefill both the segments and the hidden
+    ``min_value`` / ``max_value`` are ISO ``YYYY-MM-DD`` strings prefilling
+    both the segments and the hidden ``{prefix}-min`` / ``{prefix}-max``
     inputs.
 
-    Filter-bar callers pass ``path`` so the root self-describes for the generic
-    filter serializer; non-filter callers (e.g. a standalone date picker) leave
-    it None and the extra attributes are omitted."""
+    Filter callers pass ``path`` so the root self-describes for the generic
+    filter serializer; non-filter callers (e.g. a standalone date picker)
+    leave it None and the extra attributes are omitted."""
     widget_attributes = (
         filter_widget_attributes(path, "date") if path is not None else []
     )
@@ -326,16 +323,16 @@ def DateRangePanel(
     max_value: str = "",
     path: FilterWidgetPath | None = None,
 ) -> Node:
-    """The dropdown-panel variant of :func:`DateRangePicker` (#315 tryout):
-    the segmented field (no calendar toggle) above a statically flowing,
+    """The dropdown-panel variant of :func:`DateRangePicker` (#315): the
+    segmented field (no calendar toggle) above a statically flowing,
     always-visible calendar — for hosting inside a ``ComboboxDropdown``
-    dialog, whose surface can't host the absolute popup (the dropdown panel
-    clips overflow and scrolls vertically while open).
+    dialog, whose surface can't host the absolute popup (the panel clips
+    overflow and scrolls vertically while open).
 
-    Same custom element, same hidden ``{prefix}-min``/``{prefix}-max``
-    contract, same serializer path. ``data-static-calendar`` is the client
-    discriminator: ``ts/elements/date-range-picker.ts`` renders the grid at
-    init, skips toggle/dismiss wiring, and never closes the calendar."""
+    Same custom element and hidden ``{prefix}-min``/``{prefix}-max``
+    contract. ``data-static-calendar`` is the client discriminator:
+    ``ts/elements/date-range-picker.ts`` renders the grid at init, skips
+    toggle/dismiss wiring, and never closes the calendar."""
     widget_attributes = (
         filter_widget_attributes(path, "date") if path is not None else []
     )

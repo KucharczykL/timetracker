@@ -296,7 +296,7 @@ export class FilterGroupElement extends HTMLElement {
       this.addEventListener("change", this.onValueEvent);
       this.addEventListener("search-select:change", this.onValueEvent);
       this.addEventListener("date-range:change", this.onValueEvent);
-      // Reuse the flat bar's modifier-select enable/disable behavior for the cloned
+      // Reuse the shared modifier-select enable/disable behavior for the cloned
       // string/number widgets (presence hides value; BETWEEN reveals value2).
       setupModifierToggles(this);
       this.wired = true;
@@ -569,7 +569,7 @@ export class FilterGroupElement extends HTMLElement {
   // with no field picked, comparison with no left column) is not incomplete:
   // it prunes harmlessly at serialize time, and counting it would wrongly
   // disable Apply whenever a blank starter row sits next to a completed
-  // sibling (the sessions-builder comparison e2e caught exactly that).
+  // sibling.
   private incompleteCount(node: GroupNode = this.tree, model: string = this.model): number {
     let count = 0;
     for (const child of node.children) {

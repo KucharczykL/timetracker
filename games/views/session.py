@@ -143,9 +143,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
     from games.views.filtering import builder_url_for
 
-    # #315 tryout: the quick bar is the sessions list's only filter tier —
-    # the flat SessionFilterBar and the standalone AdvancedFilterLink are
-    # gone; the builder entry point lives in the bar's action group.
+    # The quick bar is the page's only filter tier (#315); the builder
+    # entry point lives in its action group.
     filter_json = request.GET.get("filter", "")
     builder_url = builder_url_for("sessions", filter_json)
     parsed_filter = parse_filter_dict(filter_json)

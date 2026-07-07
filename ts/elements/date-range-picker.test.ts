@@ -83,7 +83,7 @@ describe("date-range-picker change event (#192)", () => {
   });
 });
 
-// ── Static (panel) variant: DateRangePanel (#315 tryout) ──────────────────
+// ── Static (panel) variant: DateRangePanel (#315) ─────────────────────────
 
 function mountStatic(): HTMLElement {
   document.body.replaceChildren();

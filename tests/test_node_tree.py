@@ -155,8 +155,7 @@ class RealComponentMediaTest(unittest.TestCase):
 
     def test_quick_filter_bar_collects_chrome_and_widget_media(self):
         """A QuickFilterBar's media merges its own chrome script with the
-        scripts that bubble up from the widgets its facet dropdowns contain —
-        exactly the set the view used to thread by hand."""
+        scripts that bubble up from the widgets its facet dropdowns contain."""
         from common.components import QuickFilterBar
 
         media = collect_media(QuickFilterBar(mode="games", apply_url="/games"))
