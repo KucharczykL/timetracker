@@ -325,19 +325,25 @@ class FilterBuilderProps(TypedDict):
     mode: str  # preset/list mode (plural), e.g. "games"
     apply_url: str  # list URL to navigate to on Apply
     preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
+    sort: str  # the list's active ?sort= (SortString), "" if none — #77
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
 _FilterBuilder = custom_element_builder("filter-builder")
 
 
-def FilterBuilder(*, model: str, mode: FilterMode, preset_api_url: str) -> Node:
+def FilterBuilder(
+    *, model: str, mode: FilterMode, preset_api_url: str, sort: str = ""
+) -> Node:
     """Toolbar/orchestrator for the nested filter builder page (#196).
 
     Owns [Load preset ▾] [Save as preset…] [Apply] [Clear]; drives the sibling
     <filter-group> (serialize -> navigate on Apply; loadFilter on preset pick;
     clear on Clear). Behavior in ``ts/elements/filter-builder.ts``. The preset
-    dropdown is the shared :func:`LoadPresetDropdown` composition (#297)."""
+    dropdown is the shared :func:`LoadPresetDropdown` composition (#297).
+
+    ``sort`` is the list's active ?sort= threaded in (#77): Apply re-emits it and
+    Save-as-preset captures it, unless a loaded preset overrides it client-side."""
     # Function-local import: search_select imports this module (for _SearchSelect
     # and the panel constant), so a top-level import here would be a cycle.
     from common.components.search_select import LoadPresetDropdown
@@ -352,6 +358,7 @@ def FilterBuilder(*, model: str, mode: FilterMode, preset_api_url: str) -> Node:
         mode=mode,
         apply_url=list_url_for(mode),
         preset_api_url=preset_api_url,
+        sort=sort,
     )[
         Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[
             LoadPresetDropdown(

@@ -304,6 +304,22 @@ class BuilderUrlForTest(TestCase):
         url = builder_url_for("games", filter_json)
         self.assertIn(f"?filter={quote(filter_json)}", url)
 
+    def test_sort_is_quoted_into_the_url(self):
+        # The active sort threads into the builder so a preset saved there can
+        # capture it and Apply preserves it (#77).
+        url = builder_url_for("games", "", "-playtime,name")
+        self.assertIn(f"?sort={quote('-playtime,name')}", url)
+
+    def test_filter_and_sort_combine_with_ampersand(self):
+        filter_json = json.dumps({"status": {"value": ["f"]}})
+        url = builder_url_for("games", filter_json, "-playtime")
+        self.assertIn(f"?filter={quote(filter_json)}", url)
+        self.assertIn(f"&sort={quote('-playtime')}", url)
+
+    def test_no_sort_leaves_url_sortless(self):
+        self.assertNotIn("sort=", builder_url_for("games", "", None))
+        self.assertNotIn("sort=", builder_url_for("games", "", ""))
+
     def test_builderless_modes_raise(self):
         for mode in ("devices", "platforms"):
             with self.subTest(mode=mode):

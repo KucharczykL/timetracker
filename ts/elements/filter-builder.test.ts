@@ -31,13 +31,19 @@ interface PickerWidgetStub extends HTMLElement {
   clearSelection: ReturnType<typeof vi.fn>;
 }
 
-function mount(): { group: FilterGroupElement; builder: HTMLElement; widget: PickerWidgetStub } {
+function mount(sort = ""): {
+  group: FilterGroupElement;
+  builder: HTMLElement;
+  widget: PickerWidgetStub;
+} {
   document.body.innerHTML = "";
   const builder = document.createElement("filter-builder");
   builder.setAttribute("model", "game");
   builder.setAttribute("mode", "games");
   builder.setAttribute("apply-url", "/tracker/game/list");
   builder.setAttribute("preset-api-url", "/api/presets/");
+  // Set before append so connectedCallback reads it (attrs aren't re-read).
+  if (sort) builder.setAttribute("sort", sort);
   const group = document.createElement("filter-group") as FilterGroupElement;
   group.setAttribute("model", "game");
   group.setAttribute("models", MODELS);
@@ -59,14 +65,16 @@ function mount(): { group: FilterGroupElement; builder: HTMLElement; widget: Pic
 
 // A pick as the preset search-select emits it: bubbling search-select:change
 // whose last.data.filter carries the preset's filter JSON.
-function dispatchPick(widget: HTMLElement, filterJson: string): void {
+function dispatchPick(widget: HTMLElement, filterJson: string, sort?: string): void {
+  const data: Record<string, string> = { filter: filterJson };
+  if (sort !== undefined) data.sort = sort;
   widget.dispatchEvent(
     new CustomEvent("search-select:change", {
       bubbles: true,
       detail: {
         name: "preset",
         values: ["1"],
-        last: { value: "1", label: "Finished games", data: { filter: filterJson } },
+        last: { value: "1", label: "Finished games", data },
       },
     }),
   );
@@ -89,6 +97,32 @@ describe("<filter-builder>", () => {
     const { builder } = mount();
     const navigate = vi.fn();
     (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
+  });
+
+  it("Apply carries the sort threaded from the list (#77)", () => {
+    const { builder } = mount("-playtime,name");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "-playtime,name"));
+  });
+
+  it("a picked preset's sort overrides the list sort on the next Apply (#77)", () => {
+    const { builder, widget } = mount("-playtime");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    dispatchPick(widget, JSON.stringify({}), "name");
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "name"));
+  });
+
+  it("a picked preset with no stored sort clears the list sort (#77)", () => {
+    const { builder, widget } = mount("-playtime");
+    const navigate = vi.fn();
+    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    dispatchPick(widget, JSON.stringify({}), "");
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
@@ -226,6 +260,26 @@ describe("<filter-builder>", () => {
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
     expect(JSON.parse(options.body).name).toBe("My preset");
     expect(JSON.parse(options.body).mode).toBe("games");
+
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  });
+
+  it("Save preset includes the active sort in the POST body (#77)", () => {
+    const { builder } = mount("-playtime,name");
+    document.cookie = "csrftoken=testtoken";
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal("fetch", fetchStub);
+    (window as unknown as Record<string, unknown>).toast = vi.fn();
+
+    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
+    if (nameInput) nameInput.value = "Sorted";
+    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
+
+    const [, options] = fetchStub.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { body: string },
+    ];
+    expect(JSON.parse(options.body).sort).toBe("-playtime,name");
 
     document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   });

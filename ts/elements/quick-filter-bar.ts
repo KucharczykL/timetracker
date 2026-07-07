@@ -78,8 +78,10 @@ class QuickFilterBarElement extends HTMLElement {
     try {
       const raw = detail.last.data.filter ?? "";
       const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      // An empty preset means "show everything": applyUrl returns the bare list.
-      this.navigate(applyUrl(this.applyTarget, filter));
+      // Restore the preset's stored sort (not the live URL sort) (#77). Empty
+      // filter + empty sort means "show everything": applyUrl returns the bare list.
+      const sort = detail.last.data.sort ?? "";
+      this.navigate(applyUrl(this.applyTarget, filter, sort));
     } catch (error) {
       reportClientError("quick-filter-bar[preset]", String(error));
       // Keep the "preset load failed" console substring (e2e crash guard).
@@ -203,7 +205,10 @@ class QuickFilterBarElement extends HTMLElement {
 
   private onSubmit = (event: Event): void => {
     event.preventDefault();
-    this.navigate(applyUrl(this.applyTarget, this.serialize()));
+    // Carry the live ?sort= forward so tweaking a facet keeps the active sort
+    // (the bar has no sort UI of its own; the list page URL is the source) (#77).
+    const sort = new URLSearchParams(window.location.search).get("sort") ?? "";
+    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort));
   };
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry

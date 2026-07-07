@@ -36,6 +36,10 @@ export class FilterBuilderElement extends HTMLElement {
   private mode = "";
   private applyTarget = "";
   private presetApiUrl = "";
+  // The active sort (a SortString), threaded from the list via the `sort` prop
+  // (#77). Apply re-emits it and Save captures it; loading a preset overwrites
+  // it with the preset's stored sort so a subsequent Apply restores that.
+  private sort = "";
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
   private disposePresetDelete: (() => void) | null = null;
@@ -62,6 +66,7 @@ export class FilterBuilderElement extends HTMLElement {
     this.mode = props.mode;
     this.applyTarget = props.applyUrl;
     this.presetApiUrl = props.presetApiUrl;
+    this.sort = props.sort;
 
     this.ensureToolbar();
     this.addEventListener("click", this.onClick);
@@ -143,6 +148,9 @@ export class FilterBuilderElement extends HTMLElement {
     try {
       const raw = detail.last.data.filter ?? "";
       this.group()?.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+      // Adopt the preset's stored sort so a subsequent Apply restores it rather
+      // than the origin list's sort (#77). Missing/empty clears it → default order.
+      this.sort = detail.last.data.sort ?? "";
     } catch (error) {
       // Message must keep the "preset load failed" substring — the builder e2e
       // greps the console for it as its crash guard.
@@ -156,7 +164,7 @@ export class FilterBuilderElement extends HTMLElement {
   private onApply(): void {
     const group = this.group();
     if (!group) return;
-    this.navigate(applyUrl(this.applyTarget, group.serializeForQuery()));
+    this.navigate(applyUrl(this.applyTarget, group.serializeForQuery(), this.sort));
   }
 
   private onSavePreset(): void {
@@ -172,6 +180,7 @@ export class FilterBuilderElement extends HTMLElement {
       name,
       mode: this.mode,
       filter: group.serialize(),
+      sort: this.sort,
     }).then((response) => {
       // Keep the typed name around when the server rejected the save (its
       // error toast already fired) so the user can correct and retry.
