@@ -1,8 +1,8 @@
 /**
  * Shared filter value-widget logic — the per-kind readers (DOM → criterion JSON)
  * and the modifier-select enable/disable behaviors, used by BOTH the flat filter
- * bar (filter-bar.ts) and the nested filter builder's leaf row (filter-group.ts,
- * #192). Extracted verbatim from filter-bar.ts so the tree reuses the exact same
+ * bar (quick-filter-bar.ts) and the nested filter builder's leaf row
+ * (filter-group.ts). One home so both consumers reuse the exact same
  * widget contract the bars produce via the Python `field_widget` builder (#242).
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
@@ -458,4 +458,38 @@ export function writeLeafWidget(
       return unhandled;
     }
   }
+}
+
+// ── Deselectable radios (bool widgets' per-widget unset) ───────────────────
+// A native radio group cannot be unchecked once one is picked; clicking the
+// already-checked radio unchecks it here (and fires change so consumers
+// re-serialize). Wired by <quick-filter-bar> over its facet radios.
+
+interface DeselectableRadio extends HTMLInputElement {
+  wasChecked?: boolean;
+}
+
+export function setupDeselectableRadios(root: HTMLElement): void {
+  root.querySelectorAll<DeselectableRadio>('input[type="radio"]').forEach((radio) => {
+    radio.addEventListener("click", function (this: DeselectableRadio) {
+      if (this.wasChecked) {
+        this.checked = false;
+        this.wasChecked = false;
+        this.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        const name = this.getAttribute("name");
+        if (name) {
+          root
+            .querySelectorAll<DeselectableRadio>(`input[type="radio"][name="${name}"]`)
+            .forEach((other) => {
+              other.wasChecked = false;
+            });
+        }
+        this.wasChecked = true;
+      }
+    });
+    if (radio.checked) {
+      radio.wasChecked = true;
+    }
+  });
 }

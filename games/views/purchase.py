@@ -193,8 +193,6 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         request=request,
     )
     from common.components import (
-        AdvancedFilterLink,
-        PurchaseFilterBar,
         QuickFilterBar,
         parse_filter_dict,
     )
@@ -203,16 +201,12 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for("purchases", filter_json)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="purchases", existing=parsed_filter, builder_url=builder_url
-    )
-    filter_bar = PurchaseFilterBar(
-        filter_json=filter_json,
-        preset_api_url=reverse("api-1.0.0:list_presets"),
+        mode="purchases",
         existing=parsed_filter,
+        builder_url=builder_url,
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    content = ContentContainer()[
-        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    ]
+    content = ContentContainer()[quick_bar, content]
     return render_page(
         request,
         content,

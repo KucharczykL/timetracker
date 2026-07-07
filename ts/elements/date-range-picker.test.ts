@@ -82,3 +82,59 @@ describe("date-range-picker change event (#192)", () => {
     expect(fired).toBe(0);
   });
 });
+
+// ── Static (panel) variant: DateRangePanel ─────────────────────────
+
+function mountStatic(): HTMLElement {
+  document.body.replaceChildren();
+  const picker = document.createElement("date-range-picker");
+  picker.setAttribute("data-static-calendar", "");
+  picker.innerHTML = `
+    <input type="hidden" data-date-range-hidden="min" />
+    <input type="hidden" data-date-range-hidden="max" />
+    <div data-date-range-field>
+      ${segment("day", "min", 2, "DD")}${segment("month", "min", 2, "MM")}${segment("year", "min", 4, "YYYY")}
+    </div>
+    <div data-date-range-calendar>
+      <button data-date-range-prev></button>
+      <span data-date-range-month-label></span>
+      <button data-date-range-next></button>
+      <div data-date-range-grid></div>
+      <button data-date-range-preset="today">Today</button>
+      <button data-date-range-clear></button>
+    </div>`;
+  document.body.appendChild(picker);
+  return picker;
+}
+
+describe("date-range-picker static-calendar variant", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("initializes without toggle/cancel/select and renders the grid at once", () => {
+    const picker = mountStatic();
+    const grid = picker.querySelector<HTMLElement>("[data-date-range-grid]")!;
+    expect(grid.querySelectorAll("button[data-date]").length).toBe(42);
+    expect(picker.querySelector("[data-date-range-month-label]")!.textContent).not.toBe("");
+  });
+
+  it("keeps the calendar interactive after an outside click", () => {
+    const picker = mountStatic();
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const dayButton = picker.querySelector<HTMLElement>("button[data-date]")!;
+    dayButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const min = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!;
+    expect(min.value).toBe(dayButton.getAttribute("data-date"));
+    expect(picker.querySelector("[data-date-range-calendar]")!.classList.contains("hidden")).toBe(false);
+  });
+
+  it("preset pick writes both hidden bounds", () => {
+    const picker = mountStatic();
+    picker
+      .querySelector<HTMLElement>('[data-date-range-preset="today"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const min = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!;
+    const max = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="max"]')!;
+    expect(min.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(max.value).toBe(min.value);
+  });
+});

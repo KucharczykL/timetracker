@@ -1,17 +1,13 @@
 /**
- * FieldComparisonSet — build "left <op> right" field-to-field comparison rows.
+ * Field-to-field comparison row logic ("left <op> right", #167/#246).
  *
- * Drives common/components/filters.py FieldComparisonSet. Each row's left column
- * is server-rendered with the full column option set; this module fills the
+ * Drives the nested filter builder's comparison leaves: each row's left column
+ * is server-rendered with the full column option set (the template from
+ * common/components/filters.py comparison_row_template); this module fills the
  * operator select from the chosen column's server-supplied `operators` list and
- * the right-column select from the same-group columns, restoring any saved value
- * stashed in data-selected. The set's rows + AND/OR mode are read back by
- * filter-bar.ts on Apply (see readFieldComparisonSet).
- *
- * The single-row logic (refreshRow) is intentionally separable from the set
- * container so the nested boolean builder (#168) can reuse it inside a group.
+ * the right-column select from the same-group columns, restoring any saved
+ * value stashed in data-selected. filter-group.ts wires and reads the rows.
  */
-import { readFieldComparisonSetProps } from "../generated/props.js";
 import type { ComparisonRow } from "./filter-tree/types.js";
 
 // The row shape lives in filter-tree/types.ts (shared with the serializer +
@@ -255,14 +251,6 @@ export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]):
   operator.addEventListener("change", () => refreshRowRightList(right, left, operator, columns));
 }
 
-function wireRow(row: HTMLElement, columns: Column[]): void {
-  refreshRow(row, columns);
-  wireComparisonRowListeners(row, columns);
-  row
-    .querySelector<HTMLElement>("[data-fc-remove]")
-    ?.addEventListener("click", () => row.remove());
-}
-
 /** Read one comparison row into its complete value, or null when incomplete (a
  * missing column/operator, or the two columns equal). The reusable single-row read
  * the set folds over — the nested builder's comparison leaf (#246) reads its lone
@@ -279,48 +267,3 @@ export function readComparisonRow(row: HTMLElement): ComparisonRow | null {
   if (granularity !== "raw") entry.granularity = granularity;
   return entry;
 }
-
-/** Read the set's mode + complete rows for filter-bar.ts serialization. */
-export function readFieldComparisonSet(element: HTMLElement): {
-  mode: string;
-  comparisons: ComparisonRow[];
-} {
-  const mode =
-    element.querySelector<HTMLInputElement>("[data-fc-mode]:checked")?.value === "OR"
-      ? "OR"
-      : "AND";
-  const comparisons: ComparisonRow[] = [];
-  element.querySelectorAll<HTMLElement>("[data-fc-row]").forEach((row) => {
-    const entry = readComparisonRow(row);
-    if (entry) comparisons.push(entry);
-  });
-  return { mode, comparisons };
-}
-
-class FieldComparisonSetElement extends HTMLElement {
-  connectedCallback(): void {
-    const { columns: columnsJson } = readFieldComparisonSetProps(this);
-    let columns: Column[] = [];
-    try {
-      columns = JSON.parse(columnsJson || "[]");
-    } catch {
-      console.warn("field-comparison-set: malformed columns prop", columnsJson);
-    }
-    const rowsContainer = this.querySelector<HTMLElement>("[data-fc-rows]");
-    const template = this.querySelector<HTMLTemplateElement>("[data-fc-row-template]");
-    if (!rowsContainer || !template) return;
-
-    rowsContainer
-      .querySelectorAll<HTMLElement>("[data-fc-row]")
-      .forEach((row) => wireRow(row, columns));
-
-    this.querySelector<HTMLElement>("[data-fc-add]")?.addEventListener("click", () => {
-      const clone = template.content.firstElementChild?.cloneNode(true) as HTMLElement | null;
-      if (!clone) return;
-      rowsContainer.appendChild(clone);
-      wireRow(clone, columns);
-    });
-  }
-}
-
-customElements.define("field-comparison-set", FieldComparisonSetElement);

@@ -13,13 +13,11 @@ from common.components import (
     PageHeading,
     A,
     AddForm,
-    AdvancedFilterLink,
     ButtonGroup,
     Column,
     ContentContainer,
     CsrfInput,
     Div,
-    FilterBar,
     Form,
     Fragment,
     GameStatus,
@@ -159,21 +157,17 @@ def list_games(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    # Prepend the filter tiers above the table: quick facets, builder link,
-    # then the flat bar (#197).
+    # The quick bar is the page's only filter tier: dropdown facets,
+    # preset picker, and the builder entry point in the action group.
     builder_url = builder_url_for("games", filter_json)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="games", existing=parsed_filter, builder_url=builder_url
-    )
-    filter_bar = FilterBar(
-        filter_json=filter_json,
-        preset_api_url=reverse("api-1.0.0:list_presets"),
+        mode="games",
         existing=parsed_filter,
+        builder_url=builder_url,
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    content = ContentContainer()[
-        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    ]
+    content = ContentContainer()[quick_bar, content]
     return render_page(
         request,
         content,

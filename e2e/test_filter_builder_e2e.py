@@ -601,10 +601,11 @@ def test_cross_model_year_comparison_filters_sessions(
 ) -> None:
     """Cross-model year-space field comparison round-trip (#169).
 
-    Drives the session list-page filter bar UI: sets left='timestamp_start',
+    Drives the sessions filter BUILDER UI (the builder is the comparison UI
+    for sessions, #315): adds a comparison leaf with left='timestamp_start',
     operator='EQUALS:year' (year comparison space), right='game__year_released',
-    applies the filter, and asserts that only the session whose play year matches
-    the game's release year remains visible.
+    applies, and asserts that only the session whose play year matches
+    the game's release year remains visible on the list.
 
     Data:
     - One game released in 2020.
@@ -639,25 +640,19 @@ def test_cross_model_year_comparison_filters_sessions(
         timestamp_end=miss_start + timedelta(hours=2),
     )
 
-    # Navigate to the session list and open the filter bar.
-    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    page.locator("[data-filter-bar-toggle]").click()
-
-    # The FieldComparisonSet is inside the filter bar body. Add one comparison row.
-    page.locator("[data-fc-add]").click()
-    row = page.locator("[data-fc-row]").first
+    # Build the comparison in the sessions filter builder.
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['session'])}")
+    page.locator('filter-group button[data-action="add-comparison"]').first.click()
+    row = page.locator('filter-group [data-node-kind="comparison"]').first
 
     # Select left operand, year-space operator, and cross-model right operand.
     row.locator("[data-fc-left]").select_option("timestamp_start")
     row.locator("[data-fc-op]").select_option("EQUALS:year")
     row.locator("[data-fc-right]").select_option("game__year_released")
 
-    # Apply the filter via the form submit.
+    # Apply navigates to the sessions list carrying the ?filter=.
     with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+        page.locator("filter-builder [data-apply]").click()
 
     # Only the session whose play year (2020) matches the game's release year
     # (also 2020) should appear; the 2021 session should be filtered out.

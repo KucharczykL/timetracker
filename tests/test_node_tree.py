@@ -153,16 +153,15 @@ class RealComponentMediaTest(unittest.TestCase):
         )
         self.assertEqual(media.js, ("dist/elements/date-range-picker.js",))
 
-    def test_filter_bar_collects_chrome_and_widget_media(self):
-        """A FilterBar's media merges its own chrome script with the scripts that
-        bubble up from the FilterSelect widgets it contains — exactly the set the
-        view used to thread by hand. (NumberFilter/StringFilter declare no media;
-        their behavior lives in the always-present filter-bar element.)"""
-        from common.components import FilterBar
+    def test_quick_filter_bar_collects_chrome_and_widget_media(self):
+        """A QuickFilterBar's media merges its own chrome script with the
+        scripts that bubble up from the widgets its facet dropdowns contain."""
+        from common.components import QuickFilterBar
 
-        media = collect_media(FilterBar())
-        self.assertIn("dist/elements/filter-bar.js", media.js)
+        media = collect_media(QuickFilterBar(mode="games", apply_url="/games"))
+        self.assertIn("dist/elements/quick-filter-bar.js", media.js)
         self.assertIn("dist/elements/search-select.js", media.js)
+        self.assertIn("dist/elements/drop-down.js", media.js)
 
 
 class HtpyStyleSugarTest(unittest.TestCase):

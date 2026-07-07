@@ -20,22 +20,48 @@ from django.http import HttpResponse
 from django.test import override_settings
 from playwright.sync_api import expect
 
-from common.components import PurchaseFilterBar
+from common.components import parse_filter_dict
+from common.components.filters import field_widget
+from games.filters import PurchaseFilter
 from django.urls import path
 
 
 def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
+    # Two bare POPUP-variant pickers (the builder's date-leaf widget) hosted
+    # directly in a quick-filter-bar form — the serializer scans
+    # [data-filter-widget] anywhere in the form, so the popup calendar's whole
+    # behavior surface stays browser-tested although the quick bar's own date
+    # facets use the static-calendar panel variant.
+    existing = parse_filter_dict(filter_json)
+    purchased = field_widget(
+        PurchaseFilter,
+        "date_purchased",
+        value=existing.get("date_purchased"),
+        name_prefix="filter-date-purchased",
+    )
+    refunded = field_widget(
+        PurchaseFilter,
+        "date_refunded",
+        value=existing.get("date_refunded"),
+        name_prefix="filter-date-refunded",
+    )
     return f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Date range picker E2E</title>
+    <link rel="stylesheet" href="/static/base.css">
     <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/date-range-picker.js" type="module"></script>
-    <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
 </head>
 <body>
-    {PurchaseFilterBar(filter_json=filter_json, preset_api_url="/api/presets/", apply_url=apply_url)}
+    <quick-filter-bar apply-url="{apply_url}">
+      <form>
+        {purchased}
+        {refunded}
+        <button type="submit">Apply</button>
+      </form>
+    </quick-filter-bar>
 </body>
 </html>"""
 
@@ -63,9 +89,9 @@ urlpatterns = [
 ]
 
 
-# PurchaseFilterBar renders several date-range-pickers (Purchased, Refunded,
-# Finished); scope to the Purchased one — the only picker this module drives —
-# by the hidden input its prefix produces, so the locators stay unambiguous.
+# The page renders two date-range-pickers (Purchased, Refunded); scope to the
+# Purchased one — the only picker this module drives — by the hidden input its
+# prefix produces, so the locators stay unambiguous.
 PICKER = 'date-range-picker:has(input[name="filter-date-purchased-min"])'
 POPUP = PICKER + " [data-date-range-calendar]"
 HIDDEN_MIN = 'input[name="filter-date-purchased-min"]'
@@ -90,10 +116,7 @@ def _popup_is_open(page) -> bool:
 
 def _submit_filter_bar(page):
     with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+        page.locator('quick-filter-bar button[type="submit"]').click()
 
 
 def _filter_from_url(url: str) -> dict:

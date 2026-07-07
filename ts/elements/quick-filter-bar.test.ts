@@ -131,6 +131,29 @@ describe("<quick-filter-bar>", () => {
     expect(navigate).toHaveBeenCalledWith(LIST_URL);
   });
 
+  it("finds a set facet nested inside a hidden dropdown panel", () => {
+    // The dropdown facets host their <search-select> inside a
+    // ComboboxDropdown's hidden [data-menu] dialog — serialization must be
+    // depth- and visibility-agnostic.
+    const { form, navigate } = mount(`
+      <drop-down behavior="combobox">
+        <button data-toggle type="button">Game</button>
+        <div data-menu hidden>
+          ${setFacet("game", includePill("1", "Outer Wilds"))}
+        </div>
+      </drop-down>`);
+    submit(form);
+    expect(navigate).toHaveBeenCalledWith(
+      applyUrl(LIST_URL, {
+        game: {
+          value: [{ id: "1", label: "Outer Wilds" }],
+          excludes: [],
+          modifier: "INCLUDES",
+        },
+      }),
+    );
+  });
+
   it("does not navigate on a facet change without Apply", () => {
     const { bar, navigate } = mount(setFacet("game", includePill("1", "X")));
     const widget = bar.querySelector('search-select[name="game"]') as HTMLElement;
@@ -142,4 +165,241 @@ describe("<quick-filter-bar>", () => {
     );
     expect(navigate).not.toHaveBeenCalled();
   });
+});
+
+// ── Priority-plus overflow: stubbed-width layout math ──────────────
+
+interface OverflowFixture {
+  bar: HTMLElement & { layoutOverflow: () => void };
+  row: HTMLElement;
+  host: HTMLElement;
+  items: HTMLElement;
+  facets: HTMLElement[];
+  setRowWidth: (width: number) => void;
+}
+
+function stubWidth(element: HTMLElement, width: number): void {
+  Object.defineProperty(element, "offsetWidth", {
+    get: () => width,
+    configurable: true,
+  });
+}
+
+function mountOverflow(): OverflowFixture {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <drop-down data-quick-facet id="f1"></drop-down>
+          <drop-down data-quick-facet id="f2"></drop-down>
+          <drop-down data-quick-facet id="f3"></drop-down>
+          <div class="hidden" data-quick-overflow>
+            <div data-quick-overflow-items></div>
+          </div>
+          <div id="group"></div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as OverflowFixture["bar"];
+  const row = bar.querySelector<HTMLElement>("[data-quick-row]")!;
+  const host = bar.querySelector<HTMLElement>("[data-quick-overflow]")!;
+  const items = bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!;
+  const facets = Array.from(bar.querySelectorAll<HTMLElement>("[data-quick-facet]"));
+  // jsdom has no layout: stub the widths the element measures at connect.
+  // Measurement already happened in connectedCallback (all zeros), so stub
+  // and re-run setup by reconnecting the node.
+  facets.forEach((facet) => stubWidth(facet, 100));
+  stubWidth(host, 40);
+  stubWidth(bar.querySelector<HTMLElement>("#group")!, 80);
+  let rowWidth = 1000;
+  Object.defineProperty(row, "clientWidth", {
+    get: () => rowWidth,
+    configurable: true,
+  });
+  // Reconnect so setupOverflow measures the stubbed widths.
+  const parent = bar.parentElement!;
+  parent.removeChild(bar);
+  parent.appendChild(bar);
+  return {
+    bar,
+    row: bar.querySelector<HTMLElement>("[data-quick-row]")!,
+    host: bar.querySelector<HTMLElement>("[data-quick-overflow]")!,
+    items: bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!,
+    facets,
+    setRowWidth: (width: number) => {
+      rowWidth = width;
+    },
+  };
+}
+
+describe("quick-filter-bar priority-plus overflow", () => {
+  it("keeps all facets in the row when they fit", () => {
+    const fixture = mountOverflow();
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.items.children.length).toBe(0);
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    fixture.facets.forEach((facet) =>
+      expect(facet.parentElement).toBe(fixture.row),
+    );
+  });
+
+  it("spills rightmost facets into the overflow menu as the row narrows", () => {
+    const fixture = mountOverflow();
+    // reserved = group(80) + overflow(40); available = 300 - 120 = 180 → one
+    // 100px facet fits.
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    expect(fixture.facets[0].parentElement).toBe(fixture.row);
+    expect(fixture.facets[1].parentElement).toBe(fixture.items);
+    expect(fixture.facets[2].parentElement).toBe(fixture.items);
+    expect(fixture.host.classList.contains("hidden")).toBe(false);
+    // Spilled facets keep their original order inside the menu.
+    expect(Array.from(fixture.items.children).map((child) => child.id)).toEqual([
+      "f2",
+      "f3",
+    ]);
+  });
+
+  it("moves facets back, in order, when the row widens again", () => {
+    const fixture = mountOverflow();
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.items.children.length).toBe(0);
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    const rowIds = Array.from(
+      fixture.row.querySelectorAll("[data-quick-facet]"),
+    ).map((facet) => facet.id);
+    expect(rowIds).toEqual(["f1", "f2", "f3"]);
+  });
+});
+
+// ── Preset pick navigation (the picker is quick-bar row furniture) ─────────
+
+function mountWithPicker(): {
+  bar: HTMLElement;
+  navigate: ReturnType<typeof vi.fn>;
+  pick: (filter: string | null) => void;
+} {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <div data-preset-picker>
+            <search-select name="preset"></search-select>
+          </div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as HTMLElement;
+  const navigate = vi.fn();
+  (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
+  const widget = bar.querySelector("search-select") as HTMLElement;
+  const pick = (filter: string | null): void => {
+    widget.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: {
+          name: "preset",
+          values: ["1"],
+          last: {
+            value: "1",
+            label: "My preset",
+            data: filter === null ? {} : { filter },
+          },
+        },
+      }),
+    );
+  };
+  return { bar, navigate, pick };
+}
+
+describe("quick-filter-bar preset pick", () => {
+  it("navigates to the list with the preset's filter JSON", () => {
+    const { navigate, pick } = mountWithPicker();
+    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
+    pick(JSON.stringify(filter));
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter));
+  });
+
+  it("an empty preset navigates to the bare list URL", () => {
+    const { navigate, pick } = mountWithPicker();
+    pick(null);
+    expect(navigate).toHaveBeenCalledWith(LIST_URL);
+  });
+
+  it("invalid preset JSON toasts and stays put", () => {
+    const { navigate, pick } = mountWithPicker();
+    const toast = vi.fn();
+    (window as unknown as { toast: typeof toast }).toast = toast;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    pick("{not json");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalled();
+    expect(consoleError.mock.calls[0][0]).toContain("preset load failed");
+  });
+
+  it("facet search-select changes are not treated as preset picks", () => {
+    document.body.innerHTML = `
+      <quick-filter-bar apply-url="${LIST_URL}">
+        <form><div data-quick-row>
+          <search-select name="game"></search-select>
+        </div></form>
+      </quick-filter-bar>`;
+    const bar = document.querySelector("quick-filter-bar") as HTMLElement;
+    const navigate = vi.fn();
+    (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    bar.querySelector("search-select")!.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "game", values: [], last: { value: "1", label: "X", data: {} } },
+      }),
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+// ── Overflow reserve counts furniture between host and group ────────
+
+it("reserves width for furniture after the overflow host (preset picker)", () => {
+  document.body.innerHTML = `
+    <quick-filter-bar apply-url="${LIST_URL}">
+      <form>
+        <div data-quick-row>
+          <drop-down data-quick-facet id="f1"></drop-down>
+          <drop-down data-quick-facet id="f2"></drop-down>
+          <div class="hidden" data-quick-overflow>
+            <div data-quick-overflow-items></div>
+          </div>
+          <div id="picker"></div>
+          <div id="group"></div>
+        </div>
+      </form>
+    </quick-filter-bar>`;
+  const bar = document.querySelector("quick-filter-bar") as HTMLElement & {
+    layoutOverflow: () => void;
+  };
+  const row = bar.querySelector<HTMLElement>("[data-quick-row]")!;
+  const facets = Array.from(bar.querySelectorAll<HTMLElement>("[data-quick-facet]"));
+  facets.forEach((facet) => stubWidth(facet, 100));
+  stubWidth(bar.querySelector<HTMLElement>("[data-quick-overflow]")!, 40);
+  stubWidth(bar.querySelector<HTMLElement>("#picker")!, 120);
+  stubWidth(bar.querySelector<HTMLElement>("#group")!, 80);
+  let rowWidth = 1000;
+  Object.defineProperty(row, "clientWidth", { get: () => rowWidth, configurable: true });
+  const parent = bar.parentElement!;
+  parent.removeChild(bar);
+  parent.appendChild(bar);
+
+  // Without the picker 300px would fit one 100px facet (reserve 120); with the
+  // 120px picker as furniture the reserve grows to 240 → nothing fits.
+  rowWidth = 300;
+  bar.layoutOverflow();
+  const items = bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!;
+  expect(items.children.length).toBe(2);
+  rowWidth = 1000;
+  bar.layoutOverflow();
+  expect(items.children.length).toBe(0);
 });

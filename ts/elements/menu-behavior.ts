@@ -36,8 +36,11 @@ export interface MenuController {
   close: () => void;
   isOpen: () => boolean;
   focusFirst: () => void;
-  // Removes the document-level listeners; call from disconnectedCallback.
-  destroy: () => void;
+  // Attaches the document-level listeners (outside-click close, single-open
+  // coordination) and returns their detacher. Called once per connection by
+  // <drop-down>: element-local wiring persists with the subtree across DOM
+  // moves, so reconnection re-binds only what disconnection removed.
+  bindDocument: () => () => void;
 }
 
 const VIEWPORT_MARGIN = 8;
@@ -370,10 +373,20 @@ export function attachMenu(
     }
   });
 
+  // Containment must consult composedPath(): it is captured at dispatch time,
+  // so a click whose handler synchronously removes its own target (a filter
+  // pill's × inside a combobox panel) still counts as inside — by the time
+  // this document listener runs, `host.contains(event.target)` is already
+  // false for the detached node. The `contains` check stays as fallback for
+  // synthetic events dispatched without a path.
   const onDocumentClick = (event: MouseEvent): void => {
-    if (isOpen() && !host.contains(event.target as Node)) close();
+    if (!isOpen()) return;
+    const path = event.composedPath();
+    const inside = path.length
+      ? path.includes(host)
+      : host.contains(event.target as Node);
+    if (!inside) close();
   };
-  document.addEventListener("click", onDocumentClick);
 
   // Single-open coordination: close when any other (non-ancestor) menu opens.
   const onOtherMenuOpen = (event: Event): void => {
@@ -381,15 +394,18 @@ export function attachMenu(
     if (!detail || detail.host === host || host.contains(detail.host)) return;
     close();
   };
-  document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
 
-  // The two document listeners above outlive the host's DOM, so the element must
-  // remove them on disconnect or they accumulate across htmx re-mounts.
-  const destroy = (): void => {
-    close(); // also detaches the open-only scroll/resize listeners
-    document.removeEventListener("click", onDocumentClick);
-    document.removeEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
+  // Bound per connection (see MenuController.bindDocument): unbound
+  // document listeners would accumulate across htmx re-mounts or dangle
+  // after a permanent removal.
+  const bindDocument = (): (() => void) => {
+    document.addEventListener("click", onDocumentClick);
+    document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
+    };
   };
 
-  return { open, close, isOpen, focusFirst, destroy };
+  return { open, close, isOpen, focusFirst, bindDocument };
 }

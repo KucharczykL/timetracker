@@ -208,15 +208,6 @@ register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
 _DateRangePicker = custom_element_builder("date-range-picker")
 
 
-class FieldComparisonSetProps(TypedDict):
-    columns: str  # JSON of list[ComparableColumn] — drives client option building
-    mode: str  # "AND" | "OR" — how the comparison rows combine
-
-
-register_element("field-comparison-set", "FieldComparisonSet", FieldComparisonSetProps)
-_FieldComparisonSet = custom_element_builder("field-comparison-set")
-
-
 class FilterGroupProps(TypedDict):
     # Root model key (e.g. "game"); the deserializer selects its serialization model
     # from it and the client reads the root bundle as ``models[model]``.
@@ -225,8 +216,7 @@ class FilterGroupProps(TypedDict):
     # bundle for every relation-reachable model (#193). One normalized source: the
     # leaf row (#192) reads ``fields``, the field-comparison leaf (#246) reads
     # ``columns``, and each relation's child group (#193) reads the *target* model's
-    # bundle. Mirrors the FieldComparisonSetProps.columns precedent (JSON in a str
-    # prop).
+    # bundle (a JSON-in-a-string prop).
     models: str
     # Initial ?filter= JSON, deserialized on connect so the server-rendered
     # filter is reflected on parse (comp 10, #196). Empty -> the empty-root
@@ -443,16 +433,6 @@ register_element("search-select", "SearchSelect", SearchSelectProps)
 _SearchSelect = custom_element_builder("search-select")
 
 
-class FilterBarProps(TypedDict):
-    apply_url: str  # list URL Apply/Clear/preset-pick navigates to (#304)
-    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
-    preset_mode: str  # FilterPreset.mode this bar scopes to, e.g. "games"
-
-
-register_element("filter-bar", "FilterBar", FilterBarProps)
-_FilterBarElement = custom_element_builder("filter-bar")
-
-
 class QuickFilterBarProps(TypedDict):
     apply_url: str  # list URL a facet change navigates to (#197)
 
@@ -562,9 +542,18 @@ _DROPDOWN_PANEL_PLAIN_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
 )
 # The combobox dialog (the preset picker, #297): wider than a menu, bordered.
-DROPDOWN_COMBOBOX_PANEL_CLASS = (
-    f"{_DROPDOWN_PANEL_SURFACE} w-72 border border-gray-200 dark:border-gray-700"
+# Width is a knob: w-72 suits list-shaped content (presets, filter options);
+# content with an intrinsic width (the date facets' calendar) passes w-auto.
+_DROPDOWN_COMBOBOX_PANEL_BASE = (
+    f"{_DROPDOWN_PANEL_SURFACE} border border-gray-200 dark:border-gray-700"
 )
+
+
+def dropdown_combobox_panel_class(width: str = "w-72") -> str:
+    return f"{_DROPDOWN_COMBOBOX_PANEL_BASE} {width}"
+
+
+DROPDOWN_COMBOBOX_PANEL_CLASS = dropdown_combobox_panel_class()
 
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (

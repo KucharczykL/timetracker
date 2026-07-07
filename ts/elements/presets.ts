@@ -1,6 +1,5 @@
 /**
- * Shared filter-preset plumbing for <filter-bar> and <filter-builder> (#264,
- * rebuilt for the combobox preset picker in #297).
+ * Shared filter-preset plumbing for <quick-filter-bar> and <filter-builder>.
  *
  * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) now lives in
  * the shared combobox primitives (search-select + the combobox drop-down

@@ -567,9 +567,11 @@ function createCalendarState(
   }
 
   // ── Wiring ──
+  // The panel variant (data-static-calendar, DateRangePanel) has no toggle:
+  // its calendar flows statically inside a dropdown dialog and never closes.
   picker
-    .querySelector<HTMLElement>("[data-date-range-calendar-toggle]")!
-    .addEventListener("click", () => {
+    .querySelector<HTMLElement>("[data-date-range-calendar-toggle]")
+    ?.addEventListener("click", () => {
       if (state.open) closePopup();
       else openPopup();
     });
@@ -617,10 +619,11 @@ function createCalendarState(
     });
   });
 
-  // Cancel: close the popup and clear the selected dates.
+  // Cancel: close the popup and clear the selected dates. Absent in the
+  // static variant (nothing to close), like Select below.
   popup
-    .querySelector<HTMLElement>("[data-date-range-cancel]")!
-    .addEventListener("click", () => {
+    .querySelector<HTMLElement>("[data-date-range-cancel]")
+    ?.addEventListener("click", () => {
       clearSelection();
       closePopup();
     });
@@ -635,16 +638,25 @@ function createCalendarState(
 
   // Select: close the popup, keeping the selected dates.
   popup
-    .querySelector<HTMLElement>("[data-date-range-select]")!
-    .addEventListener("click", () => {
+    .querySelector<HTMLElement>("[data-date-range-select]")
+    ?.addEventListener("click", () => {
       closePopup();
     });
+
+  // The static variant renders its grid immediately and stays open for the
+  // element's whole life — the hosting dropdown owns visibility, so the
+  // outside-click dismiss must NOT fire (it would blank the grid state while
+  // the dialog merely sits hidden).
+  const staticCalendar = picker.hasAttribute("data-static-calendar");
+  if (staticCalendar) openPopup();
 
   // Deferred + re-callable so a reconnection (the nested filter builder moves rows,
   // reconnecting this element) re-binds the outside-click dismiss without re-wiring
   // the field/calendar listeners, which persist with the moved subtree.
   const bindDismiss = (): (() => void) =>
-    bindPopupDismiss({ host: picker, isOpen: () => state.open, close: closePopup });
+    staticCalendar
+      ? () => {}
+      : bindPopupDismiss({ host: picker, isOpen: () => state.open, close: closePopup });
 
   return { state, bindDismiss };
 }

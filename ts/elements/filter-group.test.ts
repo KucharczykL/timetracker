@@ -761,16 +761,20 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     expect(host.serializeForQuery()).toEqual({}); // pruned → matches all
   });
 
-  it("reports the incomplete comparison in incompleteCount", () => {
+  it("reports the incomplete comparison in incompleteCount once touched", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     let last = -1;
     host.addEventListener("filter-tree-change", (event) => {
       last = (event as CustomEvent).detail.incompleteCount;
     });
-    clickAction(host, "add-comparison", []); // added empty → 1 incomplete
-    expect(last).toBe(1);
+    // A pristine row (no left column yet) is not "incomplete" — it prunes
+    // harmlessly and must not gate Apply.
+    clickAction(host, "add-comparison", []);
+    expect(last).toBe(0);
+    // Touched (left picked) but missing op/right → now it counts.
     setSelect(host, [0], "data-fc-left", "year_released");
+    expect(last).toBe(1);
     setSelect(host, [0], "data-fc-op", "LESS_THAN");
     setSelect(host, [0], "data-fc-right", "original_year_released");
     expect(last).toBe(0);
@@ -1711,7 +1715,7 @@ describe("<filter-group> aggregate scope (#151)", () => {
     });
   });
 
-  it("counts an unfilled scope row as incomplete under the scope model", () => {
+  it("counts a touched-incomplete scope row under the scope model", () => {
     const host = mountScope();
     let last = -1;
     host.addEventListener("filter-tree-change", (event) => {
@@ -1720,9 +1724,14 @@ describe("<filter-group> aggregate scope (#151)", () => {
     pickField(host, [0], SESSION_COUNT_META);
     typeNumber(host, [0], "5");
     expect(last).toBe(0);
-    clickAction(host, "add-scope", [0]); // seeded empty scope row
-    expect(last).toBe(1);
+    // The seeded scope row is pristine (no field picked) — like every
+    // pristine row it prunes harmlessly and does not gate Apply.
+    clickAction(host, "add-scope", [0]);
+    expect(last).toBe(0);
+    // Field picked but no value: touched-incomplete, counted under the
+    // scope model.
     pickField(host, [0, "scope", 0], SCOPE_NOTE_META);
+    expect(last).toBe(1);
     typeValue(host, [0, "scope", 0], "docked");
     expect(last).toBe(0);
   });

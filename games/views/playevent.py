@@ -11,7 +11,6 @@ from django.urls import reverse
 
 from common.components import (
     AddForm,
-    AdvancedFilterLink,
     ButtonGroup,
     Cell,
     Column,
@@ -20,7 +19,6 @@ from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
-    PlayEventFilterBar,
     QuickFilterBar,
     ControlButton,
     TableData,
@@ -158,16 +156,12 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     builder_url = builder_url_for("playevents", filter_json)
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
-        mode="playevents", existing=parsed_filter, builder_url=builder_url
-    )
-    filter_bar = PlayEventFilterBar(
-        filter_json=filter_json,
-        preset_api_url=reverse("api-1.0.0:list_presets"),
+        mode="playevents",
         existing=parsed_filter,
+        builder_url=builder_url,
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    content = ContentContainer()[
-        quick_bar, AdvancedFilterLink(url=builder_url), filter_bar, content
-    ]
+    content = ContentContainer()[quick_bar, content]
     return render_page(
         request,
         content,

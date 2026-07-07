@@ -1,8 +1,10 @@
-"""End-to-end Playwright test for boolean radio filter serialization and deselect behavior.
+"""End-to-end Playwright test for boolean radio facet serialization and
+deselect behavior, hosted in the games quick bar's Mastered dropdown.
 
 Covers:
 1. Selecting True/False serializes the boolean field as True/False.
-2. Unsetting/unchecking a radio button by clicking on it again, which deselects it, omitting the field from JSON.
+2. Unsetting/unchecking a radio button by clicking it again (the
+   setupDeselectableRadios behavior), omitting the field from the JSON.
 """
 
 import json
@@ -13,20 +15,23 @@ from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
 
-from common.components import FilterBar
+from common.components import QuickFilterBar
 
 
 def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
+    bar = QuickFilterBar(mode="games", filter_json=filter_json, apply_url=apply_url)
     return f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Boolean filter E2E</title>
+    <link rel="stylesheet" href="/static/base.css">
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
-    <script src="/static/js/dist/elements/filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
+    <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
 </head>
 <body>
-    {FilterBar(filter_json=filter_json, preset_api_url="/api/presets/", apply_url=apply_url)}
+    {bar}
 </body>
 </html>"""
 
@@ -48,62 +53,39 @@ def _filter_from_url(url: str) -> dict:
     return json.loads(raw) if raw else {}
 
 
+def _submit(page):
+    with page.expect_navigation():
+        page.locator('quick-filter-bar button[type="submit"]').click()
+
+
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
 def test_no_selection_omits_boolean_filters(live_server, page):
     page.goto(live_server.url + "/test-boolean-filter/")
-    with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+    _submit(page)
     parsed = _filter_from_url(page.url)
     assert "mastered" not in parsed
-    assert "purchase_refunded" not in parsed
-    # No selection means no AND element is created (purchase_refunded is now a
-    # cross-entity relation-bool composed into AND; #123 Phase 2d).
-    assert "AND" not in parsed
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
-def test_select_true_and_false_serializes_correctly(live_server, page):
+def test_select_true_serializes_correctly(live_server, page):
     page.goto(live_server.url + "/test-boolean-filter/")
+    page.locator("#quick-mastered-dropdownLink").click()
 
-    # Select "True" for Mastered — a flat (same-entity) bool, unchanged.
-    # "filter-mastered" is the mastered radio name; true/false radios carry
-    # value="true"/value="false".
-    true_radio = page.locator('input[name="filter-mastered"][value="true"]')
-    true_radio.click()
-
-    # Select "False" for Refunded (filter-purchase-refunded) — a cross-entity
-    # relation-bool: False composes into AND as match=NONE over is_refunded=true.
-    false_radio = page.locator('input[name="filter-purchase-refunded"][value="false"]')
-    false_radio.click()
-
-    with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+    page.locator('input[name="quick-mastered"][value="true"]').click()
+    _submit(page)
     parsed = _filter_from_url(page.url)
     assert parsed.get("mastered") == {"value": True, "modifier": "EQUALS"}
-    assert parsed.get("AND") == [
-        {
-            "purchase_filter": {
-                "match": "NONE",
-                "is_refunded": {"value": True, "modifier": "EQUALS"},
-            }
-        }
-    ]
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
 def test_click_to_deselect_radio_works(live_server, page):
     page.goto(live_server.url + "/test-boolean-filter/")
+    page.locator("#quick-mastered-dropdownLink").click()
 
-    true_radio = page.locator('input[name="filter-mastered"][value="true"]')
+    true_radio = page.locator('input[name="quick-mastered"][value="true"]')
 
     # First click checks it
     true_radio.click()
@@ -113,10 +95,6 @@ def test_click_to_deselect_radio_works(live_server, page):
     true_radio.click()
     assert not true_radio.is_checked()
 
-    with page.expect_navigation():
-        page.evaluate(
-            "document.getElementById('filter-bar-form')"
-            ".dispatchEvent(new Event('submit', {cancelable: true}))"
-        )
+    _submit(page)
     parsed = _filter_from_url(page.url)
     assert "mastered" not in parsed

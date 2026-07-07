@@ -34,7 +34,7 @@ from common.components.core import (
     randomid,
 )
 from common.components.icons_generated import ICON_NODES
-from common.criteria import FilterWidgetKind, FilterWidgetPath, RelationChild
+from common.criteria import FilterWidgetPath, LeafWidgetKind
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from common.utils import truncate_info
 
@@ -44,6 +44,7 @@ type ButtonVariant = Literal[
     "segmented",  # ButtonGroup member
     "outline",  # bordered dropdown-toggle look (colorless)
     "plain",  # borderless navbar nav-link look (colorless)
+    "ghost",  # transparent-until-hover dropdown-toggle look (colorless)
 ]
 
 # Shared disabled appearance for every form control, so all form elements look
@@ -56,39 +57,21 @@ DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-a
 
 def filter_widget_attributes(
     path: FilterWidgetPath,
-    kind: FilterWidgetKind,
-    *,
-    relation_child: RelationChild | None = None,
+    kind: LeafWidgetKind,
 ) -> list[HTMLAttribute]:
-    """The self-describe attributes every filter-bar widget root carries.
+    """The self-describe attributes every filter widget root carries.
 
-    The generic serializer in ``ts/elements/filter-bar.ts`` reads ``data-path``
-    (the widget's filter-JSON key, as a JSON array) and ``data-kind`` off any
-    ``[data-filter-widget]`` root to handle all widgets uniformly. See issue #123
-    Phase 2.
-
-    Cross-entity widgets are recognised by the serializer from their ``data-path``
-    alone: a multi-segment path is a relation chain, so instead of writing the
-    leaf at ``data-path`` top-level the serializer folds ``data-path`` into a
-    nested object and appends it as its own element of the parent's n-ary ``AND``
-    list — several widgets targeting the same relation compose as *independent*
-    EXISTS rather than merging into one shared relation node (issue #123 Phase 2d;
-    issue #138 removed the redundant ``data-compose`` marker).
-
-    ``relation_child`` (with ``kind="relation-bool"``) supplies the fixed child
-    criterion of a relation toggled by a boolean radio: ``data-path`` is the
-    relation chain *without* a leaf and ``data-relation-child`` is the child
-    keyed by field, e.g. ``{"emulated": {"value": True, "modifier": "EQUALS"}}``.
-    A ``True`` radio matches ANY, ``False`` sets ``match: "NONE"``.
+    The generic serializers (``ts/elements/quick-filter-bar.ts`` and the
+    builder's leaf readers in ``ts/elements/filter-widgets.ts``) read
+    ``data-path`` (the widget's filter-JSON key, as a JSON array) and
+    ``data-kind`` off any ``[data-filter-widget]`` root to handle all widgets
+    uniformly.
     """
-    attributes: list[HTMLAttribute] = [
+    return [
         ("data-filter-widget", ""),
         ("data-path", json.dumps(path)),
         ("data-kind", kind),
     ]
-    if relation_child is not None:
-        attributes.append(("data-relation-child", json.dumps(relation_child)))
-    return attributes
 
 
 # The single max-width every content container obeys — navbar, page bodies
@@ -421,6 +404,18 @@ _OUTLINE_VARIANT_CLASS = (
     "dark:hover:bg-gray-700 whitespace-nowrap"
 )
 
+# Ghost is the quiet outline sibling: invisible chrome at rest (transparent
+# background AND transparent border — the border box is always there, so
+# hover adds no layout shift), outline's bordered look on hover. Used by
+# compact triggers that would read as clutter in a row of many (the quick
+# filter bar's facet dropdowns).
+_GHOST_VARIANT_CLASS = (
+    f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    "border-transparent text-gray-900 hover:bg-gray-100 hover:border-gray-200 "
+    "dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:border-gray-600 "
+    "dark:hover:text-white whitespace-nowrap"
+)
+
 _PLAIN_VARIANT_CLASS = (
     "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
     "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
@@ -453,6 +448,8 @@ class ControlButton(BaseComponent):
     The dropdown-toggle variants are single-look and ignore ``color``:
     ``variant="outline"`` is the bordered toggle (split-button carets, value
     selectors — callers add rounding by shape, e.g. ``rounded-e-lg``);
+    ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
+    dropdown triggers) — outline's look on hover, invisible chrome at rest;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
 
@@ -480,6 +477,11 @@ class ControlButton(BaseComponent):
             class_attrs: list[HTMLAttribute] = [
                 ("class", _CONTROL_BASE_CLASS),
                 ("class", _OUTLINE_VARIANT_CLASS),
+            ]
+        elif variant == "ghost":
+            class_attrs = [
+                ("class", _CONTROL_BASE_CLASS),
+                ("class", _GHOST_VARIANT_CLASS),
             ]
         elif variant == "plain":
             class_attrs = [("class", _PLAIN_VARIANT_CLASS)]
@@ -567,6 +569,10 @@ class ButtonGroupMember(TypedDict, total=False):
     action: str
     csrf_token: str
     button_attributes: list[HTMLAttribute]
+    # The <button type>: "submit" makes a bare-button member submit its
+    # ancestor form (the quick bar's Apply). Only meaningful with
+    # button_attributes; defaults to "button".
+    type: str
 
 
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
@@ -614,6 +620,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
                 method="" if is_plain_button else member.get("method", ""),
                 action=member.get("action", ""),
                 csrf_token=member.get("csrf_token", ""),
+                type=member.get("type", "button"),
             )[slot]
         )
 

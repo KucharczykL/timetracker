@@ -3,7 +3,7 @@
 Pins the structural contract of DateRangeField / DateRangeCalendar /
 DateRangePicker — segment inputs ordered by ``dateformat_hyphenated``, the
 hidden ISO ``{prefix}-min`` / ``{prefix}-max`` inputs that ``filter_bar.js``
-serializes, the calendar's preset/footer hooks — and the PurchaseFilterBar
+serializes, the calendar's preset/footer hooks — and the purchases quick bar
 integration that replaced the native-date DateRangeFilter for the Purchased
 field.
 """
@@ -17,7 +17,6 @@ from common.components import (
     DateRangeCalendar,
     DateRangeField,
     DateRangePicker,
-    PurchaseFilterBar,
 )
 from common.time import date_parts, dateformat_hyphenated
 
@@ -153,30 +152,34 @@ class DateRangePickerTest(SimpleTestCase):
             self.assertNotIn(marker, html)
 
 
-class PurchaseFilterBarDateRangePickerTest(TestCase):
-    """Both Purchase date filters (Purchased and Refunded) use the canonical
-    DateRangePicker — the native-date DateRangeFilter was normalized away (#242)."""
+class QuickBarDateRangePanelTest(TestCase):
+    """The purchases quick bar's date facets use the canonical date widget
+    (the static-calendar DateRangePanel personality) with the same hidden
+    ``-min``/``-max`` ISO inputs the serializer reads."""
 
     def render(self, filter_json=""):
+        from common.components import QuickFilterBar
+
         return str(
-            PurchaseFilterBar(filter_json=filter_json, preset_api_url="/api/presets/")
+            QuickFilterBar(
+                mode="purchases", filter_json=filter_json, apply_url="/purchases"
+            )
         )
 
-    def test_purchased_uses_date_range_picker(self):
+    def test_purchased_uses_date_range_panel(self):
         html = self.render()
         self.assertIn("<date-range-picker", html)
-        self.assertIn('data-input-name-prefix="filter-date-purchased"', html)
-        # The hidden ISO inputs keep the names filter_bar.js serializes.
-        self.assertIn('name="filter-date-purchased-min"', html)
-        self.assertIn('name="filter-date-purchased-max"', html)
+        self.assertIn("data-static-calendar", html)
+        self.assertIn('data-input-name-prefix="quick-date_purchased"', html)
+        # The hidden ISO inputs keep the names the bar serializer reads.
+        self.assertIn('name="quick-date_purchased-min"', html)
+        self.assertIn('name="quick-date_purchased-max"', html)
 
-    def test_refunded_uses_date_range_picker(self):
-        # #242 normalized Refunded onto the canonical picker; it now carries the
-        # calendar element's prefix marker and the same hidden -min/-max inputs.
+    def test_created_uses_date_range_panel(self):
         html = self.render()
-        self.assertIn('data-input-name-prefix="filter-date-refunded"', html)
-        self.assertIn('name="filter-date-refunded-min"', html)
-        self.assertIn('name="filter-date-refunded-max"', html)
+        self.assertIn('data-input-name-prefix="quick-created_at"', html)
+        self.assertIn('name="quick-created_at-min"', html)
+        self.assertIn('name="quick-created_at-max"', html)
 
     def test_prefilled_between_filter_round_trips_into_picker(self):
         filter_json = json.dumps(
@@ -193,3 +196,54 @@ class PurchaseFilterBarDateRangePickerTest(TestCase):
         self.assertIn('value="2024-09-20"', html)
         self.assertIn('value="15" data-date-part="day" data-date-side="min"', html)
         self.assertIn('value="20" data-date-part="day" data-date-side="max"', html)
+
+
+class DateRangePanelTest(SimpleTestCase):
+    """The dropdown-panel variant: same element and hidden-input
+    contract as DateRangePicker, but no calendar toggle, a statically flowing
+    always-visible calendar, and a Clear-only footer."""
+
+    @staticmethod
+    def _html() -> str:
+        from common.components import DateRangePanel
+
+        return str(
+            DateRangePanel(
+                label="Started",
+                input_name_prefix="quick-timestamp_start",
+                min_value="2026-01-01",
+                max_value="2026-02-01",
+                path=["timestamp_start"],
+            )
+        )
+
+    def test_static_discriminator_and_serializer_contract(self):
+        html = self._html()
+        self.assertIn("data-static-calendar", html)
+        self.assertIn('data-kind="date"', html)
+        self.assertIn('data-path="[&quot;timestamp_start&quot;]"', html)
+        self.assertIn('name="quick-timestamp_start-min"', html)
+        self.assertIn('name="quick-timestamp_start-max"', html)
+        self.assertIn('value="2026-01-01"', html)
+
+    def test_no_toggle_and_calendar_flows_statically(self):
+        html = self._html()
+        self.assertNotIn("data-date-range-calendar-toggle", html)
+        self.assertIn("data-date-range-calendar", html)
+        self.assertNotIn("hidden absolute", html)
+
+    def test_footer_is_clear_only(self):
+        html = self._html()
+        self.assertIn("data-date-range-clear", html)
+        self.assertNotIn("data-date-range-cancel", html)
+        self.assertNotIn("data-date-range-select", html)
+
+    def test_popup_variant_is_unchanged(self):
+        # The panel variant must not leak into the existing widget: the flat
+        # bar's DateRangePicker keeps toggle, hidden popup, and full footer.
+        html = str(DateRangePicker(label="Started", input_name_prefix="filter-started"))
+        self.assertIn("data-date-range-calendar-toggle", html)
+        self.assertIn("hidden absolute", html)
+        self.assertIn("data-date-range-cancel", html)
+        self.assertIn("data-date-range-select", html)
+        self.assertNotIn("data-static-calendar", html)

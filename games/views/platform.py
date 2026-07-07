@@ -9,7 +9,6 @@ from common.components import (
     Column,
     ContentContainer,
     Icon,
-    PlatformFilterBar,
     QuickFilterBar,
     ControlButton,
     TableData,
@@ -84,16 +83,16 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         elided_page_range=elided_page_range,
         request=request,
     )
-    # No builder_url: platforms have no nested-builder page (BUILDER_MODES),
-    # so a degraded quick bar offers only Clear.
+    # No builder_url: platforms have no nested-builder page (BUILDER_MODES) —
+    # the action group is Apply | Clear and the degraded pill offers only
+    # Clear. Presets are load-only here (saving needs a builder page).
     parsed_filter = parse_filter_dict(filter_json)
-    quick_bar = QuickFilterBar(mode="platforms", existing=parsed_filter)
-    filter_bar = PlatformFilterBar(
-        filter_json=filter_json,
-        preset_api_url=reverse("api-1.0.0:list_presets"),
+    quick_bar = QuickFilterBar(
+        mode="platforms",
         existing=parsed_filter,
+        preset_api_url=reverse("api-1.0.0:list_presets"),
     )
-    content = ContentContainer()[quick_bar, filter_bar, content]
+    content = ContentContainer()[quick_bar, content]
     return render_page(
         request,
         content,

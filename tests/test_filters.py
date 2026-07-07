@@ -10,7 +10,6 @@ from functools import reduce
 
 import pytest
 from django.db.models import F, Q
-from django.test import SimpleTestCase as TestCase
 
 from common.criteria import (
     AggregateCriterion,
@@ -51,7 +50,6 @@ from common.criteria import (
     filter_to_json,
     search_q,
 )
-from common.components import FilterBar
 from games.filters import (
     DeviceFilter,
     GameFilter,
@@ -785,16 +783,24 @@ class TestGameFilterToQ:
         assert q == Q(status__isnull=False)
 
 
+def _games_bar(filter_json: str = "") -> str:
+    from common.components import QuickFilterBar
+
+    return str(
+        QuickFilterBar(mode="games", filter_json=filter_json, apply_url="/games")
+    )
+
+
 class TestFilterBarRendering:
-    """Tests for FilterBar with FilterSelect widgets."""
+    """The games quick bar renders FilterSelect facet widgets."""
 
     def test_status_uses_filter_select(self):
-        html = str(FilterBar())
+        html = _games_bar()
         assert 'filter-mode="true"' in html
         assert 'name="status"' in html
 
     def test_mastered_not_checked_by_default(self):
-        html = str(FilterBar(filter_json=""))
+        html = _games_bar()
         assert (
             'name="filter-mastered" value="true" class="rounded-full border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand" checked="true"'
             not in html
@@ -805,43 +811,37 @@ class TestFilterBarRendering:
         )
 
     def test_mastered_checked_when_filtered(self):
-        html = str(
-            FilterBar(
-                filter_json=json.dumps(
-                    {"mastered": {"value": True, "modifier": "EQUALS"}}
-                ),
-            )
+        html = _games_bar(
+            json.dumps({"mastered": {"value": True, "modifier": "EQUALS"}})
         )
         assert 'checked="true"' in html
 
     def test_status_prefilled(self):
-        html = str(
-            FilterBar(
-                filter_json=json.dumps(
-                    {
-                        "status": {
-                            "value": [{"id": "f", "label": "Finished"}],
-                            "modifier": "INCLUDES",
-                        }
+        html = _games_bar(
+            json.dumps(
+                {
+                    "status": {
+                        "value": [{"id": "f", "label": "Finished"}],
+                        "modifier": "INCLUDES",
                     }
-                ),
+                }
             )
         )
         assert 'data-value="f"' in html
         assert "Finished" in html
 
     def test_no_hx_get(self):
-        html = str(FilterBar())
+        html = _games_bar()
         assert "hx-get" not in html
 
     def test_platform_uses_search_url(self):
         """Platform is model-backed: rows are fetched, not pre-rendered."""
-        html = str(FilterBar())
+        html = _games_bar()
         assert 'search-url="/api/platforms/search"' in html
 
     def test_status_has_no_modifiers(self):
         """Non-nullable fields should not show (None) but MUST show (Any)."""
-        html = str(FilterBar())
+        html = _games_bar()
         status_start = html.find('name="status"')
         platform_start = html.find('name="platform"')
         status_section = html[status_start:platform_start]
@@ -852,7 +852,7 @@ class TestFilterBarRendering:
 
     def test_platform_has_modifiers(self):
         """Nullable ForeignKey fields should show (Any)/(None)."""
-        html = str(FilterBar())
+        html = _games_bar()
         platform_start = html.find('name="platform"')
         platform_section = html[platform_start:]
         # Should have at least one modifier option
@@ -4295,99 +4295,6 @@ class TestYearProjection:
         assert "started__date" not in str(q)
         # datetime right: TruncDate wrapper
         assert "TruncDate" in str(q)
-
-
-class FieldComparisonPrefillTest(TestCase):
-    """_field_comparison_rows: the two on-disk shapes the widget round-trips."""
-
-    def test_empty(self):
-        from common.components.filters import _field_comparison_rows
-
-        rows, mode = _field_comparison_rows({})
-        self.assertEqual(rows, [])
-        self.assertEqual(mode, "AND")
-
-    def test_and_shape(self):
-        from common.components.filters import _field_comparison_rows
-
-        rows, mode = _field_comparison_rows(
-            {
-                "field_comparisons": [
-                    {"left": "a", "right": "b", "modifier": "LESS_THAN"},
-                    {"left": "c", "right": "d", "modifier": "EQUALS"},
-                ]
-            }
-        )
-        self.assertEqual(mode, "AND")
-        self.assertEqual([r.left for r in rows], ["a", "c"])
-        self.assertEqual(rows[0].modifier, "LESS_THAN")
-
-    def test_or_shape(self):
-        from common.components.filters import _field_comparison_rows
-
-        rows, mode = _field_comparison_rows(
-            {
-                "AND": [
-                    {
-                        "OR": [
-                            {
-                                "field_comparisons": [
-                                    {"left": "a", "right": "b", "modifier": "EQUALS"}
-                                ]
-                            },
-                            {
-                                "field_comparisons": [
-                                    {"left": "c", "right": "d", "modifier": "INCLUDES"}
-                                ]
-                            },
-                        ]
-                    }
-                ]
-            }
-        )
-        self.assertEqual(mode, "OR")
-        self.assertEqual([(r.left, r.right) for r in rows], [("a", "b"), ("c", "d")])
-        self.assertEqual(rows[1].modifier, "INCLUDES")
-
-    def test_and_wins_over_or(self):
-        from common.components.filters import _field_comparison_rows
-
-        rows, mode = _field_comparison_rows(
-            {
-                "field_comparisons": [
-                    {"left": "a", "right": "b", "modifier": "EQUALS"}
-                ],
-                "AND": [
-                    {
-                        "OR": [
-                            {
-                                "field_comparisons": [
-                                    {"left": "c", "right": "d", "modifier": "EQUALS"}
-                                ]
-                            }
-                        ]
-                    }
-                ],
-            }
-        )
-        self.assertEqual(mode, "AND")
-        self.assertEqual(rows[0].left, "a")
-
-    def test_section_none_without_model(self):
-        from common.components.filters import _field_comparison_section
-
-        self.assertIsNone(_field_comparison_section({}, None))
-
-    def test_section_present_for_real_model(self):
-        from common.components.filters import _field_comparison_section
-        from games.models import Session
-
-        node = _field_comparison_section({}, Session)
-        self.assertIsNotNone(node)
-        self.assertIn("field-comparison-set", str(node))
-
-
-# ── Descriptor drift guard (issue #161) ──────────────────────────────────────
 
 
 class TestFilterFieldDescriptors:

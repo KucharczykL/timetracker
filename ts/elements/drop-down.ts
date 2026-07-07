@@ -20,9 +20,17 @@ function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
 // needs and layers its own wiring. The element reads no type-specific attribute.
 class DropdownElement extends HTMLElement {
   private controller?: MenuController;
-  private teardown?: () => void;
+  private unbindDocument?: () => void;
 
   connectedCallback(): void {
+    if (this.controller) {
+      // Reconnection (e.g. a moved node): element-local wiring traveled
+      // with the subtree, so only the document listeners need re-attaching.
+      // Re-running attachMenu would stack a second toggle handler and every
+      // click would open-then-close.
+      this.unbindDocument = this.controller.bindDocument();
+      return;
+    }
     const props = readDropdownProps(this);
     const toggle = ownChild(this, "[data-toggle]");
     const menu = ownChild(this, "[data-menu]");
@@ -44,8 +52,8 @@ class DropdownElement extends HTMLElement {
       ...(behavior?.menuOptions?.(this) ?? {}),
     });
     this.controller = controller;
-    this.teardown =
-      behavior?.wire?.({ host: this, toggle, menu, controller }) ?? undefined;
+    this.unbindDocument = controller.bindDocument();
+    behavior?.wire?.({ host: this, toggle, menu, controller });
   }
 
   /** Close the dropdown programmatically (e.g. after a consumer handles a
@@ -55,10 +63,12 @@ class DropdownElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    this.teardown?.();
-    this.teardown = undefined;
-    this.controller?.destroy();
-    this.controller = undefined;
+    // Close (an open panel would linger at stale fixed coordinates) and
+    // drop the document listeners; the controller and element-local wiring
+    // persist for reconnection.
+    this.controller?.close();
+    this.unbindDocument?.();
+    this.unbindDocument = undefined;
   }
 }
 
