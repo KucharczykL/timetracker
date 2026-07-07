@@ -653,10 +653,10 @@ def relation_select_template() -> Node:
 
 def has_comparable_group(columns: list[ComparableColumn]) -> bool:
     """Whether ``columns`` admits at least one field comparison: some comparison
-    group with ≥2 columns (a comparison needs two columns of the SAME group). The
-    same gate ``_field_comparison_section`` uses to decide whether to show the flat
-    bar's comparison field — reused so the builder's ``+ comparison`` affordance
-    appears under identical conditions."""
+    group with ≥2 columns (a comparison needs two columns of the SAME group).
+    Gates whether the builder emits a comparison-row template for a model —
+    mirrored client-side by ts/elements/filter-group.ts, so the ``+ comparison``
+    affordance appears under identical conditions."""
     group_counts: dict[str, int] = {}
     for column in columns:
         group_counts[column["group"]] = group_counts.get(column["group"], 0) + 1
