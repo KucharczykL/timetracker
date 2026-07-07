@@ -189,6 +189,21 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "static"
 
+# Content-hash static filenames so a changed asset gets a new URL — cache-forever,
+# never stale after a deploy. On by default outside DEBUG (dev/runserver keeps
+# unhashed files, needing no collectstatic-built manifest). HASHED_STATIC lets a
+# DEBUG-off staging run opt in/out explicitly.
+HASHED_STATIC = config("HASHED_STATIC", default=not DEBUG, cast=bool)
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "common.storage.HashedStaticStorage"
+        if HASHED_STATIC
+        else "django.contrib.staticfiles.storage.StaticFilesStorage"
+    },
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 

@@ -1,5 +1,3 @@
-// import { toISOUTCString } from "../../games/static/js/utils.js";
-
 /**
  * @description Formats Date to a UTC string accepted by the datetime-local input field.
  * @param {Date} date
