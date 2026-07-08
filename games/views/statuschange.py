@@ -1,21 +1,18 @@
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from common.components import (
     AddForm,
     Column,
+    ConfirmPage,
     ContentContainer,
-    CsrfInput,
-    Div,
-    Form,
-    ControlButton,
     Node,
     TableData,
     make_row,
     paginated_table_content,
 )
-from common.components.primitives import P
 from common.layout import render_page
 from common.time import dateformat, local_strftime
 from common.utils import paginate
@@ -85,16 +82,14 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
 
 
 def _delete_statuschange_content(statuschange, request: HttpRequest) -> Node:
-    inner = Div(class_="flex flex-col gap-2 @container")[
-        P()["Are you sure you want to delete this status change?"],
-        ControlButton(color="red", type="submit")["Delete"],
-        ControlButton(
-            href=reverse("games:view_game", args=[statuschange.game.id]),
-            color="gray",
-        )["Cancel"],
-    ]
-    form = Form(method="post", class_="dark:text-white")[CsrfInput(request), inner]
-    return ContentContainer()[form]
+    return ConfirmPage(
+        title="Delete status change",
+        message="Are you sure you want to delete this status change?",
+        action_url=reverse("games:delete_statuschange", args=[statuschange.id]),
+        csrf_token=get_token(request),
+        cancel_url=reverse("games:view_game", args=[statuschange.game.id]),
+        confirm_label="Delete",
+    )
 
 
 @login_required
