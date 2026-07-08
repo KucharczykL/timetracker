@@ -1,4 +1,7 @@
+import re
+
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from games.dev_login import prefill_credentials
@@ -46,10 +49,8 @@ class LoginPrefillViewTest(TestCase):
         # password field present but with NO value= attribute at all
         self.assertIn('type="password"', html)
         # Extract the password <input> tag and assert it has no value= attribute.
-        import re
-
         password_tag_match = re.search(r'<input[^>]*type="password"[^>]*>', html)
-        self.assertIsNotNone(password_tag_match, "password input tag not found")
+        assert password_tag_match is not None, "password input tag not found"
         password_tag = password_tag_match.group(0)
         self.assertNotIn("value=", password_tag)
         self.assertNotIn("X-Robots-Tag", response)
@@ -69,9 +70,6 @@ class LoginPrefillViewTest(TestCase):
         response = client.post("/login/", {"username": "admin", "password": "admin"})
         self.assertEqual(response.status_code, 302)  # redirect on success
         self.assertIn("_auth_user_id", client.session)
-
-
-from django.core.management import call_command
 
 
 class DevLoginCommandTest(TestCase):
