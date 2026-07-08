@@ -26,10 +26,16 @@ const TRIGGER_GAP = 8;
 // flipping below only when there isn't room above. Then pin the arrow to the
 // edge facing the trigger.
 function positionPanel(host: HTMLElement, panel: HTMLElement): void {
+  // Cap the inner text wrapper (not the panel) so a tooltip taller than the room
+  // on both sides scrolls instead of clipping off-screen — and so the cap's
+  // overflow-y:auto never clips the arrow, which overhangs the panel edge.
+  const content = panel.querySelector<HTMLElement>("[data-pop-over-content]");
   const { side, left, width, anchorCenterX } = positionAnchored(host, panel, {
     align: "center",
     side: "top",
     gap: TRIGGER_GAP,
+    scrollable: true,
+    scrollTarget: content ?? undefined,
   });
   // `anchorCenterX - left` is the trigger's center in the panel's own
   // left-origin coordinates.
@@ -46,6 +52,9 @@ function tintArrow(panel: HTMLElement): void {
   const styles = getComputedStyle(panel);
   arrow.style.backgroundColor = styles.backgroundColor;
   arrow.dataset.borderColor = styles.borderTopColor;
+  // The panel border width — positionArrow shifts the arrow's padding-box-relative
+  // left by it so the tip lands on the true (border-box) trigger center.
+  arrow.dataset.panelBorder = `${parseFloat(styles.borderTopWidth) || 0}`;
 }
 
 // Pin the arrow to the edge facing the trigger (runs on every reposition, so it
@@ -69,10 +78,17 @@ function positionArrow(
 
   // Center the arrow on the trigger, clamped to keep a full ARROW_SIZE inset
   // from each rounded corner — symmetric, the same inset on the left and right.
+  // The arrow is position:absolute, so its `left` resolves against the panel's
+  // PADDING box, but triggerCenterInPanel/panelWidth are border-box measures;
+  // subtract the panel border so the tip sits on the true center and the right
+  // clamp hugs the real (padding-box) corner rather than sitting ~1px loose.
   const half = ARROW_SIZE / 2;
+  const panelBorder = Number(arrow.dataset.panelBorder) || 0;
+  const centerInPaddingBox = triggerCenterInPanel - panelBorder;
+  const paddingBoxWidth = panelWidth - 2 * panelBorder;
   arrow.style.left = `${Math.max(
     ARROW_SIZE,
-    Math.min(triggerCenterInPanel - half, panelWidth - 2 * ARROW_SIZE),
+    Math.min(centerInPaddingBox - half, paddingBoxWidth - 2 * ARROW_SIZE),
   )}px`;
   arrow.style.top = panelAbove ? "" : `${-half}px`;
   arrow.style.bottom = panelAbove ? `${-half}px` : "";
@@ -133,6 +149,11 @@ class PopOverElement extends HTMLElement {
     this.isOpen = false;
     this.panel.hidden = true;
     clearAnchoredPosition(this.panel);
+    // The scroll cap lives on the inner wrapper, outside clearAnchoredPosition's
+    // panel scope — strip it so a reopen re-measures from the natural height.
+    this.panel
+      .querySelector<HTMLElement>("[data-pop-over-content]")
+      ?.style.removeProperty("max-height");
     document.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("scroll", this.reposition, true);
     window.removeEventListener("resize", this.reposition);

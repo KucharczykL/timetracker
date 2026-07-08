@@ -19,7 +19,8 @@ export type Side = "top" | "bottom";
 
 // Every inline property the anchored positioners may write (positionAnchored plus
 // the submenu path through pinFixedAndMeasureOrigin), in one place so the teardown
-// stays the exact inverse of the writers (see clearAnchoredPosition).
+// stays the exact inverse of the writers (see clearAnchoredPosition). overflow-y is
+// NOT here: it is a static class on scrollable panels, not written by the geometry.
 const ANCHORED_PROPERTIES = [
   "position",
   "top",
@@ -29,7 +30,6 @@ const ANCHORED_PROPERTIES = [
   "width",
   "min-width",
   "max-height",
-  "overflow-y",
 ] as const;
 
 /**
@@ -42,14 +42,10 @@ const ANCHORED_PROPERTIES = [
  * still-in-flow panel that descends from the anchor would otherwise inflate the
  * anchor's box before it is pinned out of flow here.
  */
-export function pinFixedAndMeasureOrigin(
-  panel: HTMLElement,
-  options: { scrollable?: boolean } = {},
-): DOMRect {
+export function pinFixedAndMeasureOrigin(panel: HTMLElement): DOMRect {
   panel.style.position = "fixed";
   panel.style.right = "auto";
   panel.style.bottom = "auto";
-  if (options.scrollable) panel.style.overflowY = "auto";
   panel.style.left = "0px";
   panel.style.top = "0px";
   return panel.getBoundingClientRect();
@@ -82,9 +78,13 @@ export interface AnchorOptions {
   gap?: number;
   // Force the panel's min-width to the anchor's width.
   matchWidth?: boolean;
-  // Cap the panel to the available height on its resolved side and let it
-  // scroll. Off for tooltips (small, never scroll).
+  // Cap the scroll target to the available height on its resolved side so a panel
+  // taller than the viewport scrolls instead of overflowing off-screen.
   scrollable?: boolean;
+  // Element the max-height cap is written to (its class owns `overflow-y: auto`).
+  // Defaults to `panel`; the tooltip passes an inner wrapper so the cap doesn't
+  // clip its arrow, which overhangs the panel edge.
+  scrollTarget?: HTMLElement;
 }
 
 export interface AnchorResult {
@@ -98,7 +98,7 @@ export interface AnchorResult {
 
 /**
  * Position `panel` (in the DOM, possibly just unhidden) against `anchor`; writes
- * its inline position/left/top (+ max-height/overflow-y when scrollable,
+ * its inline position/left/top (+ max-height on the scroll target when scrollable,
  * min-width/width when matchWidth) and returns the resolved geometry.
  */
 export function positionAnchored(
@@ -109,7 +109,7 @@ export function positionAnchored(
   const side = options.side ?? "bottom";
   const gap = options.gap ?? 0;
 
-  const origin = pinFixedAndMeasureOrigin(panel, { scrollable: options.scrollable });
+  const origin = pinFixedAndMeasureOrigin(panel);
   const rect = anchor.getBoundingClientRect();
 
   const availableBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN - gap;
@@ -120,12 +120,14 @@ export function positionAnchored(
   // height drives the flip — measured before the maxHeight cap and matchWidth.
   const flip = panel.scrollHeight > spacePreferred && spaceOther > spacePreferred;
   const resolved: Side = flip ? (side === "bottom" ? "top" : "bottom") : side;
+  // Room on the side we resolved to — the flip swaps preferred/other.
+  const resolvedSpace = flip ? spaceOther : spacePreferred;
 
   if (options.scrollable) {
-    panel.style.maxHeight = `${Math.max(
-      0,
-      resolved === "bottom" ? availableBelow : availableAbove,
-    )}px`;
+    // Cap the scroll target (its class carries overflow-y:auto). Capping an inner
+    // wrapper still bounds the panel, so the offsetHeight read below — and thus the
+    // top geometry — reflects the cap.
+    (options.scrollTarget ?? panel).style.maxHeight = `${Math.max(0, resolvedSpace)}px`;
   }
   if (options.matchWidth) {
     panel.style.minWidth = `${rect.width}px`;

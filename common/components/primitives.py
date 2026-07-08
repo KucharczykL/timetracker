@@ -253,7 +253,9 @@ def _popover_html(
             ("class", panel_class),
         ]
     )[
-        Div(class_="px-3 py-2")[popover_content],
+        Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
+            popover_content
+        ],
         # The pointer. A small square the element rotates 45° and pins to the
         # panel edge facing the trigger, tinted (bg + border) from the panel's
         # own computed styles so it tracks the theme. Placement (which edge, how

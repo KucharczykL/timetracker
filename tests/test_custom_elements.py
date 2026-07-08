@@ -168,7 +168,9 @@ class DropdownMenuPanelTest(unittest.TestCase):
         html = render(DropdownMenuPanel(items=[DropdownLinkItem("/a/", "A")]))
         self.assertIn('role="menu"', html)
         self.assertIn("shadow-sm", html)  # the single shadowed panel look
-        self.assertIn("overflow-hidden", html)  # #46 fix kept
+        # Clips sideways; scrolls vertically once the positioner caps the height.
+        self.assertIn("overflow-x-hidden", html)
+        self.assertIn("overflow-y-auto", html)
         self.assertIn("<ul", html)
         self.assertIn('role="menuitem"', html)
         # ul/li carry role=presentation so menu→menuitem ownership isn't interrupted

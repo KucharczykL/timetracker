@@ -124,7 +124,7 @@ export function attachMenu(
     const rect = toggle.getBoundingClientRect();
     // Shared scaffold: pin fixed and measure the containing-block origin. Only
     // the flip/first-item/gap geometry below is submenu-specific.
-    const origin = pinFixedAndMeasureOrigin(menu, { scrollable: true });
+    const origin = pinFixedAndMeasureOrigin(menu);
 
     const anchor = horizontalAnchor.getBoundingClientRect();
     // Align the flyout's FIRST ITEM with the toggle row, not the panel's
