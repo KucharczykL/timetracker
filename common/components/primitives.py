@@ -204,6 +204,13 @@ H2 = _html_element("h2")
 H3 = _html_element("h3")
 
 
+# The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
+# Registered for codegen in common/components/custom_elements.py (which imports
+# from this module, so registration can't live here). Media is auto-attached, so
+# Page() emits the compiled JS wherever a Popover appears.
+_PopOver = custom_element_builder("pop-over")
+
+
 def _popover_html(
     id: str,
     popover_content: Child,
@@ -211,40 +218,45 @@ def _popover_html(
     wrapped_classes: str = "",
     slot: "Node | str" = "",
 ) -> Node:
-    """Generate popover HTML. Single source of truth for popover structure."""
+    """Generate popover HTML. Single source of truth for popover structure.
+
+    Renders the ``<pop-over>`` custom element (behavior: ``ts/elements/
+    pop-over.ts``): a hover/focus tooltip. Issue #303 replaced the old Flowbite
+    popover (``data-popover-target``/``data-popover``) — which shipped its own
+    Popper positioning + dismiss engine outside the app's ``<drop-down>``
+    algebra — with this first-class element. The trigger carries
+    ``aria-describedby`` pointing at the ``role="tooltip"`` panel; the element
+    owns show/hide + viewport-aware ``position: fixed`` placement.
+    """
     display_content = wrapped_content if wrapped_content else slot
 
-    span = Span(
+    trigger = Span(
         [
-            ("data-popover-target", id),
+            ("data-pop-over-trigger", ""),
+            ("aria-describedby", id),
             ("class", wrapped_classes),
         ]
     )[*([display_content] if display_content else [])]
 
-    popover_tooltip_class = (
-        # `[&.invisible]:hidden`: while Flowbite keeps the popover hidden it
-        # carries the `invisible` class (visibility:hidden), which still
-        # occupies layout — an absolutely-positioned, Popper-transformed
-        # popover then expands its scroll container, producing a phantom
-        # scrollbar (issue #53 / #40). Removing it from layout while hidden
-        # fixes that; Flowbite drops `invisible` on show, restoring display.
-        # Shares the one content max-width as a cap only (no `w-full`): the
-        # tooltip stays inline-block and small, the cap just bounds huge content.
-        f"absolute z-10 invisible [&.invisible]:hidden inline-block text-sm "
-        f"text-heading transition-opacity duration-300 bg-brand-soft border "
-        f"border-brand/30 rounded-lg shadow-xs opacity-0 {CONTENT_MAX_WIDTH_CLASS}"
+    # No positioning class — the element sets `position: fixed` + coords on show
+    # and clears them on hide; the `hidden` attribute owns the closed state.
+    # Shares the one content max-width as a cap only (no `w-full`): the tooltip
+    # stays inline-block and small, the cap just bounds huge content.
+    panel_class = (
+        f"z-10 inline-block text-sm text-heading bg-brand-soft border "
+        f"border-brand/30 rounded-lg shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
     )
 
-    div = Div(
+    panel = Div(
         [
-            ("data-popover", ""),
+            ("data-pop-over-panel", ""),
             ("id", id),
             ("role", "tooltip"),
-            ("class", popover_tooltip_class),
+            ("hidden", ""),
+            ("class", panel_class),
         ]
     )[
         Div(class_="px-3 py-2")[popover_content],
-        Div(data_popper_arrow=""),
         Safe(  # nosec — intentional HTML comment for Tailwind JIT
             "<!-- for Tailwind CSS to generate decoration-dotted CSS "
             "from Python component -->"
@@ -252,7 +264,7 @@ def _popover_html(
         Span(class_="hidden decoration-dotted"),
     ]
 
-    return Fragment(span, div, separator="\n")
+    return _PopOver(class_="inline-block")[Fragment(trigger, panel, separator="\n")]
 
 
 def Popover(
@@ -1041,20 +1053,51 @@ def PageHeading(
     ]
 
 
+# The <modal-dialog> overlay element (behavior: ts/elements/modal-dialog.ts).
+# Registered for codegen in common/components/custom_elements.py. Media is
+# auto-attached, so Page() emits the compiled JS wherever a Modal appears.
+_ModalDialog = custom_element_builder("modal-dialog")
+
+
 class Modal(BaseComponent):
     """Modal overlay with container. Content goes via the htpy ``[]`` slot —
-    ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps."""
+    ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps.
 
-    def __init__(self, modal_id: str, _children: Children = None) -> None:
+    The overlay is the ``<modal-dialog>`` custom element (behavior:
+    ``ts/elements/modal-dialog.ts``, issue #303): it wires the shared dismiss
+    contract — Escape, a backdrop click, and any ``[data-modal-dismiss]`` control
+    (via ``bindPopupDismiss``) — and carries ``role="dialog"``/``aria-modal``.
+    Dismissing removes the overlay from the DOM (the confirm modals are portaled
+    into ``#global-modal-container`` and thrown away on close).
+
+    ``self_dismiss=False`` renders the same markup but tells the element to stay
+    inert: the session-reset confirm is wrapped in ``<session-actions>``, which
+    owns its open/close (show/hide + reposition) and its own ``bindPopupDismiss``
+    — a second dismiss engine on the inner overlay would fight it.
+    """
+
+    def __init__(
+        self,
+        modal_id: str,
+        _children: Children = None,
+        *,
+        self_dismiss: bool = True,
+    ) -> None:
         self.modal_id = modal_id
         self._children = as_children(_children)
+        self.self_dismiss = self_dismiss
 
     def __getitem__(self, children: Children) -> "Modal":
-        return Modal(self.modal_id, as_children(children))
+        return Modal(
+            self.modal_id, as_children(children), self_dismiss=self.self_dismiss
+        )
 
     def render(self) -> Node:
-        return Div(
+        return _ModalDialog(
             id_=self.modal_id,
+            role="dialog",
+            aria_modal="true",
+            data_manage="true" if self.self_dismiss else "false",
             # z-40: above in-page positioned UI (popovers z-10, dropdown
             # panels z-20) so the overlay dims and covers them, but below the
             # toast container (z-50). Matters for modals rendered inline in a
@@ -1066,6 +1109,7 @@ class Modal(BaseComponent):
             ),
         )[
             Div(
+                [("data-modal-panel", "")],
                 class_=(
                     f"relative mx-auto p-5 border-accent border w-full "
                     f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "

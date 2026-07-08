@@ -403,6 +403,10 @@ class RenderedPagesTest(TestCase):
         self.assertIn(self.game.name, html)
         self.assertIn("session(s)", html)  # seeded session
         self.assertIn("purchase(s)", html)  # seeded purchase
+        # Dismiss is the shared <modal-dialog> contract now, not inline JS (#303).
+        self.assertIn("<modal-dialog", html)
+        self.assertIn("data-modal-dismiss", html)
+        self.assertNotIn("onclick", html)
         self.assertNoEscapedTags(html)
 
     def test_refund_confirmation_modal(self):

@@ -469,6 +469,30 @@ class YearPickerProps(TypedDict):
 register_element("year-picker", "YearPicker", YearPickerProps)
 
 
+class PopOverProps(TypedDict):
+    pass
+
+
+# The <pop-over> hover/focus tooltip (issue #303, replaces the Flowbite popover).
+# Its builder (_PopOver) lives in primitives.py next to _popover_html; like
+# year-picker/sort-header, registration is codegen-only and belongs here. The
+# element reads no scalar props — the trigger/panel contract is plain data-*
+# attributes and the tooltip id — so the schema is empty.
+register_element("pop-over", "PopOver", PopOverProps)
+
+
+class ModalDialogProps(TypedDict):
+    pass
+
+
+# The <modal-dialog> confirm-overlay element (issue #303): wires Escape +
+# backdrop click + [data-modal-dismiss] via bindPopupDismiss. Its builder
+# (_ModalDialog) lives in primitives.py next to the Modal component. The element
+# reads only the `data-manage` flag (via getAttribute, not codegen) that opts the
+# session-reset overlay out of self-dismiss, so the schema is empty.
+register_element("modal-dialog", "ModalDialog", ModalDialogProps)
+
+
 def SelectionFields(
     *,
     source: str,

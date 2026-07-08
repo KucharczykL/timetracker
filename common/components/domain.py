@@ -335,7 +335,9 @@ def SessionActions(session, csrf_token: str) -> Node:
     if is_open:
         children.append(
             Div(data_reset_modal="", hidden="")[
-                Modal(modal_id)[
+                # self_dismiss=False: <session-actions> owns this overlay's
+                # open/close + its own bindPopupDismiss (issue #303).
+                Modal(modal_id, self_dismiss=False)[
                     Div(class_="text-center dark:text-white")[
                         "Reset the start time of ",
                         Span(class_="font-medium")[game_name],

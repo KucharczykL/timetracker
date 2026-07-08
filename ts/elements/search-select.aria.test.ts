@@ -105,6 +105,21 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     }
   });
 
+  it("collapses on an outside mousedown via the shared dismiss (#303)", () => {
+    // The bespoke document-click listener was replaced by bindPopupDismiss,
+    // which dismisses on an outside mousedown (and Escape). Focus-to-open is
+    // unchanged; this guards that the panel still closes on an outside press.
+    const host = mountSingle("games");
+    const search = searchOf(host);
+
+    search.dispatchEvent(new Event("focus"));
+    expect(panelOf(host).classList.contains("hidden")).toBe(false);
+
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(panelOf(host).classList.contains("hidden")).toBe(true);
+    expect(search.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("clears the highlight when a single-select option is click-committed", () => {
     const host = mountSingle("games");
     const search = searchOf(host);
