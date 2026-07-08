@@ -185,6 +185,41 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertNotIn("id=", html)
 
 
+class SearchSelectHostDropdownTest(unittest.TestCase):
+    """host_dropdown=True hosts the form combobox in
+    <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
+    open/close/position/dismiss engine (issue #348)."""
+
+    def test_wraps_in_inline_combobox_dropdown(self):
+        html = str(SearchSelect(name="games", host_dropdown=True))
+        self.assertIn("<drop-down", html)
+        self.assertIn('behavior="inline-combobox"', html)
+
+    def test_search_select_element_is_the_toggle(self):
+        html = str(SearchSelect(name="games", host_dropdown=True))
+        self.assertIn("data-toggle", _tag_around(html, "<search-select"))
+
+    def test_panel_is_menu_target_hidden_by_attribute_not_class(self):
+        html = str(SearchSelect(name="games", host_dropdown=True))
+        panel_tag = _tag_around(html, "data-search-select-options")
+        self.assertIn("data-menu", panel_tag)
+        # Visibility is the `hidden` attribute (attachMenu owns it), never the
+        # `.hidden` class the standalone panel toggles.
+        self.assertIn('hidden=""', panel_tag)
+        self.assertNotIn(' hidden"', panel_tag)
+
+    def test_default_is_bare_widget_with_class_visibility(self):
+        html = str(SearchSelect(name="games"))
+        self.assertNotIn("<drop-down", html)
+        self.assertNotIn("data-toggle", html)
+        # The standalone panel keeps the `.hidden` class as its visibility mechanism.
+        self.assertIn(" hidden", _tag_around(html, "data-search-select-options"))
+
+    def test_media_includes_dropdown_js(self):
+        media = collect_media(SearchSelect(name="games", host_dropdown=True))
+        self.assertIn("dist/elements/drop-down.js", " ".join(media.js))
+
+
 class FilterSelectComponentTest(unittest.TestCase):
     MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
 

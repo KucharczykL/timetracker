@@ -54,6 +54,7 @@ from typing import Literal, NamedTuple, TypedDict
 from common.components.core import Attributes, HTMLAttribute, Node
 from common.components.custom_elements import (
     Dropdown,
+    _Dropdown,
     _SearchSelect,
     dropdown_combobox_panel_class,
 )
@@ -142,6 +143,15 @@ _SEARCH_CLASS = (
 # centered by items-center and overlap the search box.
 _OPTIONS_CLASS = (
     "absolute z-10 top-full left-0 right-0 mt-1 overflow-y-auto "
+    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
+)
+# Panel class when the widget is hosted in <drop-down behavior="inline-combobox">
+# (issue #348): attachMenu pins it position:fixed and writes top/left/width, so it
+# drops the self-positioning (absolute top-full left-0 right-0 mt-1) the standalone
+# panel uses and only keeps the surface look. z-20 matches the other drop-down
+# menus (the standalone panel is z-10). matchToggleWidth gives it the field width.
+_INLINE_OPTIONS_CLASS = (
+    "z-20 overflow-y-auto "
     "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
 )
 _OPTION_ROW_CLASS = (
@@ -297,6 +307,7 @@ def _combobox_children(
     templates: list[Node] | None = None,
     options_class: str | None = None,
     no_results_text: str = "No results",
+    menu_target: bool = False,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -314,6 +325,12 @@ def _combobox_children(
     absolute-anchored :data:`_OPTIONS_CLASS`); ``no_results_text`` the empty-state
     label. Both are personality knobs (the preset picker's panel flows statically
     inside its dropdown dialog and says "No saved presets" — issue #297).
+
+    ``menu_target`` makes the options panel the ``<drop-down>``'s ``[data-menu]``
+    (issue #348): it carries the ``data-menu`` hook and the initial ``hidden``
+    attribute (so attachMenu owns visibility) instead of the ``.hidden`` class the
+    standalone widget toggles. The caller pairs it with ``options_class=``
+    :data:`_INLINE_OPTIONS_CLASS`.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -330,8 +347,15 @@ def _combobox_children(
         class_=_NO_RESULTS_CLASS,
     )[no_results_text]
     panel_class = _OPTIONS_CLASS if options_class is None else options_class
-    options_class = panel_class if always_visible else panel_class + " hidden"
+    # menu_target: attachMenu owns visibility via the `hidden` attribute, so never
+    # add the `.hidden` class. Otherwise the class is the visibility mechanism.
+    if menu_target or always_visible:
+        options_class = panel_class
+    else:
+        options_class = panel_class + " hidden"
     options_panel = Div(
+        # The [data-menu] hook + initial hidden state when hosted in a <drop-down>.
+        [("data-menu", ""), ("hidden", "")] if menu_target else [],
         data_search_select_options="",
         role="listbox",
         aria_multiselectable="true" if multi_select else None,
@@ -362,8 +386,16 @@ def SearchSelect(
     id: str = "",
     sync_url: bool = False,
     autofocus: bool = False,
+    host_dropdown: bool = False,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
+
+    ``host_dropdown`` (issue #348) wraps the widget in
+    ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
+    dismisses through the shared attachMenu engine (the widget's own search input
+    is the trigger — focus opens). Only the standalone add-form comboboxes
+    (``games/forms.py`` :class:`SearchSelectWidget`) pass it; the filter-builder
+    field picker and every filter/preset path leave it ``False`` and stay bare.
 
     Pass ``option_groups`` instead of ``options`` to render a grouped panel
     (non-selectable header rows before each group's options); the two are mutually
@@ -454,8 +486,14 @@ def SearchSelect(
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
+        options_class=_INLINE_OPTIONS_CLASS if host_dropdown else None,
+        menu_target=host_dropdown,
     )
-    return _SearchSelect(
+    widget = _SearchSelect(
+        # The <search-select> element itself is the drop-down's [data-toggle]: it
+        # is the positioning anchor (its field box) and the focus/typing trigger.
+        # No id/aria-controls/aria-expanded stamp — the widget owns those at init.
+        [("data-toggle", "")] if host_dropdown else [],
         name=name,
         search_url=search_url,
         multi="true" if multi_select else "false",
@@ -466,6 +504,17 @@ def SearchSelect(
         sync_url="true" if sync_url else "false",
         class_=_CONTAINER_CLASS,
     )[*children]
+    if not host_dropdown:
+        return widget
+    # block (not the generic inline-flex) so the field keeps its full form-column
+    # width. attachMenu positions the [data-menu] panel fixed relative to the
+    # <search-select> anchor; the inline-combobox behavior wires the rest.
+    return _Dropdown(
+        class_="block",
+        placement="bottom-start",
+        submenu="false",
+        behavior="inline-combobox",
+    )[widget]
 
 
 def _filter_remove_button() -> Node:

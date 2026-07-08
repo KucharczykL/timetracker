@@ -18,6 +18,9 @@ def e2e_test_view(request):
         <!-- search-select is a custom element; htmx must be present for filter_bar. -->
         <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
+        <!-- host_dropdown=True wraps each widget in <drop-down behavior=inline-combobox>,
+             whose behaviors are registered by drop-down.js (#348). -->
+        <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
     </head>
     <body>
         <div style="padding: 50px;">
@@ -30,6 +33,7 @@ def e2e_test_view(request):
                 {"value": "8", "label": "Game B", "data": {}},
             ],
             multi_select=False,
+            host_dropdown=True,
         )
     }
             {
@@ -41,6 +45,7 @@ def e2e_test_view(request):
             ],
             multi_select=True,
             id="multi-search",
+            host_dropdown=True,
         )
     }
             <input type="text" id="next-field" />

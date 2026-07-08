@@ -105,6 +105,17 @@ const initWidget = (containerElement: Element) => {
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
 
+  // Issue #348: form comboboxes are hosted in <drop-down behavior="inline-combobox">,
+  // which owns the panel's open/close/positioning/dismiss through attachMenu. When
+  // hosted, this widget delegates showPanel/hidePanel to the host and reads panel
+  // visibility from the `hidden` attribute attachMenu toggles (not the `.hidden`
+  // class it uses standalone). No host (filter/preset modes, PR2 rows, bare test
+  // mounts) → the widget keeps owning visibility on its own panel via `.hidden`.
+  const dropdownHost = container.closest<HTMLElement & { open(): void; close(): void }>(
+    "drop-down"
+  );
+  const delegated = dropdownHost !== null;
+
   const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
@@ -130,11 +141,13 @@ const initWidget = (containerElement: Element) => {
     return row.id;
   };
 
+  // Panel-open source of truth: the `hidden` attribute when delegated (attachMenu
+  // toggles menu.hidden), the `.hidden` class in the standalone/legacy path.
+  const isPanelOpen = () =>
+    delegated ? !options.hasAttribute("hidden") : !options.classList.contains("hidden");
+
   const syncExpanded = () => {
-    search.setAttribute(
-      "aria-expanded",
-      options.classList.contains("hidden") ? "false" : "true"
-    );
+    search.setAttribute("aria-expanded", isPanelOpen() ? "true" : "false");
   };
 
   const hasVisibleContent = () => {
@@ -149,7 +162,10 @@ const initWidget = (containerElement: Element) => {
 
   const showPanel = () => {
     if (alwaysVisible || hasVisibleContent()) {
-      options.classList.remove("hidden");
+      // The hasVisibleContent gate stays the empty-panel guard: when delegated
+      // it decides whether to open the host at all, so an empty panel never opens.
+      if (delegated) dropdownHost!.open();
+      else options.classList.remove("hidden");
     }
     syncExpanded();
   };
@@ -159,7 +175,10 @@ const initWidget = (containerElement: Element) => {
     // always-visible panels, which stay open, still lose their phantom active
     // option after a commit). clearHighlight also removes aria-activedescendant.
     clearHighlight();
-    if (!alwaysVisible) options.classList.add("hidden");
+    if (!alwaysVisible) {
+      if (delegated) dropdownHost!.close();
+      else options.classList.add("hidden");
+    }
     syncExpanded();
   };
 
@@ -875,15 +894,20 @@ const initWidget = (containerElement: Element) => {
     }
   });
 
-  // ── Dismiss: Escape + outside mousedown via the shared bindPopupDismiss ──
-  // Deferred + re-callable so a reconnection (the nested filter builder moves
-  // rows) re-binds the document listeners without re-running initWidget, whose
-  // element-local listeners persist with the moved subtree. An `always-visible`
-  // panel reports open permanently — hidePanel only drops its highlight there.
+  // ── Dismiss ──
+  // When delegated (issue #348), the host <drop-down>'s attachMenu owns dismiss
+  // (outside-click + Escape/Tab), so bind nothing here — a second document
+  // listener would double-close. Standalone/legacy widgets keep the shared
+  // bindPopupDismiss. Deferred + re-callable so a reconnection (the nested filter
+  // builder moves rows) re-binds the document listeners without re-running
+  // initWidget, whose element-local listeners persist with the moved subtree. An
+  // `always-visible` panel reports open permanently — hidePanel only drops its
+  // highlight there.
+  if (delegated) return null;
   return (): (() => void) =>
     bindPopupDismiss({
       host: container,
-      isOpen: () => !options.classList.contains("hidden"),
+      isOpen: isPanelOpen,
       close: hidePanel,
     });
 };
@@ -1005,6 +1029,7 @@ export function readSearchSelect(form: HTMLElement): void {
 }
 
 export class SearchSelectElement extends HTMLElement {
+  private initialized = false;
   private bindDismiss: (() => () => void) | null = null;
   private cleanup: (() => void) | null = null;
 
@@ -1013,8 +1038,17 @@ export class SearchSelectElement extends HTMLElement {
     // re-appending them, which reconnects this element). The inner element
     // listeners persist with the moved subtree, so re-running initWidget would
     // double-bind them — instead just re-bind the document dismiss listeners
-    // that disconnectedCallback removed.
-    if (!this.bindDismiss) this.bindDismiss = initWidget(this) ?? null; // one-time
+    // that disconnectedCallback removed. initWidget returns a binder (standalone),
+    // null (delegated to a <drop-down> host, which owns dismiss — issue #348), or
+    // undefined when the inner markup isn't present yet (retry on next connect);
+    // only the first two count as initialised.
+    if (!this.initialized) {
+      const bindDismiss = initWidget(this);
+      if (bindDismiss !== undefined) {
+        this.bindDismiss = bindDismiss;
+        this.initialized = true;
+      }
+    }
     this.cleanup = this.bindDismiss?.() ?? null;
   }
 

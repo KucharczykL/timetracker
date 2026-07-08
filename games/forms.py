@@ -209,6 +209,10 @@ class SearchSelectWidget(forms.Widget):
                 placeholder=self.placeholder,
                 id=(attrs or {}).get("id", ""),
                 autofocus=autofocus,
+                # Host the form combobox in <drop-down behavior="inline-combobox">
+                # so its panel uses the shared attachMenu open/close/position/dismiss
+                # engine (issue #348). The widget's own input stays the trigger.
+                host_dropdown=True,
             )
         )
 
