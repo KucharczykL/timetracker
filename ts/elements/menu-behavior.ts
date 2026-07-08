@@ -39,6 +39,14 @@ export interface MenuOptions {
   // the toggle still anchors the *vertical* position (it aligns with the hovered
   // row). Defaults to the toggle.
   horizontalAnchor?: HTMLElement;
+  // The toggle's own inner control is a combobox input (the inline-combobox
+  // behavior): the panel opens on that input's focus/typing — driven by the
+  // hosted widget — not on a toggle click. So attachMenu neither wires the
+  // toggle click/keydown handlers (a click on a pill or the input must not
+  // toggle-close, and the widget owns Arrow/Escape) nor writes aria-expanded on
+  // the toggle (the widget owns it on the role="combobox" input). Everything
+  // else — positioning, outside-click/Escape/Tab close, single-open — is shared.
+  inlineTrigger?: boolean;
 }
 
 export interface MenuController {
@@ -80,6 +88,7 @@ export function attachMenu(
   const matchToggleWidth = options.matchToggleWidth ?? false;
   const isSubmenu = options.submenu ?? false;
   const horizontalAnchor = options.horizontalAnchor ?? toggle;
+  const inlineTrigger = options.inlineTrigger ?? false;
 
   // Items of *this* menu only — never those of a nested submenu (whose closest
   // [data-menu] is its own panel, not ours). Keeps roving/typeahead from
@@ -174,7 +183,7 @@ export function attachMenu(
     menu.style.position = "fixed";
     menu.hidden = false;
     positionMenu();
-    toggle.setAttribute("aria-expanded", "true");
+    if (!inlineTrigger) toggle.setAttribute("aria-expanded", "true");
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     document.dispatchEvent(
@@ -190,7 +199,7 @@ export function attachMenu(
     if (!isOpen()) return;
     menu.hidden = true;
     clearAnchoredPosition(menu);
-    toggle.setAttribute("aria-expanded", "false");
+    if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
     host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
@@ -235,37 +244,43 @@ export function attachMenu(
     }
   };
 
-  toggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    // Keyboard/synthetic clicks (Enter/Space, or activate()'s item.click()) report
-    // detail === 0 and focus the first item; a real mouse click (detail >= 1) opens
-    // without grabbing focus so hover drives the single highlight. A submenu opens
-    // idempotently (hover-opened on mouse, so the click must not toggle it closed).
-    const fromKeyboard = event.detail === 0;
-    if (isSubmenu || !isOpen()) {
-      open();
-      if (fromKeyboard) setActive(0);
-    } else {
-      close();
-    }
-  });
+  // An inline-combobox toggle opens on the hosted input's focus, not on a click,
+  // and the widget owns Arrow/Escape on that input — so skip both toggle
+  // handlers. Positioning, outside-click/Escape/Tab close, and single-open below
+  // are unaffected.
+  if (!inlineTrigger) {
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      // Keyboard/synthetic clicks (Enter/Space, or activate()'s item.click()) report
+      // detail === 0 and focus the first item; a real mouse click (detail >= 1) opens
+      // without grabbing focus so hover drives the single highlight. A submenu opens
+      // idempotently (hover-opened on mouse, so the click must not toggle it closed).
+      const fromKeyboard = event.detail === 0;
+      if (isSubmenu || !isOpen()) {
+        open();
+        if (fromKeyboard) setActive(0);
+      } else {
+        close();
+      }
+    });
 
-  toggle.addEventListener("keydown", (event) => {
-    // Arrow open/roving applies to a top-level toggle only. A submenu toggle is a
-    // menuitem in its parent menu, so ArrowDown/Up must bubble up to the parent's
-    // roving (it opens via ArrowRight / Enter — handled elsewhere), not open here.
-    if (!isSubmenu && event.key === "ArrowDown") {
-      event.preventDefault();
-      if (!isOpen()) open();
-      setActive(0);
-    } else if (!isSubmenu && event.key === "ArrowUp") {
-      event.preventDefault();
-      if (!isOpen()) open();
-      setActive(-1);
-    } else if (event.key === "Escape") {
-      close();
-    }
-  });
+    toggle.addEventListener("keydown", (event) => {
+      // Arrow open/roving applies to a top-level toggle only. A submenu toggle is a
+      // menuitem in its parent menu, so ArrowDown/Up must bubble up to the parent's
+      // roving (it opens via ArrowRight / Enter — handled elsewhere), not open here.
+      if (!isSubmenu && event.key === "ArrowDown") {
+        event.preventDefault();
+        if (!isOpen()) open();
+        setActive(0);
+      } else if (!isSubmenu && event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!isOpen()) open();
+        setActive(-1);
+      } else if (event.key === "Escape") {
+        close();
+      }
+    });
+  }
 
   menu.addEventListener("keydown", (event) => {
     // Let a nested submenu handle its own keys (the event bubbles up to us).

@@ -68,3 +68,53 @@ describe("attachMenu outside-click containment", () => {
     expect(controller.isOpen()).toBe(false);
   });
 });
+
+describe("attachMenu inlineTrigger (issue #348)", () => {
+  function mountInline(): {
+    host: HTMLElement;
+    toggle: HTMLElement;
+    controller: MenuController;
+  } {
+    document.body.innerHTML = `
+      <div id="host">
+        <div data-toggle><input data-search-select-search /></div>
+        <div data-menu hidden></div>
+      </div>
+      <button id="outside" type="button">elsewhere</button>`;
+    const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
+    const controller = attachMenu(host, toggle, menu, { inlineTrigger: true });
+    controller.bindDocument();
+    return { host, toggle, controller };
+  }
+
+  it("does not open on a toggle click (the input's focus is the trigger)", () => {
+    const { toggle, controller } = mountInline();
+    click(toggle);
+    expect(controller.isOpen()).toBe(false);
+  });
+
+  it("does not toggle-close when clicked while open", () => {
+    // A click inside the field (a pill, the input) must never close the panel.
+    const { toggle, controller } = mountInline();
+    controller.open();
+    click(toggle);
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("never writes aria-expanded on the toggle (the widget owns it on the input)", () => {
+    const { toggle, controller } = mountInline();
+    controller.open();
+    expect(toggle.hasAttribute("aria-expanded")).toBe(false);
+    controller.close();
+    expect(toggle.hasAttribute("aria-expanded")).toBe(false);
+  });
+
+  it("still closes on an outside click", () => {
+    const { controller } = mountInline();
+    controller.open();
+    click(document.querySelector("#outside") as HTMLElement);
+    expect(controller.isOpen()).toBe(false);
+  });
+});

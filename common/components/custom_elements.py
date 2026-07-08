@@ -755,7 +755,7 @@ def DropdownDivider() -> Node:
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
-type DropdownBehaviorName = Literal["menu", "select", "combobox"]
+type DropdownBehaviorName = Literal["menu", "select", "combobox", "inline-combobox"]
 
 
 def _assemble(

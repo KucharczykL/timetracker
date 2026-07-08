@@ -5,6 +5,7 @@ import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
 import "./behaviors/menu.js";
 import "./behaviors/select.js";
 import "./behaviors/combobox.js";
+import "./behaviors/inline-combobox.js";
 
 // Finds the element's own [data-toggle]/[data-menu], ignoring any that belong to
 // a nested <drop-down> (so a sub-dropdown never cross-wires its parent).
@@ -54,6 +55,14 @@ class DropdownElement extends HTMLElement {
     this.controller = controller;
     this.unbindDocument = controller.bindDocument();
     behavior?.wire?.({ host: this, toggle, menu, controller });
+  }
+
+  /** Open the dropdown programmatically. The inline-combobox host calls this
+   *  from its widget's focus/typing handlers (the input is the trigger, not a
+   *  toggle click). Idempotent — attachMenu's open() no-ops if already open.
+   *  Safe to call before connect/upgrade — no-op. */
+  open(): void {
+    this.controller?.open();
   }
 
   /** Close the dropdown programmatically (e.g. after a consumer handles a
