@@ -552,8 +552,9 @@ _Dropdown = custom_element_builder("drop-down")
 # rounded-lg / rounded-e-lg by shape; standalone consumers add their own),
 # variant="plain" the borderless navbar trigger.
 
-# Panel: white (light) / frosted (dark). Keeps the #46 overflow-hidden. Outline
-# adds a border; otherwise a shadow.
+# Panel: white (light) / frosted (dark). Clips horizontally; scrolls vertically
+# when the positioner caps its height (overflow-y lives here, not inline on the
+# JS geometry). Outline adds a border; otherwise a shadow.
 # NB: the dark-mode backdrop blur lives on a `::before` layer, NOT the panel.
 # A non-`none` backdrop-filter makes its element the containing block for `fixed`
 # descendants — so blurring the panel itself would (a) re-anchor the `fixed`
@@ -566,7 +567,7 @@ _Dropdown = custom_element_builder("drop-down")
 # looks like" (#295: unshared panel styling is how a text token ends up as a
 # background). Width is per-variant.
 _DROPDOWN_PANEL_SURFACE = (
-    "absolute z-20 overflow-hidden rounded-lg p-2 "
+    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-lg p-2 "
     "bg-white dark:bg-gray-800/40 text-sm "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
