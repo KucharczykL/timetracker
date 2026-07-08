@@ -549,7 +549,7 @@ def TimetrackerDocument(
                         Link(rel="stylesheet", href=static("base.css")),
                     ]
                 ],
-                Body(hx_indicator="#indicator", class_="bg-neutral-primary")[
+                Body(hx_indicator="#indicator", class_="bg-neutral-primary text-body")[
                     htmx_indicator,
                     Div(class_="flex flex-col min-h-screen")[
                         navbar,

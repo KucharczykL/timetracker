@@ -8,7 +8,6 @@ from django.db.models import (
     F,
     Sum,
 )
-
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -21,14 +20,17 @@ from common.components import (
     FilterCount,
     FilterGroup,
     FilterSummary,
-    Fragment,
-    PageHeading,
 )
+from common.components.custom_elements import (
+    FILTER_MODE_MODELS,
+    ButtonDropdown,
+    DropdownLinkItem,
+)
+from common.components.primitives import H1, ContentContainer, Span
 from common.layout import render_page
 from common.time import format_duration
-from common.components.custom_elements import FILTER_MODE_MODELS
 from games.filters import SessionFilter, filter_url, model_field_registry
-from games.models import Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase, Session
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
@@ -158,8 +160,26 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     per_page = request.GET.get("per_page", "")
     models_json = json.dumps(model_field_registry(model))
 
-    content = Fragment(
-        PageHeading(f"Filter {label}"),
+    def _item(model):
+        model_name = model._meta.verbose_name
+        model_label = model_name.title()
+        return DropdownLinkItem(
+            url=reverse("games:filter_builder", args=[model_name]),
+            label=model_label,
+        )
+
+    items = [_item(m) for m in [Device, Game, Platform, Purchase, Session]]
+
+    model_switcher = ButtonDropdown(
+        id="model-switcher", items=items, label=meta.verbose_name.title()
+    )
+
+    content = ContentContainer()[
+        H1()[
+            Span(class_="flex align-center gap-2")[
+                "Advanced filter builder for", model_switcher
+            ]
+        ],
         # The preset save/delete fetches send X-CSRFToken (filter-builder.ts reads the
         # csrftoken cookie, falling back to this hidden input). render_page/Page() do
         # NOT emit a CSRF token, so a standalone builder page would otherwise have
@@ -181,7 +201,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             endpoint=reverse("api-1.0.0:filter_count"),
         ),
         FilterGroup(model=model, filter=filter_json),
-    )
+    ]
     return render_page(request, content, title=f"Filter {label}")
 
 
