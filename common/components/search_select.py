@@ -644,10 +644,16 @@ def FilterSelect(
     types so the +/− buttons (and Enter) commit the typed string itself as an
     include / exclude pill.
 
+    The default ``layout="field"`` hosts itself in
+    ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
+    dismisses through the shared attachMenu engine (the search input is the
+    trigger — focus opens), mirroring :func:`SearchSelect` ``host_dropdown=True``.
+
     ``layout="panel"`` renders the same widget in the panel personality (see
     :data:`FilterSelectLayout`): pills in their own wrap row above a
     self-bordered search box, options always visible and flowing statically —
-    for hosting inside a :func:`ComboboxDropdown` dialog. State logic,
+    for hosting inside a :func:`ComboboxDropdown` dialog (which supplies the
+    drop-down at that level, so the panel layout stays bare here). State logic,
     templates, every ``data-search-select-*`` hook and the serializer DOM
     contract are identical to the field layout.
 
@@ -656,6 +662,10 @@ def FilterSelect(
     rather than a ``<label>`` next to the widget.
     """
     panel_layout = layout == "panel"
+    # The field layout hosts itself in <drop-down behavior="inline-combobox"> so its
+    # panel uses the shared attachMenu engine (the same hooks SearchSelect(host_dropdown)
+    # uses); the panel layout is hosted a level up by ComboboxDropdown, so it stays bare.
+    field_host = not panel_layout
     normalized_options = [_normalize_option(option) for option in (options or [])]
     normalized_included = [_normalize_option(option) for option in (included or [])]
     normalized_excluded = [_normalize_option(option) for option in (excluded or [])]
@@ -749,7 +759,8 @@ def FilterSelect(
         # FilterSelect is always multi (include/exclude pill sets).
         multi_select=True,
         templates=templates,
-        options_class=_PANEL_OPTIONS_CLASS if panel_layout else None,
+        options_class=_PANEL_OPTIONS_CLASS if panel_layout else _INLINE_OPTIONS_CLASS,
+        menu_target=field_host,
     )
     # The self-describe root attributes for the generic filter serializer. Only
     # Filter-layer callers pass ``path``; synthetic/test callers leave it None and
@@ -757,7 +768,11 @@ def FilterSelect(
     widget_attributes = (
         filter_widget_attributes(path, "set") if path is not None else []
     )
-    return _SearchSelect(
+    if field_host:
+        # The <search-select> element itself is the drop-down's [data-toggle]: its
+        # field box is the positioning anchor and its search input is the trigger.
+        widget_attributes = [("data-toggle", ""), *widget_attributes]
+    widget = _SearchSelect(
         widget_attributes,
         name=field_name,
         search_url=search_url,
@@ -771,6 +786,16 @@ def FilterSelect(
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
+    if not field_host:
+        return widget
+    # block (not the generic inline-flex) so the field keeps its full column width;
+    # attachMenu positions the [data-menu] panel fixed relative to the anchor.
+    return _Dropdown(
+        class_="block",
+        placement="bottom-start",
+        submenu="false",
+        behavior="inline-combobox",
+    )[widget]
 
 
 # ── Panel personality styling ───────────────────────────

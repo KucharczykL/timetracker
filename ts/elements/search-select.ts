@@ -105,12 +105,13 @@ const initWidget = (containerElement: Element) => {
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
 
-  // Issue #348: form comboboxes are hosted in <drop-down behavior="inline-combobox">,
-  // which owns the panel's open/close/positioning/dismiss through attachMenu. When
-  // hosted, this widget delegates showPanel/hidePanel to the host and reads panel
-  // visibility from the `hidden` attribute attachMenu toggles (not the `.hidden`
-  // class it uses standalone). No host (filter/preset modes, PR2 rows, bare test
-  // mounts) → the widget keeps owning visibility on its own panel via `.hidden`.
+  // Issue #348: form comboboxes and filter-builder field-layout rows are hosted in
+  // <drop-down behavior="inline-combobox">, which owns the panel's open/close/
+  // positioning/dismiss through attachMenu. When hosted, this widget delegates
+  // showPanel/hidePanel to the host and reads panel visibility from the `hidden`
+  // attribute attachMenu toggles (not the `.hidden` class it uses standalone). No
+  // host (the bare field picker, bare test mounts) → the widget keeps owning
+  // visibility on its own panel via `.hidden`.
   const dropdownHost = container.closest<HTMLElement & { open(): void; close(): void }>(
     "drop-down"
   );
