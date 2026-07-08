@@ -31,6 +31,9 @@ makemigrations:
 migrate: makemigrations
 	uv run --frozen python manage.py migrate
 
+devlogin: migrate
+	uv run --frozen python manage.py devlogin
+
 init: ensure-python
 	uv sync
 	pnpm install
@@ -70,7 +73,7 @@ dev: ensure-python gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
-		"uv run --frozen python -Wa manage.py runserver" \
+		"DEV_LOGIN_PREFILL=admin:admin uv run --frozen python -Wa manage.py runserver" \
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
 		"pnpm exec tsc --watch"
 

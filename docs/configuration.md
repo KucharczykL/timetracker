@@ -36,6 +36,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Time zone. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Default currency for new purchases when none is entered, and the FX conversion target for background price conversion. |
 | `DATA_DIR` | path | project root | no | Directory holding the SQLite database. Also read by `entrypoint.sh`. |
+| `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
 whitespace-trimmed, empty items dropped), `int`, `Path`, or any callable.

@@ -56,6 +56,10 @@ SECRET_KEY = config(
 APP_URL = config("APP_URL", default="http://localhost:8000")
 _derived_hosts, CSRF_TRUSTED_ORIGINS = derive_hosts_and_origins(APP_URL)
 
+# Dev/staging-only: when set to "username:password", the login page prefills those
+# credentials (see games/dev_login.py). Empty (the default) = off everywhere.
+DEV_LOGIN_PREFILL = config("DEV_LOGIN_PREFILL", default="")
+
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=None, cast=list) or _derived_hosts
 
 

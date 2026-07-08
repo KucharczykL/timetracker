@@ -77,6 +77,7 @@ against `direnv exec . make check` before pushing when possible.
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
 | Create superuser | `make createsuperuser` |
+| Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin` superuser; pairs with `DEV_LOGIN_PREFILL` — see Configuration) |
 | Format Python | `make format` (or `uv run ruff format`) |
 | Lint Python | `make lint` (or `uv run ruff check`) |
 | Auto-fix lint | `make lint-fix` (`ruff check --fix`) |
@@ -227,6 +228,7 @@ All configurable Django settings are read through `config()` in `timetracker/con
 - `APP_URL` accepts one full URL or a comma-separated list of full URLs; `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are derived from all listed URLs. `ALLOWED_HOSTS` can still be overridden directly (e.g. `ALLOWED_HOSTS=*` behind a reverse proxy); `CSRF_TRUSTED_ORIGINS` is always derived from `APP_URL`.
 - `TIME_ZONE` reads `TZ` (defaults `Europe/Prague` in debug, `UTC` in prod).
 - Django Admin, Debug Toolbar, and `django_extensions` are only available in `DEBUG` mode.
+- `DEV_LOGIN_PREFILL` (**dev/staging only**, empty/off by default): set to `username:password` to prefill the login form and send an `X-Robots-Tag: noindex` header — login still POSTs and authenticates (not a bypass). `make dev` sets it to `admin:admin`; `fly.staging.toml` sets it for the public staging box; `make devlogin` provisions that superuser idempotently. Parsed once (lru_cache) via `prefill_credentials()` in `games/dev_login.py`; malformed values fail safe (off + logged). All three prefill branches (`LoginView.get_initial`, `LoginForm` password `render_value`, the header) are flag-guarded, so production is inert.
 - **Container/entrypoint-only** flags (`PUID`, `PGID`, `CREATE_DEFAULT_SUPERUSER`, `STAGING`, `LOAD_SAMPLE_DATA`) live in `entrypoint.sh`, not the Python config — they are bootstrap concerns, not Django settings.
 - django-q2 cluster: 1 worker, 60s timeout, 120s retry, ORM broker
 
