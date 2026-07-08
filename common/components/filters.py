@@ -917,5 +917,11 @@ def FilterFieldPicker(
             multi_select=False,
             placeholder=placeholder,
             id=id,
+            # Host in <drop-down behavior="inline-combobox"> like every other
+            # combobox (issue #348). Cloned per leaf row by <filter-group>'s
+            # buildFieldCell, exactly as the set value widgets are — attachMenu
+            # owns open/close/positioning (fixed + flip, escaping the row's
+            # overflow/stacking context).
+            host_dropdown=True,
         )
     ]

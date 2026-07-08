@@ -393,9 +393,10 @@ def SearchSelect(
     ``host_dropdown`` (issue #348) wraps the widget in
     ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
     dismisses through the shared attachMenu engine (the widget's own search input
-    is the trigger — focus opens). Only the standalone add-form comboboxes
-    (``games/forms.py`` :class:`SearchSelectWidget`) pass it; the filter-builder
-    field picker and every filter/preset path leave it ``False`` and stay bare.
+    is the trigger — focus opens). The add-form comboboxes
+    (``games/forms.py`` :class:`SearchSelectWidget`) and the filter-builder field
+    picker (:func:`FilterFieldPicker`) pass it; the preset picker uses its own
+    ``behavior="combobox"`` host, and bare test mounts leave it ``False``.
 
     Pass ``option_groups`` instead of ``options`` to render a grouped panel
     (non-selectable header rows before each group's options); the two are mutually
