@@ -348,4 +348,50 @@ describe("<filter-builder>", () => {
 
     expect(fetchStub).not.toHaveBeenCalled();
   });
+
+  it("live-warns when the typed preset name collides with an existing one (#357)", async () => {
+    const { builder } = mount();
+    // GET /api/presets/ shape: an array of SearchSelectOptions (label = name).
+    const options = [{ value: 1, label: "Finished games", data: {} }];
+    const fetchStub = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(options), { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+
+    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]")!;
+    const warning = builder.querySelector<HTMLElement>("[data-preset-name-warning]")!;
+
+    // Focus fetches the existing names; once they arrive the hint re-evaluates
+    // against the already-typed value (fetch is async, so wait for it).
+    nameInput.value = "Finished games";
+    nameInput.dispatchEvent(new Event("focusin", { bubbles: true }));
+    await vi.waitFor(() => expect(warning.hidden).toBe(false));
+    expect(warning.textContent).toContain("already exists");
+
+    // A non-colliding name clears the hint.
+    nameInput.value = "Something new";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(warning.hidden).toBe(true);
+  });
+
+  it("remembers a just-saved name so re-typing it warns without a refetch (#357)", async () => {
+    const { builder } = mount();
+    const fetchStub = vi.fn(() =>
+      Promise.resolve(new Response(null, { status: 201 })),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    (window as unknown as Record<string, unknown>).toast = vi.fn();
+
+    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]")!;
+    const warning = builder.querySelector<HTMLElement>("[data-preset-name-warning]")!;
+
+    nameInput.value = "My preset";
+    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
+    // A successful save clears the field and caches the name (no GET fetch).
+    await vi.waitFor(() => expect(nameInput.value).toBe(""));
+
+    nameInput.value = "My preset";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(warning.hidden).toBe(false);
+  });
 });

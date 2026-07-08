@@ -1,6 +1,6 @@
 import { readFilterBuilderProps } from "../generated/props.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
-import { savePreset, wirePresetDelete } from "./presets.js";
+import { fetchPresetNames, savePreset, wirePresetDelete } from "./presets.js";
 import { applyUrl } from "./filter-url.js";
 
 // <filter-builder> — the builder-page toolbar (#196). Owns Load/Save preset,
@@ -47,6 +47,10 @@ export class FilterBuilderElement extends HTMLElement {
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
   private disposePresetDelete: (() => void) | null = null;
+  // The current user's preset names for this mode, fetched when the name input
+  // is focused, used to live-warn that saving would overwrite (#357). Empty
+  // until the first focus; a failed fetch leaves it empty (warning degrades off).
+  private presetNames = new Set<string>();
 
   // Build the toolbar buttons into this element. Called when the element is
   // test-created (no server-rendered children) so tests can querySelector for
@@ -62,6 +66,7 @@ export class FilterBuilderElement extends HTMLElement {
         <button type="button" data-save-preset="">Save as preset…</button>
         <button type="button" data-apply="">Apply</button>
         <button type="button" data-clear="">Clear</button>
+        <p data-preset-name-warning="" hidden role="status" aria-live="polite"></p>
       </div>`;
   }
 
@@ -75,6 +80,11 @@ export class FilterBuilderElement extends HTMLElement {
 
     this.ensureToolbar();
     this.addEventListener("click", this.onClick);
+    // focusin/input bubble (unlike focus), so one delegated listener each on the
+    // host covers the name input: refresh the known names on focus, re-check the
+    // collision hint on every keystroke.
+    this.addEventListener("focusin", this.onFocusIn);
+    this.addEventListener("input", this.onPresetNameInput);
     this.addEventListener("search-select:change", this.onPresetPick);
     this.disposePresetDelete = wirePresetDelete(this, this.presetApiUrl);
     this.changeListener = (event: Event): void => {
@@ -98,6 +108,8 @@ export class FilterBuilderElement extends HTMLElement {
       document.removeEventListener(FILTER_TREE_CHANGE_EVENT, this.changeListener);
       this.changeListener = null;
     }
+    this.removeEventListener("focusin", this.onFocusIn);
+    this.removeEventListener("input", this.onPresetNameInput);
     this.removeEventListener("search-select:change", this.onPresetPick);
     this.disposePresetDelete?.();
     this.disposePresetDelete = null;
@@ -176,6 +188,36 @@ export class FilterBuilderElement extends HTMLElement {
     );
   }
 
+  // Refresh the known preset names when the name input gains focus, then
+  // re-evaluate the hint (fetch is async — a fast typist may already have text).
+  private onFocusIn = (event: Event): void => {
+    if (!(event.target as HTMLElement).closest("[data-preset-name]")) return;
+    void fetchPresetNames(this.presetApiUrl, this.mode).then((names) => {
+      this.presetNames = names;
+      this.updatePresetNameWarning();
+    });
+  };
+
+  private onPresetNameInput = (event: Event): void => {
+    if (!(event.target as HTMLElement).closest("[data-preset-name]")) return;
+    this.updatePresetNameWarning();
+  };
+
+  // Show/hide the "already exists — saving overwrites it" hint for the typed
+  // name against the fetched set. Case- and whitespace-sensitive the same way
+  // the server's (user, mode, name) uniqueness is: fetchPresetNames trims.
+  private updatePresetNameWarning(): void {
+    const input = this.querySelector<HTMLInputElement>("[data-preset-name]");
+    const warning = this.querySelector<HTMLElement>("[data-preset-name-warning]");
+    if (!input || !warning) return;
+    const name = input.value.trim();
+    const collides = name !== "" && this.presetNames.has(name);
+    warning.hidden = !collides;
+    warning.textContent = collides
+      ? `A preset named "${name}" already exists — saving overwrites it.`
+      : "";
+  }
+
   private onSavePreset(): void {
     const input = this.querySelector<HTMLInputElement>("[data-preset-name]");
     const group = this.group();
@@ -194,7 +236,13 @@ export class FilterBuilderElement extends HTMLElement {
     }).then((response) => {
       // Keep the typed name around when the server rejected the save (its
       // error toast already fired) so the user can correct and retry.
-      if (response?.ok) input.value = "";
+      if (response?.ok) {
+        // The name now exists — remember it so a re-type warns without a
+        // refetch — then clear the field and drop the (now-stale) hint.
+        this.presetNames.add(name);
+        input.value = "";
+        this.updatePresetNameWarning();
+      }
     });
   }
 }
