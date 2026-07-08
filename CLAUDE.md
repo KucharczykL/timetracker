@@ -23,8 +23,13 @@ How to run commands (non-interactive tools/agents):
   `direnv allow .` once first (first load runs `shell.nix`'s `shellHook`:
   `uv venv --clear` + `uv sync`, so it's slow once).
 - **Fallback (no direnv):** `nix-shell --run "<command>"`.
-- A real browser for e2e is found from the system (`google-chrome`); the shell does
-  not vendor one.
+- A real browser for e2e is found from the system; the shell does not vendor one.
+  `e2e/conftest.py` discovers it in this order: the `E2E_CHROME` env var (an
+  explicit path — a missing file errors), then `google-chrome`/`chromium`/`chrome`
+  on `PATH` (Nix/CI), then well-known install locations (Windows `Program Files`
+  and macOS `/Applications`, where Chrome is normally *not* on `PATH`). So
+  `make test-e2e` works on Windows/macOS with a normal Chrome install and no
+  `playwright install` download; set `E2E_CHROME` only for a non-standard path.
 
 **Verification gate:** before declaring done / pushing / opening a PR, run the full
 `direnv exec . make check` (lint + format-check + mypy + ts-check + vitest + the
@@ -251,7 +256,7 @@ Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJAN
 
 **TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`, run with `make test-ts` (`vitest run`) — and automatically by `make test` (a prereq) and `make check`. vitest/Vite resolves the NodeNext-style `.js` import specifiers to the sibling `.ts`, so no compile step is needed; the test files are excluded from the emit build but type-checked by `make ts-check` (via `tsconfig.check.json`). The filter-tree serializer (`ts/elements/filter-tree/`, issue #188) is covered this way, plus a **cross-language contract** (`tests/test_filter_tree_contract.py`): the vitest suite writes `ts/elements/filter-tree/fixtures.canonical.json` (the serializer's actual output for the shared `fixtures.json` cases, gitignored) and the pytest test asserts each is `to_q()`-equivalent to the source filter — so the TS serializer cannot drift from the Python backend. The contract `skipif`-skips when the artifact is absent; `make check`/`make test` order `test-ts` first so it always runs there.
 
-**Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium; otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
+**Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium (discovered via `E2E_CHROME` → `PATH` → per-OS install locations — see the env section above); otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
 
 ## Conventions for AI assistants
 
