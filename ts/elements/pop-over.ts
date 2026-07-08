@@ -7,7 +7,11 @@
  * (a click/keyboard menu) or bindPopupDismiss (outside-click). The panel is
  * non-interactive text, so the pointer never needs to travel into it.
  */
-import { positionAnchored, type Side } from "./anchored-position.js";
+import {
+  clearAnchoredPosition,
+  positionAnchored,
+  type Side,
+} from "./anchored-position.js";
 
 // The arrow is an `w-2 h-2` (8px) square rotated 45°; half of it overhangs the
 // panel edge to form the tip.
@@ -128,9 +132,7 @@ class PopOverElement extends HTMLElement {
     if (!this.isOpen || !this.panel) return;
     this.isOpen = false;
     this.panel.hidden = true;
-    for (const property of ["position", "top", "left", "right", "bottom"]) {
-      this.panel.style.removeProperty(property);
-    }
+    clearAnchoredPosition(this.panel);
     document.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("scroll", this.reposition, true);
     window.removeEventListener("resize", this.reposition);

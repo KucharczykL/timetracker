@@ -3,8 +3,16 @@
 // keyboard navigation, and single-open coordination. Driven by the generic
 // <drop-down> element; type-specific wiring lives in the registered behaviors
 // (menu, select). The bottom-* panel geometry is the shared positionAnchored
-// (also used by the pop-over tooltip); the right-start submenu keeps its own.
-import { type Align, positionAnchored, VIEWPORT_MARGIN } from "./anchored-position.js";
+// (also used by the pop-over tooltip); the right-start submenu keeps its own
+// flip/first-item geometry but shares the pin/clamp/clear scaffold.
+import {
+  type Align,
+  clampLeftToViewport,
+  clearAnchoredPosition,
+  pinFixedAndMeasureOrigin,
+  positionAnchored,
+  VIEWPORT_MARGIN,
+} from "./anchored-position.js";
 
 export type MenuPlacement =
   | "bottom-start"
@@ -114,30 +122,9 @@ export function attachMenu(
   // rather than in the shared positioner.
   const positionSubmenu = (): void => {
     const rect = toggle.getBoundingClientRect();
-    menu.style.position = "fixed";
-    menu.style.overflowY = "auto";
-    menu.style.right = "auto";
-    menu.style.bottom = "auto";
-
-    // A transformed/filtered ancestor (e.g. a nested submenu's backdrop-blur
-    // parent panel) becomes the containing block for `position: fixed`, so fixed
-    // coords are relative to it, not the viewport. Pin to (0,0) to measure that
-    // origin, then convert viewport coords by subtracting it.
-    menu.style.left = "0px";
-    menu.style.top = "0px";
-    const origin = menu.getBoundingClientRect();
-
-    const clampLeft = (left: number): number =>
-      Math.max(
-        VIEWPORT_MARGIN,
-        Math.min(left, window.innerWidth - menu.offsetWidth - VIEWPORT_MARGIN),
-      );
-    const setLeft = (viewportLeft: number): void => {
-      menu.style.left = `${clampLeft(viewportLeft) - origin.x}px`;
-    };
-    const setTop = (viewportTop: number): void => {
-      menu.style.top = `${viewportTop - origin.y}px`;
-    };
+    // Shared scaffold: pin fixed and measure the containing-block origin. Only
+    // the flip/first-item/gap geometry below is submenu-specific.
+    const origin = pinFixedAndMeasureOrigin(menu, { scrollable: true });
 
     const anchor = horizontalAnchor.getBoundingClientRect();
     // Align the flyout's FIRST ITEM with the toggle row, not the panel's
@@ -153,26 +140,11 @@ export function attachMenu(
     const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
     menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
     // SUBMENU_GAP of daylight on whichever side the flyout opens.
-    setLeft(
-      openLeft ? anchor.left - menuWidth - SUBMENU_GAP : anchor.right + SUBMENU_GAP,
-    );
-    setTop(rect.top - firstItemInset);
-  };
-
-  const clearPosition = (): void => {
-    for (const property of [
-      "position",
-      "top",
-      "bottom",
-      "left",
-      "right",
-      "width",
-      "min-width",
-      "max-height",
-      "overflow-y",
-    ]) {
-      menu.style.removeProperty(property);
-    }
+    const viewportLeft = openLeft
+      ? anchor.left - menuWidth - SUBMENU_GAP
+      : anchor.right + SUBMENU_GAP;
+    menu.style.left = `${clampLeftToViewport(menu, viewportLeft) - origin.x}px`;
+    menu.style.top = `${rect.top - firstItemInset - origin.y}px`;
   };
 
   const reposition = (): void => {
@@ -217,7 +189,7 @@ export function attachMenu(
   const close = (): void => {
     if (!isOpen()) return;
     menu.hidden = true;
-    clearPosition();
+    clearAnchoredPosition(menu);
     toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
