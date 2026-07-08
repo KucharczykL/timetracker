@@ -160,6 +160,16 @@ export function attachMenu(
     if (!menu.hidden) positionMenu();
   };
 
+  // The panel is `fixed` (see open()), so it does not auto-follow the toggle the
+  // way an `absolute top-full` panel would. A multi-select toggle (e.g. the
+  // add-purchase `games` field) grows/shrinks as pills are added/removed while
+  // the panel is open, with no scroll/resize to fire — so observe the toggle's
+  // box and reposition on any size change. Only connected while open (below) to
+  // avoid churn; also covers future inline-trigger consumers and content-height
+  // changes generally.
+  const resizeObserver =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+
   const isOpen = (): boolean => !menu.hidden;
 
   const setActive = (index: number): void => {
@@ -186,6 +196,7 @@ export function attachMenu(
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "true");
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
+    resizeObserver?.observe(toggle);
     document.dispatchEvent(
       new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
     );
@@ -202,6 +213,7 @@ export function attachMenu(
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
+    resizeObserver?.disconnect();
     host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
   };
 
