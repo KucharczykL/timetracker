@@ -675,7 +675,11 @@ def _sessions_section(game: Game) -> Node:
 def _playevents_section(game: Game) -> Node:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
-    table = StyledTable(columns=data["columns"], rows=data["rows"])
+    # This embedded mini-table isn't a sortable list view (no ?sort= handling on
+    # the detail page), so render plain headers like the sibling sections do —
+    # drop the sort keys the shared list-view builder now sets (#343).
+    plain_columns = [column._replace(sort_key=None) for column in data["columns"]]
+    table = StyledTable(columns=plain_columns, rows=data["rows"])
     section = _game_section(
         "Play Events",
         playevents.count(),
