@@ -24,8 +24,12 @@ class ModalDialogElement extends HTMLElement {
     if (this.getAttribute("data-manage") === "false") return;
     // Anchor the outside-click dismiss on the panel, not the overlay: a click
     // on the backdrop is "outside" the panel (but inside the overlay), so
-    // bindPopupDismiss closes it; a click inside the panel does not.
-    const panel = this.querySelector<HTMLElement>("[data-modal-panel]") ?? this;
+    // bindPopupDismiss closes it; a click inside the panel does not. The Modal
+    // component always renders [data-modal-panel]; bail (rather than fall back to
+    // `this`, which would treat a backdrop click as inside and silently kill
+    // backdrop-dismiss) if the contract is ever broken.
+    const panel = this.querySelector<HTMLElement>("[data-modal-panel]");
+    if (!panel) return;
     this.addEventListener("click", this.onClick);
     this.cleanup = bindPopupDismiss({
       host: panel,

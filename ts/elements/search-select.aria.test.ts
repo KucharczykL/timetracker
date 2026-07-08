@@ -120,6 +120,30 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     expect(search.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("re-binds dismiss on reconnect without re-initialising (#303)", () => {
+    // The filter builder moves rows, disconnecting then reconnecting this
+    // element. initWidget must run once (element-local listeners persist with
+    // the moved subtree); only the document dismiss listeners re-bind.
+    const host = mountSingle("games");
+    const search = searchOf(host);
+    const parent = host.parentElement!;
+    const listboxIdBefore = panelOf(host).id;
+
+    parent.removeChild(host); // disconnectedCallback -> drop document listeners
+    parent.appendChild(host); // connectedCallback -> re-bind, NOT re-init
+
+    // initWidget did not re-run: the listbox id (assigned once per init from a
+    // module counter) is unchanged. A re-init would mint a fresh id.
+    expect(panelOf(host).id).toBe(listboxIdBefore);
+
+    // The outside-mousedown dismiss still works, so the document listeners were
+    // re-bound by the reconnect (not left dangling from the first mount).
+    search.dispatchEvent(new Event("focus"));
+    expect(panelOf(host).classList.contains("hidden")).toBe(false);
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(panelOf(host).classList.contains("hidden")).toBe(true);
+  });
+
   it("clears the highlight when a single-select option is click-committed", () => {
     const host = mountSingle("games");
     const search = searchOf(host);

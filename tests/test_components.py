@@ -1120,11 +1120,13 @@ class PopOverContractTest(unittest.TestCase):
         # Trigger carries the hook + aria-describedby -> the panel id.
         self.assertIn("data-pop-over-trigger", html)
         self.assertIn('aria-describedby="pid"', html)
-        # Panel is a role="tooltip" that starts hidden.
+        # Panel is a role="tooltip" that starts hidden. Assert the hidden
+        # ATTRIBUTE on the panel itself — a bare assertIn("hidden") would also
+        # match the decoration-dotted JIT-safety span and pass even if the
+        # closed-state attribute were dropped (every tooltip rendering open).
         self.assertIn("data-pop-over-panel", html)
-        self.assertIn('role="tooltip"', html)
+        self.assertRegex(html, r'role="tooltip"\s+hidden')
         self.assertIn('id="pid"', html)
-        self.assertIn("hidden", html)
 
     def test_media_auto_attached(self):
         node = components.Popover("tip", wrapped_content="word")

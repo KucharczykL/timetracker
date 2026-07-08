@@ -453,7 +453,7 @@ def TimetrackerDocument(
     for the whole page. The `scripts` argument remains for page-specific glue
     that isn't owned by a reusable component (e.g. the add-form helpers).
     """
-    from common.components import ModuleScript, StaticScript, collect_media
+    from common.components import Media, ModuleScript, StaticScript, collect_media
     from games.views.general import global_current_year, model_counts
 
     counts = model_counts(request)
@@ -473,8 +473,6 @@ def TimetrackerDocument(
     # (<modal-dialog>, issue #303) on every page, and the swapped-in fragment
     # carries no script of its own — so its dismiss element must be defined
     # page-globally, like the toast container's toast.js.
-    from common.components import Media
-
     media = (
         collect_media(content)
         + collect_media(navbar)

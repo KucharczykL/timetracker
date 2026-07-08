@@ -47,7 +47,9 @@ function positionPanel(host: HTMLElement, panel: HTMLElement): void {
   const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
   const spaceAbove = rect.top - VIEWPORT_MARGIN;
   const openUp = height > spaceBelow && spaceAbove > spaceBelow;
-  const top = openUp ? rect.top - height : rect.bottom;
+  // Clamp the flipped-up case to the viewport top so a tall tooltip near the
+  // top edge doesn't take a negative `top` and clip off-screen.
+  const top = Math.max(VIEWPORT_MARGIN, openUp ? rect.top - height : rect.bottom);
 
   panel.style.left = `${left - origin.x}px`;
   panel.style.top = `${top - origin.y}px`;
@@ -60,8 +62,13 @@ class PopOverElement extends HTMLElement {
   connectedCallback(): void {
     this.panel = this.querySelector<HTMLElement>("[data-pop-over-panel]");
     if (!this.panel) return;
-    // Hover and keyboard-focus both reveal the tooltip; focusin/out bubble, so
-    // focusing a wrapping <a> (the common NameWithIcon case) still triggers it.
+    // Hover reveals the tooltip; keyboard focus also reveals it when the
+    // focusable element is INSIDE the pop-over (e.g. PopoverIf wrapping a
+    // button) — focusin/out bubble up to this host. For the common NameWithIcon
+    // case the focusable <a> is an ANCESTOR of <pop-over>, so its focusin
+    // bubbles up past this element, not into it; those keyboard users rely on
+    // hover plus the aria-describedby link to the panel text (parity with the
+    // old Flowbite popover, whose non-focusable trigger span behaved the same).
     this.addEventListener("mouseenter", this.show);
     this.addEventListener("mouseleave", this.hide);
     this.addEventListener("focusin", this.show);

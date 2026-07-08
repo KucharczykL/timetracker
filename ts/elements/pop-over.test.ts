@@ -45,4 +45,16 @@ describe("<pop-over> tooltip (#303)", () => {
     );
     expect(panel.hidden).toBe(true);
   });
+
+  it("stays open when focus moves within the element", () => {
+    const { host, panel } = mount();
+    host.dispatchEvent(new FocusEvent("focusin"));
+    expect(panel.hidden).toBe(false);
+    // relatedTarget is a descendant of the host -> onFocusOut must NOT hide.
+    const inner = host.querySelector<HTMLElement>("[data-pop-over-trigger]")!;
+    host.dispatchEvent(
+      new FocusEvent("focusout", { relatedTarget: inner, bubbles: true }),
+    );
+    expect(panel.hidden).toBe(false);
+  });
 });
