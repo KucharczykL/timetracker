@@ -10,6 +10,11 @@ import { applyUrl } from "./filter-url.js";
 // consumes its events — search-select:change to load the picked filter,
 // search-select:action (via wirePresetDelete) for per-row deletion.
 
+// The Save button's resting label — must match the server-rendered button text
+// (custom_elements.py FilterBuilder) so reverting off a collision restores it
+// exactly. updatePresetNameWarning swaps it to "Overwrite preset" on a collision.
+const SAVE_PRESET_LABEL = "Save as preset…";
+
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
   return (
     element instanceof HTMLElement &&
@@ -63,7 +68,7 @@ export class FilterBuilderElement extends HTMLElement {
       <div class="flex flex-wrap gap-3 items-center mb-4">
         <div data-preset-picker=""></div>
         <input type="text" data-preset-name="" placeholder="Preset name…" />
-        <button type="button" data-save-preset="">Save as preset…</button>
+        <button type="button" data-save-preset="">${SAVE_PRESET_LABEL}</button>
         <button type="button" data-apply="">Apply</button>
         <button type="button" data-clear="">Clear</button>
         <p data-preset-name-warning="" hidden role="status" aria-live="polite"></p>
@@ -204,11 +209,14 @@ export class FilterBuilderElement extends HTMLElement {
   };
 
   // Show/hide the "already exists — saving overwrites it" hint for the typed
-  // name against the fetched set. Case- and whitespace-sensitive the same way
+  // name against the fetched set, and relabel the Save button to "Overwrite" on
+  // a collision so the state is also carried on the button's accessible name
+  // (not only the live-region hint). Case- and whitespace-sensitive the same way
   // the server's (user, mode, name) uniqueness is: fetchPresetNames trims.
   private updatePresetNameWarning(): void {
     const input = this.querySelector<HTMLInputElement>("[data-preset-name]");
     const warning = this.querySelector<HTMLElement>("[data-preset-name-warning]");
+    const saveButton = this.querySelector<HTMLButtonElement>("[data-save-preset]");
     if (!input || !warning) return;
     const name = input.value.trim();
     const collides = name !== "" && this.presetNames.has(name);
@@ -216,6 +224,9 @@ export class FilterBuilderElement extends HTMLElement {
     warning.textContent = collides
       ? `A preset named "${name}" already exists — saving overwrites it.`
       : "";
+    if (saveButton) {
+      saveButton.textContent = collides ? "Overwrite preset" : SAVE_PRESET_LABEL;
+    }
   }
 
   private onSavePreset(): void {
