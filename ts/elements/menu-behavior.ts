@@ -2,7 +2,9 @@
 // positioning, instant open/close (no animation — by design), ARIA wiring, full
 // keyboard navigation, and single-open coordination. Driven by the generic
 // <drop-down> element; type-specific wiring lives in the registered behaviors
-// (menu, select).
+// (menu, select). The bottom-* panel geometry is the shared positionAnchored
+// (also used by the pop-over tooltip); the right-start submenu keeps its own.
+import { type Align, positionAnchored, VIEWPORT_MARGIN } from "./anchored-position.js";
 
 export type MenuPlacement =
   | "bottom-start"
@@ -43,7 +45,6 @@ export interface MenuController {
   bindDocument: () => () => void;
 }
 
-const VIEWPORT_MARGIN = 8;
 // A hairline gap between a submenu flyout and its parent panel edge. Purely
 // aesthetic: flush edges read as one merged surface; 1px of daylight makes the
 // flyout legible as a distinct, layered panel without looking detached.
@@ -85,8 +86,36 @@ export function attachMenu(
 
   // The menu is positioned `fixed` while open so it escapes any clipping
   // ancestor (e.g. a table's overflow wrapper, issue #39) and flips when there
-  // isn't enough room in the preferred direction.
+  // isn't enough room in the preferred direction. bottom-* placements share the
+  // generic positionAnchored (with the tooltip); the right-start submenu flyout
+  // has its own anchor/first-item geometry below.
   const positionMenu = (): void => {
+    if (placement === "right-start") {
+      positionSubmenu();
+      return;
+    }
+    const align: Align =
+      placement === "bottom-end"
+        ? "end"
+        : placement === "bottom-center"
+          ? "center"
+          : "start";
+    positionAnchored(toggle, menu, {
+      align,
+      side: "bottom",
+      gap: 0,
+      // matchToggleWidth was only ever honored for the bottom-start branch.
+      matchWidth: matchToggleWidth && align === "start",
+      scrollable: true,
+    });
+  };
+
+  // The submenu flyout (right-start): the horizontal anchor (its parent panel
+  // edge) governs left/right and the flip decision; the toggle governs the
+  // vertical position so the flyout lines up with the hovered row. This geometry
+  // is submenu-specific (first-item alignment, SUBMENU_GAP), so it stays here
+  // rather than in the shared positioner.
+  const positionSubmenu = (): void => {
     const rect = toggle.getBoundingClientRect();
     menu.style.position = "fixed";
     menu.style.overflowY = "auto";
@@ -113,51 +142,24 @@ export function attachMenu(
       menu.style.top = `${viewportTop - origin.y}px`;
     };
 
-    if (placement === "right-start") {
-      // Horizontal anchor (panel edge for a submenu) governs left/right and the
-      // flip decision; the toggle governs the vertical position so the flyout
-      // lines up with the hovered row.
-      const anchor = horizontalAnchor.getBoundingClientRect();
-      // Align the flyout's FIRST ITEM with the toggle row, not the panel's
-      // border-box top — the panel's own top padding/border would otherwise push
-      // the first row down by that amount. Measured from the live layout, so it
-      // tracks any padding/border/header change instead of a hardcoded offset.
-      const items = enabledItems();
-      const firstItemInset = items.length
-        ? items[0].getBoundingClientRect().top - origin.y
-        : 0;
-      const menuWidth = menu.offsetWidth;
-      const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
-      const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
-      menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
-      // SUBMENU_GAP of daylight on whichever side the flyout opens.
-      setLeft(
-        openLeft ? anchor.left - menuWidth - SUBMENU_GAP : anchor.right + SUBMENU_GAP,
-      );
-      setTop(rect.top - firstItemInset);
-      return;
-    }
-
-    const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
-    const spaceAbove = rect.top - VIEWPORT_MARGIN;
-    const openUp = menu.scrollHeight > spaceBelow && spaceAbove > spaceBelow;
-    menu.style.maxHeight = `${Math.max(0, openUp ? spaceAbove : spaceBelow)}px`;
-
-    if (placement === "bottom-end") {
-      setLeft(rect.right - menu.offsetWidth);
-    } else if (placement === "bottom-center") {
-      // Center the panel under the toggle's midpoint (clampLeft keeps it on-screen).
-      setLeft(rect.left + rect.width / 2 - menu.offsetWidth / 2);
-    } else {
-      if (matchToggleWidth) {
-        menu.style.minWidth = `${rect.width}px`;
-        menu.style.width = "max-content";
-      }
-      setLeft(rect.left);
-    }
-    // Anchor with `top` in both directions (not `bottom`) so the single
-    // origin-offset conversion covers the flip-up case too.
-    setTop(openUp ? rect.top - menu.offsetHeight : rect.bottom);
+    const anchor = horizontalAnchor.getBoundingClientRect();
+    // Align the flyout's FIRST ITEM with the toggle row, not the panel's
+    // border-box top — the panel's own top padding/border would otherwise push
+    // the first row down by that amount. Measured from the live layout, so it
+    // tracks any padding/border/header change instead of a hardcoded offset.
+    const items = enabledItems();
+    const firstItemInset = items.length
+      ? items[0].getBoundingClientRect().top - origin.y
+      : 0;
+    const menuWidth = menu.offsetWidth;
+    const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
+    const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
+    menu.style.maxHeight = `${Math.max(0, window.innerHeight - rect.top - VIEWPORT_MARGIN)}px`;
+    // SUBMENU_GAP of daylight on whichever side the flyout opens.
+    setLeft(
+      openLeft ? anchor.left - menuWidth - SUBMENU_GAP : anchor.right + SUBMENU_GAP,
+    );
+    setTop(rect.top - firstItemInset);
   };
 
   const clearPosition = (): void => {
