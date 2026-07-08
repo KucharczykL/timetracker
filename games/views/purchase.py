@@ -428,7 +428,7 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
             )["Refund"],
             ControlButton(
                 color="gray",
-                onclick="this.closest('#refund-confirmation-modal').remove()",
+                data_modal_dismiss="",
             )["Cancel"],
         ],
     ]
@@ -488,7 +488,7 @@ def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
             )["Split"],
             ControlButton(
                 color="gray",
-                onclick="this.closest('#split-confirmation-modal').remove()",
+                data_modal_dismiss="",
             )["Cancel"],
         ],
     ]

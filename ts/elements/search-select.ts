@@ -32,6 +32,7 @@
  */
 
 import { isPresenceModifier } from "./filter-tokens.js";
+import { bindPopupDismiss } from "../utils.js";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -874,12 +875,17 @@ const initWidget = (containerElement: Element) => {
     }
   });
 
-  // ── Close panel on outside click ──
-  const onDocumentClick = (event: MouseEvent) => {
-    if (!container.contains(event.target as Node)) hidePanel();
-  };
-  document.addEventListener("click", onDocumentClick);
-  return onDocumentClick;
+  // ── Dismiss: Escape + outside mousedown via the shared bindPopupDismiss ──
+  // Deferred + re-callable so a reconnection (the nested filter builder moves
+  // rows) re-binds the document listeners without re-running initWidget, whose
+  // element-local listeners persist with the moved subtree. An `always-visible`
+  // panel reports open permanently — hidePanel only drops its highlight there.
+  return (): (() => void) =>
+    bindPopupDismiss({
+      host: container,
+      isOpen: () => !options.classList.contains("hidden"),
+      close: hidePanel,
+    });
 };
 
 /** Minimal escape for use inside an attribute-value selector. */
@@ -999,21 +1005,17 @@ export function readSearchSelect(form: HTMLElement): void {
 }
 
 export class SearchSelectElement extends HTMLElement {
-  private onDocumentClick: ((event: MouseEvent) => void) | null = null;
-  private initialized = false;
+  private bindDismiss: (() => () => void) | null = null;
+  private cleanup: (() => void) | null = null;
 
   connectedCallback(): void {
     // Idempotent across DOM moves (the nested filter builder reconciles rows by
     // re-appending them, which reconnects this element). The inner element
     // listeners persist with the moved subtree, so re-running initWidget would
-    // double-bind them — instead just re-attach the outside-click listener that
-    // disconnectedCallback removed.
-    if (this.initialized) {
-      if (this.onDocumentClick) document.addEventListener("click", this.onDocumentClick);
-      return;
-    }
-    this.initialized = true;
-    this.onDocumentClick = initWidget(this) as ((event: MouseEvent) => void) | null;
+    // double-bind them — instead just re-bind the document dismiss listeners
+    // that disconnectedCallback removed.
+    if (!this.bindDismiss) this.bindDismiss = initWidget(this) ?? null; // one-time
+    this.cleanup = this.bindDismiss?.() ?? null;
   }
 
   /** Programmatically commit a selection without firing a change event.
@@ -1036,8 +1038,10 @@ export class SearchSelectElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    // Keep the handler reference so a reconnection can re-attach it (see above).
-    if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick);
+    // Drop the document dismiss listeners; the bindDismiss binder is kept so a
+    // reconnection can re-attach them (see above).
+    this.cleanup?.();
+    this.cleanup = null;
   }
 }
 

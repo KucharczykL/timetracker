@@ -469,6 +469,27 @@ class YearPickerProps(TypedDict):
 register_element("year-picker", "YearPicker", YearPickerProps)
 
 
+class PopOverProps(TypedDict):
+    pass
+
+
+# The <pop-over> hover/focus tooltip. Its builder (_PopOver) lives in
+# primitives.py next to _popover_html; registration is codegen-only. The element
+# reads no scalar props (plain data-* attributes + the tooltip id), so the schema
+# is empty.
+register_element("pop-over", "PopOver", PopOverProps)
+
+
+class ModalDialogProps(TypedDict):
+    pass
+
+
+# The <modal-dialog> confirm-overlay element. Its builder (_ModalDialog) lives in
+# primitives.py next to the Modal component. It reads only the `data-manage` flag
+# (via getAttribute, not codegen), so the schema is empty.
+register_element("modal-dialog", "ModalDialog", ModalDialogProps)
+
+
 def SelectionFields(
     *,
     source: str,

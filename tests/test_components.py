@@ -340,7 +340,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
                 ],
             )
         )
-        self.assertTrue(str(result).startswith("<span data-popover-target"))
+        self.assertTrue(str(result).startswith("<pop-over"))
 
     def test_name_with_icon_output_not_escaped(self):
         result = str(components.NameWithIcon(name="Test", linkify=False))
@@ -961,6 +961,26 @@ class ModalContractTest(SimpleTestCase):
         # the original, unsubscripted modal has no child media
         self.assertNotIn("modal-c.js", components.collect_media(base).js)
 
+    def test_renders_modal_dialog_element_with_dismiss_contract(self):
+        # The overlay is the <modal-dialog> custom element carrying the dialog
+        # role/aria + the panel hook the shared dismiss anchors on.
+        html = str(components.Modal("m3")[components.Div()["x"]])
+        self.assertTrue(html.startswith("<modal-dialog"))
+        self.assertIn('role="dialog"', html)
+        self.assertIn('aria-modal="true"', html)
+        self.assertIn("data-modal-panel", html)
+        # Self-managing by default; the element wires Escape/backdrop dismiss.
+        self.assertIn('data-manage="true"', html)
+        self.assertIn(
+            "dist/elements/modal-dialog.js",
+            components.collect_media(components.Modal("m3")).js,
+        )
+
+    def test_self_dismiss_false_marks_element_inert(self):
+        # The session-reset overlay opts out — <session-actions> manages it.
+        html = str(components.Modal("m4", self_dismiss=False)[components.Div()["x"]])
+        self.assertIn('data-manage="false"', html)
+
 
 class DropdownActionItemContractTest(SimpleTestCase):
     """DropdownActionItem: label is the [] slot; htpy kwargs are button hooks."""
@@ -1000,7 +1020,7 @@ class PopoverTruncatedTest(unittest.TestCase):
         truncated = components.truncate(long_text, 30)
         self.assertNotEqual(result, truncated)
         # Should contain popover markers
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
 
     def test_custom_ellipsis_used(self):
         long_text = "a" * 50
@@ -1028,12 +1048,12 @@ class PopoverTruncatedTest(unittest.TestCase):
         text = "a" * 31
         result = str(components.PopoverTruncated(text))
         # 31 chars exceeds default length of 30, so should be truncated
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
 
     def test_length_zero(self):
         result = str(components.PopoverTruncated("hello", length=0))
         # Even empty length triggers popover for any content
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
 
 
 class TruncateInfoTest(unittest.TestCase):
@@ -1068,19 +1088,48 @@ class PopoverIfTest(unittest.TestCase):
         button = components.ControlButton()["Click"]
         result = components.PopoverIf(False, "full text", button)
         self.assertIs(result, button)
-        self.assertNotIn("data-popover-target", str(result))
+        self.assertNotIn("<pop-over", str(result))
 
     def test_true_condition_wraps_node_in_popover(self):
         button = components.ControlButton()["Click"]
         result = str(components.PopoverIf(True, "full text", button))
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
         self.assertIn("<button", result)
         self.assertIn("full text", result)
 
     def test_explicit_id_used(self):
         result = str(components.PopoverIf(True, "content", "wrapped", id="my-popover"))
-        self.assertIn('data-popover-target="my-popover"', result)
+        self.assertIn('aria-describedby="my-popover"', result)
         self.assertIn('id="my-popover"', result)
+
+
+class PopOverContractTest(unittest.TestCase):
+    """The <pop-over> tooltip element contract."""
+
+    def test_renders_pop_over_element(self):
+        html = str(components.Popover("tip", wrapped_content="word", id="pid"))
+        # A <pop-over> wrapping a trigger + panel; no data-popover/popper attrs.
+        self.assertNotIn("data-popover-target", html)
+        self.assertNotIn("data-popper-arrow", html)
+        self.assertTrue(html.startswith("<pop-over"))
+        self.assertIn("</pop-over>", html)
+
+    def test_trigger_describes_panel(self):
+        html = str(components.Popover("tip", wrapped_content="word", id="pid"))
+        # Trigger carries the hook + aria-describedby -> the panel id.
+        self.assertIn("data-pop-over-trigger", html)
+        self.assertIn('aria-describedby="pid"', html)
+        # Panel is a role="tooltip" that starts hidden. Assert the hidden
+        # ATTRIBUTE on the panel itself — a bare assertIn("hidden") would also
+        # match the decoration-dotted JIT-safety span and pass even if the
+        # closed-state attribute were dropped (every tooltip rendering open).
+        self.assertIn("data-pop-over-panel", html)
+        self.assertRegex(html, r'role="tooltip"\s+hidden')
+        self.assertIn('id="pid"', html)
+
+    def test_media_auto_attached(self):
+        node = components.Popover("tip", wrapped_content="word")
+        self.assertIn("dist/elements/pop-over.js", components.collect_media(node).js)
 
 
 class ModelDependentComponentsTest(django.test.TestCase):
@@ -1164,7 +1213,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         # floatformat rounds to 1 decimal: 29.99 -> 30.0
         self.assertIn("30.0", result)
         self.assertIn("USD", result)
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
 
     def test_linked_purchase_single_game(self):
         platform = self._create_platform(icon="steam")
@@ -1211,7 +1260,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         purchase.name = "Bundle"
         purchase.save()
         result = str(components.LinkedPurchase(purchase))
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
         self.assertIn("Game A", result)
         self.assertIn("Game B", result)
 
@@ -1233,7 +1282,7 @@ class PurchaseTruncatedTest(unittest.TestCase):
         text = "a" * 50
         result = str(components.PopoverTruncated(text, length=10, endpart="x"))
         # endpart=x takes 1 char, so content gets truncated at 9 chars
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
         self.assertIn("x", result)
 
     def test_no_truncation_no_ellipsis(self):
@@ -1243,7 +1292,7 @@ class PurchaseTruncatedTest(unittest.TestCase):
     def test_custom_length(self):
         text = "hello world"
         result = str(components.PopoverTruncated(text, length=6))
-        self.assertIn("data-popover-target", result)
+        self.assertIn("<pop-over", result)
 
 
 class NameWithIconPlatformTest(django.test.TestCase):

@@ -176,3 +176,66 @@ def test_split_purchase_action(authenticated_page: Page, live_server):
     # the UI (not the ORM) to avoid live_server/SQLite write-read contention.
     expect(page.locator(f"#purchase-row-{bundle.id}")).to_have_count(0)
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(2)
+
+
+def test_split_modal_dismisses_on_escape_and_backdrop(
+    authenticated_page: Page, live_server
+):
+    """The confirm modal is a <modal-dialog>: Escape and a backdrop click close
+    it."""
+    page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    game_a = Game.objects.create(name="Alpha Game", platform=platform)
+    game_b = Game.objects.create(name="Beta Game", platform=platform)
+    bundle = Purchase.objects.create(
+        price=30.0,
+        price_currency="USD",
+        date_purchased=date(2025, 1, 1),
+        platform=platform,
+        ownership_type=Purchase.DIGITAL,
+        type=Purchase.GAME,
+    )
+    bundle.games.set([game_a, game_b])
+
+    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
+    modal = page.locator("#split-confirmation-modal")
+
+    # Escape closes it.
+    page.locator('[title="Split into per-game purchases"]').click()
+    expect(modal).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(modal).to_have_count(0)
+
+    # A click on the backdrop (outside the panel) closes it. (5, 5) lands on the
+    # overlay corner, well away from the centered panel. Coordinate-based (not a
+    # locator click) because the overlay detaches mid-click when it dismisses.
+    page.locator('[title="Split into per-game purchases"]').click()
+    expect(modal).to_be_visible()
+    page.mouse.click(5, 5)
+    expect(modal).to_have_count(0)
+
+
+def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
+    """A truncated name's <pop-over> tooltip: the panel is hidden until the
+    trigger is hovered, then revealed. Anchored on a long game name (its trigger
+    text is always visible), not the converted price (blank until the FX task
+    runs)."""
+    page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    Game.objects.create(
+        name="A Very Long Game Name That Exceeds The Thirty Char Limit",
+        platform=platform,
+    )
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    trigger = page.locator("pop-over [data-pop-over-trigger]").first
+    panel = page.locator("pop-over [data-pop-over-panel]").first
+
+    expect(panel).to_be_hidden()
+    trigger.hover()
+    expect(panel).to_be_visible()
+    # The pointer arrow is rendered and visible while the tooltip is open.
+    expect(panel.locator("[data-pop-over-arrow]")).to_be_visible()
+    # Moving the pointer away hides it again.
+    page.mouse.move(0, 0)
+    expect(panel).to_be_hidden()

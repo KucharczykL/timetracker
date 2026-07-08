@@ -263,7 +263,7 @@ def _delete_game_confirmation_modal(
             )["Delete"],
             ControlButton(
                 color="gray",
-                onclick=("this.closest('#delete-game-confirmation-modal').remove()"),
+                data_modal_dismiss="",
             )["Cancel"],
         ],
     ]
