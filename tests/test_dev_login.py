@@ -61,3 +61,21 @@ class LoginPrefillViewTest(TestCase):
         response = client.post("/login/", {"username": "admin", "password": "admin"})
         self.assertEqual(response.status_code, 302)  # redirect on success
         self.assertIn("_auth_user_id", client.session)
+
+
+from django.core.management import call_command
+
+
+class DevLoginCommandTest(TestCase):
+    def test_creates_usable_superuser_idempotently(self):
+        call_command("devlogin")
+        call_command("devlogin")  # second run must not error
+        User = get_user_model()
+        user = User.objects.get(username="admin")
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(Client().login(username="admin", password="admin"))
+
+    @override_settings(DEV_LOGIN_PREFILL="dev:pw")
+    def test_uses_prefill_credentials_when_set(self):
+        call_command("devlogin")
+        self.assertTrue(Client().login(username="dev", password="pw"))
