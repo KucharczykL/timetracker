@@ -360,6 +360,7 @@ describe("<filter-builder>", () => {
 
     const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]")!;
     const warning = builder.querySelector<HTMLElement>("[data-preset-name-warning]")!;
+    const saveButton = builder.querySelector<HTMLButtonElement>("[data-save-preset]")!;
 
     // Focus fetches the existing names; once they arrive the hint re-evaluates
     // against the already-typed value (fetch is async, so wait for it).
@@ -367,11 +368,14 @@ describe("<filter-builder>", () => {
     nameInput.dispatchEvent(new Event("focusin", { bubbles: true }));
     await vi.waitFor(() => expect(warning.hidden).toBe(false));
     expect(warning.textContent).toContain("already exists");
+    // The collision is also carried on the button's accessible name.
+    expect(saveButton.textContent).toBe("Overwrite preset");
 
-    // A non-colliding name clears the hint.
+    // A non-colliding name clears the hint and restores the resting label.
     nameInput.value = "Something new";
     nameInput.dispatchEvent(new Event("input", { bubbles: true }));
     expect(warning.hidden).toBe(true);
+    expect(saveButton.textContent).toBe("Save as preset…");
   });
 
   it("remembers a just-saved name so re-typing it warns without a refetch (#357)", async () => {
