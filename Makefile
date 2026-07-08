@@ -4,6 +4,21 @@ initialize: npm css migrate loadplatforms
 
 PYTHON_VERSION = 3.14
 
+# Ensure a usable CPython 3.14 exists for uv before any target that needs it.
+# Fast no-op when one is already available (a Nix shell puts it on PATH; a
+# provisioned .venv counts too). Otherwise try uv's own downloader, and only if
+# THAT can't reach the interpreter — e.g. the Claude Code cloud sandbox blocks
+# the python-build-standalone download on github — stop with a pointer to the
+# bootstrap script instead of failing cryptically deep inside uv/pytest.
+ensure-python:
+	@uv python find '>=3.14,<4' >/dev/null 2>&1 && exit 0; \
+	test -x .venv/bin/python && exit 0; \
+	uv python install $(PYTHON_VERSION) && exit 0; \
+	echo "==> Python $(PYTHON_VERSION) is required but couldn't be provisioned here."; \
+	echo "    (In the Claude Code cloud sandbox the interpreter download is blocked.)"; \
+	echo "    Run  ./scripts/bootstrap-cloud-env.sh  then retry your make target."; \
+	exit 1
+
 npm:
 	pnpm install
 
@@ -16,8 +31,7 @@ makemigrations:
 migrate: makemigrations
 	uv run --frozen python manage.py migrate
 
-init:
-	uv python install $(PYTHON_VERSION)
+init: ensure-python
 	uv sync
 	pnpm install
 	$(MAKE) migrate
@@ -52,7 +66,7 @@ ts-check: gen-element-types
 test-ts: gen-element-types
 	pnpm exec vitest run
 
-dev: gen-element-types
+dev: ensure-python gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
@@ -97,7 +111,7 @@ uv.lock: pyproject.toml
 
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
-test: uv.lock css ts test-ts
+test: ensure-python uv.lock css ts test-ts
 	uv run --frozen --with pytest-django pytest
 
 test-e2e: uv.lock css ts
@@ -118,7 +132,7 @@ format-check:
 typecheck:
 	uv run --frozen mypy .
 
-check: lint format-check typecheck ts-check check-icons test-ts test
+check: ensure-python lint format-check typecheck ts-check check-icons test-ts test
 
 date:
 	uv run --frozen python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
