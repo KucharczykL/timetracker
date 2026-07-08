@@ -1,18 +1,11 @@
 /**
- * PopOver — custom-element hover/focus tooltip (issue #303).
+ * PopOver — hover/focus tooltip custom element. The server renders the trigger +
+ * panel (common/components/primitives.py `_popover_html`); this owns show/hide
+ * and viewport-aware `position: fixed` placement via positionAnchored.
  *
- * Replaces the old Flowbite popover (data-popover-target/data-popover), which
- * carried its own Popper positioning + dismiss engine outside the app's
- * `<drop-down>`/attachMenu algebra. This is a first-class light-DOM custom
- * element instead: the server renders the trigger + panel (common/components/
- * primitives.py `_popover_html`), this module owns show/hide + viewport-aware
- * `position: fixed` placement.
- *
- * It is deliberately NOT built on attachMenu (a click/keyboard MENU) nor on
- * bindPopupDismiss (outside-click dismiss): a tooltip shows on hover/focus and
- * hides on leave/blur/Escape. The panel is non-interactive (plain text — a
- * truncated name, a converted price, a release year), so there is no need to
- * let the pointer travel into it.
+ * Shows on hover/focus, hides on leave/blur/Escape — deliberately not attachMenu
+ * (a click/keyboard menu) or bindPopupDismiss (outside-click). The panel is
+ * non-interactive text, so the pointer never needs to travel into it.
  */
 import { positionAnchored, type Side } from "./anchored-position.js";
 
@@ -88,13 +81,12 @@ class PopOverElement extends HTMLElement {
   connectedCallback(): void {
     this.panel = this.querySelector<HTMLElement>("[data-pop-over-panel]");
     if (!this.panel) return;
-    // Hover reveals the tooltip; keyboard focus also reveals it when the
+    // Hover reveals the tooltip; keyboard focus reveals it only when the
     // focusable element is INSIDE the pop-over (e.g. PopoverIf wrapping a
-    // button) — focusin/out bubble up to this host. For the common NameWithIcon
-    // case the focusable <a> is an ANCESTOR of <pop-over>, so its focusin
-    // bubbles up past this element, not into it; those keyboard users rely on
-    // hover plus the aria-describedby link to the panel text (parity with the
-    // old Flowbite popover, whose non-focusable trigger span behaved the same).
+    // button) — focusin/out bubble up to this host. For a wrapping <a> ANCESTOR
+    // (the NameWithIcon case) focusin fires on the <a> and bubbles up past this
+    // element, not into it, so those keyboard users get only hover + the
+    // aria-describedby link to the panel text.
     this.addEventListener("mouseenter", this.show);
     this.addEventListener("mouseleave", this.hide);
     this.addEventListener("focusin", this.show);

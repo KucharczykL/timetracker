@@ -105,10 +105,9 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     }
   });
 
-  it("collapses on an outside mousedown via the shared dismiss (#303)", () => {
-    // The bespoke document-click listener was replaced by bindPopupDismiss,
-    // which dismisses on an outside mousedown (and Escape). Focus-to-open is
-    // unchanged; this guards that the panel still closes on an outside press.
+  it("collapses on an outside mousedown", () => {
+    // bindPopupDismiss dismisses on an outside mousedown; the panel still opens
+    // on focus. Guards that it closes on an outside press.
     const host = mountSingle("games");
     const search = searchOf(host);
 
@@ -120,7 +119,7 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     expect(search.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("re-binds dismiss on reconnect without re-initialising (#303)", () => {
+  it("re-binds dismiss on reconnect without re-initialising", () => {
     // The filter builder moves rows, disconnecting then reconnecting this
     // element. initWidget must run once (element-local listeners persist with
     // the moved subtree); only the document dismiss listeners re-bind.

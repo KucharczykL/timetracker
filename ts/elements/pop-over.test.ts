@@ -2,8 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import "./pop-over.js"; // side effect: customElements.define
 
-// The <pop-over> hover/focus tooltip (issue #303) replaces the Flowbite popover.
-// jsdom has no layout engine, so positionPanel's coordinates are meaningless
+// jsdom has no layout engine, so the positioner's coordinates are meaningless
 // here — these tests cover the show/hide state machine (the `hidden` attribute)
 // driven by hover, focus, and Escape.
 function mount(): { host: HTMLElement; panel: HTMLElement } {
@@ -16,7 +15,7 @@ function mount(): { host: HTMLElement; panel: HTMLElement } {
   return { host, panel };
 }
 
-describe("<pop-over> tooltip (#303)", () => {
+describe("<pop-over> tooltip", () => {
   beforeEach(() => document.body.replaceChildren());
 
   it("shows on hover and hides on leave", () => {
@@ -29,9 +28,9 @@ describe("<pop-over> tooltip (#303)", () => {
   });
 
   it("pins the arrow to the panel edge facing the trigger on show", () => {
-    // jsdom has no layout, so coordinates are 0; this only checks the arrow is
-    // placed on an edge (top when the panel opens downward — the default with
-    // ample space below). Guards positionArrow against silently no-op-ing.
+    // jsdom rects are 0, so there's no room above the trigger and the panel
+    // resolves to opening downward -> arrow on the top edge. Only checks the
+    // arrow lands on an edge, guarding positionArrow against silently no-op-ing.
     const { host, panel } = mount();
     host.dispatchEvent(new MouseEvent("mouseenter"));
     const arrow = panel.querySelector<HTMLElement>("[data-pop-over-arrow]")!;

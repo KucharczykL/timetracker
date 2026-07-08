@@ -84,11 +84,8 @@ export function attachMenu(
         !item.hasAttribute("disabled"),
     );
 
-  // The menu is positioned `fixed` while open so it escapes any clipping
-  // ancestor (e.g. a table's overflow wrapper, issue #39) and flips when there
-  // isn't enough room in the preferred direction. bottom-* placements share the
-  // generic positionAnchored (with the tooltip); the right-start submenu flyout
-  // has its own anchor/first-item geometry below.
+  // bottom-* placements share the generic positionAnchored (with the tooltip);
+  // the right-start submenu flyout has its own anchor/first-item geometry below.
   const positionMenu = (): void => {
     if (placement === "right-start") {
       positionSubmenu();
@@ -104,7 +101,7 @@ export function attachMenu(
       align,
       side: "bottom",
       gap: 0,
-      // matchToggleWidth was only ever honored for the bottom-start branch.
+      // matchToggleWidth applies only to bottom-start.
       matchWidth: matchToggleWidth && align === "start",
       scrollable: true,
     });

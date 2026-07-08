@@ -875,17 +875,11 @@ const initWidget = (containerElement: Element) => {
     }
   });
 
-  // ── Dismiss: Escape + outside mousedown via the shared helper (issue #303) ──
-  // Replaces this widget's own document-click listener with the same
-  // bindPopupDismiss the date-range/year pickers and confirm modals use, so the
-  // "#295-class" duplicate outside-click engine is gone. The focus-to-type
-  // interaction is unchanged (the panel still opens on focus; the focusout
-  // handler above still closes on Tab-away). Deferred + re-callable so a
-  // reconnection (the nested filter builder moves rows, reconnecting this
-  // element) re-binds the document listeners without re-running initWidget,
-  // whose element-local listeners persist with the moved subtree. An
-  // `always-visible` panel reports open permanently (hidePanel only drops its
-  // highlight), matching the old always-fire outside-click behavior.
+  // ── Dismiss: Escape + outside mousedown via the shared bindPopupDismiss ──
+  // Deferred + re-callable so a reconnection (the nested filter builder moves
+  // rows) re-binds the document listeners without re-running initWidget, whose
+  // element-local listeners persist with the moved subtree. An `always-visible`
+  // panel reports open permanently — hidePanel only drops its highlight there.
   return (): (() => void) =>
     bindPopupDismiss({
       host: container,

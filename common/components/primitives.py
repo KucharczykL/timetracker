@@ -220,13 +220,10 @@ def _popover_html(
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
 
-    Renders the ``<pop-over>`` custom element (behavior: ``ts/elements/
-    pop-over.ts``): a hover/focus tooltip. Issue #303 replaced the old Flowbite
-    popover (``data-popover-target``/``data-popover``) — which shipped its own
-    Popper positioning + dismiss engine outside the app's ``<drop-down>``
-    algebra — with this first-class element. The trigger carries
-    ``aria-describedby`` pointing at the ``role="tooltip"`` panel; the element
-    owns show/hide + viewport-aware ``position: fixed`` placement.
+    Renders the ``<pop-over>`` hover/focus tooltip (behavior:
+    ``ts/elements/pop-over.ts``). The trigger carries ``aria-describedby``
+    pointing at the ``role="tooltip"`` panel; the element owns show/hide and
+    viewport-aware ``position: fixed`` placement.
     """
     display_content = wrapped_content if wrapped_content else slot
 
@@ -1069,16 +1066,14 @@ class Modal(BaseComponent):
     ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps.
 
     The overlay is the ``<modal-dialog>`` custom element (behavior:
-    ``ts/elements/modal-dialog.ts``, issue #303): it wires the shared dismiss
-    contract — Escape, a backdrop click, and any ``[data-modal-dismiss]`` control
-    (via ``bindPopupDismiss``) — and carries ``role="dialog"``/``aria-modal``.
-    Dismissing removes the overlay from the DOM (the confirm modals are portaled
-    into ``#global-modal-container`` and thrown away on close).
+    ``ts/elements/modal-dialog.ts``): it wires the dismiss contract — Escape, a
+    backdrop click, and any ``[data-modal-dismiss]`` control (via
+    ``bindPopupDismiss``) — and carries ``role="dialog"``/``aria-modal``.
+    Dismissing removes the overlay from the DOM.
 
-    ``self_dismiss=False`` renders the same markup but tells the element to stay
-    inert: the session-reset confirm is wrapped in ``<session-actions>``, which
-    owns its open/close (show/hide + reposition) and its own ``bindPopupDismiss``
-    — a second dismiss engine on the inner overlay would fight it.
+    ``self_dismiss=False`` renders the same markup but keeps the element inert,
+    for overlays managed by another element (the session-reset confirm, wrapped
+    in ``<session-actions>``); a second dismiss engine would fight that owner.
     """
 
     def __init__(

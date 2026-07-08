@@ -2,11 +2,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import "./modal-dialog.js"; // side effect: customElements.define
 
-// The <modal-dialog> confirm-overlay element (issue #303) gives the portaled
-// delete/refund/split confirm modals the shared dismiss contract they lacked:
-// Escape, a backdrop click, and a [data-modal-dismiss] control. Dismissing
-// removes the overlay. data-manage="false" keeps it inert (session-actions
-// owns the session-reset overlay).
+// Dismiss contract: Escape, a backdrop click, and a [data-modal-dismiss] control
+// each remove the overlay. data-manage="false" keeps it inert (for overlays a
+// wrapping element manages, e.g. the session-reset confirm).
 function mount(manage = "true"): HTMLElement {
   const host = document.createElement("modal-dialog");
   host.setAttribute("data-manage", manage);
@@ -19,7 +17,7 @@ function mount(manage = "true"): HTMLElement {
   return host;
 }
 
-describe("<modal-dialog> dismiss contract (#303)", () => {
+describe("<modal-dialog> dismiss contract", () => {
   beforeEach(() => document.body.replaceChildren());
 
   it("removes itself on Escape", () => {

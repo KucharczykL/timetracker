@@ -1,17 +1,12 @@
 /**
- * ModalDialog — the confirm-overlay element (issue #303).
+ * ModalDialog — the confirm-overlay element. Server-rendered by the Modal
+ * component (common/components/primitives.py) and swapped into
+ * #global-modal-container by htmx. Gives the confirm modals their dismiss
+ * contract: Escape + a backdrop click (bindPopupDismiss, anchored on the inner
+ * panel so any click outside it counts) + any `[data-modal-dismiss]` control.
+ * Dismissing removes the throwaway overlay.
  *
- * The delete/refund/split confirm modals are server-rendered (Modal component,
- * common/components/primitives.py) and swapped into #global-modal-container by
- * htmx. They used to be dismissable only by an inline
- * `onclick="this.closest('#…').remove()"` on their Cancel button — no Escape,
- * no backdrop click, no aria. This element gives them the shared dismiss
- * contract instead: Escape + a click on the backdrop (via bindPopupDismiss,
- * anchored on the inner panel so a click anywhere outside it counts) + any
- * `[data-modal-dismiss]` control. Dismissing removes the overlay — the confirm
- * modals are throwaway.
- *
- * `data-manage="false"` keeps the element inert: the session-reset confirm is
+ * `data-manage="false"` keeps the element inert — the session-reset confirm is
  * wrapped in <session-actions>, which owns its open/close and its own
  * bindPopupDismiss; a second engine on the inner overlay would fight it.
  */
@@ -44,8 +39,7 @@ class ModalDialogElement extends HTMLElement {
     this.removeEventListener("click", this.onClick);
   }
 
-  // An explicit dismiss control inside the panel (the Cancel button) — the
-  // no-JS replacement for the old inline onclick=remove().
+  // An explicit dismiss control inside the panel (the Cancel button).
   private onClick = (event: MouseEvent): void => {
     if ((event.target as Element).closest("[data-modal-dismiss]")) this.dismiss();
   };

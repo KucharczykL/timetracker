@@ -963,7 +963,7 @@ class ModalContractTest(SimpleTestCase):
 
     def test_renders_modal_dialog_element_with_dismiss_contract(self):
         # The overlay is the <modal-dialog> custom element carrying the dialog
-        # role/aria + the panel hook the shared dismiss anchors on (issue #303).
+        # role/aria + the panel hook the shared dismiss anchors on.
         html = str(components.Modal("m3")[components.Div()["x"]])
         self.assertTrue(html.startswith("<modal-dialog"))
         self.assertIn('role="dialog"', html)
@@ -1104,14 +1104,13 @@ class PopoverIfTest(unittest.TestCase):
 
 
 class PopOverContractTest(unittest.TestCase):
-    """The <pop-over> tooltip element contract (issue #303)."""
+    """The <pop-over> tooltip element contract."""
 
-    def test_renders_pop_over_element_not_flowbite(self):
+    def test_renders_pop_over_element(self):
         html = str(components.Popover("tip", wrapped_content="word", id="pid"))
-        # The Flowbite popover contract is gone.
+        # A <pop-over> wrapping a trigger + panel; no data-popover/popper attrs.
         self.assertNotIn("data-popover-target", html)
         self.assertNotIn("data-popper-arrow", html)
-        # Replaced by the custom element wrapping a trigger + panel.
         self.assertTrue(html.startswith("<pop-over"))
         self.assertIn("</pop-over>", html)
 

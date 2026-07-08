@@ -181,9 +181,8 @@ def test_split_purchase_action(authenticated_page: Page, live_server):
 def test_split_modal_dismisses_on_escape_and_backdrop(
     authenticated_page: Page, live_server
 ):
-    """The confirm modal is a <modal-dialog> with the shared dismiss contract
-    (issue #303): Escape and a backdrop click close it (it used to be dismissable
-    only by the Cancel button's inline onclick)."""
+    """The confirm modal is a <modal-dialog>: Escape and a backdrop click close
+    it."""
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game_a = Game.objects.create(name="Alpha Game", platform=platform)
@@ -217,10 +216,10 @@ def test_split_modal_dismisses_on_escape_and_backdrop(
 
 
 def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
-    """A truncated name's tooltip is the <pop-over> element (issue #303,
-    replacing the Flowbite popover): the panel is hidden until the trigger is
-    hovered, then revealed. Anchored on a long game name (always-visible
-    trigger text), not the converted price (blank until the FX task runs)."""
+    """A truncated name's <pop-over> tooltip: the panel is hidden until the
+    trigger is hovered, then revealed. Anchored on a long game name (its trigger
+    text is always visible), not the converted price (blank until the FX task
+    runs)."""
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     Game.objects.create(

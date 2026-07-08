@@ -470,9 +470,8 @@ def TimetrackerDocument(
     # Collect JS from both the page body and the navbar (the navbar owns the
     # <drop-down> custom element, so its media must be emitted too). The global
     # modal container (below) receives HTMX-swapped confirm modals
-    # (<modal-dialog>, issue #303) on every page, and the swapped-in fragment
-    # carries no script of its own — so its dismiss element must be defined
-    # page-globally, like the toast container's toast.js.
+    # (<modal-dialog>) on any page, and the swapped-in fragment carries no script
+    # of its own — so its dismiss element must be defined page-globally.
     media = (
         collect_media(content)
         + collect_media(navbar)
