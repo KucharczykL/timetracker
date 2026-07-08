@@ -235,6 +235,8 @@ def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
     expect(panel).to_be_hidden()
     trigger.hover()
     expect(panel).to_be_visible()
+    # The pointer arrow is rendered and visible while the tooltip is open.
+    expect(panel.locator("[data-pop-over-arrow]")).to_be_visible()
     # Moving the pointer away hides it again.
     page.mouse.move(0, 0)
     expect(panel).to_be_hidden()

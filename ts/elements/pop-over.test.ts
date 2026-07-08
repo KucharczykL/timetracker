@@ -10,7 +10,7 @@ function mount(): { host: HTMLElement; panel: HTMLElement } {
   const host = document.createElement("pop-over");
   host.innerHTML = `
     <span data-pop-over-trigger aria-describedby="pid" tabindex="0">word</span>
-    <div data-pop-over-panel id="pid" role="tooltip" hidden>the full word</div>`;
+    <div data-pop-over-panel id="pid" role="tooltip" hidden>the full word<div data-pop-over-arrow></div></div>`;
   document.body.appendChild(host); // connectedCallback wires the listeners
   const panel = host.querySelector<HTMLElement>("[data-pop-over-panel]")!;
   return { host, panel };
@@ -26,6 +26,18 @@ describe("<pop-over> tooltip (#303)", () => {
     expect(panel.hidden).toBe(false);
     host.dispatchEvent(new MouseEvent("mouseleave"));
     expect(panel.hidden).toBe(true);
+  });
+
+  it("pins the arrow to the panel edge facing the trigger on show", () => {
+    // jsdom has no layout, so coordinates are 0; this only checks the arrow is
+    // placed on an edge (top when the panel opens downward — the default with
+    // ample space below). Guards positionArrow against silently no-op-ing.
+    const { host, panel } = mount();
+    host.dispatchEvent(new MouseEvent("mouseenter"));
+    const arrow = panel.querySelector<HTMLElement>("[data-pop-over-arrow]")!;
+    expect(arrow.style.top).toBe("-4px");
+    expect(arrow.style.bottom).toBe("");
+    expect(arrow.style.left).not.toBe("");
   });
 
   it("shows on focusin and hides on Escape", () => {

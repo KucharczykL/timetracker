@@ -257,6 +257,11 @@ def _popover_html(
         ]
     )[
         Div(class_="px-3 py-2")[popover_content],
+        # The pointer. A small square the element rotates 45° and pins to the
+        # panel edge facing the trigger, tinted (bg + border) from the panel's
+        # own computed styles so it tracks the theme. Placement (which edge, how
+        # far along) is set by ts/elements/pop-over.ts alongside the panel.
+        Div([("data-pop-over-arrow", "")], class_="absolute w-2 h-2 rotate-45"),
         Safe(  # nosec — intentional HTML comment for Tailwind JIT
             "<!-- for Tailwind CSS to generate decoration-dotted CSS "
             "from Python component -->"

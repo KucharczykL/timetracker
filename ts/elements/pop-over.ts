@@ -17,16 +17,26 @@
 
 // Matches menu-behavior.ts: keep the panel this far from every viewport edge.
 const VIEWPORT_MARGIN = 8;
+// The arrow is an `w-2 h-2` (8px) square rotated 45°; half of it overhangs the
+// panel edge to form the tip.
+const ARROW_SIZE = 8;
 
 // Center the panel under the trigger, fixed-positioned so it escapes any
 // clipping/overflow ancestor (issue #39's rationale) and flips above when there
 // is not enough room below. Mirrors the bottom-center branch of menu-behavior's
 // positioner, minus the menu-only concerns (submenus, width matching).
 function positionPanel(host: HTMLElement, panel: HTMLElement): void {
-  const rect = host.getBoundingClientRect();
+  // Pin `fixed` BEFORE measuring the host. The panel was just unhidden and its
+  // class is `inline-block`; while still in normal flow it is a child that
+  // inflates the host's box (taller AND wider), which would anchor the tooltip
+  // far below the trigger and off-center. Taking it out of flow first makes the
+  // host rect the trigger alone. (menu-behavior.ts pins fixed before unhiding
+  // for the same reason.)
   panel.style.position = "fixed";
   panel.style.right = "auto";
   panel.style.bottom = "auto";
+
+  const rect = host.getBoundingClientRect();
 
   // A transformed/filtered ancestor becomes the containing block for
   // `position: fixed`, so fixed coords would be relative to it. Pin to (0,0),
@@ -38,10 +48,10 @@ function positionPanel(host: HTMLElement, panel: HTMLElement): void {
   const width = panel.offsetWidth;
   const height = panel.offsetHeight;
 
-  let left = rect.left + rect.width / 2 - width / 2;
-  left = Math.max(
+  const centerX = rect.left + rect.width / 2;
+  const left = Math.max(
     VIEWPORT_MARGIN,
-    Math.min(left, window.innerWidth - width - VIEWPORT_MARGIN),
+    Math.min(centerX - width / 2, window.innerWidth - width - VIEWPORT_MARGIN),
   );
 
   const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
@@ -53,6 +63,40 @@ function positionPanel(host: HTMLElement, panel: HTMLElement): void {
 
   panel.style.left = `${left - origin.x}px`;
   panel.style.top = `${top - origin.y}px`;
+
+  // The arrow sits on the panel edge facing the trigger, centered on the
+  // trigger (clamped inside the panel's rounded corners). `centerX - left` is
+  // the trigger's center in the panel's own left-origin coordinates.
+  positionArrow(panel, openUp, centerX - left, width);
+}
+
+// Tint the arrow from the panel's own computed background/border so it tracks
+// the theme, and pin it to the edge that faces the trigger. A 45°-rotated
+// square shows two adjacent borders as the tip: top+left point up (panel below
+// the trigger), bottom+right point down (panel above).
+function positionArrow(
+  panel: HTMLElement,
+  openUp: boolean,
+  triggerCenterInPanel: number,
+  panelWidth: number,
+): void {
+  const arrow = panel.querySelector<HTMLElement>("[data-pop-over-arrow]");
+  if (!arrow) return;
+  const styles = getComputedStyle(panel);
+  const border = `1px solid ${styles.borderTopColor}`;
+  arrow.style.backgroundColor = styles.backgroundColor;
+  arrow.style.borderTop = openUp ? "" : border;
+  arrow.style.borderLeft = openUp ? "" : border;
+  arrow.style.borderBottom = openUp ? border : "";
+  arrow.style.borderRight = openUp ? border : "";
+
+  const half = ARROW_SIZE / 2;
+  arrow.style.left = `${Math.max(
+    ARROW_SIZE,
+    Math.min(triggerCenterInPanel - half, panelWidth - ARROW_SIZE - half),
+  )}px`;
+  arrow.style.top = openUp ? "" : `${-half}px`;
+  arrow.style.bottom = openUp ? `${-half}px` : "";
 }
 
 class PopOverElement extends HTMLElement {
