@@ -172,6 +172,7 @@ class SearchSelectWidget(forms.Widget):
         prefetch=DEFAULT_PREFETCH,
         always_visible=False,
         placeholder="Search…",
+        autofocus=False,
         attrs=None,
     ):
         super().__init__(attrs)
@@ -183,6 +184,7 @@ class SearchSelectWidget(forms.Widget):
         self.prefetch = prefetch
         self.always_visible = always_visible
         self.placeholder = placeholder
+        self.autofocus = autofocus
 
     @staticmethod
     def _values(value) -> list:
@@ -194,7 +196,6 @@ class SearchSelectWidget(forms.Widget):
 
     def render(self, name, value, attrs=None, renderer=None):
         selected = searchselect_selected(self._values(value), self.options_resolver)
-        autofocus = bool((attrs or {}).get("autofocus"))
         # Django widgets must return a safe string; the component is a node.
         return render(
             SearchSelect(
@@ -209,7 +210,7 @@ class SearchSelectWidget(forms.Widget):
                 always_visible=self.always_visible,
                 placeholder=self.placeholder,
                 id=(attrs or {}).get("id", ""),
-                autofocus=autofocus,
+                autofocus=self.autofocus,
                 # Host the form combobox in <drop-down behavior="inline-combobox">
                 # so its panel uses the shared attachMenu open/close/position/dismiss
                 # engine (issue #348). The widget's own input stays the trigger.
@@ -232,7 +233,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=SearchSelectWidget(
-            search_url="/api/games/search", options_resolver=_game_options
+            search_url="/api/games/search",
+            options_resolver=_game_options,
+            autofocus=True,
         ),
     )
 
@@ -301,6 +304,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             search_url="/api/games/search",
             options_resolver=_game_options,
             multi_select=True,
+            autofocus=True,
         ),
     )
     platform = forms.ModelChoiceField(
@@ -441,7 +445,7 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=SearchSelectWidget(
             search_url="/api/games/search",
             options_resolver=_game_options,
-            attrs={"autofocus": "autofocus"},
+            autofocus=True,
         ),
     )
 

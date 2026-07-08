@@ -469,7 +469,7 @@ const initWidget = (containerElement: Element) => {
   //    focusing clears it to search, blurring restores it (or deselects). ──
   if (!multi) container._searchSelectLabel = search.value;
 
-  search.addEventListener("focus", () => {
+  const runFocus = () => {
     if (!multi) {
       // Hide the committed label so the box becomes a fresh search field.
       search.value = "";
@@ -493,7 +493,8 @@ const initWidget = (containerElement: Element) => {
       autoHighlight(search.value.trim());
     }
     showPanel();
-  });
+  };
+  search.addEventListener("focus", runFocus);
 
   search.addEventListener("input", () => {
     clearHighlight();
@@ -904,6 +905,30 @@ const initWidget = (containerElement: Element) => {
   // initWidget, whose element-local listeners persist with the moved subtree. An
   // `always-visible` panel reports open permanently — hidePanel only drops its
   // highlight there.
+  // Native `autofocus` on the search input fires its focus event during HTML
+  // parse — before connectedCallback binds the listener above — so the panel and
+  // prefetch never open. Re-run the focus flow once wired so an autofocused
+  // combobox seeds and opens on load like a real focus does. rAF lets a delegated
+  // <drop-down> host finish upgrading first.
+  if (search.hasAttribute("autofocus")) {
+    // A pre-committed single-select shows its label in the box; focusing it (and
+    // the focus listener's runFocus) would clear that label. Snapshot emptiness
+    // now — before any focus() — so only a fresh, empty add form drives the panel
+    // open; a committed field keeps its label and whatever native focus it got.
+    const startedEmpty = !search.value;
+    requestAnimationFrame(() => {
+      if (!search.isConnected || !startedEmpty) return;
+      if (document.activeElement === search) {
+        // Native autofocus landed but fired before this listener bound: open the
+        // panel explicitly. Otherwise focus the field and let the listener open
+        // it — either way runFocus runs exactly once.
+        runFocus();
+      } else {
+        search.focus();
+      }
+    });
+  }
+
   if (delegated) return null;
   return (): (() => void) =>
     bindPopupDismiss({
