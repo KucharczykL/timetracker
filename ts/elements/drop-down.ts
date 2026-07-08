@@ -54,6 +54,12 @@ class DropdownElement extends HTMLElement {
     });
     this.controller = controller;
     this.unbindDocument = controller.bindDocument();
+    // wire()'s cleanup return is intentionally discarded. Every behavior binds
+    // only to subtree-local nodes (toggle/menu/search input), so a real removal
+    // GCs them with the detached subtree — nothing to unbind. Running that
+    // cleanup in disconnectedCallback would instead break a MOVE: disconnect
+    // fires on move too, and the reconnect guard above skips re-wiring, so the
+    // moved dropdown would lose its behavior listeners for good.
     behavior?.wire?.({ host: this, toggle, menu, controller });
   }
 
