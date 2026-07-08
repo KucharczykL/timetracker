@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
 
 function mount(): {
@@ -66,6 +66,34 @@ describe("attachMenu outside-click containment", () => {
     click(inside);
     click(document.querySelector("#outside") as HTMLElement);
     expect(controller.isOpen()).toBe(false);
+  });
+});
+
+describe("attachMenu toggle-resize reposition (issue #355)", () => {
+  it("observes the toggle while open and disconnects on close", () => {
+    // A `fixed` panel does not auto-follow the toggle when it grows/shrinks
+    // (a multi-select adding/removing a pill), and no scroll/resize fires — so
+    // the toggle's box is observed, but only while open to avoid churn.
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { controller } = mount();
+      const toggle = document.querySelector("[data-toggle]") as HTMLElement;
+      expect(observe).not.toHaveBeenCalled();
+      controller.open();
+      expect(observe).toHaveBeenCalledWith(toggle);
+      expect(disconnect).not.toHaveBeenCalled();
+      controller.close();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
   });
 });
 
