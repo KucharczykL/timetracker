@@ -32,6 +32,37 @@ entire pytest suite **including `e2e/`**) and confirm it is green. Never verify 
 a hand-picked subset of test files — that is how removed-widget e2e breakage reaches
 CI.
 
+### Python 3.14 is a hard prerequisite
+
+`pyproject.toml` pins `requires-python = ">=3.14,<4"`, and the code **depends on
+3.14-only syntax** — most notably **PEP 758** unparenthesized `except A, B:`
+("catch both types", not the Python-2 `except A as B` binding). The pinned
+**ruff 0.15.x** infers target 3.14 from `requires-python` and *formats to* that
+bare form, so the source cannot be made to parse on an older interpreter without
+fighting the formatter. On Python ≤3.13 these lines raise
+`SyntaxError: multiple exception types must be parenthesized`.
+
+**A `SyntaxError` in `except …` / a "`make check` is red on `main`" report almost
+always means the environment is running the wrong Python**, not that `main` is
+broken. Check the interpreter first: `python --version` must be 3.14.x. The Nix
+dev shell already provides CPython 3.14; anything else must supply it too.
+
+**Getting Python 3.14 outside Nix** (Windows, restricted cloud boxes, etc.):
+
+- **Miniconda / conda-forge** (known to work): `conda create -n timetracker
+  python=3.14 && conda activate timetracker`. Then install the rest of the
+  toolchain into that env — `uv` (for `uv sync`), Node + `pnpm` (via Corepack:
+  `corepack enable`), and `ruff` (pulled in by `uv sync`). Run the same
+  `make`/`pnpm`/`uv`/`pytest` targets from the activated env.
+- **uv-managed Python**: `uv python install 3.14` then `uv sync` (uv builds the
+  venv against 3.14). Still need Node + `pnpm` on `PATH` separately.
+- Whichever route: the **e2e suite needs a system Chrome/Chromium** (not vendored)
+  and the `LD_LIBRARY_PATH` that greenlet/`pytest-playwright` want on Linux — the
+  Nix shell sets this; a bare conda/uv env may need it exported manually.
+
+Non-Nix setups are best-effort for local dev; **CI runs the Nix path**, so verify
+against `direnv exec . make check` before pushing when possible.
+
 ## Commands
 
 | Task | Command |
