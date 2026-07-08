@@ -5,10 +5,11 @@
 Every page behind the app is `@login_required`, and there is no fast, canonical
 way to get authenticated for development:
 
-- **Local worktrees** start with no database and no user, so each session has to
-  create a superuser and then log in through the form. The browser session does
-  not survive across separate automation/tool invocations, so the form login is
-  repeated constantly.
+- **Local worktrees** start with no database and no user, so each fresh worktree
+  has to create a superuser and then log in through the form. Cookies persist
+  across tool calls within one live browser session, but every *fresh* context —
+  a new worktree, a new server/preview session, a headless run — starts
+  unauthenticated, so the create-user + form-login dance recurs per environment.
 - **CI/staging** (a public fly.io box) already provisions `admin`/`admin` via the
   `CREATE_DEFAULT_SUPERUSER` entrypoint flag and loads demo data
   (`LOAD_SAMPLE_DATA`), but a human or agent opening the staging URL still types
@@ -30,14 +31,16 @@ login path.
 ## What this does and does NOT do (goal honesty)
 
 This reduces each login to **one click on a pre-filled form**, against a user
-that is guaranteed to exist. It does **not** make authentication *persist* across
-separate automation/tool invocations — the browser session still dies between
-them, so an agent still navigates to `/login/` and clicks Login once per session.
-That per-session click is accepted as trivial; true cross-session persistence
-(session-cookie minting, storage-state, a magic-link endpoint) was considered and
-rejected as over-built (see Non-goals). The friction this removes is *typing
-credentials*, *creating the user*, and *login failing because the password was
-never set* — which is the bulk of the real pain.
+that is guaranteed to exist. Within a live browser session the cookie already
+persists across tool calls (no re-login there). What it does **not** add is
+persistence across *fresh* contexts — a new worktree, a new server/preview
+session, or a headless CI run each start unauthenticated, so there the agent
+still navigates to `/login/` and clicks Login once. That per-fresh-context click
+is accepted as trivial; true cross-context persistence (session-cookie minting,
+storage-state, a magic-link endpoint) was considered and rejected as over-built
+(see Non-goals). The friction this removes is *typing credentials*, *creating the
+user*, and *login failing because the password was never set* — the bulk of the
+real pain.
 
 ## Non-goals
 
