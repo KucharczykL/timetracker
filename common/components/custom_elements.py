@@ -33,6 +33,7 @@ from common.components.primitives import (
     Input,
     Label,
     Li,
+    P,
     Span,
     Template,
     Ul,
@@ -385,6 +386,16 @@ def FilterBuilder(
             ControlButton(color="gray", data_save_preset="")["Save as preset…"],
             ControlButton(color="blue", data_apply="")["Apply"],
             ControlButton(color="gray", data_clear="")["Clear"],
+            # Live collision hint: filter-builder.ts unhides this and fills its
+            # text when the typed name matches an existing preset (basis-full so
+            # it wraps onto its own line below the toolbar row).
+            P(
+                data_preset_name_warning="",
+                hidden=True,
+                role="status",
+                aria_live="polite",
+                class_="basis-full text-sm text-amber-700 dark:text-amber-400",
+            ),
         ]
     ]
 
