@@ -422,11 +422,12 @@ def test_field_layout_value_widget_hosts_on_inline_combobox(
 
     # The hosted value widget is the criterion whose value cell holds a drop-down
     # (a blank leaf's value cell is empty), so this targets the status leaf even
-    # after a second condition is added below.
+    # after a second condition is added below. ``.first`` keeps the locator
+    # single-element (strict mode) regardless of what a later condition renders.
     value_cell = (
         page.locator("[data-node-kind='criterion']")
         .filter(has=page.locator("[data-value-cell] drop-down"))
-        .locator("[data-value-cell]")
+        .first.locator("[data-value-cell]")
     )
 
     expect(value_cell.locator("drop-down[behavior='inline-combobox']")).to_be_attached()
@@ -441,6 +442,7 @@ def test_field_layout_value_widget_hosts_on_inline_combobox(
 
     # Focus the search input → the host opens the panel.
     search.click()
+    expect(search).to_be_focused()  # guards the Escape-dismiss target below
     expect(panel).to_be_visible(timeout=5_000)
 
     # Include a second status (Finished) → a new include pill lands.
