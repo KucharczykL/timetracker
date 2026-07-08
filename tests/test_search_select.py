@@ -220,6 +220,47 @@ class SearchSelectHostDropdownTest(unittest.TestCase):
         self.assertIn("dist/elements/drop-down.js", " ".join(media.js))
 
 
+class FilterSelectFieldHostTest(unittest.TestCase):
+    """The default field layout hosts itself in
+    <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
+    open/close/position/dismiss engine (issue #354), mirroring
+    SearchSelect(host_dropdown=True). The panel layout stays bare here — its
+    drop-down is supplied a level up by ComboboxDropdown."""
+
+    def test_field_layout_wraps_in_inline_combobox_dropdown(self):
+        html = str(FilterSelect(field_name="type"))
+        self.assertIn("<drop-down", html)
+        self.assertIn('behavior="inline-combobox"', html)
+
+    def test_search_select_element_is_the_toggle(self):
+        html = str(FilterSelect(field_name="type"))
+        self.assertIn("data-toggle", _tag_around(html, "<search-select"))
+
+    def test_panel_is_menu_target_hidden_by_attribute_not_class(self):
+        panel_tag = _tag_around(
+            str(FilterSelect(field_name="type", options=[("g", "Game")])),
+            "data-search-select-options",
+        )
+        self.assertIn("data-menu", panel_tag)
+        # Visibility is the `hidden` attribute (attachMenu owns it), never the
+        # `.hidden` class the standalone panel toggles.
+        self.assertIn('hidden=""', panel_tag)
+        self.assertNotIn(' hidden"', panel_tag)
+
+    def test_media_includes_dropdown_js(self):
+        media = collect_media(FilterSelect(field_name="type"))
+        self.assertIn("dist/elements/drop-down.js", " ".join(media.js))
+
+    def test_panel_layout_stays_bare(self):
+        # The panel personality is hosted a level up by ComboboxDropdown, so the
+        # widget itself renders no drop-down / toggle here.
+        html = str(
+            FilterSelect(field_name="type", layout="panel", search_aria_label="Type")
+        )
+        self.assertNotIn("<drop-down", html)
+        self.assertNotIn("data-toggle", html)
+
+
 class FilterSelectComponentTest(unittest.TestCase):
     MODIFIERS = [("NOT_NULL", "(Any)"), ("IS_NULL", "(None)")]
 
@@ -888,10 +929,18 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         self.assertIn('aria-label="Game"', input_tag)
 
     def test_serializer_contract_is_layout_invariant(self):
-        # Every data-* hook the TS reads must appear identically in both
-        # layouts — the panel personality restyles, never rewires.
+        # Every data-* hook the TS serializer reads must appear identically in
+        # both layouts — the panel personality restyles, never rewires. The
+        # attachMenu hosting hooks are excluded: the field layout carries them on
+        # its own inline-combobox drop-down, while the panel layout's live on the
+        # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
+        host_hooks = {"data-toggle", "data-menu"}
         data_attribute = re.compile(r"data-[a-z-]+")
-        field_hooks = sorted(data_attribute.findall(self._html("field")))
+        field_hooks = sorted(
+            hook
+            for hook in data_attribute.findall(self._html("field"))
+            if hook not in host_hooks
+        )
         panel_hooks = sorted(data_attribute.findall(self._html("panel")))
         self.assertEqual(field_hooks, panel_hooks)
 

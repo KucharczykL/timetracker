@@ -393,6 +393,77 @@ def test_load_set_field_preset_reflects_field_without_crash(
     expect(value_pill).to_contain_text("SpyGame")
 
 
+def test_field_layout_value_widget_hosts_on_inline_combobox(
+    authenticated_page: Page, live_server
+) -> None:
+    """A set (enum) leaf's value widget renders on
+    ``<drop-down behavior="inline-combobox">`` (#354): focusing its search input
+    opens the hosted panel through the shared attachMenu engine, an include click
+    adds a pill, and dismissal hides the panel again.
+
+    The filter-group clones/moves leaf rows during the detached prefill build, so
+    the widget under test is already a reconnected node — and adding a second
+    condition re-renders the tree, after which the first widget must still open
+    and dismiss cleanly (the #354 no-double-wire reconnection guard).
+    """
+    page = authenticated_page
+
+    # Prefill a game filter with a status (enum set) criterion: "p" included.
+    filter_json = _encode_filter(
+        {"AND": [{"status": {"value": ["p"], "modifier": "INCLUDES"}}]}
+    )
+    page.goto(
+        f"{live_server.url}"
+        f"{reverse('games:filter_builder', args=['game'])}?filter={filter_json}"
+    )
+    expect(page.locator("filter-count")).not_to_contain_text(
+        "Counting…", timeout=10_000
+    )
+
+    # The hosted value widget is the criterion whose value cell holds a drop-down
+    # (a blank leaf's value cell is empty), so this targets the status leaf even
+    # after a second condition is added below.
+    value_cell = (
+        page.locator("[data-node-kind='criterion']")
+        .filter(has=page.locator("[data-value-cell] drop-down"))
+        .locator("[data-value-cell]")
+    )
+
+    expect(value_cell.locator("drop-down[behavior='inline-combobox']")).to_be_attached()
+
+    search = value_cell.locator("[data-search-select-search]")
+    panel = value_cell.locator("[data-search-select-options]")
+    pills = value_cell.locator("[data-search-select-pills] [data-pill]")
+
+    # attachMenu owns visibility via the `hidden` attribute: closed until focus.
+    expect(panel).to_be_hidden()
+    expect(pills).to_have_count(1)  # the prefilled "p" include pill
+
+    # Focus the search input → the host opens the panel.
+    search.click()
+    expect(panel).to_be_visible(timeout=5_000)
+
+    # Include a second status (Finished) → a new include pill lands.
+    panel.locator(
+        "[data-search-select-option][data-value='f'] "
+        "[data-search-select-action='include']"
+    ).click()
+    expect(pills).to_have_count(2)
+
+    # Escape dismisses (the host's attachMenu owns dismiss when delegated).
+    page.keyboard.press("Escape")
+    expect(panel).to_be_hidden()
+
+    # Reconnection: adding a condition re-renders the tree (moves the leaf); the
+    # first widget's drop-down must re-bind without double-wiring — re-open and
+    # dismiss once more.
+    page.locator("filter-group button[data-action='add-condition']").first.click()
+    search.click()
+    expect(panel).to_be_visible(timeout=5_000)
+    page.keyboard.press("Escape")
+    expect(panel).to_be_hidden()
+
+
 def test_nested_relation_prefill_renders_full_tree(
     authenticated_page: Page, live_server
 ) -> None:
