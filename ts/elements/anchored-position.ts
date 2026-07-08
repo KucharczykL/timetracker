@@ -8,13 +8,70 @@
  * containing block for `fixed`.
  *
  * Geometry only — keyboard roving, single-open coordination, and submenu flyouts
- * stay in attachMenu (the submenu keeps its own bespoke positioner).
+ * stay in attachMenu (the submenu keeps its own flip/first-item geometry, but
+ * shares the pin/clamp/clear scaffold exported here).
  */
 
 export const VIEWPORT_MARGIN = 8;
 
 export type Align = "start" | "center" | "end";
 export type Side = "top" | "bottom";
+
+// Every inline property the anchored positioners may write (positionAnchored plus
+// the submenu path through pinFixedAndMeasureOrigin), in one place so the teardown
+// stays the exact inverse of the writers (see clearAnchoredPosition).
+const ANCHORED_PROPERTIES = [
+  "position",
+  "top",
+  "bottom",
+  "left",
+  "right",
+  "width",
+  "min-width",
+  "max-height",
+  "overflow-y",
+] as const;
+
+/**
+ * The fixed-position scaffold shared by positionAnchored and the submenu flyout:
+ * pin the panel `position: fixed`, reset the edges it might have carried, then
+ * pin it to (0,0) and measure the origin. A transformed/filtered ancestor becomes
+ * the containing block for `fixed`, so its coords are relative to that ancestor,
+ * not the viewport; the returned origin is subtracted from viewport coords to
+ * convert. Callers must measure the anchor AFTER this returns: a just-unhidden,
+ * still-in-flow panel that descends from the anchor would otherwise inflate the
+ * anchor's box before it is pinned out of flow here.
+ */
+export function pinFixedAndMeasureOrigin(
+  panel: HTMLElement,
+  options: { scrollable?: boolean } = {},
+): DOMRect {
+  panel.style.position = "fixed";
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  if (options.scrollable) panel.style.overflowY = "auto";
+  panel.style.left = "0px";
+  panel.style.top = "0px";
+  return panel.getBoundingClientRect();
+}
+
+// Clamp a viewport-left so the panel stays fully on-screen sideways (a full
+// VIEWPORT_MARGIN of daylight on each edge). Reads the panel's laid-out width.
+export function clampLeftToViewport(panel: HTMLElement, left: number): number {
+  return Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(left, window.innerWidth - panel.offsetWidth - VIEWPORT_MARGIN),
+  );
+}
+
+// Remove every inline property the anchored positioners write — the exact inverse,
+// so a closed panel leaks no stale fixed coordinates. Removing an unset property is
+// a no-op, so callers that never opt into scrollable/matchWidth delegate here too.
+export function clearAnchoredPosition(panel: HTMLElement): void {
+  for (const property of ANCHORED_PROPERTIES) {
+    panel.style.removeProperty(property);
+  }
+}
 
 export interface AnchorOptions {
   align: Align;
@@ -52,19 +109,7 @@ export function positionAnchored(
   const side = options.side ?? "bottom";
   const gap = options.gap ?? 0;
 
-  // Pin fixed BEFORE measuring the anchor: a just-unhidden, still-in-flow panel
-  // that is a descendant of the anchor would otherwise inflate the anchor's box.
-  panel.style.position = "fixed";
-  panel.style.right = "auto";
-  panel.style.bottom = "auto";
-  if (options.scrollable) panel.style.overflowY = "auto";
-
-  // Pin to (0,0) and measure the origin to convert viewport coords to the
-  // containing block's — a transformed/filtered ancestor becomes the containing
-  // block for `fixed`, so its coords are relative to that, not the viewport.
-  panel.style.left = "0px";
-  panel.style.top = "0px";
-  const origin = panel.getBoundingClientRect();
+  const origin = pinFixedAndMeasureOrigin(panel, { scrollable: options.scrollable });
   const rect = anchor.getBoundingClientRect();
 
   const availableBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN - gap;
@@ -92,10 +137,7 @@ export function positionAnchored(
   if (options.align === "start") left = rect.left;
   else if (options.align === "end") left = rect.right - width;
   else left = rect.left + rect.width / 2 - width / 2;
-  left = Math.max(
-    VIEWPORT_MARGIN,
-    Math.min(left, window.innerWidth - width - VIEWPORT_MARGIN),
-  );
+  left = clampLeftToViewport(panel, left);
 
   // offsetHeight read AFTER maxHeight so a capped panel flips against its capped
   // height. No vertical clamp — the panel tracks its anchor and scrolls off with
