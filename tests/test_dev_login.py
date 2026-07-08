@@ -43,9 +43,15 @@ class LoginPrefillViewTest(TestCase):
     def test_off_renders_no_password_value_and_no_header(self):
         response = Client().get("/login/")
         html = response.content.decode()
-        # password field present but with no value attribute, and no username value
+        # password field present but with NO value= attribute at all
         self.assertIn('type="password"', html)
-        self.assertNotIn('value="admin"', html)
+        # Extract the password <input> tag and assert it has no value= attribute.
+        import re
+
+        password_tag_match = re.search(r'<input[^>]*type="password"[^>]*>', html)
+        self.assertIsNotNone(password_tag_match, "password input tag not found")
+        password_tag = password_tag_match.group(0)
+        self.assertNotIn("value=", password_tag)
         self.assertNotIn("X-Robots-Tag", response)
 
     @override_settings(DEV_LOGIN_PREFILL='admin:a"><img src=x onerror=alert(1)>')
@@ -53,6 +59,8 @@ class LoginPrefillViewTest(TestCase):
         html = Client().get("/login/").content.decode()
         # the raw injection must not appear unescaped
         self.assertNotIn("<img src=x", html)
+        # but the payload WAS rendered (in escaped form) — prove it
+        self.assertIn("onerror=alert(1)", html)
 
     @override_settings(DEV_LOGIN_PREFILL="admin:admin")
     def test_post_still_authenticates(self):

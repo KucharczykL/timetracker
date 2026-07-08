@@ -12,6 +12,7 @@ from common.components import (
     searchselect_selected,
 )
 from common.components.primitives import Checkbox
+from games.dev_login import prefill_credentials
 from games.models import (
     Device,
     Game,
@@ -489,7 +490,5 @@ class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):
         # default; allow it to render so the login page can be pre-typed. Never
         # enabled when DEV_LOGIN_PREFILL is unset, so production never emits a
         # password value.
-        from games.dev_login import prefill_credentials
-
         if prefill_credentials():
             self.fields["password"].widget.render_value = True

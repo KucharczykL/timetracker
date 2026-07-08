@@ -41,7 +41,7 @@ class LoginView(auth_views.LoginView):
 
     authentication_form = LoginForm
 
-    def get_initial(self) -> dict:
+    def get_initial(self) -> dict[str, str]:
         initial = super().get_initial()
         credentials = prefill_credentials()
         if credentials:
