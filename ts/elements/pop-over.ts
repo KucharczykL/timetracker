@@ -40,9 +40,21 @@ function positionPanel(host: HTMLElement, panel: HTMLElement): void {
 }
 
 // Tint the arrow from the panel's own computed background/border so it tracks
-// the theme, and pin it to the edge facing the trigger. A 45°-rotated square
-// shows two adjacent borders as the tip: bottom+right point down (panel above
-// the trigger), top+left point up (panel below).
+// the theme. Done ONCE per open (the colors are position-invariant), not on
+// every reposition — getComputedStyle forces a style flush, wasteful on the
+// scroll/resize hot path. Stashes the border color for positionArrow to reuse.
+function tintArrow(panel: HTMLElement): void {
+  const arrow = panel.querySelector<HTMLElement>("[data-pop-over-arrow]");
+  if (!arrow) return;
+  const styles = getComputedStyle(panel);
+  arrow.style.backgroundColor = styles.backgroundColor;
+  arrow.dataset.borderColor = styles.borderTopColor;
+}
+
+// Pin the arrow to the edge facing the trigger (runs on every reposition, so it
+// avoids getComputedStyle — colors come from tintArrow's stash). A 45°-rotated
+// square shows two adjacent borders as the tip: bottom+right point down (panel
+// above the trigger), top+left point up (panel below).
 function positionArrow(
   panel: HTMLElement,
   side: Side,
@@ -52,18 +64,18 @@ function positionArrow(
   const arrow = panel.querySelector<HTMLElement>("[data-pop-over-arrow]");
   if (!arrow) return;
   const panelAbove = side === "top";
-  const styles = getComputedStyle(panel);
-  const border = `1px solid ${styles.borderTopColor}`;
-  arrow.style.backgroundColor = styles.backgroundColor;
+  const border = `1px solid ${arrow.dataset.borderColor ?? ""}`;
   arrow.style.borderTop = panelAbove ? "" : border;
   arrow.style.borderLeft = panelAbove ? "" : border;
   arrow.style.borderBottom = panelAbove ? border : "";
   arrow.style.borderRight = panelAbove ? border : "";
 
+  // Center the arrow on the trigger, clamped to keep a full ARROW_SIZE inset
+  // from each rounded corner — symmetric, the same inset on the left and right.
   const half = ARROW_SIZE / 2;
   arrow.style.left = `${Math.max(
     ARROW_SIZE,
-    Math.min(triggerCenterInPanel - half, panelWidth - ARROW_SIZE - half),
+    Math.min(triggerCenterInPanel - half, panelWidth - 2 * ARROW_SIZE),
   )}px`;
   arrow.style.top = panelAbove ? "" : `${-half}px`;
   arrow.style.bottom = panelAbove ? `${-half}px` : "";
@@ -109,6 +121,7 @@ class PopOverElement extends HTMLElement {
     if (this.isOpen || !this.panel) return;
     this.isOpen = true;
     this.panel.hidden = false;
+    tintArrow(this.panel); // once per open; positionPanel only places it
     positionPanel(this, this.panel);
     document.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("scroll", this.reposition, true);
