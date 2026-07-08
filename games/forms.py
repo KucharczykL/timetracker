@@ -482,3 +482,14 @@ class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):
     """Django's auth form with our primitive widget styling so login inputs
     self-style like every other form (no styling-at-a-distance)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dev/staging prefill only: Django's PasswordInput omits the value by
+        # default; allow it to render so the login page can be pre-typed. Never
+        # enabled when DEV_LOGIN_PREFILL is unset, so production never emits a
+        # password value.
+        from games.dev_login import prefill_credentials
+
+        if prefill_credentials():
+            self.fields["password"].widget.render_value = True
