@@ -718,7 +718,7 @@ def _history_section(game: Game) -> Node:
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
-    content = ContentContainer(class_="dark:text-white px-2")[
+    content = ContentContainer(class_="dark:text-white")[
         _game_header(game, request, _game_overview_metrics(game)),
         _purchases_section(game),
         _sessions_section(game),
