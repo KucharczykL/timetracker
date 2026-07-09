@@ -785,6 +785,7 @@ export class FilterGroupElement extends HTMLElement {
     card.appendChild(header);
 
     const childrenBox = element("div", CHILDREN_CLASS);
+    childrenBox.dataset.children = "";
     node.children.forEach((child, childIndex) => {
       childrenBox.appendChild(
         this.renderChild(child, [...path, childIndex], childIndex, node.children.length, model, depth),
