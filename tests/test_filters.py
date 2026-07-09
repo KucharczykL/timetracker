@@ -24,6 +24,7 @@ from common.criteria import (
     MAX_FIELD_COMPARISONS,
     MAX_FILTER_BREADTH,
     MAX_FILTER_DEPTH,
+    MAX_REGEX_PATTERN_LENGTH,
     MAX_SET_VALUES,
     IntCriterion,
     Modifier,
@@ -1686,6 +1687,69 @@ class TestFilterErrorBoundary:
 
     def test_valid_filter_still_parses(self):
         good = json.dumps({"name": {"modifier": "INCLUDES", "value": "halo"}})
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_invalid_regex_pattern(self):
+        """An uncompilable pattern (unbalanced group) is a clean FilterError, not a
+        500 from re.error escaping the boundary."""
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a"}})
+        with pytest.raises(FilterError, match="invalid regex pattern"):
+            parse_game_filter(bad)
+
+    def test_overlong_regex_pattern(self):
+        bad = json.dumps(
+            {
+                "name": {
+                    "modifier": "MATCHES_REGEX",
+                    "value": "a" * (MAX_REGEX_PATTERN_LENGTH + 1),
+                }
+            }
+        )
+        with pytest.raises(FilterError, match="regex pattern too long"):
+            parse_game_filter(bad)
+
+    def test_redos_nested_quantifier(self):
+        """The classic catastrophic-backtracking signature ``(a+)+$`` is rejected at
+        parse — otherwise SQLite's per-row REGEXP would hang a worker."""
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+)+$"}})
+        with pytest.raises(FilterError, match="too complex"):
+            parse_game_filter(bad)
+
+    def test_redos_nested_lazy_quantifier(self):
+        """A lazy inner repeat (MIN_REPEAT) is caught too — backtracking is just as
+        catastrophic."""
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": "(a+?)+"}})
+        with pytest.raises(FilterError, match="too complex"):
+            parse_game_filter(bad)
+
+    def test_redos_guard_applies_to_not_matches_regex(self):
+        """NOT_MATCHES_REGEX runs the same per-row engine, so it is guarded too."""
+        bad = json.dumps({"name": {"modifier": "NOT_MATCHES_REGEX", "value": "(a*)*"}})
+        with pytest.raises(FilterError, match="too complex"):
+            parse_game_filter(bad)
+
+    def test_non_string_regex_value(self):
+        """A hand-edited non-string regex value must raise FilterError, not a
+        TypeError from len()/re.compile escaping the boundary."""
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": 123}})
+        with pytest.raises(FilterError, match="expected a regex string"):
+            parse_game_filter(bad)
+
+    def test_benign_regex_still_parses(self):
+        """A sane pattern — including a single (non-nested) quantifier — is accepted."""
+        good = json.dumps(
+            {"name": {"modifier": "MATCHES_REGEX", "value": "hal+o|zelda"}}
+        )
+        result = parse_game_filter(good)
+        assert result is not None
+        result.to_q()  # does not raise
+
+    def test_redos_lookalike_value_allowed_for_non_regex_modifier(self):
+        """The guard is scoped to the regex modifiers: a ``(a+)+`` value under
+        INCLUDES is a literal substring match, never compiled, so it is accepted."""
+        good = json.dumps({"name": {"modifier": "INCLUDES", "value": "(a+)+"}})
         result = parse_game_filter(good)
         assert result is not None
         result.to_q()  # does not raise

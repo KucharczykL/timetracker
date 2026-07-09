@@ -7,9 +7,14 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 """
 
 import json
+import re
 import types
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date
+
+# Private stdlib regex AST modules (typeshed doesn't expose them); used only for the
+# ReDoS nested-quantifier check, safe because CLAUDE.md pins CPython 3.14.
+from re import _constants as re_constants, _parser as re_parser  # type: ignore[attr-defined]
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import (
@@ -214,6 +219,88 @@ def _coerce_date(raw: Any) -> str:
     return raw
 
 
+# ── Regex-pattern safety (ReDoS guard) ───────────────────────────────────────
+# MATCHES_REGEX/NOT_MATCHES_REGEX compile to a ``__regex`` lookup that SQLite runs
+# as Python ``re.search`` per row, with no timeout. The pattern is attacker-supplied
+# via ``?filter=``, so a valid-but-pathological regex (catastrophic backtracking,
+# e.g. ``(a+)+$``) would hang a worker. ``StringCriterion.from_json`` validates it
+# here so a bad pattern raises ``FilterError`` at parse (graceful warn/400), like the
+# other DoS caps, instead of reaching the query.
+
+MAX_REGEX_PATTERN_LENGTH = 200  # max chars in a MATCHES_REGEX/NOT_MATCHES_REGEX pattern
+
+# Repeat opcodes; each is ``(min, max, subpattern)`` and unbounded when max is MAXREPEAT.
+_REPEAT_OPS = (re_constants.MAX_REPEAT, re_constants.MIN_REPEAT)
+
+
+def _sub_sequences(op: Any, args: Any) -> Iterable[Any]:
+    """Yield the child token sequences nested inside one parsed regex node.
+
+    Covers every ``re._parser`` opcode that carries a subpattern; leaf ops
+    (LITERAL, IN, ANY, AT, …) carry none and yield nothing. Arg shapes are verified
+    against the pinned CPython 3.14 parser."""
+    if op in _REPEAT_OPS:
+        yield args[2]
+    elif op is re_constants.SUBPATTERN:
+        yield args[3]
+    elif op is re_constants.BRANCH:
+        yield from args[1]
+    elif op in (re_constants.ASSERT, re_constants.ASSERT_NOT):
+        yield args[1]
+    elif op is re_constants.ATOMIC_GROUP:
+        yield args
+
+
+def _contains_unbounded_repeat(tokens: Iterable[Any]) -> bool:
+    """True if any node in ``tokens`` (recursively) is an unbounded ``*``/``+`` repeat."""
+    for op, args in tokens:
+        if op in _REPEAT_OPS and args[1] == re_constants.MAXREPEAT:
+            return True
+        for child in _sub_sequences(op, args):
+            if _contains_unbounded_repeat(child):
+                return True
+    return False
+
+
+def _has_nested_unbounded_repeat(tokens: Iterable[Any]) -> bool:
+    """True if an unbounded repeat wraps a subpattern that itself contains one —
+    the ``(a+)+`` / ``(a*)*`` / ``(.*)+`` catastrophic-backtracking signature."""
+    for op, args in tokens:
+        if (
+            op in _REPEAT_OPS
+            and args[1] == re_constants.MAXREPEAT
+            and _contains_unbounded_repeat(args[2])
+        ):
+            return True
+        for child in _sub_sequences(op, args):
+            if _has_nested_unbounded_repeat(child):
+                return True
+    return False
+
+
+def _validate_regex(pattern: Any) -> None:
+    """Reject an attacker-supplied regex that is invalid or a likely ReDoS.
+
+    Raises ``FilterError`` (caught by the ``?filter=`` boundary → warn/400) when the
+    pattern is not a string, is over-long, fails to compile, or nests unbounded
+    quantifiers. The nested-quantifier check is a heuristic over the stdlib AST
+    (``re._parser`` — a private module, relied on only because CLAUDE.md pins CPython
+    3.14); it catches the classic signatures, not every pathological pattern."""
+    if not isinstance(pattern, str):
+        raise FilterError(f"expected a regex string, got {pattern!r}")
+    if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
+        raise FilterError(
+            f"regex pattern too long (max {MAX_REGEX_PATTERN_LENGTH} chars)"
+        )
+    try:
+        re.compile(pattern)
+        parsed = re_parser.parse(pattern)
+    except re.error as exc:
+        raise FilterError(f"invalid regex pattern: {exc}") from exc
+    if _has_nested_unbounded_repeat(parsed):
+        raise FilterError("regex pattern is too complex (nested quantifiers)")
+
+
 # ── Base criterion ─────────────────────────────────────────────────────────
 
 T = TypeVar("T")
@@ -333,6 +420,20 @@ class StringCriterion(_Criterion):
         # stays base-handled: it re-parses to the same default, byte-stable.
         result = super().to_json()
         result["value"] = self.value
+        return result
+
+    @classmethod
+    def from_json(cls, data: dict | None) -> Self | None:
+        # A regex modifier's value is compiled and run per-row by SQLite's REGEXP;
+        # validate it at parse so an invalid or pathological (ReDoS) pattern raises
+        # FilterError here instead of 500-ing or hanging a worker at query time. The
+        # other modifiers (EQUALS/INCLUDES/…) never compile their value, so skip them.
+        result = super().from_json(data)
+        if result is not None and result.modifier in (
+            Modifier.MATCHES_REGEX,
+            Modifier.NOT_MATCHES_REGEX,
+        ):
+            _validate_regex(result.value)
         return result
 
     def to_q(self, field_name: str) -> Q:
