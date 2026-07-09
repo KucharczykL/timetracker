@@ -50,6 +50,10 @@ export interface ComparisonRow {
   right: string;
   modifier: ModifierToken;
   granularity?: ComparisonSpace;
+  // Set only when an operand traverses a multi-valued relation (#282): the
+  // quantifier over the fanned related rows. Omitted → ANY (the default), so a
+  // same-row comparison's JSON stays compact.
+  quantifier?: RelationMatch;
 }
 
 // What a field-comparison leaf carries: a Partial while the user fills it (a fresh

@@ -493,6 +493,18 @@ class FieldComparisonRow(NamedTuple):
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
     granularity: ComparisonGranularity
+    quantifier: str = (
+        "ANY"  # RelationMatch value; used only when an operand is multi-valued (#282)
+    )
+
+
+# The quantifier <select> options for a multi-valued comparison (#282), mirroring
+# the RelationMatch labels used by the relation-node picker.
+_QUANTIFIER_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("ANY", "any"),
+    ("ALL", "all"),
+    ("NONE", "none"),
+)
 
 
 def _pack_operator(modifier: str, granularity: str) -> str:
@@ -540,6 +552,7 @@ def _field_comparison_row(
     left_value = row.left if row else ""
     operator_value = _pack_operator(row.modifier, row.granularity) if row else ""
     right_value = row.right if row else ""
+    quantifier_value = row.quantifier if row else ""
     return Div(
         data_fc_row="",
         class_=("grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]"),
@@ -547,7 +560,26 @@ def _field_comparison_row(
         Select(data_fc_left="", class_=select_class)[
             *_fc_column_options(columns, left_value)
         ],
-        Select(data_fc_op="", data_selected=operator_value, class_=select_class),
+        # Operator + quantifier share one cell so the row keeps its 4-column
+        # alignment; the quantifier is hidden until an operand is multi-valued
+        # (#282), toggled by ts/elements/field-comparison-set.ts.
+        Div(class_="flex gap-2 items-center")[
+            Select(data_fc_op="", data_selected=operator_value, class_=select_class),
+            Select(
+                data_fc_quantifier="",
+                data_selected=quantifier_value,
+                aria_label="Quantifier",
+                class_=f"hidden {select_class}",
+            )[
+                *(
+                    Option(
+                        value=value,
+                        **({"selected": ""} if value == quantifier_value else {}),
+                    )[label]
+                    for value, label in _QUANTIFIER_OPTIONS
+                )
+            ],
+        ],
         Select(data_fc_right="", data_selected=right_value, class_=select_class),
         Button(
             type="button",

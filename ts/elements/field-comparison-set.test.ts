@@ -27,6 +27,7 @@ const COLUMNS: Column[] = [
     group: "datetime",
     operators: ORDERED_MODIFIERS,
     source: "Session",
+    multivalued: false,
   },
   {
     value: "timestamp_end",
@@ -34,6 +35,7 @@ const COLUMNS: Column[] = [
     group: "datetime",
     operators: ORDERED_MODIFIERS,
     source: "Session",
+    multivalued: false,
   },
   {
     value: "note",
@@ -41,6 +43,7 @@ const COLUMNS: Column[] = [
     group: "string",
     operators: STRING_MODIFIERS,
     source: "Session",
+    multivalued: false,
   },
   {
     value: "game__year_released",
@@ -48,6 +51,15 @@ const COLUMNS: Column[] = [
     group: "number",
     operators: ORDERED_MODIFIERS,
     source: "Game",
+    multivalued: false,
+  },
+  {
+    value: "game__playevents__ended",
+    label: "Game › Play Events: Ended",
+    group: "date",
+    operators: ORDERED_MODIFIERS,
+    source: "Game › Play Events",
+    multivalued: true,
   },
 ];
 
@@ -87,6 +99,18 @@ function buildRow(leftValue: string, operatorSelected: string, rightSelected: st
   rightSelect.setAttribute("data-fc-right", "");
   if (rightSelected) rightSelect.setAttribute("data-selected", rightSelected);
   row.appendChild(rightSelect);
+
+  // The quantifier select (#282): server-rendered hidden with ANY/ALL/NONE.
+  const quantifierSelect = document.createElement("select");
+  quantifierSelect.setAttribute("data-fc-quantifier", "");
+  quantifierSelect.className = "hidden";
+  for (const value of ["ANY", "ALL", "NONE"]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value.toLowerCase();
+    quantifierSelect.appendChild(option);
+  }
+  row.appendChild(quantifierSelect);
 
   return row;
 }
@@ -361,5 +385,65 @@ describe("readComparisonRow", () => {
     row.appendChild(operatorSelect);
     row.appendChild(rightSelect);
     expect(readComparisonRow(row)).toBeNull();
+  });
+});
+
+describe("quantifier visibility + read (#282)", () => {
+  it("stays hidden for a single-valued comparison", () => {
+    const row = buildRow("timestamp_start", "LESS_THAN:date", "timestamp_end");
+    refreshRow(row, COLUMNS);
+    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
+    expect(quantifier.classList.contains("hidden")).toBe(true);
+    expect(readComparisonRow(row)?.quantifier).toBeUndefined();
+  });
+
+  it("reveals the quantifier when an operand is multi-valued", () => {
+    // timestamp_end (datetime) vs game__playevents__ended (date, multivalued) in
+    // date space.
+    const row = buildRow("timestamp_end", "GREATER_THAN:date", "game__playevents__ended");
+    refreshRow(row, COLUMNS);
+    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
+    expect(quantifier.classList.contains("hidden")).toBe(false);
+  });
+
+  it("emits a non-default quantifier and omits ANY", () => {
+    const row = buildRow("timestamp_end", "GREATER_THAN:date", "game__playevents__ended");
+    refreshRow(row, COLUMNS);
+    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
+
+    quantifier.value = "ALL";
+    expect(readComparisonRow(row)?.quantifier).toBe("ALL");
+
+    quantifier.value = "ANY";
+    expect(readComparisonRow(row)?.quantifier).toBeUndefined();
+  });
+
+  it("restores a seeded quantifier via data-selected", () => {
+    const row = buildRow("timestamp_end", "GREATER_THAN:date", "game__playevents__ended");
+    row
+      .querySelector("[data-fc-quantifier]")!
+      .setAttribute("data-selected", "NONE");
+    refreshRow(row, COLUMNS);
+    expect(readComparisonRow(row)?.quantifier).toBe("NONE");
+  });
+
+  it("hides + resets the quantifier when the operand changes to single-valued", () => {
+    const row = buildRow("timestamp_end", "GREATER_THAN:date", "game__playevents__ended");
+    wireComparisonRowListeners(row, COLUMNS);
+    refreshRow(row, COLUMNS);
+    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
+    quantifier.value = "ALL";
+
+    // Point the right operand at a single-valued column and fire change.
+    const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")!;
+    const option = document.createElement("option");
+    option.value = "timestamp_start";
+    right.appendChild(option);
+    right.value = "timestamp_start";
+    right.dispatchEvent(new Event("change"));
+
+    expect(quantifier.classList.contains("hidden")).toBe(true);
+    expect(quantifier.value).toBe("ANY");
+    expect(readComparisonRow(row)?.quantifier).toBeUndefined();
   });
 });

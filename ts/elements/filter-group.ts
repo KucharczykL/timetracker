@@ -1139,7 +1139,7 @@ export class FilterGroupElement extends HTMLElement {
   // column). The operator is packed (modifier:granularity) so refreshRow can
   // restore the correct comparison space and filter the right list accordingly.
   private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
-    const { left, right, modifier, granularity } = comparison;
+    const { left, right, modifier, granularity, quantifier } = comparison;
     if (left) {
       const leftSelect = row.querySelector<HTMLSelectElement>("[data-fc-left]");
       if (leftSelect) leftSelect.value = left;
@@ -1149,6 +1149,11 @@ export class FilterGroupElement extends HTMLElement {
       row.querySelector("[data-fc-op]")?.setAttribute("data-selected", packed);
     }
     if (right) row.querySelector("[data-fc-right]")?.setAttribute("data-selected", right);
+    // The quantifier (#282) follows the same data-selected contract; refreshRow →
+    // refreshQuantifier adopts it once it knows whether an operand is multi-valued.
+    if (quantifier) {
+      row.querySelector("[data-fc-quantifier]")?.setAttribute("data-selected", quantifier);
+    }
   }
 
   // Suffix every id/for/name in a cloned subtree so repeated clones stay valid HTML

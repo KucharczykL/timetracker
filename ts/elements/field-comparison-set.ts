@@ -8,7 +8,7 @@
  * the right-column select from the same-group columns, restoring any saved
  * value stashed in data-selected. filter-group.ts wires and reads the rows.
  */
-import type { ComparisonRow } from "./filter-tree/types.js";
+import type { ComparisonRow, RelationMatch } from "./filter-tree/types.js";
 
 // The row shape lives in filter-tree/types.ts (shared with the serializer +
 // completeness check); re-exported here for the widget's existing consumers.
@@ -182,6 +182,30 @@ function refreshRowRightList(
   fillSelect(right, groups, rightSaved, "column…");
 }
 
+/** The default comparison quantifier — mirrors RelationMatch's default (#282). */
+const DEFAULT_QUANTIFIER: RelationMatch = "ANY";
+
+/** Show/hide the row's quantifier select: visible only when the chosen left or
+ * right operand traverses a multi-valued relation (#282). When hidden it is
+ * reset to the default so a stale ALL/NONE can never leak into the serialized
+ * comparison. Restores a saved value (data-selected) on first paint. */
+function refreshQuantifier(row: HTMLElement, columns: Column[]): void {
+  const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]");
+  if (!quantifier) return;
+  const saved = quantifier.getAttribute("data-selected");
+  if (saved !== null) {
+    quantifier.removeAttribute("data-selected");
+    if (saved) quantifier.value = saved;
+  }
+  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
+  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+  const multivalued = columns.some(
+    (column) => (column.value === left || column.value === right) && column.multivalued,
+  );
+  quantifier.classList.toggle("hidden", !multivalued);
+  if (!multivalued) quantifier.value = DEFAULT_QUANTIFIER;
+}
+
 /** Rebuild a row's operator + right-column options from its left column. The
  * reusable single-row unit (see file header) — the nested builder's comparison
  * leaf (#246) calls this directly on a standalone row. */
@@ -203,6 +227,7 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
     fillSelect(right, [{ header: null, options: [] }], "", "column…");
     operator.disabled = true;
     right.disabled = true;
+    refreshQuantifier(row, columns);
     return;
   }
   operator.disabled = false;
@@ -236,6 +261,9 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
 
   // Fill the right list for the current operator value (uses operatorSaved restored above).
   refreshRowRightList(right, left, operator, columns);
+  // The right value may have been restored/cleared above, so re-evaluate whether
+  // an operand is multi-valued and show/hide the quantifier accordingly.
+  refreshQuantifier(row, columns);
 }
 
 /** Export the row-wiring helper so filter-group.ts can reuse it for the
@@ -248,7 +276,13 @@ export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]):
   if (!operator || !left || !right) return;
 
   left.addEventListener("change", () => refreshRow(row, columns));
-  operator.addEventListener("change", () => refreshRowRightList(right, left, operator, columns));
+  operator.addEventListener("change", () => {
+    refreshRowRightList(right, left, operator, columns);
+    refreshQuantifier(row, columns);
+  });
+  // A right-operand change can newly select (or deselect) a multi-valued column,
+  // so the quantifier's visibility must track it too.
+  right.addEventListener("change", () => refreshQuantifier(row, columns));
 }
 
 /** Read one comparison row into its complete value, or null when incomplete (a
@@ -265,5 +299,17 @@ export function readComparisonRow(row: HTMLElement): ComparisonRow | null {
   if (!modifier) return null;
   const entry: ComparisonRow = { left, right, modifier };
   if (granularity !== "raw") entry.granularity = granularity;
+  // The quantifier is meaningful only when visible (an operand is multi-valued,
+  // #282). Emit it only when set to a non-default so raw-comparison JSON stays
+  // byte-compatible; refreshQuantifier resets a hidden select to the default.
+  const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]");
+  if (
+    quantifier &&
+    !quantifier.classList.contains("hidden") &&
+    quantifier.value &&
+    quantifier.value !== DEFAULT_QUANTIFIER
+  ) {
+    entry.quantifier = quantifier.value as RelationMatch;
+  }
   return entry;
 }

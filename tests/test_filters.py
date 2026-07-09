@@ -35,7 +35,7 @@ from common.criteria import (
     _ScalarCriterion,
     _allowed_comparison_modifiers,
     _comparison_group_for,
-    _comparison_operand_group,
+    _comparison_operand_info,
     _criterion_class_for,
     _field_comparison_to_q,
     _filter_class_for,
@@ -2862,6 +2862,7 @@ class TestComparableColumns:
                 "group",
                 "operators",
                 "source",
+                "multivalued",
             }
 
     def test_operators_match_allowed_comparison_modifiers(self):
@@ -3017,22 +3018,40 @@ class TestComparableColumnsCrossModel:
         ]
         assert own_labels == sorted(own_labels, key=str.lower)
 
-    def test_m2m_and_reverse_not_enumerated(self):
-        from games.models import Game, Purchase
+    def test_m2m_and_reverse_enumerated_as_multivalued(self):
+        # #282: M2M + reverse relations are now enumerated as multi-valued operand
+        # blocks (marked so the widget offers a quantifier).
+        from games.models import Game, Purchase, Session
 
-        purchase_values = {column["value"] for column in comparable_columns(Purchase)}
-        assert not any(value.startswith("games__") for value in purchase_values)
-        game_values = {column["value"] for column in comparable_columns(Game)}
-        assert not any(value.startswith("session__") for value in game_values)
+        purchase_columns = {c["value"]: c for c in comparable_columns(Purchase)}
+        assert "games__name" in purchase_columns
+        assert purchase_columns["games__name"]["multivalued"] is True
 
-    def test_platform_and_device_have_no_related_columns(self):
+        game_columns = {c["value"]: c for c in comparable_columns(Game)}
+        assert "sessions__note" in game_columns
+        assert game_columns["sessions__note"]["multivalued"] is True
+
+        # Own + to-one-FK columns stay single-valued.
+        assert game_columns["name"]["multivalued"] is False
+
+        # The #282 headline path (Session → game → playevents) is a to-one-prefixed
+        # multi-valued operand.
+        session_columns = {c["value"]: c for c in comparable_columns(Session)}
+        assert "game__playevents__ended" in session_columns
+        assert session_columns["game__playevents__ended"]["multivalued"] is True
+
+    def test_platform_and_device_have_no_to_one_related_columns(self):
+        # Platform/Device declare no forward FKs, so every *single-valued* column
+        # is own-model (model-sourced). Their reverse relations (Platform.games,
+        # Device.sessions) are enumerated as multi-valued blocks (#282), so allow
+        # those to carry a relation source.
         from games.models import Device, Platform
 
         for model in (Platform, Device):
             model_source = str(model._meta.verbose_name).title()
-            assert all(
-                column["source"] == model_source for column in comparable_columns(model)
-            )
+            for column in comparable_columns(model):
+                if not column["multivalued"]:
+                    assert column["source"] == model_source
 
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
@@ -5701,50 +5720,79 @@ class TestScopedAggregateReducers:
 
 
 class TestComparisonOperandPaths:
-    """Tests for _comparison_operand_group: path grammar + validation (#169)."""
+    """Tests for _comparison_operand_info: path grammar + validation (#169/#282)."""
 
     def test_fk_path_resolves_related_group(self):
         from games.models import Session
 
-        assert (
-            _comparison_operand_group(Session, "game__year_released", side="left")
-            == "number"
-        )
+        info = _comparison_operand_info(Session, "game__year_released", side="left")
+        assert info.group == "number"
+        assert info.multivalued is False
+        assert info.relation_path is None
 
     def test_own_column_still_resolves(self):
         from games.models import Session
 
-        assert _comparison_operand_group(Session, "note", side="left") == "string"
+        info = _comparison_operand_info(Session, "note", side="left")
+        assert info == ("string", False, None)
 
-    def test_m2m_path_rejected(self):
+    def test_m2m_path_is_multivalued(self):
+        # #282: a forward M2M hop (Purchase.games) is now an accepted multi-valued
+        # operand rather than rejected.
         from games.models import Purchase
 
-        with pytest.raises(FilterError, match="games"):
-            _comparison_operand_group(Purchase, "games__name", side="left")
+        info = _comparison_operand_info(Purchase, "games__name", side="left")
+        assert info.group == "string"
+        assert info.multivalued is True
+        assert info.relation_path == "games"
 
-    def test_reverse_accessor_rejected(self):
+    def test_reverse_accessor_is_multivalued(self):
+        # #282: a reverse-FK hop (Game.sessions) is an accepted multi-valued operand.
         from games.models import Game
 
-        with pytest.raises(FilterError, match="session"):
-            _comparison_operand_group(Game, "session__note", side="right")
+        info = _comparison_operand_info(Game, "sessions__note", side="right")
+        assert info.group == "string"
+        assert info.multivalued is True
+        assert info.relation_path == "sessions"
 
-    def test_two_hop_rejected(self):
+    def test_to_one_then_multi_hop_is_multivalued(self):
+        # The #282 headline path: Session → game (to-one) → playevents (multi).
         from games.models import Session
 
-        with pytest.raises(FilterError, match=r"left operand.*'game__platform__name'"):
-            _comparison_operand_group(Session, "game__platform__name", side="left")
+        info = _comparison_operand_info(
+            Session, "game__playevents__ended", side="right"
+        )
+        assert info.group == "date"
+        assert info.multivalued is True
+        assert info.relation_path == "game__playevents"
+
+    def test_two_to_one_hops_rejected(self):
+        # Two to-one hops (Session → game → platform) stay rejected: no
+        # multi-valued relation, so the F() would need a two-join same-row path.
+        from games.models import Session
+
+        with pytest.raises(FilterError, match="two to-one hops"):
+            _comparison_operand_info(Session, "game__platform__name", side="left")
+
+    def test_four_segment_path_rejected(self):
+        from games.models import Session
+
+        with pytest.raises(FilterError, match="too many relations"):
+            _comparison_operand_info(
+                Session, "game__playevents__game__name", side="left"
+            )
 
     def test_unknown_relation_names_path_and_side(self):
         from games.models import Session
 
         with pytest.raises(FilterError, match=r"right operand.*'nonexistent__name'"):
-            _comparison_operand_group(Session, "nonexistent__name", side="right")
+            _comparison_operand_info(Session, "nonexistent__name", side="right")
 
     def test_unknown_related_column_names_full_path(self):
         from games.models import Session
 
         with pytest.raises(FilterError, match="game__nonexistent"):
-            _comparison_operand_group(Session, "game__nonexistent", side="left")
+            _comparison_operand_info(Session, "game__nonexistent", side="left")
 
     def test_cross_model_wiring_end_to_end(self, db):
         import datetime
@@ -5792,3 +5840,205 @@ class TestComparisonOperandPaths:
         joins = [entry for entry in alias_map.values() if isinstance(entry, Join)]
         assert len(joins) == 1
         assert joins[0].table_name == "games_platform"
+
+
+class TestMultivaluedComparison:
+    """#282: field comparison across a multi-valued relation, quantified ANY/ALL/NONE."""
+
+    @staticmethod
+    def _dt(year, month=1, day=1):
+        import datetime as dt
+
+        return dt.datetime(year, month, day, 12, 0, tzinfo=dt.timezone.utc)
+
+    def _seed(self):
+        import datetime as dt
+
+        from games.models import Game, PlayEvent, Session
+
+        def session(game, end):
+            return Session.objects.create(
+                game=game, timestamp_start=self._dt(2000), timestamp_end=end
+            )
+
+        rows = {}
+        game_a = Game.objects.create(name="MV-A")
+        PlayEvent.objects.create(game=game_a, ended=dt.date(2020, 1, 1))
+        PlayEvent.objects.create(game=game_a, ended=dt.date(2020, 6, 1))
+        rows["after_all"] = session(game_a, self._dt(2021))
+        rows["after_some"] = session(game_a, self._dt(2020, 3, 1))
+        rows["after_none"] = session(game_a, self._dt(2019))
+        rows["null_end"] = session(game_a, None)
+
+        game_b = Game.objects.create(name="MV-B")
+        PlayEvent.objects.create(game=game_b, ended=None)  # null terminal column
+        rows["null_terminal"] = session(game_b, self._dt(2021))
+
+        rows["no_events"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
+        rows["no_game"] = session(None, self._dt(2021))
+        return rows
+
+    def _matched(self, quantifier, *, left, right):
+        from games.models import Session
+
+        query = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left=left,
+                    right=right,
+                    modifier=Modifier.GREATER_THAN,
+                    granularity="date",
+                    quantifier=quantifier,
+                )
+            ]
+        ).to_q()
+        return set(Session.objects.filter(query).values_list("pk", flat=True))
+
+    def test_any_multi_on_right(self, db):
+        rows = self._seed()
+        matched = self._matched(
+            RelationMatch.ANY, left="timestamp_end", right="game__playevents__ended"
+        )
+        expected = {"after_all", "after_some"}
+        assert {k for k, s in rows.items() if s.pk in matched} == expected
+
+    def test_all_multi_on_right(self, db):
+        rows = self._seed()
+        matched = self._matched(
+            RelationMatch.ALL, left="timestamp_end", right="game__playevents__ended"
+        )
+        # after_all satisfies both events; no_events + no_game are vacuously true.
+        expected = {"after_all", "no_events", "no_game"}
+        assert {k for k, s in rows.items() if s.pk in matched} == expected
+
+    def test_none_multi_on_right(self, db):
+        rows = self._seed()
+        matched = self._matched(
+            RelationMatch.NONE, left="timestamp_end", right="game__playevents__ended"
+        )
+        # Complement of ANY.
+        expected = {
+            "after_none",
+            "null_end",
+            "null_terminal",
+            "no_events",
+            "no_game",
+        }
+        assert {k for k, s in rows.items() if s.pk in matched} == expected
+
+    def test_multi_on_left_mirrors_flipped_operator(self, db):
+        # Multi operand on the left with LESS_THAN is the mirror of multi-on-right
+        # GREATER_THAN: ended < timestamp_end ⇔ timestamp_end > ended.
+        rows = self._seed()
+        matched = self._matched(
+            RelationMatch.ANY, left="game__playevents__ended", right="timestamp_end"
+        )
+        # ANY event with ended < session end (date): after_all + after_some.
+        # We use LESS_THAN via a separate query since _matched hardcodes GREATER_THAN.
+        from games.models import Session
+
+        query = SessionFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="game__playevents__ended",
+                    right="timestamp_end",
+                    modifier=Modifier.LESS_THAN,
+                    granularity="date",
+                    quantifier=RelationMatch.ANY,
+                )
+            ]
+        ).to_q()
+        matched = set(Session.objects.filter(query).values_list("pk", flat=True))
+        assert {k for k, s in rows.items() if s.pk in matched} == {
+            "after_all",
+            "after_some",
+        }
+
+    def test_raw_space_multivalued_string_contains(self, db):
+        # Raw string space, multi operand on the right (Purchase.games M2M).
+        from games.models import Game, Purchase
+
+        import datetime as dt
+
+        purchased = dt.date(2024, 1, 1)
+        game_match = Game.objects.create(name="Zelda")
+        game_other = Game.objects.create(name="Doom")
+        hit = Purchase.objects.create(
+            name="Great Zelda Bundle", date_purchased=purchased
+        )
+        hit.games.add(game_match)
+        # same name...
+        miss = Purchase.objects.create(
+            name="Great Zelda Bundle", date_purchased=purchased
+        )
+        miss.games.add(game_other)  # ...but no linked game name it contains
+        query = PurchaseFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="name",
+                    right="games__name",
+                    modifier=Modifier.INCLUDES,
+                    quantifier=RelationMatch.ANY,
+                )
+            ]
+        ).to_q()
+        matched = set(Purchase.objects.filter(query).values_list("pk", flat=True))
+        assert hit.pk in matched
+        assert miss.pk not in matched
+
+    def test_both_operands_multivalued_rejected(self, db):
+        with pytest.raises(FilterError, match="two multi-valued operands"):
+            SessionFilter(
+                field_comparisons=[
+                    FieldComparisonCriterion(
+                        left="game__playevents__started",
+                        right="game__playevents__ended",
+                        modifier=Modifier.LESS_THAN,
+                        granularity="date",
+                    )
+                ]
+            ).to_q()
+
+    def test_quantifier_without_multi_operand_rejected(self, db):
+        with pytest.raises(FilterError, match="only meaningful"):
+            SessionFilter(
+                field_comparisons=[
+                    FieldComparisonCriterion(
+                        left="timestamp_start",
+                        right="timestamp_end",
+                        modifier=Modifier.LESS_THAN,
+                        granularity="date",
+                        quantifier=RelationMatch.ALL,
+                    )
+                ]
+            ).to_q()
+
+    def test_quantifier_json_roundtrip(self):
+        criterion = FieldComparisonCriterion(
+            left="timestamp_end",
+            right="game__playevents__ended",
+            modifier=Modifier.GREATER_THAN,
+            granularity="date",
+            quantifier=RelationMatch.ALL,
+        )
+        payload = criterion.to_json()
+        assert payload["quantifier"] == RelationMatch.ALL
+        reparsed = FieldComparisonCriterion.from_json(payload)
+        assert reparsed.quantifier == RelationMatch.ALL
+
+    def test_default_quantifier_omitted_from_json(self):
+        criterion = FieldComparisonCriterion(
+            left="timestamp_start", right="timestamp_end", modifier=Modifier.LESS_THAN
+        )
+        assert "quantifier" not in criterion.to_json()
+
+    def test_unknown_quantifier_rejected(self):
+        with pytest.raises(FilterError, match="quantifier"):
+            FieldComparisonCriterion.from_json(
+                {
+                    "left": "a",
+                    "right": "b",
+                    "modifier": "EQUALS",
+                    "quantifier": "SOME",
+                }
+            )
