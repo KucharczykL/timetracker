@@ -500,7 +500,7 @@ class FieldComparisonRow(NamedTuple):
 
 # The quantifier <select> options for a multi-valued comparison (#282), mirroring
 # the RelationMatch labels used by the relation-node picker.
-_QUANTIFIER_OPTIONS: tuple[tuple[str, str], ...] = (
+_QUANTIFIER_OPTIONS: tuple[LabeledOption, ...] = (
     ("ANY", "any"),
     ("ALL", "all"),
     ("NONE", "none"),
@@ -571,13 +571,9 @@ def _field_comparison_row(
                 aria_label="Quantifier",
                 class_=f"hidden {select_class}",
             )[
-                *(
-                    Option(
-                        value=value,
-                        **({"selected": ""} if value == quantifier_value else {}),
-                    )[label]
-                    for value, label in _QUANTIFIER_OPTIONS
-                )
+                # Selection is restored client-side from ``data-selected`` (like the
+                # operator/right selects), so the options render unmarked.
+                *(Option(value=value)[label] for value, label in _QUANTIFIER_OPTIONS)
             ],
         ],
         Select(data_fc_right="", data_selected=right_value, class_=select_class),

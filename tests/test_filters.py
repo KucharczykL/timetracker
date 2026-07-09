@@ -3040,6 +3040,28 @@ class TestComparableColumnsCrossModel:
         assert "game__playevents__ended" in session_columns
         assert session_columns["game__playevents__ended"]["multivalued"] is True
 
+    def test_self_including_loops_not_enumerated(self):
+        # #282 review: a fk__reverse-of-fk path (e.g. Session → game → sessions)
+        # fans out a set containing the comparing row itself, so ALL is always
+        # vacuously false and ANY is off by the self-row. The pk__in-on-parent form
+        # cannot self-exclude, so these paths are not offered as operands.
+        from games.models import Game, Purchase, Session
+
+        session_values = {c["value"] for c in comparable_columns(Session)}
+        assert not any(v.startswith("game__sessions__") for v in session_values)
+        assert not any(v.startswith("device__sessions__") for v in session_values)
+        # Game → related_game-reverse (addon_purchases) is a self-including loop too.
+        game_values = {c["value"] for c in comparable_columns(Game)}
+        assert not any(v.startswith("platform__game__") for v in game_values)
+        purchase_values = {c["value"] for c in comparable_columns(Purchase)}
+        assert not any(v.startswith("platform__purchase__") for v in purchase_values)
+        assert not any(
+            v.startswith("related_game__addon_purchases__") for v in purchase_values
+        )
+        # But a cross-model path through the same FK prefix is still offered.
+        assert any(v.startswith("game__playevents__") for v in session_values)
+        assert any(v.startswith("related_game__purchases__") for v in purchase_values)
+
     def test_platform_and_device_have_no_to_one_related_columns(self):
         # Platform/Device declare no forward FKs, so every *single-valued* column
         # is own-model (model-sourced). Their reverse relations (Platform.games,

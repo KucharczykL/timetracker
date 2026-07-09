@@ -2276,29 +2276,43 @@ def _comparison_multivalued_sources(
     (``multi__``), then — per forward to-one FK — every multi relation on the
     FK's target (``fk__multi__``). Mirrors the grammar ``_comparison_operand_info``
     accepts, so enumeration and validation stay in sync.
+
+    Self-including loops are skipped: a ``fk__multi`` path where ``multi`` is the
+    reverse of ``fk`` (e.g. ``game__sessions`` from Session, or ``device__sessions``)
+    fans out a set that always contains the comparing row itself, which makes an
+    ALL comparison vacuously false and an ANY off by the self-row. There is no
+    self-exclusion in the ``pk__in``-on-parent form, so these paths are not
+    offered as operands. A direct self-relation (a model M2M/FK to itself) is
+    skipped for the same reason.
     """
     sources: list[tuple[str, type[models.Model], str]] = []
 
     def multi_relations(
         host: type[models.Model],
-    ) -> list[tuple[str, type[models.Model]]]:
-        found: list[tuple[str, type[models.Model]]] = []
+    ) -> list[tuple[str, type[models.Model], Any]]:
+        found: list[tuple[str, type[models.Model], Any]] = []
         for model_field in host._meta.get_fields():
             if (
                 model_field.is_relation
                 and (model_field.many_to_many or model_field.one_to_many)
                 and model_field.related_model is not None
             ):
-                found.append((model_field.name, model_field.related_model))
+                found.append((model_field.name, model_field.related_model, model_field))
         return found
 
-    for name, related_model in multi_relations(model):
-        field = model._meta.get_field(name)
-        sources.append((f"{name}__", related_model, _multivalued_relation_label(field)))
+    for name, related_model, relation_field in multi_relations(model):
+        if related_model is model:  # self-relation loops back onto the same row
+            continue
+        label = _multivalued_relation_label(relation_field)
+        sources.append((f"{name}__", related_model, label))
     for fk_name, fk_model, fk_source in _comparison_relations(model):
-        for name, related_model in multi_relations(fk_model):
-            field = fk_model._meta.get_field(name)
-            label = f"{fk_source} › {_multivalued_relation_label(field)}"
+        fk_field = model._meta.get_field(fk_name)
+        for name, related_model, relation_field in multi_relations(fk_model):
+            # Skip the reverse of the FK we just traversed: it re-includes the
+            # parent row (``game__sessions`` = the game's sessions, incl. this one).
+            if getattr(relation_field, "field", None) is fk_field:
+                continue
+            label = f"{fk_source} › {_multivalued_relation_label(relation_field)}"
             sources.append((f"{fk_name}__{name}__", related_model, label))
     return sources
 
