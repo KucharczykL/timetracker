@@ -202,9 +202,8 @@ describe("<filter-group> restructuring", () => {
     expect(button(host, "up", [0])?.disabled).toBe(true);
     expect(button(host, "down", [1])?.disabled).toBe(true);
     clickAction(host, "down", [0]); // criterion moves after the group
-    const kinds = [...host.querySelector('[data-path="[]"]')!.children]
-      .find((child) => child.className.includes("pl-3"))!;
-    expect(kinds.children[0].matches('[data-kind="group"]')).toBe(true);
+    const childrenBox = host.querySelector('[data-path="[]"] > [data-children]')!;
+    expect(childrenBox.children[0].matches('[data-kind="group"]')).toBe(true);
   });
 
   it("wrap nests a node in a new group; unwrap dissolves it", () => {
