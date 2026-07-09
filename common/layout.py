@@ -227,12 +227,12 @@ def NavbarPlaytime(
     oob_attr = ' hx-swap-oob="true"' if oob else ""
     return Safe(
         f'<li id="navbar-playtime"{oob_attr} '
-        'class="dark:text-white flex flex-col items-center text-xs">'
+        'class="flex flex-col items-center text-xs">'
         '<span class="flex uppercase gap-1">Today'
-        '<span class="dark:text-gray-400">·</span>Last 7 days</span>'
+        '<span class="">·</span>Last 7 days</span>'
         '<span class="flex items-center gap-1">'
         f"{total(today_played, today_url)}"
-        '<span class="dark:text-gray-400">·</span>'
+        '<span class="">·</span>'
         f"{total(last_7_played, last_7_url)}</span></li>"
     )
 
@@ -260,10 +260,10 @@ _THEME_TOGGLE_SVGS = (
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
-    "block py-2 px-3 text-gray-900 rounded-sm hover:bg-gray-100 "
+    "block py-2 px-3 rounded-sm hover:bg-gray-100 "
     "md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 "
-    "dark:text-white md:dark:hover:text-blue-500 dark:hover:bg-gray-700 "
-    "dark:hover:text-white md:dark:hover:bg-transparent"
+    "text-heading md:dark:hover:text-blue-500 dark:hover:bg-gray-700 "
+    "md:dark:hover:bg-transparent"
 )
 
 
@@ -315,8 +315,8 @@ def NavbarMenu(
     home = Li()[
         A(
             href=reverse("games:index"),
-            class_="block py-2 px-3 text-white bg-blue-700 rounded-sm "
-            "md:bg-transparent md:text-blue-700 md:p-0 md:dark:text-blue-500 "
+            class_="block py-2 px-3 bg-blue-700 rounded-sm "
+            "md:bg-transparent md:p-0 text-heading hover:text-blue-500 "
             "dark:bg-blue-600 md:dark:bg-transparent",
             aria_current="page",
         )["Home"]

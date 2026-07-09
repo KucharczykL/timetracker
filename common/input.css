@@ -131,7 +131,7 @@
     }
 
     .responsive-table {
-        @apply dark:text-white mx-auto table-fixed;
+        @apply mx-auto table-fixed;
     }
 
     .responsive-table tr:nth-child(even) {

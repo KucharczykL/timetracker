@@ -7,8 +7,8 @@ from django.urls import reverse
 
 from common.components.core import Children, Fragment, Node, as_children
 from common.components.primitives import (
-    ICON_BUTTON_SIZE_CLASS,
     H1,
+    ICON_BUTTON_SIZE_CLASS,
     A,
     Br,
     Div,
@@ -338,7 +338,7 @@ def SessionActions(session, csrf_token: str) -> Node:
                 # self_dismiss=False: <session-actions> owns this overlay's
                 # open/close and its own bindPopupDismiss.
                 Modal(modal_id, self_dismiss=False)[
-                    Div(class_="text-center dark:text-white")[
+                    Div(class_="text-center")[
                         "Reset the start time of ",
                         Span(class_="font-medium")[game_name],
                         " to now?",
