@@ -1591,6 +1591,31 @@ class TestFilterErrorBoundary:
         with pytest.raises(FilterError, match="for string field"):
             parse_game_filter(bad)
 
+    def test_invalid_regex_pattern_raises(self):
+        """A malformed regex would raise at query-execution time (the DB's REGEXP
+        compiles it with ``re``) — past the error boundary, a 500. Validate it at
+        parse instead. ``.*{12,}`` (multiple repeat) is the reported case."""
+        bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": ".*{12,}"}})
+        with pytest.raises(FilterError, match="Invalid regular expression"):
+            parse_game_filter(bad)
+
+    def test_invalid_regex_nested_in_relation_raises(self):
+        """The reported 500: a purchase filter whose nested ``game_filter`` carries
+        an invalid regex. Validation must reach into the cross-entity sub-filter."""
+        bad = json.dumps(
+            {"game_filter": {"name": {"modifier": "MATCHES_REGEX", "value": "[unbal"}}}
+        )
+        with pytest.raises(FilterError, match="Invalid regular expression"):
+            parse_purchase_filter(bad)
+
+    def test_valid_regex_pattern_parses(self):
+        """A well-formed regex is unaffected by the parse-time compile check."""
+        good = json.dumps(
+            {"name": {"modifier": "MATCHES_REGEX", "value": "[a-z]{12,}"}}
+        )
+        parsed = parse_game_filter(good)
+        assert parsed is not None
+
     def test_m2m_only_modifier_on_generic_layer(self):
         """INCLUDES_ALL on a non-M2M-routed field hits the generic _SetCriterion
         path: now FilterError (formerly a bare AssertionError)."""
