@@ -118,7 +118,12 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     if game_count == 1:
         first_game = purchase.games.first()
         if first_game is not None:
-            link_content = first_game.name
+            first_game_name = first_game.name
+            if purchase.name:
+                link_content = f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
+                popover_content = first_game.name
+            else:
+                link_content = first_game.name
             popover_content = link_content
     if game_count > 1:
         games_list = Ul(class_="list-disc list-inside")[
