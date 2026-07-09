@@ -10,6 +10,13 @@ PYTHON_VERSION = 3.14
 # THAT can't reach the interpreter — e.g. the Claude Code cloud sandbox blocks
 # the python-build-standalone download on github — stop with a pointer to the
 # bootstrap script instead of failing cryptically deep inside uv/pytest.
+ifeq ($(OS),Windows_NT)
+# cmd.exe/Git-bash safe: no /dev/null, no `test -x`, no `;` chaining. `uv python
+# find` already discovers the project .venv, so no separate venv fallback is
+# needed; `> NUL` hits the Windows null device from either shell.
+ensure-python:
+	@uv python find ">=3.14,<4" >NUL 2>&1 || uv python install $(PYTHON_VERSION)
+else
 ensure-python:
 	@uv python find '>=3.14,<4' >/dev/null 2>&1 && exit 0; \
 	test -x .venv/bin/python && exit 0; \
@@ -18,6 +25,7 @@ ensure-python:
 	echo "    (In the Claude Code cloud sandbox the interpreter download is blocked.)"; \
 	echo "    Run  ./scripts/bootstrap-cloud-env.sh  then retry your make target."; \
 	exit 1
+endif
 
 npm:
 	pnpm install
@@ -35,7 +43,7 @@ devlogin: migrate
 	uv run --frozen python manage.py devlogin
 
 init: ensure-python
-	uv sync
+	uv sync --frozen
 	pnpm install
 	$(MAKE) migrate
 	$(MAKE) loadplatforms
@@ -69,11 +77,12 @@ ts-check: gen-element-types
 test-ts: gen-element-types
 	pnpm exec vitest run
 
+dev: export DEV_LOGIN_PREFILL := admin:admin
 dev: ensure-python gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
-		"DEV_LOGIN_PREFILL=admin:admin uv run --frozen python -Wa manage.py runserver" \
+		"uv run --frozen python -Wa manage.py runserver" \
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
 		"pnpm exec tsc --watch"
 
@@ -85,8 +94,16 @@ dev-prod: migrate collectstatic
 	@npx concurrently \
 		--names "Caddy,Django,Django-Q" \
 		"caddy run --config Caddyfile.dev" \
-		"PROD=1 uv run --frozen python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker" \
-		"PROD=1 uv run --frozen manage.py qcluster"
+		"$(MAKE) gunicorn-prod" \
+		"$(MAKE) qcluster-prod"
+
+gunicorn-prod: export PROD := 1
+gunicorn-prod:
+	uv run --frozen python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker
+
+qcluster-prod: export PROD := 1
+qcluster-prod:
+	uv run --frozen manage.py qcluster
 
 dumpgames:
 	uv run --frozen python manage.py dumpdata --format yaml games --output tracker_fixture.yaml
@@ -138,9 +155,14 @@ typecheck:
 check: ensure-python lint format-check typecheck ts-check check-icons test-ts test
 
 date:
-	uv run --frozen python -c 'import datetime; from zoneinfo import ZoneInfo; print(datetime.datetime.isoformat(datetime.datetime.now(ZoneInfo("Europe/Prague")), timespec="minutes", sep=" "))'
+	uv run --frozen python scripts/print_local_time.py
 
+ifeq ($(OS),Windows_NT)
+cleanstatic:
+	if exist static rmdir /s /q static
+else
 cleanstatic:
 	rm -r static/*
+endif
 
 clean: cleanstatic
