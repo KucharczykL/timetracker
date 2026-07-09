@@ -2882,9 +2882,17 @@ class TestComparableColumnsCrossModel:
         # Purchase has TWO forward FKs: platform and related_game, plus its own source.
         from games.models import Purchase
 
-        sources = {column["source"] for column in comparable_columns(Purchase)}
+        columns = comparable_columns(Purchase)
+        sources = {column["source"] for column in columns}
         assert "Purchase" in sources  # own columns
         assert len(sources) >= 3
+        # related_game carries an explicit verbose_name="Base game" (#283) so it
+        # reads as "Base Game", not the Django default "Related Game".
+        assert "Base Game" in sources
+        by_value = {column["value"]: column for column in columns}
+        base_game_year = by_value["related_game__year_released"]
+        assert base_game_year["source"] == "Base Game"
+        assert base_game_year["label"].startswith("Base Game: ")
 
     def test_related_labels_are_qualified_and_own_labels_bare(self):
         from games.models import Session
