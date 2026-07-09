@@ -1942,7 +1942,7 @@ class ComparableColumn(TypedDict):
     optgroup it renders under."""
 
     value: ComparisonOperand  # "timestamp_end" or "game__year_released"
-    label: str  # own: "Timestamp End"; related: "Base Game: Year Released"
+    label: str  # own: "Session End"; related: "Base Game: Year Released"
     group: ComparisonGroup
     operators: list[ModifierValue]  # valid for this column's group, raw space (#152)
     source: str  # optgroup label: model verbose name for own columns, FK verbose name for related columns

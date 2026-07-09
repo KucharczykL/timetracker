@@ -2820,6 +2820,9 @@ class TestComparableColumns:
         columns = self._by_value(Session)
         assert columns["timestamp_end"]["group"] == "datetime"
         assert columns["timestamp_start"]["group"] == "datetime"
+        # verbose_name="Session start"/"Session end" drives the comparison label.
+        assert columns["timestamp_start"]["label"] == "Session Start"
+        assert columns["timestamp_end"]["label"] == "Session End"
 
     def test_purchase_date_columns(self):
         from games.models import Purchase
@@ -4767,6 +4770,14 @@ class TestFieldMetadata:
         assert entry["nullable"] is False
         assert entry["choices"] == []
         assert entry["relations"] == []
+
+    def test_session_timestamp_field_labels(self):
+        # timestamp_start/end carry explicit FilterField labels so the field
+        # picker reads "Session Start"/"Session End" rather than the title-cased
+        # field name "Timestamp Start"/"Timestamp End".
+        by_name = self._by_name(SessionFilter)
+        assert by_name["timestamp_start"]["label"] == "Session Start"
+        assert by_name["timestamp_end"]["label"] == "Session End"
 
     def test_aggregate_scope_model_names_the_reduced_relation(self):
         by_name = self._by_name(GameFilter)

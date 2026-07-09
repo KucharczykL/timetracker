@@ -243,8 +243,8 @@ class SessionFilter(OperatorFilter):
         ),
         "is_active": FilterField(handler=bool_isnull_handler("timestamp_end")),
         # Compare the date portion so a date matches the datetime column.
-        "timestamp_start": FilterField("timestamp_start__date"),
-        "timestamp_end": FilterField("timestamp_end__date"),
+        "timestamp_start": FilterField("timestamp_start__date", label="Session Start"),
+        "timestamp_end": FilterField("timestamp_end__date", label="Session End"),
         "is_manual": FilterField(
             handler=bool_nonzero_duration_handler("duration_manual")
         ),
