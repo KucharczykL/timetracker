@@ -422,26 +422,6 @@ class StringCriterion(_Criterion):
     value: str = ""
     modifier: Modifier = Modifier.EQUALS
 
-    @classmethod
-    def from_json(cls, data: dict | None) -> Self | None:
-        # A regex modifier hands ``value`` to the DB's REGEXP function, which
-        # compiles it with Python's ``re``. An invalid pattern (unbalanced bracket,
-        # dangling quantifier, …) would raise at query-execution time — past the
-        # error boundary, a 500. Compile it here so a bad pattern raises FilterError
-        # at parse and degrades gracefully, like the scalar-coercion validators.
-        result = super().from_json(data)
-        if result is not None and result.modifier in (
-            Modifier.MATCHES_REGEX,
-            Modifier.NOT_MATCHES_REGEX,
-        ):
-            try:
-                re.compile(result.value)
-            except re.error as exc:
-                raise FilterError(
-                    f"Invalid regular expression {result.value!r}: {exc}"
-                ) from exc
-        return result
-
     def to_json(self) -> dict[str, Any]:
         # "unset" is the criterion being absent at the filter level (field is None),
         # never a magic empty value — so a present StringCriterion with value=="" is

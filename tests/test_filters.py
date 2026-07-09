@@ -1597,7 +1597,7 @@ class TestFilterErrorBoundary:
         compiles it with ``re``) — past the error boundary, a 500. Validate it at
         parse instead. ``.*{12,}`` (multiple repeat) is the reported case."""
         bad = json.dumps({"name": {"modifier": "MATCHES_REGEX", "value": ".*{12,}"}})
-        with pytest.raises(FilterError, match="Invalid regular expression"):
+        with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_game_filter(bad)
 
     def test_invalid_regex_nested_in_relation_raises(self):
@@ -1606,7 +1606,7 @@ class TestFilterErrorBoundary:
         bad = json.dumps(
             {"game_filter": {"name": {"modifier": "MATCHES_REGEX", "value": "[unbal"}}}
         )
-        with pytest.raises(FilterError, match="Invalid regular expression"):
+        with pytest.raises(FilterError, match="invalid regex pattern"):
             parse_purchase_filter(bad)
 
     def test_valid_regex_pattern_parses(self):
