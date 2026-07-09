@@ -88,7 +88,7 @@ const DEPTH_BACKGROUNDS = [
 ];
 const CARD_CLASS = "flex flex-col gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700";
 const HEADER_CLASS = "flex items-center justify-between gap-2";
-const CHILDREN_CLASS = "flex flex-col gap-2 pl-3";
+const CHILDREN_CLASS = "flex flex-col gap-2";
 const FOOTER_CLASS = "flex flex-wrap gap-2";
 // Shown in place of the header when the root group is empty: an empty filter
 // serializes to {} (matches everything), so say so rather than render a NOT/AND
