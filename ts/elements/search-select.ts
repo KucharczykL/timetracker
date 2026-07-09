@@ -48,10 +48,10 @@ export interface SearchSelectChangeDetail {
   last: SearchSelectOption | null;
 }
 
-// The contract for the "search-select:action" CustomEvent: a click on a
-// [data-search-select-action] button inside a form-mode option row (e.g. the
-// preset picker's per-row delete ×, issue #297). Filter mode keeps its own
-// include/exclude handling of the same attribute (handleFilterOptionClick).
+// The "search-select:action" CustomEvent: a click on a
+// [data-search-select-action] button in a form-mode row (the preset delete ×),
+// for an external consumer. Filter +/− are the widget's own state, handled
+// inline — they don't ride this event.
 export interface SearchSelectActionDetail {
   name: string;
   action: string;
@@ -75,6 +75,10 @@ interface FilterPillEntry {
   id: string;
   label: string;
 }
+
+// A filter value pill is exactly one of two kinds, so a non-pill action name
+// (e.g. "delete") can never reach the pill builder.
+type FilterPillKind = "include" | "exclude";
 
 const DEBOUNCE_MS = 100;
 
@@ -595,69 +599,65 @@ const initWidget = (containerElement: Element) => {
     event.preventDefault();
   });
 
-  // ── Option click → select (form mode) or include/exclude (filter mode) ──
-  options.addEventListener("click", (event) => {
-    if (isFilter) {
-      handleFilterOptionClick(event);
-      return;
-    }
-    // A row action button (e.g. the preset picker's delete ×) is not a pick:
-    // announce it and let the consumer decide (issue #297). Checked before the
-    // row lookup so the action never falls through to selectOption.
-    const actionButton = (event.target as Element).closest<HTMLElement>(
-      "[data-search-select-action]"
+  // Fire the external row-action seam (form mode only: the preset delete ×).
+  const dispatchAction = (action: string, option: SearchSelectOption) => {
+    container.dispatchEvent(
+      new CustomEvent<SearchSelectActionDetail>("search-select:action", {
+        bubbles: true,
+        detail: { name, action, option },
+      })
     );
+  };
+
+  // ── Option click. One action-button lookup: filter +/− add a pill inline; a
+  //    form-mode action button goes out on the event seam. ──
+  options.addEventListener("click", (event) => {
+    const target = event.target as Element;
+
+    // Filter: a pinned modifier pseudo-option sets the (exclusive) modifier.
+    if (isFilter) {
+      const modifierRow = target.closest<HTMLElement>("[data-search-select-modifier-option]");
+      if (modifierRow) {
+        setModifier(
+          modifierRow.getAttribute("data-search-select-modifier-option") ?? "",
+          modifierRow.getAttribute("data-label") ?? ""
+        );
+        return;
+      }
+    }
+
+    // A row action button — resolved before the plain-row pick so it never falls through.
+    const actionButton = target.closest<HTMLElement>("[data-search-select-action]");
     if (actionButton) {
       const actionRow = actionButton.closest<HTMLElement>("[data-search-select-option]");
       if (!actionRow) return;
-      container.dispatchEvent(
-        new CustomEvent<SearchSelectActionDetail>("search-select:action", {
-          bubbles: true,
-          detail: {
-            name,
-            action: actionButton.getAttribute("data-search-select-action") ?? "",
-            option: optionFromRow(actionRow),
-          },
-        })
-      );
+      const action = actionButton.getAttribute("data-search-select-action") ?? "";
+      if (isFilter) {
+        // Only +/− make a pill; any other action is ignored so it can't be miscast as exclude.
+        if (action === "include" || action === "exclude") {
+          addFilterPill(optionFromRow(actionRow), action);
+        }
+      } else {
+        dispatchAction(action, optionFromRow(actionRow));
+      }
       return;
     }
-    const row = (event.target as Element).closest<HTMLElement>("[data-search-select-option]");
-    if (!row) return;
-    selectOption(optionFromRow(row));
-  });
 
-  const handleFilterOptionClick = (event: MouseEvent) => {
-    const target = event.target as Element;
-    // Pinned modifier pseudo-option → set the (mutually exclusive) modifier.
-    const modifierRow = target.closest<HTMLElement>("[data-search-select-modifier-option]");
-    if (modifierRow) {
-      setModifier(
-        modifierRow.getAttribute("data-search-select-modifier-option") ?? "",
-        modifierRow.getAttribute("data-label") ?? ""
-      );
-      return;
+    // A bare row click → include (filter) / select (form).
+    const row = target.closest<HTMLElement>("[data-search-select-option]");
+    if (!row) return;
+    if (isFilter) {
+      addFilterPill(optionFromRow(row), "include");
+    } else {
+      selectOption(optionFromRow(row));
     }
-    // Include / exclude button on a value row.
-    const button = target.closest<HTMLElement>("[data-search-select-action]");
-    if (button) {
-      const row = button.closest<HTMLElement>("[data-search-select-option]");
-      if (!row) return;
-      addFilterPill(optionFromRow(row), button.getAttribute("data-search-select-action") ?? "include");
-      return;
-    }
-    // Click on the option row itself → include.
-    const optionRow = target.closest<HTMLElement>("[data-search-select-option]");
-    if (optionRow) {
-      addFilterPill(optionFromRow(optionRow), "include");
-    }
-  };
+  });
 
   // Add (or re-type) an include/exclude pill for a value. Selecting any value
   // clears a presence modifier — NOT_NULL / IS_NULL are mutually exclusive
   // with value pills.  Non-presence modifiers (INCLUDES_ALL / INCLUDES_ONLY)
   // persist alongside value pills.
-  const addFilterPill = (option: SearchSelectOption, kind: string) => {
+  const addFilterPill = (option: SearchSelectOption, kind: FilterPillKind) => {
     const modifierPill = pills.querySelector("[data-search-select-modifier]");
     if (modifierPill) {
       const modifierValue = modifierPill.getAttribute("data-search-select-modifier") ?? "";
@@ -674,7 +674,7 @@ const initWidget = (containerElement: Element) => {
     emitChange(null);
   };
 
-  const buildFilterValuePill = (option: SearchSelectOption, kind: string): HTMLElement => {
+  const buildFilterValuePill = (option: SearchSelectOption, kind: FilterPillKind): HTMLElement => {
     const pill = cloneTemplate(kind === "include" ? "pill-include" : "pill-exclude")!;
     pill.setAttribute("data-value", option.value);
     pill.setAttribute("data-label", option.label);
