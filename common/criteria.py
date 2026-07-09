@@ -222,57 +222,67 @@ def _coerce_date(raw: Any) -> str:
 # ── Regex-pattern safety (ReDoS guard) ───────────────────────────────────────
 # MATCHES_REGEX/NOT_MATCHES_REGEX compile to a ``__regex`` lookup that SQLite runs
 # as Python ``re.search`` per row, with no timeout. The pattern is attacker-supplied
-# via ``?filter=``, so a valid-but-pathological regex (catastrophic backtracking,
-# e.g. ``(a+)+$``) would hang a worker. ``StringCriterion.from_json`` validates it
-# here so a bad pattern raises ``FilterError`` at parse (graceful warn/400), like the
-# other DoS caps, instead of reaching the query.
+# via ``?filter=``, so a valid-but-pathological regex would hang a worker.
+# ``StringCriterion.from_json`` validates it here so a bad pattern raises
+# ``FilterError`` at parse (graceful warn/400), like the MAX_FILTER_* / MAX_SET_VALUES
+# ``?filter=`` caps further down, instead of reaching the query.
+#
+# PARTIAL protection, by design (issue chose a heuristic over a runtime bound): the
+# length cap + nested-unbounded-quantifier check stop the ``(a+)+`` family, but NOT
+# alternation-overlap (``(a|a)*``) or polynomial (``a*a*``) catastrophic patterns —
+# those are short (under the length cap) yet still backtrack exponentially against an
+# attacker-created long column value. Closing that class needs a runtime bound (a
+# per-query timeout or a linear engine like re2); this only raises the bar.
 
-MAX_REGEX_PATTERN_LENGTH = 200  # max chars in a MATCHES_REGEX/NOT_MATCHES_REGEX pattern
+MAX_REGEX_PATTERN_LENGTH = 200  # regex chars; sibling of the MAX_FILTER_* caps below
+
+# One parsed-regex token sequence — a ``re._parser`` SubPattern of ``(opcode, args)`` nodes.
+type RegexTokens = Iterable[Any]
 
 # Repeat opcodes; each is ``(min, max, subpattern)`` and unbounded when max is MAXREPEAT.
 _REPEAT_OPS = (re_constants.MAX_REPEAT, re_constants.MIN_REPEAT)
 
 
-def _sub_sequences(op: Any, args: Any) -> Iterable[Any]:
+def _sub_sequences(opcode: Any, args: Any) -> Iterable[RegexTokens]:
     """Yield the child token sequences nested inside one parsed regex node.
 
     Covers every ``re._parser`` opcode that carries a subpattern; leaf ops
     (LITERAL, IN, ANY, AT, …) carry none and yield nothing. Arg shapes are verified
     against the pinned CPython 3.14 parser."""
-    if op in _REPEAT_OPS:
+    if opcode in _REPEAT_OPS:
         yield args[2]
-    elif op is re_constants.SUBPATTERN:
+    elif opcode is re_constants.SUBPATTERN:
         yield args[3]
-    elif op is re_constants.BRANCH:
+    elif opcode is re_constants.BRANCH:
         yield from args[1]
-    elif op in (re_constants.ASSERT, re_constants.ASSERT_NOT):
+    elif opcode in (re_constants.ASSERT, re_constants.ASSERT_NOT):
         yield args[1]
-    elif op is re_constants.ATOMIC_GROUP:
+    elif opcode is re_constants.ATOMIC_GROUP:
         yield args
 
 
-def _contains_unbounded_repeat(tokens: Iterable[Any]) -> bool:
+def _contains_unbounded_repeat(tokens: RegexTokens) -> bool:
     """True if any node in ``tokens`` (recursively) is an unbounded ``*``/``+`` repeat."""
-    for op, args in tokens:
-        if op in _REPEAT_OPS and args[1] == re_constants.MAXREPEAT:
+    for opcode, args in tokens:
+        if opcode in _REPEAT_OPS and args[1] == re_constants.MAXREPEAT:
             return True
-        for child in _sub_sequences(op, args):
+        for child in _sub_sequences(opcode, args):
             if _contains_unbounded_repeat(child):
                 return True
     return False
 
 
-def _has_nested_unbounded_repeat(tokens: Iterable[Any]) -> bool:
+def _has_nested_unbounded_repeat(tokens: RegexTokens) -> bool:
     """True if an unbounded repeat wraps a subpattern that itself contains one —
     the ``(a+)+`` / ``(a*)*`` / ``(.*)+`` catastrophic-backtracking signature."""
-    for op, args in tokens:
+    for opcode, args in tokens:
         if (
-            op in _REPEAT_OPS
+            opcode in _REPEAT_OPS
             and args[1] == re_constants.MAXREPEAT
             and _contains_unbounded_repeat(args[2])
         ):
             return True
-        for child in _sub_sequences(op, args):
+        for child in _sub_sequences(opcode, args):
             if _has_nested_unbounded_repeat(child):
                 return True
     return False
@@ -285,7 +295,8 @@ def _validate_regex(pattern: Any) -> None:
     pattern is not a string, is over-long, fails to compile, or nests unbounded
     quantifiers. The nested-quantifier check is a heuristic over the stdlib AST
     (``re._parser`` — a private module, relied on only because CLAUDE.md pins CPython
-    3.14); it catches the classic signatures, not every pathological pattern."""
+    3.14); it catches the ``(a+)+`` family only — see the module comment above for the
+    alternation-overlap / polynomial classes it deliberately does NOT catch."""
     if not isinstance(pattern, str):
         raise FilterError(f"expected a regex string, got {pattern!r}")
     if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
