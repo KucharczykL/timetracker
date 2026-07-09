@@ -11,11 +11,16 @@ PYTHON_VERSION = 3.14
 # the python-build-standalone download on github — stop with a pointer to the
 # bootstrap script instead of failing cryptically deep inside uv/pytest.
 ifeq ($(OS),Windows_NT)
-# cmd.exe/Git-bash safe: no /dev/null, no `test -x`, no `;` chaining. `uv python
-# find` already discovers the project .venv, so no separate venv fallback is
-# needed; `> NUL` hits the Windows null device from either shell.
+# On Windows the recipe shell is NOT fixed: make runs recipes through Git-Bash `sh`
+# when it's on PATH (Bash/direnv/CI), else cmd.exe (e.g. make launched from
+# PowerShell without Git's usr/bin on PATH). The two disagree on the null device —
+# `sh` wants `/dev/null` (and treats `NUL` as a plain file, littering the tree),
+# cmd.exe wants `NUL` (and treats `/dev/null` as a bad path) — so redirect to
+# NEITHER: let `uv python find` print its one line. `||` and the `<`/`>`-quoting
+# both behave the same in either shell. This branch also drops the POSIX-only
+# `.venv/bin/python` fallback + cloud hint from the `else` recipe (irrelevant here).
 ensure-python:
-	@uv python find ">=3.14,<4" >NUL 2>&1 || uv python install $(PYTHON_VERSION)
+	@uv python find ">=3.14,<4" || uv python install $(PYTHON_VERSION)
 else
 ensure-python:
 	@uv python find '>=3.14,<4' >/dev/null 2>&1 && exit 0; \
