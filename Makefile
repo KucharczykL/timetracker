@@ -97,6 +97,10 @@ dev-prod: migrate collectstatic
 		"$(MAKE) gunicorn-prod" \
 		"$(MAKE) qcluster-prod"
 
+# These two run the production-like servers with PROD=1 scoped to them only (not
+# to dev-prod's migrate/collectstatic prereqs). Each is a SINGLE target written in
+# two lines: the `... : export PROD := 1` line attaches a target-specific env var,
+# the following `... :` line is the rule + recipe. Make merges them — not a redefinition.
 gunicorn-prod: export PROD := 1
 gunicorn-prod:
 	uv run --frozen python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker
