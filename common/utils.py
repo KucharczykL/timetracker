@@ -1,3 +1,4 @@
+import unicodedata
 from datetime import date
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Generator, NamedTuple, TypeVar
@@ -66,9 +67,18 @@ def safe_getattr(obj: object, attr_chain: str, default: Any | None = None) -> ob
     return obj
 
 
+def _rstrip_boundary(text: str) -> str:
+    """Trim trailing whitespace and punctuation/symbols so a truncated string
+    never ends on a dangling separator (space, dash, colon, …) before the
+    ellipsis. Covers ASCII hyphens and Unicode en/em dashes alike."""
+    while text and (text[-1].isspace() or unicodedata.category(text[-1])[0] in "PS"):
+        text = text[:-1]
+    return text
+
+
 def truncate_(input_string: str, length: int = 30, ellipsis: str = "…") -> str:
     return (
-        (f"{input_string[: length - len(ellipsis)].rstrip()}{ellipsis}")
+        (f"{_rstrip_boundary(input_string[: length - len(ellipsis)])}{ellipsis}")
         if len(input_string) > length
         else input_string
     )
@@ -82,12 +92,12 @@ def truncate(
         raise ValueError("Length cannot be shorter than the length of endpart.")
 
     if len(input_string) > max_content_length:
-        return f"{input_string[: max_content_length - len(ellipsis)].rstrip()}{ellipsis}{endpart}"
+        return f"{_rstrip_boundary(input_string[: max_content_length - len(ellipsis)])}{ellipsis}{endpart}"
 
     return (
         f"{input_string}{endpart}"
         if len(input_string) + len(endpart) <= length
-        else f"{input_string[: length - len(ellipsis) - len(endpart)].rstrip()}{ellipsis}{endpart}"
+        else f"{_rstrip_boundary(input_string[: length - len(ellipsis) - len(endpart)])}{ellipsis}{endpart}"
     )
 
 

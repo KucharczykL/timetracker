@@ -1081,6 +1081,36 @@ class TruncateInfoTest(unittest.TestCase):
         self.assertTrue(truncation.display.endswith("x"))
 
 
+class TruncateBoundaryTest(unittest.TestCase):
+    """The cut must never leave a dangling separator before the ellipsis."""
+
+    def test_no_dangling_space_dash_before_ellipsis(self):
+        result = components.truncate(
+            "The Walking Dead: Michonne - A Telltale Games Series", 30
+        )
+        self.assertTrue(result.endswith("…"))
+        # No space+ellipsis tail, and the char before the ellipsis is alphanumeric.
+        self.assertNotIn(" …", result)
+        self.assertTrue(result[:-1].isalnum() or result[-2].isalnum())
+
+    def test_trailing_dash_at_cut_is_dropped(self):
+        # Cut lands right on the " - " separator.
+        result = components.truncate("Portal 2 - Deluxe Edition", 12)
+        self.assertEqual(result, "Portal 2…")
+
+    def test_unicode_em_dash_stripped(self):
+        result = components.truncate("Portal 2 — Deluxe Edition", 12)
+        self.assertEqual(result, "Portal 2…")
+
+    def test_trailing_comma_at_cut_is_dropped(self):
+        result = components.truncate("Detective Instinct: Farewell, My Beloved", 30)
+        self.assertEqual(result, "Detective Instinct: Farewell…")
+
+    def test_trailing_colon_at_cut_is_dropped(self):
+        result = components.truncate("The Secret of Monkey Island: Special Edition", 30)
+        self.assertEqual(result, "The Secret of Monkey Island…")
+
+
 class PopoverIfTest(unittest.TestCase):
     """Test the PopoverIf() conditional wrapper."""
 
