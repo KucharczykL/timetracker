@@ -207,6 +207,7 @@ class Purchase(models.Model):
         null=True,
         blank=True,
         related_name="addon_purchases",
+        verbose_name="Base game",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -295,8 +296,10 @@ class Session(models.Model):
         default=None,
         related_name="sessions",
     )
-    timestamp_start = models.DateTimeField(verbose_name="Start", db_index=True)
-    timestamp_end = models.DateTimeField(blank=True, null=True, verbose_name="End")
+    timestamp_start = models.DateTimeField(verbose_name="Session start", db_index=True)
+    timestamp_end = models.DateTimeField(
+        blank=True, null=True, verbose_name="Session end"
+    )
     duration_manual = models.DurationField(
         blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"
     )

@@ -320,6 +320,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=SearchSelectWidget(
             search_url="/api/games/search", options_resolver=_game_options
         ),
+        label="Base game",
     )
 
     price_currency = forms.CharField(
