@@ -481,7 +481,7 @@ def _game_section(
             Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
             "View all",
         ]
-        header = Div(class_="flex items-center justify-between")[
+        header = Div(class_="flex items-center justify-between mb-2")[
             PageHeading(children=[title], badge=str(count) if count else ""),
             view_all_link,
         ]
