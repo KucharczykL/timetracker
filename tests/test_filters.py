@@ -6008,18 +6008,76 @@ class TestMultivaluedComparison:
         assert hit.pk in matched
         assert miss.pk not in matched
 
-    def test_both_operands_multivalued_rejected(self, db):
-        with pytest.raises(FilterError, match="two multi-valued operands"):
-            SessionFilter(
-                field_comparisons=[
-                    FieldComparisonCriterion(
-                        left="game__playevents__started",
-                        right="game__playevents__ended",
-                        modifier=Modifier.LESS_THAN,
-                        granularity="date",
-                    )
-                ]
-            ).to_q()
+    def test_both_multivalued_same_relation_is_same_row(self, db):
+        # #282 follow-up: two operands on the SAME multi-valued relation dedupe to
+        # one join and compare same-row — e.g. a playevent whose started > ended.
+        import datetime as dt
+
+        from games.models import Game, PlayEvent
+
+        bad = Game.objects.create(name="bad-playevent")
+        PlayEvent.objects.create(
+            game=bad, started=dt.date(2021, 1, 1), ended=dt.date(2020, 1, 1)
+        )
+        clean = Game.objects.create(name="clean-playevent")
+        PlayEvent.objects.create(
+            game=clean, started=dt.date(2020, 1, 1), ended=dt.date(2021, 1, 1)
+        )
+        query = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="playevents__started",
+                    right="playevents__ended",
+                    modifier=Modifier.GREATER_THAN,
+                    quantifier=RelationMatch.ANY,
+                )
+            ]
+        ).to_q()
+        matched = set(Game.objects.filter(query).values_list("pk", flat=True))
+        assert bad.pk in matched
+        assert clean.pk not in matched
+
+    def test_both_multivalued_different_relations_cross_product(self, db):
+        # #282 follow-up: two DIFFERENT multi-valued relations form a cross product;
+        # ANY = ∃ (session, playevent) pair satisfying the predicate.
+        import datetime as dt
+
+        from games.models import Game, PlayEvent, Session
+
+        def game_with(name, ended, session_end):
+            game = Game.objects.create(name=name)
+            PlayEvent.objects.create(game=game, ended=ended)
+            Session.objects.create(
+                game=game,
+                timestamp_start=dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc),
+                timestamp_end=session_end,
+            )
+            return game
+
+        hit = game_with(
+            "later-session",
+            dt.date(2020, 1, 1),
+            dt.datetime(2021, 1, 1, tzinfo=dt.timezone.utc),
+        )
+        miss = game_with(
+            "earlier-session",
+            dt.date(2022, 1, 1),
+            dt.datetime(2021, 1, 1, tzinfo=dt.timezone.utc),
+        )
+        query = GameFilter(
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="sessions__timestamp_end",
+                    right="playevents__ended",
+                    modifier=Modifier.GREATER_THAN,
+                    granularity="date",
+                    quantifier=RelationMatch.ANY,
+                )
+            ]
+        ).to_q()
+        matched = set(Game.objects.filter(query).values_list("pk", flat=True))
+        assert hit.pk in matched
+        assert miss.pk not in matched
 
     def test_quantifier_without_multi_operand_rejected(self, db):
         with pytest.raises(FilterError, match="only meaningful"):

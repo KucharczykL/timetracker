@@ -1524,12 +1524,6 @@ class OperatorFilter:
                 )
                 left_group = left_info.group
                 right_group = right_info.group
-                if left_info.multivalued and right_info.multivalued:
-                    raise FilterError(
-                        f"cannot compare two multi-valued operands"
-                        f" ({comparison.left!r} and {comparison.right!r}); at most"
-                        f" one side may traverse a multi-valued relation"
-                    )
                 if comparison.granularity == "raw":
                     if left_group != right_group:
                         raise FilterError(
@@ -1564,14 +1558,18 @@ class OperatorFilter:
                     left_group=left_group,
                     right_group=right_group,
                 )
-                multi_info = (
-                    left_info
-                    if left_info.multivalued
-                    else right_info
-                    if right_info.multivalued
-                    else None
-                )
-                if multi_info is None:
+                # The relation paths whose fan-out the quantifier ranges over: one
+                # per multi-valued operand (deduped, so two operands on the SAME
+                # relation — e.g. playevents__started vs playevents__ended — share a
+                # single join and compare same-row, while two DIFFERENT relations
+                # form a cross product). Empty when both operands are single-valued.
+                relation_paths: list[str] = []
+                for info in (left_info, right_info):
+                    if info.multivalued:
+                        assert info.relation_path is not None
+                        if info.relation_path not in relation_paths:
+                            relation_paths.append(info.relation_path)
+                if not relation_paths:
                     # Same-row comparison (#169): apply the predicate directly. A
                     # quantifier here is meaningless — reject rather than ignore it.
                     if comparison.quantifier != RelationMatch.ANY:
@@ -1581,13 +1579,13 @@ class OperatorFilter:
                         )
                     q &= predicate_q
                 else:
-                    # One operand fans out related rows (#282): quantify the
-                    # predicate over them via a pk__in subquery.
-                    assert multi_info.relation_path is not None
+                    # At least one operand fans out related rows (#282); quantify the
+                    # predicate over them (over the cross product when both sides are
+                    # multi-valued on different relations) via a pk__in subquery.
                     q &= _multivalued_comparison_to_q(
                         model,
                         predicate_q=predicate_q,
-                        relation_path=multi_info.relation_path,
+                        relation_paths=relation_paths,
                         quantifier=comparison.quantifier,
                     )
         return q
@@ -2852,30 +2850,33 @@ def _multivalued_comparison_to_q(
     model: ModelClass,
     *,
     predicate_q: Q,
-    relation_path: str,
+    relation_paths: list[str],
     quantifier: RelationMatch,
 ) -> Q:
-    """Quantify a field comparison whose (single) multi-valued operand fans out
-    related rows (#282), as a ``pk IN (<subquery>)`` membership over ``model``
-    itself — the same set-membership idiom as ``relation_to_q``, but the subquery
-    runs on the parent model so Django resolves the multi-valued join and the
-    ``F()`` across it (no ``OuterRef``/reverse-join introspection).
+    """Quantify a field comparison whose multi-valued operand(s) fan out related
+    rows (#282), as a ``pk IN (<subquery>)`` membership over ``model`` itself —
+    the same set-membership idiom as ``relation_to_q``, but the subquery runs on
+    the parent model so Django resolves the multi-valued join(s) and the ``F()``
+    across them (no ``OuterRef``/reverse-join introspection).
 
     ``predicate_q`` is the row predicate from ``_field_comparison_to_q``: the
     comparison **plus** explicit ``__isnull=False`` guards on both operand paths.
-    ``relation_path`` is the multi operand minus its terminal column (e.g.
-    ``game__playevents``).
+    ``relation_paths`` are the multi operands minus their terminal column (e.g.
+    ``[game__playevents]``, or ``[sessions, playevents]`` when both sides are
+    multi-valued). One entry → the quantifier ranges over that relation's rows;
+    two entries → over the cross product Django's double join produces (two
+    operands on the *same* relation dedupe to one entry, comparing same-row).
 
-    - ANY: parents with ≥1 related row satisfying the predicate. The isnull
-      guards exclude the NULL-extended rows of zero-related-row parents, and
-      ``pk__in`` dedupes the join fan-out.
+    - ANY: parents with ≥1 (combined) related row satisfying the predicate. The
+      isnull guards exclude the NULL-extended rows of zero-related-row parents,
+      and ``pk__in`` dedupes the join fan-out.
     - NONE: the negation of ANY (zero-related-row parents included).
-    - ALL: no *violating* related row exists. A row violates when it exists
-      (``relation_path__isnull=False``) but does not satisfy the predicate
-      (``~predicate_q``) — including a related row whose terminal column is NULL,
-      since the guards inside ``predicate_q`` make that a definite non-match
-      rather than SQL UNKNOWN. Zero-related-row parents have no existing related
-      row, so they are not violating and match ALL (vacuous truth), mirroring
+    - ALL: no *violating* related row exists. A row violates when every relation
+      it spans exists (``<path>__isnull=False`` for each ``relation_path``) but it
+      does not satisfy the predicate (``~predicate_q``) — including a related row
+      whose terminal column is NULL, since the guards inside ``predicate_q`` make
+      that a definite non-match rather than SQL UNKNOWN. A parent missing any
+      relation has no such row, so it matches ALL (vacuous truth), mirroring
       ``relation_to_q``.
     """
     rows = model.objects.all()
@@ -2886,9 +2887,12 @@ def _multivalued_comparison_to_q(
         matching = rows.filter(predicate_q).values_list("pk", flat=True)
         return ~Q(pk__in=matching)
     if quantifier == RelationMatch.ALL:
-        violating = rows.filter(
-            Q(**{f"{relation_path}__isnull": False}) & ~predicate_q
-        ).values_list("pk", flat=True)
+        exists_guard = Q()
+        for relation_path in relation_paths:
+            exists_guard &= Q(**{f"{relation_path}__isnull": False})
+        violating = rows.filter(exists_guard & ~predicate_q).values_list(
+            "pk", flat=True
+        )
         return ~Q(pk__in=violating)
     raise FilterError(f"Unsupported comparison quantifier {quantifier!r}")
 
