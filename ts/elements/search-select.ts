@@ -65,6 +65,7 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectSetSelected?: (value: string, label?: string) => void;
   _searchSelectRefetch?: () => void;
   _searchSelectClear?: () => void;
+  _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
 }
 
 interface OptionRow extends HTMLElement {
@@ -787,6 +788,26 @@ const initWidget = (containerElement: Element) => {
     syncSelectedStates();
   };
 
+  // Public option swap: replace the pre-rendered (inline, no search-url) option
+  // set without a fetch — the comparison widget re-filters a right-operand list
+  // client-side as the left column / operator changes (#282). A committed
+  // single-select value that is no longer offered is dropped so it cannot
+  // serialize a stale operand; a still-offered value is preserved. Panel
+  // visibility is left untouched (no forced open).
+  container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
+    options
+      .querySelectorAll<HTMLElement>(
+        "[data-search-select-option], [data-search-select-group-header]"
+      )
+      .forEach(node => node.remove());
+    const before = noResults ?? null;
+    items.forEach(item => options.insertBefore(buildRow(item), before));
+    const selected = getSelectedValues();
+    const stillOffered = items.some(item => selected.has(String(item.value)));
+    if (selected.size && !stillOffered) container._searchSelectClear?.();
+    filterRows("");
+  };
+
   const addPill = (option: SearchSelectOption) => {
     const pill = buildPill(option);
     if (pill) pills.appendChild(pill);
@@ -1095,6 +1116,14 @@ export class SearchSelectElement extends HTMLElement {
    *  without firing a change event. No-op until the widget has initialised. */
   clearSelection(): void {
     (this as SearchSelectContainer)._searchSelectClear?.();
+  }
+
+  /** Replace the inline option set client-side (no fetch). A committed value no
+   *  longer offered is dropped; a still-offered one is kept. For inline
+   *  (no search-url) single-selects whose options are recomputed on the client
+   *  — e.g. the field-comparison right operand (#282). No change event fires. */
+  setOptions(options: SearchSelectOption[]): void {
+    (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
   }
 
   disconnectedCallback(): void {

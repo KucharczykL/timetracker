@@ -678,11 +678,54 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
 // so the reused refreshRow/readComparisonRow drive it. Granularity is now carried
 // by the packed operator value (modifier:space), not a separate checkbox.
 const COLUMNS = [
-  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
-  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
-  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
-  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game" },
+  { value: "year_released", label: "Year", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game", multivalued: false },
+  { value: "original_year_released", label: "Orig", group: "number", operators: ["EQUALS", "LESS_THAN"], source: "Game", multivalued: false },
+  { value: "created_at", label: "Created", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game", multivalued: false },
+  { value: "updated_at", label: "Updated", group: "datetime", operators: ["EQUALS", "LESS_THAN"], source: "Game", multivalued: false },
 ];
+
+// The operand markup _field_comparison_row now emits: a <search-select> combobox
+// (the real element is registered via filter-widgets.js) with enough inner markup
+// for initWidget (pills + search + options) and the row template setOptions clones.
+function fcOperand(side: "left" | "right"): string {
+  return `<div data-fc-${side}>
+    <search-select name="fc-${side}">
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div data-search-select-options><div data-search-select-no-results></div></div>
+      <template data-search-select-template="row"><div data-search-select-option><span data-search-select-label></span></div></template>
+    </search-select>
+  </div>`;
+}
+
+// Commit an operand value on its <search-select> and simulate the user pick that
+// fires search-select:change (setSelected itself is silent by contract).
+function setOperand(host: HTMLElement, path: Path, side: "left" | "right", value: string): void {
+  const element = row(host, path).querySelector<HTMLElement & { setSelected(v: string, l?: string): void }>(
+    `[data-value-cell] [data-fc-${side}] search-select`,
+  )!;
+  element.setSelected(value, value);
+  element.dispatchEvent(
+    new CustomEvent("search-select:change", { bubbles: true, detail: { name: `fc-${side}` } }),
+  );
+}
+
+function operandValueOf(host: HTMLElement, path: Path, side: "left" | "right"): string {
+  return (
+    row(host, path)
+      .querySelector<HTMLInputElement>(`[data-fc-${side}] [data-search-select-pills] input[type="hidden"]`)
+      ?.value ?? ""
+  );
+}
+
+// The rendered right-operand option values (setOptions builds them into the panel).
+function rightOptionValues(host: HTMLElement, path: Path): string[] {
+  return [
+    ...row(host, path).querySelectorAll<HTMLElement>(
+      "[data-fc-right] [data-search-select-option]",
+    ),
+  ].map((option) => option.getAttribute("data-value") ?? "");
+}
 
 function mountComparison(): FilterGroupElement {
   document.body.replaceChildren();
@@ -692,22 +735,18 @@ function mountComparison(): FilterGroupElement {
   host.innerHTML = `
     <template data-model="game" data-fc-row-template>
       <div data-fc-row>
-        <select data-fc-left>
-          <option value="">column…</option>
-          <option value="year_released">Year</option>
-          <option value="original_year_released">Orig</option>
-          <option value="created_at">Created</option>
-          <option value="updated_at">Updated</option>
-        </select>
-        <!-- Template-attribute contract (matches the server's blank-row template,
-             common/components/filters.py): op/right ship empty with a data-selected
-             attribute present. seedComparisonRow stores the saved values there
-             (the operator packed as modifier:granularity, the right column
-             verbatim). refreshRow adopts the op's on first paint and removes it;
-             the right's is adopted/removed by refreshRowRightList, reached only
-             once a left column is set. -->
+        ${fcOperand("left")}
+        <!-- Operator + quantifier are plain <select>s; op/quantifier ship empty
+             with a data-selected attribute that seedComparisonRow writes the saved
+             (packed) value into and refreshRow adopts. The left/right operands are
+             <search-select>s seeded on the reflect pass (applyComparisonSelection). -->
         <select data-fc-op data-selected></select>
-        <select data-fc-right data-selected></select>
+        <select data-fc-quantifier class="hidden" data-selected>
+          <option value="ANY">any</option>
+          <option value="ALL">all</option>
+          <option value="NONE">none</option>
+        </select>
+        ${fcOperand("right")}
         <button data-fc-remove>✕</button>
       </div>
     </template>`;
@@ -743,9 +782,9 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]); // drop the seed criterion so only the comparison remains
     clickAction(host, "add-comparison", []);
-    setSelect(host, [0], "data-fc-left", "year_released"); // refreshRow fills op + right
+    setOperand(host, [0], "left", "year_released"); // refreshRow fills op + right
     setSelect(host, [0], "data-fc-op", "LESS_THAN");
-    setSelect(host, [0], "data-fc-right", "original_year_released");
+    setOperand(host, [0], "right", "original_year_released");
     expect(host.serializeForQuery()).toEqual({
       AND: [{ field_comparisons: [{ left: "year_released", right: "original_year_released", modifier: "LESS_THAN" }] }],
     });
@@ -755,7 +794,7 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
-    setSelect(host, [0], "data-fc-left", "year_released"); // right/op still empty
+    setOperand(host, [0], "left", "year_released"); // right/op still empty
     expect(row(host, [0]).querySelector("[data-incomplete-badge]")).not.toBeNull();
     expect(host.serializeForQuery()).toEqual({}); // pruned → matches all
   });
@@ -772,31 +811,30 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     clickAction(host, "add-comparison", []);
     expect(last).toBe(0);
     // Touched (left picked) but missing op/right → now it counts.
-    setSelect(host, [0], "data-fc-left", "year_released");
+    setOperand(host, [0], "left", "year_released");
     expect(last).toBe(1);
     setSelect(host, [0], "data-fc-op", "LESS_THAN");
-    setSelect(host, [0], "data-fc-right", "original_year_released");
+    setOperand(host, [0], "right", "original_year_released");
     expect(last).toBe(0);
   });
 
   it("a comparison's live value survives a structural edit elsewhere (reconcile by id)", () => {
     const host = mountComparison();
     clickAction(host, "add-comparison", []); // [0]=criterion seed, [1]=comparison
-    setSelect(host, [1], "data-fc-left", "year_released");
+    setOperand(host, [1], "left", "year_released");
     setSelect(host, [1], "data-fc-op", "LESS_THAN");
-    setSelect(host, [1], "data-fc-right", "original_year_released");
+    setOperand(host, [1], "right", "original_year_released");
     clickAction(host, "add-condition", []); // structural re-render
-    const left = row(host, [1]).querySelector<HTMLSelectElement>("[data-fc-left]")!;
-    expect(left.value).toBe("year_released");
+    expect(operandValueOf(host, [1], "left")).toBe("year_released");
   });
 
   it("negating a comparison leaf serializes to {NOT:[{field_comparisons:…}]}", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
-    setSelect(host, [0], "data-fc-left", "year_released");
+    setOperand(host, [0], "left", "year_released");
     setSelect(host, [0], "data-fc-op", "LESS_THAN");
-    setSelect(host, [0], "data-fc-right", "original_year_released");
+    setOperand(host, [0], "right", "original_year_released");
     clickAction(host, "toggle-negate", [0]);
     expect(button(host, "toggle-negate", [0])?.getAttribute("aria-pressed")).toBe("true");
     expect(host.serializeForQuery()).toEqual({
@@ -809,10 +847,10 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
     // A datetime left column reveals date/year optgroups in the operator select.
-    setSelect(host, [0], "data-fc-left", "created_at");
+    setOperand(host, [0], "left", "created_at");
     // Pick a by-date packed operator — refreshRow populates these in the operator optgroup.
     setSelect(host, [0], "data-fc-op", "LESS_THAN:date");
-    setSelect(host, [0], "data-fc-right", "updated_at");
+    setOperand(host, [0], "right", "updated_at");
     expect(host.serializeForQuery()).toEqual({
       AND: [{ field_comparisons: [{ left: "created_at", right: "updated_at", modifier: "LESS_THAN", granularity: "date" }] }],
     });
@@ -822,9 +860,9 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     const host = mountComparison();
     clickAction(host, "remove", [0]);
     clickAction(host, "add-comparison", []);
-    setSelect(host, [0], "data-fc-left", "year_released"); // number group → no space optgroups
+    setOperand(host, [0], "left", "year_released"); // number group → no space optgroups
     setSelect(host, [0], "data-fc-op", "LESS_THAN"); // bare modifier, no granularity suffix
-    setSelect(host, [0], "data-fc-right", "original_year_released");
+    setOperand(host, [0], "right", "original_year_released");
     const payload = (host.serializeForQuery() as { AND: { field_comparisons: object[] }[] }).AND[0].field_comparisons[0];
     expect(payload).not.toHaveProperty("granularity");
   });
@@ -838,25 +876,21 @@ describe("<filter-group> live field-comparison leaf (#246)", () => {
     clickAction(host, "add-comparison", []);
 
     // Choose a datetime left column — raw comparison only allows other datetime columns.
-    setSelect(host, [0], "data-fc-left", "created_at");
-    const rightSelect = row(host, [0]).querySelector<HTMLSelectElement>("[data-value-cell] [data-fc-right]")!;
+    setOperand(host, [0], "left", "created_at");
 
     // Under the initial raw operator the right list must NOT contain year_released
     // (a number-group column excluded from the datetime group).
-    const rawOptions = [...rightSelect.options].map((option) => option.value);
-    expect(rawOptions).not.toContain("year_released");
+    expect(rightOptionValues(host, [0])).not.toContain("year_released");
 
     // Switching to a year-space packed operator opens the right list to number-group
-    // columns. Use setSelect so the change event fires and wireComparisonRowListeners
-    // triggers refreshRowRightList — the assertion below proves the wiring is present.
+    // columns. setSelect fires the change event so wireComparisonRowListeners
+    // re-runs refreshRightOptions — the assertion below proves the wiring is present.
     setSelect(host, [0], "data-fc-op", "EQUALS:year");
-    const yearSpaceOptions = [...rightSelect.options].map((option) => option.value);
-    expect(yearSpaceOptions).toContain("year_released");
+    expect(rightOptionValues(host, [0])).toContain("year_released");
 
     // Switching back to a raw operator must re-exclude year_released again.
     setSelect(host, [0], "data-fc-op", "LESS_THAN");
-    const rawOptionsAgain = [...rightSelect.options].map((option) => option.value);
-    expect(rawOptionsAgain).not.toContain("year_released");
+    expect(rightOptionValues(host, [0])).not.toContain("year_released");
   });
 });
 
@@ -1164,17 +1198,16 @@ const HYDRATION_TEMPLATES = `
   </template>
   <template data-model="game" data-fc-row-template>
     <div data-fc-row>
-      <select data-fc-left>
-        <option value="">column…</option>
-        <option value="year_released">Year</option>
-        <option value="original_year_released">Orig</option>
-        <option value="created_at">Created</option>
-        <option value="updated_at">Updated</option>
-      </select>
-      <!-- data-selected present-but-empty: see the template-attribute contract
-           comment on mountComparison's fixture above. -->
+      ${fcOperand("left")}
+      <!-- data-selected present-but-empty: see the contract comment on
+           mountComparison's fixture above. -->
       <select data-fc-op data-selected></select>
-      <select data-fc-right data-selected></select>
+      <select data-fc-quantifier class="hidden" data-selected>
+        <option value="ANY">any</option>
+        <option value="ALL">all</option>
+        <option value="NONE">none</option>
+      </select>
+      ${fcOperand("right")}
       <button data-fc-remove>✕</button>
     </div>
   </template>
@@ -1402,10 +1435,9 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
       }],
     };
     const host = loadHydration(filter);
-    const cell = valueCell(host, [0]);
-    expect(cell.querySelector<HTMLSelectElement>("[data-fc-left]")!.value).toBe("year_released");
-    expect(cell.querySelector<HTMLSelectElement>("[data-fc-op]")!.value).toBe("LESS_THAN");
-    expect(cell.querySelector<HTMLSelectElement>("[data-fc-right]")!.value).toBe("original_year_released");
+    expect(operandValueOf(host, [0], "left")).toBe("year_released");
+    expect(valueCell(host, [0]).querySelector<HTMLSelectElement>("[data-fc-op]")!.value).toBe("LESS_THAN");
+    expect(operandValueOf(host, [0], "right")).toBe("original_year_released");
     expect(host.serializeForQuery()).toEqual(filter);
   });
 

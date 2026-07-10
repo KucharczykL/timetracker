@@ -718,10 +718,11 @@ def test_cross_model_year_comparison_filters_sessions(
     page.locator('filter-group button[data-action="add-comparison"]').first.click()
     row = page.locator('filter-group [data-node-kind="comparison"]').first
 
-    # Select left operand, year-space operator, and cross-model right operand.
-    row.locator("[data-fc-left]").select_option("timestamp_start")
+    # Select left operand (searchable combobox), year-space operator (native
+    # select), and cross-model right operand (searchable combobox).
+    _pick_operand(row, "left", "timestamp_start")
     row.locator("[data-fc-op]").select_option("EQUALS:year")
-    row.locator("[data-fc-right]").select_option("game__year_released")
+    _pick_operand(row, "right", "game__year_released")
 
     # Apply navigates to the sessions list carrying the ?filter=.
     with page.expect_navigation():
@@ -740,6 +741,28 @@ def _select_option_values(select_locator) -> list[str]:
     """The value of every <option> currently in a <select> (optgroups included)."""
     return select_locator.evaluate(
         "select => [...select.options].map(option => option.value)"
+    )
+
+
+def _pick_operand(row, side: str, value: str) -> None:
+    """Pick a comparison operand value on its searchable SearchSelect combobox
+    (#282): focus the search box to open the panel, then click the option row."""
+    operand = row.locator(f"[data-fc-{side}]")
+    operand.locator("[data-search-select-search]").click()
+    operand.locator(f"[data-search-select-option][data-value='{value}']").click()
+
+
+def _operand_value_locator(row, side: str):
+    """The committed value channel (hidden input) of a comparison operand."""
+    return row.locator(
+        f"[data-fc-{side}] [data-search-select-pills] input[type='hidden']"
+    )
+
+
+def _operand_option_values(row, side: str) -> list[str]:
+    """The data-value of every option row currently in an operand's panel."""
+    return row.locator(f"[data-fc-{side}] [data-search-select-option]").evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-value'))"
     )
 
 
@@ -784,26 +807,27 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     comparison_row = page.locator('filter-group [data-node-kind="comparison"]')
     expect(comparison_row).to_have_count(1)
 
-    left_select = comparison_row.locator("[data-fc-left]")
     operator_select = comparison_row.locator("[data-fc-op]")
-    right_select = comparison_row.locator("[data-fc-right]")
 
-    # 1. Template clone: the row came from the server template, so the selects
-    # carry the server-owned SELECT_CLASS. This pins that the styling really
-    # arrived from the server template — the jsdom suite's synthetic fixtures
-    # are classless, so only a browser test can assert this.
-    expect(left_select).to_have_class(re.compile(r"rounded-base"))
+    # 1. Template clone: the left operand came from the server template, so its
+    # SearchSelect carries the server-owned container class. This pins that the
+    # styling really arrived from the server template — the jsdom suite's
+    # synthetic fixtures are classless, so only a browser test can assert this.
+    expect(comparison_row.locator("[data-fc-left] search-select")).to_have_class(
+        re.compile(r"rounded-base")
+    )
 
     # 2. Packed-operator seed: the stored {modifier, granularity} pair hydrates
-    # as the packed wire value, and both column selects restore their values.
-    expect(left_select).to_have_value("created_at")
+    # as the packed operator value, and both operand comboboxes restore their
+    # committed values (the hidden-input channel).
+    expect(_operand_value_locator(comparison_row, "left")).to_have_value("created_at")
     expect(operator_select).to_have_value("LESS_THAN:date")
-    expect(right_select).to_have_value("updated_at")
+    expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
 
     # Right list under the restored date-space operator: Game's other datetime
     # column is present, its number columns are not. (A raw datetime comparison
     # would look the same — the packed-operator assert above pins the space.)
-    date_space_values = _select_option_values(right_select)
+    date_space_values = _operand_option_values(comparison_row, "right")
     assert "updated_at" in date_space_values
     assert "year_released" not in date_space_values
 
@@ -811,23 +835,22 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     # right list to that space's groups (number joins date/datetime) while the
     # current right selection survives the rebuild.
     operator_select.select_option("LESS_THAN:year")
-    expect(right_select).to_have_value("updated_at")
-    year_space_values = _select_option_values(right_select)
+    expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
+    year_space_values = _operand_option_values(comparison_row, "right")
     assert "year_released" in year_space_values
     assert "original_year_released" in year_space_values
 
     # 4. '+ comparison' clones a fresh blank row from the same server template:
-    # its dependent selects are disabled until a left column is chosen.
+    # the operator stays disabled and the right combobox has no options until a
+    # left column is chosen.
     page.locator('filter-group button[data-action="add-comparison"]').first.click()
     expect(comparison_row).to_have_count(2)
     new_row = comparison_row.nth(1)
     expect(new_row.locator("[data-fc-op]")).to_be_disabled()
-    expect(new_row.locator("[data-fc-right]")).to_be_disabled()
-    new_row.locator("[data-fc-left]").select_option("year_released")
+    assert _operand_option_values(new_row, "right") == []
+    _pick_operand(new_row, "left", "year_released")
     expect(new_row.locator("[data-fc-op]")).to_be_enabled()
-    assert "original_year_released" in _select_option_values(
-        new_row.locator("[data-fc-right]")
-    )
+    assert "original_year_released" in _operand_option_values(new_row, "right")
 
 
 def test_preset_delete_flow_removes_row_and_db_record(

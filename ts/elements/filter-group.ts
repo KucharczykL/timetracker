@@ -68,6 +68,8 @@ import {
 } from "./filter-tree/operations.js";
 import {
   type Column,
+  applyComparisonSelection,
+  comparisonOperandValue,
   packOperator,
   readComparisonRow,
   refreshRow,
@@ -559,8 +561,8 @@ export class FilterGroupElement extends HTMLElement {
   // that gates the Incomplete badge, mirroring how a criterion row shows no badge
   // until a field is chosen (a pristine comparison row shouldn't nag).
   private comparisonTouched(node: ComparisonLeaf): boolean {
-    const left = this.comparisonCache.get(node.id)?.querySelector<HTMLSelectElement>("[data-fc-left]");
-    return Boolean(left?.value);
+    const cell = this.comparisonCache.get(node.id);
+    return Boolean(cell && comparisonOperandValue(cell, "left"));
   }
 
   // Counts only TOUCHED-incomplete rows — the ones the builder's Apply gate
@@ -704,13 +706,37 @@ export class FilterGroupElement extends HTMLElement {
       } else if (child.kind === "criterion" && child.field) {
         const cells = this.rowCache.get(child.id);
         if (cells) this.showFieldSelection(cells.fieldCell, child.field, model);
+      } else if (child.kind === "comparison") {
+        // The operands are <search-select>s that only upgrade once connected, so
+        // their seed + option build waits until here (post replaceChildren),
+        // mirroring the criterion field-picker reflect above. Idempotent.
+        this.reflectComparisonSelection(child, model);
       }
-      // comparison leaves have no field-picker to reflect; owned groups (a
-      // relation's child, an aggregate leaf's scope) have their own pickers.
+      // owned groups (a relation's child, an aggregate leaf's scope) have their
+      // own pickers.
       for (const [ownedGroup, ownedModel] of this.ownedGroupsWithModel(child, model)) {
         this.reflectFieldSelections(ownedGroup, ownedModel);
       }
     }
+  }
+
+  // Bring a comparison leaf's row to life after it connects. The operands are the
+  // stored payload committed ONCE onto their now-upgraded <search-select>s (a
+  // one-shot seed guarded by data-fc-seeded): after first paint the operand DOM is
+  // the source of truth — like every other value widget — and survives structural
+  // re-renders via cell reuse, so re-applying the (never-updated) model would wipe
+  // a user's live picks. The operator/right options + quantifier rebuild every
+  // render (refreshRow reads live DOM, idempotent).
+  private reflectComparisonSelection(node: ComparisonLeaf, model: string): void {
+    const cell = this.comparisonCache.get(node.id);
+    const columns = this.bundle(model)?.columns;
+    const row = cell?.querySelector<HTMLElement>("[data-fc-row]");
+    if (!row || !columns) return;
+    if (row.dataset.fcSeeded === undefined) {
+      applyComparisonSelection(row, node.comparison, columns);
+      row.dataset.fcSeeded = "";
+    }
+    refreshRow(row, columns);
   }
 
   // Drop cached cells for nodes no longer in the tree (their DOM was discarded by
@@ -1124,31 +1150,28 @@ export class FilterGroupElement extends HTMLElement {
       row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
       this.uniquify(row);
       cell.appendChild(row);
-      this.seedComparisonRow(row, comparison); // hydrate a prefilled payload (#263)
-      refreshRow(row, columns); // seed operator/right options from the left column
-      wireComparisonRowListeners(row, columns); // left-change + operator-change listeners
+      // Seed only the plain <select>s here (they work while detached). The
+      // operands are <search-select>s whose setSelected/setOptions no-op until
+      // connected, so their seed + option build runs on the post-render reflect
+      // pass (reflectComparisonSelection), mirroring the field-picker reflect.
+      this.seedComparisonRow(row, comparison);
+      wireComparisonRowListeners(row, columns);
     }
     return cell;
   }
 
-  // Seed a freshly-cloned comparison row from a stored payload (preset load /
-  // ?filter= import) via the row's server-prefill contract: the left column is a
-  // plain select value (the template ships the full option set), while operator +
-  // right column go through `data-selected`, which the refreshRow call right
-  // after this adopts on first paint (it rebuilds their options from the left
-  // column). The operator is packed (modifier:granularity) so refreshRow can
-  // restore the correct comparison space and filter the right list accordingly.
+  // Seed the plain <select>s of a freshly-cloned comparison row from a stored
+  // payload (preset load / ?filter= import) via the `data-selected` contract that
+  // refreshRow adopts on first paint. Only the operator + quantifier live here;
+  // the left/right operands are <search-select>s seeded on the reflect pass
+  // (applyComparisonSelection), since their setSelected no-ops while detached. The
+  // operator is packed (modifier:granularity) so refreshRow restores the space.
   private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
-    const { left, right, modifier, granularity, quantifier } = comparison;
-    if (left) {
-      const leftSelect = row.querySelector<HTMLSelectElement>("[data-fc-left]");
-      if (leftSelect) leftSelect.value = left;
-    }
+    const { modifier, granularity, quantifier } = comparison;
     if (modifier) {
       const packed = packOperator(modifier, granularity ?? "raw");
       row.querySelector("[data-fc-op]")?.setAttribute("data-selected", packed);
     }
-    if (right) row.querySelector("[data-fc-right]")?.setAttribute("data-selected", right);
     // The quantifier (#282) follows the same data-selected contract; refreshRow →
     // refreshQuantifier adopts it once it knows whether an operand is multi-valued.
     if (quantifier) {

@@ -9,11 +9,7 @@
  * value stashed in data-selected. filter-group.ts wires and reads the rows.
  */
 import type { ComparisonRow, RelationMatch } from "./filter-tree/types.js";
-
-// The row shape lives in filter-tree/types.ts (shared with the serializer +
-// completeness check); re-exported here for the widget's existing consumers.
-export type { ComparisonRow };
-
+import type { SearchSelectElement, SearchSelectOption } from "./search-select.js";
 // The comparable-column shape AND the comparison-space vocabulary are codegen'd
 // from Python (common/criteria.py) by `manage.py gen_element_types` (#152/#284):
 // `SPACE_GROUPS` is the Python `SPACE_GROUPS` table, `SPACE_ORDERED_MODIFIERS`
@@ -28,8 +24,48 @@ import {
   type ComparisonSpace,
 } from "../generated/filter-metadata.js";
 
+// The row shape lives in filter-tree/types.ts (shared with the serializer +
+// completeness check); re-exported here for the widget's existing consumers.
+export type { ComparisonRow };
 export type { ComparableColumn };
 export type Column = ComparableColumn;
+
+// The two operands are searchable SearchSelect comboboxes (#282 review): the
+// option lists (own + FK + multi-valued blocks) outgrew a plain <select>. Each is
+// wrapped in a `[data-fc-left]` / `[data-fc-right]` marker; the <search-select>
+// element inside carries the committed value in a hidden input and exposes
+// setSelected / setOptions / clearSelection.
+type OperandMarker = "data-fc-left" | "data-fc-right";
+
+function operandElement(row: HTMLElement, marker: OperandMarker): SearchSelectElement | null {
+  return row.querySelector<SearchSelectElement>(`[${marker}] search-select`);
+}
+
+function operandValue(row: HTMLElement, marker: OperandMarker): string {
+  const element = operandElement(row, marker);
+  const input = element?.querySelector<HTMLInputElement>(
+    '[data-search-select-pills] input[type="hidden"]',
+  );
+  return input?.value ?? "";
+}
+
+/** The committed value of one operand combobox, for callers outside this module
+ *  (filter-group's "touched" gate). `container` is the comparison row or the
+ *  wrapping value cell. */
+export function comparisonOperandValue(
+  container: HTMLElement,
+  side: "left" | "right",
+): string {
+  return operandValue(container, side === "left" ? "data-fc-left" : "data-fc-right");
+}
+
+function columnOption(column: Column): SearchSelectOption {
+  return {
+    value: column.value,
+    label: column.label,
+    data: { group: column.group, multivalued: String(column.multivalued) },
+  };
+}
 
 // Presentation-only glyphs for the operator tokens the server sends. Not a
 // source of truth for *which* operators are valid — that's the per-column
@@ -133,23 +169,20 @@ function fillSelect(
   }
 }
 
-/** Rebuild a row's right-column options from its left column + selected operator.
- *  Called both on initial refreshRow and on operator change, so the right list
- *  stays filtered to the currently-selected comparison space. */
-function refreshRowRightList(
-  right: HTMLSelectElement,
-  left: HTMLSelectElement,
-  operator: HTMLSelectElement,
-  columns: Column[],
-): void {
-  const rightSaved = right.getAttribute("data-selected") ?? right.value;
-  right.removeAttribute("data-selected");
+/** Repopulate the right-operand combobox with the columns type/space-compatible
+ *  with the chosen left column + operator (#282 review). Runs client-side via the
+ *  SearchSelect `.setOptions` primitive; a still-compatible committed right value
+ *  is preserved, an incompatible one dropped. The <search-select> must be live
+ *  (connected), so this runs from refreshRow, never during the detached build. */
+function refreshRightOptions(row: HTMLElement, columns: Column[]): void {
+  const right = operandElement(row, "data-fc-right");
+  const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
+  if (!right || !operator) return;
 
-  const leftColumn = columns.find((column) => column.value === left.value) ?? null;
-  const group = leftColumn?.group ?? null;
-
-  if (!leftColumn || !group) {
-    fillSelect(right, [{ header: null, options: [] }], "", "column…");
+  const leftValue = operandValue(row, "data-fc-left");
+  const leftColumn = columns.find((column) => column.value === leftValue) ?? null;
+  if (!leftColumn) {
+    right.setOptions([]);
     return;
   }
 
@@ -157,29 +190,14 @@ function refreshRowRightList(
   // it validated as an own key of SPACE_GROUPS, so the lookup is total.
   const { granularity } = unpackOperator(operator.value);
   const allowedGroups: ComparisonGroup[] =
-    granularity === "raw" ? [group] : SPACE_GROUPS[granularity];
+    granularity === "raw" ? [leftColumn.group] : SPACE_GROUPS[granularity];
 
-  // Partition columns by source: every source (own model or FK) renders as an optgroup.
-  const sourceOptions = new Map<string, [string, string][]>();
-
-  for (const column of columns) {
-    if (!allowedGroups.includes(column.group)) continue;
-    if (column.value === left.value) continue;
-    const pair: [string, string] = [column.value, column.label];
-    let bucket = sourceOptions.get(column.source);
-    if (!bucket) {
-      bucket = [];
-      sourceOptions.set(column.source, bucket);
-    }
-    bucket.push(pair);
-  }
-
-  const groups: OptionGroup[] = [];
-  for (const [source, options] of sourceOptions) {
-    groups.push({ header: source, options });
-  }
-
-  fillSelect(right, groups, rightSaved, "column…");
+  // comparable_columns already orders own → FK → multi-valued blocks (each sorted
+  // by label), so the flat list stays grouped-ish; search covers the rest.
+  const options = columns
+    .filter((column) => column.value !== leftValue && allowedGroups.includes(column.group))
+    .map(columnOption);
+  right.setOptions(options);
 }
 
 /** The default comparison quantifier — mirrors RelationMatch's default (#282). */
@@ -197,8 +215,8 @@ function refreshQuantifier(row: HTMLElement, columns: Column[]): void {
     quantifier.removeAttribute("data-selected");
     if (saved) quantifier.value = saved;
   }
-  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
-  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+  const left = operandValue(row, "data-fc-left");
+  const right = operandValue(row, "data-fc-right");
   const multivalued = columns.some(
     (column) => (column.value === left || column.value === right) && column.multivalued,
   );
@@ -206,32 +224,31 @@ function refreshQuantifier(row: HTMLElement, columns: Column[]): void {
   if (!multivalued) quantifier.value = DEFAULT_QUANTIFIER;
 }
 
-/** Rebuild a row's operator + right-column options from its left column. The
- * reusable single-row unit (see file header) — the nested builder's comparison
- * leaf (#246) calls this directly on a standalone row. */
+/** Rebuild a row's operator options + right-operand options + quantifier from its
+ * current left column. The reusable single-row unit (see file header). Reads the
+ * left value off its live <search-select>, so it must run after the row is
+ * connected (filter-group calls it on the post-render reflect pass and on every
+ * left-operand change). */
 export function refreshRow(row: HTMLElement, columns: Column[]): void {
-  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]");
   const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
-  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]");
-  if (!left || !operator || !right) return;
+  if (!operator) return;
 
-  // Saved values: data-selected on first paint, then the live value afterwards.
+  // Saved value: data-selected on first paint, then the live value afterwards.
   const operatorSaved = operator.getAttribute("data-selected") ?? operator.value;
   operator.removeAttribute("data-selected");
 
-  const leftColumn = columns.find((column) => column.value === left.value) ?? null;
+  const leftValue = operandValue(row, "data-fc-left");
+  const leftColumn = columns.find((column) => column.value === leftValue) ?? null;
   const group = leftColumn?.group ?? null;
 
   if (!leftColumn || !group) {
     fillSelect(operator, [{ header: null, options: [] }], "", "—");
-    fillSelect(right, [{ header: null, options: [] }], "", "column…");
     operator.disabled = true;
-    right.disabled = true;
+    refreshRightOptions(row, columns); // clears the right list
     refreshQuantifier(row, columns);
     return;
   }
   operator.disabled = false;
-  right.disabled = false;
 
   // Build operator options:
   //   1. Raw options top-level: the column's own operators with glyph labels.
@@ -258,31 +275,60 @@ export function refreshRow(row: HTMLElement, columns: Column[]): void {
   }
 
   fillSelect(operator, operatorGroups, operatorSaved, "—");
-
-  // Fill the right list for the current operator value (uses operatorSaved restored above).
-  refreshRowRightList(right, left, operator, columns);
-  // The right value may have been restored/cleared above, so re-evaluate whether
-  // an operand is multi-valued and show/hide the quantifier accordingly.
+  refreshRightOptions(row, columns);
   refreshQuantifier(row, columns);
 }
 
-/** Export the row-wiring helper so filter-group.ts can reuse it for the
- *  nested builder's comparison leaf — giving it the operator-change listener
- *  without duplicating the logic. */
+/** Commit the stored left/right operands onto their live <search-select>s (the
+ * seed for a hydrated preset / ?filter= import, #282 review). Must run after the
+ * row is connected — filter-group calls it on the post-render reflect pass, right
+ * before refreshRow. Idempotent: re-committing the same value is a no-op. */
+export function applyComparisonSelection(
+  row: HTMLElement,
+  comparison: Partial<ComparisonRow>,
+  columns: Column[],
+): void {
+  seedOperand(row, "data-fc-left", comparison.left, columns);
+  seedOperand(row, "data-fc-right", comparison.right, columns);
+}
+
+function seedOperand(
+  row: HTMLElement,
+  marker: OperandMarker,
+  value: string | undefined,
+  columns: Column[],
+): void {
+  const element = operandElement(row, marker);
+  if (!element) return;
+  if (!value) {
+    element.clearSelection();
+    return;
+  }
+  const column = columns.find((candidate) => candidate.value === value) ?? null;
+  element.setSelected(value, column?.label ?? value);
+}
+
+/** Wire a comparison row's live listeners (idempotent per cell — attached once at
+ *  build). A left-operand pick rebuilds the operator + right options; an operator
+ *  change refilters the right list; a right-operand pick re-checks the quantifier.
+ *  All three also bubble `search-select:change` / `change` to <filter-group>,
+ *  which re-serialises the leaf. */
 export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]): void {
   const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]");
-  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]");
-  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]");
-  if (!operator || !left || !right) return;
+  if (!operator) return;
 
-  left.addEventListener("change", () => refreshRow(row, columns));
+  // Detect which operand changed by DOM ancestry, not the event's `name`: the
+  // nested builder's `uniquify` suffixes the cloned SearchSelect's name, so
+  // `detail.name` is no longer "fc-left"/"fc-right".
+  row.addEventListener("search-select:change", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-fc-left]")) refreshRow(row, columns);
+    else if (target.closest("[data-fc-right]")) refreshQuantifier(row, columns);
+  });
   operator.addEventListener("change", () => {
-    refreshRowRightList(right, left, operator, columns);
+    refreshRightOptions(row, columns);
     refreshQuantifier(row, columns);
   });
-  // A right-operand change can newly select (or deselect) a multi-valued column,
-  // so the quantifier's visibility must track it too.
-  right.addEventListener("change", () => refreshQuantifier(row, columns));
 }
 
 /** Read one comparison row into its complete value, or null when incomplete (a
@@ -291,9 +337,9 @@ export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]):
  * row directly. `granularity` is emitted only when a non-raw packed operator is
  * selected, keeping the filter JSON compact. */
 export function readComparisonRow(row: HTMLElement): ComparisonRow | null {
-  const left = row.querySelector<HTMLSelectElement>("[data-fc-left]")?.value ?? "";
+  const left = operandValue(row, "data-fc-left");
   const operatorValue = row.querySelector<HTMLSelectElement>("[data-fc-op]")?.value ?? "";
-  const right = row.querySelector<HTMLSelectElement>("[data-fc-right]")?.value ?? "";
+  const right = operandValue(row, "data-fc-right");
   if (!left || !right || !operatorValue || left === right) return null;
   const { modifier, granularity } = unpackOperator(operatorValue);
   if (!modifier) return null;
