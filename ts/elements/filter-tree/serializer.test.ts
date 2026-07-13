@@ -35,6 +35,28 @@ describe("serialize", () => {
     expect(node).toEqual({ AND: [{ field_comparisons: [{ left: "a", right: "b", modifier: "LESS_THAN" }] }] });
   });
 
+  it("carries a multivalued comparison's quantifier through serialize", () => {
+    const comparison = {
+      left: "timestamp_end",
+      right: "game__playevents__ended",
+      modifier: "GREATER_THAN",
+      granularity: "date",
+      quantifier: "ALL",
+    } as const;
+    const node = serialize(root({ kind: "comparison", id: "c", comparison, negate: false }));
+    expect(node).toEqual({ AND: [{ field_comparisons: [comparison] }] });
+  });
+
+  it("round-trips a quantified comparison through deserialize → serialize", () => {
+    const filter = {
+      field_comparisons: [
+        { left: "timestamp_end", right: "game__playevents__ended", modifier: "GREATER_THAN", granularity: "date", quantifier: "NONE" },
+      ],
+    };
+    const tree = deserialize(filter, "session", registry);
+    expect(serialize(tree)).toEqual({ AND: [filter] });
+  });
+
   it("emits an OR group nested under the AND root", () => {
     const orGroup = group("OR", [
       { kind: "criterion", id: "c", field: "status", criterion: { value: ["f"], modifier: "INCLUDES" }, negate: false },

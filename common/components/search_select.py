@@ -387,6 +387,7 @@ def SearchSelect(
     sync_url: bool = False,
     autofocus: bool = False,
     host_dropdown: bool = False,
+    dynamic_options: bool = False,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -402,6 +403,11 @@ def SearchSelect(
     (non-selectable header rows before each group's options); the two are mutually
     exclusive and grouping is only meaningful for the inline (no ``search_url``)
     complete-set case.
+
+    ``dynamic_options`` ships the row ``<template>`` even without a ``search_url``,
+    so the client can swap the inline option set via the element's ``setOptions``
+    (the field-comparison right operand recomputes its list per left column +
+    operator, #282). Ignored when a ``search_url`` already ships the template.
     """
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
@@ -465,10 +471,11 @@ def SearchSelect(
             for option in options
         ]
 
-    # ── Templates the JS clones: a row when results are fetched, a pill when
+    # ── Templates the JS clones: a row when results are fetched (or when the
+    #    client swaps the inline option set via ``setOptions``), a pill when
     #    multi-select adds chosen items. ──
     templates: list[Node] = []
-    if search_url:
+    if search_url or dynamic_options:
         templates.append(
             Template(data_search_select_template="row")[_option_row(_BLANK_OPTION)]
         )

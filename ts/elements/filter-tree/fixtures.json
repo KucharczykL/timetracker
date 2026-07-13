@@ -204,6 +204,42 @@
           { "left": "started", "right": "created_at", "modifier": "EQUALS", "granularity": "date" }
         ]
       }
+    },
+    {
+      "description": "multivalued comparison ANY: session end vs game__playevents__ended (date)",
+      "model": "session",
+      "filter": {
+        "field_comparisons": [
+          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date" }
+        ]
+      }
+    },
+    {
+      "description": "multivalued comparison ALL: session end vs game__playevents__ended (date)",
+      "model": "session",
+      "filter": {
+        "field_comparisons": [
+          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
+        ]
+      }
+    },
+    {
+      "description": "multivalued comparison NONE: session end vs game__playevents__ended (date)",
+      "model": "session",
+      "filter": {
+        "field_comparisons": [
+          { "left": "timestamp_end", "right": "game__playevents__ended", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
+        ]
+      }
+    },
+    {
+      "description": "multivalued comparison raw M2M: purchase name INCLUDES games__name (ALL)",
+      "model": "purchase",
+      "filter": {
+        "field_comparisons": [
+          { "left": "name", "right": "games__name", "modifier": "INCLUDES", "quantifier": "ALL" }
+        ]
+      }
     }
   ]
 }

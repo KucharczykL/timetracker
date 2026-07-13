@@ -21,6 +21,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    NamedTuple,
     Self,
     TypedDict,
     TypeVar,
@@ -922,6 +923,14 @@ class FieldComparisonCriterion(_Criterion):
     right: ComparisonOperand = ""
     modifier: Modifier = Modifier.EQUALS
     granularity: ComparisonGranularity = "raw"
+    # Quantifier for a comparison whose (single) multi-valued operand fans out
+    # related rows (#282): ANY (≥1 related row satisfies), ALL (every related row
+    # satisfies; vacuously true for zero rows), NONE (~ANY). Reuses RelationMatch
+    # so the set semantics match cross-entity relation sub-filters. Meaningful
+    # only when exactly one operand traverses a multi-valued relation; validated
+    # in OperatorFilter._apply_operators. Default ANY, so raw same-row
+    # comparisons never emit it and their JSON stays byte-compatible.
+    quantifier: RelationMatch = RelationMatch.ANY
 
     def to_q(self, field_name: str = "") -> Q:
         # Static mis-wiring, never user input: comparisons are built by
@@ -942,6 +951,11 @@ class FieldComparisonCriterion(_Criterion):
         # Emit granularity only when non-default to keep existing filter JSON byte-compatible.
         if self.granularity != "raw":
             payload["granularity"] = self.granularity
+        # Emit quantifier only when non-default (ANY). A same-row comparison is
+        # always ANY (a non-ANY quantifier without a multi operand is rejected at
+        # validation), so existing raw-comparison JSON stays byte-compatible.
+        if self.quantifier != RelationMatch.ANY:
+            payload["quantifier"] = self.quantifier
         return payload
 
     @classmethod
@@ -952,8 +966,20 @@ class FieldComparisonCriterion(_Criterion):
         # Derived from SPACE_GROUPS so a new space is accepted the moment it is
         # added to the table, not when someone remembers this check.
         result = super().from_json(data)
-        if result is not None and result.granularity not in ("raw", *SPACE_GROUPS):
+        if result is None:
+            return result
+        if result.granularity not in ("raw", *SPACE_GROUPS):
             raise FilterError(f"unknown granularity {result.granularity!r}")
+        # Coerce the quantifier string to the enum (the base loop only coerces
+        # ``modifier``), rejecting an unknown value at parse like RelationMatch does
+        # for a relation ``match``.
+        if not isinstance(result.quantifier, RelationMatch):
+            try:
+                result.quantifier = RelationMatch(result.quantifier)
+            except ValueError as exc:
+                raise FilterError(
+                    f"Unknown comparison quantifier {result.quantifier!r}"
+                ) from exc
         return result
 
 
@@ -1490,12 +1516,14 @@ class OperatorFilter:
                         f"field comparison needs two different columns"
                         f" (got {comparison.left!r} twice)"
                     )
-                left_group = _comparison_operand_group(
+                left_info = _comparison_operand_info(
                     model, comparison.left, side="left"
                 )
-                right_group = _comparison_operand_group(
+                right_info = _comparison_operand_info(
                     model, comparison.right, side="right"
                 )
+                left_group = left_info.group
+                right_group = right_info.group
                 if comparison.granularity == "raw":
                     if left_group != right_group:
                         raise FilterError(
@@ -1522,7 +1550,7 @@ class OperatorFilter:
                         f"modifier {comparison.modifier} not allowed"
                         f" for {vocabulary_hint}"
                     )
-                q &= _field_comparison_to_q(
+                predicate_q = _field_comparison_to_q(
                     comparison.left,
                     comparison.right,
                     comparison.modifier,
@@ -1530,6 +1558,36 @@ class OperatorFilter:
                     left_group=left_group,
                     right_group=right_group,
                 )
+                # The relation paths whose fan-out the quantifier ranges over: one
+                # per multi-valued operand (deduped, so two operands on the SAME
+                # relation — e.g. playevents__started vs playevents__ended — share a
+                # single join and compare same-row, while two DIFFERENT relations
+                # form a cross product). Empty when both operands are single-valued.
+                relation_paths: list[str] = []
+                for info in (left_info, right_info):
+                    if info.multivalued:
+                        assert info.relation_path is not None
+                        if info.relation_path not in relation_paths:
+                            relation_paths.append(info.relation_path)
+                if not relation_paths:
+                    # Same-row comparison (#169): apply the predicate directly. A
+                    # quantifier here is meaningless — reject rather than ignore it.
+                    if comparison.quantifier != RelationMatch.ANY:
+                        raise FilterError(
+                            f"quantifier {comparison.quantifier} is only meaningful"
+                            f" when an operand traverses a multi-valued relation"
+                        )
+                    q &= predicate_q
+                else:
+                    # At least one operand fans out related rows (#282); quantify the
+                    # predicate over them (over the cross product when both sides are
+                    # multi-valued on different relations) via a pk__in subquery.
+                    q &= _multivalued_comparison_to_q(
+                        model,
+                        predicate_q=predicate_q,
+                        relation_paths=relation_paths,
+                        quantifier=comparison.quantifier,
+                    )
         return q
 
     def to_q(self) -> Q:
@@ -2006,43 +2064,106 @@ type ComparisonOperand = (
 )
 
 
-def _comparison_operand_group(
-    model: type[models.Model], operand: ComparisonOperand, *, side: str
-) -> ComparisonGroup:
-    """Resolve a comparison operand to its group, enforcing the operand grammar.
+class ComparisonOperandInfo(NamedTuple):
+    """A resolved comparison operand: its terminal comparison group, whether the
+    path crosses a multi-valued relation (#282), and — when it does — the
+    ``relation_path`` (the operand minus its terminal column, e.g.
+    ``game__playevents``) that the ALL quantifier's relation-existence guard
+    filters on."""
 
-    Grammar (#169): a bare comparable column, or exactly one forward to-one FK
-    hop (``relation__column``). M2M and reverse relations are rejected — ``F()``
-    across a multi-valued relation fans out rows (see the spec's follow-up
-    issue for Exists()-based semantics). Terminal classification is delegated
-    to ``_comparison_group_for`` against the related model, so type-group
-    gating and its error vocabulary stay single-sourced. ``side`` ("left"/
-    "right") only decorates error messages.
+    group: ComparisonGroup
+    multivalued: bool
+    relation_path: str | None  # set iff ``multivalued``
+
+
+def _comparison_operand_info(
+    model: type[models.Model], operand: ComparisonOperand, *, side: str
+) -> ComparisonOperandInfo:
+    """Resolve a comparison operand to its group + multi-valued classification.
+
+    Grammar (#169 + #282): an operand is one of
+
+    - ``col`` — a bare comparable column;
+    - ``fk__col`` — one forward to-one FK hop (the #169 case);
+    - ``multi__col`` — one multi-valued hop (reverse FK / M2M);
+    - ``fk__multi__col`` — one to-one FK hop then one multi-valued hop.
+
+    So at most one multi-valued hop, at most one to-one hop before it (≤3
+    segments). Two to-one hops and 4+-segment paths stay rejected. A path that
+    crosses a multi-valued relation fans out related rows, so it is compared
+    under a quantifier (``_multivalued_comparison_to_q``) rather than a bare
+    ``F()``. Terminal classification is delegated to ``_comparison_group_for``
+    against the model the path reaches, so type-group gating and its error
+    vocabulary stay single-sourced. ``side`` ("left"/"right") only decorates
+    error messages.
     """
     segments = operand.split("__")
     if len(segments) == 1:
-        return _comparison_group_for(model, operand)
-    if len(segments) > 2:
-        raise FilterError(
-            f"{side} operand {operand!r} traverses more than one relation"
-            f" (one hop allowed)"
+        return ComparisonOperandInfo(
+            _comparison_group_for(model, operand), multivalued=False, relation_path=None
         )
-    relation, column = segments
+    if len(segments) > 3:
+        raise FilterError(
+            f"{side} operand {operand!r} traverses too many relations"
+            f" (at most one to-one hop then one multi-valued hop)"
+        )
+
+    relation = segments[0]
     try:
         relation_field = model._meta.get_field(relation)
     except FieldDoesNotExist as exc:
         raise FilterError(
             f"{side} operand {operand!r}: {model.__name__} has no relation {relation!r}"
         ) from exc
-    if not isinstance(relation_field, (models.ForeignKey, models.OneToOneField)):
+    if not relation_field.is_relation or relation_field.related_model is None:
+        raise FilterError(
+            f"{side} operand {operand!r}: {model.__name__}.{relation} is not a relation"
+        )
+    related_model = relation_field.related_model
+    first_to_one = relation_field.many_to_one or relation_field.one_to_one
+
+    def group_at(target: type[models.Model], column: str) -> ComparisonGroup:
+        try:
+            return _comparison_group_for(target, column)
+        except FilterError as exc:
+            raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
+
+    if len(segments) == 2:
+        group = group_at(related_model, segments[1])
+        if first_to_one:
+            return ComparisonOperandInfo(group, multivalued=False, relation_path=None)
+        return ComparisonOperandInfo(group, multivalued=True, relation_path=relation)
+
+    # 3 segments (fk__multi__col): the first hop must be to-one, the second
+    # multi-valued. A second to-one hop is the rejected "two hops" case.
+    if not first_to_one:
         raise FilterError(
             f"{side} operand {operand!r}: {model.__name__}.{relation}"
-            f" is not a to-one relation (only forward FK hops are comparable)"
+            f" is multi-valued, so no further hop is comparable"
+            f" (a multi-valued hop must be last)"
         )
+    inner = segments[1]
     try:
-        return _comparison_group_for(relation_field.related_model, column)
-    except FilterError as exc:
-        raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
+        inner_field = related_model._meta.get_field(inner)
+    except FieldDoesNotExist as exc:
+        raise FilterError(
+            f"{side} operand {operand!r}: {related_model.__name__}"
+            f" has no relation {inner!r}"
+        ) from exc
+    if not inner_field.is_relation or inner_field.related_model is None:
+        raise FilterError(
+            f"{side} operand {operand!r}: {related_model.__name__}.{inner}"
+            f" is not a relation"
+        )
+    if not (inner_field.many_to_many or inner_field.one_to_many):
+        raise FilterError(
+            f"{side} operand {operand!r}: {related_model.__name__}.{inner}"
+            f" is a to-one relation (two to-one hops are not comparable)"
+        )
+    group = group_at(inner_field.related_model, segments[2])
+    return ComparisonOperandInfo(
+        group, multivalued=True, relation_path=f"{relation}__{inner}"
+    )
 
 
 type ModifierValue = str  # a Modifier.value, e.g. "INCLUDES"
@@ -2058,6 +2179,7 @@ class ComparableColumn(TypedDict):
     group: ComparisonGroup
     operators: list[ModifierValue]  # valid for this column's group, raw space (#152)
     source: str  # optgroup label: model verbose name for own columns, FK verbose name for related columns
+    multivalued: bool  # True iff the path crosses a multi-valued relation (#282); the widget shows a quantifier selector
 
 
 def _comparison_relations(
@@ -2066,7 +2188,7 @@ def _comparison_relations(
     """The forward to-one FKs comparison operands may traverse, introspected
     (never configured): ``(fk_name, related_model, title-cased verbose name)``
     per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
-    The same acceptance rule ``_comparison_operand_group`` validates against.
+    The same to-one acceptance rule ``_comparison_operand_info`` validates against.
     """
     relations: list[tuple[str, type[models.Model], str]] = []
     for model_field in model._meta.get_fields():
@@ -2090,6 +2212,7 @@ def _own_comparable_columns(
     *,
     prefix: str = "",
     source: str = "",
+    multivalued: bool = False,
 ) -> list[ComparableColumn]:
     """The comparable columns of ``model``, optionally prefixed and sourced.
 
@@ -2098,6 +2221,8 @@ def _own_comparable_columns(
     When ``prefix`` is non-empty (i.e. these are related-model columns) the
     source is also prepended to each ``label`` as ``f"{source}: {label}"`` to
     qualify them — own-model columns (no prefix) always carry bare labels.
+    ``multivalued`` marks every entry as reached through a multi-valued relation
+    (#282), so the widget offers a quantifier for it.
     Sorted alphabetically by label (case-insensitive) within the block.
     """
     columns: list[ComparableColumn] = []
@@ -2120,33 +2245,101 @@ def _own_comparable_columns(
                     modifier.value for modifier in _allowed_comparison_modifiers(group)
                 ],
                 source=source,
+                multivalued=multivalued,
             )
         )
     columns.sort(key=lambda entry: entry["label"].lower())
     return columns
 
 
+def _multivalued_relation_label(model_field: Any) -> str:
+    """A title-cased optgroup label for a multi-valued relation. Prefers an
+    explicit ``verbose_name`` (a forward M2M carries one); otherwise title-cases
+    the relation's accessor name. The accessor (not the related model's plural
+    name) keeps the label unique when a model reaches the same target through two
+    relations — e.g. Game → Purchase via both ``purchases`` (M2M) and
+    ``addon_purchases`` (the ``related_game`` FK reverse)."""
+    verbose = getattr(model_field, "verbose_name", None)
+    if verbose:
+        return str(verbose).title()
+    return str(model_field.name).replace("_", " ").title()
+
+
+def _comparison_multivalued_sources(
+    model: type[models.Model],
+) -> list[tuple[str, type[models.Model], str]]:
+    """The multi-valued operand blocks reachable from ``model`` (#282):
+    ``(path_prefix, terminal_model, source_label)`` for each path crossing
+    exactly one multi-valued hop. First every direct multi relation on ``model``
+    (``multi__``), then — per forward to-one FK — every multi relation on the
+    FK's target (``fk__multi__``). Mirrors the grammar ``_comparison_operand_info``
+    accepts, so enumeration and validation stay in sync.
+
+    Self-including loops are skipped: a ``fk__multi`` path where ``multi`` is the
+    reverse of ``fk`` (e.g. ``game__sessions`` from Session, or ``device__sessions``)
+    fans out a set that always contains the comparing row itself, which makes an
+    ALL comparison vacuously false and an ANY off by the self-row. There is no
+    self-exclusion in the ``pk__in``-on-parent form, so these paths are not
+    offered as operands. A direct self-relation (a model M2M/FK to itself) is
+    skipped for the same reason.
+    """
+    sources: list[tuple[str, type[models.Model], str]] = []
+
+    def multi_relations(
+        host: type[models.Model],
+    ) -> list[tuple[str, type[models.Model], Any]]:
+        found: list[tuple[str, type[models.Model], Any]] = []
+        for model_field in host._meta.get_fields():
+            if (
+                model_field.is_relation
+                and (model_field.many_to_many or model_field.one_to_many)
+                and model_field.related_model is not None
+            ):
+                found.append((model_field.name, model_field.related_model, model_field))
+        return found
+
+    for name, related_model, relation_field in multi_relations(model):
+        if related_model is model:  # self-relation loops back onto the same row
+            continue
+        label = _multivalued_relation_label(relation_field)
+        sources.append((f"{name}__", related_model, label))
+    for fk_name, fk_model, fk_source in _comparison_relations(model):
+        fk_field = model._meta.get_field(fk_name)
+        for name, related_model, relation_field in multi_relations(fk_model):
+            # Skip the reverse of the FK we just traversed: it re-includes the
+            # parent row (``game__sessions`` = the game's sessions, incl. this one).
+            if getattr(relation_field, "field", None) is fk_field:
+                continue
+            label = f"{fk_source} › {_multivalued_relation_label(relation_field)}"
+            sources.append((f"{fk_name}__{name}__", related_model, label))
+    return sources
+
+
 def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
-    """Every comparable column of ``model`` and its forward to-one FK targets,
-    labelled and grouped, with a ``source`` discriminator for optgroup rendering.
+    """Every comparable column of ``model``, its forward to-one FK targets, and
+    the columns reachable through exactly one multi-valued hop (#282), labelled
+    and grouped, with a ``source`` discriminator for optgroup rendering.
 
     Own columns come first, sorted alphabetically by label, with ``source`` set
     to the model's title-cased verbose name (e.g. "Session").  Then one block
     per forward FK in ``_meta`` declaration order — each block sorted
     alphabetically by its column label, with ``source`` set to the FK's
-    title-cased verbose name.  No global re-sort across blocks.
+    title-cased verbose name.  Finally one block per multi-valued source
+    (``_comparison_multivalued_sources``), each marked ``multivalued=True`` so the
+    widget offers a quantifier.  No global re-sort across blocks.
 
-    ``source`` is always non-empty: own columns carry the model's verbose name
-    and related columns carry the FK's verbose name — every source renders as
-    an optgroup label.  Own-column labels are NOT prefixed (label
-    qualification is keyed off the ``prefix`` param in
-    ``_own_comparable_columns``, not off ``source``).
+    ``source`` is always non-empty: own columns carry the model's verbose name,
+    to-one related columns carry the FK's verbose name, and multi-valued columns
+    carry the relation's (or FK › relation) name — every source renders as an
+    optgroup label.  Own-column labels are NOT prefixed (label qualification is
+    keyed off the ``prefix`` param in ``_own_comparable_columns``, not off
+    ``source``).
 
-    Relations, reverse relations, M2M, the pk/AutoField, GeneratedFields without
-    an output type, and JSONField all classify to None in ``_maybe_group_for``
-    and are excluded.  The same one-hop grammar that ``_comparison_operand_group``
-    enforces is what ``_comparison_relations`` enumerates — they stay in sync by
-    sharing the same FK acceptance predicate.
+    The pk/AutoField, GeneratedFields without an output type, and JSONField
+    classify to None in ``_maybe_group_for`` and are excluded from every block.
+    The grammar ``_comparison_operand_info`` accepts is what
+    ``_comparison_relations`` + ``_comparison_multivalued_sources`` enumerate —
+    they stay in sync by sharing the same relation-cardinality predicates.
     """
     own_source = str(model._meta.verbose_name).title()
     columns = _own_comparable_columns(model, source=own_source)
@@ -2154,6 +2347,12 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
         columns.extend(
             _own_comparable_columns(
                 related_model, prefix=f"{fk_name}__", source=fk_source
+            )
+        )
+    for prefix, terminal_model, source in _comparison_multivalued_sources(model):
+        columns.extend(
+            _own_comparable_columns(
+                terminal_model, prefix=prefix, source=source, multivalued=True
             )
         )
     return columns
@@ -2645,6 +2844,57 @@ def relation_to_q(
         violating = related.filter(~sub.to_q()).values_list(related_lookup, flat=True)
         return ~Q(**{f"{parent_field}__in": violating})
     raise FilterError(f"Unsupported relation match {sub.match!r}")
+
+
+def _multivalued_comparison_to_q(
+    model: ModelClass,
+    *,
+    predicate_q: Q,
+    relation_paths: list[str],
+    quantifier: RelationMatch,
+) -> Q:
+    """Quantify a field comparison whose multi-valued operand(s) fan out related
+    rows (#282), as a ``pk IN (<subquery>)`` membership over ``model`` itself —
+    the same set-membership idiom as ``relation_to_q``, but the subquery runs on
+    the parent model so Django resolves the multi-valued join(s) and the ``F()``
+    across them (no ``OuterRef``/reverse-join introspection).
+
+    ``predicate_q`` is the row predicate from ``_field_comparison_to_q``: the
+    comparison **plus** explicit ``__isnull=False`` guards on both operand paths.
+    ``relation_paths`` are the multi operands minus their terminal column (e.g.
+    ``[game__playevents]``, or ``[sessions, playevents]`` when both sides are
+    multi-valued). One entry → the quantifier ranges over that relation's rows;
+    two entries → over the cross product Django's double join produces (two
+    operands on the *same* relation dedupe to one entry, comparing same-row).
+
+    - ANY: parents with ≥1 (combined) related row satisfying the predicate. The
+      isnull guards exclude the NULL-extended rows of zero-related-row parents,
+      and ``pk__in`` dedupes the join fan-out.
+    - NONE: the negation of ANY (zero-related-row parents included).
+    - ALL: no *violating* related row exists. A row violates when every relation
+      it spans exists (``<path>__isnull=False`` for each ``relation_path``) but it
+      does not satisfy the predicate (``~predicate_q``) — including a related row
+      whose terminal column is NULL, since the guards inside ``predicate_q`` make
+      that a definite non-match rather than SQL UNKNOWN. A parent missing any
+      relation has no such row, so it matches ALL (vacuous truth), mirroring
+      ``relation_to_q``.
+    """
+    rows = model.objects.all()
+    if quantifier == RelationMatch.ANY:
+        matching = rows.filter(predicate_q).values_list("pk", flat=True)
+        return Q(pk__in=matching)
+    if quantifier == RelationMatch.NONE:
+        matching = rows.filter(predicate_q).values_list("pk", flat=True)
+        return ~Q(pk__in=matching)
+    if quantifier == RelationMatch.ALL:
+        exists_guard = Q()
+        for relation_path in relation_paths:
+            exists_guard &= Q(**{f"{relation_path}__isnull": False})
+        violating = rows.filter(exists_guard & ~predicate_q).values_list(
+            "pk", flat=True
+        )
+        return ~Q(pk__in=violating)
+    raise FilterError(f"Unsupported comparison quantifier {quantifier!r}")
 
 
 def aggregate_to_q(

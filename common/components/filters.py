@@ -14,7 +14,6 @@ from common.components.primitives import (
     FilterWidgetPath,
     Input,
     Option,
-    Optgroup,
     Radio,
     Select,
     Template,
@@ -493,6 +492,18 @@ class FieldComparisonRow(NamedTuple):
     right: str  # right column name, e.g. "timestamp_start"
     modifier: str  # a Modifier value, e.g. "LESS_THAN"
     granularity: ComparisonGranularity
+    quantifier: str = (
+        "ANY"  # RelationMatch value; used only when an operand is multi-valued (#282)
+    )
+
+
+# The quantifier <select> options for a multi-valued comparison (#282), mirroring
+# the RelationMatch labels used by the relation-node picker.
+_QUANTIFIER_OPTIONS: tuple[LabeledOption, ...] = (
+    ("ANY", "any"),
+    ("ALL", "all"),
+    ("NONE", "none"),
+)
 
 
 def _pack_operator(modifier: str, granularity: str) -> str:
@@ -502,27 +513,67 @@ def _pack_operator(modifier: str, granularity: str) -> str:
     return modifier if granularity == "raw" else f"{modifier}:{granularity}"
 
 
-def _fc_column_options(columns: list[ComparableColumn], selected: str) -> list[Node]:
-    """Left-column options, one ``<optgroup>`` per source.
+def _fc_option(column: ComparableColumn) -> SearchSelectOption:
+    """A comparison operand as a SearchSelect option, carrying its comparison
+    group and multi-valued flag as ``data-*`` the widget reads to gate operators
+    and the quantifier (#282)."""
+    return SearchSelectOption(
+        value=column["value"],
+        label=column["label"],
+        data={
+            "group": column["group"],
+            "multivalued": "true" if column["multivalued"] else "false",
+        },
+    )
 
-    Every source (own model or FK) gets an ``<optgroup label=source>``
-    wrapping its member options.  ``comparable_columns`` returns own columns
-    first (with ``source`` set to the model's verbose name), so the order
-    (own → related blocks) is stable without a secondary sort here.
-    Empty groups are omitted."""
-    options: list[Node] = [Option(value="")["column…"]]
-    grouped: dict[str, list[ComparableColumn]] = {}
+
+def _fc_option_groups(columns: list[ComparableColumn]) -> list[OptionGroup]:
+    """Comparison operands grouped by ``source`` for a grouped SearchSelect panel.
+    ``comparable_columns`` already orders own → FK → multi-valued blocks, so the
+    groups render in that order without a re-sort."""
+    grouped: dict[str, list[SearchSelectOption]] = {}
     for column in columns:
-        grouped.setdefault(column["source"], []).append(column)
-    for source, members in grouped.items():
-        member_options: list[Node] = []
-        for column in members:
-            attributes = [("value", column["value"]), ("data-group", column["group"])]
-            if column["value"] == selected:
-                attributes.append(("selected", ""))
-            member_options.append(Option(attributes)[column["label"]])
-        options.append(Optgroup(label=source)[member_options])
-    return options
+        grouped.setdefault(column["source"], []).append(_fc_option(column))
+    return [
+        OptionGroup(label=source, options=options)
+        for source, options in grouped.items()
+    ]
+
+
+def _fc_operand(
+    marker: str,
+    *,
+    name: str,
+    columns: list[ComparableColumn],
+    selected_value: str,
+    dynamic: bool = False,
+) -> Node:
+    """A searchable operand combobox (SearchSelect) for one side of a comparison.
+
+    The operand lists are now large enough (own + FK + multi-valued blocks) that a
+    plain ``<select>`` is unusable, so each side is a single-select SearchSelect
+    (#282 review). ``marker`` (``data-fc-left`` / ``data-fc-right``) tags the
+    wrapper the widget queries by. The left side ships the full grouped option
+    set; the right side ships none — ts/elements/field-comparison-set.ts
+    repopulates it (via ``setOptions``) with the type/space-compatible columns for
+    the chosen left column + operator. ``selected_value`` seeds a committed pick
+    on the server hydration path (blank template row passes "")."""
+    selected: list[SearchSelectOption] | None = None
+    if selected_value:
+        column = next((c for c in columns if c["value"] == selected_value), None)
+        if column is not None:
+            selected = [_fc_option(column)]
+    return Div([(marker, "")])[
+        SearchSelect(
+            name=name,
+            option_groups=_fc_option_groups(columns) if columns else None,
+            selected=selected,
+            multi_select=False,
+            host_dropdown=True,
+            placeholder="column…",
+            dynamic_options=dynamic,
+        )
+    ]
 
 
 def _field_comparison_row(
@@ -532,23 +583,47 @@ def _field_comparison_row(
 ) -> Node:
     """One ``left <op> right ✕`` row. ``row=None`` is the blank template row.
 
-    The left column carries the full option set; the operator and right-column
-    selects are rendered empty with the saved value stashed in ``data-selected``
-    — ts/elements/field-comparison-set.ts builds their options from the left
-    column's group and restores the selection. This is the reusable single-row
+    Left and right operands are searchable SearchSelect comboboxes; the operator
+    and quantifier stay plain ``<select>``s (short lists). The operator/quantifier
+    saved values are stashed in ``data-selected`` — ts/elements/field-comparison-set.ts
+    builds the operator options from the left column's group, repopulates the
+    right combobox, and restores selections. This is the reusable single-row
     unit."""
     left_value = row.left if row else ""
     operator_value = _pack_operator(row.modifier, row.granularity) if row else ""
     right_value = row.right if row else ""
+    quantifier_value = row.quantifier if row else ""
     return Div(
         data_fc_row="",
         class_=("grid grid-cols-1 gap-2 items-center md:grid-cols-[1fr_auto_1fr_auto]"),
     )[
-        Select(data_fc_left="", class_=select_class)[
-            *_fc_column_options(columns, left_value)
+        # Left carries the full grouped option set; right is repopulated client-side.
+        _fc_operand(
+            "data-fc-left", name="fc-left", columns=columns, selected_value=left_value
+        ),
+        # Operator + quantifier share one cell so the row keeps its 4-column
+        # alignment; the quantifier is hidden until an operand is multi-valued
+        # (#282), toggled by ts/elements/field-comparison-set.ts.
+        Div(class_="flex gap-2 items-center")[
+            Select(data_fc_op="", data_selected=operator_value, class_=select_class),
+            Select(
+                data_fc_quantifier="",
+                data_selected=quantifier_value,
+                aria_label="Quantifier",
+                class_=f"hidden {select_class}",
+            )[
+                # Selection is restored client-side from ``data-selected`` (like the
+                # operator select), so the options render unmarked.
+                *(Option(value=value)[label] for value, label in _QUANTIFIER_OPTIONS)
+            ],
         ],
-        Select(data_fc_op="", data_selected=operator_value, class_=select_class),
-        Select(data_fc_right="", data_selected=right_value, class_=select_class),
+        _fc_operand(
+            "data-fc-right",
+            name="fc-right",
+            columns=[],
+            selected_value=right_value,
+            dynamic=True,
+        ),
         Button(
             type="button",
             data_fc_remove="",
