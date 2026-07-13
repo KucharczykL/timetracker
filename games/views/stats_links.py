@@ -106,7 +106,9 @@ def sessions_in_month(year: int, month: int) -> SessionFilter:
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
-    return SessionFilter.where(timestamp_start__between=(start, end))
+    return GameFilter(
+        session_filter=all_sessions(year).where(timestamp_start__between=(start, end))
+    )
 
 
 # ── Games ────────────────────────────────────────────────────────────────────
