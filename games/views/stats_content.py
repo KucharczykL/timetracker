@@ -37,6 +37,8 @@ from games.views.stats_data import StatsData
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2"
 _CELL_MONO = f"{_CELL} font-mono"
 _NAME_TH = f"{_CELL} purchase-name truncate max-w-20char"
+_FILTER_LINK_CLASS = "underline decoration-dotted hover:decoration-solid"
+
 
 # Stats lists are previews: capped to this many rows, with a "View all" link to
 # the full filtered list (#65).
@@ -91,6 +93,7 @@ def _kv(label, value) -> Node:
     return _tr([_td(label, _CELL), _td(value)])
 
 
+# TODO: remove and replace with the regular H1
 def _h1(title: str) -> Node:
     return H1(class_="text-3xl text-heading text-center my-6")[title]
 
@@ -367,15 +370,19 @@ def stats_content(ctx: StatsData) -> Node:
             _tr(
                 [
                     _td(
-                        A(
-                            href=filter_url(
-                                stats_links.sessions_in_month(year, m["month"].month)
-                            ),
-                            class_="hover:underline decoration-dotted",
-                        )[date_filter(m["month"], "F")],
+                        date_filter(m["month"], "F"),
                         _CELL,
                     ),
-                    _td(_dur(m["playtime"])),
+                    _td(
+                        A(
+                            href=filter_url(
+                                stats_links.games_in_month(year, m["month"].month),
+                                sort="-filtered_playtime",
+                            ),
+                            class_=_FILTER_LINK_CLASS,
+                        )[_dur(m["playtime"])],
+                        _CELL,
+                    ),
                 ]
             )
             for m in months
@@ -401,15 +408,15 @@ def stats_content(ctx: StatsData) -> Node:
         _two_col_table(
             "Platform",
             ctx.get("total_playtime_per_platform") or [],
+            lambda item: item["platform_name"] or "Unspecified",
             lambda item: A(
                 href=filter_url(
                     stats_links.sessions_for_platform(
                         item["platform_id"], year, item["platform_name"] or ""
                     )
                 ),
-                class_="hover:underline decoration-dotted",
-            )[item["platform_name"] or "Unspecified"],
-            lambda item: _dur(item["playtime"]),
+                class_=_FILTER_LINK_CLASS,
+            )[_dur(item["playtime"])],
         ),
     ]
 
