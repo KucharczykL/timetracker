@@ -102,7 +102,7 @@ def sessions_for_platform(
     return session_filter
 
 
-def sessions_in_month(year: int, month: int) -> SessionFilter:
+def games_in_month(year: int, month: int) -> GameFilter:
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"

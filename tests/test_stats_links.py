@@ -167,12 +167,14 @@ def test_sessions_for_game_without_label_stays_bare(world):
     assert payload["game"]["value"] == [game.id]
 
 
-def test_sessions_in_month_matches_that_month(world):
-    expected = Session.objects.filter(
-        timestamp_start__year=YEAR, timestamp_start__month=6
+def test_games_in_month_matches_that_month(world):
+    expected = Game.objects.filter(
+        sessions__in=Session.objects.filter(
+            timestamp_start__year=YEAR, timestamp_start__month=6
+        )
     ).count()
     assert expected == 2
-    assert _count(stats_links.sessions_in_month(YEAR, 6), Session) == expected
+    assert _count(stats_links.games_in_month(YEAR, 6), Session) == expected
 
 
 def test_all_sessions_matches_total_sessions(world):

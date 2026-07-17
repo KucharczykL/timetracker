@@ -376,7 +376,7 @@ def stats_content(ctx: StatsData) -> Node:
                     _td(
                         A(
                             href=filter_url(
-                                stats_links.sessions_in_month(year, m["month"].month),
+                                stats_links.games_in_month(year, m["month"].month),
                                 sort="-filtered_playtime",
                             ),
                             class_=_FILTER_LINK_CLASS,
