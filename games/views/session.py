@@ -207,6 +207,10 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                     "game": game,
                 }
             )
+            # Chained with a pre-filled game: focus the device field instead of
+            # the already-selected game.
+            form.fields["game"].widget.autofocus = False
+            form.fields["device"].widget.autofocus = True
         else:
             form = SessionForm(initial=initial)
 
