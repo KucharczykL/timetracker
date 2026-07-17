@@ -495,21 +495,20 @@ class IconTest(unittest.TestCase):
         # The snippet's baked class is replaced by the central icon classes (so
         # all icons restyle in one place); a passed class appends as an override.
         # viewBox must survive — dropping it clips the paths to a sliver.
-        from common.components.primitives import ICON_BASE_CLASS, ICON_SIZE_CLASS
+        from common.components.primitives import ICON_SIZE_CLASS
 
         result = str(components.Icon("arrowdownlong", [("class", "rotate-180")]))
-        self.assertIn(f'class="{ICON_BASE_CLASS} {ICON_SIZE_CLASS} rotate-180"', result)
+        self.assertIn(f'class="{ICON_SIZE_CLASS} rotate-180"', result)
         self.assertNotIn("w-3 h-3 rotate-180", result)  # snippet size dropped
         self.assertIn("viewBox=", result)
 
     def test_icon_size_override_replaces_default(self):
-        # `size=` swaps the default size wholesale; colour stays, default size
-        # tokens are gone.
-        from common.components.primitives import ICON_BASE_CLASS
-
+        # `size=` swaps the default size wholesale; the default size tokens are
+        # gone. ICON_BASE_CLASS is colourless, so the icon inherits currentColor.
         result = str(components.Icon("play", size="w-6 h-6"))
-        self.assertIn(f'class="{ICON_BASE_CLASS} w-6 h-6"', result)
+        self.assertIn('class="w-6 h-6"', result)
         self.assertNotIn("w-2", result)  # default size replaced
+        self.assertNotIn("text-black", result)  # no pinned colour
 
     def test_icon_escapes_title_text(self):
         result = str(components.Icon("play", [("title", 'a"<&b')]))
@@ -520,10 +519,10 @@ class IconTest(unittest.TestCase):
     def test_icon_without_attributes_still_overrides_class(self):
         # Even with no attributes every icon is restyled by the central classes
         # (overriding the snippet's baked class); viewBox is kept.
-        from common.components.primitives import ICON_BASE_CLASS, ICON_SIZE_CLASS
+        from common.components.primitives import ICON_SIZE_CLASS
 
         result = str(components.Icon("arrowdownlong"))
-        self.assertIn(f'class="{ICON_BASE_CLASS} {ICON_SIZE_CLASS}"', result)
+        self.assertIn(f'class="{ICON_SIZE_CLASS}"', result)
         self.assertIn("viewBox=", result)
 
     def test_returns_safetext(self):

@@ -1273,11 +1273,15 @@ def get_icon_node(name: str) -> Element:
 
 
 # Classes applied to every icon, overriding whatever each snippet baked in — no
-# need to touch the individual icon snippets. ICON_BASE_CLASS (colour) is always
-# applied; the size is ICON_SIZE_CLASS by default, or whatever a caller passes as
-# `size=`. ICON_BUTTON_SIZE_CLASS is the override for icons rendered inside
-# buttons (bigger than the small inline platform icons). Tune sizes here.
-ICON_BASE_CLASS = "text-black dark:text-white"
+# need to touch the individual icon snippets. ICON_BASE_CLASS is intentionally
+# colourless: monochrome icons use `fill="currentColor"`, so they inherit the
+# text colour of their container (button, badge, body). Pinning a colour here
+# would defeat that — an icon on a coloured button would keep black while the
+# label followed the button's `text-white`. The size is ICON_SIZE_CLASS by
+# default, or whatever a caller passes as `size=`. ICON_BUTTON_SIZE_CLASS is the
+# override for icons rendered inside buttons (bigger than the small inline
+# platform icons). Tune sizes here.
+ICON_BASE_CLASS = ""
 ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
 # Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
 # → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
