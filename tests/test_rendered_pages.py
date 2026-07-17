@@ -6,6 +6,7 @@ importantly — that nothing is double-escaped (the recurring failure mode when 
 `SafeText` loses its safe marker and renders as `&lt;tag&gt;`).
 """
 
+import re
 from datetime import datetime
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
@@ -287,6 +288,35 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Submit &amp; Create Session", html)
         self.assertIn('name="submit_and_redirect"', html)
         self.assertNoEscapedTags(html)
+
+    def _element_with_id(self, html, element_id):
+        """Return the single tag (e.g. an <input>) carrying ``id="<element_id>"``."""
+        match = re.search(rf'<[^>]*\bid="{re.escape(element_id)}"[^>]*>', html)
+        if match is None:
+            self.fail(f"no element with id {element_id!r} in output")
+        return match.group(0)
+
+    def test_add_purchase_for_game_autofocuses_price_not_games(self):
+        html = self.get("games:add_purchase_for_game", self.game.id).content.decode()
+        # Games/platform are pre-filled from the chain, so price gets focus.
+        self.assertIn("autofocus", self._element_with_id(html, "id_price"))
+        self.assertNotIn("autofocus", self._element_with_id(html, "id_games"))
+
+    def test_add_session_for_game_autofocuses_device_not_game(self):
+        html = self.get("games:add_session_for_game", self.game.id).content.decode()
+        self.assertIn("autofocus", self._element_with_id(html, "id_device"))
+        self.assertNotIn("autofocus", self._element_with_id(html, "id_game"))
+
+    def test_cold_add_forms_keep_game_autofocus(self):
+        """Opened from the main menu (no game_id), the Game(s) field keeps focus
+        and the chained targets do not steal it."""
+        purchase_html = self.get("games:add_purchase").content.decode()
+        self.assertIn("autofocus", self._element_with_id(purchase_html, "id_games"))
+        self.assertNotIn("autofocus", self._element_with_id(purchase_html, "id_price"))
+
+        session_html = self.get("games:add_session").content.decode()
+        self.assertIn("autofocus", self._element_with_id(session_html, "id_game"))
+        self.assertNotIn("autofocus", self._element_with_id(session_html, "id_device"))
 
     def test_add_session_form_has_timestamp_helpers(self):
         html = self.get("games:add_session").content.decode()

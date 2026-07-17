@@ -320,6 +320,10 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                     "platform": game.platform,
                 }
             )
+            # Chained from add_game: game and platform are pre-filled, so focus
+            # the first empty field the user still needs to fill instead.
+            form.fields["games"].widget.autofocus = False
+            form.fields["price"].widget.attrs["autofocus"] = "autofocus"
         else:
             form = PurchaseForm(initial=initial)
 
