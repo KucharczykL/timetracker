@@ -21,7 +21,7 @@ from games.forms import LoginForm
 
 def _login_content(form, request) -> Node:
     return Div(class_="flex items-center flex-col")[
-        H2(class_="text-3xl text-white mb-8")["Please log in to continue"],
+        H2(class_="text-3xl text-heading mb-8")["Please log in to continue"],
         Form(
             method="post",
             class_=f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS} @container",
