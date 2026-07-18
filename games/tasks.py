@@ -1,13 +1,11 @@
 import logging
 
 import requests
-from django.conf import settings
 from django.db import models
 from games.models import ExchangeRate, Purchase
+from timetracker.settings_resolver import resolve_str
 
 logger = logging.getLogger("games")
-
-currency_to = settings.DEFAULT_CURRENCY.upper()
 
 
 def _get_exchange_rate(currency_from, currency_to, year):
@@ -49,7 +47,7 @@ def _get_exchange_rate(currency_from, currency_to, year):
     return rate
 
 
-def _save_converted_price(purchase, converted_price, needs_update):
+def _save_converted_price(purchase, converted_price, needs_update, currency_to):
     logger.info(
         f"Setting converted price of {purchase} to {converted_price} {currency_to} (originally {purchase.price} {purchase.price_currency})"
     )
@@ -63,6 +61,9 @@ def _save_converted_price(purchase, converted_price, needs_update):
 
 
 def convert_prices():
+    # Resolved once per run so the whole run is internally consistent even if the
+    # site default is edited mid-run (see timetracker.settings_resolver).
+    currency_to = resolve_str("DEFAULT_CURRENCY").upper()
     purchases = Purchase.objects.filter(
         models.Q(needs_price_update=True) | models.Q(converted_price__isnull=True)
     ).distinct()
@@ -73,7 +74,7 @@ def convert_prices():
     for purchase in purchases:
         needs_update = purchase.needs_price_update
         if purchase.price_currency.upper() == currency_to or purchase.price == 0:
-            _save_converted_price(purchase, purchase.price, needs_update)
+            _save_converted_price(purchase, purchase.price, needs_update, currency_to)
             continue
         year = purchase.date_purchased.year
         currency_from = purchase.price_currency.upper()
@@ -83,6 +84,7 @@ def convert_prices():
                 purchase,
                 round(purchase.price * rate, 0),
                 needs_update,
+                currency_to,
             )
 
 

@@ -16,7 +16,8 @@ For a setting named `NAME`, the first source that provides a value wins:
 | 2 | `NAME` env var | A real process environment variable. |
 | 3 | `.env` file | `KEY=value` lines (see [.env syntax](#env-syntax)). |
 | 4 | `settings.ini` file | The `[timetracker]` section, parsed with `configparser`. |
-| 5 | `default` | The in-code fallback in `settings.py`. |
+| 5 | `SiteSetting` (database) | **Site-scoped settings only** (currently just `DEFAULT_CURRENCY`). Runtime-editable; see [Runtime settings layer](#runtime-settings-layer). |
+| 6 | `default` | The in-code fallback in `settings.py`. |
 
 If no source supplies a value and no `default` is defined, startup fails with
 `ImproperlyConfigured` rather than silently using an empty value.
@@ -40,6 +41,37 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 
 `cast` understands `bool` (`true/1/yes/on` → `True`), `list` (comma-separated,
 whitespace-trimmed, empty items dropped), `int`, `Path`, or any callable.
+
+## Runtime settings layer
+
+The `config()` chain above is read once at boot. A **database layer** sits
+*below* env/`.env`/`.ini` and *above* the code default, so a subset of settings
+can be changed at runtime without a redeploy. It is served by the layered
+resolver in
+[`timetracker/settings_resolver.py`](../timetracker/settings_resolver.py), backed
+by a declarative registry
+([`timetracker/settings_registry.py`](../timetracker/settings_registry.py)) and
+the global `SiteSetting` model.
+
+- **`resolve_with_origin(key)` → `(value, source, locked)`.** Precedence is
+  env/`.env`/`.ini` (all **locked** — they pin the value and win over the DB) >
+  `SiteSetting` (database, unlocked) > registry default. Every layer runs through
+  the same cast + validator, so a DB-stored `"eur"` resolves identically to an
+  env `EUR`.
+- **Scopes.** Only **site**-scoped settings have a DB layer; today that is
+  **only `DEFAULT_CURRENCY`**. **infra**-scoped settings (`DEBUG`, `SECRET_KEY`,
+  `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`,
+  `HASHED_STATIC`) are boot-only and never read from the DB.
+- **`TZ` is display-only.** `TIME_ZONE` is frozen when `settings.py` imports, so
+  a DB value could never take effect; change it via env/`.ini` + restart.
+- **Not runtime-editable, not registered.** `ENV_FILE`/`INI_FILE` *locate* the
+  config sources (read before the chain exists) and the deprecated `PROD` alias
+  is excluded, so none appear in the registry.
+- **Consistency.** Web workers and the django-q qcluster each cache the
+  `SiteSetting` snapshot for a few seconds; a runtime change converges across
+  processes within that window. Writes go through the resolver or the Django
+  admin (both validated); a raw `QuerySet.update()` is invisible until the cache
+  lapses.
 
 ## APP_URL, ALLOWED_HOSTS and CSRF
 

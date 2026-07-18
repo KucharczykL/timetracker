@@ -3,6 +3,25 @@ import logging
 
 import pytest
 
+from timetracker import config as config_module
+from timetracker import settings_resolver
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_caches():
+    """Isolate the layered settings resolver between tests.
+
+    TestCase transaction rollback fires no ``SiteSetting`` commit signal, so a
+    written-then-rolled-back row would otherwise leak through the resolver's TTL
+    snapshot into later tests. Also reset the parsed env/ini file caches so
+    per-test ``ENV_FILE``/``INI_FILE`` fixtures don't bleed.
+    """
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+    yield
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+
 
 @pytest.fixture
 def capture_games_logger(caplog):

@@ -38,8 +38,9 @@ unaffected.
 
 import os
 from configparser import ConfigParser
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 from urllib.parse import urlparse
 
 from django.core.exceptions import ImproperlyConfigured
@@ -50,6 +51,41 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 NOT_SET: Any = object()
 
 INI_SECTION = "timetracker"
+
+
+class SettingSource(StrEnum):
+    """Origin of a resolved value, highest precedence first. The env/file/ini
+    ones are "locked" (see :data:`LOCKED_SOURCES`)."""
+
+    ENV_FILE = "env_file"
+    ENV = "env"
+    DOTENV = "dotenv"
+    INI = "ini"
+    DATABASE = "database"
+    DEFAULT = "default"
+
+
+#: Sources that pin a setting: they win over the DB layer and lock the field.
+LOCKED_SOURCES = frozenset(
+    {
+        SettingSource.ENV_FILE,
+        SettingSource.ENV,
+        SettingSource.DOTENV,
+        SettingSource.INI,
+    }
+)
+
+
+class RawConfigValue(NamedTuple):
+    raw: str
+    source: SettingSource
+
+
+class ResolvedSetting(NamedTuple):
+    value: Any
+    source: SettingSource
+    locked: bool
+
 
 _env_file_cache: dict[str, str] | None = None
 _ini_file_cache: dict[str, str] | None = None
@@ -140,7 +176,9 @@ def reset_caches() -> None:
     _ini_file_cache = None
 
 
-def _cast_value(value: str, cast: Callable[[str], Any] | None) -> Any:
+def cast_value(value: str, cast: Callable[[str], Any] | None) -> Any:
+    """Coerce a raw string via ``cast``. Shared by :func:`config` and the resolver
+    so every layer coerces identically. ``bool``/``list`` have custom parsing."""
     if cast is None:
         return value
     if cast is bool:
@@ -150,21 +188,35 @@ def _cast_value(value: str, cast: Callable[[str], Any] | None) -> Any:
     return cast(value)
 
 
-def _resolve_raw(name: str, allow_file: bool) -> str | None:
-    """Return the first raw string from the source chain, or ``None``."""
+_cast_value = cast_value  # existing call sites still use the private name
+
+
+def resolve_raw_with_source(
+    name: str, *, allow_file: bool = False
+) -> RawConfigValue | None:
+    """Like :func:`config`'s lookup but tagged with the source, and no cast/default
+    — returns ``None`` when no boot-frozen source has the setting. No DB access."""
     if allow_file:
         file_pointer = os.environ.get(f"{name}__FILE")
         if file_pointer:
-            return Path(file_pointer).read_text().strip()
+            return RawConfigValue(
+                Path(file_pointer).read_text().strip(), SettingSource.ENV_FILE
+            )
     if name in os.environ:
-        return os.environ[name]
+        return RawConfigValue(os.environ[name], SettingSource.ENV)
     env_file = _load_env_file()
     if name in env_file:
-        return env_file[name]
+        return RawConfigValue(env_file[name], SettingSource.DOTENV)
     ini_file = _load_ini_file()
     if name in ini_file:
-        return ini_file[name]
+        return RawConfigValue(ini_file[name], SettingSource.INI)
     return None
+
+
+def _resolve_raw(name: str, allow_file: bool) -> str | None:
+    """Return the first raw string from the source chain, or ``None``."""
+    result = resolve_raw_with_source(name, allow_file=allow_file)
+    return result.raw if result is not None else None
 
 
 def _debug_enabled() -> bool:
