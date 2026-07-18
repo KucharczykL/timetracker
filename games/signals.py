@@ -9,12 +9,24 @@ from django.db.models.signals import (
     pre_delete,
     pre_save,
 )
+from django.db import transaction
 from django.dispatch import receiver
 from django.utils.timezone import now
 
-from games.models import Game, GameStatusChange, Purchase, Session
+from games.models import Game, GameStatusChange, Purchase, Session, SiteSetting
+from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
+
+
+@receiver([post_save, post_delete], sender=SiteSetting)
+def invalidate_settings_cache(sender, instance, **kwargs):
+    """Drop the resolver's SiteSetting snapshot after a committed write.
+
+    Firing on commit (not inside the atomic block) avoids re-caching the old
+    value in a racing thread and avoids caching a rolled-back phantom value.
+    """
+    transaction.on_commit(clear_settings_cache)
 
 
 @receiver(pre_save, sender=Purchase)

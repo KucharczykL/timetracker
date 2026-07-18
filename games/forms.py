@@ -1,5 +1,4 @@
 from django import forms
-from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
 
@@ -22,6 +21,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from timetracker.settings_resolver import resolve_str
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
@@ -297,6 +297,11 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
+        # Resolved at instantiation (not class-definition time) so a live-edited
+        # DEFAULT_CURRENCY shows through without a restart.
+        self.fields["price_currency"].widget.attrs["placeholder"] = resolve_str(
+            "DEFAULT_CURRENCY"
+        )
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -328,7 +333,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=forms.TextInput(
             attrs={
                 "x-mask": "aaa",
-                "placeholder": settings.DEFAULT_CURRENCY,
+                # placeholder is set live in __init__ from the resolved DEFAULT_CURRENCY.
                 "x-data": "",
                 "class": "uppercase",
             }

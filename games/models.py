@@ -184,7 +184,10 @@ class Purchase(models.Model):
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
-    price_currency = models.CharField(max_length=3, default="USD")
+    # Empty by default: Purchase.save() fills it from the resolved DEFAULT_CURRENCY
+    # (the single source of the default). loaddata bypasses save(), so fixtures
+    # must set price_currency explicitly.
+    price_currency = models.CharField(max_length=3, blank=True, default="")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, blank=True, default="")
     needs_price_update = models.BooleanField(default=True, db_index=True)
@@ -253,7 +256,10 @@ class Purchase(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.price_currency:
-            self.price_currency = settings.DEFAULT_CURRENCY
+            # Local import: the resolver lazily imports this module in turn.
+            from timetracker.settings_resolver import resolve_str
+
+            self.price_currency = resolve_str("DEFAULT_CURRENCY")
         if self.type != Purchase.GAME and not self.related_game:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."
@@ -391,6 +397,8 @@ class ExchangeRate(models.Model):
 
 
 def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float | None:
+    # Currently unused. If ever wired up, its currency_to must come from
+    # settings_resolver.resolve_str("DEFAULT_CURRENCY"), not a boot-frozen value.
     exchange_rate = None
     result = ExchangeRate.objects.filter(
         currency_from=currency_from, currency_to=currency_to, year=year
@@ -525,3 +533,22 @@ class FilterPreset(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_mode_display()})"
+
+
+class SiteSetting(models.Model):
+    """Global runtime override for a site-scoped setting (the DB layer of the
+    layered resolver in ``timetracker.settings_resolver``).
+
+    Deliberately global: no user FK and no ``swappable_dependency`` — these are
+    site-wide values. Per-user preferences get their own model in a later stage.
+    """
+
+    key = models.CharField(max_length=100, unique=True)
+    value = models.JSONField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["key"]
+
+    def __str__(self):
+        return f"{self.key} = {self.value!r}"

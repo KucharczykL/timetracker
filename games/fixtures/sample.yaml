@@ -66,6 +66,7 @@
   fields:
     games: [1]
     platform: 1
+    price_currency: USD
     date_purchased: 2021-02-13
     date_refunded: null
     created_at: "2021-02-13T00:00:00Z"
@@ -75,6 +76,7 @@
   fields:
     games: [2]
     platform: 1
+    price_currency: USD
     date_purchased: 2022-02-24
     date_refunded: null
     created_at: "2022-02-24T00:00:00Z"
@@ -84,6 +86,7 @@
   fields:
     games: [3]
     platform: 1
+    price_currency: USD
     date_purchased: 2020-12-07
     date_refunded: null
     created_at: "2020-12-07T00:00:00Z"

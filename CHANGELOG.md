@@ -1,3 +1,20 @@
+## Unreleased
+
+### New
+* Add a layered settings resolver (`env > database > default`) with a declarative
+  registry and a global `SiteSetting` store — the backend foundation for a future
+  settings panel. `DEFAULT_CURRENCY` is now resolved through it, so it can be
+  changed at runtime without a restart (all three consumption sites — purchase
+  save, the purchase form placeholder, and the FX conversion task — read the live
+  value). See [Runtime settings layer](docs/configuration.md#runtime-settings-layer).
+
+### Changed
+* `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
+  currency comes solely from the resolved `DEFAULT_CURRENCY` (`CZK` out of the
+  box). A purchase created directly via the ORM without a currency now gets the
+  resolved default rather than a hardcoded `USD`. `loaddata` bypasses
+  `Purchase.save()`, so fixtures now set `price_currency` explicitly.
+
 ## 1.7.0 / 2026-05-12
 
 ### New

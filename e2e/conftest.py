@@ -7,10 +7,24 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Request
 
+from timetracker import config as config_module
+from timetracker import settings_resolver
+
 # Playwright runs an async event loop in the background, which triggers
 # Django's async safety checks when running synchronous tests. This allows
 # synchronous operations inside the async context safely.
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_caches():
+    """Isolate the settings resolver between e2e tests (flush teardown fires no
+    SiteSetting commit signal), mirroring tests/conftest.py."""
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+    yield
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
 
 
 @pytest.fixture(autouse=True)
