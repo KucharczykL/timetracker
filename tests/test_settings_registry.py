@@ -14,8 +14,15 @@ from timetracker.settings_registry import (
     get_definition,
 )
 
-EXPECTED_KEYS = {
+# Keys resolved through the per-user layer (scope USER).
+USER_KEYS = {
     "DEFAULT_CURRENCY",
+    "DEFAULT_DEVICE",
+    "DEFAULT_LANDING_PAGE",
+}
+
+EXPECTED_KEYS = {
+    *USER_KEYS,
     "TZ",
     "DEBUG",
     "SECRET_KEY",
@@ -27,7 +34,7 @@ EXPECTED_KEYS = {
 }
 
 
-def test_registry_has_exactly_the_nine_settings():
+def test_registry_has_exactly_the_expected_settings():
     assert set(SETTINGS_REGISTRY) == EXPECTED_KEYS
 
 
@@ -37,16 +44,17 @@ def test_meta_knobs_are_not_registered(meta_knob):
 
 
 def test_scopes_and_timings():
-    currency = get_definition("DEFAULT_CURRENCY")
-    assert currency.scope is SettingScope.SITE
-    assert currency.apply_timing is ApplyTiming.LIVE
+    for key in USER_KEYS:
+        definition = get_definition(key)
+        assert definition.scope is SettingScope.USER
+        assert definition.apply_timing is ApplyTiming.LIVE
 
     tz = get_definition("TZ")
     assert tz.scope is SettingScope.INFRA
     assert tz.apply_timing is ApplyTiming.RESTART
     assert tz.note  # display-only rationale documented
 
-    for key in EXPECTED_KEYS - {"DEFAULT_CURRENCY"}:
+    for key in EXPECTED_KEYS - USER_KEYS:
         assert get_definition(key).scope is SettingScope.INFRA
 
 

@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from typing import Final
 
 import requests
 from django.conf import settings
@@ -14,6 +15,7 @@ from django.utils import timezone
 
 from common.time import format_duration
 from common.utils import label_with_details
+from timetracker.settings_registry import SettingKey
 
 logger = logging.getLogger("games")
 
@@ -537,8 +539,8 @@ class FilterPreset(models.Model):
 
 class SiteSetting(models.Model):
     """DB layer of the settings resolver: a global runtime override for a
-    site-scoped setting. Deliberately no user FK — per-user prefs get their own
-    model later."""
+    site-scoped setting. Deliberately no user FK — per-user prefs live on
+    UserPreferences."""
 
     key = models.CharField(max_length=100, unique=True)
     value = models.JSONField()
@@ -549,3 +551,74 @@ class SiteSetting(models.Model):
 
     def __str__(self):
         return f"{self.key} = {self.value!r}"
+
+
+#: USER-scoped key → the UserPreferences column storing it. DEFAULT_DEVICE maps to
+#: the FK *attname* (``default_device_id``) so reads/writes use the serializable id,
+#: not a Device instance. Keys absent here live in the ``extra_preferences`` bag.
+USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
+    "DEFAULT_CURRENCY": "default_currency",
+    "DEFAULT_DEVICE": "default_device_id",
+    "DEFAULT_LANDING_PAGE": "default_landing_page",
+}
+
+
+class UserPreferences(models.Model):
+    """Per-user layer of the settings resolver: a personal override for a
+    user-scoped setting, sitting above the site default. Unset is a NULL column
+    (or an absent ``extra_preferences`` key), which falls through to the site and
+    code-default layers — never an empty-string sentinel."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="preferences",
+    )
+    default_currency = models.CharField(
+        max_length=3, null=True, blank=True, default=None
+    )
+    default_device = models.ForeignKey(
+        Device,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    default_landing_page = models.CharField(
+        max_length=100, null=True, blank=True, default=None
+    )
+    #: Extension bag for USER keys without a typed column. Absent key == unset.
+    extra_preferences = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "user preferences"
+        verbose_name_plural = "user preferences"
+
+    def __str__(self):
+        return f"Preferences for {self.user}"
+
+    @classmethod
+    def get_for_user(cls, user) -> "UserPreferences":
+        """The user's row, created on first access. Write path only — the resolver
+        reads a snapshot, never this."""
+        preferences, _ = cls.objects.get_or_create(user=user)
+        return preferences
+
+    def set_preference_value(self, key: SettingKey, value: object) -> None:
+        """Store ``value`` for ``key``; ``None`` clears it back to unset. The
+        value must already be normalized — the resolver (``set_user_preference``)
+        is the one write path and validates before calling this."""
+        field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
+        if field is not None:
+            setattr(self, field, value)
+            # save() accepts the FK attname (default_device_id) in update_fields.
+            self.save(update_fields=[field, "updated_at"])
+            return
+        if value is None:
+            self.extra_preferences.pop(key, None)
+        else:
+            self.extra_preferences[key] = value
+        self.save(update_fields=["extra_preferences", "updated_at"])

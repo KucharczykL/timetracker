@@ -5237,6 +5237,8 @@ class TestStringFieldNullConvention:
     Known intentional exceptions (pre-existing nullable string fields not used
     in any filter, listed as "ModelName.field_name"):
     - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
+    - UserPreferences.default_currency / default_landing_page: NULL means "unset"
+      (fall through to the site/default settings layer); never filtered.
     """
 
     # Fields that are intentionally null=True for domain reasons and are NOT used
@@ -5244,7 +5246,13 @@ class TestStringFieldNullConvention:
     # filter, update StringCriterion.to_q to handle it, then add it here only if
     # the null=True IS_NULL/NOT_NULL semantics differ from the "" convention.
     KNOWN_NULLABLE_EXCEPTIONS: frozenset[str] = frozenset(
-        {"GameStatusChange.old_status"}
+        {
+            "GameStatusChange.old_status",
+            # Per-user settings overrides: NULL is the "unset" sentinel the
+            # resolver falls through on, deliberately not the "" convention.
+            "UserPreferences.default_currency",
+            "UserPreferences.default_landing_page",
+        }
     )
 
     def test_no_nullable_string_fields_in_games_models(self):
