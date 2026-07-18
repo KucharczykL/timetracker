@@ -372,13 +372,20 @@ _SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
 #   raw emerald-800 (the light success-strong value).
 # - fg-brand fails AA on the dark hover surface (blue-500 on gray-700), so
 #   every hover/focus text accent pairs with dark:*:text-heading.
+# - Neutral hovers pair hover:bg-neutral-tertiary-medium with
+#   hover:border-default-strong: in dark the tertiary-medium fill equals both
+#   the resting border (default-medium, gray-700) and the table row-hover
+#   surface, so without the one-step-lighter hover border the control
+#   vanishes when hovered inside a hovered row. Light is a no-op (strong ==
+#   medium == gray-200).
 _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
     "red": "text-white bg-danger box-border border border-transparent hover:bg-danger-strong focus:ring-danger-subtle",
     "gray": (
         "text-heading bg-neutral-primary-medium border border-default-medium "
-        "hover:bg-neutral-tertiary-medium hover:text-fg-brand "
-        "dark:hover:text-heading focus:ring-neutral-tertiary-medium"
+        "hover:bg-neutral-tertiary-medium hover:border-default-strong "
+        "hover:text-fg-brand dark:hover:text-heading "
+        "focus:ring-neutral-tertiary-medium"
     ),
     "green": (
         "text-white bg-success dark:bg-success-strong box-border border "
@@ -406,8 +413,8 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
     ),
     "gray": (
         f"{_SEGMENTED_SHELL_CLASS} "
-        "hover:bg-neutral-tertiary-medium hover:text-fg-brand "
-        "dark:hover:text-heading"
+        "hover:bg-neutral-tertiary-medium hover:border-default-strong "
+        "hover:text-fg-brand dark:hover:text-heading"
     ),
     "red": (
         f"{_SEGMENTED_SHELL_CLASS} "
@@ -430,7 +437,8 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 _OUTLINE_VARIANT_CLASS = (
     f"{_CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
-    "focus:outline-hidden focus:ring-2 focus:ring-fg-brand whitespace-nowrap"
+    "hover:border-default-strong focus:outline-hidden focus:ring-2 "
+    "focus:ring-fg-brand whitespace-nowrap"
 )
 
 # Ghost is the quiet outline sibling: invisible chrome at rest (transparent
@@ -441,7 +449,7 @@ _OUTLINE_VARIANT_CLASS = (
 _GHOST_VARIANT_CLASS = (
     f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
     "border-transparent text-heading hover:bg-neutral-tertiary-medium "
-    "hover:border-default-medium focus:outline-hidden focus:ring-2 "
+    "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
 )
 

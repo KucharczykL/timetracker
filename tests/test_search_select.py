@@ -878,7 +878,7 @@ class ComboboxDropdownTest(unittest.TestCase):
         toggle_tag = _tag_around(self._html(ghost=True), "data-toggle")
         self.assertIn("bg-transparent", toggle_tag)
         self.assertIn("border-transparent", toggle_tag)
-        self.assertIn("hover:border-default-medium", toggle_tag)
+        self.assertIn("hover:border-default-strong", toggle_tag)
         self.assertIn("hover:bg-neutral-tertiary-medium", toggle_tag)
 
     def test_config_becomes_data_attributes(self):
