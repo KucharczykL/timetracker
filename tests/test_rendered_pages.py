@@ -278,7 +278,7 @@ class RenderedPagesTest(TestCase):
         # re-renders with errors — an empty {} POST is falsy and stays unbound.
         response = self.client.post(reverse("games:add_game"), {"status": "u"})
         html = response.content.decode()
-        self.assertIn("bg-red-600", html)  # _FIELD_ERROR_CLASS
+        self.assertIn("bg-danger", html)  # _FIELD_ERROR_CLASS
         self.assertNotIn('class="errorlist"', html)
         self.assertNoEscapedTags(html)
 
