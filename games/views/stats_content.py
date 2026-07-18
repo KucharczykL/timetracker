@@ -134,7 +134,7 @@ def _year_nav(year, year_range, url_template) -> Node:
         "inline-flex items-center rounded-base px-4 py-2 mr-3 text-sm font-medium "
     )
     alltime_classes += (
-        "bg-brand text-white hover:bg-brand-strong"
+        "solid-brand hover:bg-brand-strong"
         if is_alltime
         else "text-body hover:text-heading underline decoration-dotted"
     )

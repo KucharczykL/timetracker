@@ -86,7 +86,7 @@ _FOOTER_BUTTON_CLASS = (
 
 _FOOTER_SELECT_BUTTON_CLASS = (
     "px-3 py-1.5 text-sm font-medium rounded-base cursor-pointer "
-    "text-white bg-brand border border-transparent hover:bg-brand-strong"
+    "solid-brand border border-transparent hover:bg-brand-strong"
 )
 
 

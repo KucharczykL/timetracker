@@ -379,8 +379,8 @@ _SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
 #   vanishes when hovered inside a hovered row. Light is a no-op (strong ==
 #   medium == gray-200).
 _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
-    "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
-    "red": "text-white bg-danger box-border border border-transparent hover:bg-danger-strong focus:ring-danger-subtle",
+    "blue": "solid-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
+    "red": "solid-danger box-border border border-transparent hover:bg-danger-strong focus:ring-danger-subtle",
     "gray": (
         "text-heading bg-neutral-primary-medium border border-default-medium "
         "hover:bg-neutral-tertiary-medium hover:border-default-strong "
@@ -407,19 +407,13 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
     # with the border one shade darker than the fill so the segmented buttons
     # share the same "ring" look (only the hue differs). Gray's hover fill
     # matches the resting border shade, so it needs no hover border.
-    "blue": (
-        f"{_SEGMENTED_SHELL_CLASS} "
-        "hover:bg-brand hover:border-brand-strong hover:text-white"
-    ),
+    "blue": (f"{_SEGMENTED_SHELL_CLASS} hover:solid-brand hover:border-brand-strong"),
     "gray": (
         f"{_SEGMENTED_SHELL_CLASS} "
         "hover:bg-neutral-tertiary-medium hover:border-default-strong "
         "hover:text-fg-brand dark:hover:text-heading"
     ),
-    "red": (
-        f"{_SEGMENTED_SHELL_CLASS} "
-        "hover:bg-danger hover:border-danger-strong hover:text-white"
-    ),
+    "red": (f"{_SEGMENTED_SHELL_CLASS} hover:solid-danger hover:border-danger-strong"),
     "green": (
         f"{_SEGMENTED_SHELL_CLASS} "
         "hover:bg-success dark:hover:bg-success-strong "
@@ -920,7 +914,7 @@ def YearPicker(
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
     classes = (
-        "bg-brand text-white border-transparent hover:bg-brand-strong"
+        "solid-brand border-transparent hover:bg-brand-strong"
         if year is not None
         else "bg-neutral-secondary-medium text-heading border border-default-medium "
         "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
@@ -960,9 +954,7 @@ def YearPicker(
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
 _LABEL_CLASS = "mb-2.5 text-sm font-medium text-heading"
-_FIELD_ERROR_CLASS = (
-    "mt-4 mb-1 pl-3 py-2 bg-danger text-white w-full text-sm rounded-base"
-)
+_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-sm rounded-base"
 # Checkbox + its label share a row (unlike block fields), justified apart.
 _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 
@@ -1438,7 +1430,7 @@ def _pagination_nav(
     # text must clear AA — the muted-gray treatment didn't.
     current_link_class = (
         "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
-        "text-white border bg-brand border-brand"
+        "solid-brand border border-brand"
     )
     disabled_link_class = (
         "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "

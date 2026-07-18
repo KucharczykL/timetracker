@@ -131,19 +131,19 @@ _TOAST_CONTAINER = """<div x-data="toastStore()"
                  @keydown.escape="dismissToast(toast.id)">
                 <div class="rounded-lg shadow-lg p-4 flex items-start gap-3"
                      :class="{
-                          'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700': toast.type === 'success',
-                          'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700': toast.type === 'error',
-                          'bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700': toast.type === 'info',
-                          'bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-700': toast.type === 'warning',
-                          'bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700': toast.type === 'debug'
+                          'bg-success-soft border border-success-subtle': toast.type === 'success',
+                          'bg-danger-soft border border-danger-subtle': toast.type === 'error',
+                          'bg-brand-softer border border-brand-subtle': toast.type === 'info',
+                          'bg-warning-soft border border-warning-subtle': toast.type === 'warning',
+                          'bg-neutral-secondary-soft border border-default-medium': toast.type === 'debug'
                       }">
                     <span class="flex-shrink-0 mt-0.5"
                    :class="{
-                               'text-green-500': toast.type === 'success',
-                               'text-red-500': toast.type === 'error',
-                               'text-blue-500': toast.type === 'info',
-                               'text-amber-500': toast.type === 'warning',
-                               'text-gray-500': toast.type === 'debug'
+                               'text-fg-success': toast.type === 'success',
+                               'text-fg-danger': toast.type === 'error',
+                               'text-fg-brand': toast.type === 'info',
+                               'text-fg-warning-subtle': toast.type === 'warning',
+                               'text-body-subtle': toast.type === 'debug'
                            }">
                         <template x-if="toast.type === 'success'">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,21 +174,21 @@ _TOAST_CONTAINER = """<div x-data="toastStore()"
                     </span>
                     <p class="flex-1 text-sm"
                         :class="{
-                            'text-green-800 dark:text-green-200': toast.type === 'success',
-                            'text-red-800 dark:text-red-200': toast.type === 'error',
-                            'text-blue-800 dark:text-blue-200': toast.type === 'info',
-                            'text-amber-800 dark:text-amber-200': toast.type === 'warning',
-                            'text-gray-800 dark:text-gray-200': toast.type === 'debug'
+                            'text-fg-success-strong': toast.type === 'success',
+                            'text-fg-danger-strong': toast.type === 'error',
+                            'text-fg-brand-strong': toast.type === 'info',
+                            'text-fg-warning': toast.type === 'warning',
+                            'text-heading': toast.type === 'debug'
                         }"
                        x-text="toast.message"></p>
                     <button @click.stop="dismissToast(toast.id)"
                             class="flex-shrink-0"
                             :class="{
-                                'text-green-400 hover:text-green-600 dark:text-green-500 dark:hover:text-green-300': toast.type === 'success',
-                                'text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300': toast.type === 'error',
-                                'text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300': toast.type === 'info',
-                                'text-amber-400 hover:text-amber-600 dark:text-amber-500 dark:hover:text-amber-300': toast.type === 'warning',
-                                'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300': toast.type === 'debug'
+                                'text-fg-success hover:text-fg-success-strong': toast.type === 'success',
+                                'text-fg-danger hover:text-fg-danger-strong': toast.type === 'error',
+                                'text-fg-brand hover:text-fg-brand-strong': toast.type === 'info',
+                                'text-fg-warning-subtle hover:text-fg-warning': toast.type === 'warning',
+                                'text-body-subtle hover:text-heading': toast.type === 'debug'
                             }">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -260,10 +260,9 @@ _THEME_TOGGLE_SVGS = (
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
-    "block py-2 px-3 rounded-sm hover:bg-gray-100 "
-    "md:hover:bg-transparent md:border-0 md:hover:text-blue-700 md:p-0 "
-    "text-heading md:dark:hover:text-blue-500 dark:hover:bg-gray-700 "
-    "md:dark:hover:bg-transparent"
+    "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
+    "md:hover:bg-transparent md:border-0 md:hover:text-fg-brand md:p-0 "
+    "text-heading"
 )
 
 
@@ -305,9 +304,9 @@ def NavbarMenu(
         Button(
             id_="theme-toggle",
             type="button",
-            class_="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 "
-            "dark:hover:bg-gray-700 focus:outline-hidden focus:ring-4 "
-            "focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg "
+            class_="p-2 text-body-subtle hover:bg-neutral-tertiary-medium "
+            "focus:outline-hidden focus:ring-4 "
+            "focus:ring-neutral-tertiary-medium rounded-lg "
             "text-sm hover:cursor-pointer",
         )[Safe(_THEME_TOGGLE_SVGS)]
     ]
@@ -315,9 +314,9 @@ def NavbarMenu(
     home = Li()[
         A(
             href=reverse("games:index"),
-            class_="block py-2 px-3 bg-blue-700 rounded-sm "
-            "md:bg-transparent md:p-0 text-heading hover:text-blue-500 "
-            "dark:bg-blue-600 md:dark:bg-transparent",
+            class_="block py-2 px-3 bg-brand rounded-base "
+            "md:bg-transparent md:p-0 text-fg-on-brand md:text-heading "
+            "md:hover:text-fg-brand",
             aria_current="page",
         )["Home"]
     ]
@@ -373,9 +372,8 @@ def NavbarMenu(
     return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
         Ul(
             class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
-            "border-gray-100 rounded-lg bg-gray-50 md:space-x-8 rtl:space-x-reverse "
-            "md:flex-row md:mt-0 md:border-0 md:bg-white dark:bg-gray-800 "
-            "md:dark:bg-gray-900 dark:border-gray-700"
+            "border-default-medium rounded-lg bg-neutral-secondary-medium md:gap-8 "
+            "md:flex-row md:mt-0 md:border-0 md:bg-neutral-primary-soft"
         )[
             theme_toggle,
             NavbarPlaytime(
@@ -419,7 +417,7 @@ def Navbar(
         type="button",
         aria_controls="navbar-dropdown",
         aria_expanded="false",
-        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600",
+        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-body-subtle rounded-lg md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
     )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
 
     menu = NavbarMenu(
@@ -501,7 +499,9 @@ def TimetrackerDocument(
         )
 
         version_footer_note = Span(
-            class_="fixed left-2 bottom-2 text-xs text-slate-300 dark:text-slate-600"
+            # Deliberately faint decorative build stamp; fg-disabled is the
+            # dimmest token (one shade brighter than the old slate-300 in light).
+            class_="fixed left-2 bottom-2 text-xs text-fg-disabled"
         )[f"{version()} ({version_date()})"]
 
         script_body = Safe(all_scripts)
