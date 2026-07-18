@@ -16,8 +16,12 @@ For a setting named `NAME`, the first source that provides a value wins:
 | 2 | `NAME` env var | A real process environment variable. |
 | 3 | `.env` file | `KEY=value` lines (see [.env syntax](#env-syntax)). |
 | 4 | `settings.ini` file | The `[timetracker]` section, parsed with `configparser`. |
-| 5 | `SiteSetting` (database) | **Site-scoped settings only** (currently just `DEFAULT_CURRENCY`). Runtime-editable; see [Runtime settings layer](#runtime-settings-layer). |
+| 5 | `SiteSetting` (database) | Site default for **site**- and **user**-scoped settings. Runtime-editable; see [Runtime settings layer](#runtime-settings-layer). |
 | 6 | `default` | The in-code fallback in `settings.py`. |
+
+For **user**-scoped settings a personal `UserPreferences` override sits *above*
+this whole chain (it wins even over env, since env-locking per-user prefs is
+deferred); see [Runtime settings layer](#runtime-settings-layer).
 
 If no source supplies a value and no `default` is defined, startup fails with
 `ImproperlyConfigured` rather than silently using an empty value.
@@ -58,8 +62,16 @@ the global `SiteSetting` model.
   `SiteSetting` (database, unlocked) > registry default. Every layer runs through
   the same cast + validator, so a DB-stored `"eur"` resolves identically to an
   env `EUR`.
-- **Scopes.** Only **site**-scoped settings have a DB layer; today that is
-  **only `DEFAULT_CURRENCY`**. **infra**-scoped settings (`DEBUG`, `SECRET_KEY`,
+- **`resolve_for_user_with_origin(user, key)` → `(value, source, locked)`.** For
+  a **user**-scoped key, a personal `UserPreferences` value (source `user`) wins
+  over the shared chain above — even over env, because env-locking per-user prefs
+  is deferred, so such a value reports `locked=False`. Unset (a NULL column / an
+  absent `extra_preferences` key) falls through to the `SiteSetting` site default
+  and then the code default. Non-user keys proxy straight to `resolve_with_origin`.
+- **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
+  `DEFAULT_LANDING_PAGE`) have a personal override layer *and* a `SiteSetting`
+  site default; a plain **site**-scoped setting has only the shared `SiteSetting`
+  default (none exist today). **infra**-scoped settings (`DEBUG`, `SECRET_KEY`,
   `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`,
   `HASHED_STATIC`) are boot-only and never read from the DB.
 - **`TZ` is display-only.** `TIME_ZONE` is frozen when `settings.py` imports, so
@@ -68,10 +80,14 @@ the global `SiteSetting` model.
   config sources (read before the chain exists) and the deprecated `PROD` alias
   is excluded, so none appear in the registry.
 - **Consistency.** Web workers and the django-q qcluster each cache the
-  `SiteSetting` snapshot for a few seconds; a runtime change converges across
-  processes within that window. Writes go through the resolver or the Django
-  admin (both validated); a raw `QuerySet.update()` is invisible until the cache
-  lapses.
+  `SiteSetting` and `UserPreferences` snapshots for a few seconds; a runtime
+  change converges across processes within that window. Writes go through the
+  resolver, the Django admin, or the `/api/settings` endpoints (all validated); a
+  raw `QuerySet.update()` is invisible until the cache lapses.
+- **API.** `/api/settings/user` (`GET`/`PATCH`, scoped to the requesting user)
+  reads and writes personal prefs; `/api/settings/site` (`GET`/`PATCH`,
+  superuser-only) reads and writes the site defaults. `PATCH` with `value: null`
+  clears a setting back to unset.
 
 ## APP_URL, ALLOWED_HOSTS and CSRF
 

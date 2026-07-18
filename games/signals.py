@@ -13,16 +13,28 @@ from django.db import transaction
 from django.dispatch import receiver
 from django.utils.timezone import now
 
-from games.models import Game, GameStatusChange, Purchase, Session, SiteSetting
+from games.models import (
+    Game,
+    GameStatusChange,
+    Purchase,
+    Session,
+    SiteSetting,
+    UserPreferences,
+)
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
 
 
 @receiver([post_save, post_delete], sender=SiteSetting)
+@receiver([post_save, post_delete], sender=UserPreferences)
 def invalidate_settings_cache(sender, instance, **kwargs):
     # on_commit, not inline: firing inside the atomic block would let a racing
     # thread re-cache the old value, or cache a rolled-back phantom.
+    #
+    # Known TTL-bounded gap: deleting a Device nulls a referencing
+    # default_device via a bulk UPDATE that fires no UserPreferences signal, so a
+    # per-user snapshot can serve the dangling id until the TTL lapses.
     transaction.on_commit(clear_settings_cache)
 
 

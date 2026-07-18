@@ -54,9 +54,16 @@ INI_SECTION = "timetracker"
 
 
 class SettingSource(StrEnum):
-    """Origin of a resolved value, highest precedence first. The env/file/ini
-    ones are "locked" (see :data:`LOCKED_SOURCES`)."""
+    """Origin of a resolved value. The env/file/ini ones are "locked" (see
+    :data:`LOCKED_SOURCES`).
 
+    ``USER`` is the per-user override layer. In personal (per-user) resolution it
+    is the *highest* precedence — a personal pref wins even over env, because
+    env-locking per-user prefs is deferred. In site resolution it never appears.
+    The remaining members are listed highest precedence first for site resolution.
+    """
+
+    USER = "user"
     ENV_FILE = "env_file"
     ENV = "env"
     DOTENV = "dotenv"

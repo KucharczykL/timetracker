@@ -1,9 +1,10 @@
 import json
 import logging
 from datetime import date, datetime
-from typing import List
+from typing import Any, List
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -21,6 +22,20 @@ from games.filters import (
 )
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
+from timetracker.settings_registry import (
+    SETTINGS_REGISTRY,
+    SettingKey,
+    SettingScope,
+    UnregisteredSettingError,
+    get_definition,
+)
+from timetracker.settings_resolver import (
+    clear_site_setting,
+    resolve_for_user_with_origin,
+    resolve_with_origin,
+    set_site_setting,
+    set_user_preference,
+)
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -544,6 +559,112 @@ def delete_preset(request, preset_id: int):
 
 
 api.add_router("/presets", preset_router)
+
+settings_router = Router()
+
+
+class SettingOut(Schema):
+    """One resolved setting for the settings panel.
+
+    ``value`` is ``str | int | None`` because a device id resolves to an int and
+    an unset pref resolves to None — a ``str``-only field would 500 on those.
+    ``locked`` reflects the resolver's origin; note that for a USER key pinned by
+    env it is still ``False``, because a personal pref overrides env (env-locking
+    per-user prefs is deferred).
+    """
+
+    key: str
+    value: str | int | None
+    source: str
+    locked: bool
+
+
+class SettingValueIn(Schema):
+    # ``None`` means "clear this setting" (unset → falls through to lower layers).
+    value: Any = None
+
+
+def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
+    return [key for key, d in SETTINGS_REGISTRY.items() if d.scope in scopes]
+
+
+def _setting_out(key: SettingKey, resolved) -> dict[str, object]:
+    return {
+        "key": key,
+        "value": resolved.value,
+        "source": resolved.source,
+        "locked": resolved.locked,
+    }
+
+
+@settings_router.get("/user", response=list[SettingOut])
+def list_user_settings(request):
+    """The requesting user's personal preferences, resolved with origin.
+
+    Scoped to ``request.user`` with no id parameter, so one user can never read
+    another's — cross-user access is structurally impossible.
+    """
+    return [
+        _setting_out(key, resolve_for_user_with_origin(request.user, key))
+        for key in _settings_of_scope(SettingScope.USER)
+    ]
+
+
+@settings_router.patch("/user/{key}", response={204: None})
+def update_user_setting(request, key: str, payload: SettingValueIn):
+    """Set (or clear, with ``value: null``) one of the user's personal prefs.
+
+    ``response={204: None}`` is required: without it Ninja has no schema for 204
+    and ``Status(204, None)`` raises ConfigError → 500.
+    """
+    try:
+        definition = get_definition(key)
+    except UnregisteredSettingError:
+        raise HttpError(400, f"Unknown setting {key!r}.")
+    if definition.scope is not SettingScope.USER:
+        raise HttpError(400, f"{key} is not a user-scoped setting.")
+    try:
+        set_user_preference(request.user, key, payload.value)
+    except (ValidationError, ValueError, TypeError) as error:
+        raise HttpError(400, str(error))
+    return Status(204, None)
+
+
+@settings_router.get("/site", response=list[SettingOut])
+def list_site_settings(request):
+    """Site settings (and the site defaults under user prefs), resolved with
+    origin. Superuser-only."""
+    if not request.user.is_superuser:
+        raise HttpError(403, "Superuser required.")
+    return [
+        _setting_out(key, resolve_with_origin(key))
+        for key in _settings_of_scope(SettingScope.SITE, SettingScope.USER)
+    ]
+
+
+@settings_router.patch("/site/{key}", response={204: None})
+def update_site_setting(request, key: str, payload: SettingValueIn):
+    """Set (or clear, with ``value: null``) a site setting's DB value.
+    Superuser-only."""
+    if not request.user.is_superuser:
+        raise HttpError(403, "Superuser required.")
+    try:
+        definition = get_definition(key)
+    except UnregisteredSettingError:
+        raise HttpError(400, f"Unknown setting {key!r}.")
+    if definition.scope is SettingScope.INFRA:
+        raise HttpError(400, f"{key} is infra-scoped and cannot be stored.")
+    try:
+        if payload.value is None:
+            clear_site_setting(key)
+        else:
+            set_site_setting(key, payload.value)
+    except (ValidationError, ValueError, TypeError) as error:
+        raise HttpError(400, str(error))
+    return Status(204, None)
+
+
+api.add_router("/settings", settings_router)
 
 client_error_logger = logging.getLogger("client_errors")
 

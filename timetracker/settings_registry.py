@@ -4,7 +4,9 @@ and future settings widgets.
 ``settings`` is read only inside ``default_factory`` callables, never at import,
 so ``settings.py`` can import this module safely.
 
-Registers exactly the 9 settings read via ``config()``. Excluded on purpose:
+Registers the 9 settings read via ``config()`` plus the per-user preference keys
+(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``), which are *not* read via
+``config()`` — they resolve only through the per-user layer. Excluded on purpose:
 ``ENV_FILE``/``INI_FILE`` (they *locate* the sources, read via bare ``os.environ``
 before the chain exists) and the deprecated ``PROD`` alias.
 """
@@ -24,7 +26,7 @@ type SettingValidator = Callable[[object], object]  # returns normalized or rais
 
 
 class SettingScope(StrEnum):
-    USER = "user"  # no resolver branch yet; wired up in the per-user prefs stage
+    USER = "user"  # per-user override (UserPreferences) above the site default
     SITE = "site"  # runtime-editable via a global SiteSetting DB row
     INFRA = "infra"  # boot-only; never read from the DB
 
@@ -81,11 +83,33 @@ def _validate_currency(value: object) -> str:
     return text
 
 
+def _validate_optional_device_id(value: object) -> int | None:
+    """Type-only check for the personal default-device pref. ``None`` means unset;
+    existence of the device id is enforced at write time (``set_user_preference``),
+    not here, so a stale registry read never crashes."""
+    if value is None:
+        return None
+    # bool is an int subclass; reject it so a stray ``True`` isn't stored as 1.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(f"Device must be an integer id (got {value!r}).")
+    return value
+
+
+def _validate_optional_landing_page(value: object) -> str | None:
+    """Type-only check for the personal landing-page pref. ``None`` means unset;
+    validating the value against the URL map is a Stage-4 concern."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValidationError(f"Landing page must be a string (got {value!r}).")
+    return value
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
             "DEFAULT_CURRENCY",
-            scope=SettingScope.SITE,
+            scope=SettingScope.USER,
             apply_timing=ApplyTiming.LIVE,
             label="Default currency",
             help_text=(
@@ -95,7 +119,27 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             default_factory=lambda: settings.DEFAULT_CURRENCY,
             validator=_validate_currency,
             widget="text",
-            superuser_only=True,
+        ),
+        SettingDefinition(
+            "DEFAULT_DEVICE",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Default device",
+            help_text="Device pre-selected when logging a new session.",
+            cast=int,
+            default_factory=lambda: None,
+            validator=_validate_optional_device_id,
+            widget="device",
+        ),
+        SettingDefinition(
+            "DEFAULT_LANDING_PAGE",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Default landing page",
+            help_text="Page shown right after logging in.",
+            default_factory=lambda: None,
+            validator=_validate_optional_landing_page,
+            widget="text",
         ),
         SettingDefinition(
             "TZ",

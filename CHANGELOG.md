@@ -7,6 +7,11 @@
   changed at runtime without a restart (all three consumption sites — purchase
   save, the purchase form placeholder, and the FX conversion task — read the live
   value). See [Runtime settings layer](docs/configuration.md#runtime-settings-layer).
+* Add a per-user preferences layer on top of the resolver: a `UserPreferences`
+  store, `resolve_for_user_with_origin()` (a personal value wins over the site
+  default and env), and a superuser-gated `/api/settings` router for reading and
+  writing personal (`/user`) and site (`/site`) settings. `DEFAULT_CURRENCY` is
+  now user-scoped, alongside new `DEFAULT_DEVICE` / `DEFAULT_LANDING_PAGE` prefs.
 
 ### Changed
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
