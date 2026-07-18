@@ -378,7 +378,7 @@ class RenderedPagesTest(TestCase):
         control = row[row.rindex("<a", 0, count_at) : row.index("</a>", count_at)]
         self.assertNotIn("<button", control)
         # the anchor itself carries the outline-toggle look and its shape class
-        self.assertIn("border-gray-200", control)
+        self.assertIn("border-default-medium", control)
         self.assertIn("rounded-s-lg", control)
 
     def test_played_row_label_is_one_flex_item_and_count_is_a_prop(self):
