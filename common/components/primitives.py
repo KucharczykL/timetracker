@@ -939,7 +939,9 @@ def YearPicker(
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
 _LABEL_CLASS = "mb-2.5 text-sm font-medium text-heading"
-_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 bg-red-600 text-slate-200 w-[300px]"
+_FIELD_ERROR_CLASS = (
+    "mt-4 mb-1 pl-3 py-2 bg-danger text-white w-full text-sm rounded-base"
+)
 # Checkbox + its label share a row (unlike block fields), justified apart.
 _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 
@@ -1045,7 +1047,9 @@ def PageHeading(
 ) -> Element:
     """Page heading (``<h1>``) with optional badge count."""
     children = children or []
-    heading_class = "mb-4 text-3xl font-extrabold leading-none tracking-tight text-gray-900 dark:text-white"
+    heading_class = (
+        "mb-4 text-3xl font-extrabold leading-none tracking-tight text-heading"
+    )
     badge_html: Node | str = ""
 
     if badge:
@@ -1106,7 +1110,7 @@ class Modal(BaseComponent):
             # row (e.g. the session reset confirm) rather than portaled into
             # the body-level #global-modal-container.
             class_=(
-                "fixed z-40 inset-0 bg-black/70 dark:bg-gray-600/50 overflow-y-auto "
+                "fixed z-40 inset-0 bg-dark-backdrop/70 overflow-y-auto "
                 "h-full w-full flex items-center justify-center"
             ),
         )[
@@ -1114,8 +1118,8 @@ class Modal(BaseComponent):
                 [("data-modal-panel", "")],
                 class_=(
                     f"relative mx-auto p-5 border-accent border w-full "
-                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md bg-white "
-                    "dark:bg-gray-900 @container"
+                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md "
+                    "bg-neutral-primary-soft @container"
                 ),
             )[*self._children]
         ]
@@ -1143,9 +1147,9 @@ def ConfirmPage(
                 f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
             ),
             P(
-                class_="text-2xl leading-6 font-medium dark:text-white text-center",
+                class_="text-2xl leading-6 font-medium text-heading text-center",
             )[title],
-            P(class_="dark:text-white text-center mt-5")[*as_children(message)],
+            P(class_="text-heading text-center mt-5")[*as_children(message)],
             Div(class_="flex flex-col gap-2 mt-6")[
                 ControlButton(
                     color=confirm_color,
@@ -1238,10 +1242,12 @@ def TableRow(data: TableRowData) -> Element:
     """
     cells = data["cell_data"]
 
+    # Hover lightens the text along with the surface: body-subtle text fails AA
+    # on the tertiary hover surface in both themes.
     tr_class = (
-        "odd:bg-white dark:odd:bg-gray-900 even:bg-gray-50 "
-        "dark:even:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 "
-        "dark:hover:bg-gray-600 [&_a]:underline [&_a]:underline-offset-4 "
+        "odd:bg-neutral-primary-soft even:bg-neutral-secondary-medium "
+        "border-default-medium hover:bg-neutral-tertiary-medium "
+        "hover:text-heading [&_a]:underline [&_a]:underline-offset-4 "
         "[&_a]:decoration-2"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
@@ -1252,10 +1258,7 @@ def TableRow(data: TableRowData) -> Element:
             cell_elements.append(
                 Th(
                     scope="row",
-                    class_=(
-                        "px-6 py-4 font-medium text-gray-900 "
-                        "whitespace-nowrap dark:text-white"
-                    ),
+                    class_="px-6 py-4 font-medium text-heading whitespace-nowrap",
                 )[cell]
             )
         else:
@@ -1349,7 +1352,7 @@ def TableHeader(
     return Caption(
         class_=(
             "p-2 text-lg font-semibold rtl:text-left text-right "
-            "text-gray-900 bg-white dark:text-white dark:bg-gray-900"
+            "text-heading bg-neutral-primary-soft"
         ),
     )[*as_children(children)]
 
@@ -1392,9 +1395,7 @@ def _sort_href(request, sort_string: SortString) -> str:
 def _page_size_control(request, page_size: int, *, class_: str = "") -> Node:
     """The rows-per-page label + picker group, embedded in the pagination nav
     between the summary and the page links."""
-    classes = (
-        f"flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 {class_}"
-    )
+    classes = f"flex items-center gap-2 text-sm text-body-subtle {class_}"
     return Div(class_=classes.strip())[
         Span()["Rows per page"], PageSizeSelect(request, page_size)
     ]
@@ -1404,15 +1405,19 @@ def _pagination_nav(
     page_obj, elided_page_range, request, page_size: int | None = None
 ) -> Node:
     page_link_class = (
-        "flex items-center justify-center px-3 h-8 leading-tight text-gray-500 "
-        "bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 "
-        "dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-        "dark:hover:text-white"
+        "flex items-center justify-center px-3 h-8 leading-tight text-body-subtle "
+        "bg-neutral-primary-medium border border-default-medium "
+        "hover:bg-neutral-tertiary-medium hover:text-heading"
     )
+    # Brand fill: the current page is informational (`aria-current`), so its
+    # text must clear AA — the muted-gray treatment didn't.
     current_link_class = (
         "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
-        "text-white border bg-gray-400 border-gray-300 dark:bg-gray-900 dark:border-gray-700 "
-        "dark:text-gray-200"
+        "text-white border bg-brand border-brand"
+    )
+    disabled_link_class = (
+        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "text-fg-disabled bg-neutral-primary-medium border border-default-medium"
     )
     page_items: list[Node] = []
     for page in elided_page_range:
@@ -1425,49 +1430,29 @@ def _pagination_nav(
     if page_obj.has_previous():
         prev_link = A(
             href=_page_url(request, page_obj.previous_page_number()),
-            class_=(
-                "flex items-center justify-center px-3 h-8 ms-0 leading-tight "
-                "text-gray-500 bg-white border border-gray-300 rounded-s-lg "
-                "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
-                "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-                "dark:hover:text-white"
-            ),
+            class_=f"{page_link_class} ms-0 rounded-s-lg",
         )["Previous"]
     else:
         prev_link = A(
             aria_current="page",
-            class_=(
-                "cursor-not-allowed flex items-center justify-center px-3 h-8 "
-                "leading-tight text-gray-300 bg-white border border-gray-300 "
-                "rounded-s-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
-            ),
+            class_=f"{disabled_link_class} rounded-s-lg",
         )["Previous"]
 
     if page_obj.has_next():
         next_link = A(
             href=_page_url(request, page_obj.next_page_number()),
-            class_=(
-                "flex items-center justify-center px-3 h-8 leading-tight "
-                "text-gray-500 bg-white border border-gray-300 rounded-e-lg "
-                "hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 "
-                "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 "
-                "dark:hover:text-white"
-            ),
+            class_=f"{page_link_class} rounded-e-lg",
         )["Next"]
     else:
         next_link = A(
             aria_current="page",
-            class_=(
-                "cursor-not-allowed flex items-center justify-center px-3 h-8 "
-                "leading-tight text-gray-300 bg-white border border-gray-300 "
-                "rounded-e-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
-            ),
+            class_=f"{disabled_link_class} rounded-e-lg",
         )["Next"]
 
-    number_class = "font-semibold text-gray-900 dark:text-white"
+    number_class = "font-semibold text-heading"
     summary = Span(
         class_=(
-            "text-sm text-center font-normal text-gray-500 dark:text-gray-400 "
+            "text-sm text-center font-normal text-body-subtle "
             "mb-4 md:mb-0 block w-full md:inline md:w-auto"
         ),
     )[
@@ -1493,7 +1478,7 @@ def _pagination_nav(
     return Nav(
         class_=(
             "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
-            "dark:bg-gray-900 sm:rounded-b-lg"
+            "bg-neutral-primary-soft sm:rounded-b-lg"
         ),
         aria_label="Table navigation",
     )[*nav_children]
@@ -1504,8 +1489,7 @@ def _pagination_nav(
 _SortHeader = custom_element_builder("sort-header")
 
 _SORT_HEADER_LINK_CLASS = (
-    "flex items-center gap-1 select-none no-underline "
-    "hover:text-gray-900 dark:hover:text-white"
+    "flex items-center gap-1 select-none no-underline hover:text-heading"
 )
 
 
@@ -1622,8 +1606,7 @@ def StyledTable(
     table_children.append(
         Thead(
             class_=(
-                "text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 "
-                "dark:text-gray-400 "
+                "text-xs text-body-subtle uppercase bg-neutral-secondary-medium "
                 "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
             ),
         )[header_row]
@@ -1648,9 +1631,7 @@ def StyledTable(
     )
 
     table = Table(
-        class_=(
-            "w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400"
-        ),
+        class_="w-full text-sm text-left rtl:text-right text-body-subtle",
     )[*table_children]
 
     inner_children: list[Node] = [
