@@ -20,6 +20,7 @@ chain and their origin is definitionally env-only. The deprecated ``PROD`` alias
 panel never legitimizes it.
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Final
@@ -42,7 +43,7 @@ class SettingScope(StrEnum):
     DB — the panel shows them read-only.
     """
 
-    USER = "user"
+    USER = "user"  # no resolver branch yet; wired up in the per-user prefs stage
     SITE = "site"
     INFRA = "infra"
 
@@ -58,59 +59,41 @@ class UnregisteredSettingError(KeyError):
     """Raised when a key is not in :data:`SETTINGS_REGISTRY`."""
 
 
+@dataclass(frozen=True, slots=True)
 class SettingDefinition:
-    """One registered setting. Immutable; construct only in the registry below."""
+    """One registered setting. Frozen — the registry is a process-global singleton
+    every resolve reads, so a stray mutation would be a shared-state landmine.
 
-    __slots__ = (
-        "key",
-        "scope",
-        "apply_timing",
-        "label",
-        "help_text",
-        "cast",
-        "default_factory",
-        "env_name",
-        "allow_file",
-        "validator",
-        "widget",
-        "superuser_only",
-        "secret",
-        "note",
-    )
+    ``default_factory`` is lazy so no ``settings`` attribute is read at import.
+    ``env_name`` defaults to ``key`` (filled in ``__post_init__``).
+    """
 
-    def __init__(
-        self,
-        key: SettingKey,
-        *,
-        scope: SettingScope,
-        apply_timing: ApplyTiming,
-        label: str,
-        help_text: str = "",
-        cast: Cast | None = None,
-        default_factory: DefaultFactory,
-        env_name: str | None = None,
-        allow_file: bool = False,
-        validator: SettingValidator | None = None,
-        widget: str | None = None,
-        superuser_only: bool = False,
-        secret: bool = False,
-        note: str = "",
-    ) -> None:
-        self.key = key
-        self.scope = scope
-        self.apply_timing = apply_timing
-        self.label = label
-        self.help_text = help_text
-        self.cast = cast
-        # Lazy so no settings attribute is read at import; evaluated per resolve.
-        self.default_factory = default_factory
-        self.env_name = env_name or key
-        self.allow_file = allow_file
-        self.validator = validator
-        self.widget = widget
-        self.superuser_only = superuser_only
-        self.secret = secret
-        self.note = note
+    key: SettingKey
+    scope: SettingScope
+    apply_timing: ApplyTiming
+    label: str
+    default_factory: DefaultFactory
+    help_text: str = ""
+    cast: Cast | None = None
+    env_name: str | None = None
+    allow_file: bool = False
+    validator: SettingValidator | None = None
+    widget: str | None = None
+    superuser_only: bool = False
+    secret: bool = False
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        if self.env_name is None:
+            object.__setattr__(self, "env_name", self.key)
+        # An INFRA setting is boot-only, so "live" would be a contradiction.
+        if (
+            self.scope is SettingScope.INFRA
+            and self.apply_timing is not ApplyTiming.RESTART
+        ):
+            raise ValueError(
+                f"{self.key}: INFRA settings must be apply_timing=RESTART."
+            )
 
 
 def _validate_currency(value: object) -> str:

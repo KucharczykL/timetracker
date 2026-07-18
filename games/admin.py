@@ -16,6 +16,7 @@ from timetracker.settings_registry import (
     UnregisteredSettingError,
     get_definition,
 )
+from timetracker.settings_resolver import normalize_setting_value
 
 # Register your models here.
 admin.site.register(Game)
@@ -27,9 +28,10 @@ admin.site.register(ExchangeRate)
 
 
 class SiteSettingForm(forms.ModelForm):
-    """Route admin writes through the same registry guards as
-    ``set_site_setting`` so the admin isn't an unvalidated back door: only
-    registered site-scoped keys, and the value must pass the field validator."""
+    """Route admin writes through the same key/scope/cast/validator guards as
+    ``set_site_setting`` (via the shared ``normalize_setting_value``) so the admin
+    isn't an unvalidated back door: only registered site-scoped keys, and the
+    value is normalized/validated exactly as a programmatic write would be."""
 
     class Meta:
         model = SiteSetting
@@ -48,11 +50,13 @@ class SiteSettingForm(forms.ModelForm):
             raise ValidationError(
                 {"key": f"{key!r} is not site-scoped and cannot be stored in the DB."}
             )
-        if definition.validator is not None and "value" in cleaned:
+        if "value" in cleaned:
             try:
-                cleaned["value"] = definition.validator(cleaned["value"])
+                cleaned["value"] = normalize_setting_value(cleaned["value"], definition)
             except ValidationError as error:
                 raise ValidationError({"value": error.messages})
+            except (ValueError, TypeError) as error:
+                raise ValidationError({"value": [str(error)]})
         return cleaned
 
 

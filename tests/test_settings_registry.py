@@ -1,11 +1,14 @@
 """Tests for the declarative settings registry (no DB access)."""
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 from django.core.exceptions import ValidationError
 
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
     ApplyTiming,
+    SettingDefinition,
     SettingScope,
     UnregisteredSettingError,
     get_definition,
@@ -90,3 +93,19 @@ def test_currency_validator_rejects(bad):
 def test_unregistered_key_raises():
     with pytest.raises(UnregisteredSettingError):
         get_definition("NOPE")
+
+
+def test_definition_is_frozen():
+    with pytest.raises(FrozenInstanceError):
+        get_definition("DEBUG").cast = list  # type: ignore[misc]
+
+
+def test_infra_setting_must_be_restart():
+    with pytest.raises(ValueError):
+        SettingDefinition(
+            "X",
+            scope=SettingScope.INFRA,
+            apply_timing=ApplyTiming.LIVE,
+            label="x",
+            default_factory=lambda: None,
+        )

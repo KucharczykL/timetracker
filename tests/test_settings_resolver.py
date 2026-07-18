@@ -230,6 +230,73 @@ def test_missing_table_falls_back_without_caching(
     assert settings_resolver._snapshot is None
 
 
+# --- poison value / read-side robustness ----------------------------------
+
+
+def test_poison_db_value_degrades_to_default(db, no_currency_env):
+    from games.models import SiteSetting
+
+    # An invalid value can only reach the table via raw SQL / update() / a bad
+    # migration; it must not crash every resolve — degrade to the default.
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EURO")
+    settings_resolver.clear_cache()
+    result = resolve_with_origin("DEFAULT_CURRENCY")
+    assert result.value == django_settings.DEFAULT_CURRENCY
+    assert result.source is SettingSource.DEFAULT
+
+
+def test_resolve_str_rejects_non_string(monkeypatch):
+    monkeypatch.setenv("HASHED_STATIC", "true")
+    config_module.reset_caches()
+    with pytest.raises(TypeError):
+        settings_resolver.resolve_str("HASHED_STATIC")
+
+
+def test_infra_resolve_hits_no_db(db, monkeypatch, django_assert_num_queries):
+    monkeypatch.delenv("TZ", raising=False)
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+    # INFRA short-circuits before the SiteSetting snapshot read.
+    with django_assert_num_queries(0):
+        resolve("TZ")
+
+
+# --- admin form guards ----------------------------------------------------
+
+
+def test_admin_form_rejects_unregistered_key(db):
+    from games.admin import SiteSettingForm
+
+    form = SiteSettingForm(data={"key": "NOPE", "value": '"x"'})
+    assert not form.is_valid()
+    assert "key" in form.errors
+
+
+def test_admin_form_rejects_infra_key(db):
+    from games.admin import SiteSettingForm
+
+    form = SiteSettingForm(data={"key": "TZ", "value": '"Europe/Prague"'})
+    assert not form.is_valid()
+    assert "key" in form.errors
+
+
+def test_admin_form_normalizes_currency(db, no_currency_env):
+    from games.admin import SiteSettingForm
+
+    form = SiteSettingForm(data={"key": "DEFAULT_CURRENCY", "value": '"eur"'})
+    assert form.is_valid(), form.errors
+    obj = form.save()
+    assert obj.value == "EUR"
+
+
+def test_admin_form_rejects_invalid_currency(db):
+    from games.admin import SiteSettingForm
+
+    form = SiteSettingForm(data={"key": "DEFAULT_CURRENCY", "value": '"EURO"'})
+    assert not form.is_valid()
+    assert "value" in form.errors
+
+
 # --- no DB access at settings import --------------------------------------
 
 

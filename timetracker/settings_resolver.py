@@ -66,11 +66,12 @@ _snapshot: dict[str, object] | None = None
 _snapshot_at: float = 0.0
 
 
-def _apply_cast_and_validate(value: object, definition: SettingDefinition) -> object:
+def normalize_setting_value(value: object, definition: SettingDefinition) -> object:
     """Coerce ``value`` through the definition's cast + validator.
 
     ``cast`` only runs on strings (raw sources); a DB JSON value that is already
-    the target type passes through cast untouched but is still validated.
+    the target type passes through cast untouched but is still validated. Shared
+    by the resolver and the admin form so both write/read paths normalize alike.
     """
     if isinstance(value, str):
         value = cast_value(value, definition.cast)
@@ -80,10 +81,10 @@ def _apply_cast_and_validate(value: object, definition: SettingDefinition) -> ob
 
 
 def _load_snapshot() -> dict[str, object]:
-    """Return a fresh {key: value} map of all SiteSetting rows.
+    """Query all SiteSetting rows into a {key: value} map.
 
-    A missing table (fresh/pre-migration DB) is treated as empty and logged; any
-    other DB error propagates rather than masquerading as "no settings".
+    Raises on any DB error; the caller (``_site_settings``) decides how to treat
+    a missing table.
     """
     from games.models import SiteSetting
 
@@ -103,8 +104,10 @@ def _site_settings() -> dict[str, object]:
     try:
         fresh = _load_snapshot()
     except (OperationalError, ProgrammingError) as error:
-        # No table yet (fresh DB, mid-migration) — behave as empty, but do NOT
-        # cache the failure, so a later working read repopulates immediately.
+        # Degrade to "no site overrides" on any DB read failure — a missing table
+        # (fresh/mid-migration DB) but also a transient lock / I/O fault. The
+        # failure is NOT cached, so a working read repopulates immediately and a
+        # momentary lock self-heals rather than crashing every resolve.
         logger.warning(
             "[settings_resolver]: SiteSetting unreadable, using defaults: %s", error
         )
@@ -128,17 +131,29 @@ def resolve_with_origin(key: SettingKey) -> ResolvedSetting:
     definition = get_definition(key)
 
     raw: RawConfigValue | None = resolve_raw_with_source(
-        definition.env_name, allow_file=definition.allow_file
+        definition.env_name or definition.key, allow_file=definition.allow_file
     )
     if raw is not None:
-        value = _apply_cast_and_validate(raw.raw, definition)
+        # Env/file/ini are operator-set boot config: a bad value fails loudly.
+        value = normalize_setting_value(raw.raw, definition)
         return ResolvedSetting(value, raw.source, raw.source in LOCKED_SOURCES)
 
     if definition.scope is SettingScope.SITE:
         snapshot = _site_settings()
         if key in snapshot:
-            value = _apply_cast_and_validate(snapshot[key], definition)
-            return ResolvedSetting(value, SettingSource.DATABASE, False)
+            try:
+                value = normalize_setting_value(snapshot[key], definition)
+            except (ValidationError, ValueError, TypeError) as error:
+                # A poisoned DB row (raw SQL / update() / bad migration) must not
+                # crash every resolve — log and fall through to the default.
+                logger.error(
+                    "[settings_resolver]: invalid stored %s=%r, using default: %s",
+                    key,
+                    snapshot[key],
+                    error,
+                )
+            else:
+                return ResolvedSetting(value, SettingSource.DATABASE, False)
 
     return ResolvedSetting(definition.default_factory(), SettingSource.DEFAULT, False)
 
@@ -149,8 +164,15 @@ def resolve(key: SettingKey) -> object:
 
 
 def resolve_str(key: SettingKey) -> str:
-    """Resolved value of ``key`` as a ``str`` (narrowing helper for call sites)."""
-    return str(resolve(key))
+    """Resolved value of ``key`` as a ``str`` (narrowing helper for call sites).
+
+    Raises ``TypeError`` for a non-string setting rather than silently coercing a
+    bool/list/Path into a misleading string (``"True"``, ``"['a']"``).
+    """
+    value = resolve(key)
+    if not isinstance(value, str):
+        raise TypeError(f"{key} did not resolve to a str (got {type(value).__name__}).")
+    return value
 
 
 def set_site_setting(key: SettingKey, value: object) -> None:
@@ -162,7 +184,7 @@ def set_site_setting(key: SettingKey, value: object) -> None:
     definition = get_definition(key)
     if definition.scope is not SettingScope.SITE:
         raise ValueError(f"{key} is not a site-scoped setting; cannot store in DB.")
-    normalized = _apply_cast_and_validate(value, definition)
+    normalized = normalize_setting_value(value, definition)
 
     from games.models import SiteSetting
 
@@ -182,6 +204,7 @@ __all__ = [
     "ValidationError",
     "clear_cache",
     "clear_site_setting",
+    "normalize_setting_value",
     "resolve",
     "resolve_str",
     "resolve_with_origin",
