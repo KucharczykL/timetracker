@@ -1,36 +1,17 @@
-"""Layered, origin-aware resolution of registered settings.
+"""Layered setting resolution: env/.env/ini (locked) > SiteSetting (DB) > default.
 
-Precedence (highest first)::
+Non-obvious points:
 
-    env / .env / settings.ini   → locked (config source chain, boot-frozen)
-    SiteSetting (DB)            → runtime-editable, site-scoped only
-    registry default_factory    → the in-code / boot-frozen fallback
-
-``resolve_with_origin(key)`` returns ``(value, source, locked)``. Every layer is
-coerced through the registry's ``cast`` and ``validator`` so the three
-``DEFAULT_CURRENCY`` consumption sites (and any future typed SITE key) see one
-canonical value — a DB-stored ``"eur"`` resolves identically to an env ``EUR``.
-
-**Laziness:** nothing here runs at ``settings.py`` import time. The database is
-touched only inside ``resolve``/write helpers, and the ``SiteSetting`` model is
-imported lazily inside them, so importing this module never triggers the app
-registry or a query.
-
-**Caching:** only the ``SiteSetting`` table is cached — one query snapshots every
-key, held for :data:`SITE_SETTINGS_TTL_SECONDS`. The env and default layers are
-recomputed each call (cheap, and this keeps ``override_settings`` and dynamic
-defaults live). The SQLite read happens *outside* the lock, so a slow/locked DB
-never serializes every worker thread for the connection timeout.
-
-**Invalidation:** ``games.signals`` clears the cache on ``SiteSetting`` commit
-via ``transaction.on_commit``. Across processes (the gunicorn web worker and the
-separate django-q qcluster) values converge within the TTL. A raw
-``QuerySet.update()`` bypasses signals and is invisible until the TTL lapses;
-write through :func:`set_site_setting` or an instance ``.save()`` for immediate
-same-process invalidation.
-
-**Sync only:** ``resolve`` issues a synchronous ORM query on a cold cache. All
-current callers are sync; an async caller must wrap it in ``sync_to_async``.
+- Lazy by design: no DB or ``settings`` access at import (the ``SiteSetting``
+  model is imported inside functions), so ``settings.py`` can import this safely.
+- Only the DB layer is cached (one snapshot, TTL); env/default recompute each
+  call so ``override_settings`` and dynamic defaults stay live. Cross-process
+  (web worker + qcluster) convergence is the TTL; a raw ``QuerySet.update()``
+  skips signal invalidation and is stale until it lapses.
+- Every layer runs through the registry cast+validator, so a DB ``"eur"`` and an
+  env ``EUR`` resolve identically.
+- Sync only: cold-cache ``resolve`` issues an ORM query; async callers need
+  ``sync_to_async``.
 """
 
 import logging
@@ -67,12 +48,8 @@ _snapshot_at: float = 0.0
 
 
 def normalize_setting_value(value: object, definition: SettingDefinition) -> object:
-    """Coerce ``value`` through the definition's cast + validator.
-
-    ``cast`` only runs on strings (raw sources); a DB JSON value that is already
-    the target type passes through cast untouched but is still validated. Shared
-    by the resolver and the admin form so both write/read paths normalize alike.
-    """
+    """Cast (strings only) + validate a value. Shared by the resolver read path,
+    ``set_site_setting``, and the admin form so every write/read normalizes alike."""
     if isinstance(value, str):
         value = cast_value(value, definition.cast)
     if definition.validator is not None:
@@ -81,21 +58,14 @@ def normalize_setting_value(value: object, definition: SettingDefinition) -> obj
 
 
 def _load_snapshot() -> dict[str, object]:
-    """Query all SiteSetting rows into a {key: value} map.
-
-    Raises on any DB error; the caller (``_site_settings``) decides how to treat
-    a missing table.
-    """
     from games.models import SiteSetting
 
     return dict(SiteSetting.objects.values_list("key", "value"))
 
 
 def _site_settings() -> dict[str, object]:
-    """Return the cached SiteSetting snapshot, refreshing past the TTL.
-
-    The DB read runs outside the lock; the lock only guards the swap.
-    """
+    """Cached SiteSetting snapshot; the DB read runs outside the lock (which only
+    guards the swap) so a slow/locked DB can't serialize every worker thread."""
     global _snapshot, _snapshot_at
     now = time.monotonic()
     snapshot = _snapshot
@@ -104,10 +74,9 @@ def _site_settings() -> dict[str, object]:
     try:
         fresh = _load_snapshot()
     except (OperationalError, ProgrammingError) as error:
-        # Degrade to "no site overrides" on any DB read failure — a missing table
-        # (fresh/mid-migration DB) but also a transient lock / I/O fault. The
-        # failure is NOT cached, so a working read repopulates immediately and a
-        # momentary lock self-heals rather than crashing every resolve.
+        # Any read failure (missing table on a fresh/mid-migration DB, but also a
+        # transient lock/IO fault) degrades to "no overrides". Not cached, so it
+        # self-heals on the next read instead of crashing every resolve.
         logger.warning(
             "[settings_resolver]: SiteSetting unreadable, using defaults: %s", error
         )
@@ -164,11 +133,8 @@ def resolve(key: SettingKey) -> object:
 
 
 def resolve_str(key: SettingKey) -> str:
-    """Resolved value of ``key`` as a ``str`` (narrowing helper for call sites).
-
-    Raises ``TypeError`` for a non-string setting rather than silently coercing a
-    bool/list/Path into a misleading string (``"True"``, ``"['a']"``).
-    """
+    """Resolved value as ``str``. Raises ``TypeError`` for a non-str setting rather
+    than coercing a bool/list/Path into a misleading ``"True"``/``"['a']"``."""
     value = resolve(key)
     if not isinstance(value, str):
         raise TypeError(f"{key} did not resolve to a str (got {type(value).__name__}).")

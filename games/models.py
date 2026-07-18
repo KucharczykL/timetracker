@@ -536,12 +536,9 @@ class FilterPreset(models.Model):
 
 
 class SiteSetting(models.Model):
-    """Global runtime override for a site-scoped setting (the DB layer of the
-    layered resolver in ``timetracker.settings_resolver``).
-
-    Deliberately global: no user FK and no ``swappable_dependency`` — these are
-    site-wide values. Per-user preferences get their own model in a later stage.
-    """
+    """DB layer of the settings resolver: a global runtime override for a
+    site-scoped setting. Deliberately no user FK — per-user prefs get their own
+    model later."""
 
     key = models.CharField(max_length=100, unique=True)
     value = models.JSONField()

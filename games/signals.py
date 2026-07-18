@@ -21,11 +21,8 @@ logger = logging.getLogger("games")
 
 @receiver([post_save, post_delete], sender=SiteSetting)
 def invalidate_settings_cache(sender, instance, **kwargs):
-    """Drop the resolver's SiteSetting snapshot after a committed write.
-
-    Firing on commit (not inside the atomic block) avoids re-caching the old
-    value in a racing thread and avoids caching a rolled-back phantom value.
-    """
+    # on_commit, not inline: firing inside the atomic block would let a racing
+    # thread re-cache the old value, or cache a rolled-back phantom.
     transaction.on_commit(clear_settings_cache)
 
 

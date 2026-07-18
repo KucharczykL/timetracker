@@ -1,23 +1,12 @@
-"""Declarative registry of every runtime-inspectable setting.
+"""Declarative registry — single source of truth for the resolver, introspection,
+and future settings widgets.
 
-This is the single source of truth for the layered resolver
-(:mod:`timetracker.settings_resolver`), the future introspection API, and the
-future settings-panel widgets. Each :class:`SettingDefinition` names a setting's
-scope, how a change takes effect (``apply_timing``), its coercion/validation, and
-display metadata.
+``settings`` is read only inside ``default_factory`` callables, never at import,
+so ``settings.py`` can import this module safely.
 
-**No database access and no ``django.conf.settings`` *attribute* access happens
-at import time** — the boot-frozen ``settings`` object is read only lazily inside
-each ``default_factory`` callable, so importing this module during
-``settings.py`` evaluation is safe.
-
-Only the **9 settings currently read via** :func:`timetracker.config.config` are
-registered. The meta-knobs ``ENV_FILE`` / ``INI_FILE`` are intentionally absent:
-they *locate* the config sources (``config.py`` reads them via bare
-``os.environ`` before the source chain exists), so they have no place *in* the
-chain and their origin is definitionally env-only. The deprecated ``PROD`` alias
-(a stand-in for ``DEBUG=false``, slated for removal) is likewise excluded so the
-panel never legitimizes it.
+Registers exactly the 9 settings read via ``config()``. Excluded on purpose:
+``ENV_FILE``/``INI_FILE`` (they *locate* the sources, read via bare ``os.environ``
+before the chain exists) and the deprecated ``PROD`` alias.
 """
 
 from dataclasses import dataclass
@@ -35,17 +24,9 @@ type SettingValidator = Callable[[object], object]  # returns normalized or rais
 
 
 class SettingScope(StrEnum):
-    """Who owns a setting and where its DB layer (if any) lives.
-
-    ``USER`` is declared now for the per-user-preferences stage; no user-scoped
-    settings exist yet. ``SITE`` settings gain a global ``SiteSetting`` DB layer
-    (runtime-editable). ``INFRA`` settings are boot-only and never read from the
-    DB — the panel shows them read-only.
-    """
-
     USER = "user"  # no resolver branch yet; wired up in the per-user prefs stage
-    SITE = "site"
-    INFRA = "infra"
+    SITE = "site"  # runtime-editable via a global SiteSetting DB row
+    INFRA = "infra"  # boot-only; never read from the DB
 
 
 class ApplyTiming(StrEnum):
@@ -61,12 +42,8 @@ class UnregisteredSettingError(KeyError):
 
 @dataclass(frozen=True, slots=True)
 class SettingDefinition:
-    """One registered setting. Frozen — the registry is a process-global singleton
-    every resolve reads, so a stray mutation would be a shared-state landmine.
-
-    ``default_factory`` is lazy so no ``settings`` attribute is read at import.
-    ``env_name`` defaults to ``key`` (filled in ``__post_init__``).
-    """
+    """One registered setting. Frozen: the registry is a shared global every resolve
+    reads. ``default_factory`` is lazy; ``env_name`` defaults to ``key``."""
 
     key: SettingKey
     scope: SettingScope

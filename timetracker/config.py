@@ -54,14 +54,8 @@ INI_SECTION = "timetracker"
 
 
 class SettingSource(StrEnum):
-    """Where a resolved setting value came from, highest precedence first.
-
-    ``ENV_FILE``/``ENV``/``DOTENV``/``INI`` are the boot-frozen sources read by
-    :func:`config`; ``DATABASE`` is the runtime ``SiteSetting`` layer added by
-    :mod:`timetracker.settings_resolver`; ``DEFAULT`` is the in-code fallback.
-    The first four are "locked" — a value from any of them pins the setting so
-    the future settings UI renders it read-only.
-    """
+    """Origin of a resolved value, highest precedence first. The env/file/ini
+    ones are "locked" (see :data:`LOCKED_SOURCES`)."""
 
     ENV_FILE = "env_file"
     ENV = "env"
@@ -71,7 +65,7 @@ class SettingSource(StrEnum):
     DEFAULT = "default"
 
 
-#: Sources that pin a setting (env/file/ini win over the DB layer and lock it).
+#: Sources that pin a setting: they win over the DB layer and lock the field.
 LOCKED_SOURCES = frozenset(
     {
         SettingSource.ENV_FILE,
@@ -83,17 +77,11 @@ LOCKED_SOURCES = frozenset(
 
 
 class RawConfigValue(NamedTuple):
-    """A raw (uncast) string pulled from the config source chain, tagged with
-    the :class:`SettingSource` branch that supplied it."""
-
     raw: str
     source: SettingSource
 
 
 class ResolvedSetting(NamedTuple):
-    """A fully resolved setting: the coerced value, its origin, and whether the
-    origin locks it (env/file/ini pin the value over the DB layer)."""
-
     value: Any
     source: SettingSource
     locked: bool
@@ -189,11 +177,8 @@ def reset_caches() -> None:
 
 
 def cast_value(value: str, cast: Callable[[str], Any] | None) -> Any:
-    """Coerce a raw string via ``cast`` (``bool``/``list``/``int``/``Path``/…).
-
-    Shared by :func:`config` and the runtime resolver so every source layer
-    applies identical coercion. ``None`` returns the string untouched.
-    """
+    """Coerce a raw string via ``cast``. Shared by :func:`config` and the resolver
+    so every layer coerces identically. ``bool``/``list`` have custom parsing."""
     if cast is None:
         return value
     if cast is bool:
@@ -203,20 +188,14 @@ def cast_value(value: str, cast: Callable[[str], Any] | None) -> Any:
     return cast(value)
 
 
-# Backwards-compatible private alias (kept so existing call sites are untouched).
-_cast_value = cast_value
+_cast_value = cast_value  # existing call sites still use the private name
 
 
 def resolve_raw_with_source(
     name: str, *, allow_file: bool = False
 ) -> RawConfigValue | None:
-    """Return the first raw value from the source chain tagged with its origin.
-
-    Mirrors :func:`config`'s precedence (``NAME__FILE`` → env → ``.env`` → ini)
-    but reports *which* source supplied the value, for origin/locking display.
-    Returns ``None`` when no boot-frozen source has the setting (callers then
-    consult the DB/default layers). Never touches the database.
-    """
+    """Like :func:`config`'s lookup but tagged with the source, and no cast/default
+    — returns ``None`` when no boot-frozen source has the setting. No DB access."""
     if allow_file:
         file_pointer = os.environ.get(f"{name}__FILE")
         if file_pointer:

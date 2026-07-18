@@ -28,10 +28,8 @@ admin.site.register(ExchangeRate)
 
 
 class SiteSettingForm(forms.ModelForm):
-    """Route admin writes through the same key/scope/cast/validator guards as
-    ``set_site_setting`` (via the shared ``normalize_setting_value``) so the admin
-    isn't an unvalidated back door: only registered site-scoped keys, and the
-    value is normalized/validated exactly as a programmatic write would be."""
+    """Apply the same key/scope/normalize guards as ``set_site_setting`` so the
+    admin isn't an unvalidated back door into the resolver's DB layer."""
 
     class Meta:
         model = SiteSetting
