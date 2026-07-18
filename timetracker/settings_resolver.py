@@ -1,13 +1,18 @@
-"""Layered setting resolution: env/.env/ini (locked) > SiteSetting (DB) > default.
+"""Layered setting resolution. Site keys: env/.env/ini (locked) > SiteSetting
+(DB) > default. User keys add a personal layer on top via
+``resolve_for_user_with_origin``: UserPreferences override > env/.env/ini >
+SiteSetting site default > default (a personal value wins even over env, since
+env-locking per-user prefs is deferred).
 
 Non-obvious points:
 
-- Lazy by design: no DB or ``settings`` access at import (the ``SiteSetting``
-  model is imported inside functions), so ``settings.py`` can import this safely.
-- Only the DB layer is cached (one snapshot, TTL); env/default recompute each
-  call so ``override_settings`` and dynamic defaults stay live. Cross-process
-  (web worker + qcluster) convergence is the TTL; a raw ``QuerySet.update()``
-  skips signal invalidation and is stale until it lapses.
+- Lazy by design: no DB or ``settings`` access at import (the ORM models are
+  imported inside functions), so ``settings.py`` can import this safely.
+- Two DB snapshots are cached (SiteSetting + UserPreferences, each one snapshot
+  under the shared TTL); env/default recompute each call so ``override_settings``
+  and dynamic defaults stay live. Cross-process (web worker + qcluster)
+  convergence is the TTL; a raw ``QuerySet.update()`` skips signal invalidation
+  and is stale until it lapses.
 - Every layer runs through the registry cast+validator, so a DB ``"eur"`` and an
   env ``EUR`` resolve identically.
 - Sync only: cold-cache ``resolve`` issues an ORM query; async callers need
@@ -39,8 +44,9 @@ from timetracker.settings_registry import (
 
 logger = logging.getLogger("games")
 
-#: How long a SiteSetting snapshot is trusted before the next read refreshes it.
-#: Also the cross-process convergence window (web worker ↔ qcluster).
+#: How long a DB snapshot (SiteSetting and UserPreferences alike) is trusted
+#: before the next read refreshes it. Also the cross-process convergence window
+#: (web worker ↔ qcluster).
 SITE_SETTINGS_TTL_SECONDS = 5.0
 
 _cache_lock = threading.Lock()
@@ -104,9 +110,16 @@ def _load_user_snapshot() -> dict[UserId, dict[str, object]]:
     snapshot: dict[UserId, dict[str, object]] = {}
     for row in UserPreferences.objects.values(*columns):
         user_id = row["user_id"]
-        stored: dict[str, object] = dict(row.get("extra_preferences") or {})
-        # Typed columns win over the JSON bag and only enter the map when set,
-        # so a NULL column reads as "unset" (absent key → falls through).
+        # A typed column is authoritative for its key even when NULL, so drop any
+        # same-key entry the JSON bag might carry — the column, not the bag, decides
+        # set-vs-unset for mapped keys (keeps this reader in step with the model).
+        stored: dict[str, object] = {
+            key: value
+            for key, value in (row.get("extra_preferences") or {}).items()
+            if key not in USER_PREFERENCE_FIELD_BY_KEY
+        }
+        # A set (non-NULL) typed column enters the map; a NULL one stays absent, so
+        # it falls through to the site/default layers.
         for key, field in USER_PREFERENCE_FIELD_BY_KEY.items():
             value = row[field]
             if value is not None:
@@ -201,8 +214,10 @@ def resolve_for_user_with_origin(user: object, key: SettingKey) -> ResolvedSetti
     else fall through to the shared chain (env → site DB → default).
 
     For a non-USER key, or an anonymous/None user, this is exactly
-    :func:`resolve_with_origin`, so callers can use one entry point. Never locked:
-    env-locking per-user prefs is deferred, so a personal value overrides env.
+    :func:`resolve_with_origin`, so callers can use one entry point. A personal
+    override always reports ``locked=False`` (env-locking per-user prefs is
+    deferred, so it wins even over env); a fall-through result keeps the shared
+    chain's own ``locked`` (e.g. an env-pinned value with no override is locked).
     """
     definition = get_definition(key)
     user_id = getattr(user, "pk", None)
@@ -282,7 +297,8 @@ def set_site_setting(key: SettingKey, value: object) -> None:
 
 
 def clear_site_setting(key: SettingKey) -> None:
-    """Delete a site-scoped setting's DB row (falls back to env/default)."""
+    """Delete a setting's site-default DB row (SITE or USER key); the resolver
+    then falls back to env/default (and, for a USER key, any personal override)."""
     from games.models import SiteSetting
 
     SiteSetting.objects.filter(key=key).delete()

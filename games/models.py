@@ -608,21 +608,15 @@ class UserPreferences(models.Model):
         preferences, _ = cls.objects.get_or_create(user=user)
         return preferences
 
-    def get_preference_value(self, key: SettingKey) -> object | None:
-        """The stored personal value for ``key``, or ``None`` when unset."""
-        field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
-        if field is not None:
-            return getattr(self, field)
-        return self.extra_preferences.get(key)
-
     def set_preference_value(self, key: SettingKey, value: object) -> None:
-        """Store ``value`` for ``key``; ``None`` clears it back to unset."""
+        """Store ``value`` for ``key``; ``None`` clears it back to unset. The
+        value must already be normalized — the resolver (``set_user_preference``)
+        is the one write path and validates before calling this."""
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
         if field is not None:
             setattr(self, field, value)
-            # ``field`` may be the FK attname (default_device_id); update_fields
-            # wants the model field name (default_device).
-            self.save(update_fields=[field.removesuffix("_id"), "updated_at"])
+            # save() accepts the FK attname (default_device_id) in update_fields.
+            self.save(update_fields=[field, "updated_at"])
             return
         if value is None:
             self.extra_preferences.pop(key, None)

@@ -297,6 +297,97 @@ def test_admin_form_rejects_invalid_currency(db):
     assert "value" in form.errors
 
 
+# --- UserPreferences admin form guards ------------------------------------
+
+
+def _prefs_user():
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.create_user(username="prefs", password="pw")
+
+
+def test_user_prefs_form_blank_currency_saves_null(db):
+    # empty_value=None: a blank currency must persist NULL, not the "" sentinel
+    # (which would then fail _validate_currency on every resolve).
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "default_currency": "", "extra_preferences": "{}"}
+    )
+    assert form.is_valid(), form.errors
+    obj = form.save()
+    assert obj.default_currency is None
+
+
+def test_user_prefs_form_normalizes_currency(db, no_currency_env):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "default_currency": "eur", "extra_preferences": "{}"}
+    )
+    assert form.is_valid(), form.errors
+    assert form.save().default_currency == "EUR"
+
+
+def test_user_prefs_form_rejects_invalid_currency(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "default_currency": "EURO", "extra_preferences": "{}"}
+    )
+    assert not form.is_valid()
+    assert "default_currency" in form.errors
+
+
+def test_user_prefs_form_accepts_device(db):
+    from games.admin import UserPreferencesForm
+    from games.models import Device
+
+    user = _prefs_user()
+    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
+    form = UserPreferencesForm(
+        data={"user": user.pk, "default_device": device.pk, "extra_preferences": "{}"}
+    )
+    assert form.is_valid(), form.errors
+    assert form.save().default_device_id == device.pk
+
+
+def test_user_prefs_form_rejects_typed_key_in_bag(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "extra_preferences": '{"DEFAULT_CURRENCY": "EUR"}'}
+    )
+    assert not form.is_valid()
+    assert "extra_preferences" in form.errors
+
+
+def test_user_prefs_form_rejects_non_user_key_in_bag(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "extra_preferences": '{"TZ": "Europe/Prague"}'}
+    )
+    assert not form.is_valid()
+    assert "extra_preferences" in form.errors
+
+
+def test_user_prefs_form_rejects_unregistered_key_in_bag(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={"user": user.pk, "extra_preferences": '{"NOPE": 1}'}
+    )
+    assert not form.is_valid()
+    assert "extra_preferences" in form.errors
+
+
 # --- no DB access at settings import --------------------------------------
 
 

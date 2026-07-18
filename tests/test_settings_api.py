@@ -185,6 +185,65 @@ def test_site_patch_rejects_infra_key(superuser_client):
     ).status_code == (400)
 
 
+# --- device pref: int serialization + clear ------------------------------
+
+
+def test_user_device_round_trips_as_int(auth_client, db):
+    from games.models import Device
+
+    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
+    assert (
+        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk).status_code
+        == 204
+    )
+    row = next(
+        r for r in auth_client.get(_user_url()).json() if r["key"] == "DEFAULT_DEVICE"
+    )
+    # The SettingOut value field must carry the int id (a str-only field would 500).
+    assert row["value"] == device.pk
+    assert row["source"] == "user"
+
+
+def test_user_device_null_clears(auth_client, db):
+    from games.models import Device, UserPreferences
+
+    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
+    _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk)
+    assert (
+        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), None).status_code == 204
+    )
+    preferences = UserPreferences.objects.get(user__username="tester")
+    assert preferences.default_device_id is None
+
+
+# --- locked is always False on the user endpoint --------------------------
+
+
+def test_user_endpoint_reports_unlocked_even_when_env_pins(
+    auth_client, monkeypatch, django_capture_on_commit_callbacks
+):
+    # An env-pinned USER key with no personal override still reports locked=False
+    # on /user, because the user can always PATCH a personal override.
+    monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+    from timetracker import config as config_module
+    from timetracker import settings_resolver
+
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+    currency = _currency(auth_client.get(_user_url()).json())
+    assert currency["locked"] is False
+
+
+# --- error message shape --------------------------------------------------
+
+
+def test_bad_currency_400_message_is_clean(auth_client):
+    # The client must not see a Python list-repr like ['Currency must be ...'].
+    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EURO")
+    assert response.status_code == 400
+    assert "[" not in response.json()["detail"]
+
+
 # --- site round-trip becomes the fallback under user prefs ----------------
 
 

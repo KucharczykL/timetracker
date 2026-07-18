@@ -568,9 +568,10 @@ class SettingOut(Schema):
 
     ``value`` is ``str | int | None`` because a device id resolves to an int and
     an unset pref resolves to None — a ``str``-only field would 500 on those.
-    ``locked`` reflects the resolver's origin; note that for a USER key pinned by
-    env it is still ``False``, because a personal pref overrides env (env-locking
-    per-user prefs is deferred).
+    ``locked`` reflects the resolver's origin: an env/`.env`/`.ini`-pinned value is
+    locked. The ``/user`` endpoint forces it ``False`` for every personal pref,
+    since a user can always set an override (env-locking per-user prefs is
+    deferred); the ``/site`` endpoint reports the resolver's value verbatim.
     """
 
     key: str
@@ -585,16 +586,28 @@ class SettingValueIn(Schema):
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
-    return [key for key, d in SETTINGS_REGISTRY.items() if d.scope in scopes]
+    return [
+        key
+        for key, definition in SETTINGS_REGISTRY.items()
+        if definition.scope in scopes
+    ]
 
 
-def _setting_out(key: SettingKey, resolved) -> dict[str, object]:
+def _setting_out(key: SettingKey, resolved, *, locked: bool | None = None) -> dict:
     return {
         "key": key,
         "value": resolved.value,
         "source": resolved.source,
-        "locked": resolved.locked,
+        "locked": resolved.locked if locked is None else locked,
     }
+
+
+def _raise_400(error: Exception):
+    """Turn a validation/coercion error into a 400 with a clean message. A Django
+    ``ValidationError``'s ``str()`` is the repr of its message list, so unwrap it."""
+    if isinstance(error, ValidationError):
+        raise HttpError(400, " ".join(error.messages))
+    raise HttpError(400, str(error))
 
 
 @settings_router.get("/user", response=list[SettingOut])
@@ -602,10 +615,13 @@ def list_user_settings(request):
     """The requesting user's personal preferences, resolved with origin.
 
     Scoped to ``request.user`` with no id parameter, so one user can never read
-    another's — cross-user access is structurally impossible.
+    another's — cross-user access is structurally impossible. Every USER key
+    reports ``locked=False``: a user can always set a personal override (even for
+    an env-pinned key — env-locking per-user prefs is deferred), so the panel must
+    never present one as read-only, whatever layer the *effective* value comes from.
     """
     return [
-        _setting_out(key, resolve_for_user_with_origin(request.user, key))
+        _setting_out(key, resolve_for_user_with_origin(request.user, key), locked=False)
         for key in _settings_of_scope(SettingScope.USER)
     ]
 
@@ -626,7 +642,7 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     try:
         set_user_preference(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
-        raise HttpError(400, str(error))
+        _raise_400(error)
     return Status(204, None)
 
 
@@ -660,7 +676,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         else:
             set_site_setting(key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
-        raise HttpError(400, str(error))
+        _raise_400(error)
     return Status(204, None)
 
 

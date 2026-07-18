@@ -6,7 +6,8 @@ so ``settings.py`` can import this module safely.
 
 Registers the 9 settings read via ``config()`` plus the per-user preference keys
 (``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``), which are *not* read via
-``config()`` — they resolve only through the per-user layer. Excluded on purpose:
+``config()`` — no Django setting consumes them at boot; they resolve through the
+runtime chain (personal → env → site DB → default). Excluded on purpose:
 ``ENV_FILE``/``INI_FILE`` (they *locate* the sources, read via bare ``os.environ``
 before the chain exists) and the deprecated ``PROD`` alias.
 """
@@ -96,8 +97,8 @@ def _validate_optional_device_id(value: object) -> int | None:
 
 
 def _validate_optional_landing_page(value: object) -> str | None:
-    """Type-only check for the personal landing-page pref. ``None`` means unset;
-    validating the value against the URL map is a Stage-4 concern."""
+    """Type-only check for the personal landing-page pref. ``None`` means unset.
+    TODO: validate the value against the landing-page URL map once one exists."""
     if value is None:
         return None
     if not isinstance(value, str):

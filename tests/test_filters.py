@@ -5249,7 +5249,7 @@ class TestStringFieldNullConvention:
         {
             "GameStatusChange.old_status",
             # Per-user settings overrides: NULL is the "unset" sentinel the
-            # resolver falls through on, deliberately not the "" convention (#383).
+            # resolver falls through on, deliberately not the "" convention.
             "UserPreferences.default_currency",
             "UserPreferences.default_landing_page",
         }
