@@ -363,48 +363,61 @@ _FILLED_VARIANT_CLASS = (
 
 _SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
 
+# Status-token notes shared by both tables:
+# - danger/success -subtle rings shade-match brand-medium (x-200 light /
+#   x-900 dark), giving every filled color the same ring weight; the -medium
+#   status tokens sit one shade lighter in light theme.
+# - The dark success scale tops out at success-strong (emerald-700) — the
+#   AA-passing dark fill — so the darker hover shade has no token and stays
+#   raw emerald-800 (the light success-strong value).
+# - fg-brand fails AA on the dark hover surface (blue-500 on gray-700), so
+#   every hover/focus text accent pairs with dark:*:text-heading.
 _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "blue": "text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-brand-medium",
-    "red": "bg-red-700 dark:bg-red-600 dark:focus:ring-red-900 dark:hover:bg-red-700 focus:ring-red-300 hover:bg-red-800 text-white",
-    "gray": "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:focus:ring-gray-700 dark:hover:bg-gray-700 dark:hover:text-white dark:text-gray-400 focus:ring-gray-100 hover:bg-gray-100 hover:text-blue-700 text-gray-900 border",
-    "green": "bg-green-700 dark:bg-green-600 dark:focus:ring-green-800 dark:hover:bg-green-700 focus:ring-green-300 hover:bg-green-800 text-white",
-}
-
-_SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
-    # Every color uses a hover border one shade darker than its hover fill, so
-    # the segmented buttons share the same "ring" look (only the hue differs).
-    "blue": (
-        "text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-brand hover:border-brand-strong "
-        "hover:text-white focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
-        "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:border-brand-strong "
-        "dark:hover:bg-brand dark:focus:ring-blue-500 dark:focus:text-white"
-    ),
+    "red": "text-white bg-danger box-border border border-transparent hover:bg-danger-strong focus:ring-danger-subtle",
     "gray": (
-        "text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-gray-100 hover:text-blue-700 "
-        "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
-        "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:border-gray-800 dark:hover:bg-gray-700 "
-        "dark:focus:ring-blue-500 dark:focus:text-white"
-    ),
-    "red": (
-        "text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-red-500 hover:border-red-600 hover:text-white "
-        "focus:ring-2 focus:ring-blue-700 focus:text-blue-700 "
-        "dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-        "dark:hover:text-white dark:hover:border-red-800 "
-        "dark:hover:bg-red-700 dark:focus:ring-blue-500 dark:focus:text-white"
+        "text-heading bg-neutral-primary-medium border border-default-medium "
+        "hover:bg-neutral-tertiary-medium hover:text-fg-brand "
+        "dark:hover:text-heading focus:ring-neutral-tertiary-medium"
     ),
     "green": (
-        "text-gray-900 bg-white border "
-        "border-gray-200 hover:bg-green-500 hover:border-green-600 "
-        "hover:text-white focus:ring-2 focus:ring-green-700 "
-        "focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 "
-        "dark:text-white dark:hover:text-white dark:hover:border-green-700 "
-        "dark:hover:bg-green-600 dark:focus:ring-green-500 "
-        "dark:focus:text-white"
+        "text-white bg-success dark:bg-success-strong box-border border "
+        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "
+        "focus:ring-success-subtle"
+    ),
+}
+
+# The segmented shell every color shares; the per-color entries add hover
+# fill + focus accents.
+_SEGMENTED_SHELL_CLASS = (
+    "text-heading bg-neutral-primary-medium border border-default-medium "
+    "focus:ring-2 focus:ring-fg-brand focus:text-fg-brand "
+    "dark:focus:text-heading"
+)
+
+_SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
+    # Red/green hover previews the filled action color (danger/success fill),
+    # with the border one shade darker than the fill so the segmented buttons
+    # share the same "ring" look (only the hue differs). Gray's hover fill
+    # matches the resting border shade, so it needs no hover border.
+    "blue": (
+        f"{_SEGMENTED_SHELL_CLASS} "
+        "hover:bg-brand hover:border-brand-strong hover:text-white"
+    ),
+    "gray": (
+        f"{_SEGMENTED_SHELL_CLASS} "
+        "hover:bg-neutral-tertiary-medium hover:text-fg-brand "
+        "dark:hover:text-heading"
+    ),
+    "red": (
+        f"{_SEGMENTED_SHELL_CLASS} "
+        "hover:bg-danger hover:border-danger-strong hover:text-white"
+    ),
+    "green": (
+        f"{_SEGMENTED_SHELL_CLASS} "
+        "hover:bg-success dark:hover:bg-success-strong "
+        "hover:border-success-strong dark:hover:border-emerald-800 "
+        "hover:text-white"
     ),
 }
 
@@ -415,9 +428,9 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{_CONTROL_SIZE_CLASS} bg-white border border-gray-200 "
-    "hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-white "
-    "dark:hover:bg-gray-700 whitespace-nowrap"
+    f"{_CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
+    "border-default-medium hover:bg-neutral-tertiary-medium "
+    "focus:outline-hidden focus:ring-2 focus:ring-fg-brand whitespace-nowrap"
 )
 
 # Ghost is the quiet outline sibling: invisible chrome at rest (transparent
@@ -427,9 +440,9 @@ _OUTLINE_VARIANT_CLASS = (
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
     f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
-    "border-transparent text-gray-900 hover:bg-gray-100 hover:border-gray-200 "
-    "dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:border-gray-600 "
-    "dark:hover:text-white whitespace-nowrap"
+    "border-transparent text-heading hover:bg-neutral-tertiary-medium "
+    "hover:border-default-medium focus:outline-hidden focus:ring-2 "
+    "focus:ring-fg-brand whitespace-nowrap"
 )
 
 _PLAIN_VARIANT_CLASS = (

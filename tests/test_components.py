@@ -881,7 +881,7 @@ class ControlButtonTest(SimpleTestCase):
         # container-query sizing, same scale as filled — no viewport sizing
         self.assertIn("@md:px-5", html)
         self.assertNotIn("lg:px-4", html)
-        self.assertIn("bg-white", html)
+        self.assertIn("bg-neutral-primary-medium", html)
 
     def test_color_tables_have_matching_keys(self):
         from common.components.primitives import (
@@ -899,13 +899,13 @@ class ControlButtonTest(SimpleTestCase):
         html = str(components.ControlButton(variant="outline")["x"])
         self.assertTrue(html.startswith("<button"))
         self.assertIn("whitespace-nowrap", html)
-        self.assertIn("border-gray-200", html)
+        self.assertIn("border-default-medium", html)
         # container-query sizing, same scale as every other button variant
         self.assertIn("@md:px-5", html)
         self.assertNotIn("lg:px-4", html)
-        # single-look variant: no color axis, no focus ring
+        # single-look variant: no color axis, keyboard focus ring
         self.assertNotIn("bg-brand", html)
-        self.assertNotIn("focus:ring", html)
+        self.assertIn("focus:ring-2", html)
 
     def test_button_variants_share_one_sizing_scale(self):
         # ALL button-shaped variants size via the container contract; only the

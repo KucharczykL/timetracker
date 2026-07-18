@@ -37,10 +37,12 @@ OKLCH = {
     "red-600": (0.577, 0.245, 27.325),
     "red-700": (0.505, 0.213, 27.518),
     "rose-700": (0.514, 0.222, 16.935),  # from tailwind theme.css rose scale
+    "rose-800": (0.455, 0.188, 13.697),
     "green-600": (0.627, 0.194, 149.214),
     "green-700": (0.527, 0.154, 150.069),
     "emerald-600": (0.596, 0.145, 163.225),
     "emerald-700": (0.508, 0.118, 165.612),
+    "emerald-800": (0.432, 0.095, 166.913),
     "teal-100": (0.953, 0.051, 180.801),
     "teal-200": (0.910, 0.096, 180.426),
     "teal-500": (0.704, 0.140, 182.503),
@@ -331,7 +333,7 @@ CASES = [
     ),
     # ── Raw-palette clusters, light ──
     (
-        "gray button text (gray-900 on white)",
+        "gray/outline/ghost button text (heading gray-900 on white)",
         "light",
         "gray-900",
         col("gray-900"),
@@ -412,25 +414,7 @@ CASES = [
         4.5,
     ),
     (
-        "white on red-700 (destructive button)",
-        "light",
-        "white",
-        col("white"),
-        "red-700",
-        col("red-700"),
-        4.5,
-    ),
-    (
-        "white on green-700 (positive button)",
-        "light",
-        "white",
-        col("white"),
-        "green-700",
-        col("green-700"),
-        4.5,
-    ),
-    (
-        "white on rose-700 (proposed danger token)",
+        "white on danger rose-700 (destructive button)",
         "light",
         "white",
         col("white"),
@@ -439,12 +423,30 @@ CASES = [
         4.5,
     ),
     (
-        "white on emerald-700 (proposed success token)",
+        "white on danger-strong rose-800 (destructive hover)",
+        "light",
+        "white",
+        col("white"),
+        "rose-800",
+        col("rose-800"),
+        4.5,
+    ),
+    (
+        "white on success emerald-700 (positive button)",
         "light",
         "white",
         col("white"),
         "emerald-700",
         col("emerald-700"),
+        4.5,
+    ),
+    (
+        "white on success-strong emerald-800 (positive hover)",
+        "light",
+        "white",
+        col("white"),
+        "emerald-800",
+        col("emerald-800"),
         4.5,
     ),
     (
@@ -485,10 +487,10 @@ CASES = [
     ),
     # ── Raw-palette clusters, dark ──
     (
-        "gray button text (gray-400 on gray-800)",
+        "gray/outline/ghost button text (heading white on gray-800)",
         "dark",
-        "gray-400",
-        col("gray-400"),
+        "white",
+        col("white"),
         "gray-800",
         col("gray-800"),
         4.5,
@@ -557,30 +559,39 @@ CASES = [
         4.5,
     ),
     (
-        "white on red-600 (destructive button)",
+        "white on danger rose-700 (destructive button)",
         "dark",
         "white",
         col("white"),
-        "red-600",
-        col("red-600"),
+        "rose-700",
+        col("rose-700"),
         4.5,
     ),
     (
-        "white on green-600 (positive button)",
+        "white on danger-strong rose-800 (destructive hover)",
         "dark",
         "white",
         col("white"),
-        "green-600",
-        col("green-600"),
+        "rose-800",
+        col("rose-800"),
         4.5,
     ),
     (
-        "white on emerald-600 (proposed success dark)",
+        "white on success-strong emerald-700 (positive button)",
         "dark",
         "white",
         col("white"),
-        "emerald-600",
-        col("emerald-600"),
+        "emerald-700",
+        col("emerald-700"),
+        4.5,
+    ),
+    (
+        "white on emerald-800 (positive hover, raw shade)",
+        "dark",
+        "white",
+        col("white"),
+        "emerald-800",
+        col("emerald-800"),
         4.5,
     ),
     (
@@ -784,9 +795,6 @@ CASES = [
         4.5,
     ),
 ]
-
-# rose-700 needed above
-OKLCH["rose-700"] = (0.514, 0.222, 16.935)
 
 rows = []
 fails = []

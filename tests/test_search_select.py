@@ -871,15 +871,15 @@ class ComboboxDropdownTest(unittest.TestCase):
 
     def test_default_trigger_is_filled_gray(self):
         toggle_tag = _tag_around(self._html(), "data-toggle")
-        self.assertIn("bg-white", toggle_tag)
+        self.assertIn("bg-neutral-primary-medium", toggle_tag)
         self.assertNotIn("border-transparent", toggle_tag)
 
     def test_ghost_trigger_is_transparent_until_hover(self):
         toggle_tag = _tag_around(self._html(ghost=True), "data-toggle")
         self.assertIn("bg-transparent", toggle_tag)
         self.assertIn("border-transparent", toggle_tag)
-        self.assertIn("hover:border-gray-200", toggle_tag)
-        self.assertIn("hover:bg-gray-100", toggle_tag)
+        self.assertIn("hover:border-default-medium", toggle_tag)
+        self.assertIn("hover:bg-neutral-tertiary-medium", toggle_tag)
 
     def test_config_becomes_data_attributes(self):
         html = self._html(config={"data_marker": ""})
