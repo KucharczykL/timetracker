@@ -167,9 +167,6 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     purchases, page_obj, elided_page_range = paginate(purchases, find)
 
     data: TableData = {
-        "header_action": ControlButton(href=reverse("games:add_purchase"))[
-            "Add purchase"
-        ],
         "columns": [
             Column("Name", "name"),
             Column("Type", "type"),

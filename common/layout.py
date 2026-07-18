@@ -38,6 +38,7 @@ from games.templatetags.version import version, version_date
 
 if TYPE_CHECKING:
     from common.components import Node
+    from games.models import Session
 
 # Static head script that sets the dark/light class before paint (avoids FOUC).
 # Bare JS body — emitted inside a `Script()` node (a raw-text element).
@@ -275,6 +276,8 @@ def NavbarMenu(
     last_7_url: str | None,
     current_year: int,
     csrf_token: str,
+    authenticated: bool = False,
+    recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
@@ -370,6 +373,17 @@ def NavbarMenu(
         ]
     ]
 
+    # Desktop-only log button: between the playtime counter and Home in the menu
+    # row. `hidden md:flex` keeps it out of the expanded mobile menu (the mobile
+    # instance lives next to the hamburger instead).
+    desktop_log = (
+        Li(class_="hidden md:flex items-center")[
+            NavbarLogButton(recent_resumes or [], id="navbar-log-desktop")
+        ]
+        if authenticated
+        else ""
+    )
+
     return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
         Ul(
             class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
@@ -384,12 +398,92 @@ def NavbarMenu(
                 today_url=today_url,
                 last_7_url=last_7_url,
             ),
+            desktop_log,
             home,
             entity_menu,
             stats,
             logout,
         ]
     ]
+
+
+def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list["Session"]:
+    """The most-recent session per distinct played game, newest first (up to
+    ``limit``). Each is a resume target for the navbar log dropdown: cloning it
+    starts a fresh session carrying the prior device/emulated flags.
+
+    Anonymous requests get an empty list — the navbar log button is
+    authenticated-only, so its recent-game names never render on the login page.
+    The scan early-exits after ``limit`` distinct games."""
+    if not request.user.is_authenticated:
+        return []
+    from games.models import Session
+
+    seen: set[int] = set()
+    resumes: list[Session] = []
+    for session in (
+        Session.objects.filter(game__isnull=False)
+        .select_related("game")
+        .order_by("-timestamp_start")
+        .iterator()
+    ):
+        game_id = session.game_id
+        if game_id is None or game_id in seen:
+            continue
+        seen.add(game_id)
+        resumes.append(session)
+        if len(resumes) == limit:
+            break
+    return resumes
+
+
+def NavbarLogButton(
+    recent_resumes: list["Session"], *, id: str = "navbar-log"
+) -> "Node":
+    """The always-visible split button: primary opens the general add-session form,
+    the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
+    two breakpoint instances (mobile beside the hamburger, desktop inside the menu)."""
+    from common.components import (
+        ControlButton,
+        DropdownActionItem,
+        DropdownLinkItem,
+        Icon,
+        NameWithIcon,
+        Span,
+        SplitButtonDropdown,
+    )
+
+    primary = ControlButton(
+        color="green",
+        href=reverse("games:add_session"),
+        aria_label="Log game",
+        class_="rounded-s-lg rounded-e-none",
+    )[Icon("play"), Span(class_="hidden sm:inline")["Log game"]]
+
+    if recent_resumes:
+        items: list[Node] = [
+            DropdownLinkItem(
+                reverse(
+                    "games:list_sessions_start_session_from_session",
+                    args=[session.pk],
+                ),
+                NameWithIcon(game=session.game, linkify=False),
+            )
+            for session in recent_resumes
+        ]
+    else:
+        items = [DropdownActionItem(disabled=True)["No games played yet"]]
+
+    return SplitButtonDropdown(
+        primary=primary,
+        items=items,
+        id=id,
+        caret_color="green",
+        aria_label="Recent games",
+        # Grow to fit the game names on one line (they self-truncate via
+        # PopoverTruncated), capped so the panel never runs away.
+        menu_width="w-max max-w-xs",
+    )
 
 
 def Navbar(
@@ -400,6 +494,8 @@ def Navbar(
     last_7_url: str | None = None,
     current_year: int,
     csrf_token: str,
+    authenticated: bool = False,
+    recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
     from common.components import A, Div, Icon, Span
@@ -407,7 +503,10 @@ def Navbar(
     logo = static("icons/tesserae-icon-animated.svg")
     brand = A(
         href=reverse("games:index"),
-        class_="flex items-center",
+        # me-auto hugs the brand to the left edge and pushes every following item
+        # (log button, hamburger, menu) to the right — independent of which are
+        # visible at the current breakpoint or whether the log button renders.
+        class_="flex items-center me-auto",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
         Span(class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien")[
@@ -429,12 +528,26 @@ def Navbar(
         last_7_url=last_7_url,
         current_year=current_year,
         csrf_token=csrf_token,
+        authenticated=authenticated,
+        recent_resumes=recent_resumes or [],
+    )
+    # Two breakpoint instances of the log button: the mobile one sits in the top
+    # bar next to the hamburger (`md:hidden`); the desktop one lives inside the
+    # menu row between the playtime counter and Home (rendered by NavbarMenu,
+    # `hidden md:flex`). Each is auth-gated; `me-auto` on the brand right-aligns
+    # the mobile group, and `menu` stays a direct flex child for its mobile wrap.
+    mobile_log = (
+        Div(class_="md:hidden")[
+            NavbarLogButton(recent_resumes or [], id="navbar-log-mobile")
+        ]
+        if authenticated
+        else ""
     )
     return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
             class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
-            "justify-between mx-auto"
-        )[brand, hamburger, menu]
+            "gap-x-3 mx-auto"
+        )[brand, mobile_log, hamburger, menu]
     ]
 
 
@@ -465,6 +578,8 @@ def TimetrackerDocument(
         last_7_url=counts["last_7_url"],
         current_year=year,
         csrf_token=get_token(request),
+        authenticated=request.user.is_authenticated,
+        recent_resumes=recent_session_resumes(request),
     )
 
     # Collect JS from both the page body and the navbar (the navbar owns the

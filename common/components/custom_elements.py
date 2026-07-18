@@ -590,6 +590,18 @@ DROPDOWN_PANEL_OUTLINE_CLASS = (
 _DROPDOWN_PANEL_PLAIN_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
 )
+
+
+def _menu_panel_class(width: str = "w-44") -> str:
+    """The plain menu-panel look at an arbitrary width. Default ``w-44`` matches
+    the fixed-width menus; a split button can pass e.g. ``w-max max-w-xs`` to grow
+    to its item content (the item names self-truncate via ``PopoverTruncated``)."""
+    return (
+        f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm "
+        "border border-gray-200 dark:border-gray-700"
+    )
+
+
 # The combobox dialog (the preset picker, #297): wider than a menu, bordered.
 # Width is a knob: w-72 suits list-shaped content (presets, filter options);
 # content with an intrinsic width (the date facets' calendar) passes w-auto.
@@ -686,7 +698,7 @@ def _as_menu_trigger(trigger: Element) -> Element:
     return _stamp(trigger, [("aria-haspopup", "menu")], "menu")
 
 
-def DropdownLinkItem(url: str, label: str, *, current: bool = False) -> Node:
+def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
     """A navigation menu item (an ``<a>`` link)."""
     attributes: list[tuple[str, str]] = [
         ("href", url),
@@ -833,13 +845,19 @@ def Dropdown(
     )
 
 
-def DropdownMenuPanel(*, items: list[Node], aria_label: str = "") -> Element:
+def DropdownMenuPanel(
+    *, items: list[Node], aria_label: str = "", menu_width: str | None = None
+) -> Element:
     """The canonical menu target: a ``role="menu"`` panel wrapping ``items`` in a
     list. Pass ``aria_label`` to name the menu when its trigger has no text (an
-    icon-only trigger); otherwise the core auto-labels it from the trigger."""
+    icon-only trigger); otherwise the core auto-labels it from the trigger.
+    ``menu_width`` overrides the default ``w-44`` (e.g. ``w-max max-w-xs``)."""
+    panel_class = (
+        _menu_panel_class(menu_width) if menu_width else _DROPDOWN_MENU_PANEL_CLASS
+    )
     attributes: list[tuple[str, str]] = [
         ("role", "menu"),
-        ("class", _DROPDOWN_MENU_PANEL_CLASS),
+        ("class", panel_class),
     ]
     if aria_label:
         attributes.append(("aria-label", aria_label))
@@ -902,18 +920,47 @@ def SplitButtonDropdown(
     id: str,
     placement: str = "bottom-start",
     aria_label: str = "",
+    caret_color: ButtonColor | None = None,
+    menu_width: str | None = None,
 ) -> Node:
-    """A split button: a leading ``primary`` action grouped with an outlined caret
-    that opens the menu. The Dropdown attaches to the caret only — ``primary`` is
-    a plain sibling, so the core never needs to know it exists."""
-    caret = _as_menu_trigger(
-        ControlButton([("class", "rounded-e-lg")], variant="outline")[
-            Icon("arrowdown")
-        ].as_element()
-    )
+    """A split button: a leading ``primary`` action grouped with a caret that opens
+    the menu. The Dropdown attaches to the caret only — ``primary`` is a plain
+    sibling, so the core never needs to know it exists.
+
+    ``caret_color`` defaults to an outline caret (bakes no rounding, so the seam
+    against an outline ``primary`` is clean). Pass a color to render a filled caret
+    matching a filled ``primary``; the filled variant bakes all-corner rounding, so
+    the caret zeroes its start corners (``rounded-s-none``) and the caller's primary
+    must zero its end corners for a clean seam. ``menu_width`` overrides the menu
+    panel width (default ``w-44``).
+
+    Both caret variants take ``focus:ring-inset`` so the focus ring is contained
+    inside the small caret box instead of bleeding across the seam into the
+    primary — the shared split-caret focus look."""
+    # The caret sits flush against the primary, so its focus ring is drawn inset
+    # (contained in the caret box) rather than as an outset halo over the seam.
+    caret_focus = "focus:ring-inset"
+    if caret_color is None:
+        caret_button = ControlButton(
+            [("class", f"rounded-e-lg {caret_focus}")], variant="outline"
+        )[Icon("arrowdown")]
+    else:
+        caret_button = ControlButton(
+            [
+                (
+                    "class",
+                    "rounded-e-lg rounded-s-none border-l border-l-white/30 "
+                    f"{caret_focus}",
+                )
+            ],
+            color=caret_color,
+        )[Icon("arrowdown")]
+    caret = _as_menu_trigger(caret_button.as_element())
     dropdown = Dropdown(
         trigger_element=caret,
-        target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
+        target_element=DropdownMenuPanel(
+            items=items, aria_label=aria_label, menu_width=menu_width
+        ),
         id=id,
         placement=placement,
     )

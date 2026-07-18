@@ -52,7 +52,6 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
     )
 
     data: TableData = {
-        "header_action": None,
         "columns": [
             Column("Game"),
             Column("Old Status"),

@@ -21,7 +21,6 @@ from common.components import (
     Icon,
     ModuleScript,
     QuickFilterBar,
-    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -105,9 +104,6 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
-        "header_action": ControlButton(href=reverse("games:add_playevent"))[
-            "Add play event"
-        ],
         "columns": filtered_column_list,
         "sort_terms": sort_terms,
         "rows": [make_row(*cells) for cells in filtered_row_list],

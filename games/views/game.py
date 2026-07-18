@@ -107,9 +107,6 @@ def list_games(request: HttpRequest) -> HttpResponse:
     games, page_obj, elided_page_range = paginate(games, find)
 
     data: TableData = {
-        "header_action": Div(
-            class_="flex justify-end",
-        )[ControlButton(href=reverse("games:add_game"))["Add game"],],
         "columns": [
             Column("Name", "name"),
             Column("Sort Name", "sort_name"),
