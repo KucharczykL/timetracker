@@ -94,8 +94,11 @@ def test_sessions_section_is_read_only(game, rendered):
     # No per-row edit/delete session actions
     assert reverse("games:edit_session", args=[session.pk]) not in rendered
     assert reverse("games:delete_session", args=[session.pk]) not in rendered
-    # No section-header resume button
-    assert "/session/add/from-list/" not in rendered
+    # No section-header resume button. Scope to the page body: the navbar's log
+    # dropdown legitimately carries per-game resume links (#419), which are
+    # chrome, not part of this read-only section.
+    body = rendered.split("</nav>", 1)[-1]
+    assert "/session/add/from-list/" not in body
     # Device shown as a plain column (the column header, not an incidental match)
     assert ">Device<" in rendered
 

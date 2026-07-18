@@ -10,7 +10,6 @@ from common.components import (
     ContentContainer,
     Icon,
     QuickFilterBar,
-    ControlButton,
     TableData,
     make_row,
     paginated_table_content,
@@ -55,9 +54,6 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms, page_obj, elided_page_range = paginate(platforms, find)
 
     data: TableData = {
-        "header_action": ControlButton(href=reverse("games:add_platform"))[
-            "Add platform"
-        ],
         "columns": [
             Column("Name", "name"),
             Column("Icon"),

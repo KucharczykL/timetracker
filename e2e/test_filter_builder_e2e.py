@@ -665,8 +665,11 @@ def test_scoped_aggregate_narrows_game_list(
     page.goto(
         f"{live_server.url}{reverse('games:list_games')}?filter={_encode_filter(filter_json)}"
     )
-    expect(page.get_by_text("DeckGame")).to_be_visible()
-    expect(page.get_by_text("DeskGame")).not_to_be_visible()
+    # Scope to the results table: the navbar log dropdown (#419) also lists recent
+    # games by name, so a bare page-level text match would be ambiguous.
+    table = page.locator("table")
+    expect(table.get_by_text("DeckGame")).to_be_visible()
+    expect(table.get_by_text("DeskGame")).not_to_be_visible()
 
 
 def test_cross_model_year_comparison_filters_sessions(

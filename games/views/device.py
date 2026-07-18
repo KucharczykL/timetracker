@@ -10,7 +10,6 @@ from common.components import (
     ContentContainer,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
-    ControlButton,
     QuickFilterBar,
     TableData,
     make_row,
@@ -55,7 +54,6 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     devices, page_obj, elided_page_range = paginate(devices, find)
 
     data: TableData = {
-        "header_action": ControlButton(href=reverse("games:add_device"))["Add device"],
         "columns": [
             Column("Name", "name"),
             Column("Type", "type"),

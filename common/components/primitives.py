@@ -1225,7 +1225,6 @@ class TableData(TypedDict):
     """Canonical table shape consumed by :func:`StyledTable` /
     :func:`paginated_table_content`. Every list view builds this."""
 
-    header_action: Child | None
     columns: list[Column]
     rows: Sequence[TableRowData]
     # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
@@ -1363,23 +1362,6 @@ def Icon(
         [("class", class_value), *preserved, *extra_attributes],
         children,
     )
-
-
-def TableHeader(
-    children: Children = None,
-) -> Element:
-    """Table caption."""
-    children = children or []
-    # Shares the thead's tertiary band (primary-soft, white in light, made
-    # the caption invisible against the page; a darker tier of its own read
-    # as undue emphasis for an action strip). A hairline divider plus the
-    # size/case contrast with the thead keeps the two tiers distinct.
-    return Caption(
-        class_=(
-            "p-2 text-lg font-semibold rtl:text-left text-right "
-            "text-heading bg-neutral-tertiary border-b border-default-strong"
-        ),
-    )[*as_children(children)]
 
 
 def _replace_query(
@@ -1592,7 +1574,6 @@ def PageSizeSelect(request, current: int) -> Node:
 def StyledTable(
     columns: list[Column] | None = None,
     rows: Sequence[TableRowData] | None = None,
-    header_action: Child | None = None,
     page_obj=None,
     elided_page_range=None,
     request=None,
@@ -1624,9 +1605,6 @@ def StyledTable(
                 )
 
     table_children: list[Node] = []
-    if header_action:
-        table_children.append(TableHeader()[header_action])
-
     header_row = Tr()[[_header_cell(column, sort_terms, request) for column in columns]]
     table_children.append(
         Thead(
@@ -1699,10 +1677,10 @@ def paginated_table_content(
 ) -> Node:
     """The list-page table: a StyledTable (+ pagination) built from ``data``.
 
-    `data` is the table dict with keys ``columns``, ``rows`` and
-    ``header_action`` (the same shape every list view already builds). The
-    page-width container is the caller's job — list views wrap this, together
-    with their filter tiers, in :func:`ContentContainer` (issue #313).
+    `data` is the table dict with keys ``columns`` and ``rows`` (the same shape
+    every list view already builds). The page-width container is the caller's
+    job — list views wrap this, together with their filter tiers, in
+    :func:`ContentContainer` (issue #313).
 
     Pass ``page_size`` (the resolved ``FindFilter.per_page``) to render the
     rows-per-page picker above the table.
@@ -1710,7 +1688,6 @@ def paginated_table_content(
     return StyledTable(
         columns=data["columns"],
         rows=data["rows"],
-        header_action=data["header_action"],
         page_obj=page_obj,
         elided_page_range=elided_page_range,
         request=request,

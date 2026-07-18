@@ -1522,21 +1522,6 @@ class StyledTableRenderingTest(unittest.TestCase):
         self.assertIn("GameB", tbody)
         self.assertEqual(tbody.count("<tr"), 2)
 
-    def test_simple_table_header_action_as_caption(self):
-        """Verify header_action renders inside <caption>."""
-        result = str(
-            str(
-                components.StyledTable(
-                    columns=[components.Column("Game"), components.Column("Started")],
-                    rows=[components.make_row("Game1", "2025-01-01")],
-                    header_action=components.Safe('<a href="/add">Add</a>'),
-                )
-            )
-        )
-        self.assertIn("<caption", result)
-        self.assertIn('href="/add"', result)
-        self.assertIn(">Add</", result)
-
     def test_simple_table_rows_with_attributes(self):
         """Verify make_row attributes (id, hx-*) land on the <tr>."""
         result = str(

@@ -184,11 +184,13 @@ def NameWithIcon(
     content = Div(class_="inline-flex gap-2 items-center")[
         Icon(
             resolved.badge.icon,
-            [("title", resolved.badge.title)],
+            [("title", resolved.badge.title), ("class", "shrink-0")],
         )
         if resolved.badge
         else "",
-        Icon("emulated", [("title", "Emulated")]) if resolved.emulated else "",
+        Icon("emulated", [("title", "Emulated"), ("class", "shrink-0")])
+        if resolved.emulated
+        else "",
         PopoverTruncated(resolved.name),
     ]
 
