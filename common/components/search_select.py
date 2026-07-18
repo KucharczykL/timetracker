@@ -218,7 +218,7 @@ _FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
 _FILTER_ACTION_BUTTON_CLASS = (
     "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body "
     "border border-brand "
-    "hover:bg-brand hover:text-white hover:border-brand-strong "
+    "hover:solid-brand hover:border-brand-strong "
     "group-data-[search-select-highlighted]:text-white "
     "group-data-[search-select-highlighted]:border-white "
     "group-data-[search-select-highlighted]:hover:bg-brand-strong "
@@ -226,8 +226,7 @@ _FILTER_ACTION_BUTTON_CLASS = (
 )
 _FILTER_MODIFIER_ROW_CLASS = (
     "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer "
-    "data-[search-select-highlighted]:bg-brand "
-    "data-[search-select-highlighted]:text-white"
+    "data-[search-select-highlighted]:solid-brand"
 )
 
 

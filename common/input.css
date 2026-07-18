@@ -43,6 +43,20 @@
         var(--color-brand) 15%,
         var(--color-neutral-primary)
     );
+
+    /* Foreground text color for each solid fill, chosen by APCA (white or
+     black, whichever contrasts more). White on every fill under the current
+     palette; a lighter fill would author black here (and, if the pick differed
+     by theme, a .dark override). Paired with the fill via the solid-* utilities
+     below. Guarded against drift by common/apca.py + tests/test_apca.py. */
+    --color-fg-on-brand: var(--color-white);
+    --color-fg-on-brand-strong: var(--color-white);
+    --color-fg-on-danger: var(--color-white);
+    --color-fg-on-danger-strong: var(--color-white);
+    --color-fg-on-success: var(--color-white);
+    --color-fg-on-success-strong: var(--color-white);
+    --color-fg-on-warning: var(--color-white);
+    --color-fg-on-warning-strong: var(--color-white);
 }
 
 /*
@@ -86,6 +100,44 @@
 @utility max-w-40char {
   max-width: 40ch;
 } */
+
+/* Solid fill + APCA-picked on-color, paired in one class so a component sets a
+   colored background and its readable text together (see common/apca.py).
+   Explicit per-fill (not a wildcard `fill-*`, which would shadow Tailwind's SVG
+   `fill-*` utility). Sets background + color only — keep border/ring classes
+   alongside `hover:solid-*`. */
+@utility solid-brand {
+    background-color: var(--color-brand);
+    color: var(--color-fg-on-brand);
+}
+@utility solid-brand-strong {
+    background-color: var(--color-brand-strong);
+    color: var(--color-fg-on-brand-strong);
+}
+@utility solid-danger {
+    background-color: var(--color-danger);
+    color: var(--color-fg-on-danger);
+}
+@utility solid-danger-strong {
+    background-color: var(--color-danger-strong);
+    color: var(--color-fg-on-danger-strong);
+}
+@utility solid-success {
+    background-color: var(--color-success);
+    color: var(--color-fg-on-success);
+}
+@utility solid-success-strong {
+    background-color: var(--color-success-strong);
+    color: var(--color-fg-on-success-strong);
+}
+@utility solid-warning {
+    background-color: var(--color-warning);
+    color: var(--color-fg-on-warning);
+}
+@utility solid-warning-strong {
+    background-color: var(--color-warning-strong);
+    color: var(--color-fg-on-warning-strong);
+}
 
 @layer utilities {
     @font-face {

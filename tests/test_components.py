@@ -237,7 +237,7 @@ class ComponentReturnTypeTest(unittest.TestCase):
 
     def test_button_default_colors(self):
         result = str(components.ControlButton()["click"])
-        self.assertIn("text-white bg-brand", result)
+        self.assertIn("solid-brand", result)
 
     def test_name_with_icon_no_link(self):
         result = str(components.NameWithIcon(name="Game", linkify=False))
@@ -814,7 +814,7 @@ class ControlButtonTest(SimpleTestCase):
         html = str(components.ControlButton()["Go"])
         self.assertTrue(html.startswith("<button"))
         self.assertIn('type="button"', html)
-        self.assertIn("text-white bg-brand", html)
+        self.assertIn("solid-brand", html)
         # container-query sizing token present; no fixed-size margins baked
         self.assertIn("@md:px-5", html)
         self.assertNotIn("mb-2", html)
@@ -826,7 +826,7 @@ class ControlButtonTest(SimpleTestCase):
         html = str(components.ControlButton(href="/games/add")["Add game"])
         self.assertTrue(html.startswith("<a "))
         self.assertIn('href="/games/add"', html)
-        self.assertIn("text-white bg-brand", html)
+        self.assertIn("solid-brand", html)
         # a link is not a button: no nested interactive element, no type attr
         self.assertNotIn("<button", html)
         self.assertNotIn("type=", html)

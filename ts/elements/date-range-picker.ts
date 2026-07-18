@@ -72,9 +72,9 @@ const DAY_BASE_CLASS =
   "text-heading cursor-pointer hover:bg-neutral-tertiary-medium";
 const DAY_ROUNDED_CLASS = "rounded-base";
 const DAY_OUTSIDE_MONTH_CLASS = "opacity-40";
-const DAY_SELECTED_CLASS = "bg-brand text-white hover:bg-brand-strong";
+const DAY_SELECTED_CLASS = "solid-brand hover:bg-brand-strong";
 const DAY_ANCHOR_CLASS =
-  "bg-brand text-white ring-2 ring-inset ring-brand-strong hover:bg-brand-strong";
+  "solid-brand ring-2 ring-inset ring-brand-strong hover:bg-brand-strong";
 // The three visual states of the date range track (the days between the
 // two endpoints): outlined while picking the second date, filled once both
 // are picked, muted when showing an already-committed range read-only.
