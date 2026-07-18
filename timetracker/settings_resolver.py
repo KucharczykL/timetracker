@@ -110,16 +110,14 @@ def _load_user_snapshot() -> dict[UserId, dict[str, object]]:
     snapshot: dict[UserId, dict[str, object]] = {}
     for row in UserPreferences.objects.values(*columns):
         user_id = row["user_id"]
-        # A typed column is authoritative for its key even when NULL, so drop any
-        # same-key entry the JSON bag might carry — the column, not the bag, decides
-        # set-vs-unset for mapped keys (keeps this reader in step with the model).
+        # The typed column is authoritative even when NULL, so drop any shadowing
+        # bag entry — the column, not the bag, decides set-vs-unset for mapped keys.
         stored: dict[str, object] = {
             key: value
             for key, value in (row.get("extra_preferences") or {}).items()
             if key not in USER_PREFERENCE_FIELD_BY_KEY
         }
-        # A set (non-NULL) typed column enters the map; a NULL one stays absent, so
-        # it falls through to the site/default layers.
+        # Non-NULL column → set; NULL → absent (falls through to site/default).
         for key, field in USER_PREFERENCE_FIELD_BY_KEY.items():
             value = row[field]
             if value is not None:
@@ -213,11 +211,10 @@ def resolve_for_user_with_origin(user: object, key: SettingKey) -> ResolvedSetti
     """Resolve ``key`` for ``user``: a personal override (source ``USER``) wins,
     else fall through to the shared chain (env → site DB → default).
 
-    For a non-USER key, or an anonymous/None user, this is exactly
-    :func:`resolve_with_origin`, so callers can use one entry point. A personal
-    override always reports ``locked=False`` (env-locking per-user prefs is
-    deferred, so it wins even over env); a fall-through result keeps the shared
-    chain's own ``locked`` (e.g. an env-pinned value with no override is locked).
+    A non-USER key or anonymous/None user is exactly :func:`resolve_with_origin`
+    (one entry point for all callers). A personal override reports ``locked=False``
+    (wins even over env — env-locking deferred); a fall-through keeps the shared
+    chain's ``locked``.
     """
     definition = get_definition(key)
     user_id = getattr(user, "pk", None)

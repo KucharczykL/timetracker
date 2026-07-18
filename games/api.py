@@ -566,12 +566,9 @@ settings_router = Router()
 class SettingOut(Schema):
     """One resolved setting for the settings panel.
 
-    ``value`` is ``str | int | None`` because a device id resolves to an int and
-    an unset pref resolves to None — a ``str``-only field would 500 on those.
-    ``locked`` reflects the resolver's origin: an env/`.env`/`.ini`-pinned value is
-    locked. The ``/user`` endpoint forces it ``False`` for every personal pref,
-    since a user can always set an override (env-locking per-user prefs is
-    deferred); the ``/site`` endpoint reports the resolver's value verbatim.
+    ``value`` is ``str | int | None`` (device id is an int, unset is None) — a
+    ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
+    value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
     """
 
     key: str
@@ -603,8 +600,8 @@ def _setting_out(key: SettingKey, resolved, *, locked: bool | None = None) -> di
 
 
 def _raise_400(error: Exception):
-    """Turn a validation/coercion error into a 400 with a clean message. A Django
-    ``ValidationError``'s ``str()`` is the repr of its message list, so unwrap it."""
+    """400 with a clean message. ``str()`` of a Django ``ValidationError`` is its
+    message-*list* repr, so unwrap via ``.messages``."""
     if isinstance(error, ValidationError):
         raise HttpError(400, " ".join(error.messages))
     raise HttpError(400, str(error))
@@ -612,13 +609,12 @@ def _raise_400(error: Exception):
 
 @settings_router.get("/user", response=list[SettingOut])
 def list_user_settings(request):
-    """The requesting user's personal preferences, resolved with origin.
+    """The requesting user's personal prefs, resolved with origin.
 
-    Scoped to ``request.user`` with no id parameter, so one user can never read
-    another's — cross-user access is structurally impossible. Every USER key
-    reports ``locked=False``: a user can always set a personal override (even for
-    an env-pinned key — env-locking per-user prefs is deferred), so the panel must
-    never present one as read-only, whatever layer the *effective* value comes from.
+    No id parameter — scoped to ``request.user``, so cross-user reads are
+    impossible. ``locked`` is forced ``False``: a user can always override a pref
+    (env-locking per-user prefs is deferred), so the panel never shows one as
+    read-only, whatever layer the effective value comes from.
     """
     return [
         _setting_out(key, resolve_for_user_with_origin(request.user, key), locked=False)
@@ -628,10 +624,10 @@ def list_user_settings(request):
 
 @settings_router.patch("/user/{key}", response={204: None})
 def update_user_setting(request, key: str, payload: SettingValueIn):
-    """Set (or clear, with ``value: null``) one of the user's personal prefs.
+    """Set (or clear, with ``value: null``) one of the user's prefs.
 
-    ``response={204: None}`` is required: without it Ninja has no schema for 204
-    and ``Status(204, None)`` raises ConfigError → 500.
+    ``response={204: None}`` is required — without it ``Status(204, None)`` raises
+    ConfigError → 500 (no schema for 204).
     """
     try:
         definition = get_definition(key)

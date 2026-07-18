@@ -553,10 +553,9 @@ class SiteSetting(models.Model):
         return f"{self.key} = {self.value!r}"
 
 
-#: Maps a USER-scoped setting key to the UserPreferences column that stores it.
-#: DEFAULT_DEVICE maps to the FK *attname* (``default_device_id``) so reads/writes
-#: use the JSON-serializable id, not a Device instance. Keys absent here live in
-#: the ``extra_preferences`` JSON bag.
+#: USER-scoped key → the UserPreferences column storing it. DEFAULT_DEVICE maps to
+#: the FK *attname* (``default_device_id``) so reads/writes use the serializable id,
+#: not a Device instance. Keys absent here live in the ``extra_preferences`` bag.
 USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
     "DEFAULT_CURRENCY": "default_currency",
     "DEFAULT_DEVICE": "default_device_id",
@@ -603,8 +602,8 @@ class UserPreferences(models.Model):
 
     @classmethod
     def get_for_user(cls, user) -> "UserPreferences":
-        """The user's preferences row, created on first access (write path only —
-        the resolver read path reads a snapshot and never calls this)."""
+        """The user's row, created on first access. Write path only — the resolver
+        reads a snapshot, never this."""
         preferences, _ = cls.objects.get_or_create(user=user)
         return preferences
 
