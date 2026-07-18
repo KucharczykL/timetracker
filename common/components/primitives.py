@@ -1370,10 +1370,14 @@ def TableHeader(
 ) -> Element:
     """Table caption."""
     children = children or []
+    # Shares the thead's tertiary band (primary-soft, white in light, made
+    # the caption invisible against the page; a darker tier of its own read
+    # as undue emphasis for an action strip). A hairline divider plus the
+    # size/case contrast with the thead keeps the two tiers distinct.
     return Caption(
         class_=(
             "p-2 text-lg font-semibold rtl:text-left text-right "
-            "text-heading bg-neutral-primary-soft"
+            "text-heading bg-neutral-tertiary border-b border-default-strong"
         ),
     )[*as_children(children)]
 
