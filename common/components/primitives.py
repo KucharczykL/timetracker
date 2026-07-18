@@ -1606,7 +1606,7 @@ def StyledTable(
     table_children.append(
         Thead(
             class_=(
-                "text-xs text-body-subtle uppercase bg-neutral-secondary-medium "
+                "text-xs text-body uppercase bg-neutral-secondary-medium "
                 "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
             ),
         )[header_row]

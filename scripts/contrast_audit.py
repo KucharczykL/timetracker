@@ -367,10 +367,10 @@ CASES = [
         4.5,
     ),
     (
-        "thead text (body-subtle gray-500 on gray-50)",
+        "thead text (body gray-600 on gray-50)",
         "light",
-        "gray-500",
-        col("gray-500"),
+        "gray-600",
+        col("gray-600"),
         "gray-50",
         col("gray-50"),
         4.5,
@@ -521,7 +521,7 @@ CASES = [
         4.5,
     ),
     (
-        "thead text (body-subtle gray-400 on gray-800)",
+        "thead text (body gray-400 on gray-800)",
         "dark",
         "gray-400",
         col("gray-400"),
