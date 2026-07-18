@@ -1606,7 +1606,7 @@ def StyledTable(
     table_children.append(
         Thead(
             class_=(
-                "text-xs text-body uppercase bg-neutral-secondary-medium "
+                "text-xs text-body uppercase bg-neutral-tertiary "
                 "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
             ),
         )[header_row]
@@ -1644,7 +1644,10 @@ def StyledTable(
             _pagination_nav(page_obj, elided_page_range, request, page_size=page_size)
         )
 
-    return Div(class_="shadow-md", hx_boost="false")[*inner_children]
+    # The radius matches the inner rounded-t/rounded-b corners: box-shadow
+    # follows this element's radius, so a square wrapper would bleed a square
+    # shadow corner past the rounded content (visible in light theme).
+    return Div(class_="shadow-md sm:rounded-lg", hx_boost="false")[*inner_children]
 
 
 def ContentContainer(attrs: "AttrsArg | None" = None, **kwargs: object) -> Element:
