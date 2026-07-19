@@ -758,7 +758,7 @@ def Radio(
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -817,8 +817,8 @@ def Pill(
 # counts/indicators. Shape + palette are fixed; only text size + padding vary so
 # it reads well from a heading count down to a one-character sort position.
 _BADGE_BASE_CLASS = (
-    "inline-flex items-center justify-center font-semibold leading-none "
-    "rounded-sm bg-brand-soft text-heading"
+    "font-condensed inline-flex items-center justify-center font-semibold "
+    "leading-none rounded-sm bg-brand-soft text-heading"
 )
 _BADGE_SIZE_CLASSES = {
     "sm": "text-xs px-1.5 py-0.5",
@@ -1612,7 +1612,8 @@ def StyledTable(
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
     tbody_class = (
-        "dark:divide-y max-sm:[&_td:not(:first-child):not(:last-child)]:hidden"
+        "font-condensed dark:divide-y "
+        "max-sm:[&_td:not(:first-child):not(:last-child)]:hidden"
     )
     align_rules = " ".join(
         f"[&_td:nth-child({index + 1})]:text-right"

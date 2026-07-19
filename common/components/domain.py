@@ -38,7 +38,7 @@ def GameLink(
     return Span(class_="truncate-container")[
         A(
             href=link,
-            class_="underline decoration-slate-500 sm:decoration-2",
+            class_="font-condensed underline decoration-slate-500 sm:decoration-2",
         )[*display],
     ]
 
@@ -143,7 +143,7 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     if link_content == "":
         raise ValueError("link_content is empty!!")
     truncation = truncate_info(link_content)
-    a_content = Div(class_="inline-flex gap-2 items-center")[
+    a_content = Div(class_="font-condensed inline-flex gap-2 items-center")[
         Icon(
             icon,
             [("title", "Multiple")],
@@ -181,7 +181,7 @@ def NameWithIcon(
 ) -> Node:
     resolved = _resolve_name_with_icon(name, game, session, linkify)
 
-    content = Div(class_="inline-flex gap-2 items-center")[
+    content = Div(class_="font-condensed inline-flex gap-2 items-center")[
         Icon(
             resolved.badge.icon,
             [("title", resolved.badge.title), ("class", "shrink-0")],
