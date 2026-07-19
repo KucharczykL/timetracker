@@ -130,9 +130,7 @@ def _year_nav(year, year_range, url_template) -> Node:
     year_int = year if isinstance(year, int) else None
     is_alltime = year_int is None
 
-    alltime_classes = (
-        "inline-flex items-center rounded-base px-4 py-2 mr-3 text-sm font-medium "
-    )
+    alltime_classes = "inline-flex items-center rounded-base px-4 py-2 mr-3 text-type-body font-medium "
     alltime_classes += (
         "solid-brand hover:bg-brand-strong"
         if is_alltime

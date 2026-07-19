@@ -210,11 +210,13 @@ See the full design rationale in
 | `text-type-dialog` | 24 | 500 | 1.5rem | dialog/modal titles |
 | `text-type-subheading` | 20 | 700 | 1.75rem | |
 | `text-type-section` | 18 | 600 | 1.75rem | reserved — no consumer yet (kept via `@source inline`) |
-| `text-type-body` | 14 | 400 | 1.25rem | default body / table cells |
+| `text-type-body` | 14 | 400† | 1.25rem | default body / table cells |
 | `text-type-label` | 14 | 500 | 1.25rem | form labels |
-| `text-type-micro` | 12 | 400 | 1rem | |
+| `text-type-micro` | 12 | 400† | 1rem | |
 | `text-type-micro-caps` | 12 | 500 | 1rem | uppercase, tracking +0.025em |
-| `text-type-input` | 16 | 400 | 1.5rem | all focusable text-entry controls |
+| `text-type-input` | 16 | 400† | 1.5rem | all focusable text-entry controls |
+
+† 400 = inherited default; these tokens emit no `font-weight` — compose `font-*` to override.
 
 ### Usage rule
 
