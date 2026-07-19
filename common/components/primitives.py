@@ -1333,9 +1333,11 @@ ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
 # scales with font size, no jump at a viewport width.
 ICON_SIZE_CLASS = "size-[1.15em]"
-# Tracks text-type-body's line-height (1.25rem, flat across all breakpoints)
-# so icon-only buttons stay exactly as tall as text ones.
-ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
+# Flat 1.25rem (20px) to match text-type-body's fixed line-height — buttons
+# no longer use container-scaled text, so the icon must also be flat (not
+# @md-responsive) to keep icon-only buttons the same height as text ones at
+# every breakpoint (#272).
+ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:

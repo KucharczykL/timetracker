@@ -81,4 +81,3 @@ ignore_missing_imports = true
  [tool.pytest.ini_options]
  DJANGO_SETTINGS_MODULE = "timetracker.settings"
  python_files = ["test_*.py"]
- testpaths = ["tests"]
