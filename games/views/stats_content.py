@@ -15,11 +15,11 @@ from common.components import (
     ContentContainer,
     Div,
     Fragment,
-    H1,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     Node,
+    PageHeading,
     Safe,
     Table,
     Tbody,
@@ -91,11 +91,6 @@ def _tr(cells: list) -> Node:
 def _kv(label, value) -> Node:
     """A label/value row: plain label cell + mono value cell."""
     return _tr([_td(label, _CELL), _td(value)])
-
-
-# TODO: remove and replace with the regular H1
-def _h1(title: str) -> Node:
-    return H1(class_="text-3xl text-heading text-center my-6")[title]
 
 
 def _table(rows: list, thead: Node | None = None) -> Node:
@@ -359,13 +354,13 @@ def stats_content(ctx: StatsData) -> Node:
     )
     sections: list = [
         _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
-        _h1("Playtime"),
+        PageHeading(["Playtime"]),
         _playtime_table(ctx),
     ]
 
     months = list(ctx.get("month_playtimes") or [])
     if months:
-        sections.append(_h1("Playtime per month"))
+        sections.append(PageHeading(["Playtime per month"]))
         month_rows = [
             _tr(
                 [
@@ -390,9 +385,9 @@ def stats_content(ctx: StatsData) -> Node:
         sections.append(_table(month_rows))
 
     sections += [
-        _h1("Purchases"),
+        PageHeading(["Purchases"]),
         _purchases_table(ctx),
-        _h1("Games by playtime"),
+        PageHeading(["Games by playtime"]),
         _two_col_table(
             "Name",
             ctx.get("top_10_games_by_playtime") or [],
@@ -404,7 +399,7 @@ def stats_content(ctx: StatsData) -> Node:
                 stats_links.games_played(year), sort="-filtered_playtime"
             ),
         ),
-        _h1("Platforms by playtime"),
+        PageHeading(["Platforms by playtime"]),
         _two_col_table(
             "Platform",
             ctx.get("total_playtime_per_platform") or [],
@@ -423,7 +418,7 @@ def stats_content(ctx: StatsData) -> Node:
     all_finished = list(ctx.get("all_finished_this_year") or [])
     if all_finished:
         sections += [
-            _h1("Finished"),
+            PageHeading(["Finished"]),
             _finished_table(
                 all_finished,
                 view_all_url=filter_url(
@@ -436,7 +431,7 @@ def stats_content(ctx: StatsData) -> Node:
     year_finished = list(ctx.get("this_year_finished_this_year") or [])
     if year_finished:
         sections += [
-            _h1(f"Finished ({year} games)"),
+            PageHeading([f"Finished ({year} games)"]),
             _finished_table(
                 year_finished,
                 view_all_url=filter_url(
@@ -449,7 +444,7 @@ def stats_content(ctx: StatsData) -> Node:
     bought_finished = list(ctx.get("purchased_this_year_finished_this_year") or [])
     if bought_finished:
         sections += [
-            _h1(f"Bought and Finished ({year})"),
+            PageHeading([f"Bought and Finished ({year})"]),
             _finished_table(
                 bought_finished,
                 view_all_url=filter_url(
@@ -461,7 +456,7 @@ def stats_content(ctx: StatsData) -> Node:
     unfinished = list(ctx.get("purchased_unfinished") or [])
     if unfinished:
         sections += [
-            _h1("Unfinished Purchases"),
+            PageHeading(["Unfinished Purchases"]),
             _priced_table(
                 unfinished,
                 currency,

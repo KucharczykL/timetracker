@@ -26,7 +26,7 @@ from common.components.custom_elements import (
     ButtonDropdown,
     DropdownLinkItem,
 )
-from common.components.primitives import H1, ContentContainer, Span
+from common.components.primitives import ContentContainer, PageHeading, Span
 from common.layout import render_page
 from common.time import format_duration
 from games.filters import SessionFilter, filter_url, model_field_registry
@@ -175,11 +175,13 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     )
 
     content = ContentContainer()[
-        H1()[
-            Span(class_="flex align-center gap-2")[
-                "Advanced filter builder for", model_switcher
+        PageHeading(
+            [
+                Span(class_="flex align-center gap-2")[
+                    "Advanced filter builder for", model_switcher
+                ]
             ]
-        ],
+        ),
         # The preset save/delete fetches send X-CSRFToken (filter-builder.ts reads the
         # csrftoken cookie, falling back to this hidden input). render_page/Page() do
         # NOT emit a CSRF token, so a standalone builder page would otherwise have

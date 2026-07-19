@@ -22,10 +22,10 @@ from common.components import (
     Column,
     ContentContainer,
     CsrfInput,
+    DialogTitle,
     Div,
     Form,
     FormFields,
-    H1,
     Fragment,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
@@ -434,9 +434,7 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
         ],
     ]
     return Modal("refund-confirmation-modal")[
-        H1(class_="text-2xl leading-6 font-medium dark:text-white text-center")[
-            "Confirm Refund"
-        ],
+        DialogTitle("Confirm Refund"),
         P(class_="dark:text-white text-center mt-5")[
             "Are you sure you want to mark this purchase as refunded?"
         ],
@@ -494,9 +492,7 @@ def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
         ],
     ]
     return Modal("split-confirmation-modal")[
-        H1(class_="text-2xl leading-6 font-medium dark:text-white text-center")[
-            "Split purchase"
-        ],
+        DialogTitle("Split purchase"),
         P(class_="dark:text-white text-center mt-5")[
             f"Split “{purchase.standardized_name}” into per-game purchases?"
         ],
