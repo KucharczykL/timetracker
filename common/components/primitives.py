@@ -845,9 +845,9 @@ _BADGE_BASE_CLASS = (
     "leading-none rounded-sm bg-brand-soft text-heading"
 )
 _BADGE_SIZE_CLASSES = {
-    "sm": "text-xs px-1.5 py-0.5",
-    "base": "text-sm px-2 py-0.5",
-    "lg": "text-2xl px-2.5 py-0.5",
+    "sm": "text-type-micro px-1.5 py-0.5",
+    "base": "text-type-body px-2 py-0.5",
+    "lg": "text-type-heading px-2.5 py-0.5",
 }
 
 
