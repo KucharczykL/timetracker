@@ -255,7 +255,7 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
-        self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS
+        self.assertIn("mb-2.5 text-type-label text-heading", html)  # _LABEL_CLASS
         self.assertIn("bg-neutral-secondary-medium", html)  # INPUT_CLASS surface
         self.assertNoEscapedTags(html)
 

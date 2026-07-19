@@ -94,12 +94,12 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 
 # The one micro-label spelling — filter facet labels and search-select group
 # headers. Weight is `font-medium`; callers add a colour token (`text-body`).
-MICRO_LABEL_CLASS = "text-xs font-medium uppercase tracking-wide"
+MICRO_LABEL_CLASS = "text-type-micro-caps uppercase"
 
 # The one dialog/confirm-page title spelling. Built on a raw `Element("h1")`
 # (not the `H1` builder) so the baked `text-3xl`/`mb-2` scale does not leak in —
 # accumulation can't down-scale a baked size.
-DIALOG_TITLE_CLASS = "text-2xl leading-6 font-medium text-heading text-center"
+DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
@@ -223,9 +223,9 @@ Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
 Optgroup = _html_element("optgroup")
-H1 = _html_element("h1", default_class="text-3xl font-bold mb-2")
-H2 = _html_element("h2", default_class="text-2xl font-bold mb-2")
-H3 = _html_element("h3", default_class="text-xl font-bold mb-2")
+H1 = _html_element("h1", default_class="text-type-title mb-2")
+H2 = _html_element("h2", default_class="text-type-heading mb-2")
+H3 = _html_element("h3", default_class="text-type-subheading mb-2")
 
 
 # The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
@@ -977,8 +977,8 @@ def YearPicker(
 # Form-field rendering. The element classes (label/error/checkbox-row + the
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
-_LABEL_CLASS = "mb-2.5 text-sm font-medium text-heading"
-_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-sm rounded-base"
+_LABEL_CLASS = "mb-2.5 text-type-label text-heading"
+_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
 # Checkbox + its label share a row (unlike block fields), justified apart.
 _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 
@@ -1084,7 +1084,7 @@ def PageHeading(
 ) -> Element:
     """Page heading (``<h1>``) with optional badge count."""
     children = children or []
-    heading_class = "mb-4 text-3xl font-bold leading-none tracking-tight text-heading"
+    heading_class = "mb-4 text-type-title leading-none text-heading"
     badge_html: Node | str = ""
 
     if badge:

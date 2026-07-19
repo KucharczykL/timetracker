@@ -22,3 +22,23 @@ def test_token_utility_is_generated(token):
     assert BASE_CSS.exists(), "run `make css` first"
     css = BASE_CSS.read_text()
     assert f".{token}" in css, f"{token} missing from base.css — is it used anywhere / defined in @theme?"
+
+
+from common.components import render
+from common.components.primitives import (
+    H1, H2, H3, DIALOG_TITLE_CLASS, MICRO_LABEL_CLASS,
+)
+
+
+def test_heading_builders_emit_tokens():
+    assert "text-type-title" in render(H1()["x"])
+    assert "text-type-heading" in render(H2()["x"])
+    assert "text-type-subheading" in render(H3()["x"])
+
+
+def test_named_constants_use_tokens():
+    assert DIALOG_TITLE_CLASS.split()[0] == "text-type-dialog"
+    assert MICRO_LABEL_CLASS.split()[0] == "text-type-micro-caps"
+    # size utility removed from both:
+    for raw in ("text-2xl", "text-xs"):
+        assert raw not in DIALOG_TITLE_CLASS and raw not in MICRO_LABEL_CLASS
