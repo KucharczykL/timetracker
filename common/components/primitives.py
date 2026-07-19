@@ -1297,7 +1297,9 @@ def get_icon_node(name: str) -> Element:
 # override for icons rendered inside buttons (bigger than the small inline
 # platform icons). Tune sizes here.
 ICON_BASE_CLASS = ""
-ICON_SIZE_CLASS = "w-2 h-2 lg:w-4 lg:h-4"
+# em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
+# scales with font size, no jump at a viewport width.
+ICON_SIZE_CLASS = "size-[1.15em]"
 # Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
 # → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
 ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
