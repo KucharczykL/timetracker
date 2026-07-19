@@ -372,9 +372,10 @@ def _view_purchase_content(purchase: Purchase) -> Node:
     if purchase.date_refunded:
         owned += f" (refunded {date_filter(purchase.date_refunded, 'd/m/Y')})"
 
-    row_class = "text-slate-500 text-xl"
+    row_class = "text-slate-500 text-type-body"
+    title_class = "text-type-title font-serif text-slate-500"
     inner = Div(class_="flex flex-col gap-5 mb-3")[
-        Div(class_="font-bold font-serif text-slate-500 text-2xl")[
+        Div(class_=title_class)[
             A(href=reverse("games:view_game", args=[first_game.id]))[first_game.name]
         ],
         Div(class_=row_class)[purchase.get_type_display()],
@@ -419,7 +420,7 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
         hx_swap="outerHTML",
     )[
         CsrfInput(request),
-        P(class_="dark:text-white text-center mt-3 text-sm")[
+        P(class_="dark:text-white text-center mt-3 text-type-body")[
             "Games will be marked as abandoned."
         ],
         Div(class_="flex flex-col gap-2 mt-5")[
@@ -475,7 +476,7 @@ def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
         hx_post=reverse("games:split_purchase", args=[purchase.id]),
     )[
         CsrfInput(request),
-        P(class_="dark:text-white text-center mt-3 text-sm")[
+        P(class_="dark:text-white text-center mt-3 text-type-body")[
             f"Creates {count} separate purchases, one per game, with the "
             "price split evenly. Each can then be priced and refunded "
             "independently."

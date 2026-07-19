@@ -342,7 +342,7 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:view_game", self.game.id).content.decode()
         for marker in [
             'id="game-info"',
-            "font-bold font-serif",
+            "text-type-title font-serif",
             self.game.name,
             "Total hours played",  # stat popover tooltip
             'id="popover-hours"',
@@ -555,7 +555,7 @@ class RenderedPagesTest(TestCase):
         for marker in [
             # ContentContainer bakes the width classes; caller class appends.
             "w-full max-w-7xl self-center dark:text-white",
-            "font-bold font-serif",
+            "text-type-title font-serif",
             "Owned on",
             "Price per game:",
             "decoration-dotted underline",

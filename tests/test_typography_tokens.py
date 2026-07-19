@@ -62,6 +62,7 @@ GUARDED = [
     REPO / "common" / "components",
     REPO / "common" / "layout.py",
     REPO / "games" / "forms.py",
+    REPO / "games" / "views",
 ]
 # Raw font-size utilities (with optional variant prefixes like sm: @md:) —
 # the type system owns size via text-type-*. font-* weights stay legal.

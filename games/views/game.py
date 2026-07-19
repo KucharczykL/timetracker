@@ -243,15 +243,15 @@ def _delete_game_confirmation_modal(
     )[
         CsrfInput(request),
         P(
-            class_="dark:text-white text-center mt-3 text-sm text-gray-600 "
+            class_="dark:text-white text-center mt-3 text-type-body text-gray-600 "
             "dark:text-gray-400",
         )["This will permanently delete this game and all associated data:"],
         Ul(
-            class_="dark:text-white text-center mt-1 text-sm text-gray-600 "
+            class_="dark:text-white text-center mt-1 text-type-body text-gray-600 "
             "dark:text-gray-400 list-disc list-inside",
         )[*data_items],
         P(
-            class_="dark:text-white text-center mt-3 text-sm font-medium "
+            class_="dark:text-white text-center mt-3 text-type-body font-medium "
             "text-red-600 dark:text-red-400",
         )["This action cannot be undone."],
         Div(class_="flex flex-col gap-2 mt-5")[
@@ -518,17 +518,17 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
 
 def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> Node:
     grey_value_class = "text-black dark:text-slate-300"
-    title_span = Span(class_="text-balance max-w-120 text-lg lg:text-4xl")[
+    title_span = Span(class_="text-balance max-w-120")[
         *(
             [
-                Span(class_="font-bold font-serif")[game.name],
+                Span(class_="text-type-title font-serif")[game.name],
             ]
             + (
                 [
                     Safe("&nbsp;"),
                     Popover(
                         popover_content="Original release year",
-                        wrapped_classes="text-slate-500 text-base lg:text-2xl",
+                        wrapped_classes="text-type-subheading text-slate-500",
                         id="popover-year",
                         children=[str(game.year_released)],
                     ),
@@ -538,7 +538,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
             )
         )
     ]
-    stats_row = Div(class_="flex gap-4 text-xs lg:text-lg dark:text-slate-400 mb-3")[
+    stats_row = Div(class_="flex gap-4 text-type-body dark:text-slate-400 mb-3")[
         _stat_popover(
             "popover-hours",
             "Total hours played",
@@ -565,7 +565,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
         ),
     ]
     metadata = Div(
-        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-xs lg:text-base",
+        class_="flex flex-col mb-6 text-gray-600 dark:text-slate-400 gap-y-4 text-type-body",
     )[
         _meta_row(
             "Original year",
@@ -573,11 +573,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
         ),
         _meta_row(
             "Status",
-            Span(class_="text-xs")[
-                GameStatusSelector(
-                    game, Game.Status.choices, get_token(request), class_="text-xs"
-                )
-            ],
+            Span()[GameStatusSelector(game, Game.Status.choices, get_token(request))],
             "👑" if game.mastered else "",
         ),
         _played_row(game, request),
