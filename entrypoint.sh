@@ -42,7 +42,7 @@ if [ "${LOAD_SAMPLE_DATA:-false}" = "true" ]; then
 from games.models import Game
 from django.core.management import call_command
 if not Game.objects.exists():
-    call_command('loaddata', 'sample.yaml')
+    call_command('loaddata', 'sample.yaml.gz')
     print('Loaded sample data.')
 "
 fi
