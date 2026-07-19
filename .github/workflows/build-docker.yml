@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -42,7 +44,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          lfs: true
+
       - name: Set Version
         run: echo "VERSION_NUMBER=1.7.0" >> $GITHUB_ENV
 
