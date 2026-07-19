@@ -129,9 +129,10 @@ Popover widths are a coherent 3-step scale: `w-44` menus / `w-72` list-dialogs (
 knob) / `w-auto` intrinsic (calendar). **Call: adopt.**
 
 Two real findings become follow-ups: **no horizontal page gutter** (below 1280px, content
-touches the viewport edge — add `px-4` at the shell, verifying full-bleed mobile tables stay
-intended) and the **dead `max-w-20char` class** (its `@utility` block is commented out; the
-stats name-column cap silently does nothing).
+touched the viewport edge — *resolved in #413*: `PAGE_GUTTER_CLASS = "px-4 sm:px-6"` on the
+shell `#main-container` and the navbar row; tables sit inside the gutter, no exemption) and
+the **dead `max-w-20char` class** (its `@utility` block is commented out; the stats
+name-column cap silently does nothing).
 
 ## 5. Rail / two-pane / responsive machinery — calls for #384
 
@@ -213,7 +214,7 @@ The scale itself (adopt):
 
 | Role | Value |
 |---|---|
-| De-facto base (controls, rows, body, labels) | `text-sm` (`text-base` is absent from components/layout/forms; the only uses are two decorative game-detail accents in `games/views/game.py`) |
+| De-facto base (controls, rows, body, labels) | `text-sm` (`text-base` is absent from components/layout/forms; the only uses are two decorative game-detail accents in `games/views/game.py`). **Exception — text-entry inputs**: `<input>`/`<select>`/`<textarea>` use `text-base sm:text-sm` so mobile renders 16px (below 16px, iOS Safari auto-zooms the field on focus and shoves the layout past the viewport — #427); the designed `text-sm` still renders at `sm+`. See the mobile-input rule below. |
 | Buttons | `text-xs @md:text-sm` (container-scaled) |
 | Form label | `text-sm font-medium text-heading` |
 | Page title | `text-3xl font-bold` — one component: `PageHeading` with `text-heading` (kills the raw-gray duplicate and stats `_h1`) |
@@ -225,6 +226,17 @@ The scale itself (adopt):
 | Dense list surfaces | `font-condensed` — names (`GameLink`/`NameWithIcon`/`LinkedPurchase`), list-table `tbody`, `Badge`/`Pill`; narrower than the default sans where space is tight and text is scannable |
 | Help text | **no precedent exists** — new role, defined by the kit in #384 (suggested `text-xs text-body`) |
 | Error text | gains `text-sm` (must not out-size its input) — rides the `_FIELD_ERROR_CLASS` normalize |
+
+**Mobile-input rule (#427):** any focusable text-entry control (`<input>`, `<select>`,
+`<textarea>`) must render **≥16px on mobile**, or iOS Safari auto-zooms it on focus and the
+page overflows the viewport. The three form constants (`INPUT_CLASS`, `SELECT_CLASS`,
+`TEXTAREA_CLASS` in `games/forms.py`) carry `text-base sm:text-sm` — 16px on phones, the
+designed `text-sm` at `sm+`. Every `PrimitiveWidgetsMixin` field inherits this, so **new form
+fields are immune by default**; a new bare input added outside the mixin must repeat the
+`text-base sm:text-sm` pair. Do **not** "fix" this by locking the viewport
+(`maximum-scale`/`user-scalable=no`) — that fails WCAG 1.4.4. The specialised `text-sm`
+inputs outside the mixin (filter number input, search-select box, DateRangePicker segments)
+are not yet converted (the mono date segments are width-sensitive) — tracked in #427.
 
 Leave alone: `font-serif` name accents, `font-alien` wordmark. **`--font-condensed`:
 originally called for deletion as dead vocabulary — reversed. Kept and given a real role
@@ -258,6 +270,7 @@ Spawned at synthesis; the epic depends on the *calls* above, not on these landin
 | [#410](https://github.com/KucharczykL/timetracker/issues/410) | input.css: replace the `border-color` compat shim with explicit border utilities (sweep) |
 | [#411](https://github.com/KucharczykL/timetracker/issues/411) | Radius normalization: segmented/pagination edges → `-base`, panels/toast/StyledTable shell → `-base`, Modal → `-base`, control strays, Badge → `rounded`; fix the stale Pill "byte-for-byte JS contract" comment (clone-from-template; also names nonexistent `search_select.js`) |
 | [#412](https://github.com/KucharczykL/timetracker/issues/412) | Spacing: strip `mb-3` from `INPUT_CLASS` (parents own spacing); textarea/YearPicker/FilterBuilder padding strays |
-| [#413](https://github.com/KucharczykL/timetracker/issues/413) | Page gutter `px-4` at the shell (verify full-bleed mobile tables stay intended) |
+| [#413](https://github.com/KucharczykL/timetracker/issues/413) | ✅ Done — `PAGE_GUTTER_CLASS = "px-4 sm:px-6"` on `#main-container` + navbar row; tables inside the gutter (16px mobile / 24px sm+), no full-bleed exemption |
 | [#414](https://github.com/KucharczykL/timetracker/issues/414) | Heading mechanism: drop unlayered `h1/h2/h3` rules, builders carry the scale; fix the four casualty sites; unify page title on `PageHeading`; one dialog-title and one micro-label spelling |
 | [#415](https://github.com/KucharczykL/timetracker/issues/415) | Ship IBM Plex Sans Medium/SemiBold/Bold. `--font-condensed`: delete-call reversed — kept and applied to dense list surfaces (names, table `tbody`, `Badge`/`Pill`) |
+| [#427](https://github.com/KucharczykL/timetracker/issues/427) | ✅ Partial (folded into #413 branch) — `INPUT/SELECT/TEXTAREA_CLASS` → `text-base sm:text-sm` so mobile inputs are 16px (no iOS focus-zoom). Remaining `text-sm` inputs outside the mixin (filter number, search-select, date-picker segments) deferred |

@@ -81,6 +81,12 @@ def filter_widget_attributes(
 # turn off flex `stretch` and the box would otherwise shrink to content width.
 CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
 
+# Horizontal page gutter: keeps content off the viewport edges below the
+# CONTENT_MAX_WIDTH_CLASS cap (everything is edge-to-edge under 1280px without
+# it). Applied at the shell (#main-container) and the navbar row so every page
+# inherits it in one place. `sm:px-6` widens the gutter on larger screens.
+PAGE_GUTTER_CLASS = "px-4 sm:px-6"
+
 # Narrower cap for form-shaped containers (add/edit forms, confirm pages,
 # modals). Forms read better constrained; the wide CONTENT_MAX_WIDTH_CLASS cap
 # is for page bodies, lists, and the navbar.
