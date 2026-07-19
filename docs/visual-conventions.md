@@ -223,8 +223,11 @@ See the full design rationale in
 **Use `text-type-*` for font size.** Compose color (`text-heading` / `text-body` /
 `text-body-subtle`) and weight (`font-*`) as separate utilities. Never write a raw
 `text-<size>` utility (e.g. `text-sm`, `text-xs`) in a component — the grep-guard test
-`tests/test_typography_tokens.py` enforces this. The wordmark is the one permitted exception,
-annotated `# type-ok`.
+`tests/test_typography_tokens.py` enforces this across `common/components/`, `common/layout.py`,
+`games/forms.py`, and `games/views/`. The wordmark (`font-alien`, viewport-scaled) is the one
+sanctioned exception, annotated `# type-ok: <reason>` on its line. Brand accents that keep a
+non-default family (the serif game-/purchase-detail names) compose `font-serif` alongside a
+size token — they are not exceptions.
 
 ### Notes
 
