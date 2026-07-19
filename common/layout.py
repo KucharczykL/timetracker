@@ -21,6 +21,7 @@ from django_htmx.jinja import django_htmx_script
 from common.components.core import Document, Safe
 from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
+    PAGE_GUTTER_CLASS,
     Body,
     Button,
     Div,
@@ -543,8 +544,8 @@ def Navbar(
     )
     return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
-            class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} flex flex-wrap items-center "
-            "gap-x-3 mx-auto"
+            class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
+            "flex flex-wrap items-center gap-x-3 mx-auto"
         )[brand, mobile_log, hamburger, menu]
     ]
 
@@ -670,7 +671,7 @@ def TimetrackerDocument(
                         navbar,
                         Div(
                             id="main-container",
-                            class_="flex flex-1 flex-col pt-8 pb-16",
+                            class_=f"flex flex-1 flex-col pt-8 pb-16 {PAGE_GUTTER_CLASS}",
                         )[content],
                     ],
                     version_footer_note,

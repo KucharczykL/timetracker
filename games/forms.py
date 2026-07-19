@@ -34,9 +34,13 @@ autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 # selector reaching in to style them. The disabled appearance is the shared
 # DISABLED_CONTROL_CLASS so every form element looks the same disabled.
 _DISABLED_CONTROL = DISABLED_CONTROL_CLASS
+# `text-base sm:text-sm`: 16px on mobile keeps iOS Safari from auto-zooming the
+# field on focus (it zooms any focused input under 16px, shoving the layout past
+# the viewport — #427); at `sm+` the designed `text-sm` (#403 base size) renders.
+# Every PrimitiveWidgetsMixin field inherits this, so new form fields are immune.
 INPUT_CLASS = (
     "mb-3 bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-sm rounded-base focus:ring-brand focus:border-brand block w-full "
+    "text-base sm:text-sm rounded-base focus:ring-brand focus:border-brand block w-full "
     f"px-3 py-2.5 shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 # No horizontal padding here: @tailwindcss/forms (base strategy) styles every
@@ -48,12 +52,12 @@ INPUT_CLASS = (
 # select). So set only vertical padding and let the plugin own the horizontal.
 SELECT_CLASS = (
     "w-full py-2.5 bg-neutral-secondary-medium border border-default-medium "
-    "text-heading text-sm rounded-base focus:ring-brand focus:border-brand "
+    "text-heading text-base sm:text-sm rounded-base focus:ring-brand focus:border-brand "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 TEXTAREA_CLASS = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 "
+    "text-base sm:text-sm rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 

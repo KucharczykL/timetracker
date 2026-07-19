@@ -156,6 +156,9 @@ class RenderedPagesTest(TestCase):
         ]:
             self.assertIn(marker, html)
         self.assertIn("Timetracker - Manage play events", html)
+        # The page shell carries the horizontal gutter (issue #413) so content
+        # stays off the viewport edges below the max-width cap.
+        self.assertRegex(html, r'id="main-container"[^>]*class="[^"]*\bpx-4\b')
 
     def test_head_scripts_are_not_escaped(self):
         """Inline <script> bodies in the head must render as real markup, not
@@ -510,6 +513,11 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertIn("Timetracker - Login", html)
         self.assertNoEscapedTags(html)
+        # Text-entry inputs render 16px on mobile (text-base) so iOS Safari does
+        # not auto-zoom on focus; the designed text-sm returns at sm+ (#427).
+        self.assertRegex(
+            html, r'name="username"[^>]*class="[^"]*\btext-base sm:text-sm\b'
+        )
 
     # --- stats ---------------------------------------------------------------
 
