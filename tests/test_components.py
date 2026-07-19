@@ -1899,10 +1899,10 @@ class BadgeTokenTest(SimpleTestCase):
     """Badge size scale uses typography tokens (Task 6)."""
 
     def test_badge_sizes_use_tokens(self):
-        assert "text-type-micro" in str(components.Badge("x", size="sm"))
-        assert "text-type-body" in str(components.Badge("x", size="base"))
-        assert "text-type-heading" in str(components.Badge("x", size="lg"))
-        assert "font-semibold" in str(components.Badge("x"))
+        self.assertIn("text-type-micro", str(components.Badge("x", size="sm")))
+        self.assertIn("text-type-body", str(components.Badge("x", size="base")))
+        self.assertIn("text-type-heading", str(components.Badge("x", size="lg")))
+        self.assertIn("font-semibold", str(components.Badge("x")))
 
 
 if __name__ == "__main__":
