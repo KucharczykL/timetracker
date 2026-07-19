@@ -257,7 +257,7 @@
     }
 
     .responsive-table thead th {
-        @apply text-left border-b-2 border-b-slate-500 text-xl;
+        @apply text-left border-b-2 border-b-slate-500;
     }
 
     .responsive-table thead th:not(:first-child),

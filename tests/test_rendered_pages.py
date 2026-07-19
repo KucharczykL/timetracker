@@ -545,6 +545,13 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<table"), html.count("</table>"))
 
+    def test_stats_table_uses_type_tokens(self):
+        html = self.get("games:stats_alltime").content.decode()
+        # Header cells must carry text-type-micro, body cells text-type-body.
+        # The assertion checks for presence on <th>/<td> elements specifically.
+        self.assertRegex(html, r'<th[^>]*\btext-type-micro\b[^>]*>')
+        self.assertRegex(html, r'<td[^>]*\btext-type-body\b[^>]*>')
+
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()
         for marker in [
