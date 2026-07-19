@@ -31,7 +31,7 @@
     --font-serif:
         IBM Plex Serif, ui-serif, Georgia, Cambria, "Times New Roman", Times,
         serif;
-    /* No current uses; kept as a ready-to-use option for future dense UI. */
+    /* Dense-UI font: Badge / dense list surfaces (names, tbody). */
     --font-condensed:
         IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif,
         "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
@@ -231,7 +231,7 @@
         font-style: normal;
     }
 
-    /* No current uses; kept as a ready-to-use option for future dense UI. */
+    /* Dense-UI font: Badge / dense list surfaces (names, tbody). */
     @font-face {
         font-family: "IBM Plex Sans Condensed";
         src: url("fonts/IBMPlexSansCondensed-Regular.woff2") format("woff2");

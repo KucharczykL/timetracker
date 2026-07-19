@@ -741,9 +741,9 @@ def Checkbox(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-2 text-type-body text-heading cursor-pointer")[
-        input_el, label
-    ]
+    return Label(
+        class_="flex items-center gap-2 text-type-body text-heading cursor-pointer"
+    )[input_el, label]
 
 
 def Radio(
@@ -772,9 +772,9 @@ def Radio(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-1 text-type-body text-heading cursor-pointer")[
-        input_el, label
-    ]
+    return Label(
+        class_="flex items-center gap-1 text-type-body text-heading cursor-pointer"
+    )[input_el, label]
 
 
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
@@ -978,7 +978,9 @@ def YearPicker(
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
 _LABEL_CLASS = "mb-2.5 text-type-label text-heading"
-_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
+_FIELD_ERROR_CLASS = (
+    "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
+)
 # Checkbox + its label share a row (unlike block fields), justified apart.
 _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 

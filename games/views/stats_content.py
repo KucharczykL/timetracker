@@ -36,7 +36,9 @@ from games.views.stats_data import StatsData
 
 _CELL = "px-2 sm:px-4 md:px-6 md:py-2 text-type-body"
 _CELL_MONO = f"{_CELL} font-mono"
-_NAME_TH = f"px-2 sm:px-4 md:px-6 md:py-2 text-type-micro purchase-name truncate max-w-20char"
+_NAME_TH = (
+    "px-2 sm:px-4 md:px-6 md:py-2 text-type-micro purchase-name truncate max-w-20char"
+)
 _FILTER_LINK_CLASS = "underline decoration-dotted hover:decoration-solid"
 
 

@@ -508,9 +508,9 @@ def Navbar(
         class_="flex items-center me-auto",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
-        Span(class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien")[  # type-ok: wordmark brand scale
-            "TIMETRACKER"
-        ],
+        Span(
+            class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
+        )["TIMETRACKER"],
     ]
     hamburger = Button(
         data_collapse_toggle="navbar-dropdown",

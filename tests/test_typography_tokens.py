@@ -1,15 +1,31 @@
 """Guards for the typography token system (docs/superpowers/specs/2026-07-19-typography-token-system-design.md)."""
+
 import re
 from pathlib import Path
 
 import pytest
 
+from common.components import render
+from common.components.primitives import (
+    H1,
+    H2,
+    H3,
+    DIALOG_TITLE_CLASS,
+    MICRO_LABEL_CLASS,
+)
+
 BASE_CSS = Path(__file__).resolve().parent.parent / "games" / "static" / "base.css"
 
 TOKENS = [
-    "text-type-title", "text-type-heading", "text-type-dialog",
-    "text-type-subheading", "text-type-section", "text-type-body",
-    "text-type-label", "text-type-micro", "text-type-micro-caps",
+    "text-type-title",
+    "text-type-heading",
+    "text-type-dialog",
+    "text-type-subheading",
+    "text-type-section",
+    "text-type-body",
+    "text-type-label",
+    "text-type-micro",
+    "text-type-micro-caps",
     "text-type-input",
 ]
 
@@ -22,13 +38,9 @@ def test_token_utility_is_generated(token):
     """
     assert BASE_CSS.exists(), "run `make css` first"
     css = BASE_CSS.read_text()
-    assert f".{token}" in css, f"{token} missing from base.css — is it used anywhere / defined in @theme?"
-
-
-from common.components import render
-from common.components.primitives import (
-    H1, H2, H3, DIALOG_TITLE_CLASS, MICRO_LABEL_CLASS,
-)
+    assert f".{token}" in css, (
+        f"{token} missing from base.css — is it used anywhere / defined in @theme?"
+    )
 
 
 def test_heading_builders_emit_tokens():
@@ -54,7 +66,7 @@ GUARDED = [
 # Raw font-size utilities (with optional variant prefixes like sm: @md:) —
 # the type system owns size via text-type-*. font-* weights stay legal.
 RAW_SIZE = re.compile(
-    r'(?<![\w-])(?:[a-z@\[\]:.-]+:)?text-(?:xs|sm|base|lg|xl|\dxl|\[[^\]]+\])(?![\w-])'
+    r"(?<![\w-])(?:[a-z@\[\]:.-]+:)?text-(?:xs|sm|base|lg|xl|\dxl|\[[^\]]+\])(?![\w-])"
 )
 
 
@@ -74,4 +86,7 @@ def test_no_raw_size_utilities_in_components():
                 continue
             if RAW_SIZE.search(line):
                 offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
-    assert not offenders, "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n" + "\n".join(offenders)
+    assert not offenders, (
+        "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n"
+        + "\n".join(offenders)
+    )

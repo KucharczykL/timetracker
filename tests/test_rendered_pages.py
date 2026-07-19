@@ -515,9 +515,7 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(html)
         # text-type-input owns the flat 16px size token (stops iOS Safari
         # auto-zoom on focus, #427) — no responsive pair needed.
-        self.assertRegex(
-            html, r'name="username"[^>]*class="[^"]*\btext-type-input\b'
-        )
+        self.assertRegex(html, r'name="username"[^>]*class="[^"]*\btext-type-input\b')
 
     # --- stats ---------------------------------------------------------------
 
@@ -549,8 +547,8 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:stats_alltime").content.decode()
         # Header cells must carry text-type-micro, body cells text-type-body.
         # The assertion checks for presence on <th>/<td> elements specifically.
-        self.assertRegex(html, r'<th[^>]*\btext-type-micro\b[^>]*>')
-        self.assertRegex(html, r'<td[^>]*\btext-type-body\b[^>]*>')
+        self.assertRegex(html, r"<th[^>]*\btext-type-micro\b[^>]*>")
+        self.assertRegex(html, r"<td[^>]*\btext-type-body\b[^>]*>")
 
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()
