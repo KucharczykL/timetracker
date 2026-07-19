@@ -18,29 +18,33 @@ What #426 did **not** do: introduce a semantic layer. The canonical treatments s
 ## Decisions (locked during brainstorming)
 
 1. **Mechanism:** semantic `@theme` `--text-type-<role>` tokens (Tailwind v4), bundling size + weight + line-height + tracking via token modifiers. Components reference `text-type-<role>` utilities for size, never raw `text-<size>`.
-2. **Consolidation:** aggressive — collapse ~15 treatments to **8 role tokens**; near-duplicates snap to the nearest role, accepting minor intentional visual shifts.
+2. **Consolidation:** aggressive — collapse ~15 treatments to **10 role tokens** (dialog and H3 kept distinct per review); near-duplicates snap to the nearest role, accepting minor intentional visual shifts.
 3. **Inputs:** flat **16px everywhere** (`text-type-input`) — no responsive exception. Removes iOS focus-zoom (#427) *and* the responsive special case. Desktop inputs go 14→16px (deliberate, visible).
 4. **Buttons:** de-special-cased — drop the container-query text scaling (`text-xs @md:text-sm`); buttons use `text-type-body` for size + keep composed `font-medium`. (Button *padding* container-query is a spacing concern, out of scope.)
 5. **24px pair collapsed:** `H2` headings and dialog titles share one 24px token (`text-type-heading`); dialog adds `text-center` as a plain utility.
 6. **Naming:** all role tokens prefixed `text-type-*` to avoid the `text-heading`/`text-body` color-utility collision (see token set).
 7. **Rollout:** one branch / one PR, **atomic commit per phase** (P0→P3).
 
-## The token set (8 roles)
+## The token set (10 roles)
 
 **Naming — all roles are prefixed `text-type-*`.** This is not cosmetic: Flowbite's theme defines `--color-heading`/`--color-body`, and Tailwind resolves a bare `text-heading`/`text-body` to **color** when both a `--color-*` and `--text-*` token share the name — silently dropping the font-size (verified empirically against the repo's Tailwind v4.1.18; no build error). The codebase has ~94 uses of `text-heading`/`text-body` as color utilities (incl. inside `_LABEL_CLASS`, `DIALOG_TITLE_CLASS`, and `INPUT_CLASS`'s `placeholder:text-body`). Prefixing every role with `type-` sidesteps the collision entirely and makes the P3 grep-guard trivial (require `text-type-*`, ban bare `text-<size>`).
 
-Defined in `common/input.css` `@theme`:
+Defined in `common/input.css` `@theme`. **10 roles** (dialog kept separate from H2; H3 kept distinct — see resolved decisions):
 
 | Token | Size / weight / leading | Absorbs (current → token) |
 |---|---|---|
 | `text-type-title` | 30px / 700 / tight, tracking-tight | `PageHeading`, `H1` default |
-| `text-type-heading` | 24px / 700 | `H2` default **and** dialog titles (`DIALOG_TITLE_CLASS`; dialog adds `text-center`) |
-| `text-type-section` | 18px / 600 | `H3` (20→18), block/section headings (the `TableHeader` caption precedent) |
+| `text-type-heading` | 24px / 700 | `H2` default |
+| `text-type-dialog` | 24px / 500 | dialog/modal titles (`DIALOG_TITLE_CLASS`; adds `text-center`) — keeps #426's medium weight |
+| `text-type-subheading` | 20px / 700 | `H3` default |
+| `text-type-section` | 18px / 600 | block/section headings (the `TableHeader` caption precedent) |
 | `text-type-body` | 14px / 400 | all `text-sm`: controls, table body, rows, error text, **buttons** (size only — see button-weight note) |
 | `text-type-label` | 14px / 500 | `_LABEL_CLASS` (form labels) |
 | `text-type-micro` | 12px / 400 | meta, footer, table `thead`, help-text (new role) |
 | `text-type-micro-caps` | 12px / 500 / uppercase, tracking-wide | `MICRO_LABEL_CLASS` |
 | `text-type-input` | 16px / 400 | `INPUT_CLASS` / `SELECT_CLASS` / `TEXTAREA_CLASS` (flat 16) |
+
+**Badge** folds into these for **size** — sm→`text-type-micro` (12), base→`text-type-body` (14), lg→`text-type-heading` (24) — and keeps its composed `font-semibold`. No Badge-local scale, no `# type-ok` marker needed.
 
 **Tokens own size + weight + leading + tracking only — never color.** Color stays on the existing `text-heading`/`text-body`/`text-body-subtle` color utilities, composed alongside the type token (e.g. a label is `text-type-label text-heading`). The two namespaces coexist precisely because the type roles are prefixed.
 
@@ -74,9 +78,9 @@ Defined in `common/input.css` `@theme`:
 ## Migration — one PR, atomic commits
 
 ### P0 — token layer (no visual change except intended)
-- Add the 8 `text-type-*` `@theme` tokens to `common/input.css`.
-- Point existing #426 anchors at tokens: `H1`→`text-type-title`, `H2`→`text-type-heading`, `H3`→`text-type-section`, `PageHeading`→`text-type-title`, `DIALOG_TITLE_CLASS`→`text-type-heading text-center`, `MICRO_LABEL_CLASS`→`text-type-micro-caps`, `_LABEL_CLASS`→`text-type-label` (keeps its `text-heading` color), `_FIELD_ERROR_CLASS`→`text-type-body`.
-- **Intended P0 shifts to record before review** (not "no visual change" — these are deliberate): H3 size 20→18 **and** weight 700→600; `PageHeading` leading-none vs H1's default 2.25rem leading (one shifts — pick and bake into the token); `DIALOG_TITLE_CLASS` leading-6 (~1.0) → the token's 2rem leading, so multi-line dialog titles get taller; dialog weight 500→700 (the 24px collapse — **← confirm, see risks**).
+- Add the 10 `text-type-*` `@theme` tokens to `common/input.css`.
+- Point existing #426 anchors at tokens: `H1`→`text-type-title`, `H2`→`text-type-heading`, `H3`→`text-type-subheading`, `PageHeading`→`text-type-title`, `DIALOG_TITLE_CLASS`→`text-type-dialog text-center`, `MICRO_LABEL_CLASS`→`text-type-micro-caps`, `_LABEL_CLASS`→`text-type-label` (keeps its `text-heading` color), `_FIELD_ERROR_CLASS`→`text-type-body`.
+- **Intended P0 shifts to record before review** (deliberate, small): `PageHeading` leading-none vs H1's default 2.25rem leading (one shifts — pick and bake into `text-type-title`); `DIALOG_TITLE_CLASS` leading-6 (~1.0) → `text-type-dialog`'s leading (bake leading-6 into the token to avoid taller multi-line dialog titles). H3 and dialog **weights/sizes are preserved** (kept as distinct tokens), so no shift there.
 - **Update the 1 test pin P0 breaks:** `tests/test_rendered_pages.py:255` pins the full `_LABEL_CLASS` string.
 - Rebuild CSS. Snapshot/measure key pages to confirm only the listed shifts.
 
@@ -114,18 +118,16 @@ Each phase is independently reviewable and leaves the app green.
 
 - **Namespace collision (resolved by design):** `text-heading`/`text-body` are color utilities; the `text-type-*` prefix avoids it. A tempting "fix" that makes a size token win the bare name would turn `placeholder:text-body` into a placeholder font-size and lose its gray — do not un-prefix.
 - **Desktop input size change (14→16px)** — the most visible shift. Intended; confirm on a dense form that 14px labels next to 16px inputs read fine. Common and usually fine.
-- **Dialog weight 500→700** from the 24px collapse reverses #426's deliberate DialogTitle medium. If bold modal titles look heavy, dial `text-type-heading` to 600 (affects H2 too) or un-collapse. **← confirm in review.**
 - **Button size 12→14 in compact contexts:** removing the CQ text scaling makes table/segmented-group buttons render 14px text while their CQ *padding* stays compact — dense tables get visibly larger button text in unchanged padding. Eyeball a dense list.
-- **H3 20→18 + 700→600** — verify no H3 site relied on the larger/bolder size.
 - **P1 ↔ #427 sequencing:** `text-type-input` replaces the `text-base sm:text-sm` now on `main`; rebase this branch on `main` first so P1 edits the merged interim, not the pre-#427 `text-sm`.
 - **Grep-guard tuning:** size-only + `# type-ok` allowlist keeps it from flagging legitimate weight-only emphasis (wordmark, Badge, serif accents, filter chips, stats numbers).
 
-## Open items for spec review
+## Resolved decisions (review complete)
 
-1. **Dialog/H2 weight:** shared `text-type-heading` at **700** (proposed) vs 600 vs un-collapsing to keep dialog at 500 (two 24px tokens).
-2. `text-type-section` swallowing H3 (20→18, 700→600) — acceptable, or keep a distinct 20px token?
-3. **Badge:** its scale is `text-xs`/`text-sm`/`text-2xl` (no arbitrary `text-[0.7rem]` — that was a stale #403 note). Fold into tokens, or leave as a Badge-local scale behind a `# type-ok` marker?
-4. Stale comment: `input.css` still says `--font-condensed` has "no current uses" — Badge/dense surfaces now use it; fix while in the file.
+1. **Dialog vs H2:** kept as two distinct 24px tokens — `text-type-heading` (700, H2) and `text-type-dialog` (500, modal titles). Preserves #426's medium dialog weight. No collapse.
+2. **H3:** kept distinct as `text-type-subheading` (20/700). No shrink to section. `text-type-section` (18/600) is for block/section headings only.
+3. **Badge:** folds into type tokens for size (sm→micro, base→body, lg→heading), keeps composed `font-semibold`. No Badge-local scale.
+4. **Stale comment:** fix `input.css`'s `--font-condensed` "no current uses" note (Badge/dense surfaces use it) while in the file.
 
 ## Issue coordination
 
