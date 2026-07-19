@@ -194,54 +194,57 @@ Calls from #402:
   **`.responsive-table` is a dead end** (third color generation, styling-at-a-distance,
   one consumer): migrate the stats tables to `StyledTable` and delete the CSS block.
 
-## 7. Type scale — adopt the values, normalize the mechanisms
+## 7. Type scale — canonical token reference
 
-Two structural findings (#403) gate everything:
+The type scale is defined by ten `text-type-*` Tailwind utilities whose size, weight,
+line-height (and where applicable letter-spacing) are pinned in `common/input.css` `@theme`.
+See the full design rationale in
+[`docs/superpowers/specs/2026-07-19-typography-token-system-design.md`](superpowers/specs/2026-07-19-typography-token-system-design.md).
 
-1. **Shipped fonts are Regular-only** (IBM Plex Sans/Mono/Condensed; Serif also has Bold) —
-   `font-medium` is visually inert, `font-semibold`/`bold`/`extrabold` render as
-   browser-synthesized faux-bold. The declared four-step weight scale renders as two.
-   **Call: ship `IBMPlexSans-Medium/SemiBold/Bold.woff2`** (+ `@font-face` entries) so the
-   source scale becomes real.
-2. **Unlayered `h1/h2/h3` element rules** in `input.css` beat all utility layers — size,
-   weight, and `mb-*` utilities on headings are silently inert (four shipped sites render
-   something other than their class list). **Call: drop the element rules; the `H1`/`H2`/`H3`
-   builders carry the scale** (`text-3xl`/`text-2xl`/`text-xl` + `font-bold mb-2`) as
-   default classes callers override normally — per the components-own-their-classes
-   convention. Every bare-heading site gets checked in the migration.
+### Token table
 
-The scale itself (adopt):
+| Token | px | Weight | Line-height | Notes |
+|---|---|---|---|---|
+| `text-type-title` | 30 | 700 | 2.25rem | tracking −0.025em |
+| `text-type-heading` | 24 | 700 | 2rem | |
+| `text-type-dialog` | 24 | 500 | 1.5rem | dialog/modal titles |
+| `text-type-subheading` | 20 | 700 | 1.75rem | |
+| `text-type-section` | 18 | 600 | 1.75rem | reserved — no consumer yet (kept via `@source inline`) |
+| `text-type-body` | 14 | 400† | 1.25rem | default body / table cells |
+| `text-type-label` | 14 | 500 | 1.25rem | form labels |
+| `text-type-micro` | 12 | 400† | 1rem | |
+| `text-type-micro-caps` | 12 | 500 | 1rem | uppercase, tracking +0.025em |
+| `text-type-input` | 16 | 400† | 1.5rem | all focusable text-entry controls |
 
-| Role | Value |
-|---|---|
-| De-facto base (controls, rows, body, labels) | `text-sm` (`text-base` is absent from components/layout/forms; the only uses are two decorative game-detail accents in `games/views/game.py`). **Exception — text-entry inputs**: `<input>`/`<select>`/`<textarea>` use `text-base sm:text-sm` so mobile renders 16px (below 16px, iOS Safari auto-zooms the field on focus and shoves the layout past the viewport — #427); the designed `text-sm` still renders at `sm+`. See the mobile-input rule below. |
-| Buttons | `text-xs @md:text-sm` (container-scaled) |
-| Form label | `text-sm font-medium text-heading` |
-| Page title | `text-3xl font-bold` — one component: `PageHeading` with `text-heading` (kills the raw-gray duplicate and stats `_h1`) |
-| Section heading | `text-lg font-semibold` (the `TableHeader` caption precedent) |
-| Dialog title | one spelling: `text-2xl font-medium text-heading` (today one class string on two element kinds, neither rendering as written — `<h1>` titles get overridden to 3xl bold by the heading rule, `<p>` titles render 2xl regular for lack of a 500 face) |
-| Micro-label | one string: `text-xs font-medium uppercase tracking-wide` (today: two weights) |
-| Table typography | StyledTable's `text-sm` body / `text-xs uppercase` head; `.responsive-table`'s `text-xl`/16px goes with its migration |
-| Tabular figures | `font-mono` (stats values, date-picker field) — right tool for settings values/IDs. Note: default sans/condensed digits are already tabular (Plex ships no proportional-figure feature), so `font-mono` is a style choice, not what buys column alignment |
-| Dense list surfaces | `font-condensed` — names (`GameLink`/`NameWithIcon`/`LinkedPurchase`), list-table `tbody`, `Badge`/`Pill`; narrower than the default sans where space is tight and text is scannable |
-| Help text | **no precedent exists** — new role, defined by the kit in #384 (suggested `text-xs text-body`) |
-| Error text | gains `text-sm` (must not out-size its input) — rides the `_FIELD_ERROR_CLASS` normalize |
+† 400 = inherited default; these tokens emit no `font-weight` — compose `font-*` to override.
 
-**Mobile-input rule (#427):** any focusable text-entry control (`<input>`, `<select>`,
-`<textarea>`) must render **≥16px on mobile**, or iOS Safari auto-zooms it on focus and the
-page overflows the viewport. The three form constants (`INPUT_CLASS`, `SELECT_CLASS`,
-`TEXTAREA_CLASS` in `games/forms.py`) carry `text-base sm:text-sm` — 16px on phones, the
-designed `text-sm` at `sm+`. Every `PrimitiveWidgetsMixin` field inherits this, so **new form
-fields are immune by default**; a new bare input added outside the mixin must repeat the
-`text-base sm:text-sm` pair. Do **not** "fix" this by locking the viewport
-(`maximum-scale`/`user-scalable=no`) — that fails WCAG 1.4.4. The specialised `text-sm`
-inputs outside the mixin (filter number input, search-select box, DateRangePicker segments)
-are not yet converted (the mono date segments are width-sensitive) — tracked in #427.
+### Usage rule
 
-Leave alone: `font-serif` name accents, `font-alien` wordmark. **`--font-condensed`:
-originally called for deletion as dead vocabulary — reversed. Kept and given a real role
-(dense list surfaces, above) so it is no longer declared-but-unused.** Nit: Badge sm's
-`text-[0.7rem]` → `text-xs` when convenient.
+**Use `text-type-*` for font size.** Compose color (`text-heading` / `text-body` /
+`text-body-subtle`) and weight (`font-*`) as separate utilities. Never write a raw
+`text-<size>` utility (e.g. `text-sm`, `text-xs`) in a component — the grep-guard test
+`tests/test_typography_tokens.py` enforces this. The wordmark is the one permitted exception,
+annotated `# type-ok`.
+
+### Notes
+
+- **Inputs are flat 16px (`text-type-input`).** All focusable text-entry controls
+  (`<input>`, `<select>`, `<textarea>`) use `text-type-input` so mobile renders 16px — below
+  16px, iOS Safari auto-zooms the field on focus and overflows the viewport (#427). Every
+  `PrimitiveWidgetsMixin` field inherits this; a bare input outside the mixin must also use
+  `text-type-input`. Do **not** work around this by locking the viewport
+  (`maximum-scale` / `user-scalable=no`) — that fails WCAG 1.4.4.
+- **`text-type-section` is reserved vocabulary** for the upcoming settings kit / #384. No
+  real section-heading consumer exists yet; the token is kept in the emitted CSS via
+  `@source inline("text-type-section")` in `common/input.css`. Remove that line once a real
+  consumer lands.
+- **`font-condensed`** (`IBM Plex Sans Condensed`) is the dense-UI font family used by
+  Badge and dense list surfaces (names, `tbody`). It is separate from the `text-type-*` size
+  tokens; apply it alongside the appropriate size token where space is tight and text is
+  scannable.
+- Leave alone: `font-serif` name accents, `font-alien` wordmark.
+- `font-mono` for tabular figures (stats values, date-picker field) is a style choice, not a
+  column-alignment mechanism — Plex sans/condensed digits are already tabular.
 
 ## Kit vocabulary summary (for #384)
 

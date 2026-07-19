@@ -14,6 +14,12 @@
    td variants up to 12 columns (the widest table has 8). */
 @source inline("[&_td:nth-child({1,2,3,4,5,6,7,8,9,10,11,12})]:text-right");
 
+/* text-type-section is reserved vocabulary for the upcoming settings kit / #384.
+   No real section-heading consumer exists yet, so Tailwind won't emit it from
+   source scanning alone. The other 9 tokens have real usages and don't need
+   safelisting. Remove this line once a real consumer lands. */
+@source inline("text-type-section");
+
 @theme {
     --font-sans:
         IBM Plex Sans, ui-sans-serif, system-ui, sans-serif,
@@ -25,7 +31,7 @@
     --font-serif:
         IBM Plex Serif, ui-serif, Georgia, Cambria, "Times New Roman", Times,
         serif;
-    /* No current uses; kept as a ready-to-use option for future dense UI. */
+    /* Dense-UI font: Badge / dense list surfaces (names, tbody). */
     --font-condensed:
         IBM Plex Sans Condensed, ui-sans-serif, system-ui, sans-serif,
         "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
@@ -58,6 +64,41 @@
     --color-fg-on-success-strong: var(--color-white);
     --color-fg-on-warning: var(--color-white);
     --color-fg-on-warning-strong: var(--color-white);
+
+    /* Typography roles — single source of truth for size/weight/leading.
+       Prefixed text-type-* to avoid the text-heading/text-body COLOR
+       utilities (Flowbite --color-*); a same-named --text-* token would
+       resolve to color and drop the size. Tokens own size/weight/leading/
+       tracking only; color + font-* emphasis stay composed. */
+    --text-type-title: 1.875rem;
+    --text-type-title--line-height: 2.25rem;
+    --text-type-title--font-weight: 700;
+    --text-type-title--letter-spacing: -0.025em;
+    --text-type-heading: 1.5rem;
+    --text-type-heading--line-height: 2rem;
+    --text-type-heading--font-weight: 700;
+    --text-type-dialog: 1.5rem;
+    --text-type-dialog--line-height: 1.5rem;
+    --text-type-dialog--font-weight: 500;
+    --text-type-subheading: 1.25rem;
+    --text-type-subheading--line-height: 1.75rem;
+    --text-type-subheading--font-weight: 700;
+    --text-type-section: 1.125rem;
+    --text-type-section--line-height: 1.75rem;
+    --text-type-section--font-weight: 600;
+    --text-type-body: 0.875rem;
+    --text-type-body--line-height: 1.25rem;
+    --text-type-label: 0.875rem;
+    --text-type-label--line-height: 1.25rem;
+    --text-type-label--font-weight: 500;
+    --text-type-micro: 0.75rem;
+    --text-type-micro--line-height: 1rem;
+    --text-type-micro-caps: 0.75rem;
+    --text-type-micro-caps--line-height: 1rem;
+    --text-type-micro-caps--font-weight: 500;
+    --text-type-micro-caps--letter-spacing: 0.025em;
+    --text-type-input: 1rem;
+    --text-type-input--line-height: 1.5rem;
 }
 
 /*
@@ -190,7 +231,7 @@
         font-style: normal;
     }
 
-    /* No current uses; kept as a ready-to-use option for future dense UI. */
+    /* Dense-UI font: Badge / dense list surfaces (names, tbody). */
     @font-face {
         font-family: "IBM Plex Sans Condensed";
         src: url("fonts/IBMPlexSansCondensed-Regular.woff2") format("woff2");
@@ -218,7 +259,7 @@
     }
 
     .responsive-table thead th {
-        @apply text-left border-b-2 border-b-slate-500 text-xl;
+        @apply text-left border-b-2 border-b-slate-500;
     }
 
     .responsive-table thead th:not(:first-child),

@@ -255,7 +255,7 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
-        self.assertIn("mb-2.5 text-sm font-medium text-heading", html)  # _LABEL_CLASS
+        self.assertIn("mb-2.5 text-type-label text-heading", html)  # _LABEL_CLASS
         self.assertIn("bg-neutral-secondary-medium", html)  # INPUT_CLASS surface
         self.assertNoEscapedTags(html)
 
@@ -513,11 +513,9 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertIn("Timetracker - Login", html)
         self.assertNoEscapedTags(html)
-        # Text-entry inputs render 16px on mobile (text-base) so iOS Safari does
-        # not auto-zoom on focus; the designed text-sm returns at sm+ (#427).
-        self.assertRegex(
-            html, r'name="username"[^>]*class="[^"]*\btext-base sm:text-sm\b'
-        )
+        # text-type-input owns the flat 16px size token (stops iOS Safari
+        # auto-zoom on focus, #427) — no responsive pair needed.
+        self.assertRegex(html, r'name="username"[^>]*class="[^"]*\btext-type-input\b')
 
     # --- stats ---------------------------------------------------------------
 
@@ -544,6 +542,13 @@ class RenderedPagesTest(TestCase):
         self.assertIn(self.game.name, html)
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<table"), html.count("</table>"))
+
+    def test_stats_table_uses_type_tokens(self):
+        html = self.get("games:stats_alltime").content.decode()
+        # Header cells must carry text-type-micro, body cells text-type-body.
+        # The assertion checks for presence on <th>/<td> elements specifically.
+        self.assertRegex(html, r"<th[^>]*\btext-type-micro\b[^>]*>")
+        self.assertRegex(html, r"<td[^>]*\btext-type-body\b[^>]*>")
 
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()

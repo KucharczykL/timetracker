@@ -174,7 +174,7 @@ _TOAST_CONTAINER = """<div x-data="toastStore()"
                             </svg>
                         </template>
                     </span>
-                    <p class="flex-1 text-sm"
+                    <p class="flex-1 text-type-body"
                         :class="{
                             'text-fg-success-strong': toast.type === 'success',
                             'text-fg-danger-strong': toast.type === 'error',
@@ -229,7 +229,7 @@ def NavbarPlaytime(
     oob_attr = ' hx-swap-oob="true"' if oob else ""
     return Safe(
         f'<li id="navbar-playtime"{oob_attr} '
-        'class="flex flex-col items-center text-xs">'
+        'class="flex flex-col items-center text-type-micro">'
         '<span class="flex uppercase gap-1">Today'
         '<span class="">·</span>Last 7 days</span>'
         '<span class="flex items-center gap-1">'
@@ -311,7 +311,7 @@ def NavbarMenu(
             class_="p-2 text-body-subtle hover:bg-neutral-tertiary-medium "
             "focus:outline-hidden focus:ring-4 "
             "focus:ring-neutral-tertiary-medium rounded-lg "
-            "text-sm hover:cursor-pointer",
+            "text-type-body hover:cursor-pointer",
         )[Safe(_THEME_TOGGLE_SVGS)]
     ]
 
@@ -508,16 +508,16 @@ def Navbar(
         class_="flex items-center me-auto",
     )[
         Img(src=logo, alt="Timetracker Logo", class_="w-10 h-10"),
-        Span(class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien")[
-            "TIMETRACKER"
-        ],
+        Span(
+            class_="text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
+        )["TIMETRACKER"],
     ]
     hamburger = Button(
         data_collapse_toggle="navbar-dropdown",
         type="button",
         aria_controls="navbar-dropdown",
         aria_expanded="false",
-        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-body-subtle rounded-lg md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
+        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-type-body text-body-subtle rounded-lg md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
     )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
 
     menu = NavbarMenu(
@@ -617,7 +617,7 @@ def TimetrackerDocument(
         version_footer_note = Span(
             # Deliberately faint decorative build stamp; fg-disabled is the
             # dimmest token (one shade brighter than the old slate-300 in light).
-            class_="fixed left-2 bottom-2 text-xs text-fg-disabled"
+            class_="fixed left-2 bottom-2 text-type-micro text-fg-disabled"
         )[f"{version()} ({version_date()})"]
 
         script_body = Safe(all_scripts)

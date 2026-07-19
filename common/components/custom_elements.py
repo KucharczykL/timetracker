@@ -317,7 +317,7 @@ def FilterSummary(*, model: str, model_label: str, models: str) -> Node:
     ``filter-tree-change`` and rewrites its text via ``summarize()``. Behavior in
     ``ts/elements/filter-summary.ts``; Media auto-attached."""
     return _FilterSummary(model=model, model_label=model_label, models=models)[
-        Span(class_="text-sm text-body")[f"{model_label} (all)."]
+        Span(class_="text-type-body text-body")[f"{model_label} (all)."]
     ]
 
 
@@ -379,7 +379,7 @@ def FilterBuilder(
                 data_preset_name="",
                 placeholder="Preset name…",
                 class_=(
-                    "px-3 py-2 text-sm rounded-lg border border-default-medium "
+                    "px-3 py-2 text-type-body rounded-lg border border-default-medium "
                     "bg-neutral-secondary-medium text-heading"
                 ),
             ),
@@ -394,7 +394,7 @@ def FilterBuilder(
                 hidden=True,
                 role="status",
                 aria_live="polite",
-                class_="basis-full text-sm text-amber-700 dark:text-amber-400",
+                class_="basis-full text-type-body text-amber-700 dark:text-amber-400",
             ),
         ]
     ]
@@ -431,7 +431,7 @@ def FilterCount(
         noun_singular=noun_singular,
         noun_plural=noun_plural,
         endpoint=endpoint,
-    )[Span(class_="text-sm text-gray-600 dark:text-gray-400")["Counting…"]]
+    )[Span(class_="text-type-body text-gray-600 dark:text-gray-400")["Counting…"]]
 
 
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which
@@ -579,7 +579,7 @@ _Dropdown = custom_element_builder("drop-down")
 # background). Width is per-variant.
 _DROPDOWN_PANEL_SURFACE = (
     "absolute z-20 overflow-x-hidden overflow-y-auto rounded-lg p-2 "
-    "bg-white dark:bg-gray-800/40 text-sm "
+    "bg-white dark:bg-gray-800/40 text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )

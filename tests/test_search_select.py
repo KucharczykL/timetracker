@@ -910,7 +910,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
 
     def test_panel_root_is_a_block_not_a_bordered_field(self):
         root_tag = _tag_around(self._html("panel"), "always-visible=")
-        self.assertIn('class="block text-sm"', root_tag)
+        self.assertIn('class="block text-type-body"', root_tag)
         self.assertIn('always-visible="true"', root_tag)
 
     def test_field_root_keeps_the_bordered_field_look(self):

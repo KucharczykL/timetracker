@@ -661,9 +661,7 @@ def comparison_row_template(
 # "logic type", not status. The NOT-on look uses an amber FILL + RING so a lit NOT
 # chip stays distinct from an adjacent OR chip (fill-only) — they never read as
 # one blob.
-_CHIP_BASE_CLASS = (
-    "rounded-full border px-2.5 py-0.5 text-xs font-semibold hover:cursor-pointer"
-)
+_CHIP_BASE_CLASS = "rounded-full border px-2.5 py-0.5 text-type-micro font-semibold hover:cursor-pointer"
 
 # A chip template's visual state, doubling as its data-chip-template tag; the
 # client's ChipState mirrors it.
@@ -695,7 +693,7 @@ _CHIP_STATE_CLASSES: dict[ChipState, str] = {
 # px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
 # under the chevron. Set only vertical padding here.
 _RELATION_SELECT_CLASS = (
-    "rounded border border-gray-300 bg-white py-1 text-sm dark:border-gray-600 "
+    "rounded border border-gray-300 bg-white py-1 text-type-body dark:border-gray-600 "
     "dark:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
 )
 
@@ -796,8 +794,8 @@ def StringFilter(
         ("placeholder", placeholder),
         (
             "class",
-            # text-sm + px-3 py-2.5 match every other input (canonical size).
-            "w-full rounded-base border border-default-medium px-3 py-2.5 text-sm "
+            # text-type-body + px-3 py-2.5 match every other input (canonical size).
+            "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-body "
             "bg-neutral-secondary-medium text-body "
             "focus:border-brand focus:ring-brand "
             # No transition-* here: with transition-all the border-color animated
@@ -818,9 +816,9 @@ def StringFilter(
     ]
 
 
-# text-sm + px-3 py-2.5 match every other input (canonical size).
+# text-type-body + px-3 py-2.5 match every other input (canonical size).
 _NUMBER_FILTER_INPUT_CLASS = (
-    "w-full rounded-base border border-default-medium px-3 py-2.5 text-sm "
+    "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-body "
     "bg-neutral-secondary-medium text-body focus:border-brand focus:ring-brand "
 )
 

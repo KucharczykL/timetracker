@@ -94,12 +94,12 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 
 # The one micro-label spelling — filter facet labels and search-select group
 # headers. Weight is `font-medium`; callers add a colour token (`text-body`).
-MICRO_LABEL_CLASS = "text-xs font-medium uppercase tracking-wide"
+MICRO_LABEL_CLASS = "text-type-micro-caps uppercase"
 
 # The one dialog/confirm-page title spelling. Built on a raw `Element("h1")`
-# (not the `H1` builder) so the baked `text-3xl`/`mb-2` scale does not leak in —
+# (not the `H1` builder) so the baked `text-type-title`/`mb-2` scale does not leak in —
 # accumulation can't down-scale a baked size.
-DIALOG_TITLE_CLASS = "text-2xl leading-6 font-medium text-heading text-center"
+DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
@@ -223,9 +223,9 @@ Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
 Optgroup = _html_element("optgroup")
-H1 = _html_element("h1", default_class="text-3xl font-bold mb-2")
-H2 = _html_element("h2", default_class="text-2xl font-bold mb-2")
-H3 = _html_element("h3", default_class="text-xl font-bold mb-2")
+H1 = _html_element("h1", default_class="text-type-title mb-2")
+H2 = _html_element("h2", default_class="text-type-heading mb-2")
+H3 = _html_element("h3", default_class="text-type-subheading mb-2")
 
 
 # The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
@@ -264,7 +264,7 @@ def _popover_html(
     # Shares the one content max-width as a cap only (no `w-full`): the tooltip
     # stays inline-block and small, the cap just bounds huge content.
     panel_class = (
-        f"z-10 inline-block text-sm text-heading bg-brand-soft border "
+        f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
         f"border-brand/30 rounded-lg shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
     )
 
@@ -365,7 +365,7 @@ def PopoverTruncated(
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
 # text-only siblings and step a segmented group's bottom edge.
 _CONTROL_BASE_CLASS = (
-    "font-medium hover:cursor-pointer inline-flex items-center justify-center "
+    "font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center "
     f"{DISABLED_CONTROL_CLASS}"
 )
 
@@ -378,7 +378,7 @@ _CONTROL_BASE_CLASS = (
 # shrink-to-fit inline-flex group cannot be its own inline-size container
 # (containment would collapse it to zero width) and table cells can't be
 # containers either — but every button on such a page is compact together.
-_CONTROL_SIZE_CLASS = "px-3 py-2 text-xs @md:px-5 @md:py-2.5 @md:text-sm"
+_CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
 
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
@@ -741,9 +741,9 @@ def Checkbox(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-2 text-sm text-heading cursor-pointer")[
-        input_el, label
-    ]
+    return Label(
+        class_="flex items-center gap-2 text-type-body text-heading cursor-pointer"
+    )[input_el, label]
 
 
 def Radio(
@@ -772,9 +772,9 @@ def Radio(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-1 text-sm text-heading cursor-pointer")[
-        input_el, label
-    ]
+    return Label(
+        class_="flex items-center gap-1 text-type-body text-heading cursor-pointer"
+    )[input_el, label]
 
 
 # Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
@@ -782,7 +782,7 @@ def Radio(
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -845,9 +845,9 @@ _BADGE_BASE_CLASS = (
     "leading-none rounded-sm bg-brand-soft text-heading"
 )
 _BADGE_SIZE_CLASSES = {
-    "sm": "text-xs px-1.5 py-0.5",
-    "base": "text-sm px-2 py-0.5",
-    "lg": "text-2xl px-2.5 py-0.5",
+    "sm": "text-type-micro px-1.5 py-0.5",
+    "base": "text-type-body px-2 py-0.5",
+    "lg": "text-type-heading px-2.5 py-0.5",
 }
 
 
@@ -959,7 +959,7 @@ def YearPicker(
                 (
                     "class",
                     "inline-flex items-center rounded-base px-4 py-2 "
-                    f"text-sm font-medium {classes}",
+                    f"text-type-body font-medium {classes}",
                 ),
             ]
         )[label, _YEAR_PICKER_CHEVRON],
@@ -977,8 +977,10 @@ def YearPicker(
 # Form-field rendering. The element classes (label/error/checkbox-row + the
 # controls, which carry their own classes via PrimitiveWidgetsMixin) live here,
 # not in input.css — no selector reaches across the DOM to style a form.
-_LABEL_CLASS = "mb-2.5 text-sm font-medium text-heading"
-_FIELD_ERROR_CLASS = "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-sm rounded-base"
+_LABEL_CLASS = "mb-2.5 text-type-label text-heading"
+_FIELD_ERROR_CLASS = (
+    "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
+)
 # Checkbox + its label share a row (unlike block fields), justified apart.
 _CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
 
@@ -1084,7 +1086,7 @@ def PageHeading(
 ) -> Element:
     """Page heading (``<h1>``) with optional badge count."""
     children = children or []
-    heading_class = "mb-4 text-3xl font-bold leading-none tracking-tight text-heading"
+    heading_class = "mb-4 text-type-title leading-none text-heading"
     badge_html: Node | str = ""
 
     if badge:
@@ -1092,7 +1094,7 @@ def PageHeading(
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
     # Raw Element, not the H1 builder: the baked scale would fight this
-    # heading's own text-3xl/mb-4 (accumulation, not override).
+    # heading's own text-type-title/mb-4 (accumulation, not override).
     return Element("h1", [("class", heading_class)])[
         *as_children(children), *([badge_html] if badge_html else [])
     ]
@@ -1331,9 +1333,11 @@ ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
 # scales with font size, no jump at a viewport width.
 ICON_SIZE_CLASS = "size-[1.15em]"
-# Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
-# → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
-ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
+# Flat 1.25rem (20px) to match text-type-body's fixed line-height — buttons
+# no longer use container-scaled text, so the icon must also be flat (not
+# @md-responsive) to keep icon-only buttons the same height as text ones at
+# every breakpoint (#272).
+ICON_BUTTON_SIZE_CLASS = "w-5 h-5"
 
 
 def _with_title(children: Sequence[Child], title: str) -> list[Child]:
@@ -1427,7 +1431,7 @@ def _sort_href(request, sort_string: SortString) -> str:
 def _page_size_control(request, page_size: int, *, class_: str = "") -> Node:
     """The rows-per-page label + picker group, embedded in the pagination nav
     between the summary and the page links."""
-    classes = f"flex items-center gap-2 text-sm text-body-subtle {class_}"
+    classes = f"flex items-center gap-2 text-type-body text-body-subtle {class_}"
     return Div(class_=classes.strip())[
         Span()["Rows per page"], PageSizeSelect(request, page_size)
     ]
@@ -1484,7 +1488,7 @@ def _pagination_nav(
     number_class = "font-semibold text-heading"
     summary = Span(
         class_=(
-            "text-sm text-center font-normal text-body-subtle "
+            "text-type-body text-center font-normal text-body-subtle "
             "mb-4 md:mb-0 block w-full md:inline md:w-auto"
         ),
     )[
@@ -1496,7 +1500,7 @@ def _pagination_nav(
         " of ",
         Span(class_=number_class)[str(page_obj.paginator.count)],
     ]
-    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")[
+    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body h-8")[
         Li()[prev_link, *page_items, next_link]
     ]
     nav_children: list[Node] = [summary]
@@ -1634,7 +1638,7 @@ def StyledTable(
     table_children.append(
         Thead(
             class_=(
-                "text-xs text-body uppercase bg-neutral-tertiary "
+                "text-type-micro text-body uppercase bg-neutral-tertiary "
                 "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
             ),
         )[header_row]
@@ -1660,7 +1664,7 @@ def StyledTable(
     )
 
     table = Table(
-        class_="w-full text-sm text-left rtl:text-right text-body-subtle",
+        class_="w-full text-type-body text-left rtl:text-right text-body-subtle",
     )[*table_children]
 
     inner_children: list[Node] = [

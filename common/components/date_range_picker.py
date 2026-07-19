@@ -33,14 +33,14 @@ from common.time import DatePartSpec, date_parts
 # around the dashes stay uniform.
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium font-mono text-sm text-heading p-1.5 cursor-text "
+    "bg-neutral-secondary-medium font-mono text-type-body text-heading p-1.5 cursor-text "
     "focus-within:ring-1 focus-within:ring-brand focus-within:border-brand"
 )
 
 # The segments must not stand out from the container: transparent background,
 # no border, and only a subtle highlight when active (focused).
 _SEGMENT_INPUT_CLASS = (
-    "bg-transparent border-0 p-0 text-center text-sm text-heading "
+    "bg-transparent border-0 p-0 text-center text-type-body text-heading "
     "placeholder:text-body rounded-xs focus:outline-none focus:ring-0 "
     "focus:bg-brand/30 caret-transparent"
 )
@@ -69,7 +69,7 @@ _PRESET_OPTIONS: list[tuple[str, str]] = [
 ]
 
 _PRESET_BUTTON_CLASS = (
-    "px-3 py-1.5 text-sm text-start text-body hover:text-heading "
+    "px-3 py-1.5 text-type-body text-start text-body hover:text-heading "
     "hover:bg-neutral-tertiary-medium rounded-base cursor-pointer whitespace-nowrap"
 )
 
@@ -79,13 +79,13 @@ _NAV_BUTTON_CLASS = (
 )
 
 _FOOTER_BUTTON_CLASS = (
-    "px-3 py-1.5 text-sm font-medium rounded-base cursor-pointer "
+    "px-3 py-1.5 text-type-body font-medium rounded-base cursor-pointer "
     "text-heading bg-neutral-secondary-medium border border-default-medium "
     "hover:bg-neutral-tertiary-medium"
 )
 
 _FOOTER_SELECT_BUTTON_CLASS = (
-    "px-3 py-1.5 text-sm font-medium rounded-base cursor-pointer "
+    "px-3 py-1.5 text-type-body font-medium rounded-base cursor-pointer "
     "solid-brand border border-transparent hover:bg-brand-strong"
 )
 
@@ -266,7 +266,7 @@ def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
             Div(class_="flex items-center justify-between gap-2")[
                 _calendar_nav_button("prev", "‹", "Previous month"),
                 Span(
-                    class_="text-sm font-medium text-heading",
+                    class_="text-type-body font-medium text-heading",
                     data_date_range_month_label="",
                 ),
                 _calendar_nav_button("next", "›", "Next month"),
