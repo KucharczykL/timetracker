@@ -97,7 +97,7 @@ FORM_MAX_WIDTH_CLASS = "max-w-xl"
 MICRO_LABEL_CLASS = "text-type-micro-caps uppercase"
 
 # The one dialog/confirm-page title spelling. Built on a raw `Element("h1")`
-# (not the `H1` builder) so the baked `text-3xl`/`mb-2` scale does not leak in —
+# (not the `H1` builder) so the baked `text-3xl`/`mb-2` scale does not leak in —  # type-ok: comment references old class name
 # accumulation can't down-scale a baked size.
 DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
@@ -1092,7 +1092,7 @@ def PageHeading(
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
     # Raw Element, not the H1 builder: the baked scale would fight this
-    # heading's own text-3xl/mb-4 (accumulation, not override).
+    # heading's own text-3xl/mb-4 (accumulation, not override).  # type-ok: comment references old class name
     return Element("h1", [("class", heading_class)])[
         *as_children(children), *([badge_html] if badge_html else [])
     ]
@@ -1331,7 +1331,7 @@ ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
 # scales with font size, no jump at a viewport width.
 ICON_SIZE_CLASS = "size-[1.15em]"
-# Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm
+# Tracks _CONTROL_SIZE_CLASS's text line-height (text-xs → 1rem, @md:text-sm  # type-ok: comment references old class name
 # → 1.25rem) so icon-only buttons stay exactly as tall as text ones.
 ICON_BUTTON_SIZE_CLASS = "w-4 h-4 @md:w-5 @md:h-5"
 

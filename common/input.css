@@ -14,9 +14,11 @@
    td variants up to 12 columns (the widest table has 8). */
 @source inline("[&_td:nth-child({1,2,3,4,5,6,7,8,9,10,11,12})]:text-right");
 
-/* Force emission of every type token even before all call sites migrate
-   (later tasks add real usages); mirrors the nth-child safelist above. */
-@source inline("text-type-{title,heading,dialog,subheading,section,body,label,micro,micro-caps,input}");
+/* text-type-section is reserved vocabulary for the upcoming settings kit / #384.
+   No real section-heading consumer exists yet, so Tailwind won't emit it from
+   source scanning alone. The other 9 tokens have real usages and don't need
+   safelisting. Remove this line once a real consumer lands. */
+@source inline("text-type-section");
 
 @theme {
     --font-sans:

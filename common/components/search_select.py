@@ -121,7 +121,7 @@ class OptionGroup(NamedTuple):
 # via :has() — the same opacity-50 a disabled native input uses (see
 # _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
 # toggle the control's `disabled`, never styles.
-# px-3 py-2.5 text-sm match a native input (INPUT_CLASS); the wrapper supplies
+# px-3 py-2.5 text-sm match a native input (INPUT_CLASS); the wrapper supplies  # type-ok: comment references old class name
 # the field padding, and the inner search box zeroes its own (p-0) so the two
 # don't stack into a too-tall field.
 _CONTAINER_CLASS = (
@@ -166,7 +166,7 @@ _NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
 # hides a header whose whole run of following option rows is filtered out.
 _GROUP_HEADER_CLASS = f"px-3 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
 
-# Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,
+# Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,  # type-ok: comment references old class name
 # used to derive the panel's max-height from items_visible.
 _ROW_HEIGHT_REM = 2.25
 

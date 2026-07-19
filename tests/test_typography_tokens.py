@@ -1,4 +1,5 @@
 """Guards for the typography token system (docs/superpowers/specs/2026-07-19-typography-token-system-design.md)."""
+import re
 from pathlib import Path
 
 import pytest
@@ -42,3 +43,35 @@ def test_named_constants_use_tokens():
     # size utility removed from both:
     for raw in ("text-2xl", "text-xs"):
         assert raw not in DIALOG_TITLE_CLASS and raw not in MICRO_LABEL_CLASS
+
+
+REPO = Path(__file__).resolve().parent.parent
+GUARDED = [
+    REPO / "common" / "components",
+    REPO / "common" / "layout.py",
+    REPO / "games" / "forms.py",
+]
+# Raw font-size utilities (with optional variant prefixes like sm: @md:) —
+# the type system owns size via text-type-*. font-* weights stay legal.
+RAW_SIZE = re.compile(
+    r'(?<![\w-])(?:[a-z@\[\]:.-]+:)?text-(?:xs|sm|base|lg|xl|\dxl|\[[^\]]+\])(?![\w-])'
+)
+
+
+def _py_files():
+    for path in GUARDED:
+        if path.is_file():
+            yield path
+        else:
+            yield from path.rglob("*.py")
+
+
+def test_no_raw_size_utilities_in_components():
+    offenders = []
+    for f in _py_files():
+        for i, line in enumerate(f.read_text().splitlines(), 1):
+            if "# type-ok" in line:
+                continue
+            if RAW_SIZE.search(line):
+                offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
+    assert not offenders, "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n" + "\n".join(offenders)
