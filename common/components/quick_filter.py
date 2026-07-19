@@ -176,7 +176,7 @@ _QUICK_BAR_ROW_CLASS = "flex flex-wrap items-center gap-x-4 gap-y-2 mb-3"
 
 _QUICK_PILL_CLASS = (
     "mb-3 flex flex-wrap items-center gap-3 rounded-base border "
-    "border-default-medium bg-neutral-secondary-medium/50 px-3 py-2 text-sm"
+    "border-default-medium bg-neutral-secondary-medium/50 px-3 py-2 text-type-body"
 )
 
 

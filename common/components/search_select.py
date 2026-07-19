@@ -125,7 +125,7 @@ class OptionGroup(NamedTuple):
 # the field padding, and the inner search box zeroes its own (p-0) so the two
 # don't stack into a too-tall field.
 _CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 px-3 py-2.5 rounded-base text-sm "
+    "relative flex flex-wrap items-center gap-1 px-3 py-2.5 rounded-base text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
@@ -135,7 +135,7 @@ _PILLS_CLASS = "contents"
 # the whole widget stays consistent (the wrapper handles the faded look via
 # has-[:disabled]:opacity-50).
 _SEARCH_CLASS = (
-    "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-sm text-heading "
+    "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-type-body text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body "
     "disabled:cursor-not-allowed"
 )
@@ -156,10 +156,10 @@ _INLINE_OPTIONS_CLASS = (
     "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
 )
 _OPTION_ROW_CLASS = (
-    "px-3 py-2 text-sm text-heading cursor-pointer "
+    "px-3 py-2 text-type-body text-heading cursor-pointer "
     "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
-_NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
+_NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
 # excludes it from keyboard nav, client-side filtering, and selection. The JS
@@ -187,20 +187,20 @@ DEFAULT_PREFETCH = 20
 # from overflowing a width-capped host — the ComboboxDropdown panel is w-72
 # with overflow-hidden. Applied in both layouts so the pill shape never forks.
 _FILTER_INCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded max-w-full "
+    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
     "bg-brand-soft text-heading"
 )
 _FILTER_EXCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded max-w-full "
+    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
     "bg-red-500/15 text-red-600 line-through decoration-red-400"
 )
 _FILTER_MODIFIER_PILL_CLASS = (
-    "inline-flex items-center px-2 py-0.5 text-sm rounded max-w-full "
+    "inline-flex items-center px-2 py-0.5 text-type-body rounded max-w-full "
     "bg-amber-500/15 text-amber-600 cursor-pointer"
 )
 _FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
 _FILTER_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-2 py-1 rounded text-sm "
+    "group flex items-center justify-between px-2 py-1 rounded text-type-body "
     "hover:bg-neutral-secondary-strong cursor-pointer "
     "data-[search-select-highlighted]:bg-brand "
     "data-[search-select-highlighted]:outline data-[search-select-highlighted]:outline-1 "
@@ -215,7 +215,7 @@ _FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
 # keyboard-highlighted one its bg is brand, so the button text/border switch
 # to white and the hover fill shifts to brand-strong for contrast.
 _FILTER_ACTION_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded text-body "
+    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded text-body "
     "border border-brand "
     "hover:solid-brand hover:border-brand-strong "
     "group-data-[search-select-highlighted]:text-white "
@@ -224,7 +224,7 @@ _FILTER_ACTION_BUTTON_CLASS = (
     "group-data-[search-select-highlighted]:hover:border-white"
 )
 _FILTER_MODIFIER_ROW_CLASS = (
-    "px-2 py-1 text-sm text-body hover:bg-neutral-secondary-strong cursor-pointer "
+    "px-2 py-1 text-type-body text-body hover:bg-neutral-secondary-strong cursor-pointer "
     "data-[search-select-highlighted]:solid-brand"
 )
 
@@ -810,10 +810,10 @@ def FilterSelect(
 # form/filter field personalities it has no bordered field wrapper: the search
 # input is its own bordered field, and the options panel flows statically
 # below it on the dialog surface (GitHub-label-picker layout).
-_PANEL_CONTAINER_CLASS = "block text-sm"
+_PANEL_CONTAINER_CLASS = "block text-type-body"
 _PANEL_SEARCH_CLASS = (
     "w-full px-3 py-2 rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium text-sm text-heading placeholder:text-body "
+    "bg-neutral-secondary-medium text-type-body text-heading placeholder:text-body "
     "focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
 )
 _PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
@@ -821,12 +821,12 @@ _PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
 # empty pill set from adding a stray gap.
 _PANEL_PILLS_CLASS = "mb-2 flex flex-wrap gap-1 empty:hidden"
 _PRESET_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-3 py-2 text-sm text-heading "
+    "group flex items-center justify-between px-3 py-2 text-type-body text-heading "
     "cursor-pointer rounded "
     "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
 _PRESET_DELETE_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-xs font-bold rounded "
+    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded "
     "shrink-0 ml-2 text-body border border-transparent "
     "hover:bg-red-500/15 hover:text-red-600 hover:border-red-400"
 )

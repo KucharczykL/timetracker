@@ -264,7 +264,7 @@ def _popover_html(
     # Shares the one content max-width as a cap only (no `w-full`): the tooltip
     # stays inline-block and small, the cap just bounds huge content.
     panel_class = (
-        f"z-10 inline-block text-sm text-heading bg-brand-soft border "
+        f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
         f"border-brand/30 rounded-lg shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
     )
 
@@ -741,7 +741,7 @@ def Checkbox(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-2 text-sm text-heading cursor-pointer")[
+    return Label(class_="flex items-center gap-2 text-type-body text-heading cursor-pointer")[
         input_el, label
     ]
 
@@ -772,7 +772,7 @@ def Radio(
     if label is None:
         return input_el
 
-    return Label(class_="flex items-center gap-1 text-sm text-heading cursor-pointer")[
+    return Label(class_="flex items-center gap-1 text-type-body text-heading cursor-pointer")[
         input_el, label
     ]
 
@@ -782,7 +782,7 @@ def Radio(
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-sm rounded "
+    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -959,7 +959,7 @@ def YearPicker(
                 (
                     "class",
                     "inline-flex items-center rounded-base px-4 py-2 "
-                    f"text-sm font-medium {classes}",
+                    f"text-type-body font-medium {classes}",
                 ),
             ]
         )[label, _YEAR_PICKER_CHEVRON],
@@ -1427,7 +1427,7 @@ def _sort_href(request, sort_string: SortString) -> str:
 def _page_size_control(request, page_size: int, *, class_: str = "") -> Node:
     """The rows-per-page label + picker group, embedded in the pagination nav
     between the summary and the page links."""
-    classes = f"flex items-center gap-2 text-sm text-body-subtle {class_}"
+    classes = f"flex items-center gap-2 text-type-body text-body-subtle {class_}"
     return Div(class_=classes.strip())[
         Span()["Rows per page"], PageSizeSelect(request, page_size)
     ]
@@ -1484,7 +1484,7 @@ def _pagination_nav(
     number_class = "font-semibold text-heading"
     summary = Span(
         class_=(
-            "text-sm text-center font-normal text-body-subtle "
+            "text-type-body text-center font-normal text-body-subtle "
             "mb-4 md:mb-0 block w-full md:inline md:w-auto"
         ),
     )[
@@ -1496,7 +1496,7 @@ def _pagination_nav(
         " of ",
         Span(class_=number_class)[str(page_obj.paginator.count)],
     ]
-    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8")[
+    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body h-8")[
         Li()[prev_link, *page_items, next_link]
     ]
     nav_children: list[Node] = [summary]
@@ -1634,7 +1634,7 @@ def StyledTable(
     table_children.append(
         Thead(
             class_=(
-                "text-xs text-body uppercase bg-neutral-tertiary "
+                "text-type-micro text-body uppercase bg-neutral-tertiary "
                 "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
             ),
         )[header_row]
@@ -1660,7 +1660,7 @@ def StyledTable(
     )
 
     table = Table(
-        class_="w-full text-sm text-left rtl:text-right text-body-subtle",
+        class_="w-full text-type-body text-left rtl:text-right text-body-subtle",
     )[*table_children]
 
     inner_children: list[Node] = [
