@@ -821,7 +821,7 @@ _BADGE_BASE_CLASS = (
     "rounded-sm bg-brand-soft text-heading"
 )
 _BADGE_SIZE_CLASSES = {
-    "sm": "text-[0.7rem] px-1.5 py-0.5",
+    "sm": "text-xs px-1.5 py-0.5",
     "base": "text-sm px-2 py-0.5",
     "lg": "text-2xl px-2.5 py-0.5",
 }
