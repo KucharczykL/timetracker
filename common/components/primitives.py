@@ -365,7 +365,7 @@ def PopoverTruncated(
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
 # text-only siblings and step a segmented group's bottom edge.
 _CONTROL_BASE_CLASS = (
-    "font-medium hover:cursor-pointer inline-flex items-center justify-center "
+    "font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center "
     f"{DISABLED_CONTROL_CLASS}"
 )
 
@@ -378,7 +378,7 @@ _CONTROL_BASE_CLASS = (
 # shrink-to-fit inline-flex group cannot be its own inline-size container
 # (containment would collapse it to zero width) and table cells can't be
 # containers either — but every button on such a page is compact together.
-_CONTROL_SIZE_CLASS = "px-3 py-2 text-xs @md:px-5 @md:py-2.5 @md:text-sm"
+_CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
 
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "

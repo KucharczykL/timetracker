@@ -909,12 +909,16 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_button_variants_share_one_sizing_scale(self):
         # ALL button-shaped variants size via the container contract; only the
-        # nav-link plain variant keeps its navbar layout
+        # nav-link plain variant keeps its navbar layout.
+        # Text size is now a flat token (text-type-body), not container-scaled.
         for variant in ("filled", "segmented", "outline"):
             with self.subTest(variant=variant):
                 html = str(components.ControlButton(variant=variant)["x"])
-                self.assertIn("px-3 py-2 text-xs", html)
-                self.assertIn("@md:px-5 @md:py-2.5 @md:text-sm", html)
+                self.assertIn("px-3 py-2", html)
+                self.assertIn("@md:px-5 @md:py-2.5", html)
+                self.assertIn("text-type-body", html)
+                self.assertNotIn("text-xs", html)  # size no longer container-scaled
+                self.assertNotIn("@md:text-sm", html)
 
     def test_plain_variant_is_the_navbar_nav_link_look(self):
         html = str(components.ControlButton(variant="plain")["x"])
