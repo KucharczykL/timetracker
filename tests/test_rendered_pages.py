@@ -513,10 +513,10 @@ class RenderedPagesTest(TestCase):
             self.assertIn(marker, html)
         self.assertIn("Timetracker - Login", html)
         self.assertNoEscapedTags(html)
-        # Text-entry inputs render 16px on mobile (text-base) so iOS Safari does
-        # not auto-zoom on focus; the designed text-sm returns at sm+ (#427).
+        # text-type-input owns the flat 16px size token (stops iOS Safari
+        # auto-zoom on focus, #427) — no responsive pair needed.
         self.assertRegex(
-            html, r'name="username"[^>]*class="[^"]*\btext-base sm:text-sm\b'
+            html, r'name="username"[^>]*class="[^"]*\btext-type-input\b'
         )
 
     # --- stats ---------------------------------------------------------------
