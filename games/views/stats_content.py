@@ -34,11 +34,10 @@ from games.filters import filter_url
 from games.views import stats_links
 from games.views.stats_data import StatsData
 
-_CELL = "px-2 sm:px-4 md:px-6 md:py-2 text-type-body"
+_CELL_SPACING = "px-2 sm:px-4 md:px-6 md:py-2"
+_CELL = f"{_CELL_SPACING} text-type-body"
 _CELL_MONO = f"{_CELL} font-mono"
-_NAME_TH = (
-    "px-2 sm:px-4 md:px-6 md:py-2 text-type-micro purchase-name truncate max-w-20char"
-)
+_NAME_TH = f"{_CELL_SPACING} text-type-micro purchase-name truncate max-w-20char"
 _FILTER_LINK_CLASS = "underline decoration-dotted hover:decoration-solid"
 
 
@@ -82,7 +81,7 @@ def _td(children, cls: str = _CELL_MONO) -> Node:
     return Td(class_=cls)[*children]
 
 
-_CELL_TH = "px-2 sm:px-4 md:px-6 md:py-2 text-type-micro"
+_CELL_TH = f"{_CELL_SPACING} text-type-micro"
 
 
 def _th(text: str, cls: str = _CELL_TH) -> Node:
