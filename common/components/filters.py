@@ -9,6 +9,7 @@ from typing import Literal, NamedTuple
 from common.components.core import Node
 from common.components.date_range_picker import DateRangePanel, DateRangePicker
 from common.components.primitives import (
+    MICRO_LABEL_CLASS,
     Button,
     Div,
     FilterWidgetPath,
@@ -74,7 +75,7 @@ class StringValues(NamedTuple):
     modifier: str
 
 
-_FILTER_LABEL_CLASS = "text-xs font-medium text-body uppercase tracking-wide"
+_FILTER_LABEL_CLASS = f"{MICRO_LABEL_CLASS} text-body"
 
 
 def _filter_parse(filter_json: str) -> dict:

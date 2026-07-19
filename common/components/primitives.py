@@ -86,6 +86,15 @@ CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
 # is for page bodies, lists, and the navbar.
 FORM_MAX_WIDTH_CLASS = "max-w-xl"
 
+# The one micro-label spelling — filter facet labels and search-select group
+# headers. Weight is `font-medium`; callers add a colour token (`text-body`).
+MICRO_LABEL_CLASS = "text-xs font-medium uppercase tracking-wide"
+
+# The one dialog/confirm-page title spelling. Built on a raw `Element("h1")`
+# (not the `H1` builder) so the baked `text-3xl`/`mb-2` scale does not leak in —
+# accumulation can't down-scale a baked size.
+DIALOG_TITLE_CLASS = "text-2xl leading-6 font-medium text-heading text-center"
+
 
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
@@ -145,11 +154,17 @@ def custom_element_builder(tag_name: str):
     return _html_element(tag_name, Media(js=(f"dist/elements/{tag_name}.js",)))
 
 
-def _html_element(tag_name: str, media: Media | None = None):
+def _html_element(tag_name: str, media: Media | None = None, default_class: str = ""):
     """Build a generic element builder for ``tag_name`` (the whitelist factory).
 
     If ``media`` is provided, every node created by the builder will carry it
     (used for custom elements whose compiled JS must be loaded automatically).
+
+    ``default_class`` bakes a base class list onto every node; caller ``class_``
+    accumulates onto it (node-layer class merge). Note accumulation is not
+    override — a caller cannot down-scale a baked size utility (Tailwind sorts
+    ``text-*`` alphabetically), so components wanting a different scale build on
+    a raw ``Element`` instead of the baked builder.
     """
 
     def element(
@@ -157,9 +172,12 @@ def _html_element(tag_name: str, media: Media | None = None):
         **kwargs: object,
     ) -> Element:
         # Merge order is priority order — first contributor wins per the node
-        # algebra: positional ``attrs`` (dynamic) then htpy ``kwargs`` (static);
-        # ``class`` accumulates across both. Children come via ``[]``.
+        # algebra: baked ``default_class`` first, then positional ``attrs``
+        # (dynamic), then htpy ``kwargs`` (static); ``class`` accumulates across
+        # all three. Children come via ``[]``.
         merged = _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+        if default_class:
+            merged = [("class", default_class), *merged]
         node = Element(tag_name, merged)
         return node.with_media(media) if media else node
 
@@ -199,9 +217,9 @@ Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
 Optgroup = _html_element("optgroup")
-H1 = _html_element("h1")
-H2 = _html_element("h2")
-H3 = _html_element("h3")
+H1 = _html_element("h1", default_class="text-3xl font-bold mb-2")
+H2 = _html_element("h2", default_class="text-2xl font-bold mb-2")
+H3 = _html_element("h3", default_class="text-xl font-bold mb-2")
 
 
 # The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
@@ -1060,18 +1078,27 @@ def PageHeading(
 ) -> Element:
     """Page heading (``<h1>``) with optional badge count."""
     children = children or []
-    heading_class = (
-        "mb-4 text-3xl font-extrabold leading-none tracking-tight text-heading"
-    )
+    heading_class = "mb-4 text-3xl font-bold leading-none tracking-tight text-heading"
     badge_html: Node | str = ""
 
     if badge:
         heading_class = "flex items-center " + heading_class
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
-    return H1(class_=heading_class)[
+    # Raw Element, not the H1 builder: the baked scale would fight this
+    # heading's own text-3xl/mb-4 (accumulation, not override).
+    return Element("h1", [("class", heading_class)])[
         *as_children(children), *([badge_html] if badge_html else [])
     ]
+
+
+def DialogTitle(children: Children = None) -> Element:
+    """The one dialog/confirm-page title — ``<h1>`` in :data:`DIALOG_TITLE_CLASS`.
+
+    Raw ``Element`` (not the ``H1`` builder) so the baked heading scale does not
+    accumulate underneath — see :data:`DIALOG_TITLE_CLASS`.
+    """
+    return Element("h1", [("class", DIALOG_TITLE_CLASS)])[*as_children(children)]
 
 
 # The <modal-dialog> overlay element (behavior: ts/elements/modal-dialog.ts).
@@ -1159,9 +1186,7 @@ def ConfirmPage(
             Safe(
                 f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
             ),
-            P(
-                class_="text-2xl leading-6 font-medium text-heading text-center",
-            )[title],
+            DialogTitle(title),
             P(class_="text-heading text-center mt-5")[*as_children(message)],
             Div(class_="flex flex-col gap-2 mt-6")[
                 ControlButton(

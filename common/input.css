@@ -260,18 +260,6 @@
     padding-left: 1em;
 }
 
-h1 {
-    @apply text-3xl font-bold mb-2;
-}
-
-h2 {
-    @apply text-2xl font-bold mb-2;
-}
-
-h3 {
-    @apply text-xl font-bold mb-2;
-}
-
 @layer utilities {
     .toast-container {
         @apply fixed z-50 flex flex-col items-end bottom-0 right-0 p-4;

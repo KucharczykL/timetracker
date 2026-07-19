@@ -60,6 +60,7 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
+    MICRO_LABEL_CLASS,
     Button,
     ControlButton,
     Div,
@@ -163,9 +164,7 @@ _NO_RESULTS_CLASS = "px-3 py-2 text-sm italic text-body hidden"
 # out of the combobox's option semantics; carrying no data-search-select-option
 # excludes it from keyboard nav, client-side filtering, and selection. The JS
 # hides a header whose whole run of following option rows is filtered out.
-_GROUP_HEADER_CLASS = (
-    "px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-body"
-)
+_GROUP_HEADER_CLASS = f"px-3 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
 
 # Approximate rendered height of one option row (px-3 py-2 text-sm) in rem,
 # used to derive the panel's max-height from items_visible.

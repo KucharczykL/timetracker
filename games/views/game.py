@@ -17,6 +17,7 @@ from common.components import (
     Column,
     ContentContainer,
     CsrfInput,
+    DialogTitle,
     Div,
     Form,
     Fragment,
@@ -265,9 +266,7 @@ def _delete_game_confirmation_modal(
         ],
     ]
     return Modal("delete-game-confirmation-modal")[
-        P(
-            class_="text-2xl leading-6 font-medium dark:text-white text-center",
-        )["Delete Game"],
+        DialogTitle("Delete Game"),
         P(
             class_="dark:text-white text-center mt-5",
         )[
