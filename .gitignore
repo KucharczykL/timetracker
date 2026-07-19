@@ -30,3 +30,6 @@ dist/
 
 # Playwright MCP browser session artifacts
 .playwright-mcp/
+
+# Local-only game-name overrides for anonymize_sample (keeps sensitive titles out of the committed fixture)
+games/fixtures/name_overrides.yaml

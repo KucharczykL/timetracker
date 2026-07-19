@@ -20,6 +20,8 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Compute staging name
         # "github" → "gh": Fly's abuse filter rejects app names containing

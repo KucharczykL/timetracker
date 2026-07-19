@@ -93,6 +93,7 @@ against `direnv exec . make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
+| Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
 | Dump games data | `make dumpgames` |
 
 ## Architecture
@@ -239,6 +240,8 @@ All configurable Django settings are read through `config()` in `timetracker/con
 
 ### Testing
 
+**`games/fixtures/sample.yaml.gz`** (dev seed for `make loadsample`) is a **generated, anonymized production snapshot** — gzip-compressed (loaddata reads `.gz` natively; ~147 KB vs 1.6 MB raw), do not hand-edit. Regenerate it with `make anonymize-sample` (the `anonymize_sample` management command): copy a prod DB into `$DATA_DIR/db.sqlite3`, `make migrate`, then run the command. It randomizes prices, game↔purchase links, and dates (per-game offset), clears free-text notes/names, and sanitizes audit timestamps — all inside a rolled-back transaction so the source DB is untouched. Output is a **byte-deterministic** gzip per `--seed` (gzip `mtime=0`, no embedded filename → stable git blob). The fixture keeps prod pks, so load it into an empty dev DB.
+
 Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pytest`. Key test files:
 
 - `test_components.py` — component rendering
@@ -246,6 +249,7 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 - `test_paths_return_200.py` — smoke test all list/view URLs
 - `test_rendered_pages.py` — HTML output of pages
 - `test_signals.py` — signal side-effects (playtime recalc, status change audit, etc.)
+- `test_anonymize_sample.py` — the sample-fixture anonymizer (rollback safety, determinism, invariants, round-trip)
 - `test_stats.py` — stats computation
 - `test_streak.py`, `test_time.py`, `test_session_formatting.py` — utilities
 - `test_middleware_integration.py`, `test_toast_middleware.py` — HTMX middleware

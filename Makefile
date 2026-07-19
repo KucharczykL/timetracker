@@ -124,7 +124,10 @@ loadall:
 	uv run --frozen python manage.py loaddata data.yaml
 
 loadsample:
-	uv run --frozen python manage.py loaddata sample.yaml
+	uv run --frozen python manage.py loaddata sample.yaml.gz
+
+anonymize-sample:
+	uv run --frozen python manage.py anonymize_sample --seed 42 --force
 
 createsuperuser:
 	uv run --frozen python manage.py createsuperuser
