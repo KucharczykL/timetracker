@@ -221,12 +221,15 @@ The scale itself (adopt):
 | Dialog title | one spelling: `text-2xl font-medium text-heading` (today one class string on two element kinds, neither rendering as written — `<h1>` titles get overridden to 3xl bold by the heading rule, `<p>` titles render 2xl regular for lack of a 500 face) |
 | Micro-label | one string: `text-xs font-medium uppercase tracking-wide` (today: two weights) |
 | Table typography | StyledTable's `text-sm` body / `text-xs uppercase` head; `.responsive-table`'s `text-xl`/16px goes with its migration |
-| Tabular figures | `font-mono` (stats values, date-picker field) — right tool for settings values/IDs |
+| Tabular figures | `font-mono` (stats values, date-picker field) — right tool for settings values/IDs. Note: default sans/condensed digits are already tabular (Plex ships no proportional-figure feature), so `font-mono` is a style choice, not what buys column alignment |
+| Dense list surfaces | `font-condensed` — names (`GameLink`/`NameWithIcon`/`LinkedPurchase`), list-table `tbody`, `Badge`/`Pill`; narrower than the default sans where space is tight and text is scannable |
 | Help text | **no precedent exists** — new role, defined by the kit in #384 (suggested `text-xs text-body`) |
 | Error text | gains `text-sm` (must not out-size its input) — rides the `_FIELD_ERROR_CLASS` normalize |
 
-Leave alone: `font-serif` name accents, `font-alien` wordmark. Delete: the dead
-`--font-condensed` vocabulary. Nit: Badge sm's `text-[0.7rem]` → `text-xs` when convenient.
+Leave alone: `font-serif` name accents, `font-alien` wordmark. **`--font-condensed`:
+originally called for deletion as dead vocabulary — reversed. Kept and given a real role
+(dense list surfaces, above) so it is no longer declared-but-unused.** Nit: Badge sm's
+`text-[0.7rem]` → `text-xs` when convenient.
 
 ## Kit vocabulary summary (for #384)
 
@@ -257,4 +260,4 @@ Spawned at synthesis; the epic depends on the *calls* above, not on these landin
 | [#412](https://github.com/KucharczykL/timetracker/issues/412) | Spacing: strip `mb-3` from `INPUT_CLASS` (parents own spacing); textarea/YearPicker/FilterBuilder padding strays |
 | [#413](https://github.com/KucharczykL/timetracker/issues/413) | Page gutter `px-4` at the shell (verify full-bleed mobile tables stay intended) |
 | [#414](https://github.com/KucharczykL/timetracker/issues/414) | Heading mechanism: drop unlayered `h1/h2/h3` rules, builders carry the scale; fix the four casualty sites; unify page title on `PageHeading`; one dialog-title and one micro-label spelling |
-| [#415](https://github.com/KucharczykL/timetracker/issues/415) | Ship IBM Plex Sans Medium/SemiBold/Bold; delete dead `--font-condensed` |
+| [#415](https://github.com/KucharczykL/timetracker/issues/415) | Ship IBM Plex Sans Medium/SemiBold/Bold. `--font-condensed`: delete-call reversed — kept and applied to dense list surfaces (names, table `tbody`, `Badge`/`Pill`) |
