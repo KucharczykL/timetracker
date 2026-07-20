@@ -15,7 +15,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from games.models import Game, Platform
+from games.models import Device, Game, Platform
 
 
 def _login(page: Page, live_server) -> None:
@@ -194,6 +194,69 @@ def test_searchselect_border_matches_native_input(
     focused_input = price.evaluate(border)
     assert focused_wrapper == focused_input  # same brand border on focus
     assert focused_wrapper != rest  # focus actually changes it
+
+
+def test_uncommitted_single_select_shows_draft_cue(
+    authenticated_page: Page, live_server
+):
+    """Issue #450: box text with no committed value gets the "draft" cue —
+    dashed wrapper border, muted-italic text, pencil glyph — at rest only, plus
+    the sr-only status announcement. Re-typing a committed label without
+    picking is exactly the trap: the text looks committed but saves NULL."""
+    page = authenticated_page
+    Device.objects.create(name="Nintendo Switch", type=Device.HANDHELD)
+    page.goto(f"{live_server.url}{reverse('games:add_session')}")
+
+    wrapper = page.locator("search-select[name='device']")
+    box = page.locator("#id_device")
+    pencil = wrapper.locator("[data-search-select-marker]")
+    status = wrapper.locator("[data-search-select-status]")
+    hidden = wrapper.locator('[data-search-select-pills] input[type="hidden"]')
+    border_style = "el => getComputedStyle(el).borderStyle"
+    font_style = "el => getComputedStyle(el).fontStyle"
+
+    # Commit a pick, then rest: no cue anywhere.
+    box.click()
+    option = wrapper.locator("[data-search-select-option]", has_text="Nintendo Switch")
+    option.click()
+    committed_label = box.input_value()
+    page.locator("#id_note").click()  # blur the combobox
+    expect(hidden).to_have_count(1)
+    assert wrapper.get_attribute("data-uncommitted") is None
+    assert wrapper.evaluate(border_style) == "solid"
+    assert box.evaluate(font_style) == "normal"
+    expect(pencil).to_be_hidden()
+    expect(status).to_have_text("")
+
+    # Re-type the committed label without picking: the #450 trap. Focus selects
+    # the label whole, so typing replaces it; the first keystroke drops the
+    # committed value.
+    box.click()
+    box.type(committed_label)
+    page.locator("#id_note").click()
+    expect(wrapper).to_have_attribute("data-uncommitted", "")
+    expect(hidden).to_have_count(0)
+    expect(box).to_have_value(committed_label)  # text still masquerades
+    assert wrapper.evaluate(border_style) == "dashed"
+    assert box.evaluate(font_style) == "italic"
+    expect(pencil).to_be_visible()
+    # The assistive channel: status text + describedby wiring.
+    expect(status).to_have_text("No option selected")
+    assert box.get_attribute("aria-describedby") == status.get_attribute("id")
+
+    # Focused again, the cues yield to the focus ring (user is mid-pick).
+    box.click()
+    assert wrapper.evaluate(border_style) == "solid"
+    assert box.evaluate(font_style) == "normal"
+    expect(pencil).to_be_hidden()
+
+    # An explicit pick clears the cue and the announcement.
+    option.click()
+    expect(hidden).to_have_count(1)
+    assert wrapper.get_attribute("data-uncommitted") is None
+    expect(status).to_have_text("")
+    page.locator("#id_note").click()
+    assert wrapper.evaluate(border_style) == "solid"
 
 
 def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):

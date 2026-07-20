@@ -221,6 +221,9 @@ class SearchSelectWidget(forms.Widget):
                 # so its panel uses the shared attachMenu open/close/position/dismiss
                 # engine (issue #348). The widget's own input stays the trigger.
                 host_dropdown=True,
+                # Uncommitted-value cue (#450) for every form single-select;
+                # the component ignores it when multi_select.
+                committed_marker=True,
             )
         )
 

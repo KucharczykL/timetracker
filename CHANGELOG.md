@@ -1,6 +1,13 @@
 ## Unreleased
 
 ### New
+* Form single-select comboboxes (session game/device, purchase platform/related
+  game, game platform, play-event game) now flag box text that has no committed
+  value — a dashed "draft" border, muted italic text, and a pencil glyph at
+  rest, plus a screen-reader announcement ("No option selected" via a live
+  region wired with `aria-describedby`). Previously, re-typing an option's name
+  without picking it looked identical to a committed pick while silently saving
+  nothing (#450).
 * Add a layered settings resolver (`env > database > default`) with a declarative
   registry and a global `SiteSetting` store — the backend foundation for a future
   settings panel. `DEFAULT_CURRENCY` is now resolved through it, so it can be
