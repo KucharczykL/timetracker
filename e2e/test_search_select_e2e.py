@@ -124,7 +124,8 @@ def test_search_select_backspace_clears_single_select(live_server, page):
     # Focus the input
     print("\n--- FOCUSING INPUT ---")
     search_input.focus()
-    assert search_input.input_value() == ""
+    # Focus keeps the committed label (selected), not wiped.
+    assert search_input.input_value() == "Game A"
 
     # Press Backspace using the raw keyboard API to avoid any high-level Playwright input simulation
     print("\n--- PRESSING BACKSPACE ---")
@@ -152,7 +153,7 @@ def test_search_select_typing_replaces_single_select(live_server, page):
     )
 
     search_input.focus()
-    assert search_input.input_value() == ""
+    assert search_input.input_value() == "Game A"
 
     search_input.type("X")
     assert search_input.input_value() == "X"
@@ -254,7 +255,7 @@ def test_search_select_arrow_and_enter_selects(live_server, page):
         'search-select[name="games"] input[data-search-select-search]'
     )
     search_input.focus()
-    assert search_input.input_value() == ""
+    assert search_input.input_value() == "Game A"
 
     # On focus the first option (Game A) is auto-highlighted; ArrowDown moves to
     # the next visible option (Game B), and Enter commits it.
@@ -384,9 +385,10 @@ def test_multi_select_aria_selected_tracks_membership(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
-def test_multi_select_clears_query_on_tab_out(live_server, page):
-    """Issue #119 follow-up: multi-select used to keep an uncommitted query in the
-    box after tabbing out (single-select cleared it). Both must clear now."""
+def test_multi_select_keeps_query_on_tab_out(live_server, page):
+    """The uncommitted query must persist across tab-out/refocus (matching
+    single-select, which keeps its committed label). Text must not disappear
+    unless the user deletes it."""
     multi_search = page.locator("#multi-search")
     banana_row = page.locator('[data-search-select-option][data-value="2"]')
 
@@ -399,11 +401,11 @@ def test_multi_select_clears_query_on_tab_out(live_server, page):
 
     page.keyboard.press("Tab")
 
-    # The transient query is dropped, matching single-select behavior.
-    expect(multi_search).to_have_value("")
-    # Re-opening shows the full, un-filtered list again.
+    # The transient query persists after tabbing out.
+    expect(multi_search).to_have_value("App")
+    # Re-opening keeps the query applied (list stays filtered).
     multi_search.focus()
-    expect(banana_row).to_be_visible()
+    expect(banana_row).to_be_hidden()
 
 
 @pytest.mark.django_db

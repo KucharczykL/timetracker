@@ -127,6 +127,12 @@ const initWidget = (containerElement: Element) => {
   let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
   let hasPrefetched = false;
 
+  // Untouched committed single-select: box shows the label but the query is
+  // empty (show the full list). Once edited (dirty), the box text is the query.
+  // Multi-select box is always the query.
+  const currentQuery = (): string =>
+    !multi && !container._searchSelectDirty ? "" : search.value.trim();
+
   // ── ARIA combobox wiring (issue #154). Roles/aria-selected come from the
   //    server markup (and template clones inherit them); the id plumbing and
   //    the expanded/activedescendant state live here. ──
@@ -417,8 +423,8 @@ const initWidget = (containerElement: Element) => {
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
-        setNoResults(filterRows(search.value.trim()) === 0);
-        autoHighlight(search.value.trim());
+        setNoResults(filterRows(currentQuery()) === 0);
+        autoHighlight(currentQuery());
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
@@ -471,17 +477,19 @@ const initWidget = (containerElement: Element) => {
   };
 
   // ── Single-select combobox: the search box shows the committed label;
-  //    focusing clears it to search, blurring restores it (or deselects). ──
+  //    focusing selects the label so the first keystroke replaces it, blurring
+  //    restores it (or deselects). ──
   if (!multi) container._searchSelectLabel = search.value;
 
   const runFocus = () => {
     if (!multi) {
-      // Hide the committed label so the box becomes a fresh search field.
-      search.value = "";
+      // Keep the committed label but select it: the full list shows (currentQuery
+      // reports "" until the user edits) and the first keystroke replaces it.
+      search.select();
       container._searchSelectDirty = false;
     }
     if (freeText) {
-      rebuildFreeTextRow(search.value.trim());
+      rebuildFreeTextRow(currentQuery());
     } else if (searchUrl) {
       if (prefetch && !hasPrefetched) {
         // Seed the window immediately on first open (not debounced).
@@ -489,13 +497,13 @@ const initWidget = (containerElement: Element) => {
         fetchFromServer("");
       } else {
         // Show whatever is already loaded; the server decides no-results.
-        filterRows(search.value.trim());
+        filterRows(currentQuery());
         setNoResults(false);
-        autoHighlight(search.value.trim());
+        autoHighlight(currentQuery());
       }
     } else {
-      setNoResults(filterRows(search.value.trim()) === 0);
-      autoHighlight(search.value.trim());
+      setNoResults(filterRows(currentQuery()) === 0);
+      autoHighlight(currentQuery());
     }
     showPanel();
   };
@@ -503,15 +511,9 @@ const initWidget = (containerElement: Element) => {
 
   search.addEventListener("input", () => {
     clearHighlight();
-    if (!multi) {
-      if (!container._searchSelectDirty) {
-        const label = container._searchSelectLabel || "";
-        if (search.value.startsWith(label)) {
-          search.value = search.value.slice(label.length);
-        }
-        container._searchSelectDirty = true;
-      }
-    }
+    // The first keystroke replaces the selected label natively; flip dirty so
+    // currentQuery reports the real box text.
+    if (!multi) container._searchSelectDirty = true;
     runSearch();
   });
 
@@ -520,9 +522,12 @@ const initWidget = (containerElement: Element) => {
       // Defer so an option click (which fires before blur settles) wins.
       setTimeout(() => {
         if (container._searchSelectDirty && search.value.trim() === "") {
-          // User intentionally cleared the box → deselect.
+          // User intentionally cleared the box → deselect. Reset dirty so the
+          // next focus reports an empty query (the committed-and-untouched
+          // invariant currentQuery relies on).
           pills.innerHTML = "";
           container._searchSelectLabel = "";
+          container._searchSelectDirty = false;
           emitChange(null);
         } else {
           // Focused-and-left, or typed a partial query without picking →
@@ -536,13 +541,6 @@ const initWidget = (containerElement: Element) => {
   // ── Keyboard navigation (both form and filter modes) ──
   search.addEventListener("keydown", (event) => {
     const { key } = event;
-
-    if (!multi && key === "Backspace" && !container._searchSelectDirty) {
-      event.preventDefault();
-      search.value = "";
-      search.dispatchEvent(new Event("input", { bubbles: true }));
-      return;
-    }
 
     if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(key)) return;
     const visible = getVisibleOptions();
@@ -901,19 +899,8 @@ const initWidget = (containerElement: Element) => {
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
       hidePanel(); // also clears the highlight
-      // The search box is a transient query buffer; pills hold the committed
-      // values. Drop any uncommitted query on exit so it matches single-select
-      // (whose blur handler already clears/restores the box). Reset row
-      // visibility without reopening the panel — never call runSearch() here.
-      if (multi && search.value !== "") {
-        search.value = "";
-        if (freeText) {
-          rebuildFreeTextRow("");
-        } else {
-          filterRows("");
-          setNoResults(false);
-        }
-      }
+      // Multi's uncommitted query persists in the box across tab-out/refocus;
+      // single-select's blur handler owns restore/deselect.
     }
   });
 
