@@ -917,6 +917,17 @@ const initWidget = (containerElement: Element) => {
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
+      // Cancel any pending/in-flight search so a late debounced fetch can't
+      // resolve and reopen the panel (via renderRows → showPanel) over the
+      // next field after the user has already tabbed away (issue #451).
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      if (pendingRequest) {
+        pendingRequest.abort();
+        pendingRequest = null;
+      }
       hidePanel(); // also clears the highlight
       // Both modes keep their box text across tab-out/refocus: single-select
       // commits only on an explicit pick, so blur touches neither value nor text.
