@@ -34,6 +34,7 @@ from common.components.primitives import (
     Label,
     Li,
     P,
+    Popover,
     Span,
     Template,
     Ul,
@@ -228,6 +229,13 @@ class FilterGroupProps(TypedDict):
 register_element("filter-group", "FilterGroup", FilterGroupProps)
 _FilterGroup = custom_element_builder("filter-group")
 
+# The "!" incomplete-leaf indicator (popover trigger): a small warning circle.
+_INCOMPLETE_BADGE_CLASS = (
+    "inline-flex items-center justify-center w-5 h-5 rounded-full border "
+    "border-warning-subtle bg-warning-soft text-warning text-type-micro font-bold "
+    "cursor-help select-none"
+)
+
 
 def FilterGroup(*, model: str, filter: str = "") -> Node:
     """The recursive nested-filter group shell (issue #189, phase 2c of #168).
@@ -292,6 +300,22 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
     # TS-declared control styling in the builder moves server-side.
     templates.extend(chip_templates())
     templates.append(relation_select_template())
+    # The incomplete-leaf cue: a "!" popover the client clones onto a touched-but-
+    # incomplete row (rewriting the popover id per clone). Server-owned so its
+    # markup + tokens are authored in Python, not assembled in TS.
+    templates.append(
+        Template(data_incomplete_badge_template="")[
+            Popover(
+                popover_content=(
+                    "This condition is incomplete, so it's ignored — it won't "
+                    "affect the count or results until you complete it."
+                ),
+                wrapped_content="!",
+                wrapped_classes=_INCOMPLETE_BADGE_CLASS,
+                id="incomplete-badge",
+            )
+        ]
+    )
 
     return _FilterGroup(
         model=model,
@@ -435,7 +459,7 @@ def FilterCount(
         noun_singular=noun_singular,
         noun_plural=noun_plural,
         endpoint=endpoint,
-    )[Span(class_="text-type-body text-gray-600 dark:text-gray-400")["Counting…"]]
+    )[Span(class_="text-type-body text-body")["Counting…"]]
 
 
 # The <sort-header> builder lives in primitives.py (next to StyledTable, which
