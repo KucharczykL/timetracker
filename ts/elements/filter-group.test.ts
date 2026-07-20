@@ -707,8 +707,17 @@ function setOperand(host: HTMLElement, path: Path, side: "left" | "right", value
     `[data-value-cell] [data-fc-${side}] search-select`,
   )!;
   element.setSelected(value, value);
+  // A pick carries the chosen option as `last`; the comparison row's listener
+  // acts only on picks (an edit-clear's last=null is ignored).
   element.dispatchEvent(
-    new CustomEvent("search-select:change", { bubbles: true, detail: { name: `fc-${side}` } }),
+    new CustomEvent("search-select:change", {
+      bubbles: true,
+      detail: {
+        name: `fc-${side}`,
+        values: [value],
+        last: { value, label: value, data: {} },
+      },
+    }),
   );
 }
 

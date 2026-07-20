@@ -856,6 +856,58 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     assert "original_year_released" in _operand_option_values(new_row, "right")
 
 
+def test_comparison_left_operand_survives_keystroke(
+    authenticated_page: Page, live_server
+) -> None:
+    """A keystroke in a committed left operand emits a transient edit-clear
+    (last=null, the single-select pick-only contract). The row listener must
+    ignore it: re-deriving would empty the operator and wipe the right operand
+    irrecoverably. Only a real pick re-derives the row."""
+    page = authenticated_page
+
+    filter_json = {
+        "field_comparisons": [
+            {
+                "left": "created_at",
+                "right": "updated_at",
+                "modifier": "LESS_THAN",
+                "granularity": "date",
+            }
+        ]
+    }
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={_encode_filter(filter_json)}"
+    )
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+
+    comparison_row = page.locator('filter-group [data-node-kind="comparison"]')
+    operator_select = comparison_row.locator("[data-fc-op]")
+    expect(_operand_value_locator(comparison_row, "left")).to_have_value("created_at")
+    expect(operator_select).to_have_value("LESS_THAN:date")
+
+    # Typing in the committed left operand drops its own committed value…
+    left_search = comparison_row.locator("[data-fc-left] [data-search-select-search]")
+    left_search.click()
+    left_search.type("y")
+    expect(_operand_value_locator(comparison_row, "left")).to_have_count(0)
+
+    # …but the rest of the row survives the transient clear.
+    expect(operator_select).to_have_value("LESS_THAN:date")
+    expect(operator_select).to_be_enabled()
+    expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
+
+    # A real pick still re-derives: choosing a number column rebuilds the right
+    # list to the number-compatible columns.
+    comparison_row.locator(
+        "[data-fc-left] [data-search-select-option][data-value='year_released']"
+    ).click()
+    expect(_operand_value_locator(comparison_row, "left")).to_have_value(
+        "year_released"
+    )
+    assert "original_year_released" in _operand_option_values(comparison_row, "right")
+
+
 def test_preset_delete_flow_removes_row_and_db_record(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:

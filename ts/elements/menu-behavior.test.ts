@@ -70,10 +70,13 @@ describe("attachMenu outside-click containment", () => {
 });
 
 describe("attachMenu toggle-resize reposition (issue #355)", () => {
-  it("observes the toggle while open and disconnects on close", () => {
+  it("observes the toggle and menu while open and disconnects on close", () => {
     // A `fixed` panel does not auto-follow the toggle when it grows/shrinks
     // (a multi-select adding/removing a pill), and no scroll/resize fires — so
-    // the toggle's box is observed, but only while open to avoid churn.
+    // the toggle's box is observed. The menu itself is also observed so that
+    // content-height changes (e.g. filtering a combobox) reposition a flipped
+    // panel — without a second observe(menu) the stale top would float away from
+    // the trigger (issue #443). Both are observed only while open to avoid churn.
     const observe = vi.fn();
     const disconnect = vi.fn();
     const original = globalThis.ResizeObserver;
@@ -85,9 +88,11 @@ describe("attachMenu toggle-resize reposition (issue #355)", () => {
     try {
       const { controller } = mount();
       const toggle = document.querySelector("[data-toggle]") as HTMLElement;
+      const menu = document.querySelector("[data-menu]") as HTMLElement;
       expect(observe).not.toHaveBeenCalled();
       controller.open();
       expect(observe).toHaveBeenCalledWith(toggle);
+      expect(observe).toHaveBeenCalledWith(menu);
       expect(disconnect).not.toHaveBeenCalled();
       controller.close();
       expect(disconnect).toHaveBeenCalledTimes(1);

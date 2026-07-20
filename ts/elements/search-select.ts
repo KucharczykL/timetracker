@@ -4,9 +4,10 @@
  * A search box paired with a dropdown of options. Multi-select renders chosen
  * items as removable pills (inline with the search box), each backed by a
  * hidden <input>. Single-select renders no pill: the committed label lives
- * inside the search box (which doubles as a combobox — focus clears it to
- * search, picking an option fills it), with a lone hidden <input> carrying the
- * value. Both keep hidden inputs so Django validation works.
+ * inside the search box (which doubles as a combobox — a value is committed
+ * only by an explicit pick, which fills in the option's label; the first edit
+ * of a committed field clears its value), with a lone hidden <input> carrying
+ * the value. Both keep hidden inputs so Django validation works.
  *
  * Filter mode (filter-mode="true", rendered by FilterSelect): value rows carry
  * +/− buttons that add include (✓) / exclude (✗) pills, plus pinned modifier
@@ -126,6 +127,12 @@ const initWidget = (containerElement: Element) => {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
   let hasPrefetched = false;
+
+  // Untouched committed single-select: box shows the label but the query is
+  // empty (show the full list). Once edited (dirty), the box text is the query.
+  // Multi-select box is always the query.
+  const currentQuery = (): string =>
+    !multi && !container._searchSelectDirty ? "" : search.value.trim();
 
   // ── ARIA combobox wiring (issue #154). Roles/aria-selected come from the
   //    server markup (and template clones inherit them); the id plumbing and
@@ -417,8 +424,8 @@ const initWidget = (containerElement: Element) => {
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
-        setNoResults(filterRows(search.value.trim()) === 0);
-        autoHighlight(search.value.trim());
+        setNoResults(filterRows(currentQuery()) === 0);
+        autoHighlight(currentQuery());
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
@@ -470,18 +477,27 @@ const initWidget = (containerElement: Element) => {
     showPanel();
   };
 
-  // ── Single-select combobox: the search box shows the committed label;
-  //    focusing clears it to search, blurring restores it (or deselects). ──
+  // ── Single-select combobox: the search box shows the committed label. A
+  //    value is committed only by an explicit pick; the first edit of a
+  //    committed field clears it. The box text is never rewritten except by a
+  //    pick filling in its label — blur touches neither value nor text. ──
   if (!multi) container._searchSelectLabel = search.value;
 
   const runFocus = () => {
     if (!multi) {
-      // Hide the committed label so the box becomes a fresh search field.
-      search.value = "";
-      container._searchSelectDirty = false;
+      const committedLabel = container._searchSelectLabel ?? "";
+      if (search.value === committedLabel) {
+        // Committed label (or both empty): select it so a keystroke replaces it; full list.
+        search.select();
+        container._searchSelectDirty = false;
+      } else {
+        // Retained query from an earlier unpicked edit: caret at end, keep filtering by it.
+        container._searchSelectDirty = true;
+        search.setSelectionRange(search.value.length, search.value.length);
+      }
     }
     if (freeText) {
-      rebuildFreeTextRow(search.value.trim());
+      rebuildFreeTextRow(currentQuery());
     } else if (searchUrl) {
       if (prefetch && !hasPrefetched) {
         // Seed the window immediately on first open (not debounced).
@@ -489,60 +505,61 @@ const initWidget = (containerElement: Element) => {
         fetchFromServer("");
       } else {
         // Show whatever is already loaded; the server decides no-results.
-        filterRows(search.value.trim());
+        filterRows(currentQuery());
         setNoResults(false);
-        autoHighlight(search.value.trim());
+        autoHighlight(currentQuery());
       }
     } else {
-      setNoResults(filterRows(search.value.trim()) === 0);
-      autoHighlight(search.value.trim());
+      setNoResults(filterRows(currentQuery()) === 0);
+      autoHighlight(currentQuery());
     }
     showPanel();
   };
   search.addEventListener("focus", runFocus);
 
+  // Focus via mouse click: Chromium collapses runFocus's search.select() to a
+  // caret on the following mouseup, so click-then-type would append to the label
+  // instead of replacing it. preventDefault that one mouseup so the selection
+  // survives. Don't prevent mousedown (it delivers focus/caret). Armed only when
+  // focus will actually select-all — the box holds the committed label; a click
+  // into a retained query places the caret normally.
+  let selectLabelOnMouseUp = false;
+  search.addEventListener("mousedown", () => {
+    if (
+      !multi &&
+      document.activeElement !== search &&
+      search.value === (container._searchSelectLabel ?? "")
+    ) {
+      selectLabelOnMouseUp = true;
+    }
+  });
+  search.addEventListener("mouseup", (event) => {
+    if (selectLabelOnMouseUp) {
+      event.preventDefault();
+      selectLabelOnMouseUp = false;
+    }
+  });
+
   search.addEventListener("input", () => {
     clearHighlight();
-    if (!multi) {
-      if (!container._searchSelectDirty) {
-        const label = container._searchSelectLabel || "";
-        if (search.value.startsWith(label)) {
-          search.value = search.value.slice(label.length);
-        }
-        container._searchSelectDirty = true;
+    // First edit: the box text becomes the live query. If a pick was committed,
+    // editing abandons it — clear the value now, so only an explicit pick can
+    // commit one. With nothing committed there is no value to clear and no
+    // event fires.
+    if (!multi && !container._searchSelectDirty) {
+      container._searchSelectDirty = true;
+      if (container._searchSelectLabel) {
+        pills.innerHTML = "";
+        container._searchSelectLabel = "";
+        emitChange(null);
       }
     }
     runSearch();
   });
 
-  if (!multi) {
-    search.addEventListener("blur", () => {
-      // Defer so an option click (which fires before blur settles) wins.
-      setTimeout(() => {
-        if (container._searchSelectDirty && search.value.trim() === "") {
-          // User intentionally cleared the box → deselect.
-          pills.innerHTML = "";
-          container._searchSelectLabel = "";
-          emitChange(null);
-        } else {
-          // Focused-and-left, or typed a partial query without picking →
-          // restore the committed label (no-op right after a selection).
-          search.value = container._searchSelectLabel || "";
-        }
-      }, 120);
-    });
-  }
-
   // ── Keyboard navigation (both form and filter modes) ──
   search.addEventListener("keydown", (event) => {
     const { key } = event;
-
-    if (!multi && key === "Backspace" && !container._searchSelectDirty) {
-      event.preventDefault();
-      search.value = "";
-      search.dispatchEvent(new Event("input", { bubbles: true }));
-      return;
-    }
 
     if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(key)) return;
     const visible = getVisibleOptions();
@@ -901,19 +918,8 @@ const initWidget = (containerElement: Element) => {
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
       hidePanel(); // also clears the highlight
-      // The search box is a transient query buffer; pills hold the committed
-      // values. Drop any uncommitted query on exit so it matches single-select
-      // (whose blur handler already clears/restores the box). Reset row
-      // visibility without reopening the panel — never call runSearch() here.
-      if (multi && search.value !== "") {
-        search.value = "";
-        if (freeText) {
-          rebuildFreeTextRow("");
-        } else {
-          filterRows("");
-          setNoResults(false);
-        }
-      }
+      // Both modes keep their box text across tab-out/refocus: single-select
+      // commits only on an explicit pick, so blur touches neither value nor text.
     }
   });
 
@@ -932,10 +938,9 @@ const initWidget = (containerElement: Element) => {
   // combobox seeds and opens on load like a real focus does. rAF lets a delegated
   // <drop-down> host finish upgrading first.
   if (search.hasAttribute("autofocus")) {
-    // A pre-committed single-select shows its label in the box; focusing it (and
-    // the focus listener's runFocus) would clear that label. Snapshot emptiness
-    // now — before any focus() — so only a fresh, empty add form drives the panel
-    // open; a committed field keeps its label and whatever native focus it got.
+    // Only a fresh, empty add form should steal focus and drive the panel open;
+    // a pre-committed single-select keeps its label and whatever native focus it
+    // got. Snapshot emptiness now — before any focus() runs the flow below.
     const startedEmpty = !search.value;
     requestAnimationFrame(() => {
       if (!search.isConnected || !startedEmpty) return;
