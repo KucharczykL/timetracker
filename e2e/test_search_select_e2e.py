@@ -176,17 +176,18 @@ def test_search_select_backspace_clears_single_select(live_server, page):
     print("\n--- BLURRING INPUT ---")
     search_input.blur()
 
-    # Wait for blur microtasks/setTimeout to settle (120ms timeout in JS)
-    page.wait_for_timeout(200)
-
-    # After Backspace and blur, the input should remain empty (the selection is cleared)
+    # Deleting all text is an edit, and the edit itself cleared the committed
+    # value — blur changes nothing.
     assert search_input.input_value() == ""
     assert hidden_input.count() == 0
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
-def test_search_select_typing_replaces_single_select(live_server, page):
+def test_search_select_typing_replaces_label_and_keeps_text(live_server, page):
+    """Typing over a committed label replaces it, and the typed text survives
+    blur — a value is committed only by an explicit pick, so the first edit
+    clears the old one instead of blur restoring it."""
     page.goto(live_server.url + "/test-search-select/")
 
     search_input = page.locator(
@@ -200,12 +201,11 @@ def test_search_select_typing_replaces_single_select(live_server, page):
     assert search_input.input_value() == "X"
 
     search_input.blur()
-    page.wait_for_timeout(200)
 
-    assert search_input.input_value() == "Game A"
+    assert search_input.input_value() == "X"
 
     hidden_input = page.locator('input[name="games"]')
-    assert hidden_input.first.get_attribute("value") == "7"
+    assert hidden_input.count() == 0
 
 
 @pytest.mark.django_db
@@ -525,3 +525,181 @@ def test_searchurl_committed_single_select_shows_full_list_on_focus(live_server,
         'search-select[name="item"] [data-search-select-option]:visible'
     )
     expect(options).to_have_count(6)
+
+
+def _games_search_input(page):
+    return page.locator('search-select[name="games"] input[data-search-select-search]')
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_keeps_partial_query_on_blur(live_server, page):
+    """Typing a partial query and leaving without picking keeps the text —
+    typed text must never disappear unless the user deletes it. The edit
+    already cleared the old committed value, so nothing submits."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+
+    search_input.focus()
+    search_input.type("Gam")
+    page.locator("#next-field").focus()
+
+    # Nothing deferred may rewrite the box after blur.
+    page.wait_for_timeout(200)
+    assert search_input.input_value() == "Gam"
+    assert page.locator('input[name="games"]').count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_retained_query_filters_on_refocus(live_server, page):
+    """Refocusing a box holding a retained (unpicked) query keeps the text and
+    filters the list by it — not the committed-label full-list treatment."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+    game_a_row = page.locator('[data-search-select-option][data-value="7"]')
+    game_b_row = page.locator('[data-search-select-option][data-value="8"]')
+
+    search_input.focus()
+    search_input.type("B")
+    page.locator("#next-field").focus()
+
+    search_input.focus()
+    assert search_input.input_value() == "B"
+    expect(game_a_row).to_be_hidden()
+    expect(game_b_row).to_be_visible()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_edit_clears_committed_value(live_server, page):
+    """The first keystroke in a committed field clears its value immediately and
+    fires exactly one empty search-select:change; later keystrokes are plain
+    query edits."""
+    page.goto(live_server.url + "/test-search-select/")
+    page.evaluate(
+        """() => {
+            window.__changes = [];
+            document.querySelector('search-select[name="games"]').addEventListener(
+                'search-select:change',
+                (event) => window.__changes.push(event.detail)
+            );
+        }"""
+    )
+    search_input = _games_search_input(page)
+    hidden_input = page.locator('input[name="games"]')
+    assert hidden_input.first.get_attribute("value") == "7"
+
+    search_input.focus()
+    search_input.type("X")
+
+    assert hidden_input.count() == 0
+    changes = page.evaluate("() => window.__changes")
+    assert len(changes) == 1
+    assert changes[0]["values"] == []
+    assert changes[0]["last"] is None
+
+    # A second keystroke edits the query without another change event.
+    search_input.type("Y")
+    assert page.evaluate("() => window.__changes.length") == 1
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_focus_then_blur_keeps_committed_value(live_server, page):
+    """Focusing a committed field and leaving without typing is a no-op: the
+    label stays in the box and the committed value still submits."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+
+    search_input.focus()
+    assert search_input.input_value() == "Game A"
+    page.locator("#next-field").focus()
+
+    # Nothing deferred may rewrite the box or the value after blur.
+    page.wait_for_timeout(200)
+    assert search_input.input_value() == "Game A"
+    assert page.locator('input[name="games"]').first.get_attribute("value") == "7"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_committed_focus_shows_full_list(live_server, page):
+    """Focusing a committed inline (no search-url) single-select shows the full
+    option list, not just the row matching the committed label."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+
+    search_input.focus()
+    options = page.locator(
+        'search-select[name="games"] [data-search-select-option]:visible'
+    )
+    expect(options).to_have_count(2)
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_repick_after_edit_clear(live_server, page):
+    """After an edit cleared the committed value, picking an option commits it:
+    hidden value set, box shows the picked label."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+    hidden_input = page.locator('input[name="games"]')
+
+    search_input.focus()
+    search_input.type("B")
+    assert hidden_input.count() == 0
+
+    page.locator('[data-search-select-option][data-value="8"]').click()
+
+    expect(search_input).to_have_value("Game B")
+    assert hidden_input.first.get_attribute("value") == "8"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_escape_keeps_text(live_server, page):
+    """Escape only closes the panel. After an edit it keeps the typed text and
+    the cleared value (no undo); on an unedited committed field it keeps the
+    label and the committed value."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+    options_panel = page.locator(
+        'search-select[name="games"] [data-search-select-options]'
+    )
+    hidden_input = page.locator('input[name="games"]')
+
+    search_input.focus()
+    search_input.type("Gam")
+    page.keyboard.press("Escape")
+
+    expect(options_panel).to_be_hidden()
+    assert search_input.input_value() == "Gam"
+    assert hidden_input.count() == 0
+
+    # Unedited committed field: Escape closes the panel and touches nothing.
+    page.reload()
+    search_input.focus()
+    page.keyboard.press("Escape")
+
+    expect(options_panel).to_be_hidden()
+    assert search_input.input_value() == "Game A"
+    assert hidden_input.first.get_attribute("value") == "7"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_exact_retype_saves_nothing(live_server, page):
+    """Retyping the exact label without a pick leaves the field uncommitted: the
+    box reads a valid label but nothing submits. Guards against a future
+    accidental auto-commit on a text match."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = _games_search_input(page)
+
+    search_input.focus()
+    search_input.type("Game A")
+    page.locator("#next-field").focus()
+
+    page.wait_for_timeout(200)
+    assert search_input.input_value() == "Game A"
+    assert page.locator('input[name="games"]').count() == 0

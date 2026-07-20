@@ -276,15 +276,50 @@ describe("applyComparisonSelection + wiring", () => {
     expect(comparisonOperandValue(row, "left")).toBe("");
   });
 
-  it("a left-operand change rebuilds the right list", () => {
+  it("a left-operand pick rebuilds the right list", () => {
     const row = buildRow();
     wireComparisonRowListeners(row, COLUMNS);
     const left = operand(row, "left");
     left.setSelected("timestamp_start");
     // The stub does not emit events; simulate the pick from the operand element
-    // (the listener detects the side by ancestry, not the event name).
-    left.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
+    // (the listener detects the side by ancestry, not the event name). A pick
+    // carries the chosen option as `last` — the listener acts only on picks.
+    left.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: {
+          name: "fc-left",
+          values: ["timestamp_start"],
+          last: { value: "timestamp_start", label: "Timestamp Start", data: {} },
+        },
+      }),
+    );
     expect(operand(row, "right").lastOptions.length).toBeGreaterThan(0);
+  });
+
+  it("a left-operand edit-clear (last=null) does not cascade through the row", () => {
+    const row = buildRow("LESS_THAN:date");
+    applyComparisonSelection(
+      row,
+      { left: "timestamp_start", right: "timestamp_end", modifier: "LESS_THAN", granularity: "date" },
+      COLUMNS,
+    );
+    refreshRow(row, COLUMNS);
+    wireComparisonRowListeners(row, COLUMNS);
+    const left = operand(row, "left");
+    // Typing in a committed operand transiently clears its value without a pick.
+    left.clearSelection();
+    left.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "fc-left", values: [], last: null },
+      }),
+    );
+    // The operator and right operand survive; only a real pick re-derives.
+    const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]")!;
+    expect(operator.disabled).toBe(false);
+    expect(operator.value).toBe("LESS_THAN:date");
+    expect(comparisonOperandValue(row, "right")).toBe("timestamp_end");
   });
 
   it("setOptions drops a right value no longer compatible", () => {

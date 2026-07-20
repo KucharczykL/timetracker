@@ -693,6 +693,46 @@ def test_add_purchase_related_game_autofills_from_games_selection(
     expect(related_hidden).to_have_value(str(base.id))
 
 
+def test_add_purchase_related_game_edit_clears_autofill(
+    authenticated_page: Page, live_server
+):
+    """Editing an auto-filled Related game clears its committed value (a value
+    is committed only by a pick) and hands the field to the user: the typed
+    text stays, and a later Games change must not overwrite it with a fresh
+    auto-fill."""
+    platform = Platform.objects.create(name="Steam")
+    base = Game.objects.create(
+        name="Vampire Survivors", sort_name="Vampire Survivors", platform=platform
+    )
+    Game.objects.create(name="Brotato", sort_name="Brotato", platform=platform)
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+
+    related_search = page.locator("#id_related_game")
+    related_hidden = page.locator(
+        'search-select[name="related_game"] '
+        '[data-search-select-pills] input[type="hidden"]'
+    )
+
+    _pick_game(page, "games", "Vampire")
+    page.select_option("#id_type", "dlc")
+    expect(related_hidden).to_have_value(str(base.id))
+
+    # The first keystroke clears the auto-filled value; the typed text stays.
+    related_search.click()
+    related_search.type("Bro")
+    expect(related_hidden).to_have_count(0)
+    expect(related_search).to_have_value("Bro")
+
+    # Mid-edit the field belongs to the user: a Games change no longer refills it.
+    games_widget = page.locator('search-select[name="games"]')
+    games_widget.locator("[data-pill] [data-pill-remove]").click()
+    _pick_game(page, "games", "Brotato")
+    expect(related_search).to_have_value("Bro")
+    expect(related_hidden).to_have_count(0)
+
+
 def test_quick_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, django_user_model
 ):

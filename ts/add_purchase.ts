@@ -61,6 +61,13 @@ function syncRelatedGameFromSelection(): void {
       '[data-search-select-pills] input[type="hidden"]'
     )?.value ?? "";
   if (currentValue && currentValue !== autofilledRelatedGameValue) return;
+  // A non-empty box without a committed value is a query the user is typing
+  // (editing a committed pick clears it): the field is theirs — never
+  // auto-fill over their text. An emptied box hands the field back.
+  const searchBoxText =
+    relatedGameSelect.querySelector<HTMLInputElement>("[data-search-select-search]")
+      ?.value ?? "";
+  if (!currentValue && searchBoxText !== "") return;
 
   const typeSelect = document.querySelector<HTMLSelectElement>("#id_type");
   const isAddonType = typeSelect !== null && typeSelect.value !== "game";
