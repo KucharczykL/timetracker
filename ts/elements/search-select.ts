@@ -154,6 +154,36 @@ const initWidget = (containerElement: Element) => {
     return row.id;
   };
 
+  // ── Uncommitted-value cue (issue #450, committed_marker widgets only). ──
+  // The server renders the sr-only role="status" span solely when the Python
+  // component gets committed_marker=True — its presence is the opt-in signal.
+  // That guard is load-bearing: the filter builder's field picker, the
+  // comparison operands, and the preset picker are all multi="false"
+  // filter-mode="false", so a mode check alone would light them up too.
+  // Like the listbox id, the describedby id is assigned here, never
+  // server-side (the filter builder clones whole <search-select> prototypes).
+  const statusEl = container.querySelector<HTMLElement>("[data-search-select-status]");
+  if (statusEl) {
+    statusEl.id = `${listboxId}-status`;
+    search.setAttribute("aria-describedby", statusEl.id);
+  }
+
+  // Box text present with no committed hidden input = uncommitted: toggle the
+  // container attribute (the CSS draft cue) and fill the status span so the
+  // drop is announced as it happens. Idempotent — the status text is written
+  // exactly once per transition; rewriting it on every keystroke would re-fire
+  // the live region each time. Browser form-state restore (session restore /
+  // back-navigation autofill) can repopulate the box without an input event —
+  // that pre-existing hazard is not covered here.
+  const syncUncommitted = () => {
+    if (!statusEl || multi || isFilter) return;
+    const uncommitted =
+      search.value.trim() !== "" && !pills.querySelector('input[type="hidden"]');
+    if (uncommitted === container.hasAttribute("data-uncommitted")) return;
+    container.toggleAttribute("data-uncommitted", uncommitted);
+    statusEl.textContent = uncommitted ? "No option selected" : "";
+  };
+
   // Panel-open source of truth: the `hidden` attribute when delegated (attachMenu
   // toggles menu.hidden), the `.hidden` class in the standalone/legacy path.
   const isPanelOpen = () =>
@@ -555,6 +585,9 @@ const initWidget = (containerElement: Element) => {
       }
     }
     runSearch();
+    // After the first-edit branch above — an earlier call would still see the
+    // hidden input on the exact keystroke that abandons the committed value.
+    syncUncommitted();
   });
 
   // ── Keyboard navigation (both form and filter modes) ──
@@ -767,6 +800,7 @@ const initWidget = (containerElement: Element) => {
       container._searchSelectDirty = false;
       hidePanel();
     }
+    syncUncommitted();
     if (emit) emitChange(option);
   };
 
@@ -789,6 +823,7 @@ const initWidget = (containerElement: Element) => {
     hasPrefetched = true;
     search.value = "";
     if (!multi) container._searchSelectDirty = false;
+    syncUncommitted();
     fetchFromServer("");
   };
 
@@ -802,6 +837,7 @@ const initWidget = (containerElement: Element) => {
     container._searchSelectLabel = "";
     container._searchSelectDirty = false;
     search.value = "";
+    syncUncommitted();
     syncSelectedStates();
   };
 
@@ -910,6 +946,10 @@ const initWidget = (containerElement: Element) => {
   // Seed the membership aria-selected state from whatever pills exist at init
   // (server-rendered, URL-restored, or writeFilterSelect-hydrated).
   syncSelectedStates();
+  // Seed the uncommitted cue too — a no-op for the server-rendered states
+  // (committed label + hidden input, or empty box), but keeps the attribute
+  // truthful if init ever runs against hydrated markup.
+  syncUncommitted();
 
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every

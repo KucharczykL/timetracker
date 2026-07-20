@@ -140,6 +140,22 @@ _SEARCH_CLASS = (
     "focus:ring-0 focus:outline-hidden placeholder:text-body "
     "disabled:cursor-not-allowed"
 )
+# Uncommitted "draft" cue (#450), rendered ONLY on committed_marker widgets —
+# kept out of the shared class constants so every other combobox flavor stays
+# byte-identical (FilterSelect's field/panel serializer-contract test scans all
+# data-* tokens, class strings included). At rest only: the focus ring owns the
+# focused look, so all three cues vanish under :focus-within with no JS.
+_UNCOMMITTED_CONTAINER_CLASS = "data-uncommitted:not-focus-within:border-dashed"
+# The loose text reads like a placeholder — muted (the audited placeholder
+# token) + italic.
+_UNCOMMITTED_SEARCH_CLASS = (
+    "[[data-uncommitted]:not(:focus-within)_&]:text-body "
+    "[[data-uncommitted]:not(:focus-within)_&]:italic"
+)
+# The pencil glyph: hidden except when its container is uncommitted at rest.
+# Icon() drops the snippet's baked color classes, so text-body must ride here
+# (sizing stays Icon()'s default ICON_SIZE_CLASS).
+_MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
 # centered by items-center and overlap the search box.
@@ -307,6 +323,7 @@ def _combobox_children(
     options_class: str | None = None,
     no_results_text: str = "No results",
     menu_target: bool = False,
+    marker: list[Node] | None = None,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -330,6 +347,10 @@ def _combobox_children(
     attribute (so attachMenu owns visibility) instead of the ``.hidden`` class the
     standalone widget toggles. The caller pairs it with ``options_class=``
     :data:`_INLINE_OPTIONS_CLASS`.
+
+    ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
+    between the search box and the options panel, so in the flex row they render
+    at the field's right edge (the panel is absolutely positioned / menu-hosted).
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -366,7 +387,7 @@ def _combobox_children(
         class_=options_class,
     )[*options_children, no_results]
 
-    return [pills, search, options_panel, *(templates or [])]
+    return [pills, search, *(marker or []), options_panel, *(templates or [])]
 
 
 def SearchSelect(
@@ -387,6 +408,7 @@ def SearchSelect(
     autofocus: bool = False,
     host_dropdown: bool = False,
     dynamic_options: bool = False,
+    committed_marker: bool = True,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -407,6 +429,18 @@ def SearchSelect(
     so the client can swap the inline option set via the element's ``setOptions``
     (the field-comparison right operand recomputes its list per left column +
     operator, #282). Ignored when a ``search_url`` already ships the template.
+
+    ``committed_marker`` (issue #450, single-select only, default on): renders
+    the uncommitted-state cue nodes — a pencil glyph plus a permanently sr-only
+    ``role="status"`` span the JS wires via ``aria-describedby`` and fills when
+    the box holds text with no committed value. The span's presence is the JS's
+    opt-in signal for toggling ``data-uncommitted`` (the visual cue); pass
+    ``False`` to opt a widget out. Every single-select flavor built through
+    this function gets the cue (form widgets, the filter builder's field
+    picker, the comparison column pickers); ``PresetSelect`` and
+    ``FilterSelect`` build their own markup and are structurally unaffected —
+    correctly so for the preset picker, whose pick is a command and whose box
+    clears by design.
     """
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
@@ -485,6 +519,29 @@ def SearchSelect(
             ]
         )
 
+    # ── Committed-marker cue nodes (#450, single-select only): the pencil
+    #    "draft" glyph (visual, CSS-toggled off data-uncommitted) and the empty
+    #    sr-only status span the JS fills ("No option selected") and points
+    #    aria-describedby at. The id is JS-assigned, never rendered here —
+    #    the filter builder clones whole <search-select> prototypes (#154). ──
+    marker: list[Node] | None = None
+    show_marker = committed_marker and not multi_select
+    if show_marker:
+        # The cue's state utilities ride the search box only on opted-in
+        # widgets, so every other flavor's markup stays byte-identical.
+        search_attrs.append(("class", _UNCOMMITTED_SEARCH_CLASS))
+        marker = [
+            Icon(
+                "edit",
+                [
+                    ("data-search-select-marker", ""),
+                    ("aria-hidden", "true"),
+                    ("class", _MARKER_ICON_CLASS),
+                ],
+            ),
+            Span(data_search_select_status="", role="status", class_="sr-only"),
+        ]
+
     children = _combobox_children(
         pills=pills,
         search_attributes=search_attrs,
@@ -495,6 +552,7 @@ def SearchSelect(
         templates=templates,
         options_class=_INLINE_OPTIONS_CLASS if host_dropdown else None,
         menu_target=host_dropdown,
+        marker=marker,
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
@@ -509,7 +567,9 @@ def SearchSelect(
         always_visible="true" if always_visible else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
-        class_=_CONTAINER_CLASS,
+        class_=f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
+        if show_marker
+        else _CONTAINER_CLASS,
     )[*children]
     if not host_dropdown:
         return widget

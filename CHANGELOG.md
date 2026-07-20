@@ -1,6 +1,15 @@
 ## Unreleased
 
 ### New
+* Single-select comboboxes (all six form fields, the filter builder's field
+  picker, and the comparison column pickers) now flag box text that has no
+  committed value — a dashed "draft" border, muted italic text, and a pencil
+  glyph at rest, plus a screen-reader announcement ("No option selected" via a
+  live region wired with `aria-describedby`). Previously, re-typing an option's
+  name without picking it looked identical to a committed pick while silently
+  saving nothing (#450). On by default; `committed_marker=False` opts a widget
+  out (the preset picker is structurally unaffected — its pick is a command and
+  its box clears by design).
 * Add a layered settings resolver (`env > database > default`) with a declarative
   registry and a global `SiteSetting` store — the backend foundation for a future
   settings panel. `DEFAULT_CURRENCY` is now resolved through it, so it can be

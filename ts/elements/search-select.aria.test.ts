@@ -221,3 +221,54 @@ describe("<search-select> filter-mode ARIA membership (#154 review)", () => {
     expect(search.hasAttribute("aria-activedescendant")).toBe(false);
   });
 });
+
+// The #450 uncommitted-cue status span: initWidget assigns its id (JS-side,
+// like the listbox id — the filter builder clones prototypes) and points the
+// combobox input's aria-describedby at it.
+describe("<search-select> status-span describedby wiring (#450)", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("assigns the status id and aria-describedby at init", () => {
+    document.body.replaceChildren();
+    const host = document.createElement("search-select");
+    host.setAttribute("name", "device");
+    host.setAttribute("multi", "false");
+    host.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
+      <span data-search-select-status role="status" class="sr-only"></span>
+      <div data-search-select-options class="hidden" role="listbox" tabindex="-1"></div>
+    `;
+    document.body.appendChild(host);
+
+    const status = host.querySelector<HTMLElement>("[data-search-select-status]")!;
+    expect(status.id).toMatch(/^search-select-listbox-\d+-status$/);
+    expect(searchOf(host).getAttribute("aria-describedby")).toBe(status.id);
+  });
+
+  it("two widgets get distinct status ids", () => {
+    document.body.replaceChildren();
+    const make = () => {
+      const host = document.createElement("search-select");
+      host.setAttribute("name", "device");
+      host.setAttribute("multi", "false");
+      host.innerHTML = `
+        <div data-search-select-pills></div>
+        <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
+        <span data-search-select-status role="status" class="sr-only"></span>
+        <div data-search-select-options class="hidden" role="listbox" tabindex="-1"></div>
+      `;
+      document.body.appendChild(host);
+      return host.querySelector<HTMLElement>("[data-search-select-status]")!.id;
+    };
+    const first = make();
+    const second = make();
+    expect(first).not.toBe(second);
+    expect(first).not.toBe("");
+  });
+
+  it("a span-less widget gets no aria-describedby", () => {
+    const host = mountSingle("device");
+    expect(searchOf(host).hasAttribute("aria-describedby")).toBe(false);
+  });
+});

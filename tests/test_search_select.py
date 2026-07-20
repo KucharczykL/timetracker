@@ -185,6 +185,67 @@ class SearchSelectComponentTest(unittest.TestCase):
         self.assertNotIn("id=", html)
 
 
+class SearchSelectCommittedMarkerTest(unittest.TestCase):
+    """committed_marker (issue #450, default on) renders the uncommitted-cue
+    nodes — a pencil glyph and a permanently sr-only role="status" span the JS
+    wires via aria-describedby. Single-select only; the span's presence is the
+    JS's opt-in signal, so opted-out widgets and the flavors that build their
+    own markup (FilterSelect, PresetSelect) must render without it."""
+
+    def test_single_select_renders_glyph_and_status_span_by_default(self):
+        html = str(SearchSelect(name="device"))
+        self.assertIn("data-search-select-marker", html)
+        self.assertIn("data-search-select-status", html)
+        self.assertIn('role="status"', html)
+        self.assertIn("sr-only", html)
+        # id is JS-assigned at init (clone safety, #154) — never rendered.
+        self.assertNotIn("aria-describedby", html)
+        # Marker sits between the search box and the options panel (right edge
+        # of the flex field; the panel is absolutely positioned / menu-hosted).
+        search = html.index("data-search-select-search")
+        marker = html.index("data-search-select-marker")
+        options = html.index("data-search-select-options")
+        self.assertLess(search, marker)
+        self.assertLess(marker, options)
+
+    def test_opted_out_renders_neither(self):
+        html = str(SearchSelect(name="device", committed_marker=False))
+        self.assertNotIn("data-search-select-marker", html)
+        self.assertNotIn("data-search-select-status", html)
+        # Including the state-utility class tokens — they must not leak into
+        # the shared constants (FilterSelect's serializer-contract test scans
+        # every data-* token, class strings included).
+        self.assertNotIn("data-uncommitted", html)
+
+    def test_multi_select_never_renders_the_cue(self):
+        html = str(SearchSelect(name="games", multi_select=True, committed_marker=True))
+        self.assertNotIn("data-search-select-marker", html)
+        self.assertNotIn("data-search-select-status", html)
+
+    def test_filter_and_preset_widgets_stay_without_cue_nodes(self):
+        filter_html = str(FilterSelect(field_name="platform", options=[("1", "One")]))
+        preset_html = str(
+            PresetSelect(api_url="/api/presets/?mode=games", mode="games")
+        )
+        for html in (filter_html, preset_html):
+            self.assertNotIn("data-search-select-marker", html)
+            self.assertNotIn("data-search-select-status", html)
+
+    def test_widget_adapter_single_selects_carry_the_cue(self):
+        from games.forms import SearchSelectMultiple, SearchSelectWidget
+
+        single = SearchSelectWidget(
+            search_url="/api/games/search", options_resolver=lambda values: []
+        ).render("device", None)
+        self.assertIn("data-search-select-status", single)
+        multi = SearchSelectMultiple(
+            search_url="/api/games/search",
+            options_resolver=lambda values: [],
+            multi_select=True,
+        ).render("games", None)
+        self.assertNotIn("data-search-select-status", multi)
+
+
 class SearchSelectHostDropdownTest(unittest.TestCase):
     """host_dropdown=True hosts the form combobox in
     <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
