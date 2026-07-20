@@ -1508,6 +1508,31 @@ class StyledTableRenderingTest(unittest.TestCase):
         self.assertNotIn("<tr", tbody)
         self.assertNotIn("<td", tbody)
 
+    def test_show_header_false_omits_thead(self):
+        """show_header=False renders the <tbody> but no <thead> (headerless
+        key-value stats tables); columns still drive the cell-count guard."""
+        result = str(
+            components.StyledTable(
+                columns=[components.Column(""), components.Column("")],
+                rows=[components.make_row("Hours", "312")],
+                show_header=False,
+            )
+        )
+        self.assertNotIn("<thead", result)
+        self.assertIn("<tbody", result)
+        self.assertIn("Hours", result)
+        self.assertIn('th scope="row"', result)
+
+    def test_show_header_true_by_default_renders_thead(self):
+        """The default keeps the <thead>."""
+        result = str(
+            components.StyledTable(
+                columns=[components.Column("Game"), components.Column("Started")],
+                rows=[components.make_row("GameA", "2025-01-01")],
+            )
+        )
+        self.assertIn("<thead", result)
+
     def test_simple_table_multiple_rows(self):
         """Verify multiple rows all render."""
         result = str(

@@ -524,13 +524,16 @@ class RenderedPagesTest(TestCase):
         for marker in [
             'id="year-picker-input"',
             "All-time stats",
-            "responsive-table",
             "Playtime",
             "Purchases",
             "Games by playtime",
             "Platforms by playtime",
         ]:
             self.assertIn(marker, html)
+        # Stats tables are StyledTables now: the ranked (Games/Platforms) tables
+        # render a tokenized <thead>. Anchor on the thead so a row's
+        # hover:bg-neutral-tertiary-medium doesn't false-match.
+        self.assertRegex(html, r"<thead[^>]*bg-neutral-tertiary")
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<table"), html.count("</table>"))
 
@@ -545,10 +548,10 @@ class RenderedPagesTest(TestCase):
 
     def test_stats_table_uses_type_tokens(self):
         html = self.get("games:stats_alltime").content.decode()
-        # Header cells must carry text-type-micro, body cells text-type-body.
-        # The assertion checks for presence on <th>/<td> elements specifically.
-        self.assertRegex(html, r"<th[^>]*\btext-type-micro\b[^>]*>")
-        self.assertRegex(html, r"<td[^>]*\btext-type-body\b[^>]*>")
+        # StyledTable carries the type tokens on the container elements, not the
+        # cells: text-type-micro on <thead>, text-type-body on <table>.
+        self.assertRegex(html, r"<thead[^>]*\btext-type-micro\b")
+        self.assertRegex(html, r"<table[^>]*\btext-type-body\b")
 
     def test_view_purchase(self):
         html = self.get("games:view_purchase", self.purchase.id).content.decode()

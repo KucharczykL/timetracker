@@ -1608,6 +1608,7 @@ def StyledTable(
     request=None,
     sort_terms: Sequence[SortTerm] | None = None,
     page_size: int | None = None,
+    show_header: bool = True,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -1615,6 +1616,10 @@ def StyledTable(
 
     Returns a node tree, so each cell component's declared ``Media`` bubbles up
     automatically via ``TimetrackerDocument()``'s ``collect_media`` — no manual collection.
+
+    ``show_header=False`` suppresses the ``<thead>`` for headerless tables (e.g. the
+    key-value stats blocks); ``columns`` is still required for the cell-count guard and
+    column alignment.
     """
     columns = columns or []
     rows = rows or []
@@ -1634,15 +1639,20 @@ def StyledTable(
                 )
 
     table_children: list[Node] = []
-    header_row = Tr()[[_header_cell(column, sort_terms, request) for column in columns]]
-    table_children.append(
-        Thead(
-            class_=(
-                "text-type-micro text-body uppercase bg-neutral-tertiary "
-                "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
-            ),
-        )[header_row]
-    )
+    # `columns` still drives the count-guard and align rules when the header is
+    # hidden (show_header=False) — e.g. the headerless key-value stats tables.
+    if show_header:
+        header_row = Tr()[
+            [_header_cell(column, sort_terms, request) for column in columns]
+        ]
+        table_children.append(
+            Thead(
+                class_=(
+                    "text-type-micro text-body uppercase bg-neutral-tertiary "
+                    "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
+                ),
+            )[header_row]
+        )
     # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
     # <tr> aligns from the live <tbody> it lands in — the fragment row stays
     # dumb. Driven by Column.align; a right column at position i targets its
