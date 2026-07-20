@@ -661,7 +661,7 @@ def comparison_row_template(
 # "logic type", not status. The NOT-on look uses an amber FILL + RING so a lit NOT
 # chip stays distinct from an adjacent OR chip (fill-only) — they never read as
 # one blob.
-_CHIP_BASE_CLASS = "rounded-full border px-2.5 py-0.5 text-type-micro font-semibold hover:cursor-pointer"
+_CHIP_BASE_CLASS = "inline-flex items-center min-h-control rounded-full border px-2.5 py-0.5 text-type-micro font-semibold hover:cursor-pointer"
 
 # A chip template's visual state, doubling as its data-chip-template tag; the
 # client's ChipState mirrors it.

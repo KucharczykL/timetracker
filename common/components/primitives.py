@@ -779,7 +779,7 @@ def Radio(
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded "
+    "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
