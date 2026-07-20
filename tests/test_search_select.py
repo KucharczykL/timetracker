@@ -186,13 +186,14 @@ class SearchSelectComponentTest(unittest.TestCase):
 
 
 class SearchSelectCommittedMarkerTest(unittest.TestCase):
-    """committed_marker=True (issue #450) renders the uncommitted-cue nodes —
-    a pencil glyph and a permanently sr-only role="status" span the JS wires
-    via aria-describedby. Single-select only; the span's presence is the JS's
-    opt-in signal, so every other combobox flavor must render without it."""
+    """committed_marker (issue #450, default on) renders the uncommitted-cue
+    nodes — a pencil glyph and a permanently sr-only role="status" span the JS
+    wires via aria-describedby. Single-select only; the span's presence is the
+    JS's opt-in signal, so opted-out widgets and the flavors that build their
+    own markup (FilterSelect, PresetSelect) must render without it."""
 
-    def test_single_select_renders_glyph_and_status_span(self):
-        html = str(SearchSelect(name="device", committed_marker=True))
+    def test_single_select_renders_glyph_and_status_span_by_default(self):
+        html = str(SearchSelect(name="device"))
         self.assertIn("data-search-select-marker", html)
         self.assertIn("data-search-select-status", html)
         self.assertIn('role="status"', html)
@@ -207,8 +208,8 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
         self.assertLess(search, marker)
         self.assertLess(marker, options)
 
-    def test_default_renders_neither(self):
-        html = str(SearchSelect(name="device"))
+    def test_opted_out_renders_neither(self):
+        html = str(SearchSelect(name="device", committed_marker=False))
         self.assertNotIn("data-search-select-marker", html)
         self.assertNotIn("data-search-select-status", html)
         # Including the state-utility class tokens — they must not leak into
@@ -216,7 +217,7 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
         # every data-* token, class strings included).
         self.assertNotIn("data-uncommitted", html)
 
-    def test_multi_select_ignores_the_kwarg(self):
+    def test_multi_select_never_renders_the_cue(self):
         html = str(SearchSelect(name="games", multi_select=True, committed_marker=True))
         self.assertNotIn("data-search-select-marker", html)
         self.assertNotIn("data-search-select-status", html)
@@ -230,7 +231,7 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
             self.assertNotIn("data-search-select-marker", html)
             self.assertNotIn("data-search-select-status", html)
 
-    def test_widget_adapter_opts_in_form_single_selects(self):
+    def test_widget_adapter_single_selects_carry_the_cue(self):
         from games.forms import SearchSelectMultiple, SearchSelectWidget
 
         single = SearchSelectWidget(

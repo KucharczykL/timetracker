@@ -408,7 +408,7 @@ def SearchSelect(
     autofocus: bool = False,
     host_dropdown: bool = False,
     dynamic_options: bool = False,
-    committed_marker: bool = False,
+    committed_marker: bool = True,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -430,14 +430,17 @@ def SearchSelect(
     (the field-comparison right operand recomputes its list per left column +
     operator, #282). Ignored when a ``search_url`` already ships the template.
 
-    ``committed_marker`` (issue #450, single-select only): renders the
-    uncommitted-state cue nodes — a pencil glyph plus a permanently sr-only
+    ``committed_marker`` (issue #450, single-select only, default on): renders
+    the uncommitted-state cue nodes — a pencil glyph plus a permanently sr-only
     ``role="status"`` span the JS wires via ``aria-describedby`` and fills when
-    the box holds text with no committed value. The span's presence is also the
-    JS's opt-in signal for toggling ``data-uncommitted`` (the visual cue), so
-    widgets without it (filter builder field picker, comparison operands,
-    preset picker) are untouched. ``SearchSelectWidget`` passes it for all form
-    single-selects.
+    the box holds text with no committed value. The span's presence is the JS's
+    opt-in signal for toggling ``data-uncommitted`` (the visual cue); pass
+    ``False`` to opt a widget out. Every single-select flavor built through
+    this function gets the cue (form widgets, the filter builder's field
+    picker, the comparison column pickers); ``PresetSelect`` and
+    ``FilterSelect`` build their own markup and are structurally unaffected —
+    correctly so for the preset picker, whose pick is a command and whose box
+    clears by design.
     """
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
