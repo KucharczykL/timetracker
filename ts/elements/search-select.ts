@@ -481,7 +481,15 @@ const initWidget = (containerElement: Element) => {
   //    restores it (or deselects). ──
   if (!multi) container._searchSelectLabel = search.value;
 
+  // Held so a refocus within the window cancels it, else a stale restore
+  // overwrites the freshly focused box.
+  let blurRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+
   const runFocus = () => {
+    if (blurRestoreTimer !== null) {
+      clearTimeout(blurRestoreTimer);
+      blurRestoreTimer = null;
+    }
     if (!multi) {
       // Keep the committed label but select it: the full list shows (currentQuery
       // reports "" until the user edits) and the first keystroke replaces it.
@@ -509,6 +517,22 @@ const initWidget = (containerElement: Element) => {
   };
   search.addEventListener("focus", runFocus);
 
+  // Focus via mouse click: Chromium collapses runFocus's search.select() to a
+  // caret on the following mouseup, so click-then-type would append to the label
+  // instead of replacing it. preventDefault that one mouseup so the selection
+  // survives. Don't prevent mousedown (it delivers focus/caret). Single-select
+  // only — multi has no committed label to select.
+  let selectLabelOnMouseUp = false;
+  search.addEventListener("mousedown", () => {
+    if (!multi && document.activeElement !== search) selectLabelOnMouseUp = true;
+  });
+  search.addEventListener("mouseup", (event) => {
+    if (selectLabelOnMouseUp) {
+      event.preventDefault();
+      selectLabelOnMouseUp = false;
+    }
+  });
+
   search.addEventListener("input", () => {
     clearHighlight();
     // The first keystroke replaces the selected label natively; flip dirty so
@@ -519,8 +543,10 @@ const initWidget = (containerElement: Element) => {
 
   if (!multi) {
     search.addEventListener("blur", () => {
-      // Defer so an option click (which fires before blur settles) wins.
-      setTimeout(() => {
+      // Defer so an option click (which fires before blur settles) wins. The
+      // timer is held so a refocus within the window cancels it (runFocus).
+      blurRestoreTimer = setTimeout(() => {
+        blurRestoreTimer = null;
         if (container._searchSelectDirty && search.value.trim() === "") {
           // User intentionally cleared the box → deselect. Reset dirty so the
           // next focus reports an empty query (the committed-and-untouched

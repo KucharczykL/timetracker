@@ -88,9 +88,50 @@ def anchor_test_view(request):
     return HttpResponse(html)
 
 
+def anchor_search_options_view(request):
+    from django.http import JsonResponse
+
+    items = [{"value": str(i), "label": f"Item {i:02d}", "data": {}} for i in range(6)]
+    query = request.GET.get("q", "").lower()
+    if query:
+        items = [item for item in items if query in item["label"].lower()]
+    return JsonResponse(items, safe=False)
+
+
+def searchurl_committed_view(request):
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="stylesheet" href="/static/base.css">
+        <script src="/static/js/htmx.min.js"></script>
+        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
+        <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
+    </head>
+    <body>
+        <div style="padding: 50px;">
+            {
+        SearchSelect(
+            name="item",
+            search_url="/anchor-search-options/",
+            prefetch=6,
+            selected=[{"value": "3", "label": "Item 03", "data": {}}],
+            multi_select=False,
+            host_dropdown=True,
+        )
+    }
+        </div>
+    </body>
+    </html>
+    """
+    return HttpResponse(html)
+
+
 urlpatterns = [
     path("test-search-select/", e2e_test_view),
     path("test-anchor/", anchor_test_view),
+    path("anchor-search-options/", anchor_search_options_view),
+    path("searchurl-committed/", searchurl_committed_view),
 ]
 
 
@@ -451,3 +492,36 @@ def test_single_select_panel_stays_anchored_when_filtered(live_server, page):
     after = measure()
     # Still anchored: the panel's bottom edge meets the trigger's top edge.
     assert after["gap"] <= 2, after
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_click_then_type_replaces_label(live_server, page):
+    """Clicking a committed field (mouse, not programmatic focus) then typing must
+    REPLACE the selected label, not append to it. Guards the select()
+    mouseup-collapse quirk."""
+    page.goto(live_server.url + "/test-search-select/")
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
+    search_input.click()
+    page.keyboard.type("X")
+    assert search_input.input_value() == "X"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_searchurl_committed_single_select_shows_full_list_on_focus(live_server, page):
+    """A committed single-select backed by a search-url must show the committed
+    label in the box AND the full prefetched list on focus — not collapse to the
+    single row matching the label."""
+    page.goto(live_server.url + "/searchurl-committed/")
+    search_input = page.locator(
+        'search-select[name="item"] input[data-search-select-search]'
+    )
+    assert search_input.input_value() == "Item 03"
+    search_input.focus()
+    options = page.locator(
+        'search-select[name="item"] [data-search-select-option]:visible'
+    )
+    expect(options).to_have_count(6)
