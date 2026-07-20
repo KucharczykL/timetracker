@@ -165,8 +165,7 @@ export function attachMenu(
   // add-purchase `games` field) grows/shrinks as pills are added/removed while
   // the panel is open, with no scroll/resize to fire — so observe the toggle's
   // box and reposition on any size change. Only connected while open (below) to
-  // avoid churn; also covers future inline-trigger consumers and content-height
-  // changes generally.
+  // avoid churn; also covers future inline-trigger consumers.
   const resizeObserver =
     typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
 
@@ -197,6 +196,10 @@ export function attachMenu(
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     resizeObserver?.observe(toggle);
+    // Observe the menu too: its content height changes while open (combobox
+    // filtering shrinks the list), so a top-flipped panel re-anchors instead of
+    // keeping a stale top.
+    resizeObserver?.observe(menu);
     document.dispatchEvent(
       new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
     );

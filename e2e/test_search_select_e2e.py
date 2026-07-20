@@ -56,8 +56,41 @@ def e2e_test_view(request):
     return HttpResponse(html)
 
 
+def anchor_test_view(request):
+    options = [
+        {"value": str(i), "label": f"Option {i:02d}", "data": {}} for i in range(15)
+    ]
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Anchor E2E Test</title>
+        <link rel="stylesheet" href="/static/base.css">
+        <script src="/static/js/htmx.min.js"></script>
+        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
+        <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
+    </head>
+    <body>
+        <div style="height: 1400px"></div>
+        <div style="padding: 8px;">
+            {
+        SearchSelect(
+            name="thing",
+            options=options,
+            multi_select=False,
+            host_dropdown=True,
+        )
+    }
+        </div>
+    </body>
+    </html>
+    """
+    return HttpResponse(html)
+
+
 urlpatterns = [
     path("test-search-select/", e2e_test_view),
+    path("test-anchor/", anchor_test_view),
 ]
 
 
@@ -371,3 +404,48 @@ def test_multi_select_clears_query_on_tab_out(live_server, page):
     # Re-opening shows the full, un-filtered list again.
     multi_search.focus()
     expect(banana_row).to_be_visible()
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_single_select_panel_stays_anchored_when_filtered(live_server, page):
+    """A top-flipped combobox panel must stay anchored to its trigger as filtering
+    shrinks it — not keep the taller panel's stale top and float up."""
+    page.set_viewport_size({"width": 1280, "height": 520})
+    page.goto(live_server.url + "/test-anchor/")
+
+    search_input = page.locator(
+        'search-select[name="thing"] input[data-search-select-search]'
+    )
+    panel = page.locator('search-select[name="thing"] [data-search-select-options]')
+
+    # Field sits near the viewport bottom → the panel cannot fit below and flips up.
+    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    search_input.focus()
+    expect(panel).to_be_visible()
+
+    def measure():
+        return page.evaluate(
+            """() => {
+                const trigger = document.querySelector('search-select[name="thing"]');
+                const panel = document.querySelector('search-select[name="thing"] [data-search-select-options]');
+                const triggerRect = trigger.getBoundingClientRect();
+                const panelRect = panel.getBoundingClientRect();
+                return {
+                    flippedUp: panelRect.top < triggerRect.top,
+                    gap: Math.abs(panelRect.bottom - triggerRect.top),
+                };
+            }"""
+        )
+
+    before = measure()
+    assert before["flippedUp"], before
+    assert before["gap"] <= 2, before
+
+    # Filter to a single row — the panel shrinks sharply.
+    search_input.type("Option 01")
+    page.wait_for_timeout(100)
+
+    after = measure()
+    # Still anchored: the panel's bottom edge meets the trigger's top edge.
+    assert after["gap"] <= 2, after
