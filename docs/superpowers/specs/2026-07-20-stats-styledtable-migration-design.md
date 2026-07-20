@@ -124,9 +124,32 @@ Imports: drop `Table`, `Tbody`, `Td`, `Th`, `Thead`, `Tr`; add `StyledTable`, `C
   all" buttons, Unfinished shows Name/Date/Price (Date hides below `sm`, Price stays), no
   indigo/slate anywhere, no play-icon underline.
 
-## Follow-up
+## Update — card-grid redesign folded in (split reversed)
 
-Deferred to its own issue: the stats-page card-grid redesign (two-column responsive grid,
-per-card section headings coordinated with #414's heading unification, optional Unfinished
-Date-column drop, card spacing / `min-w-0` / name truncation, standalone-link vs button styling),
-plus the misleading `top_10_games_by_playtime` name / `_two_col_table` count.
+The split was **reversed** after live review: on the kept single-column layout the `w-full`
+StyledTables read poorly (values floating mid-width, headings hard against the table below,
+cramped "View all"). Rather than one-off patches, the card-grid redesign (originally deferred to
+#435) is now included so the layout is consistent by construction:
+
+- **Two-column responsive grid** — `Div(grid grid-cols-1 md:grid-cols-2 gap-6 items-start)`, one
+  **card per section**. `gap-6` gives the section rhythm; `items-start` top-aligns uneven cards;
+  collapses to one column below `md`.
+- **Card unit** — `_card(title, table)` = `Div(min-w-0)[ _card_title, table ]`. `min-w-0` lets a
+  wide table scroll inside its own box instead of blowing out the grid column.
+- **Headings** — one page `PageHeading` (`<h1>`, `ctx["title"]`) replaces the former per-section
+  `<h1>`s; each card title is an `<h2>` at `text-type-subheading` (`Element("h2", …)` to avoid the
+  size token baked into the `H2` builder).
+- **Right-aligned values** — every value/number column uses `Column(align="right")` via the
+  existing nth-child align rule (safelisted 1–12). Fixes the "floats in space" gap.
+- **Unfinished table → 2-col `Name / Price (CZK)`** (Date dropped) to match the other 2-col cards.
+- **"View all"** stays a gray `ControlButton` below its table (`mt-3` + grid gap for rhythm).
+
+Verified live (computed styles, both themes, mobile + desktop): page `h1`, 2-up grid at ≥`md`
+collapsing to 1 column, right-aligned values, headerless kv / headed ranked tables, Unfinished
+`Name/Price`, spaced view-all buttons, no indigo/slate.
+
+## Still deferred
+
+- **StyledTable shell rounding** → #438 (square bottom corners without a footer; intrinsic
+  rounding + a general footer slot). Affects all list pages; kept separate.
+- The misleading `top_10_games_by_playtime` name and `_two_col_table`'s `len(items)` count.

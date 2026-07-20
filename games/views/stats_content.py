@@ -16,6 +16,7 @@ from common.components import (
     ContentContainer,
     ControlButton,
     Div,
+    Element,
     Fragment,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
@@ -77,12 +78,26 @@ def _view_all_button(count: int, url: str) -> Node:
 
 def _kv_table(rows: list) -> Node:
     """A headerless key-value StyledTable: label (as <th scope=row>) + value.
-    Two placeholder columns satisfy the cell-count guard; no header renders."""
+    Two placeholder columns satisfy the cell-count guard; no header renders.
+    The value column right-aligns so numbers sit on a common edge."""
     return StyledTable(
-        columns=[Column(""), Column("")],
+        columns=[Column(""), Column("", align="right")],
         rows=rows,
         show_header=False,
     )
+
+
+def _card_title(text: str) -> Node:
+    """A per-card section heading (h2, subheading size). Not PageHeading —
+    the page carries a single PageHeading h1; cards sit under it."""
+    return Element("h2", [("class", "text-type-subheading text-heading mb-3")])[text]
+
+
+def _card(title: str, body: Node) -> Node:
+    """One grid cell: a section title above its StyledTable. ``min-w-0`` lets the
+    cell shrink so a wide table scrolls inside its own box instead of blowing out
+    the grid column."""
+    return Div(class_="min-w-0")[_card_title(title), body]
 
 
 def _dur(value) -> str:
@@ -277,7 +292,7 @@ def _two_col_table(header: str, items, name_key, value_fn, view_all_url=None) ->
     display = items[:_LIST_CAP] if view_all_url else items
     rows = [make_row(name_key(item), value_fn(item)) for item in display]
     table = StyledTable(
-        columns=[Column(header), Column("Playtime")],
+        columns=[Column(header), Column("Playtime", align="right")],
         rows=rows,
     )
     if view_all_url and len(items) > _LIST_CAP:
@@ -292,7 +307,9 @@ def _finished_table(purchases, view_all_url=None, total=None) -> Node:
         make_row(_purchase_name(p), date_filter(p.date_finished, "d/m/Y"))
         for p in display
     ]
-    table = StyledTable(columns=[Column("Name"), Column("Date")], rows=rows)
+    table = StyledTable(
+        columns=[Column("Name"), Column("Date", align="right")], rows=rows
+    )
     total = total if total is not None else len(purchases)
     if view_all_url and total > _LIST_CAP:
         return Fragment(table, _view_all_button(total, view_all_url))
@@ -300,20 +317,13 @@ def _finished_table(purchases, view_all_url=None, total=None) -> Node:
 
 
 def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
-    # Column order Name / Date / Price so the mobile middle-column hide drops
-    # Date (not Price) below `sm`.
     purchases = list(purchases)
     display = purchases[:_LIST_CAP] if view_all_url else purchases
     rows = [
-        make_row(
-            _purchase_name(p),
-            date_filter(p.date_purchased, "d/m/Y"),
-            floatformat(p.converted_price),
-        )
-        for p in display
+        make_row(_purchase_name(p), floatformat(p.converted_price)) for p in display
     ]
     table = StyledTable(
-        columns=[Column("Name"), Column("Date"), Column(f"Price ({currency})")],
+        columns=[Column("Name"), Column(f"Price ({currency})", align="right")],
         rows=rows,
     )
     total = total if total is not None else len(purchases)
@@ -331,15 +341,13 @@ def stats_content(ctx: StatsData) -> Node:
     url_template = reverse("games:stats_by_year", args=[0]).replace(
         "stats/0", "stats/__year__"
     )
-    sections: list = [
-        _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
-        PageHeading(["Playtime"]),
-        _playtime_table(ctx),
+    # Each stats section is one card in the grid: a title above its table.
+    cards: list[Node] = [
+        _card("Playtime", _playtime_table(ctx)),
     ]
 
     months = list(ctx.get("month_playtimes") or [])
     if months:
-        sections.append(PageHeading(["Playtime per month"]))
         month_rows = [
             make_row(
                 date_filter(m["month"], "F"),
@@ -353,87 +361,103 @@ def stats_content(ctx: StatsData) -> Node:
             )
             for m in months
         ]
-        sections.append(_kv_table(month_rows))
+        cards.append(_card("Playtime per month", _kv_table(month_rows)))
 
-    sections += [
-        PageHeading(["Purchases"]),
-        _purchases_table(ctx),
-        PageHeading(["Games by playtime"]),
-        _two_col_table(
-            "Name",
-            ctx.get("top_10_games_by_playtime") or [],
-            lambda g: Fragment(
-                GameLink(g.id, g.name), _session_link(g.id, year, g.name)
-            ),
-            lambda g: _dur(g.total_playtime),
-            view_all_url=filter_url(
-                stats_links.games_played(year), sort="-filtered_playtime"
+    cards += [
+        _card("Purchases", _purchases_table(ctx)),
+        _card(
+            "Games by playtime",
+            _two_col_table(
+                "Name",
+                ctx.get("top_10_games_by_playtime") or [],
+                lambda g: Fragment(
+                    GameLink(g.id, g.name), _session_link(g.id, year, g.name)
+                ),
+                lambda g: _dur(g.total_playtime),
+                view_all_url=filter_url(
+                    stats_links.games_played(year), sort="-filtered_playtime"
+                ),
             ),
         ),
-        PageHeading(["Platforms by playtime"]),
-        _two_col_table(
-            "Platform",
-            ctx.get("total_playtime_per_platform") or [],
-            lambda item: item["platform_name"] or "Unspecified",
-            lambda item: A(
-                href=filter_url(
-                    stats_links.sessions_for_platform(
-                        item["platform_id"], year, item["platform_name"] or ""
-                    )
-                ),
-                class_=_FILTER_LINK_CLASS,
-            )[_dur(item["playtime"])],
+        _card(
+            "Platforms by playtime",
+            _two_col_table(
+                "Platform",
+                ctx.get("total_playtime_per_platform") or [],
+                lambda item: item["platform_name"] or "Unspecified",
+                lambda item: A(
+                    href=filter_url(
+                        stats_links.sessions_for_platform(
+                            item["platform_id"], year, item["platform_name"] or ""
+                        )
+                    ),
+                    class_=_FILTER_LINK_CLASS,
+                )[_dur(item["playtime"])],
+            ),
         ),
     ]
 
     all_finished = list(ctx.get("all_finished_this_year") or [])
     if all_finished:
-        sections += [
-            PageHeading(["Finished"]),
-            _finished_table(
-                all_finished,
-                view_all_url=filter_url(
-                    stats_links.purchases_finished(year), sort="-finished"
+        cards.append(
+            _card(
+                "Finished",
+                _finished_table(
+                    all_finished,
+                    view_all_url=filter_url(
+                        stats_links.purchases_finished(year), sort="-finished"
+                    ),
+                    total=ctx.get("all_finished_this_year_count"),
                 ),
-                total=ctx.get("all_finished_this_year_count"),
-            ),
-        ]
+            )
+        )
 
     year_finished = list(ctx.get("this_year_finished_this_year") or [])
     if year_finished:
-        sections += [
-            PageHeading([f"Finished ({year} games)"]),
-            _finished_table(
-                year_finished,
-                view_all_url=filter_url(
-                    stats_links.purchases_finished_released(year), sort="finished"
+        cards.append(
+            _card(
+                f"Finished ({year} games)",
+                _finished_table(
+                    year_finished,
+                    view_all_url=filter_url(
+                        stats_links.purchases_finished_released(year), sort="finished"
+                    ),
+                    total=ctx.get("this_year_finished_this_year_count"),
                 ),
-                total=ctx.get("this_year_finished_this_year_count"),
-            ),
-        ]
+            )
+        )
 
     bought_finished = list(ctx.get("purchased_this_year_finished_this_year") or [])
     if bought_finished:
-        sections += [
-            PageHeading([f"Bought and Finished ({year})"]),
-            _finished_table(
-                bought_finished,
-                view_all_url=filter_url(
-                    stats_links.purchases_bought_and_finished(year), sort="finished"
+        cards.append(
+            _card(
+                f"Bought and Finished ({year})",
+                _finished_table(
+                    bought_finished,
+                    view_all_url=filter_url(
+                        stats_links.purchases_bought_and_finished(year), sort="finished"
+                    ),
                 ),
-            ),
-        ]
+            )
+        )
 
     unfinished = list(ctx.get("purchased_unfinished") or [])
     if unfinished:
-        sections += [
-            PageHeading(["Unfinished Purchases"]),
-            _priced_table(
-                unfinished,
-                currency,
-                view_all_url=filter_url(stats_links.purchases_unfinished(year)),
-                total=ctx.get("purchased_unfinished_count"),
-            ),
-        ]
+        cards.append(
+            _card(
+                "Unfinished Purchases",
+                _priced_table(
+                    unfinished,
+                    currency,
+                    view_all_url=filter_url(stats_links.purchases_unfinished(year)),
+                    total=ctx.get("purchased_unfinished_count"),
+                ),
+            )
+        )
 
-    return ContentContainer(class_="dark:text-white")[*sections]
+    grid = Div(class_="grid grid-cols-1 md:grid-cols-2 gap-6 items-start")[*cards]
+    return ContentContainer(class_="dark:text-white")[
+        PageHeading([ctx["title"]]),
+        _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
+        grid,
+    ]
