@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils.html import conditional_escape
 
 from common.components import (
+    CONTROL_SIZE_CLASS,
     A,
     Column,
     ContentContainer,
@@ -124,7 +125,7 @@ def _year_nav(year, year_range, url_template) -> Node:
     year_int = year if isinstance(year, int) else None
     is_alltime = year_int is None
 
-    alltime_classes = "inline-flex items-center rounded-base px-4 py-2 mr-3 text-type-body font-medium "
+    alltime_classes = f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} mr-3 text-type-body font-medium "
     alltime_classes += (
         "solid-brand hover:bg-brand-strong"
         if is_alltime
@@ -139,7 +140,9 @@ def _year_nav(year, year_range, url_template) -> Node:
         available_years=tuple(year_range or []),
         url_template=url_template,
     )
-    return Div(class_="flex justify-center items-center mb-12")[alltime_btn, picker]
+    return Div(class_="@container flex justify-center items-center mb-12")[
+        alltime_btn, picker
+    ]
 
 
 def _playtime_table(ctx) -> Node:

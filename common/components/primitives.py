@@ -378,14 +378,14 @@ _CONTROL_BASE_CLASS = (
 # shrink-to-fit inline-flex group cannot be its own inline-size container
 # (containment would collapse it to zero width) and table cells can't be
 # containers either — but every button on such a page is compact together.
-_CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
+CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
 
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
-    f"{_CONTROL_SIZE_CLASS}"
+    f"{CONTROL_SIZE_CLASS}"
 )
 
-_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
+_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {CONTROL_SIZE_CLASS}"
 
 # Status-token notes shared by both tables:
 # - danger/success -subtle rings shade-match brand-medium (x-200 light /
@@ -453,7 +453,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{_CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
+    f"{CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -465,7 +465,7 @@ _OUTLINE_VARIANT_CLASS = (
 # compact triggers that would read as clutter in a row of many (the quick
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
-    f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    f"{CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
     "border-transparent text-heading hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -958,7 +958,7 @@ def YearPicker(
                 ("data-year-picker-toggle", ""),
                 (
                     "class",
-                    "inline-flex items-center rounded-base px-4 py-2 "
+                    f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
                     f"text-type-body font-medium {classes}",
                 ),
             ]

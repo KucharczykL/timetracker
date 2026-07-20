@@ -38,7 +38,7 @@ _DISABLED_CONTROL = DISABLED_CONTROL_CLASS
 # Safari auto-zooming focused inputs (#427) and needs no responsive pair.
 # text-heading is the colour; placeholder:text-body the placeholder colour.
 INPUT_CLASS = (
-    "mb-3 bg-neutral-secondary-medium border border-default-medium text-heading "
+    "bg-neutral-secondary-medium border border-default-medium text-heading "
     "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
     f"px-3 py-2.5 shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
@@ -56,7 +56,7 @@ SELECT_CLASS = (
 )
 TEXTAREA_CLASS = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 "
+    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 

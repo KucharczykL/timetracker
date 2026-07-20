@@ -379,8 +379,14 @@ def FilterBuilder(
                 data_preset_name="",
                 placeholder="Preset name…",
                 class_=(
-                    "px-3 py-2 text-type-body rounded-lg border border-default-medium "
-                    "bg-neutral-secondary-medium text-heading"
+                    # Height parity with the sibling ControlButtons: match their
+                    # container-query vertical padding and force their 20px
+                    # line-box, so the input's larger text-type-input font
+                    # (16px, iOS no-zoom) doesn't render a taller control.
+                    "px-3 py-2 @md:py-2.5 leading-5 text-type-input rounded-base "
+                    "border border-default-medium bg-neutral-secondary-medium "
+                    "text-heading shadow-xs placeholder:text-body "
+                    "focus:ring-brand focus:border-brand"
                 ),
             ),
             ControlButton(color="gray", data_save_preset="")["Save as preset…"],
