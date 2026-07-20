@@ -1438,18 +1438,18 @@ def _pagination_nav(
     page_obj, elided_page_range, request, page_size: int | None = None
 ) -> Node:
     page_link_class = (
-        "flex items-center justify-center px-3 h-8 leading-tight text-body-subtle "
+        "flex items-center justify-center px-3 min-h-control leading-tight text-body-subtle "
         "bg-neutral-primary-medium border border-default-medium "
         "hover:bg-neutral-tertiary-medium hover:text-heading"
     )
     # Brand fill: the current page is informational (`aria-current`), so its
     # text must clear AA — the muted-gray treatment didn't.
     current_link_class = (
-        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "cursor-not-allowed flex items-center justify-center px-3 min-h-control leading-tight "
         "solid-brand border border-brand"
     )
     disabled_link_class = (
-        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "cursor-not-allowed flex items-center justify-center px-3 min-h-control leading-tight "
         "text-fg-disabled bg-neutral-primary-medium border border-default-medium"
     )
     page_items: list[Node] = []
@@ -1497,9 +1497,9 @@ def _pagination_nav(
         " of ",
         Span(class_=number_class)[str(page_obj.paginator.count)],
     ]
-    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body h-8")[
-        Li()[prev_link, *page_items, next_link]
-    ]
+    pages = Ul(
+        class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body min-h-control"
+    )[Li()[prev_link, *page_items, next_link]]
     nav_children: list[Node] = [summary]
     # The rows-per-page picker sits between the "1—3 of 3" summary and the
     # prev/next page links.
