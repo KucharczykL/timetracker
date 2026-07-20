@@ -794,8 +794,8 @@ def StringFilter(
         ("placeholder", placeholder),
         (
             "class",
-            # text-type-input + px-3 py-2.5 match every other input (canonical size).
-            "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-input "
+            # text-type-input + px-3 min-h-control match every input (canonical height).
+            "w-full rounded-base border border-default-medium px-3 min-h-control text-type-input "
             "bg-neutral-secondary-medium text-body "
             "focus:border-brand focus:ring-brand "
             # No transition-* here: with transition-all the border-color animated
@@ -816,9 +816,9 @@ def StringFilter(
     ]
 
 
-# text-type-input + px-3 py-2.5 match every other input (canonical size).
+# text-type-input + px-3 min-h-control match every input (canonical height).
 _NUMBER_FILTER_INPUT_CLASS = (
-    "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-input "
+    "w-full rounded-base border border-default-medium px-3 min-h-control text-type-input "
     "bg-neutral-secondary-medium text-body focus:border-brand focus:ring-brand "
 )
 
