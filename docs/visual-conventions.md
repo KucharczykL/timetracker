@@ -129,8 +129,12 @@ inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
   button base or native input/select centering, so height is independent of font
   (`text-type-input` 16px vs `text-type-body` 14px) *and* of any `@container` ancestor. A
   control is 42px in every row — the old cross-row 38-vs-42 inconsistency is gone.
-- **Exceptions** (deliberately smaller, not row-controls): textarea (multiline), pills /
-  NOT-AND chips / status badges, pagination (`h-8`).
+- **Adopted at 42 too:** pagination page links, the NOT-AND connective chips, and `Pill`
+  — they read as row-controls in their contexts, so they floor to the same height. (Their
+  `rounded-full` / `rounded` corners still differ from the `rounded-base` controls — a
+  radius concern for #411, not a height one.)
+- **Exceptions** (deliberately smaller, not row-controls): textarea (multiline) and the
+  heading `Badge` sizes.
 - Guarded by `tests/test_control_height.py` (token generated, size constants carry
   `min-h-control`, `py-2.5` can't creep back onto a control).
 
