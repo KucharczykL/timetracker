@@ -54,9 +54,12 @@ SELECT_CLASS = (
     "text-heading text-type-input rounded-base focus:ring-brand focus:border-brand "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
+# A textarea is multiline: it keeps its own vertical padding and is excluded
+# from the min-h-control single-height scale.
 TEXTAREA_CLASS = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 "
+    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
+    "px-3 py-2.5 "  # control-ok: multiline textarea keeps its own vertical padding
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 

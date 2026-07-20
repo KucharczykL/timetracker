@@ -113,8 +113,26 @@ the settings kit must not inherit the pattern.
 
 Stragglers (textarea `p-3.5`, YearPicker fixed padding, FilterBuilder preset input compact
 padding + 16px radius, navbar `md:space-x-8` + `rtl:space-x-reverse`) are mechanical
-follow-up items. Pagination's
-`h-8` height-locked sizing rides the pagination token migration wholesale.
+follow-up items — the `mb-3` strip and these strays landed in #412.
+
+### Control height (#436)
+
+The container-query control tier above (`px-3 py-2 → @md:px-5 @md:py-2.5`) is **superseded**.
+Every interactive row-control — `ControlButton` (all variants), native inputs/selects
+(`INPUT_CLASS`/`SELECT_CLASS`), `SearchSelect`, the field picker, the String/Number filter
+inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
+`min-h-control` (42px, from the `--height-control` theme token).
+
+- **`min-height`, not fixed height** — single-line controls sit at exactly 42; a multi-pill
+  `SearchSelect` still grows as pills wrap.
+- **No vertical padding, no `@container` step.** Content centers via the `inline-flex`
+  button base or native input/select centering, so height is independent of font
+  (`text-type-input` 16px vs `text-type-body` 14px) *and* of any `@container` ancestor. A
+  control is 42px in every row — the old cross-row 38-vs-42 inconsistency is gone.
+- **Exceptions** (deliberately smaller, not row-controls): textarea (multiline), pills /
+  NOT-AND chips / status badges, pagination (`h-8`).
+- Guarded by `tests/test_control_height.py` (token generated, size constants carry
+  `min-h-control`, `py-2.5` can't creep back onto a control).
 
 ## 4. Container widths — adopt as-is (already converged)
 
