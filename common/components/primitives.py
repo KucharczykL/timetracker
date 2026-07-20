@@ -1516,7 +1516,7 @@ def _pagination_nav(
     return Nav(
         class_=(
             "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
-            "bg-neutral-primary-soft sm:rounded-b-base"
+            "bg-neutral-primary-soft"
         ),
         aria_label="Table navigation",
     )[*nav_children]
@@ -1611,6 +1611,7 @@ def StyledTable(
     sort_terms: Sequence[SortTerm] | None = None,
     page_size: int | None = None,
     show_header: bool = True,
+    footer: Node | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -1622,6 +1623,13 @@ def StyledTable(
     ``show_header=False`` suppresses the ``<thead>`` for headerless tables (e.g. the
     key-value stats blocks); ``columns`` is still required for the cell-count guard and
     column alignment.
+
+    ``footer`` is a general slot rendered as the shell's last child, inside the
+    rounded clip, after the scroll wrapper — for totals rows, "view all" bars, counts.
+    The footer carries its own surface/padding classes. Pagination is one footer
+    consumer: passing ``page_obj``/``elided_page_range`` renders the pagination nav in
+    this slot, so supplying an explicit ``footer`` alongside pagination args is a
+    contradiction and raises ``ValueError``.
     """
     columns = columns or []
     rows = rows or []
@@ -1679,20 +1687,36 @@ def StyledTable(
         class_="w-full text-type-body text-left rtl:text-right text-body-subtle",
     )[*table_children]
 
-    inner_children: list[Node] = [
-        Div(class_="relative overflow-x-auto sm:rounded-t-base")[table]
-    ]
+    # The scroll wrapper owns horizontal scroll only; the shell owns the radius
+    # and clips this wrapper to it (a rounded clip can't coexist with overflow-x
+    # scroll on one element, so they stay on separate elements).
+    inner_children: list[Node] = [Div(class_="relative overflow-x-auto")[table]]
+
+    paginated = bool(page_obj and elided_page_range)
+    if paginated and footer is not None:
+        raise ValueError(
+            "StyledTable got both an explicit footer and pagination args; the "
+            "footer slot holds one region. Pass pagination args OR footer, not both."
+        )
     # The rows-per-page picker lives inside the pagination nav; with no nav
     # (per_page=0 → whole list shown) there is nothing to page, so no picker.
-    if page_obj and elided_page_range:
-        inner_children.append(
-            _pagination_nav(page_obj, elided_page_range, request, page_size=page_size)
-        )
+    footer_node = (
+        _pagination_nav(page_obj, elided_page_range, request, page_size=page_size)
+        if paginated
+        else footer
+    )
+    if footer_node is not None:
+        inner_children.append(footer_node)
 
-    # The radius matches the inner rounded-t/rounded-b corners: box-shadow
-    # follows this element's radius, so a square wrapper would bleed a square
-    # shadow corner past the rounded content (visible in light theme).
-    return Div(class_="shadow-md sm:rounded-base", hx_boost="false")[*inner_children]
+    # The shell owns the intrinsic radius symmetrically; `overflow-hidden` clips
+    # the scroll wrapper and footer to it, so top+bottom corners are rounded
+    # regardless of which parts are present. The box-shadow follows this radius.
+    # Warning: never add `transform`/`filter`/`contain`/`backdrop-filter` here —
+    # it would make the shell a containing block for the `position: fixed`
+    # dropdown menus and clip them (see e2e/test_dropdown_clipping_e2e.py).
+    return Div(class_="shadow-md sm:rounded-base overflow-hidden", hx_boost="false")[
+        *inner_children
+    ]
 
 
 def ContentContainer(attrs: "AttrsArg | None" = None, **kwargs: object) -> Element:

@@ -1642,6 +1642,90 @@ class StyledTablePaginationTest(SimpleTestCase):
         self.assertNotIn(" — ", result)
 
 
+class StyledTableRoundingTest(SimpleTestCase):
+    """The shell owns intrinsic symmetric rounding + the general footer slot;
+    the scroll wrapper and pagination nav no longer supply piecemeal radii."""
+
+    @staticmethod
+    def _plain():
+        return str(
+            components.StyledTable(
+                columns=[components.Column("N")],
+                rows=[components.make_row("x")],
+            )
+        )
+
+    @staticmethod
+    def _paginated():
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        return str(
+            components.StyledTable(
+                columns=[components.Column("N")],
+                rows=[components.make_row("x")],
+                page_obj=paginator.page(2),
+                elided_page_range=list(paginator.get_elided_page_range(2)),
+                request=None,
+            )
+        )
+
+    def test_shell_owns_symmetric_rounding_without_pagination(self):
+        """A footerless table still gets the shell's rounded clip, no piecemeal
+        top/bottom radii."""
+        result = self._plain()
+        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertNotIn("rounded-t-base", result)
+        self.assertNotIn("rounded-b-base", result)
+
+    def test_shell_owns_symmetric_rounding_with_pagination(self):
+        """The pagination nav no longer re-supplies the bottom radius; the shell
+        still owns it."""
+        result = self._paginated()
+        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertNotIn("rounded-t-base", result)
+        self.assertNotIn("rounded-b-base", result)
+
+    def test_scroll_and_clip_live_on_separate_elements(self):
+        """The rounded clip (overflow-hidden) and horizontal scroll (overflow-x-auto)
+        cannot share an element — assert each on its own wrapper."""
+        result = self._plain()
+        self.assertIn("shadow-md sm:rounded-base overflow-hidden", result)
+        self.assertIn("relative overflow-x-auto", result)
+        # The scroll wrapper carries no rounding of its own.
+        self.assertNotIn("overflow-x-auto sm:rounded", result)
+
+    def test_footer_slot_renders_inside_shell_after_table(self):
+        """An explicit footer lands as the shell's last child, after the table."""
+        result = str(
+            components.StyledTable(
+                columns=[components.Column("N")],
+                rows=[components.make_row("x")],
+                footer=components.Div(id="my-footer")["total"],
+            )
+        )
+        self.assertIn('id="my-footer"', result)
+        self.assertIn("total", result)
+        # Footer follows the table wrapper (rendered after </table>).
+        self.assertLess(result.index("</table>"), result.index('id="my-footer"'))
+
+    def test_footer_plus_pagination_raises(self):
+        """The footer slot holds one region — an explicit footer alongside
+        pagination args is a contradiction."""
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        with self.assertRaises(ValueError):
+            components.StyledTable(
+                columns=[components.Column("N")],
+                rows=[components.make_row("x")],
+                page_obj=paginator.page(2),
+                elided_page_range=list(paginator.get_elided_page_range(2)),
+                request=None,
+                footer=components.Div()["x"],
+            )
+
+
 class PageSizeSelectTest(SimpleTestCase):
     """The rows-per-page picker: a current-value trigger over ?per_page= links."""
 
