@@ -693,7 +693,7 @@ _CHIP_STATE_CLASSES: dict[ChipState, str] = {
 # px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
 # under the chevron. Set only vertical padding here.
 _RELATION_SELECT_CLASS = (
-    "rounded border border-gray-300 bg-white py-1 text-type-body dark:border-gray-600 "
+    "rounded border border-gray-300 bg-white py-1 text-type-input dark:border-gray-600 "
     "dark:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
 )
 
@@ -794,8 +794,8 @@ def StringFilter(
         ("placeholder", placeholder),
         (
             "class",
-            # text-type-body + px-3 py-2.5 match every other input (canonical size).
-            "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-body "
+            # text-type-input + px-3 py-2.5 match every other input (canonical size).
+            "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-input "
             "bg-neutral-secondary-medium text-body "
             "focus:border-brand focus:ring-brand "
             # No transition-* here: with transition-all the border-color animated
@@ -816,9 +816,9 @@ def StringFilter(
     ]
 
 
-# text-type-body + px-3 py-2.5 match every other input (canonical size).
+# text-type-input + px-3 py-2.5 match every other input (canonical size).
 _NUMBER_FILTER_INPUT_CLASS = (
-    "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-body "
+    "w-full rounded-base border border-default-medium px-3 py-2.5 text-type-input "
     "bg-neutral-secondary-medium text-body focus:border-brand focus:ring-brand "
 )
 

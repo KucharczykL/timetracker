@@ -30,17 +30,19 @@ from common.time import DatePartSpec, date_parts
 
 # font-mono: every glyph (placeholder letters and digits alike) is exactly
 # 1ch wide, so the exact segment widths below leave no slack and the gaps
-# around the dashes stay uniform.
+# around the dashes stay uniform. Container and segments share text-type-input
+# (the 16px input size) so the dashes advance like the segment digits.
 _FIELD_CONTAINER_CLASS = (
     "flex items-center gap-0.5 w-full rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium font-mono text-type-body text-heading p-1.5 cursor-text "
-    "focus-within:ring-1 focus-within:ring-brand focus-within:border-brand"
+    "bg-neutral-secondary-medium font-mono text-type-input text-heading p-1.5 "
+    "cursor-text focus-within:ring-1 focus-within:ring-brand "
+    "focus-within:border-brand"
 )
 
 # The segments must not stand out from the container: transparent background,
 # no border, and only a subtle highlight when active (focused).
 _SEGMENT_INPUT_CLASS = (
-    "bg-transparent border-0 p-0 text-center text-type-body text-heading "
+    "bg-transparent border-0 p-0 text-center text-type-input text-heading "
     "placeholder:text-body rounded-xs focus:outline-none focus:ring-0 "
     "focus:bg-brand/30 caret-transparent"
 )
