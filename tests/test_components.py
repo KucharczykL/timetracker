@@ -137,6 +137,12 @@ class PopoverDeterministicTest(unittest.TestCase):
         r2 = str(components.Popover("hello", wrapped_content="hello"))
         self.assertEqual(r1, r2)
 
+    def test_host_stays_content_width_in_flex(self):
+        # self-start keeps the <pop-over> host at trigger width in a flex parent;
+        # a stretched host mis-anchors the fixed panel (#446).
+        html = str(components.Popover("c", wrapped_content="c"))
+        self.assertIn("self-start", html[: html.index("data-pop-over-trigger")])
+
     def test_different_content_different_id(self):
         r1 = str(components.Popover("content_a", wrapped_content="content_a"))
         r2 = str(components.Popover("content_b", wrapped_content="content_b"))

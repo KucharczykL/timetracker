@@ -292,7 +292,13 @@ def _popover_html(
         Span(class_="hidden decoration-dotted"),
     ]
 
-    return _PopOver(class_="inline-block")[Fragment(trigger, panel, separator="\n")]
+    # self-start keeps the host at its trigger's content width in a flex parent:
+    # a flex column blockifies the inline-block and stretches it to full width,
+    # which mis-anchors the fixed panel (the positioner centres on the host, #446).
+    # align-self opts out of that cross-axis stretch; it's inert outside flex.
+    return _PopOver(class_="inline-block self-start")[
+        Fragment(trigger, panel, separator="\n")
+    ]
 
 
 def Popover(
