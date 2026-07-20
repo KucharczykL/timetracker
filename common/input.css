@@ -119,30 +119,6 @@
     }
 }
 
-/* @utility min-w-20char {
-  min-width: 20ch;
-}
-
-@utility max-w-20char {
-  max-width: 20ch;
-} */
-
-/* @utility min-w-30char {
-  min-width: 30ch;
-}
-
-@utility max-w-30char {
-  max-width: 30ch;
-}
-
-@utility max-w-35char {
-  max-width: 35ch;
-}
-
-@utility max-w-40char {
-  max-width: 40ch;
-} */
-
 /* Solid fill + APCA-picked on-color, paired in one class so a component sets a
    colored background and its readable text together (see common/apca.py).
    Explicit per-fill (not a wildcard `fill-*`, which would shadow Tailwind's SVG
@@ -246,26 +222,6 @@
         font-style: normal;
     }
 
-    .responsive-table {
-        @apply mx-auto table-fixed;
-    }
-
-    .responsive-table tr:nth-child(even) {
-        @apply bg-indigo-100 dark:bg-slate-800;
-    }
-
-    .responsive-table tbody tr:nth-child(odd) {
-        @apply bg-indigo-200 dark:bg-slate-900;
-    }
-
-    .responsive-table thead th {
-        @apply text-left border-b-2 border-b-slate-500;
-    }
-
-    .responsive-table thead th:not(:first-child),
-    .responsive-table td:not(:first-child) {
-        @apply border-l border-l-slate-500;
-    }
 }
 
 /* Form controls (incl. disabled state) and form-field markup (labels, errors,
