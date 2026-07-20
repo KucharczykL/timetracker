@@ -64,8 +64,19 @@ Decisions folded in:
 - **Control borders fail the 3:1 non-text threshold by design** (industry-standard gray,
   same as Flowbite/GitHub). Accepted — but no component may rely on the border *alone* to
   delineate a control; fill + label must differ too (they do today).
+- **Nested depth = zebra parity, not a ramp** (#441, filter tree). To distinguish an
+  arbitrarily-deep nesting level from its neighbour, alternate the two neutral surfaces by
+  `depth % 2` (`bg-neutral-secondary-medium` / `bg-neutral-primary`), depth 0 on the
+  non-page surface. Adjacency reads at *any* depth with only two fixed surfaces, so contrast
+  stays flat (foregrounds are tuned to the page; an accumulating shade/opacity ramp drifts
+  them out of contrast). Absolute depth is carried contrast-free by indentation + a stack of
+  accent rails — not the background. Reusable for any nested UI (settings tree, etc.).
 - Deliberately non-semantic and staying: filter logic-chip colors (teal/orange/amber,
-  documented in `filters.py`), game-status dot palette, `font-alien` wordmark accent.
+  documented in `filters.py`), the filter-builder categorical accents that echo them —
+  the AND/OR group left-edge rails (teal/orange) and a slim hue on the relation `↳`
+  arrow + label (indigo) and scope label (teal); the relation/scope cards themselves are
+  neutral and follow the depth zebra. Each raw hue is `// color-ok` in
+  `ts/elements/filter-group.ts`. Also game-status dot palette, `font-alien` wordmark accent.
 
 Known AA failures in shipped UI (pagination current-page, dark thead text, dark row-hover
 text) are repaired inside the token migration, not separately — see follow-ups.
@@ -173,7 +184,9 @@ settings scaffold's layout is net-new, but nearly all *behavior* exists. Calls r
   viewport-driven; container-driven splits are self-referential.
 - **Overlay stack** (`anchored-position` / `menu-behavior` / `drop-down` / `pop-over` /
   `modal-dialog`): reuse unchanged for every chip dropdown, flyout, or future sheet. No new
-  positioning code.
+  positioning code. The `<pop-over>` host carries `self-start` so a flex parent can't stretch
+  it to full width — `positionAnchored` centres the fixed panel on the host, so a stretched
+  host throws the panel far off the trigger (#446). Keep it when reusing popovers in flex rows.
 - **Priority-plus overflow** (quick-filter bar): the full recipe (measure-once, reserved
   furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) is directly
   liftable for an anchor-chip nav — but the logic is private to `QuickFilterBarElement`.
@@ -247,17 +260,18 @@ See the full design rationale in
 `text-<size>` utility (e.g. `text-sm`, `text-xs`) in a component — the grep-guard test
 `tests/test_typography_tokens.py` enforces this across `common/components/`, `common/layout.py`,
 `games/forms.py`, and `games/views/`. The wordmark (`font-alien`, viewport-scaled) is the one
-sanctioned exception, annotated `# type-ok: <reason>` on its line.
-
-**Guard blind spot — the guards scan `.py` only.** This grep-guard, the radius/height guards,
-and the token tests all walk Python source; class strings hardcoded in `ts/elements/*.ts` are
-invisible to every one of them, so the whole TS layer silently drifted (raw `text-sm`, raw
-`gray-*`, off-tier radius). Surfaced by the filter-tree `Choose a field…` placeholder. When
-adding classes in a `.ts` file, apply these conventions by hand — the guards will not catch a
-violation there. Extending the guards to scan `ts/` (and clearing the existing TS drift) is
-tracked in [#441](https://github.com/KucharczykL/timetracker/issues/441). Brand accents that keep a
+sanctioned exception, annotated `# type-ok: <reason>` on its line. Brand accents that keep a
 non-default family (the serif game-/purchase-detail names) compose `font-serif` alongside a
 size token — they are not exceptions.
+
+**Guards scan `.py` and `ts/` (#441).** The size guard (`tests/test_typography_tokens.py`) and
+the color guard (`tests/test_color_tokens.py`) walk both Python source and `ts/**/*.ts`
+(excluding `*.test.ts` and `ts/generated/`), so class strings hardcoded in TS are covered too —
+the whole TS layer silently drifted before #441 (raw `text-sm`, raw `gray-*`, off-tier radius;
+surfaced by the filter-tree `Choose a field…` placeholder). Opt a line out with
+`# type-ok:` / `// type-ok:` (size) or `// color-ok:` (a deliberate categorical hue — color
+guard). The **color guard is `ts/`-only**: `common/` still carries raw palette mid-migration
+(#404–#407), so a `.py` color guard belongs to those issues.
 
 ### Notes
 
@@ -316,4 +330,4 @@ Spawned later (not at synthesis), from work on the above:
 | Issue | Content |
 |---|---|
 | [#436](https://github.com/KucharczykL/timetracker/issues/436) | Unified control height: `--height-control` (42px) → `min-h-control`; every row-control floors to it, font- and container-independent (§3 "Control height") |
-| [#441](https://github.com/KucharczykL/timetracker/issues/441) | TS layer escaped every convention sweep (guards are `.py`-only): type-size (`text-sm`/`text-xs`) + raw-color drift in `ts/elements/*.ts`, and extend the guards to scan `ts/` so it can't recur. Radius strays already fixed in #411 |
+| [#441](https://github.com/KucharczykL/timetracker/issues/441) | ✅ Done — TS type-size + neutral-color drift → tokens; guards (`test_typography_tokens.py` size + new `test_color_tokens.py`) now scan `ts/**/*.ts`. Folded in: incomplete-leaf cue redesigned to a warning "!" popover; nested-group depth → zebra parity (§1); relation/scope cards decategorized (slim hue on arrow/label only). Radius strays were fixed in #411; popover flex-anchor bug in #446 |
