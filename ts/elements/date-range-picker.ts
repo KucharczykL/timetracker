@@ -66,9 +66,9 @@ interface CalendarState {
 const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const WEEKDAY_CLASS =
-  "w-8 h-6 flex items-center justify-center text-xs text-body select-none";
+  "w-8 h-6 flex items-center justify-center text-type-micro text-body select-none";
 const DAY_BASE_CLASS =
-  "date-range-day w-8 h-8 flex items-center justify-center text-sm " +
+  "date-range-day w-8 h-8 flex items-center justify-center text-type-body " +
   "text-heading cursor-pointer hover:bg-neutral-tertiary-medium";
 const DAY_ROUNDED_CLASS = "rounded-base";
 const DAY_OUTSIDE_MONTH_CLASS = "opacity-40";

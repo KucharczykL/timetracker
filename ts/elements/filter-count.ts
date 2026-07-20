@@ -17,7 +17,7 @@ const DEBOUNCE_MS = 300;
 
 // Must match the class the server bakes onto the initial <span> (see the
 // FilterCount builder) so a fallback-created label looks identical.
-const LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-400";
+const LABEL_CLASS = "text-type-body text-body";
 
 export const COUNTING_TEXT = "Counting…";
 export const UNAVAILABLE_TEXT = "count unavailable";

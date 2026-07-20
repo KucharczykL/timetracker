@@ -50,7 +50,7 @@ describe("client-errors", () => {
     parseJSONWithReport("{bad", [], "ctx-mark", element);
     expect(element.getAttribute("data-degraded")).toBe("json-parse");
     expect(element.className).toContain("ring-2");
-    expect(element.className).toContain("ring-red-500");
+    expect(element.className).toContain("ring-danger");
     expect(element.getAttribute("title")).toContain("abcd1234");
   });
 

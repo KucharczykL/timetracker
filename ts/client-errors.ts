@@ -13,7 +13,7 @@ import { getCsrfToken } from "./csrf.js";
 
 const ENDPOINT = "/api/client-error/";
 // The literal class string Tailwind's ts/ scan compiles (never concatenate).
-const DEGRADED_CLASSES = "ring-2 ring-red-500";
+const DEGRADED_CLASSES = "ring-2 ring-danger";
 
 // One report + one toast per distinct failure per page load.
 const reported = new Set<string>();
