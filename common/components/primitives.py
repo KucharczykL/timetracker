@@ -774,11 +774,9 @@ def Radio(
     )[input_el, label]
 
 
-# Inline Tailwind utilities for Pill, kept in the component so its styling stays
-# encapsulated. Client-side pills are cloned from server-rendered <template>s
-# (search-select.ts never names a pill class), so this string is the single
-# source of pill markup — server and JS pills match because they share one DOM
-# node, not because two code paths emit the same string.
+# Pill's inline utilities. Client-side pills clone this server <template>
+# (search-select.ts never names a pill class), so this is the single source of
+# pill markup — no byte-for-byte JS contract to keep in sync.
 _PILL_CLASS = (
     "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded-base "
     "bg-brand-soft text-heading"

@@ -120,9 +120,9 @@ const SCOPE_EMPTY_TEXT = "Counting all related items. Add a condition to narrow 
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
-// Placeholder shown in the value cell until a field is chosen. Matches the
-// sibling field picker: shared control height + radius, canonical input font,
-// semantic dashed border + muted text (not raw grays / text-sm).
+// Value-cell placeholder until a field is picked. Mirrors the sibling field
+// picker (control height, radius, input font, semantic border/text) so it can't
+// drift back to raw text-sm/grays.
 const VALUE_PLACEHOLDER_CLASS =
   "flex-1 min-w-[12rem] flex items-center min-h-control rounded-base border border-dashed " +
   "border-default-medium px-3 text-type-input text-body";
