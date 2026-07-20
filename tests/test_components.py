@@ -815,8 +815,8 @@ class ControlButtonTest(SimpleTestCase):
         self.assertTrue(html.startswith("<button"))
         self.assertIn('type="button"', html)
         self.assertIn("solid-brand", html)
-        # container-query sizing token present; no fixed-size margins baked
-        self.assertIn("@md:px-5", html)
+        # shared control-height token present; no fixed-size margins baked
+        self.assertIn("min-h-control", html)
         self.assertNotIn("mb-2", html)
         self.assertNotIn("me-2", html)
         # shared disabled appearance is baked in
@@ -878,8 +878,8 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_segmented_variant_classes(self):
         html = str(components.ControlButton(variant="segmented", color="gray")["Edit"])
-        # container-query sizing, same scale as filled — no viewport sizing
-        self.assertIn("@md:px-5", html)
+        # shared control-height scale, same as filled
+        self.assertIn("min-h-control", html)
         self.assertNotIn("lg:px-4", html)
         self.assertIn("bg-neutral-primary-medium", html)
 
@@ -900,25 +900,24 @@ class ControlButtonTest(SimpleTestCase):
         self.assertTrue(html.startswith("<button"))
         self.assertIn("whitespace-nowrap", html)
         self.assertIn("border-default-medium", html)
-        # container-query sizing, same scale as every other button variant
-        self.assertIn("@md:px-5", html)
+        # shared control-height scale, same as every other button variant
+        self.assertIn("min-h-control", html)
         self.assertNotIn("lg:px-4", html)
         # single-look variant: no color axis, keyboard focus ring
         self.assertNotIn("bg-brand", html)
         self.assertIn("focus:ring-2", html)
 
     def test_button_variants_share_one_sizing_scale(self):
-        # ALL button-shaped variants size via the container contract; only the
-        # nav-link plain variant keeps its navbar layout.
-        # Text size is now a flat token (text-type-body), not container-scaled.
+        # ALL button-shaped variants floor to the one control-height token; only
+        # the nav-link plain variant keeps its navbar layout. Height is now
+        # container-independent — no @md step, so a button is 42px in every row.
         for variant in ("filled", "segmented", "outline"):
             with self.subTest(variant=variant):
                 html = str(components.ControlButton(variant=variant)["x"])
-                self.assertIn("px-3 py-2", html)
-                self.assertIn("@md:px-5 @md:py-2.5", html)
+                self.assertIn("min-h-control", html)
                 self.assertIn("text-type-body", html)
-                self.assertNotIn("text-xs", html)  # size no longer container-scaled
-                self.assertNotIn("@md:text-sm", html)
+                self.assertNotIn("@md:", html)  # height no longer container-stepped
+                self.assertNotIn("text-xs", html)
 
     def test_plain_variant_is_the_navbar_nav_link_look(self):
         html = str(components.ControlButton(variant="plain")["x"])

@@ -140,9 +140,7 @@ def _year_nav(year, year_range, url_template) -> Node:
         available_years=tuple(year_range or []),
         url_template=url_template,
     )
-    return Div(class_="@container flex justify-center items-center mb-12")[
-        alltime_btn, picker
-    ]
+    return Div(class_="flex justify-center items-center mb-12")[alltime_btn, picker]
 
 
 def _playtime_table(ctx) -> Node:

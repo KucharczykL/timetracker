@@ -369,16 +369,13 @@ _CONTROL_BASE_CLASS = (
     f"{DISABLED_CONTROL_CLASS}"
 )
 
-# Container-query sizing, shared by EVERY button-shaped variant: compact by
-# default (a container-query variant never matches without an `@container`
-# ancestor, so "no wrapper" = compact by construction); form-shaped containers
-# ≥ 28rem (`@md`) upsize to the old default look. There is deliberately no
-# size parameter — the container decides. Note this means segmented groups and
-# outline toggles in tables are compact at every viewport width: a
-# shrink-to-fit inline-flex group cannot be its own inline-size container
-# (containment would collapse it to zero width) and table cells can't be
-# containers either — but every button on such a page is compact together.
-CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
+# Shared by EVERY button-shaped variant. Height is the canonical control
+# height (min-h-control = 42px, from --height-control), floored not fixed so a
+# multi-line control still grows; the inline-flex base centers content in it.
+# Only horizontal padding is set here — height no longer depends on font,
+# padding, or any `@container` ancestor, so a button is the same 42px in every
+# row (the container-query step and its cross-row inconsistency are gone).
+CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
