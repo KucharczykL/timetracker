@@ -88,7 +88,7 @@ const DEPTH_BACKGROUNDS = [
   "bg-gray-100 dark:bg-gray-800/20",
   "bg-white dark:bg-gray-700/20",
 ];
-const CARD_CLASS = "flex flex-col gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700";
+const CARD_CLASS = "flex flex-col gap-2 rounded-base border border-gray-200 p-2 dark:border-gray-700";
 const HEADER_CLASS = "flex items-center justify-between gap-2";
 const CHILDREN_CLASS = "flex flex-col gap-2";
 const FOOTER_CLASS = "flex flex-wrap gap-2";
@@ -120,16 +120,18 @@ const SCOPE_EMPTY_TEXT = "Counting all related items. Add a condition to narrow 
 const SLOT_ROW_CLASS = "flex items-center gap-2 flex-wrap";
 const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
-// Placeholder shown in the value cell until a field is chosen.
+// Value-cell placeholder until a field is picked. Mirrors the sibling field
+// picker (control height, radius, input font, semantic border/text) so it can't
+// drift back to raw text-sm/grays.
 const VALUE_PLACEHOLDER_CLASS =
-  "flex-1 min-w-[12rem] rounded border border-dashed border-gray-300 px-2 py-1 text-sm " +
-  "text-gray-500 dark:border-gray-600 dark:text-gray-400";
+  "flex-1 min-w-[12rem] flex items-center min-h-control rounded-base border border-dashed " +
+  "border-default-medium px-3 text-type-input text-body";
 // Incomplete-leaf cue (excluded from the count/Apply query): a subtle amber tint
 // on the row + the "Incomplete" badge. NOT `opacity` — a faded ancestor would make
 // the leaf's own field-picker dropdown 60% transparent *and* create a stacking
 // context that traps its z-10 below sibling rows/footer. A bg tint is safe on both
 // counts. Space-separated → toggled token-by-token (classList.toggle takes one).
-const INCOMPLETE_ROW_CLASS = "bg-amber-50 dark:bg-amber-500/10 rounded";
+const INCOMPLETE_ROW_CLASS = "bg-amber-50 dark:bg-amber-500/10 rounded-base";
 const BADGE_CLASS =
   "rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium " +
   "text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300";
@@ -150,7 +152,7 @@ const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange
 // apart from the gray group chrome so the Game→Session model switch reads explicitly.
 // Header carries the `↳ [quantifier] of [relation] where` row.
 const RELATION_CARD_CLASS =
-  "flex flex-col gap-2 rounded-lg border border-l-4 border-indigo-200 border-l-indigo-400 " +
+  "flex flex-col gap-2 rounded-base border border-l-4 border-indigo-200 border-l-indigo-400 " +
   "bg-indigo-50/50 p-2 dark:border-indigo-500/40 dark:border-l-indigo-500/70 dark:bg-indigo-500/10";
 const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
 const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
@@ -158,7 +160,7 @@ const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
 // The aggregate-scope accent block (issue #151): the leaf row plus its nested scope
 // group, teal-accented to read as "narrows this row" rather than a relation descent.
 const SCOPE_CARD_CLASS =
-  "flex flex-col gap-2 rounded-lg border border-l-4 border-teal-200 border-l-teal-400 " +
+  "flex flex-col gap-2 rounded-base border border-l-4 border-teal-200 border-l-teal-400 " +
   "bg-teal-50/50 p-2 dark:border-teal-500/40 dark:border-l-teal-500/70 dark:bg-teal-500/10";
 const SCOPE_LABEL_CLASS = "text-sm text-teal-700 dark:text-teal-300";
 

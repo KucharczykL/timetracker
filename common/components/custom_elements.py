@@ -564,7 +564,7 @@ _Dropdown = custom_element_builder("drop-down")
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
 # attachMenu. Toggle looks live on ControlButton (issue #272):
 # variant="outline" is the bordered toggle (no base rounding — Dropdown adds
-# rounded-lg / rounded-e-lg by shape; standalone consumers add their own),
+# rounded-base / rounded-e-base by shape; standalone consumers add their own),
 # variant="plain" the borderless navbar trigger.
 
 # Panel: white (light) / frosted (dark). Clips horizontally; scrolls vertically
@@ -582,7 +582,7 @@ _Dropdown = custom_element_builder("drop-down")
 # looks like" (#295: unshared panel styling is how a text token ends up as a
 # background). Width is per-variant.
 _DROPDOWN_PANEL_SURFACE = (
-    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-lg p-2 "
+    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
     "bg-white dark:bg-gray-800/40 text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
@@ -946,14 +946,14 @@ def SplitButtonDropdown(
     caret_focus = "focus:ring-inset"
     if caret_color is None:
         caret_button = ControlButton(
-            [("class", f"rounded-e-lg {caret_focus}")], variant="outline"
+            [("class", f"rounded-e-base {caret_focus}")], variant="outline"
         )[Icon("arrowdown")]
     else:
         caret_button = ControlButton(
             [
                 (
                     "class",
-                    "rounded-e-lg rounded-s-none border-l border-l-white/30 "
+                    "rounded-e-base rounded-s-none border-l border-l-white/30 "
                     f"{caret_focus}",
                 )
             ],
@@ -968,7 +968,7 @@ def SplitButtonDropdown(
         id=id,
         placement=placement,
     )
-    return Div(class_="inline-flex items-stretch rounded-md shadow-2xs")[
+    return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
         primary, dropdown
     ]
 
@@ -1057,7 +1057,7 @@ def SelectDropdown(
     PATCH the server (via the client `select` behavior). The per-entity specifics
     (endpoint, body key, numeric) are the caller's; this owns the shared shape."""
     trigger = ControlButton(
-        [("class", "rounded-lg" + (f" {class_}" if class_ else ""))],
+        [("class", "rounded-base" + (f" {class_}" if class_ else ""))],
         variant="outline",
         aria_haspopup="listbox",
     )[

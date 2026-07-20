@@ -224,7 +224,7 @@ class DropdownWrapperTest(unittest.TestCase):
             render,
         )
 
-        primary = Span(class_="rounded-s-lg")["Played 3 times"]
+        primary = Span(class_="rounded-s-base")["Played 3 times"]
         html = render(
             SplitButtonDropdown(
                 primary=primary,
@@ -237,8 +237,8 @@ class DropdownWrapperTest(unittest.TestCase):
             )
         )
         self.assertIn("inline-flex items-stretch", html)  # the flex group
-        self.assertIn("rounded-s-lg", html)  # caller's primary
-        self.assertIn("rounded-e-lg", html)  # the caret
+        self.assertIn("rounded-s-base", html)  # caller's primary
+        self.assertIn("rounded-e-base", html)  # the caret
         self.assertIn("data-add-play", html)
         self.assertIn('aria-label="Playthrough actions"', html)
         self.assertNotIn("aria-labelledby", html)  # icon-only caret → explicit label

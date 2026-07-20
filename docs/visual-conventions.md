@@ -247,7 +247,15 @@ See the full design rationale in
 `text-<size>` utility (e.g. `text-sm`, `text-xs`) in a component — the grep-guard test
 `tests/test_typography_tokens.py` enforces this across `common/components/`, `common/layout.py`,
 `games/forms.py`, and `games/views/`. The wordmark (`font-alien`, viewport-scaled) is the one
-sanctioned exception, annotated `# type-ok: <reason>` on its line. Brand accents that keep a
+sanctioned exception, annotated `# type-ok: <reason>` on its line.
+
+**Guard blind spot — the guards scan `.py` only.** This grep-guard, the radius/height guards,
+and the token tests all walk Python source; class strings hardcoded in `ts/elements/*.ts` are
+invisible to every one of them, so the whole TS layer silently drifted (raw `text-sm`, raw
+`gray-*`, off-tier radius). Surfaced by the filter-tree `Choose a field…` placeholder. When
+adding classes in a `.ts` file, apply these conventions by hand — the guards will not catch a
+violation there. Extending the guards to scan `ts/` (and clearing the existing TS drift) is
+tracked in [#441](https://github.com/KucharczykL/timetracker/issues/441). Brand accents that keep a
 non-default family (the serif game-/purchase-detail names) compose `font-serif` alongside a
 size token — they are not exceptions.
 
@@ -296,9 +304,16 @@ Spawned at synthesis; the epic depends on the *calls* above, not on these landin
 | [#408](https://github.com/KucharczykL/timetracker/issues/408) | filters.py: relation select → semantic + `rounded-base`; negate-off chip stays documented |
 | [#409](https://github.com/KucharczykL/timetracker/issues/409) | Migrate `stats_content._table()` to StyledTable; delete `.responsive-table` (kills last indigo/slate + the 16px table generation); restore-or-drop dead `max-w-20char` |
 | [#410](https://github.com/KucharczykL/timetracker/issues/410) | input.css: replace the `border-color` compat shim with explicit border utilities (sweep) |
-| [#411](https://github.com/KucharczykL/timetracker/issues/411) | Radius normalization: segmented/pagination edges → `-base`, panels/toast/StyledTable shell → `-base`, Modal → `-base`, control strays, Badge → `rounded`; fix the stale Pill "byte-for-byte JS contract" comment (clone-from-template; also names nonexistent `search_select.js`) |
+| [#411](https://github.com/KucharczykL/timetracker/issues/411) | Radius normalization: segmented/pagination edges → `-base`, panels/toast/StyledTable shell → `-base`, Modal → `-base`, control strays, Badge → `rounded`; fix the stale Pill "byte-for-byte JS contract" comment (clone-from-template; also names nonexistent `search_select.js`). Also folded in: the in-scope TS radius strays (`filter-group.ts`) and the `Choose a field…` value-cell placeholder. Control-height chips/pill (#436) take `rounded-base`, not the chip tier |
 | [#412](https://github.com/KucharczykL/timetracker/issues/412) | Spacing: strip `mb-3` from `INPUT_CLASS` (parents own spacing); textarea/YearPicker/FilterBuilder padding strays |
 | [#413](https://github.com/KucharczykL/timetracker/issues/413) | ✅ Done — `PAGE_GUTTER_CLASS = "px-4 sm:px-6"` on `#main-container` + navbar row; tables inside the gutter (16px mobile / 24px sm+), no full-bleed exemption |
 | [#414](https://github.com/KucharczykL/timetracker/issues/414) | Heading mechanism: drop unlayered `h1/h2/h3` rules, builders carry the scale; fix the four casualty sites; unify page title on `PageHeading`; one dialog-title and one micro-label spelling |
 | [#415](https://github.com/KucharczykL/timetracker/issues/415) | Ship IBM Plex Sans Medium/SemiBold/Bold. `--font-condensed`: delete-call reversed — kept and applied to dense list surfaces (names, table `tbody`, `Badge`/`Pill`) |
 | [#427](https://github.com/KucharczykL/timetracker/issues/427) | ✅ Partial (folded into #413 branch) — `INPUT/SELECT/TEXTAREA_CLASS` → `text-base sm:text-sm` so mobile inputs are 16px (no iOS focus-zoom). Remaining `text-sm` inputs outside the mixin (filter number, search-select, date-picker segments) deferred |
+
+Spawned later (not at synthesis), from work on the above:
+
+| Issue | Content |
+|---|---|
+| [#436](https://github.com/KucharczykL/timetracker/issues/436) | Unified control height: `--height-control` (42px) → `min-h-control`; every row-control floors to it, font- and container-independent (§3 "Control height") |
+| [#441](https://github.com/KucharczykL/timetracker/issues/441) | TS layer escaped every convention sweep (guards are `.py`-only): type-size (`text-sm`/`text-xs`) + raw-color drift in `ts/elements/*.ts`, and extend the guards to scan `ts/` so it can't recur. Radius strays already fixed in #411 |

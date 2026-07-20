@@ -265,7 +265,7 @@ def _popover_html(
     # stays inline-block and small, the cap just bounds huge content.
     panel_class = (
         f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
-        f"border-brand/30 rounded-lg shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
+        f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
     )
 
     panel = Div(
@@ -469,7 +469,7 @@ _GHOST_VARIANT_CLASS = (
 )
 
 _PLAIN_VARIANT_CLASS = (
-    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-sm "
+    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-base "
     "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
     "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
     "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
@@ -499,7 +499,7 @@ class ControlButton(BaseComponent):
 
     The dropdown-toggle variants are single-look and ignore ``color``:
     ``variant="outline"`` is the bordered toggle (split-button carets, value
-    selectors — callers add rounding by shape, e.g. ``rounded-e-lg``);
+    selectors — callers add rounding by shape, e.g. ``rounded-e-base``);
     ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
     dropdown triggers) — outline's look on hover, invisible chrome at rest;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
@@ -687,11 +687,11 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     # button.
     return Div(
         class_=(
-            "inline-flex rounded-md shadow-xs "
-            "[&>*:first-child]:rounded-s-lg "
-            "[&>*:first-child_button]:rounded-s-lg "
-            "[&>*:last-child]:rounded-e-lg "
-            "[&>*:last-child_button]:rounded-e-lg"
+            "inline-flex rounded-base shadow-xs "
+            "[&>*:first-child]:rounded-s-base "
+            "[&>*:first-child_button]:rounded-s-base "
+            "[&>*:last-child]:rounded-e-base "
+            "[&>*:last-child_button]:rounded-e-base"
         ),
         role="group",
     )[children]
@@ -774,12 +774,11 @@ def Radio(
     )[input_el, label]
 
 
-# Inline Tailwind utilities for Pill (mirrors the .sf-tag / .sf-remove rules in
-# input.css, written inline so styling stays encapsulated in the component). The
-# JS that builds pills client-side (search_select.js) MUST emit these exact class
-# strings byte-for-byte so Tailwind generates them and server/JS pills match.
+# Pill's inline utilities. Client-side pills clone this server <template>
+# (search-select.ts never names a pill class), so this is the single source of
+# pill markup — no byte-for-byte JS contract to keep in sync.
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded "
+    "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded-base "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -839,7 +838,7 @@ def Pill(
 # it reads well from a heading count down to a one-character sort position.
 _BADGE_BASE_CLASS = (
     "font-condensed inline-flex items-center justify-center font-semibold "
-    "leading-none rounded-sm bg-brand-soft text-heading"
+    "leading-none rounded bg-brand-soft text-heading"
 )
 _BADGE_SIZE_CLASSES = {
     "sm": "text-type-micro px-1.5 py-0.5",
@@ -1163,7 +1162,7 @@ class Modal(BaseComponent):
                 [("data-modal-panel", "")],
                 class_=(
                     f"relative mx-auto p-5 border-accent border w-full "
-                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-md "
+                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-base "
                     "bg-neutral-primary-soft @container"
                 ),
             )[*self._children]
@@ -1463,23 +1462,23 @@ def _pagination_nav(
     if page_obj.has_previous():
         prev_link = A(
             href=_page_url(request, page_obj.previous_page_number()),
-            class_=f"{page_link_class} ms-0 rounded-s-lg",
+            class_=f"{page_link_class} ms-0 rounded-s-base",
         )["Previous"]
     else:
         prev_link = A(
             aria_current="page",
-            class_=f"{disabled_link_class} rounded-s-lg",
+            class_=f"{disabled_link_class} rounded-s-base",
         )["Previous"]
 
     if page_obj.has_next():
         next_link = A(
             href=_page_url(request, page_obj.next_page_number()),
-            class_=f"{page_link_class} rounded-e-lg",
+            class_=f"{page_link_class} rounded-e-base",
         )["Next"]
     else:
         next_link = A(
             aria_current="page",
-            class_=f"{disabled_link_class} rounded-e-lg",
+            class_=f"{disabled_link_class} rounded-e-base",
         )["Next"]
 
     number_class = "font-semibold text-heading"
@@ -1511,7 +1510,7 @@ def _pagination_nav(
     return Nav(
         class_=(
             "flex items-center flex-col md:flex-row md:justify-between px-6 py-4 "
-            "bg-neutral-primary-soft sm:rounded-b-lg"
+            "bg-neutral-primary-soft sm:rounded-b-base"
         ),
         aria_label="Table navigation",
     )[*nav_children]
@@ -1675,7 +1674,7 @@ def StyledTable(
     )[*table_children]
 
     inner_children: list[Node] = [
-        Div(class_="relative overflow-x-auto sm:rounded-t-lg")[table]
+        Div(class_="relative overflow-x-auto sm:rounded-t-base")[table]
     ]
     # The rows-per-page picker lives inside the pagination nav; with no nav
     # (per_page=0 → whole list shown) there is nothing to page, so no picker.
@@ -1687,7 +1686,7 @@ def StyledTable(
     # The radius matches the inner rounded-t/rounded-b corners: box-shadow
     # follows this element's radius, so a square wrapper would bleed a square
     # shadow corner past the rounded content (visible in light theme).
-    return Div(class_="shadow-md sm:rounded-lg", hx_boost="false")[*inner_children]
+    return Div(class_="shadow-md sm:rounded-base", hx_boost="false")[*inner_children]
 
 
 def ContentContainer(attrs: "AttrsArg | None" = None, **kwargs: object) -> Element:
