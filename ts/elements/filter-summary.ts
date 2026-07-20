@@ -10,7 +10,7 @@ import type { FieldMeta, GroupNode } from "./filter-tree/types.js";
 // <filter-count>: listens on document for filter-tree-change, rebuilds text from
 // group.getFilledTree() (filled-but-unpruned, so incomplete leaves show "…").
 
-const LABEL_CLASS = "text-sm text-body";
+const LABEL_CLASS = "text-type-body text-body";
 
 // Canonical empty root group — summarize() returns "<Label> (all)." for this.
 const EMPTY_TREE: GroupNode = { kind: "group", id: "root", connective: "AND", negate: false, children: [] };

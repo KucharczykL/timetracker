@@ -264,6 +264,7 @@ function mountRelation(): FilterGroupElement {
     }),
   );
   host.innerHTML = `
+    <template data-incomplete-badge-template><span></span></template>
     <template data-model="game" data-field-picker-template>
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
@@ -585,6 +586,7 @@ function mountLive(): FilterGroupElement {
   // Templates must exist before connectedCallback (captureTemplates runs there),
   // tagged data-model so the multi-model builder buckets them (#193).
   host.innerHTML = `
+    <template data-incomplete-badge-template><span></span></template>
     <template data-model="game" data-field-picker-template>
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
@@ -733,6 +735,7 @@ function mountComparison(): FilterGroupElement {
   host.setAttribute("model", "game");
   host.setAttribute("models", JSON.stringify({ game: { fields: [], columns: COLUMNS } }));
   host.innerHTML = `
+    <template data-incomplete-badge-template><span></span></template>
     <template data-model="game" data-fc-row-template>
       <div data-fc-row>
         ${fcOperand("left")}
@@ -1591,6 +1594,10 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
       "filter",
       JSON.stringify({ broken_filter: { name: { value: "x", modifier: "EQUALS" } } }),
     );
+    const badgeTemplate = document.createElement("template");
+    badgeTemplate.setAttribute("data-incomplete-badge-template", "");
+    badgeTemplate.innerHTML = "<span></span>";
+    host.appendChild(badgeTemplate);
     document.body.appendChild(host);
     const card = row(host, [0]);
     expect(card.dataset.nodeKind).toBe("criterion");
@@ -1630,6 +1637,7 @@ function mountScope(): FilterGroupElement {
     }),
   );
   host.innerHTML = `
+    <template data-incomplete-badge-template><span></span></template>
     <template data-model="game" data-field-picker-template>
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
@@ -1793,5 +1801,106 @@ describe("<filter-group> aggregate scope (#151)", () => {
         },
       ],
     });
+  });
+});
+
+describe("<filter-group> depth zebra parity", () => {
+  const surfaceOf = (el: Element): "A" | "B" | null =>
+    el.classList.contains("bg-neutral-secondary-medium")
+      ? "A"
+      : el.classList.contains("bg-neutral-primary")
+        ? "B"
+        : null;
+
+  it("alternates two surfaces so a card differs from the card nesting it", () => {
+    const host = mount();
+    clickAction(host, "add-group", []);
+    const root = host.querySelector<HTMLElement>('[data-kind="group"]')!;
+    const nested = root.querySelector<HTMLElement>('[data-kind="group"]')!;
+    expect(surfaceOf(root)).toBe("A"); // depth 0 → non-page surface
+    expect(surfaceOf(nested)).toBe("B"); // depth 1 alternates
+  });
+
+  it("relation card + its inner group alternate against the group holding them", () => {
+    const host = mount();
+    clickAction(host, "add-relation", []); // relation at root (depth 0)
+    const rootGroup = host.querySelector<HTMLElement>('[data-kind="group"]')!;
+    const relationCard = host.querySelector<HTMLElement>('[data-node-kind="relation"]')!;
+    const relationChild = relationCard.querySelector<HTMLElement>('[data-kind="group"]')!;
+    // Relation card is a nesting layer (+1) → opposite parity to its group; its
+    // child group (+2) → opposite parity to the relation card. No blend.
+    expect(surfaceOf(relationCard)).not.toBeNull(); // a surface must be present…
+    expect(surfaceOf(relationChild)).not.toBeNull();
+    expect(surfaceOf(relationCard)).not.toBe(surfaceOf(rootGroup)); // …and alternate
+    expect(surfaceOf(relationChild)).not.toBe(surfaceOf(relationCard));
+  });
+});
+
+describe("<filter-group> incomplete-cue popover clone", () => {
+  function mountWithBadgeTemplate(): FilterGroupElement {
+    document.body.replaceChildren();
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute("models", JSON.stringify(MODELS_BASE));
+    // Structurally-faithful stand-in for the server Popover() template: a
+    // <pop-over> carrying the trigger→panel aria wiring the clone rewrites.
+    host.innerHTML =
+      "<template data-incomplete-badge-template>" +
+      "<pop-over>" +
+      '<span data-pop-over-trigger aria-describedby="incomplete-badge">!</span>' +
+      '<div data-pop-over-panel id="incomplete-badge"></div>' +
+      "</pop-over></template>";
+    document.body.appendChild(host);
+    return host;
+  }
+
+  it("gives each cloned badge a unique popover id linked by aria-describedby", () => {
+    const host = mountWithBadgeTemplate();
+    clickAction(host, "add-relation", []); // two empty (incomplete) relations
+    clickAction(host, "add-relation", []);
+    const badges = [...host.querySelectorAll("[data-incomplete-badge]")];
+    expect(badges).toHaveLength(2);
+    const panelId = (b: Element): string =>
+      b.querySelector<HTMLElement>("[data-pop-over-panel]")!.id;
+    expect(panelId(badges[0])).toBeTruthy();
+    expect(panelId(badges[0])).not.toBe(panelId(badges[1])); // unique per clone
+    for (const b of badges) {
+      const describedBy = b
+        .querySelector("[data-pop-over-trigger]")!
+        .getAttribute("aria-describedby");
+      expect(describedBy).toBe(panelId(b)); // trigger points at its own panel
+    }
+  });
+
+  it("keeps an incomplete leaf's badge when it is nested in a complete relation", () => {
+    // A complete relation runs applyIncompleteState on its card AFTER appending the
+    // child group; a descendant (not direct-child) lookup would find and remove the
+    // nested incomplete leaf's badge — the only cue, since the row tint is gone.
+    document.body.replaceChildren();
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute(
+      "models",
+      JSON.stringify({
+        game: { fields: [SESSION_RELATION], columns: [] },
+        session: { fields: [NAME_META], columns: [] },
+      }),
+    );
+    // Complete relation (session_filter set) whose child leaf is touched-incomplete
+    // (name field chosen, value empty).
+    host.setAttribute(
+      "filter",
+      JSON.stringify({
+        AND: [{ session_filter: { AND: [{ name: { value: "", modifier: "EQUALS" } }] } }],
+      }),
+    );
+    host.innerHTML = `
+      <template data-incomplete-badge-template><span></span></template>
+      <template data-model="session" data-field="name">
+        <div><select data-string-modifier-select><option value="EQUALS" selected>is</option></select><input type="text" /></div>
+      </template>`;
+    document.body.appendChild(host);
+    // Exactly one badge — the nested leaf's — survives the complete relation card.
+    expect(host.querySelectorAll("[data-incomplete-badge]")).toHaveLength(1);
   });
 });

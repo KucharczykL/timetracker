@@ -79,23 +79,24 @@ import { readLeafWidget, setupModifierToggles, writeLeafWidget } from "./filter-
 import { parseJSONWithReport, reportClientError } from "../client-errors.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
-// Full, static class strings only — Tailwind detects complete strings, so the
-// depth palette is a fixed lookup (never `bg-depth-${n}`). ~4-shade cycle that
-// repeats past depth 3, giving nested cards alternating backgrounds.
-const DEPTH_BACKGROUNDS = [
-  "bg-gray-50 dark:bg-gray-900/40",
-  "bg-white dark:bg-gray-800/40",
-  "bg-gray-100 dark:bg-gray-800/20",
-  "bg-white dark:bg-gray-700/20",
-];
-const CARD_CLASS = "flex flex-col gap-2 rounded-base border border-gray-200 p-2 dark:border-gray-700";
+// Depth is signalled by a two-surface zebra parity, not a ramp: adjacent levels
+// always differ — at depth 1 or depth 20 — using only two fixed semantic
+// surfaces, so the card background never drifts and the muted foregrounds (chips,
+// disabled buttons, placeholders) stay contrast-safe at any depth. Absolute depth
+// is carried contrast-free by indentation + the countable stack of connective
+// rails. Depth 0 takes the non-page surface so the outermost group is distinct
+// from the page it sits on.
+function depthSurface(depth: number): string {
+  return depth % 2 === 0 ? "bg-neutral-secondary-medium" : "bg-neutral-primary";
+}
+const CARD_CLASS = "flex flex-col gap-2 rounded-base border border-default-medium p-2";
 const HEADER_CLASS = "flex items-center justify-between gap-2";
 const CHILDREN_CLASS = "flex flex-col gap-2";
 const FOOTER_CLASS = "flex flex-wrap gap-2";
 // Shown in place of the header when the root group is empty: an empty filter
 // serializes to {} (matches everything), so say so rather than render a NOT/AND
 // chip on a group with nothing to negate or join (issue #236).
-const EMPTY_STATE_CLASS = "px-2 py-1 text-sm text-gray-500 dark:text-gray-400";
+const EMPTY_STATE_CLASS = "px-2 py-1 text-type-body text-body-subtle";
 const EMPTY_STATE_TEXT = "No conditions. This will match all items.";
 // An empty relation child is meaningful, not an error: the quantifier alone is the
 // test. But that intent is invisible until spelled out — an unspelled empty relation
@@ -122,19 +123,14 @@ const FIELD_CELL_CLASS = "min-w-[12rem]";
 const VALUE_CELL_CLASS = "flex-1 min-w-[12rem]";
 // Value-cell placeholder until a field is picked. Mirrors the sibling field
 // picker (control height, radius, input font, semantic border/text) so it can't
-// drift back to raw text-sm/grays.
+// drift back to raw sizes/grays.
 const VALUE_PLACEHOLDER_CLASS =
   "flex-1 min-w-[12rem] flex items-center min-h-control rounded-base border border-dashed " +
   "border-default-medium px-3 text-type-input text-body";
-// Incomplete-leaf cue (excluded from the count/Apply query): a subtle amber tint
-// on the row + the "Incomplete" badge. NOT `opacity` — a faded ancestor would make
-// the leaf's own field-picker dropdown 60% transparent *and* create a stacking
-// context that traps its z-10 below sibling rows/footer. A bg tint is safe on both
-// counts. Space-separated → toggled token-by-token (classList.toggle takes one).
-const INCOMPLETE_ROW_CLASS = "bg-amber-50 dark:bg-amber-500/10 rounded-base";
-const BADGE_CLASS =
-  "rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium " +
-  "text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300";
+// Incomplete-leaf cue (excluded from the count/Apply query): a warning "!" popover
+// cloned onto a touched-but-incomplete row. No row background — the "!" alone
+// flags it and its popover explains the excluded-from-query semantics. Markup +
+// classes are server-owned (data-incomplete-badge-template), like the chips.
 // Chip and relation-select styling is server-owned (#273): the server ships one
 // <template data-chip-template="<state>"> per chip state and one
 // <template data-relation-select-template>; chip()/relationSelect() clone them.
@@ -142,27 +138,20 @@ const BADGE_CLASS =
 // (common/components/filters.py), where the class sets live.
 type ChipState = "connective-and" | "connective-or" | "negate-off" | "negate-on";
 // Group left-edge accent, colored by connective — reuses the chip hues (AND=teal,
-// OR=orange) so the card frame echoes the connective chip. Strong 400 edge matches
-// the relation descent's indigo-400 left edge; together `border-l-4` +
-// `border-l-<color>` thicken and recolor the left side of CARD_CLASS's uniform gray
-// box border into a colored accent.
-const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70";
-const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70";
-// Relation-descent accent block (component 5, #193): a left-accented indigo card set
-// apart from the gray group chrome so the Game→Session model switch reads explicitly.
-// Header carries the `↳ [quantifier] of [relation] where` row.
-const RELATION_CARD_CLASS =
-  "flex flex-col gap-2 rounded-base border border-l-4 border-indigo-200 border-l-indigo-400 " +
-  "bg-indigo-50/50 p-2 dark:border-indigo-500/40 dark:border-l-indigo-500/70 dark:bg-indigo-500/10";
+// OR=orange) so the card frame echoes the connective chip. `border-l-4` +
+// `border-l-<color>` thicken and recolor the left side of CARD_CLASS's box border
+// into a colored accent; the stacked ancestor rails also read as a depth ruler.
+const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70"; // color-ok: categorical AND hue (logic-chip palette)
+const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70"; // color-ok: categorical OR hue (logic-chip palette)
+// Relation-descent cue (component 5, #193): the ↳ arrow + "of [relation] where"
+// header carry a slim indigo hue (the Game→Session model-switch signal). The card
+// itself follows the neutral depth parity like any group — no tinted block.
 const RELATION_HEADER_CLASS = "flex items-center gap-2 flex-wrap";
-const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold";
-const RELATION_LABEL_CLASS = "text-sm text-gray-600 dark:text-gray-300";
-// The aggregate-scope accent block (issue #151): the leaf row plus its nested scope
-// group, teal-accented to read as "narrows this row" rather than a relation descent.
-const SCOPE_CARD_CLASS =
-  "flex flex-col gap-2 rounded-base border border-l-4 border-teal-200 border-l-teal-400 " +
-  "bg-teal-50/50 p-2 dark:border-teal-500/40 dark:border-l-teal-500/70 dark:bg-teal-500/10";
-const SCOPE_LABEL_CLASS = "text-sm text-teal-700 dark:text-teal-300";
+const RELATION_ARROW_CLASS = "text-indigo-500 dark:text-indigo-300 font-semibold"; // color-ok: relation-descent indigo
+const RELATION_LABEL_CLASS = "text-type-body text-indigo-600 dark:text-indigo-300"; // color-ok: relation-descent indigo
+// Aggregate-scope cue (#151): the "only counting items where" label carries a slim
+// teal hue ("narrows this row"). The scope card follows the neutral depth parity.
+const SCOPE_LABEL_CLASS = "text-type-body text-teal-700 dark:text-teal-300"; // color-ok: aggregate-scope teal
 
 // The closed set of restructuring actions a button can carry; producer
 // (actionButton) and consumer (applyAction's switch) share it so a typo on either
@@ -186,9 +175,6 @@ type TreeAction =
 // The event the shell dispatches after every edit (see FilterTreeChangeDetail).
 export const FILTER_TREE_CHANGE_EVENT = "filter-tree-change";
 
-function depthBackground(depth: number): string {
-  return DEPTH_BACKGROUNDS[depth % DEPTH_BACKGROUNDS.length];
-}
 
 // A comparison needs two columns of the SAME comparison group; a model admits one
 // only when some group has ≥2 columns. Mirrors the server's has_comparable_group.
@@ -276,6 +262,7 @@ export class FilterGroupElement extends HTMLElement {
   // clones these and never declares their classes (#273).
   private chipTemplates = new Map<ChipState, HTMLTemplateElement>();
   private relationSelectTemplate: HTMLTemplateElement | null = null;
+  private incompleteBadgeTemplate: HTMLTemplateElement | null = null;
   // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
   private cloneSequence = 0;
 
@@ -360,6 +347,9 @@ export class FilterGroupElement extends HTMLElement {
     );
     this.relationSelectTemplate = this.querySelector<HTMLTemplateElement>(
       "template[data-relation-select-template]",
+    );
+    this.incompleteBadgeTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-incomplete-badge-template]",
     );
     this.querySelectorAll<HTMLTemplateElement>("template[data-model]").forEach((template) => {
       const bundle = this.models.get(template.getAttribute("data-model") ?? "");
@@ -761,10 +751,11 @@ export class FilterGroupElement extends HTMLElement {
     }
   }
 
-  // `model` is the active model at this group; `depth` is the true group-nesting
-  // depth for coloring (path length is no longer a proxy — a relation's child group
-  // is +1 depth but +2 path steps, #193). A relation's child group is rendered here
-  // too but without its own restructuring controls (the relation node owns them).
+  // `model` is the active model at this group; `depth` is the visual card-nesting
+  // depth, used only for the zebra parity (colour, never gating). A relation/scope
+  // card is itself a card layer, so its child group is passed depth+2 (the card
+  // takes depth+1). A relation's child group renders here too but without its own
+  // restructuring controls (the relation node owns them).
   private renderGroup(
     node: GroupNode,
     path: NodePath,
@@ -780,7 +771,7 @@ export class FilterGroupElement extends HTMLElement {
     const lastStep = path[path.length - 1];
     const isOwnedChild = lastStep === RELATION_CHILD || lastStep === SCOPE_CHILD;
     const edgeClass = node.connective === "AND" ? GROUP_AND_EDGE_CLASS : GROUP_OR_EDGE_CLASS;
-    const card = element("div", `${CARD_CLASS} ${depthBackground(depth)} ${edgeClass}`);
+    const card = element("div", `${CARD_CLASS} ${depthSurface(depth)} ${edgeClass}`);
     card.dataset.kind = "group";
     card.dataset.path = JSON.stringify(path);
 
@@ -857,7 +848,10 @@ export class FilterGroupElement extends HTMLElement {
     model: string,
     depth: number,
   ): HTMLElement {
-    const card = element("div", RELATION_CARD_CLASS);
+    // The relation card is itself a nested card layer (+1 from its group), and its
+    // child group is one deeper still (+2), so the zebra parity alternates through
+    // both instead of the card blending into the group that holds it.
+    const card = element("div", `${CARD_CLASS} ${depthSurface(depth + 1)}`);
     card.dataset.nodeSlot = "";
     card.dataset.nodeKind = "relation";
     card.dataset.path = JSON.stringify(path);
@@ -875,9 +869,9 @@ export class FilterGroupElement extends HTMLElement {
     header.appendChild(this.controls(path, false, index, siblingCount));
     card.appendChild(header);
 
-    // The child group is built from the target model; it descends one depth level.
-    // Spell out what an empty child matches for the active quantifier so a presence
-    // test is never applied silently (#225).
+    // The child group is built from the target model. Spell out what an empty child
+    // matches for the active quantifier so a presence test is never applied
+    // silently (#225).
     const childModel = this.targetModel(model, node.field);
     card.appendChild(
       this.renderGroup(
@@ -886,7 +880,7 @@ export class FilterGroupElement extends HTMLElement {
         0,
         1,
         childModel,
-        depth + 1,
+        depth + 2,
         relationEmptyText(node.match),
       ),
     );
@@ -992,10 +986,12 @@ export class FilterGroupElement extends HTMLElement {
     this.applyIncompleteState(row, Boolean(node.field) && !this.leafComplete(node, model));
     if (!node.scope) return row;
 
-    // Scoped: the row plus its scope group in one accent card. Structural data
-    // attributes stay on the ROW (value events resolve their leaf via
-    // closest("[data-node-slot]")); the card is pure layout.
-    const card = element("div", SCOPE_CARD_CLASS);
+    // Scoped: the row plus its scope group in one card. Structural data attributes
+    // stay on the ROW (value events resolve their leaf via
+    // closest("[data-node-slot]")); the card is pure layout. Like a relation, the
+    // scope card is a nested layer (+1) and its group one deeper (+2) so the zebra
+    // parity alternates through both.
+    const card = element("div", `${CARD_CLASS} ${depthSurface(depth + 1)}`);
     card.appendChild(row);
     const scopeLabel = element("div", SCOPE_LABEL_CLASS);
     scopeLabel.textContent = "only counting items where";
@@ -1007,7 +1003,7 @@ export class FilterGroupElement extends HTMLElement {
         0,
         1,
         scopeModel || this.scopeModel(model, node.field),
-        depth + 1,
+        depth + 2,
         SCOPE_EMPTY_TEXT,
       ),
     );
@@ -1271,13 +1267,25 @@ export class FilterGroupElement extends HTMLElement {
   }
 
   private applyIncompleteState(row: HTMLElement, incomplete: boolean): void {
-    for (const token of INCOMPLETE_ROW_CLASS.split(" ")) row.classList.toggle(token, incomplete);
-    let badge = row.querySelector<HTMLElement>("[data-incomplete-badge]");
+    // Direct child only: a relation/scope card runs this AFTER appending its child
+    // group, so a descendant search would find (and, when the card is complete,
+    // remove) an incomplete leaf's badge nested inside it. The badge is always
+    // inserted as a direct child, so `:scope >` scopes to this row's own cue.
+    const badge = row.querySelector<HTMLElement>(":scope > [data-incomplete-badge]");
     if (incomplete && !badge) {
-      badge = element("span", BADGE_CLASS);
-      badge.dataset.incompleteBadge = "";
-      badge.textContent = "Incomplete";
-      row.insertBefore(badge, row.lastElementChild);
+      const clone = this.incompleteBadgeTemplate?.content.firstElementChild?.cloneNode(
+        true,
+      ) as HTMLElement | undefined;
+      if (!clone) return;
+      clone.dataset.incompleteBadge = "";
+      // The popover links trigger→panel by id; make it unique per clone so
+      // multiple incomplete rows don't collide (dup ids break aria).
+      const uid = `incomplete-badge-${(this.cloneSequence += 1)}`;
+      clone.querySelector("[data-pop-over-panel]")?.setAttribute("id", uid);
+      clone
+        .querySelector("[data-pop-over-trigger]")
+        ?.setAttribute("aria-describedby", uid);
+      row.insertBefore(clone, row.lastElementChild);
     } else if (!incomplete && badge) {
       badge.remove();
     }

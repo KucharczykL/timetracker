@@ -71,23 +71,36 @@ RAW_SIZE = re.compile(
 )
 
 
-def _py_files():
+def ts_files():
+    # Class strings hardcoded in ts/ escape the .py guards otherwise (#441).
+    ts_root = REPO / "ts"
+    for path in ts_root.rglob("*.ts"):
+        if path.name.endswith(".test.ts"):
+            continue
+        if "generated" in path.relative_to(ts_root).parts:
+            continue
+        yield path
+
+
+def guarded_files():
     for path in GUARDED:
         if path.is_file():
             yield path
         else:
             yield from path.rglob("*.py")
+    yield from ts_files()
 
 
 def test_no_raw_size_utilities_in_components():
     offenders = []
-    for f in _py_files():
+    for f in guarded_files():
         for i, line in enumerate(f.read_text().splitlines(), 1):
-            if "# type-ok" in line:
+            # `# type-ok` (Python) / `// type-ok` (TS) opt a line out.
+            if "type-ok" in line:
                 continue
             if RAW_SIZE.search(line):
                 offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
     assert not offenders, (
-        "raw size utilities — use text-type-* (or add `# type-ok: reason`):\n"
+        "raw size utilities — use text-type-* (or add `# type-ok:`/`// type-ok:` reason):\n"
         + "\n".join(offenders)
     )
