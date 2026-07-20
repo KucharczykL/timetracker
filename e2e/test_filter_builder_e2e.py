@@ -112,7 +112,7 @@ def test_builder_page_elements_load_and_initialize(
     connective_chip = page.locator(
         'filter-group button[data-action="toggle-connective"]'
     ).first
-    expect(connective_chip).to_have_class(re.compile(r"rounded-full"))
+    expect(connective_chip).to_have_class(re.compile(r"rounded-base"))
     action_button = page.locator(
         'filter-group button[data-action="add-condition"]'
     ).first

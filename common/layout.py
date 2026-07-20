@@ -131,7 +131,7 @@ _TOAST_CONTAINER = """<div x-data="toastStore()"
                  @mouseenter="$store.toasts.clearToastTimer(toast.id)"
                  @mouseleave="$store.toasts.resumeToastTimer(toast.id, 5000)"
                  @keydown.escape="dismissToast(toast.id)">
-                <div class="rounded-lg shadow-lg p-4 flex items-start gap-3"
+                <div class="rounded-base shadow-lg p-4 flex items-start gap-3"
                      :class="{
                           'bg-success-soft border border-success-subtle': toast.type === 'success',
                           'bg-danger-soft border border-danger-subtle': toast.type === 'error',
@@ -310,7 +310,7 @@ def NavbarMenu(
             type="button",
             class_="p-2 text-body-subtle hover:bg-neutral-tertiary-medium "
             "focus:outline-hidden focus:ring-4 "
-            "focus:ring-neutral-tertiary-medium rounded-lg "
+            "focus:ring-neutral-tertiary-medium rounded-base "
             "text-type-body hover:cursor-pointer",
         )[Safe(_THEME_TOGGLE_SVGS)]
     ]
@@ -387,7 +387,7 @@ def NavbarMenu(
     return Div(class_="hidden w-full md:block md:w-auto", id="navbar-dropdown")[
         Ul(
             class_="items-center flex flex-col font-medium p-4 md:p-0 mt-4 border "
-            "border-default-medium rounded-lg bg-neutral-secondary-medium md:gap-8 "
+            "border-default-medium rounded-base bg-neutral-secondary-medium md:gap-8 "
             "md:flex-row md:mt-0 md:border-0 md:bg-neutral-primary-soft"
         )[
             theme_toggle,
@@ -456,7 +456,7 @@ def NavbarLogButton(
         color="green",
         href=reverse("games:add_session"),
         aria_label="Log game",
-        class_="rounded-s-lg rounded-e-none",
+        class_="rounded-s-base rounded-e-none",
     )[Icon("play"), Span(class_="hidden sm:inline")["Log game"]]
 
     if recent_resumes:
@@ -517,7 +517,7 @@ def Navbar(
         type="button",
         aria_controls="navbar-dropdown",
         aria_expanded="false",
-        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-type-body text-body-subtle rounded-lg md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
+        class_="inline-flex items-center p-2 w-10 h-10 justify-center text-type-body text-body-subtle rounded-base md:hidden hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-2 focus:ring-neutral-tertiary-medium",
     )[Span(class_="sr-only")["Open main menu"], Icon("hamburger")]
 
     menu = NavbarMenu(
