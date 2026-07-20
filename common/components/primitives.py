@@ -369,23 +369,20 @@ _CONTROL_BASE_CLASS = (
     f"{DISABLED_CONTROL_CLASS}"
 )
 
-# Container-query sizing, shared by EVERY button-shaped variant: compact by
-# default (a container-query variant never matches without an `@container`
-# ancestor, so "no wrapper" = compact by construction); form-shaped containers
-# ≥ 28rem (`@md`) upsize to the old default look. There is deliberately no
-# size parameter — the container decides. Note this means segmented groups and
-# outline toggles in tables are compact at every viewport width: a
-# shrink-to-fit inline-flex group cannot be its own inline-size container
-# (containment would collapse it to zero width) and table cells can't be
-# containers either — but every button on such a page is compact together.
-_CONTROL_SIZE_CLASS = "px-3 py-2 @md:px-5 @md:py-2.5"
+# Shared by EVERY button-shaped variant. Height is the canonical control
+# height (min-h-control = 42px, from --height-control), floored not fixed so a
+# multi-line control still grows; the inline-flex base centers content in it.
+# Only horizontal padding is set here — height no longer depends on font,
+# padding, or any `@container` ancestor, so a button is the same 42px in every
+# row (the container-query step and its cross-row inconsistency are gone).
+CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 _FILLED_VARIANT_CLASS = (
     "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
-    f"{_CONTROL_SIZE_CLASS}"
+    f"{CONTROL_SIZE_CLASS}"
 )
 
-_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {_CONTROL_SIZE_CLASS}"
+_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {CONTROL_SIZE_CLASS}"
 
 # Status-token notes shared by both tables:
 # - danger/success -subtle rings shade-match brand-medium (x-200 light /
@@ -453,7 +450,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{_CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
+    f"{CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -465,7 +462,7 @@ _OUTLINE_VARIANT_CLASS = (
 # compact triggers that would read as clutter in a row of many (the quick
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
-    f"{_CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    f"{CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
     "border-transparent text-heading hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -782,7 +779,7 @@ def Radio(
 # JS that builds pills client-side (search_select.js) MUST emit these exact class
 # strings byte-for-byte so Tailwind generates them and server/JS pills match.
 _PILL_CLASS = (
-    "font-condensed inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded "
+    "font-condensed inline-flex items-center min-h-control gap-1 px-2 py-0.5 text-type-body rounded "
     "bg-brand-soft text-heading"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
@@ -958,7 +955,7 @@ def YearPicker(
                 ("data-year-picker-toggle", ""),
                 (
                     "class",
-                    "inline-flex items-center rounded-base px-4 py-2 "
+                    f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
                     f"text-type-body font-medium {classes}",
                 ),
             ]
@@ -1441,18 +1438,18 @@ def _pagination_nav(
     page_obj, elided_page_range, request, page_size: int | None = None
 ) -> Node:
     page_link_class = (
-        "flex items-center justify-center px-3 h-8 leading-tight text-body-subtle "
+        "flex items-center justify-center px-3 min-h-control leading-tight text-body-subtle "
         "bg-neutral-primary-medium border border-default-medium "
         "hover:bg-neutral-tertiary-medium hover:text-heading"
     )
     # Brand fill: the current page is informational (`aria-current`), so its
     # text must clear AA — the muted-gray treatment didn't.
     current_link_class = (
-        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "cursor-not-allowed flex items-center justify-center px-3 min-h-control leading-tight "
         "solid-brand border border-brand"
     )
     disabled_link_class = (
-        "cursor-not-allowed flex items-center justify-center px-3 h-8 leading-tight "
+        "cursor-not-allowed flex items-center justify-center px-3 min-h-control leading-tight "
         "text-fg-disabled bg-neutral-primary-medium border border-default-medium"
     )
     page_items: list[Node] = []
@@ -1500,9 +1497,9 @@ def _pagination_nav(
         " of ",
         Span(class_=number_class)[str(page_obj.paginator.count)],
     ]
-    pages = Ul(class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body h-8")[
-        Li()[prev_link, *page_items, next_link]
-    ]
+    pages = Ul(
+        class_="inline-flex -space-x-px rtl:space-x-reverse text-type-body min-h-control"
+    )[Li()[prev_link, *page_items, next_link]]
     nav_children: list[Node] = [summary]
     # The rows-per-page picker sits between the "1—3 of 3" summary and the
     # prev/next page links.

@@ -121,12 +121,12 @@ class OptionGroup(NamedTuple):
 # via :has() — the same opacity-50 a disabled native input uses (see
 # _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
 # toggle the control's `disabled`, never styles.
-# px-3 py-2.5 matches INPUT_CLASS. Container is text-type-body (pill/label text);
-# the inner search box is text-type-input (16px, below which iOS focus-zooms, #427).
-# Wrapper owns the padding; the box zeroes its own (p-0) so they don't stack into
-# a too-tall field.
+# px-3 + min-h-control matches INPUT_CLASS (the shared 42px control height).
+# Container is text-type-body (pill/label text); the inner search box is
+# text-type-input (16px, below which iOS focus-zooms, #427). The box zeroes its
+# own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
 _CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 px-3 py-2.5 rounded-base text-type-body "
+    "relative flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"

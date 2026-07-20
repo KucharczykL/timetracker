@@ -99,6 +99,11 @@
     --text-type-micro-caps--letter-spacing: 0.025em;
     --text-type-input: 1rem;
     --text-type-input--line-height: 1.5rem;
+
+    /* Canonical interactive control height. Every row-control (buttons,
+       inputs, selects, SearchSelect, dropdown triggers) floors to this via
+       min-h-control, so height is font- and container-independent. */
+    --height-control: 2.625rem; /* 42px */
 }
 
 /*

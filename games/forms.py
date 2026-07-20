@@ -38,9 +38,9 @@ _DISABLED_CONTROL = DISABLED_CONTROL_CLASS
 # Safari auto-zooming focused inputs (#427) and needs no responsive pair.
 # text-heading is the colour; placeholder:text-body the placeholder colour.
 INPUT_CLASS = (
-    "mb-3 bg-neutral-secondary-medium border border-default-medium text-heading "
+    "bg-neutral-secondary-medium border border-default-medium text-heading "
     "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
-    f"px-3 py-2.5 shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
+    f"px-3 min-h-control shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 # No horizontal padding here: @tailwindcss/forms (base strategy) styles every
 # bare <select> with appearance:none, a chevron pinned to the right edge, AND the
@@ -48,15 +48,18 @@ INPUT_CLASS = (
 # that plugin rule for the right side, and px-* *does* override it symmetrically —
 # pulling the right padding down so option text slides under the chevron (the old
 # px-3 did exactly this on narrow selects, e.g. the field-comparison operator
-# select). So set only vertical padding and let the plugin own the horizontal.
+# select). So set the shared control height and let the plugin own the horizontal.
 SELECT_CLASS = (
-    "w-full py-2.5 bg-neutral-secondary-medium border border-default-medium "
+    "w-full min-h-control bg-neutral-secondary-medium border border-default-medium "
     "text-heading text-type-input rounded-base focus:ring-brand focus:border-brand "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
+# A textarea is multiline: it keeps its own vertical padding and is excluded
+# from the min-h-control single-height scale.
 TEXTAREA_CLASS = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full p-3.5 "
+    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
+    "px-3 py-2.5 "  # control-ok: multiline textarea keeps its own vertical padding
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 
