@@ -127,11 +127,55 @@ def searchurl_committed_view(request):
     return HttpResponse(html)
 
 
+def slow_options_view(request):
+    """A search_url endpoint that stalls, so a test can Tab away while a fetch is
+    in flight and assert the resolved response can't reopen the panel (#451)."""
+    import json
+    import time
+
+    time.sleep(0.3)
+    return HttpResponse(
+        json.dumps([{"value": "9", "label": "Delayed Game", "data": {}}]),
+        content_type="application/json",
+    )
+
+
+def slow_search_view(request):
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SearchSelect slow-fetch E2E Test</title>
+        <link rel="stylesheet" href="/static/base.css">
+        <script src="/static/js/htmx.min.js"></script>
+        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
+    </head>
+    <body>
+        <div style="padding: 50px;">
+            {
+        SearchSelect(
+            name="games",
+            options=[],
+            search_url="/slow-options/",
+            multi_select=False,
+            id="slow-search",
+        )
+    }
+            <input type="text" id="next-field" />
+        </div>
+    </body>
+    </html>
+    """
+    return HttpResponse(html)
+
+
 urlpatterns = [
     path("test-search-select/", e2e_test_view),
     path("test-anchor/", anchor_test_view),
     path("anchor-search-options/", anchor_search_options_view),
     path("searchurl-committed/", searchurl_committed_view),
+    path("test-slow-search/", slow_search_view),
+    path("slow-options/", slow_options_view),
 ]
 
 
@@ -703,3 +747,34 @@ def test_single_select_exact_retype_saves_nothing(live_server, page):
     page.wait_for_timeout(200)
     assert search_input.input_value() == "Game A"
     assert page.locator('input[name="games"]').count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_search_select_late_fetch_does_not_reopen_after_blur(live_server, page):
+    """Issue #451: a debounced search_url fetch that resolves after the user has
+    Tabbed away must not reopen the panel over the next field. focusout cancels
+    the pending debounce timer and aborts the in-flight request."""
+    page.goto(live_server.url + "/test-slow-search/")
+
+    search_input = page.locator(
+        'search-select[name="games"] input[data-search-select-search]'
+    )
+    options_panel = page.locator(
+        'search-select[name="games"] [data-search-select-options]'
+    )
+
+    search_input.focus()
+    search_input.type("D")
+    # Let the 100ms debounce fire so the (300ms) fetch is genuinely in flight,
+    # then Tab away while it is still pending.
+    page.wait_for_timeout(150)
+    page.keyboard.press("Tab")
+    expect(options_panel).to_be_hidden()
+
+    # Wait past the fetch's completion: the aborted response must not reopen it.
+    page.wait_for_timeout(400)
+    expect(options_panel).to_be_hidden()
+    assert page.evaluate(
+        "() => !document.activeElement.closest('search-select[name=\"games\"]')"
+    )
