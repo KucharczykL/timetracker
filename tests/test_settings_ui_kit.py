@@ -18,6 +18,7 @@ from common.components import (
     SettingsFieldLayout,
     SettingsScaffold,
     SettingsSection,
+    assert_unique_element_ids,
     collect_media,
 )
 from games.forms import PrimitiveCheckboxWidget, PrimitiveWidgetsMixin
@@ -190,6 +191,37 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         control = html.index('name="locked_value"', badge)
         reason = html.index("Change APP_URL", control)
         assert label_line < badge < control < reason
+
+    def test_metadata_ids_follow_django_form_prefixes(self):
+        state = {
+            "display_name": SettingFieldState(
+                key="DISPLAY_NAME",
+                source="user",
+                help_text="Shown in your profile.",
+            )
+        }
+        first = LiveSettingFields(
+            KitForm(prefix="personal"),
+            states=state,
+            patch_url_template="/api/settings/user/__key__",
+            csrf="token",
+        )
+        second = LiveSettingFields(
+            KitForm(prefix="site"),
+            states=state,
+            patch_url_template="/api/settings/site/__key__",
+            csrf="token",
+        )
+        combined = Div()[first, second]
+
+        assert_unique_element_ids(combined)
+        html = str(combined)
+        for prefix in ("personal", "site"):
+            control_id = f"id_{prefix}-display_name"
+            assert f'id="{control_id}"' in html
+            assert f'id="{control_id}_setting_source_tooltip"' in html
+            assert f'id="{control_id}_setting_metadata"' in html
+            assert f'aria-describedby="{control_id}_setting_metadata"' in html
 
 
 class SettingsScaffoldTest(SimpleTestCase):
