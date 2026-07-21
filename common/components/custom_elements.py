@@ -229,9 +229,10 @@ class FilterGroupProps(TypedDict):
 register_element("filter-group", "FilterGroup", FilterGroupProps)
 _FilterGroup = custom_element_builder("filter-group")
 
-# The "!" incomplete-leaf indicator (popover trigger): a small warning circle.
+# The "!" incomplete-leaf indicator (popover trigger): a warning circle sized to
+# the WCAG 2.5.8 24px minimum touch target (w-6 h-6).
 _INCOMPLETE_BADGE_CLASS = (
-    "inline-flex items-center justify-center w-5 h-5 rounded-full border "
+    "inline-flex items-center justify-center w-6 h-6 rounded-full border "
     "border-warning-subtle bg-warning-soft text-warning text-type-micro font-bold "
     "cursor-help select-none"
 )
