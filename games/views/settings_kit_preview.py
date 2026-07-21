@@ -13,13 +13,18 @@ from django.views.decorators.http import require_http_methods
 from common.components import (
     Badge,
     BadgeTone,
+    Checkbox,
     ContentContainer,
     Div,
     Element,
     FormFieldGroup,
+    Input,
+    Label,
     LiveSettingFields,
     MaskedSecretField,
+    Option,
     PageHeading,
+    Select,
     SettingFieldState,
     SettingSourceBadge,
     SettingsScaffold,
@@ -27,7 +32,7 @@ from common.components import (
 )
 from common.components.primitives import P
 from common.layout import render_page
-from games.forms import PrimitiveWidgetsMixin
+from games.forms import INPUT_CLASS, SELECT_CLASS, PrimitiveWidgetsMixin
 
 _PREVIEW_KEYS = {
     "PREVIEW_ENABLED": "Preview enabled",
@@ -164,6 +169,195 @@ def _badge_gallery():
     )[*[Badge(tone.title(), tone=tone) for tone in _BADGE_TONES]]
 
 
+def _preview_label_line(
+    *,
+    field_id: str,
+    label: str,
+    source: str,
+    tooltip_id: str,
+):
+    return Div(class_="flex min-w-0 flex-wrap items-center gap-2")[
+        Label(for_=field_id, class_="text-type-label text-heading")[label],
+        SettingSourceBadge(source, id=tooltip_id),
+    ]
+
+
+def _preview_checkbox_field(
+    prefix: str,
+    *,
+    placement: str = "trailing",
+    gap_class: str = "gap-3",
+):
+    field_id = f"{prefix}-enabled"
+    help_id = f"{field_id}-help"
+    label_line = _preview_label_line(
+        field_id=field_id,
+        label="Enable preview behavior",
+        source="user",
+        tooltip_id=f"{field_id}-source-tooltip",
+    )
+    checkbox = Checkbox(
+        name=field_id,
+        checked=True,
+        id_=field_id,
+        aria_describedby=help_id,
+        class_="shrink-0",
+    )
+    help_text = P(id_=help_id, class_="text-type-micro text-body")[
+        "Toggle the checkbox to trigger a successful preview save."
+    ]
+    if placement == "leading":
+        return Div(
+            class_="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3",
+            data_preview_checkbox_field="",
+        )[
+            Div(class_="pt-1")[checkbox],
+            Div(class_="flex min-w-0 flex-col gap-2")[label_line, help_text],
+        ]
+    return Div(class_="flex min-w-0 flex-col gap-2", data_preview_checkbox_field="")[
+        Div(class_=f"flex items-center justify-between {gap_class}")[
+            label_line,
+            checkbox,
+        ],
+        help_text,
+    ]
+
+
+def _preview_standard_field(prefix: str, *, kind: str):
+    field_id = f"{prefix}-{kind}"
+    if kind == "destination":
+        label = "Default destination"
+        source = "database"
+        control = Select(
+            id_=field_id,
+            name=field_id,
+            class_=SELECT_CLASS,
+        )[
+            Option(value="library", selected=True)["Library"],
+            Option(value="statistics")["Statistics"],
+        ]
+    else:
+        label = "Daily limit"
+        source = "default"
+        control = Input(
+            id_=field_id,
+            name=field_id,
+            type="number",
+            value="10",
+            min="1",
+            class_=INPUT_CLASS,
+        )
+    return Div(class_="flex min-w-0 flex-col gap-2")[
+        _preview_label_line(
+            field_id=field_id,
+            label=label,
+            source=source,
+            tooltip_id=f"{field_id}-source-tooltip",
+        ),
+        control,
+    ]
+
+
+def _layout_option(*, option: str, name: str, explanation: str, content, hook: str):
+    return Div(
+        class_="flex min-w-0 flex-col gap-3",
+        **{hook: option},
+    )[
+        Div(class_="flex flex-wrap items-center gap-2")[
+            Badge(option, tone="brand"),
+            Element("h4", [("class", "text-type-section text-heading")])[name],
+        ],
+        P(class_="text-type-body text-body")[explanation],
+        Div(class_="rounded-base border border-default p-4")[content],
+    ]
+
+
+def _column_fields(prefix: str):
+    return [
+        _preview_checkbox_field(prefix, gap_class="gap-6"),
+        _preview_standard_field(prefix, kind="destination"),
+        _preview_standard_field(prefix, kind="limit"),
+    ]
+
+
+def _checkbox_and_form_layout_gallery():
+    return Div(class_="flex flex-col gap-8", data_checkbox_form_layout_gallery="")[
+        Div(class_="flex flex-col gap-2")[
+            Element("h3", [("class", "text-type-subheading text-heading")])[
+                "Checkbox placement"
+            ],
+            P(class_="text-type-body text-body")[
+                "These use identical content; only the relationship between the label and checkbox changes."
+            ],
+        ],
+        Div(class_="flex flex-col gap-6")[
+            _layout_option(
+                option="Baseline",
+                name="Fluid trailing checkbox",
+                explanation="The current rule: acceptable when narrow, but the checkbox drifts to the far edge of a wide single column.",
+                content=_preview_checkbox_field("checkbox-fluid"),
+                hook="data_checkbox_placement_variant",
+            ),
+            _layout_option(
+                option="Option 1",
+                name="Constrained trailing checkbox",
+                explanation="Keep the familiar right-aligned control inside a readable-width field column, with a 24px minimum gap.",
+                content=Div(class_="max-w-xl")[
+                    _preview_checkbox_field("checkbox-constrained", gap_class="gap-6")
+                ],
+                hook="data_checkbox_placement_variant",
+            ),
+            _layout_option(
+                option="Option 2",
+                name="Leading checkbox",
+                explanation="Put the control immediately before its label; association stays strong at every container width.",
+                content=_preview_checkbox_field(
+                    "checkbox-leading",
+                    placement="leading",
+                ),
+                hook="data_checkbox_placement_variant",
+            ),
+        ],
+        Div(class_="flex flex-col gap-2")[
+            Element("h3", [("class", "text-type-subheading text-heading")])[
+                "Form-field column flow"
+            ],
+            P(class_="text-type-body text-body")[
+                "The production renderer is single-column today. The two- and three-column areas elsewhere on this page are component galleries, not form modes."
+            ],
+        ],
+        Div(class_="flex flex-col gap-6")[
+            _layout_option(
+                option="1 column",
+                name="Constrained vertical form",
+                explanation="Best scanning order and room for help, errors, and long translated labels.",
+                content=Div(class_="flex max-w-xl flex-col gap-4")[
+                    *_column_fields("columns-one")
+                ],
+                hook="data_form_column_variant",
+            ),
+            _layout_option(
+                option="2 columns",
+                name="Responsive paired fields",
+                explanation="Useful for independent, compact settings; collapses to one column on narrow screens.",
+                content=Div(class_="grid grid-cols-1 gap-6 md:grid-cols-2")[
+                    *_column_fields("columns-two")
+                ],
+                hook="data_form_column_variant",
+            ),
+            _layout_option(
+                option="3 columns",
+                name="Responsive compact grid",
+                explanation="Only suitable for short, uniform controls; labels and metadata run out of room first.",
+                content=Div(
+                    class_="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3"
+                )[*_column_fields("columns-three")],
+                hook="data_form_column_variant",
+            ),
+        ],
+    ]
+
+
 def _hierarchy_sample(
     *,
     option: str,
@@ -244,6 +438,12 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
             "Section hierarchy comparison",
             _section_hierarchy_gallery(),
             "The same content with typography, spacing, and divider treatments isolated for comparison.",
+        ),
+        SettingsSection(
+            "checkbox-and-form-layout-comparison",
+            "Checkbox and form layout comparison",
+            _checkbox_and_form_layout_gallery(),
+            "Placement and column-flow candidates using real kit controls and source badges.",
         ),
         SettingsSection(
             "live-settings-fields",
