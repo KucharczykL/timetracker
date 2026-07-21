@@ -44,6 +44,10 @@
   exception (#454).
 
 ### Changed
+* Game and purchase names now truncate by their rendered width instead of a
+  fixed character count. Clipped names fade at the right edge and reveal their
+  full text only when needed: hover/focus on desktop and a 24px tap target on
+  touch devices. Multi-game purchases keep their always-available games list.
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
   currency comes solely from the resolved `DEFAULT_CURRENCY` (`CZK` out of the
   box). A purchase created directly via the ORM without a currency now gets the
