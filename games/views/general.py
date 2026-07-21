@@ -34,6 +34,7 @@ from games.models import Device, Game, Platform, Purchase, Session
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
+from timetracker.settings_resolver import resolve_for_user
 
 # The Flowbite-datepicker UMD bundle is declared as media on the YearPicker
 # component, so TimetrackerDocument() loads it automatically on the stats pages.
@@ -209,4 +210,9 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
 
 @login_required
 def index(request: HttpRequest) -> HttpResponse:
+    landing_page = resolve_for_user(request.user, "DEFAULT_LANDING_PAGE")
+    if landing_page == "games:stats_by_year":
+        return redirect(landing_page, year=datetime.now().year)
+    if isinstance(landing_page, str):
+        return redirect(landing_page)
     return redirect("games:list_sessions")

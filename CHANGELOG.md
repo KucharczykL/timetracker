@@ -21,6 +21,10 @@
   default and env), and an `/api/settings` router for reading and writing personal
   (`/user`) and superuser-gated site (`/site`) settings. `DEFAULT_CURRENCY` is now
   user-scoped, alongside new `DEFAULT_DEVICE` / `DEFAULT_LANDING_PAGE` prefs.
+* Add an authenticated Settings page for choosing personal default currency,
+  device, and landing page. Preferences save live, follow the account across
+  browsers, and pre-fill every purchase/session entry path; landing choices
+  include Sessions, Games, Purchases, and the current year's Statistics (#385).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously

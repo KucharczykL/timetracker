@@ -11,11 +11,13 @@ from games.views import (
     session,
     statuschange,
 )
+from games.views import settings as settings_views
 
 app_name = "games"
 
 urlpatterns = [
     path("", general.index, name="index"),
+    path("settings", settings_views.user_settings, name="settings"),
     path("device/add", device.add_device, name="add_device"),
     path("device/delete/<int:device_id>", device.delete_device, name="delete_device"),
     path("device/edit/<int:device_id>", device.edit_device, name="edit_device"),

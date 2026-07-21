@@ -89,6 +89,24 @@ the global `SiteSetting` model.
   superuser-only) reads and writes the site defaults. `PATCH` with `value: null`
   clears a setting back to unset.
 
+### Personal settings page
+
+Every authenticated user can open `/tracker/settings` from the main navigation.
+Changes save immediately against the account through `/api/settings/user`:
+
+- **Default currency** pre-fills new purchases and supplies the fallback when a
+  submitted purchase has no currency, including separate-per-game purchases.
+- **Default device** pre-selects the device on every add-session path and fills
+  an empty device when editing a session. An existing device is preserved.
+- **Default landing page** controls the `/tracker/` redirect. Supported values
+  are the Sessions, Games, and Purchases lists and Statistics for the current
+  calendar year. The stored value is a validated Django URL name, not an
+  arbitrary URL.
+
+Clearing a control removes the personal override and restores the resolved site
+or built-in default. Existing non-empty values on edit forms are never replaced
+just by opening the form.
+
 ## APP_URL, ALLOWED_HOSTS and CSRF
 
 `APP_URL` accepts one full URL or a comma-separated list of full URLs. Both

@@ -188,6 +188,19 @@ def test_user_patch_rejects_missing_device(auth_client):
     )
 
 
+def test_user_patch_rejects_unsupported_landing_page_and_writes_nothing(auth_client):
+    from games.models import UserPreferences
+
+    response = _patch(
+        auth_client,
+        _user_patch_url("DEFAULT_LANDING_PAGE"),
+        "games:stats_alltime",
+    )
+
+    assert response.status_code == 400
+    assert not UserPreferences.objects.filter(user__username="tester").exists()
+
+
 def test_site_patch_rejects_infra_key(superuser_client):
     assert _patch(
         superuser_client, _site_patch_url("TZ"), "Europe/Prague"

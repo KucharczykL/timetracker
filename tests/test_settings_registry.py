@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from django.core.exceptions import ValidationError
 
+from timetracker import settings_registry
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
     ApplyTiming,
@@ -93,6 +94,40 @@ def test_currency_validator_normalizes():
 @pytest.mark.parametrize("bad", ["EU", "EURO", "12$", "e1r", ""])
 def test_currency_validator_rejects(bad):
     validator = get_definition("DEFAULT_CURRENCY").validator
+    assert validator is not None
+    with pytest.raises(ValidationError):
+        validator(bad)
+
+
+def test_landing_page_choices_are_the_supported_destinations():
+    assert settings_registry.LANDING_PAGE_CHOICES == (
+        ("games:list_sessions", "Sessions"),
+        ("games:list_games", "Games"),
+        ("games:list_purchases", "Purchases"),
+        ("games:stats_by_year", "Statistics (this year)"),
+    )
+
+
+@pytest.mark.parametrize(
+    "url_name",
+    [
+        "games:list_sessions",
+        "games:list_games",
+        "games:list_purchases",
+        "games:stats_by_year",
+    ],
+)
+def test_landing_page_validator_accepts_supported_url_names(url_name):
+    validator = get_definition("DEFAULT_LANDING_PAGE").validator
+    assert validator is not None
+    assert validator(url_name) == url_name
+
+
+@pytest.mark.parametrize(
+    "bad", ["/stats", "games:stats_alltime", "https://example.com"]
+)
+def test_landing_page_validator_rejects_unsupported_destinations(bad):
+    validator = get_definition("DEFAULT_LANDING_PAGE").validator
     assert validator is not None
     with pytest.raises(ValidationError):
         validator(bad)
