@@ -322,6 +322,16 @@ def test_desktop_scaffold_promotes_same_nav_to_sticky_rail(live_server, page: Pa
     expect(nav).to_have_css("position", "static")
     expect(nav).to_have_css("overflow-y", "auto")
 
+    # The public dropdown API cannot reopen the hidden mobile sheet after the
+    # navigation list has moved into its desktop rail.
+    dialog = nav_host.locator("dialog[data-bottom-sheet]")
+    nav_host.locator("[data-section-nav-sheet] drop-down").evaluate(
+        "element => element.open()"
+    )
+    expect(dialog).not_to_have_attribute("open", "")
+    assert page.evaluate("document.documentElement.style.overflow") == ""
+    assert page.evaluate("document.body.style.position") == ""
+
     primary_links = nav.locator("[data-section-nav-list] a[href^='#']")
     overflowing_labels = primary_links.evaluate_all(
         """elements => elements

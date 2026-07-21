@@ -145,6 +145,20 @@ describe('drop-down behavior="sheet"', () => {
     expect(error).toHaveBeenCalledOnce();
   });
 
+  it("ignores programmatic opening while its trigger surface is hidden", () => {
+    const { host, toggle, dialog } = mountSheet();
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+    host.setAttribute("hidden", "");
+
+    host.open();
+
+    expect(showModal).not.toHaveBeenCalled();
+    expect(dialog.open).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.documentElement.style.overflow).toBe("");
+    expect(document.body.style.position).toBe("");
+  });
+
   it("intercepts native cancel and restores focus and scroll styles", () => {
     const { host, toggle, dialog } = mountSheet();
     const hidden = vi.fn();
