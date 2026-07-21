@@ -203,7 +203,7 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert html.count("<settings-section-nav") == 1
         assert html.count('data-section-nav-item=""') == 2
         assert 'href="#general"' in html and 'href="#privacy"' in html
-        assert "@4xl:grid-cols-[12rem_minmax(0,1fr)]" in html
+        assert "@4xl:grid-cols-[14rem_minmax(0,1fr)]" in html
         assert "@4xl:sticky" in html
         assert html.count('data-settings-section=""') == 2
         assert html.count('data-settings-section-header=""') == 2
