@@ -19,7 +19,11 @@ function mountFields(): HTMLElement {
         </button>
         <div data-pop-over-panel>
           <dl><div data-setting-source-description><dt>Source</dt>
-            <dd>The built-in default.</dd></div></dl>
+            <dd>The built-in default.</dd></div>
+            <div data-setting-source-status hidden>
+              <dt>Status</dt>
+              <dd>Non-default source (default source: “Default”)</dd>
+            </div></dl>
         </div>
       </pop-over>
       <input data-setting-key="LIMIT" name="limit" type="number" value="10">
@@ -127,6 +131,16 @@ describe("<live-setting-fields>", () => {
           source: "database",
           locked: false,
         }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "DESTINATION",
+          value: "stats",
+          source: "default",
+          locked: false,
+        }),
       } as Response);
     window.fetchWithHtmxTriggers = fetchStub;
     const host = mountFields();
@@ -135,9 +149,12 @@ describe("<live-setting-fields>", () => {
     const trigger = badge.closest("pop-over")!.querySelector("[data-pop-over-trigger]")!;
     const description = badge.closest("pop-over")!
       .querySelector<HTMLElement>("[data-setting-source-description] dd")!;
+    const status = badge.closest("pop-over")!
+      .querySelector<HTMLElement>("[data-setting-source-status]")!;
 
     expect(badge.classList.contains("bg-neutral-quaternary")).toBe(true);
     expect(badge.classList.contains("bg-brand-soft")).toBe(false);
+    expect(status.hidden).toBe(true);
 
     select.value = "stats";
     change(select);
@@ -149,6 +166,7 @@ describe("<live-setting-fields>", () => {
     expect(description.textContent).toBe(
       "Saved for your account and overrides the site default.",
     );
+    expect(status.hidden).toBe(false);
 
     select.value = "";
     change(select);
@@ -158,6 +176,16 @@ describe("<live-setting-fields>", () => {
     expect(description.textContent).toBe(
       "Saved in the application database as the current site-wide value.",
     );
+
+    select.value = "stats";
+    change(select);
+    await vi.waitFor(() => expect(badge.textContent).toBe("Default"));
+    expect(badge.dataset.settingOrigin).toBe("default");
+    expect(trigger.getAttribute("aria-label")).toBe("Default source");
+    expect(description.textContent).toBe(
+      "The built-in default, used because no higher-priority value is set.",
+    );
+    expect(status.hidden).toBe(true);
   });
 
   it("reverts to the last committed value and toasts on a rejected PATCH", async () => {

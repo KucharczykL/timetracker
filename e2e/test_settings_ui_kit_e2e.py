@@ -237,11 +237,15 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     unlocked_badge.hover()
     unlocked_tooltip = page.locator("#id_destination_setting_source_tooltip")
     expect(unlocked_tooltip).to_be_visible()
-    expect(unlocked_tooltip.locator("dt")).to_have_text("Source")
-    expect(unlocked_tooltip.locator("dd")).to_have_text(
+    expect(unlocked_tooltip.locator("dt").nth(0)).to_have_text("Source")
+    expect(unlocked_tooltip.locator("dd").nth(0)).to_have_text(
         "Saved in the application database as the current site-wide value."
     )
-    expect(unlocked_tooltip.locator("dt")).to_have_count(1)
+    expect(unlocked_tooltip.locator("dt").nth(1)).to_have_text("Status")
+    expect(unlocked_tooltip.locator("dd").nth(1)).to_have_text(
+        "Non-default source (default source: “Default”)"
+    )
+    expect(unlocked_tooltip.locator("dt")).to_have_count(2)
 
     # Neutral badges retain a visible chip silhouette against settings surfaces
     # in both themes; they must not collapse into plain inline text.
