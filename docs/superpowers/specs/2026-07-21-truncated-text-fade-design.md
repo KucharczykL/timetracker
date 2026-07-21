@@ -1,6 +1,6 @@
 # Design: width-based fade truncation via `<truncated-text>`
 
-> Design doc for review. No implementation yet — this PR is the plan.
+> Approved design and implementation contract for this PR.
 
 ## Context
 
@@ -13,29 +13,29 @@ Own GitHub issue + branch + PR. Rebase on `origin/main` first.
 ## Decisions (settled)
 
 - **Column width:** the element **self-caps** (`min-w-0` + a capped `max-w`, see Width policy) so the auto-layout table's name column stops growing at the cap and clips beyond — no `table-fixed`. *(Risk: table-auto + clipping; see Spike.)*
-- **Mobile reveal:** keep the reveal button, but shown **only when actually overflowing** (client-detected), and mobile-only (`[@media(hover:hover)]:hidden`). Desktop reveals on hover/focus.
+- **Mobile reveal:** keep the reveal button, but shown **only when actually overflowing** (client-detected), and mobile-only (`[@media(hover:none)]:…`). Desktop reveals on hover/focus.
 - **Scope:** all name/label truncation sites — `NameWithIcon` (linked + menu), `LinkedPurchase` (single- **and** multi-game), sort-name column. Menu items (caller-wrapped in `<a>`) get fade + **hover-only** tooltip, no tap button (see Menu contract).
 - **Architecture:** dedicated `<truncated-text>` element. The menu/`attachMenu` engine is click/keyboard-menu-shaped and unsuitable for a passive tooltip; the fitting engine is pop-over's tooltip state machine.
 - **Code sharing:** extract pop-over's passive tooltip state machine into a shared controller reused by both `pop-over` and `<truncated-text>` (reusing the already-shared `positionAnchored` + `bindPopupDismiss`).
 
 ## Width policy
 
-`TruncatedText(..., max_width: str = _NAME_MAX_W)` where `_NAME_MAX_W = "max-w-[24rem]"` (384px). The host is always `min-w-0` so it can shrink **below** the cap. Rationale + behavior:
+`TruncatedText(..., max_width: str = _NAME_MAX_W)` where `_NAME_MAX_W = "max-w-[24rem]"` (384px). The host is always `w-full min-w-0` so it fills its constrained cell and can shrink **below** the cap. Rationale + behavior:
 
 - **Desktop (wide):** the name gets up to 24rem, then fades. 24rem is generous for a game/purchase name without letting one long name dominate the row or force other columns off-screen. On very wide screens the column caps at 24rem and the remaining columns spread — no runaway.
 - **Mobile 390px table (first + last columns only):** `min-w-0` lets the name cell shrink to the width left by the fixed-ish actions column; the name clips/fades to fit. **Acceptance: the table's own `overflow-x-auto` scroll wrapper (`primitives.py:1757`, `Div(class_="relative overflow-x-auto")`) has `scrollWidth <= clientWidth`.** The wrapper absorbs table overflow into an inner scrollbar, so `documentElement` cannot be the measurement target — a probe showed doc `scrollWidth==390` while the wrapper was `580`. The self-cap alone did **not** achieve this in the probe (the host stayed 384px instead of shrinking into the first-column space), so this is expected to require the fallback (below).
 - **Navbar recent-resumes menu:** caller passes `max_width="max-w-full"`; the menu's own `w-max max-w-xs` (20rem, `layout.py:488`) is the real bound, and `min-w-0` clips within it so a long name can't widen the panel.
 - The cap is a single named constant (`_NAME_MAX_W`) so it's tunable in one place; a responsive variant (`max-w-[16rem] sm:max-w-[24rem]`) is a follow-up if 24rem-flat proves wrong on small tablets — not in v1.
 
-## Step 0 — Empirical spike (do first, before the controller extraction)
+## Step 0 — Empirical spike (completed before the controller extraction)
 
-Confirm the CSS clipping works in the **real** `table-auto` list table (first-column `<th class="… whitespace-nowrap">`, `common/components/primitives.py:1369`) inside its `overflow-x-auto` scroll wrapper. Throwaway page + Playwright measure (`test_tmp_*`-style probe). A probe has already shown the self-cap **insufficient** (host 384px, wrapper 580px; even `max-width:384px` on the `<th>` alone left the wrapper at 532px), so the spike's job is to find the **complete cell + child constraint set**, empirically, and encode it. **Assert, at 390 / 640 / 768px:**
+The Chromium spike used the real `table-auto` shape inside its `overflow-x-auto` wrapper. A self-cap was insufficient (host 384px, wrapper 568px at a 390px viewport). The complete constraint set is **`w-full max-w-0` on the first column plus `w-full min-w-0 max-w-[24rem]` on the host**. Responsive table-cell padding is compact below `lg`, and middle columns remain hidden below `md`; they reappear at 768px without reintroducing wrapper scroll. The permanent browser test asserts, at 390 / 640 / 768px:
 1. **the scroll wrapper** (`div.overflow-x-auto`) has `scrollWidth <= clientWidth` (no inner horizontal scrollbar) at 390px;
 2. the mobile clip is **narrower than the 24rem cap** (it actually shrank into the available first-column space, not stuck at 384px);
 3. the actions (last) column stays **visible and non-overlapping** at 390px;
-4. at an intermediate width (640 or 768px) the responsive-hidden middle columns **reappear** and still no wrapper scroll;
+4. at 768px the responsive-hidden middle columns **reappear** and still no wrapper scroll;
 5. desktop: a long name caps at 24rem and clips; a short name does not.
-- **Expected fallback (per the probe):** constrain **both** the table cell sizing **and** the child's used width — likely `table-fixed` with an explicit first-column width, **or** a `<th>` `max-w` combined with the host being forced to the cell width (`w-full min-w-0`) rather than self-sizing. The exact combination is the spike's deliverable.
+- **Implemented fallback:** keep `table-auto`; constrain the first `<th>` with `w-full max-w-0` and force the host to the resulting cell width with `w-full min-w-0`. This preserved the actions column and avoided the poorer equal-column behavior of `table-fixed`.
 - **Table plumbing this needs:** giving the first `<th>` a class/width means `TableRow` must see the column metadata. Change `TableRow(data)` (`primitives.py:1347`) to **`TableRow(data, columns=None)` — the new arg is OPTIONAL**, because there is a production call outside `StyledTable` (`games/views/purchase.py:466`, the refund HTMX row fragment) plus direct test calls that must keep working; when `columns` is absent, behavior is unchanged. `StyledTable` (`primitives.py:1750`) passes `columns`; add an optional `class_`/`width` to `Column` (`primitives.py:1303`) merged into the first-`<th>` class. (Alternatively route both `StyledTable` and the purchase fragment through one shared purchase-column definition.)
 
 ## Components
@@ -65,11 +65,11 @@ The controller reads the passed **elements**, never hard-coded selectors, so cal
 ### 2. `<truncated-text>` element
 - **Python** (`common/components/primitives.py`): `TruncatedText(text, *, leading=None, link=None, tap=True, reveal="auto", tooltip_content=None, instance_key=None, reveal_label="Show full text", max_width=_NAME_MAX_W)` builder + `_TruncatedText = custom_element_builder("truncated-text")`. Register `class TruncatedTextProps(TypedDict): tap: bool; reveal: str` in `custom_elements.py` (mirror `PopOverProps`, `custom_elements.py:512`); run `make gen-element-types`.
   - **`leading`**: a visible-content slot (platform/emulation icons) rendered **before the clip, always outside it** — the same on linked and unlinked, so clip/mask math and the focus target are identical. Inside the `<a>` when `link` (icons stay in the hit area), but never inside the `overflow-hidden` clip span. **`reveal`**: `"auto"` (overflow-gated) or `"always"` (multi-game). **`tooltip_content`**: panel body; **`None` = the tooltip shows the same `text`** (the common case). **`instance_key`**: only needed when `tooltip_content` is set (see ARIA — the default case has no panel id at all). **`reveal_label`**: generic default `"Show full text"` (no name-specific default in a primitive).
-  - **Markup + DOM nesting:** host `<truncated-text tap="…">` is a Tailwind **`group`** (`group relative inline-flex min-w-0 {max_width}`) carrying `data-overflowing`; overflow-reactive children use `group-data-[overflowing]:` (never a bare `data-[overflowing]:`, which matches the child's own attr, not the host's). **Icons are always outside the clip** (one structure for both linked and unlinked):
+  - **Markup + DOM nesting:** host `<truncated-text tap="…">` is a Tailwind **`group`** (`group relative inline-flex w-full min-w-0 {max_width}`) carrying `data-overflowing`; overflow-reactive children use `group-data-[overflowing]:` (never a bare `data-[overflowing]:`, which matches the child's own attr, not the host's). **Icons are always outside the clip** (one structure for both linked and unlinked):
     - **inner run** (the flex content): `[ leading-icons, <span data-truncated-clip>text</span> ]`; wrapped in `<a href>` when `link` (icons + clip inside the link → full hit area), bare otherwise.
     - then the `absolute` reveal `<button>` (below) and the panel — both **siblings of the `<a>`** (never nested — the `test_html_validity` invariant).
     - `overflow-hidden` is on the **clip span only** (text), so the `<a>`'s focus ring (link box, outside the clip) isn't clipped, and the mask covers only the text — icons never fade.
-    - `data-truncated-clip`: `block overflow-hidden whitespace-nowrap min-w-0` + `group-data-[overflowing]:[mask-image:…]`. Reveal `<button data-truncated-reveal>` (`Icon("ellipsis")`, mobile-only `[@media(hover:hover)]:hidden`, shown via `group-data-[overflowing]:` — or always for `reveal="always"`).
+    - `data-truncated-clip`: `block overflow-hidden whitespace-nowrap min-w-0` + `group-data-[overflowing]:[mask-image:…]`. Reveal `<button data-truncated-reveal>` (`Icon("ellipsis")`, shown only under `@media(hover:none)` and `group-data-[overflowing]` — or always on no-hover devices for `reveal="always"`).
     - **Panel reuses the pop-over anatomy attributes**: `data-pop-over-{panel,content,arrow}` (the controller/positioner already understand them; only `data-truncated-{clip,reveal}` are new concepts), so existing panel selectors + the positioner need no new dialect — halves the e2e selector migration.
   - **Unlinked desktop keyboard reveal:** an unlinked host has no focusable element for desktop keyboard users (the only `<button>` is `hover:hover`-hidden). So the element manages an **overflow-only `tabindex="0"` on the clip span** — added when `data-overflowing` (and no wrapping link) so the clip is focusable and focus opens the tooltip via the controller (`trigger` = the clip span), **removed when it fits** so short names gain **no useless tab stop**. Linked hosts already have the `<a>` (a descendant → focus bubbles to the host); menu (`tap=False`) stays hover-only.
   - **No overflow hysteresis:** the reveal button is **`absolute` positioned** over the clip's right-edge fade area (`absolute inset-y-0 right-0` on the host, which is `relative`), **out of normal flow**, so showing/hiding it does **not** change the clip's width — the measurement basis (`clip.scrollWidth` vs `clip.clientWidth`) is independent of the button. An in-flow `inline-flex` sibling button would consume ~24px when shown, keeping the clip narrow enough to stay `data-overflowing` even after the viewport grew past the point where the text fits in a no-button layout (a stuck-open feedback loop). The button overlays the already-faded last ~1.5rem, so it hides no readable text, and is 24px (WCAG 2.5.8). It remains a **sibling of the `<a>`**, just positioned — the invariant holds.
@@ -92,7 +92,7 @@ The controller reads the passed **elements**, never hard-coded selectors, so cal
 - Remove `PopoverTruncated` and `_reveal_popover`/`_REVEAL_GLYPH_CLASS` once all callers migrate (+ their tests in `tests/test_components.py`). Keep the `truncate_info`/`truncate` utility (general, tested) even if display no longer uses it.
 
 ### 5. Issue tracking
-File a new GitHub issue for this work. **#455 is already closed** — no action (the menu residual it tracked is subsumed here).
+Implementation tracking issue: **#463**. **#455 is already closed** — no action (the menu residual it tracked is subsumed here).
 
 ## Files to modify (representative)
 - New: `ts/elements/tooltip-behavior.ts`, `ts/elements/truncated-text.ts`, `ts/elements/truncated-text.test.ts`, `e2e/test_truncated_text_e2e.py`.
@@ -104,7 +104,7 @@ File a new GitHub issue for this work. **#455 is already closed** — no action 
 - Regenerated (gitignored): `ts/generated/props.ts`, `dist/`, `games/static/base.css`.
 
 ## Verification
-- **Spike** (Step 0) green before building — the **`overflow-x-auto` scroll wrapper** (not `documentElement`) has `scrollWidth <= clientWidth` at 390px, the clip shrank below the 24rem cap, the actions column stays visible, and middle columns reappear at 640/768px. Also pin the **exactly-fits** case: a name whose text fits to the subpixel is **not** flagged overflowing (no false fade at the 1px boundary).
+- **Spike** (Step 0) green before building — the **`overflow-x-auto` scroll wrapper** (not `documentElement`) has `scrollWidth <= clientWidth` at 390/640/768px, the clip shrank below the 24rem cap, the actions column stays visible, and middle columns reappear at 768px. Also pin the **exactly-fits** case: a name whose text fits to the subpixel is **not** flagged overflowing (no false fade at the 1px boundary).
 - `direnv exec . make check` fully green (lint, format, mypy, ts-check, vitest, full pytest incl. e2e).
 - **vitest** (`truncated-text.test.ts`), with faked `scrollWidth`/`clientWidth`:
   - `data-overflowing` toggles on measure; the controller's `isActive` gate blocks opens when not overflowing;
