@@ -122,7 +122,7 @@ ICON_NODES: dict[str, Element] = {
         "svg",
         [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
         [
-            Element("path", [('fill', 'currentColor'), ('d', 'M12 24a3.5 3.5 0 1 0 0.001 0zM24 24a3.5 3.5 0 1 0 0.001 0zM36 24a3.5 3.5 0 1 0 0.001 0z')], []),
+            Element("path", [('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 3a21 21 0 1 0 0.001 0zM24 6a18 18 0 1 0 0.001 0zM15 24a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM33 24a2.4 2.4 0 1 0 0.001 0z')], []),
         ],
     ),
     'emulated': Element(
@@ -182,6 +182,13 @@ ICON_NODES: dict[str, Element] = {
         [('class', 'w-5 h-5'), ('aria-hidden', 'true'), ('fill', 'none'), ('viewBox', '0 0 17 14'), ('xmlns', 'http://www.w3.org/2000/svg')],
         [
             Element("path", [('stroke', 'currentColor'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('stroke-width', '2'), ('d', 'M1 1h15M1 7h15M1 13h15')], []),
+        ],
+    ),
+    'info': Element(
+        "svg",
+        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [
+            Element("path", [('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 3a21 21 0 1 0 0.001 0zM24 6a18 18 0 1 0 0.001 0zM24 12.4a2.6 2.6 0 1 0 0.001 0zM21.6 20h4.8v14h-4.8z')], []),
         ],
     ),
     'itchio': Element(
