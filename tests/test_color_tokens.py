@@ -76,3 +76,12 @@ def test_no_raw_palette_colors_in_ts():
         "`// color-ok: reason` for a deliberate categorical hue):\n"
         + "\n".join(offenders)
     )
+
+
+def test_input_css_does_not_restore_the_tailwind_v3_border_color_shim():
+    """Bordering components must choose semantic colors themselves (#410)."""
+    input_css = (REPO / "common" / "input.css").read_text()
+    assert "border-color:" not in input_css, (
+        "do not restore Tailwind v3's global border-color compatibility shim; "
+        "add an explicit border-* color utility to the dependent component instead"
+    )
