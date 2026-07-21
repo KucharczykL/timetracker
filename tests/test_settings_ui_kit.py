@@ -204,7 +204,17 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert html.count('data-section-nav-item=""') == 2
         assert 'href="#general"' in html and 'href="#privacy"' in html
         assert "@4xl:grid-cols-[14rem_minmax(0,1fr)]" in html
-        assert "@4xl:sticky" in html
+        host_start = html.index("<settings-section-nav")
+        host_tag = html[host_start : html.index(">", host_start) + 1]
+        nav_start = html.index("<nav", host_start)
+        nav_tag = html[nav_start : html.index(">", nav_start) + 1]
+        assert "@4xl:sticky" in host_tag
+        assert "@4xl:top-4" in host_tag
+        assert "@4xl:self-start" in host_tag
+        assert "@4xl:sticky" not in nav_tag
+        assert "@4xl:top-4" not in nav_tag
+        assert "@4xl:max-h-[calc(100vh-2rem)]" in nav_tag
+        assert "@4xl:overflow-y-auto" in nav_tag
         assert "focus:ring-4 focus:ring-inset" in html
         assert html.count('data-settings-section=""') == 2
         assert html.count('data-settings-section-header=""') == 2

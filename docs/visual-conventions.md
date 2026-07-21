@@ -169,14 +169,22 @@ name-column cap silently does nothing).
 
 ## 5. Rail / two-pane / responsive machinery — calls for #384
 
-The app has **no `position: sticky`, no two-pane layout, no scrollspy** anywhere (#401). The
-settings scaffold's layout is net-new, but nearly all *behavior* exists. Calls recorded so
-#384 doesn't relitigate:
+The settings scaffold is the app's first `position: sticky` two-pane layout; it does not add
+scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate its contracts:
 
 - **Page frame:** a settings page is a normal `ContentContainer` child. The rail sits below
   the overlay z-scale (z-10 popovers + the standalone combobox panel → z-20 hosted dropdown
-  panels → z-40 modal → z-50 toasts): no z class. Since the navbar scrolls away, a sticky rail needs no navbar-height coupling —
-  `sticky top-*` + own `max-height`/`overflow-y-auto`, offset on the existing spacing scale.
+  panels → z-40 modal → z-50 toasts): no z class. Since the navbar scrolls away, the sticky
+  rail needs no navbar-height coupling. Put `sticky top-* self-start` on the direct grid-item
+  host whose containing block spans the full settings content; a sticky child inside a
+  content-height host has no travel. The nested `<nav>` owns the viewport `max-height` and
+  `overflow-y-auto`. Because vertical auto overflow can expose horizontal overflow, every
+  concrete settings page's desktop browser test measures each rendered link's `scrollWidth`
+  against `clientWidth`, reports offending labels, and also checks the nav itself. This is a
+  development/CI contract—never ship runtime measurement or a character-count heuristic.
+  Functional sticky coverage must prove a reachable scroll occurred, require a bounded
+  viewport-top coordinate, exercise inner scrolling in a short viewport, and verify the rail
+  stops at the scaffold boundary.
 - **Pane split idiom:** viewport-breakpoint grid with arbitrary tracks —
   `grid grid-cols-1 <bp>:grid-cols-[auto_1fr]` — extending the one existing column-split
   idiom (`filters.py` comparison row). Panes declare `@container` inside, so controls
