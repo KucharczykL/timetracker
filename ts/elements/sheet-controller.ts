@@ -37,7 +37,13 @@ interface PendingNavigation {
   focusTarget: HTMLElement;
 }
 
+interface ActiveSheet {
+  host: HTMLElement;
+  closeImmediately: () => void;
+}
+
 const CLOSE_FALLBACK_MS = 250;
+let activeSheet: ActiveSheet | null = null;
 
 function prefersReducedMotion(): boolean {
   return (
@@ -109,6 +115,7 @@ export function attachSheet(
   let openFrame = 0;
   let backdropPointer: number | null = null;
   let pendingNavigation: PendingNavigation | null = null;
+  let owner: ActiveSheet;
 
   const setState = (next: SheetState): void => {
     state = next;
@@ -191,6 +198,7 @@ export function attachSheet(
     toggle.setAttribute("aria-expanded", "false");
     setState("closed");
     unlockDocumentScroll();
+    if (activeSheet === owner) activeSheet = null;
     if (wasOpen) {
       host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
     }
@@ -209,6 +217,13 @@ export function attachSheet(
 
   const open = (): void => {
     if (state !== "closed" || dialog.open) return;
+    // A sheet's scroll snapshot is meaningful only when it starts from the
+    // unlocked document. Close any previously active sheet synchronously—an
+    // animated overlap would let the first sheet restore styles underneath the
+    // second, and the second would later restore the first sheet's locked state.
+    while (activeSheet && activeSheet !== owner) {
+      activeSheet.closeImmediately();
+    }
     lockDocumentScroll();
     try {
       dialog.showModal();
@@ -220,6 +235,7 @@ export function attachSheet(
       return;
     }
     lifecycleOpen = true;
+    activeSheet = owner;
     toggle.setAttribute("aria-expanded", "true");
     setState("opening");
     notifyDropdownOpen(host);
@@ -326,6 +342,8 @@ export function attachSheet(
       document.removeEventListener(OPEN_MENUS_EVENT, onOtherDropdownOpen);
     };
   };
+
+  owner = { host, closeImmediately: finishClose };
 
   return { open, close, isOpen, focusFirst, bindDocument };
 }
