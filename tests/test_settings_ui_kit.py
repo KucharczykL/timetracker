@@ -205,6 +205,7 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert 'href="#general"' in html and 'href="#privacy"' in html
         assert "@4xl:grid-cols-[14rem_minmax(0,1fr)]" in html
         assert "@4xl:sticky" in html
+        assert "focus:ring-4 focus:ring-inset" in html
         assert html.count('data-settings-section=""') == 2
         assert html.count('data-settings-section-header=""') == 2
         assert html.count('data-settings-section-content=""') == 2
