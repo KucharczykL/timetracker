@@ -1029,7 +1029,10 @@ _BADGE_SIZE_CLASSES = {
 }
 _BADGE_TONE_CLASSES = {
     "brand": "bg-brand-soft text-heading",
-    "neutral": "bg-neutral-secondary-medium text-heading",
+    # Neutral badges commonly sit on both primary and secondary neutral
+    # surfaces. Use a strong-enough fill to preserve the chip silhouette without
+    # adding an outline that the other badge tones do not have.
+    "neutral": "bg-neutral-quaternary text-heading",
     "success": "bg-success-soft text-fg-success-strong",
     "warning": "bg-warning-soft text-fg-warning",
     "danger": "bg-danger-soft text-fg-danger-strong",

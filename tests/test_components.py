@@ -1,5 +1,6 @@
 import re
 import unittest
+from typing import get_args
 from unittest.mock import MagicMock, patch
 
 import django
@@ -2187,13 +2188,34 @@ class PrimitiveWidgetsTest(SimpleTestCase):
 
 
 class BadgeTokenTest(SimpleTestCase):
-    """Badge size scale uses typography tokens (Task 6)."""
+    """Badge size and tone contracts stay centralized cross-app."""
 
     def test_badge_sizes_use_tokens(self):
         self.assertIn("text-type-micro", str(components.Badge("x", size="sm")))
         self.assertIn("text-type-body", str(components.Badge("x", size="base")))
         self.assertIn("text-type-heading", str(components.Badge("x", size="lg")))
         self.assertIn("font-semibold", str(components.Badge("x")))
+
+    def test_every_tone_definition_contains_palette_utilities_only(self):
+        from common.components.primitives import _BADGE_TONE_CLASSES
+
+        self.assertEqual(
+            set(_BADGE_TONE_CLASSES),
+            set(get_args(components.BadgeTone.__value__)),
+        )
+        for tone, classes in _BADGE_TONE_CLASSES.items():
+            for token in classes.split():
+                is_palette = (
+                    token.startswith("bg-")
+                    or token == "text-heading"
+                    or token.startswith("text-fg-")
+                )
+                self.assertTrue(
+                    is_palette,
+                    f"Badge tone {tone!r} leaked structural utility {token!r}; "
+                    "put shared shape, spacing, typography, and border treatment "
+                    "in _BADGE_BASE_CLASS instead.",
+                )
 
 
 if __name__ == "__main__":

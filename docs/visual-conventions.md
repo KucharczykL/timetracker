@@ -246,7 +246,12 @@ Calls from #402:
   size table; `brand-soft` default so existing call sites are untouched; semantic tokens
   from day 1). `extra_class="bg-…"` overrides are indeterminate (stylesheet-order, not
   attribute-order) — hence a real parameter. Tighten `size` to a `Literal` in the same
-  touch. **Pill: leave alone** — it carries JS hooks (`data-pill`, remove button, label
+  touch. The neutral tone uses the stronger quaternary neutral fill: neutral badges commonly
+  sit on both primary and secondary surfaces and must retain a visible chip silhouette in both
+  themes, without gaining an outline absent from the other tones. Tone definitions may contain
+  foreground/background palette utilities only; a cross-tone component contract rejects shape,
+  spacing, typography, or border leakage and a browser contract compares the computed structure
+  in both themes. **Pill: leave alone** — it carries JS hooks (`data-pill`, remove button, label
   slot); Badge is the static, hook-free chip and the right settings-badge base. (Pill *can*
   be restyled if ever needed — its classes live server-side only, cloned into JS pills via
   `<template>` — the in-code "byte-for-byte contract" comment overstates and gets corrected

@@ -16,6 +16,8 @@ from django.views.decorators.http import require_http_methods
 from playwright.sync_api import Browser, Page, expect
 
 from common.components import (
+    Badge,
+    BadgeTone,
     Div,
     FormFieldGroup,
     LiveSettingFields,
@@ -28,6 +30,14 @@ from common.components import (
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from timetracker.urls import urlpatterns as base_urlpatterns
+
+_BADGE_TONES: tuple[BadgeTone, ...] = (
+    "brand",
+    "neutral",
+    "success",
+    "warning",
+    "danger",
+)
 
 
 class KitHarnessForm(PrimitiveWidgetsMixin, forms.Form):
@@ -98,6 +108,19 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
             "Infrastructure",
             Div(class_="flex flex-col gap-4 h-96")[
                 MaskedSecretField(label="Secret key", present=True),
+                Div(
+                    data_badge_tone_contract="",
+                    class_="flex flex-wrap items-center gap-3",
+                )[
+                    *[
+                        Badge(
+                            tone.title(),
+                            tone=tone,
+                            attributes=[("data-badge-tone", tone)],
+                        )
+                        for tone in _BADGE_TONES
+                    ]
+                ],
                 Div()["Infrastructure inspector content."],
             ],
         ),
@@ -219,6 +242,25 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
         "Saved in the application database as the current site-wide value."
     )
     expect(unlocked_tooltip.locator("dt")).to_have_count(1)
+
+    # Neutral badges retain a visible chip silhouette against settings surfaces
+    # in both themes; they must not collapse into plain inline text.
+    section_surface = page.locator("#general-preferences")
+    for theme in ("light", "dark"):
+        page.locator("html").evaluate(
+            "(element, dark) => element.classList.toggle('dark', dark)",
+            theme == "dark",
+        )
+        badge_background = unlocked_badge.evaluate(
+            "element => getComputedStyle(element).backgroundColor"
+        )
+        surface_background = section_surface.evaluate(
+            "element => getComputedStyle(element).backgroundColor"
+        )
+        assert badge_background != surface_background
+        expect(unlocked_badge).to_have_css("border-top-width", "0px")
+    page.locator("html").evaluate("element => element.classList.remove('dark')")
+
     expect(
         page.locator("[data-setting-metadata]").get_by_text(
             "Change APP_URL in the environment and restart."
@@ -230,6 +272,38 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     expect(masked).to_have_attribute("readonly", "readonly")
     assert masked.input_value() == "••••••••"
     assert "super-secret-value" not in page.content()
+
+
+@override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
+def test_badge_tones_share_one_structural_contract(live_server, page: Page):
+    page.goto(f"{live_server.url}/settings-kit-test/")
+    badges = page.locator("[data-badge-tone-contract] [data-badge-tone]")
+    expect(badges).to_have_count(5)
+
+    for dark in (False, True):
+        page.locator("html").evaluate(
+            "(element, enabled) => element.classList.toggle('dark', enabled)",
+            dark,
+        )
+        structures = badges.evaluate_all(
+            """elements => elements.map(element => {
+                const style = getComputedStyle(element);
+                return {
+                    borderWidth: style.borderWidth,
+                    borderRadius: style.borderRadius,
+                    paddingBlock: style.paddingBlock,
+                    paddingInline: style.paddingInline,
+                    fontFamily: style.fontFamily,
+                    fontSize: style.fontSize,
+                    fontWeight: style.fontWeight,
+                    lineHeight: style.lineHeight,
+                };
+            })"""
+        )
+        assert structures == [structures[0]] * len(structures)
+        assert structures[0]["borderWidth"] == "0px"
+
+    page.locator("html").evaluate("element => element.classList.remove('dark')")
 
 
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
