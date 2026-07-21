@@ -20,10 +20,15 @@ This repair must preserve:
 - the same-DOM mobile/desktop navigation transformation; and
 - the inner menu's `max-height` and `overflow-y-auto` behavior.
 
-The existing no-wrap presentation may remain only if the shipped desktop labels pass the
-horizontal-overflow gate below. If they do not, stop and make a deliberate follow-up choice
-between wrapping, accessible truncation, or further width treatment. Do not hide overflowing
-labels with `overflow-x-hidden` or `overflow-x-clip`.
+The existing no-wrap presentation may remain only if each concrete settings page's desktop
+labels pass the horizontal-overflow gate below. If they do not, stop and make a deliberate
+follow-up choice between wrapping, accessible truncation, or further width treatment. Do not
+hide overflowing labels with `overflow-x-hidden` or `overflow-x-clip`.
+
+This gate belongs exclusively in browser tests run during development and CI. Do not add
+label measurement, length validation, warnings, or exceptions to production Python or
+TypeScript. Character-count limits are not a substitute: proportional fonts and translated
+text make character counts a poor predictor of rendered width.
 
 Scrollspy and active-section highlighting are outside this repair. Label-layout or further
 rail-width work remains outside it unless the overflow gate proves that work is required.
@@ -126,8 +131,10 @@ The trailing block gives the browser enough document height to verify that the s
 constrained by the settings scaffold and does not overlay later page content. It is fixture
 material, not part of `SettingsScaffold` and not a supported settings component.
 
-Keep the existing five long, representative section labels. They are the concrete desktop
-label set used by the horizontal-overflow gate.
+Keep five sections so the existing priority-plus counts remain stable, but replace one
+synthetic label with the reported near-limit preview label, `Setting source and lock states`.
+This makes the test exercise the exact label seen in the rail-width and focus-ring review,
+without adding a production check or changing the supported component catalog.
 
 ### 4. Replace the false-positive sticky assertion
 
@@ -140,9 +147,11 @@ overflow subject. The test should:
 1. Set the existing 1280×800 desktop viewport and open the isolated settings-kit page.
 2. Assert the outer host computes to `position: sticky` and `top: 16px`.
 3. Assert the inner `<nav>` computes to `overflow-y: auto` and is not sticky.
-4. Assert the inner navigation has no horizontal overflow:
-   `nav.scrollWidth <= nav.clientWidth`. If this fails, stop; do not mask it with horizontal
-   clipping. Resolve the label-layout decision before continuing.
+4. Measure every primary section link in the rendered browser and collect links whose
+   `scrollWidth` exceeds their `clientWidth`. Assert that collection is empty and include each
+   offending label's text in the assertion failure. Also assert the inner navigation itself
+   satisfies `nav.scrollWidth <= nav.clientWidth`. If either check fails, stop; do not mask it
+   with horizontal clipping. Resolve the label-layout decision before continuing.
 5. Focus the first section link and assert its compiled `box-shadow` contains `inset`, proving
    the browser received the contained focus treatment rather than checking only a source
    class string.
@@ -169,9 +178,19 @@ Illustrative test shape:
 expect(nav_host).to_have_css("position", "sticky")
 expect(nav_host).to_have_css("top", "16px")
 expect(nav).to_have_css("overflow-y", "auto")
+
+primary_links = nav.locator("[data-section-nav-primary] a[href^='#']")
+overflowing_labels = primary_links.evaluate_all(
+    """elements => elements
+        .filter(element => element.scrollWidth > element.clientWidth)
+        .map(element => element.textContent?.trim() || "<unnamed>")"""
+)
+assert overflowing_labels == [], (
+    f"Section labels exceed the 14rem rail: {overflowing_labels}"
+)
 assert nav.evaluate("element => element.scrollWidth <= element.clientWidth")
 
-first_link = nav.locator("a[href^='#']").first
+first_link = primary_links.first
 first_link.focus()
 assert "inset" in first_link.evaluate(
     "element => getComputedStyle(element).boxShadow"
@@ -241,11 +260,16 @@ Update the rail guidance in `docs/visual-conventions.md`:
 - sticky positioning belongs on the rail's grid item or host, whose containing block spans
   the full content column height;
 - `self-start` prevents grid stretching from defeating sticky behavior;
-- the nested navigation owns `max-height` and `overflow-y-auto`; and
+- the nested navigation owns `max-height` and `overflow-y-auto`;
 - vertical `overflow-y-auto` can expose horizontal overflow, so a rail also needs an explicit
-  long-label policy and a no-horizontal-overflow check;
+  long-label policy and a rendered-width browser check that reports offending labels;
+- label-width enforcement belongs in development/CI tests, not runtime JavaScript, Python
+  validation, or a character-count heuristic;
+- every concrete page that consumes `SettingsScaffold` must run the same per-label assertion
+  against its actual desktop rail; once a second consumer needs it, extract the small assertion
+  into a shared `e2e/` test helper rather than duplicating it;
 - a computed `position: sticky` assertion is insufficient without a before/after scroll
-  measurement; and
+  measurement;
 - a sticky rail must also be checked at the bottom of its containing scaffold when later page
   content is possible.
 
@@ -327,7 +351,14 @@ local `main` and the feature branch resolve to the same commit.
 - [ ] A short-viewport browser test proves the inner navigation is genuinely overflowing and
       can scroll without changing `window.scrollY`.
 - [ ] The rail does not overlap the test-only content following the settings scaffold.
-- [ ] The inner navigation has no horizontal overflow with all representative fixture labels.
+- [ ] Every representative fixture label passes the per-link rendered-width check; any failure
+      reports the offending label text.
+- [ ] The fixture includes the reported near-limit preview label, `Setting source and lock
+      states`.
+- [ ] The inner navigation as a whole has no horizontal overflow.
+- [ ] Production contains no runtime label measurement or character-count validation.
+- [ ] Visual conventions require each future concrete `SettingsScaffold` page to apply the
+      same browser assertion to its actual labels.
 - [ ] Section-link focus rings remain complete and visible, and the browser-computed focus
       shadow is inset.
 - [ ] The desktop rail remains 14rem wide.
@@ -343,6 +374,9 @@ local `main` and the feature branch resolve to the same commit.
 - **Horizontal overflow:** `overflow-y-auto` can make horizontal overflow scrollable. Never
   satisfy the no-horizontal-overflow gate by clipping text; choose a real long-label treatment
   if the current 14rem/no-wrap combination fails.
+- **Width enforcement:** use each rendered link's `scrollWidth` and `clientWidth` in browser
+  tests. Do not use a character limit, because glyph and translation widths vary, and do not
+  ship measurement logic to production.
 - **Grid stretching:** retain `self-start` on the sticky host even though the current grid also
   uses `items-start`.
 - **Container-query threshold:** keep all new layout classes behind `@4xl`; viewport width
