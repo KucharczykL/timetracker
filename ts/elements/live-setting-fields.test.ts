@@ -10,6 +10,7 @@ function mountFields(): HTMLElement {
       <input data-setting-key="ENABLED" name="enabled" type="checkbox">
       <select data-setting-key="DESTINATION" name="destination">
         <option value="">Unset</option><option value="stats">Statistics</option>
+        <option value="sessions">Sessions</option>
       </select>
       <pop-over>
         <button data-pop-over-trigger aria-label="Default source">
@@ -188,6 +189,93 @@ describe("<live-setting-fields>", () => {
     expect(status.hidden).toBe(true);
   });
 
+  it("reconciles normalized text values from the resolved PATCH response", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "EUR",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "eur";
+    change(input);
+
+    await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
+    expect(input.value).toBe("EUR");
+  });
+
+  it("shows the effective fallback after clearing a text override", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "CZK",
+        source: "database",
+        locked: false,
+      }),
+    } as Response);
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "";
+    change(input);
+
+    await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
+    expect(input.value).toBe("CZK");
+  });
+
+  it("keeps a cleared select on its use-default sentinel", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "DESTINATION",
+        value: "sessions",
+        source: "database",
+        locked: false,
+      }),
+    } as Response);
+    const host = mountFields();
+    const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
+
+    select.value = "";
+    change(select);
+
+    await vi.waitFor(() => expect(select.hasAttribute("aria-busy")).toBe(false));
+    expect(select.value).toBe("");
+  });
+
+  it("preserves newer typing when an older successful response resolves", async () => {
+    const response = deferredResponse();
+    window.fetchWithHtmxTriggers = vi.fn(() => response.promise);
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "Submitted";
+    change(input);
+    input.value = "Still typing";
+    response.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "SUBMITTED",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
+
+    await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
+    expect(input.value).toBe("Still typing");
+  });
+
   it("reverts to the last committed value and toasts on a rejected PATCH", async () => {
     window.fetchWithHtmxTriggers = vi
       .fn()
@@ -227,11 +315,21 @@ describe("<live-setting-fields>", () => {
     change(input);
     expect(fetchStub).toHaveBeenCalledTimes(1);
 
-    first.resolve({ ok: true, status: 204 } as Response);
+    first.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "FIRST",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
     await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
     expect(
       JSON.parse(String((fetchStub.mock.calls[1][1] as RequestInit).body)),
     ).toEqual({ value: "Latest" });
+    expect(input.value).toBe("Latest");
     expect(input.getAttribute("aria-busy")).toBe("true");
 
     second.resolve({ ok: true, status: 204 } as Response);

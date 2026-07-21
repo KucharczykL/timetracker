@@ -1,11 +1,13 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import Client
+from django.test import Client, RequestFactory, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from games.models import UserPreferences
+from games.views.general import index
 
 
 @pytest.fixture
@@ -34,17 +36,25 @@ def test_index_redirects_to_selected_landing_page(auth_client, url_name, expecte
     assert response.url == reverse(expected_name)
 
 
-def test_index_redirects_to_current_year_stats(auth_client):
-    client, user = auth_client
+@override_settings(TIME_ZONE="Pacific/Kiritimati")
+def test_index_redirects_to_current_year_stats_in_configured_timezone(db, monkeypatch):
+    user = get_user_model().objects.create_user(username="tester", password="pw")
     UserPreferences.objects.create(
         user=user,
         default_landing_page="games:stats_by_year",
     )
+    monkeypatch.setattr(
+        timezone,
+        "now",
+        lambda: datetime(2030, 12, 31, 12, 30, tzinfo=UTC),
+    )
+    request = RequestFactory().get(reverse("games:index"))
+    request.user = user
 
-    response = client.get(reverse("games:index"))
+    response = index(request)
 
     assert response.status_code == 302
-    assert response.url == reverse("games:stats_by_year", args=[datetime.now().year])
+    assert response.url == reverse("games:stats_by_year", args=[2031])
 
 
 def test_index_falls_back_to_sessions_for_poisoned_landing_page(auth_client):

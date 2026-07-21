@@ -11,7 +11,7 @@ from django.db.models import (
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.timezone import localtime
+from django.utils.timezone import localdate, localtime
 from django.utils.timezone import now as timezone_now
 
 from common.components import (
@@ -212,7 +212,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
 def index(request: HttpRequest) -> HttpResponse:
     landing_page = resolve_for_user(request.user, "DEFAULT_LANDING_PAGE")
     if landing_page == "games:stats_by_year":
-        return redirect(landing_page, year=datetime.now().year)
+        return redirect(landing_page, year=localdate().year)
     if isinstance(landing_page, str):
         return redirect(landing_page)
     return redirect("games:list_sessions")
