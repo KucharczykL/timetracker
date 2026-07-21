@@ -908,7 +908,7 @@ def Checkbox(
         ("value", value),
         (
             "class",
-            "rounded border-default-medium bg-neutral-secondary-medium "
+            "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
             f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}",
         ),
     ]
@@ -1174,8 +1174,10 @@ _LABEL_CLASS = "mb-2.5 text-type-label text-heading"
 _FIELD_ERROR_CLASS = (
     "mt-4 mb-1 pl-3 py-2 solid-danger w-full text-type-body rounded-base"
 )
-# Checkbox + its label share a row (unlike block fields), justified apart.
-_CHECKBOX_ROW_CLASS = "flex flex-row justify-between mt-3"
+# Checkbox + its label share a row (unlike block fields), justified apart. The
+# explicit gap is a minimum: justify-between absorbs spare width, while narrow
+# rows wrap label metadata before it can crowd the non-shrinking control.
+_CHECKBOX_ROW_CLASS = "flex flex-row items-center justify-between gap-6 mt-3"
 
 
 def _field_errors(errors) -> Node | None:
@@ -1234,9 +1236,15 @@ def _form_field_row(
                 children.append(errors)
             if extra:
                 children.append(extra)
-            return Div(class_=_CHECKBOX_ROW_CLASS)[*children]
+            return Div(
+                class_=_CHECKBOX_ROW_CLASS,
+                data_form_checkbox_row="",
+            )[*children]
 
-        row = Div(class_=f"{_CHECKBOX_ROW_CLASS} items-center gap-3")[label, control]
+        row = Div(
+            class_=_CHECKBOX_ROW_CLASS,
+            data_form_checkbox_row="",
+        )[label, control]
         children = [row]
         if errors:
             children.append(errors)

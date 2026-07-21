@@ -287,19 +287,12 @@ def _checkbox_and_form_layout_gallery():
                 "Checkbox placement"
             ],
             P(class_="text-type-body text-body")[
-                "These use identical content; only the relationship between the label and checkbox changes."
+                "A fluid trailing row is intentionally excluded. Compare the adopted bounded row with the leading-control alternative."
             ],
         ],
         Div(class_="flex flex-col gap-6")[
             _layout_option(
-                option="Baseline",
-                name="Fluid trailing checkbox",
-                explanation="The current rule: acceptable when narrow, but the checkbox drifts to the far edge of a wide single column.",
-                content=_preview_checkbox_field("checkbox-fluid"),
-                hook="data_checkbox_placement_variant",
-            ),
-            _layout_option(
-                option="Option 1",
+                option="Adopted",
                 name="Constrained trailing checkbox",
                 explanation="Keep the familiar right-aligned control inside a readable-width field column, with a 24px minimum gap.",
                 content=Div(class_="max-w-xl")[
@@ -340,7 +333,7 @@ def _checkbox_and_form_layout_gallery():
                 option="2 columns",
                 name="Responsive paired fields",
                 explanation="Useful for independent, compact settings; collapses to one column on narrow screens.",
-                content=Div(class_="grid grid-cols-1 gap-6 md:grid-cols-2")[
+                content=Div(class_="grid grid-cols-1 gap-6 @md:grid-cols-2")[
                     *_column_fields("columns-two")
                 ],
                 hook="data_form_column_variant",
@@ -350,7 +343,7 @@ def _checkbox_and_form_layout_gallery():
                 name="Responsive compact grid",
                 explanation="Only suitable for short, uniform controls; labels and metadata run out of room first.",
                 content=Div(
-                    class_="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3"
+                    class_="grid grid-cols-1 gap-6 @md:grid-cols-2 @4xl:grid-cols-3"
                 )[*_column_fields("columns-three")],
                 hook="data_form_column_variant",
             ),

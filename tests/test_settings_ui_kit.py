@@ -62,7 +62,8 @@ class GroupedFormFieldsTest(SimpleTestCase):
         assert not form.is_valid()
         html = str(FormFields(form, groups=self.groups))
         assert "Enter a whole number" in html
-        assert "flex flex-row justify-between" in html
+        assert 'data-form-checkbox-row=""' in html
+        assert "items-center justify-between gap-6" in html
         assert isinstance(form.fields["enabled"].widget, PrimitiveCheckboxWidget)
 
     def test_unknown_or_duplicate_group_names_fail_loudly(self):
@@ -245,6 +246,7 @@ class LiveAndSecretComponentTest(SimpleTestCase):
         assert 'patch-url-template="/api/settings/user/__key__"' in html
         assert 'csrf="csrf-token"' in html
         assert 'event="setting-saved"' in html
+        assert "w-full max-w-xl" in html
         assert "dist/elements/live-setting-fields.js" in collect_media(node).js
 
     def test_live_wrapper_requires_a_key_placeholder(self):

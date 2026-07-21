@@ -154,6 +154,9 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     expect(section_heading).to_have_css("font-weight", "700")
     expect(group_heading).to_have_css("font-size", "18px")
     expect(group_heading).to_have_css("font-weight", "600")
+    expect(first_section.locator("[data-form-checkbox-row]")).to_have_css(
+        "column-gap", "24px"
+    )
 
     # The long chip set cannot fit at 390px, so rightmost *same nodes* move to
     # the More dropdown instead of being cloned or wrapped into another nav.
@@ -232,6 +235,11 @@ def test_desktop_scaffold_promotes_same_nav_to_sticky_rail(live_server, page: Pa
     assert nav_box and section_box
     assert nav_box["x"] < section_box["x"]
     assert abs(nav_box["y"] - section_box["y"]) < 2
+    live_fields = first_section.locator("live-setting-fields")
+    expect(live_fields).to_have_css("max-width", "576px")
+    live_fields_box = live_fields.bounding_box()
+    assert live_fields_box
+    assert live_fields_box["width"] < section_box["width"] - 32
 
     page.evaluate("window.scrollTo(0, 1000)")
     page.wait_for_timeout(50)
