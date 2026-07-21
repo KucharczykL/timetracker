@@ -99,6 +99,27 @@ function snapshot(control: SettingControl): ControlSnapshot {
   };
 }
 
+function resolvedSnapshot(
+  control: SettingControl,
+  attempt: SaveAttempt,
+  resolved: ResolvedSetting,
+): ControlSnapshot {
+  // A blank select is intentional UI state: it means "Use site default" even
+  // when the effective value returned by the API matches another option.
+  if (control instanceof HTMLSelectElement && attempt.value === null) {
+    return attempt.state;
+  }
+  if (control instanceof HTMLInputElement && control.type === "checkbox") {
+    return {
+      ...attempt.state,
+      checked: typeof resolved.value === "boolean"
+        ? resolved.value
+        : attempt.state.checked,
+    };
+  }
+  return { value: resolved.value === null ? "" : String(resolved.value) };
+}
+
 function restore(control: SettingControl, state: ControlSnapshot): void {
   control.value = state.value;
   if (
@@ -250,12 +271,20 @@ class LiveSettingFieldsElement extends HTMLElement {
         ? null
         : (await response.json()) as ResolvedSetting;
       if (this.pending.get(control) !== pending) return;
-      // Record the exact value represented by this response. The user may have
-      // already edited the DOM again while it was in flight.
-      this.committed.set(control, attempt.state);
+      const committedState = resolved
+        ? resolvedSnapshot(control, attempt, resolved)
+        : attempt.state;
+      this.committed.set(control, committedState);
       if (resolved) this.updateSourceMetadata(resolved);
       if (pending.restoreAfterSettle && pending.queued === null) {
-        restore(control, attempt.state);
+        restore(control, committedState);
+      } else if (
+        pending.queued === null &&
+        snapshotsEqual(snapshot(control), attempt.state)
+      ) {
+        // Reconcile server normalization/fallback only while this response
+        // still represents the visible edit. Preserve newer unsubmitted input.
+        restore(control, committedState);
       }
       document.body.dispatchEvent(
         new CustomEvent(this.successEvent, {
