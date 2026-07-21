@@ -182,6 +182,10 @@ class LiveSettingFieldsElement extends HTMLElement {
       "[data-setting-source-description] dd",
     );
     if (description) description.textContent = metadata.description;
+    const status = popover?.querySelector<HTMLElement>(
+      "[data-setting-source-status]",
+    );
+    if (status) status.hidden = resolved.locked || source === "default";
   }
 
   private save(control: SettingControl): void {

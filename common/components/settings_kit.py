@@ -330,9 +330,7 @@ def SettingSourceBadge(
         )
     ]
     if not locked:
-        status_attributes: list[tuple[str, str]] = [
-            ("data-setting-source-status", "")
-        ]
+        status_attributes: list[tuple[str, str]] = [("data-setting-source-status", "")]
         if source_value == "default":
             status_attributes.append(("hidden", ""))
         tooltip_definitions.append(

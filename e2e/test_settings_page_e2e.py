@@ -36,6 +36,8 @@ def _save_select(page: Page, key: str, name: str, value: str) -> None:
     expect(badge).to_have_attribute("data-setting-origin", "user")
     expect(badge).to_have_text("Personal")
     expect(badge).to_have_class(re.compile(r"\bbg-brand-soft\b"))
+    status = badge.locator("xpath=ancestor::pop-over//*[@data-setting-source-status]")
+    expect(status).to_contain_text("Non-default source (default source: “Default”)")
 
 
 @pytest.mark.parametrize(
