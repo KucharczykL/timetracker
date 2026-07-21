@@ -125,7 +125,8 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 PopoverTruncated(
                     game.sort_name
                     if game.sort_name is not None and game.name != game.sort_name
-                    else "(identical)"
+                    else "(identical)",
+                    selectable_text=True,
                 ),
                 str(game.year_released),
                 format_duration(game.filtered_playtime or timedelta(0), "%2.1H"),

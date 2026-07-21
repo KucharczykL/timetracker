@@ -1169,6 +1169,50 @@ class PopOverContractTest(unittest.TestCase):
         node = components.Popover("tip", wrapped_content="word")
         self.assertIn("dist/elements/pop-over.js", components.collect_media(node).js)
 
+    def test_tap_default_renders_button_trigger(self):
+        # Default tap=True: the trigger is a real <button> so a touch tap toggles
+        # the panel, and the host advertises tap="true" to the element.
+        html = str(components.Popover("tip", wrapped_content="word", id="pid"))
+        self.assertIn('tap="true"', html)
+        self.assertRegex(html, r'<button[^>]*type="button"')
+        self.assertIn("data-pop-over-trigger", html)
+        # Toggletip, not disclosure: no aria-expanded (it would contradict the
+        # role="tooltip"/aria-describedby pattern).
+        self.assertNotIn("aria-expanded", html)
+
+    def test_tap_false_renders_span_trigger(self):
+        html = str(
+            components.Popover("tip", wrapped_content="word", id="pid", tap=False)
+        )
+        self.assertIn('tap="false"', html)
+        self.assertNotIn("<button", html)
+        self.assertRegex(html, r"<span[^>]*data-pop-over-trigger")
+
+    def test_trigger_label_becomes_aria_label(self):
+        html = str(
+            components.Popover(
+                "tip", wrapped_content="ⓘ", trigger_label="Show details", id="pid"
+            )
+        )
+        self.assertIn('aria-label="Show details"', html)
+
+    def test_selectable_text_reenables_selection_on_button(self):
+        html = str(
+            components.Popover(
+                "tip", wrapped_content="19.99", selectable_text=True, id="pid"
+            )
+        )
+        self.assertIn("select-text", html)
+
+    def test_preface_renders_before_trigger_in_host(self):
+        # The host-wraps case: a preface node (a link) sits before the glyph
+        # <button> trigger, both inside <pop-over> as siblings.
+        link = components.A(href="/x")["visible"]
+        html = str(
+            components.Popover("tip", wrapped_content="ⓘ", preface=link, id="pid")
+        )
+        self.assertLess(html.index("</a>"), html.index("data-pop-over-trigger"))
+
 
 class ModelDependentComponentsTest(django.test.TestCase):
     """Test components that depend on Django models."""
@@ -1212,6 +1256,58 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIsInstance(result, SafeText)
         self.assertNotIn("<a ", result)
         self.assertIn("Test Game", result)
+
+    _LONG_NAME = "A Very Long Game Name That Exceeds Thirty Characters"
+
+    def _assert_no_button_inside_link(self, html: str) -> None:
+        # No <button> may sit between an <a ...> and its </a>. The extraction
+        # renders the reveal trigger as a sibling of the link, never a
+        # descendant (there are no nested anchors, so non-greedy is safe).
+        for match in re.finditer(r"<a\b[^>]*>(.*?)</a>", html, re.DOTALL):
+            self.assertNotIn(
+                "<button", match.group(1), "reveal <button> nested inside <a>"
+            )
+
+    def test_linked_truncated_name_reveal_is_button_beside_link(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform, name=self._LONG_NAME)
+        html = str(components.NameWithIcon(game=game, linkify=True))
+        self.assertIn("<pop-over", html)
+        self.assertRegex(html, r"<button[^>]*data-pop-over-trigger")
+        self._assert_no_button_inside_link(html)
+
+    def test_short_linked_name_has_no_reveal(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform, name="Short Name")
+        html = str(components.NameWithIcon(game=game, linkify=True))
+        self.assertNotIn("<button", html)
+        self.assertNotIn("<pop-over", html)
+
+    def test_menu_wrapped_name_keeps_button_out_of_link(self):
+        # The navbar recent-resumes case: DropdownLinkItem wraps NameWithIcon in
+        # its own <a role=menuitem>, so tap=False keeps a hover-only <span> —
+        # no <button> may nest in that caller-supplied link.
+        from common.components.custom_elements import DropdownLinkItem
+
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform, name=self._LONG_NAME)
+        html = str(
+            DropdownLinkItem(
+                "/go", components.NameWithIcon(game=game, linkify=False, tap=False)
+            )
+        )
+        self.assertNotIn("<button", html)
+        self._assert_no_button_inside_link(html)
+
+    def test_linked_purchase_bundle_reveal_is_button_beside_link(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game_one = self._create_game(platform, name="Bundle Game One")
+        game_two = self._create_game(platform, name="Bundle Game Two")
+        purchase = self._create_purchase([game_one, game_two], platform=platform)
+        html = str(components.LinkedPurchase(purchase))
+        self.assertIn("<pop-over", html)
+        self.assertRegex(html, r"<button[^>]*data-pop-over-trigger")
+        self._assert_no_button_inside_link(html)
 
     def test_name_with_icon_emulated_flag(self):
         platform = self._create_platform(icon="steam")

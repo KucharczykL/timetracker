@@ -123,9 +123,14 @@ interface PopupDismissOptions {
 
 /**
  * Wires the shared dismiss behaviour for an anchored popup: Escape closes it,
- * and a mousedown outside the host (and any extraInside roots) closes it. Only
- * acts while isOpen() is true. Returns a cleanup function that removes both
- * document listeners — call it from disconnectedCallback.
+ * and a press (pointerdown/mousedown) outside the host (and any extraInside
+ * roots) closes it. Only acts while isOpen() is true. Returns a cleanup function
+ * that removes the document listeners — call it from disconnectedCallback.
+ *
+ * Both pointerdown and mousedown are bound: iOS Safari synthesises no compat
+ * mousedown for a tap on non-clickable page space, so a mousedown-only outside
+ * dismiss would strand a tap-opened popup; pointerdown fires there. close() is
+ * idempotent, so a mouse press firing both is harmless.
  */
 function bindPopupDismiss(options: PopupDismissOptions): () => void {
   const isInside = (target: Node): boolean => {
@@ -136,14 +141,16 @@ function bindPopupDismiss(options: PopupDismissOptions): () => void {
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape" && options.isOpen()) options.close();
   };
-  const onMouseDown = (event: MouseEvent): void => {
+  const onOutsidePress = (event: Event): void => {
     if (options.isOpen() && !isInside(event.target as Node)) options.close();
   };
   document.addEventListener("keydown", onKeyDown);
-  document.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("pointerdown", onOutsidePress);
+  document.addEventListener("mousedown", onOutsidePress);
   return () => {
     document.removeEventListener("keydown", onKeyDown);
-    document.removeEventListener("mousedown", onMouseDown);
+    document.removeEventListener("pointerdown", onOutsidePress);
+    document.removeEventListener("mousedown", onOutsidePress);
   };
 }
 

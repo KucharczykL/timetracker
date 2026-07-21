@@ -509,13 +509,17 @@ register_element("year-picker", "YearPicker", YearPickerProps)
 
 
 class PopOverProps(TypedDict):
-    pass
+    # When true the trigger is a real <button>, so a tap toggles the panel
+    # (touch has no hover); the element then also owns outside-tap/Escape
+    # dismissal. When false the trigger is a hover/focus-only <span> (used where
+    # a caller wraps the popover in its own interactive element, so a <button>
+    # would nest illegally). Absent attribute reads false — see the builder,
+    # which always emits an explicit "true"/"false".
+    tap: bool
 
 
 # The <pop-over> hover/focus tooltip. Its builder (_PopOver) lives in
-# primitives.py next to _popover_html; registration is codegen-only. The element
-# reads no scalar props (plain data-* attributes + the tooltip id), so the schema
-# is empty.
+# primitives.py next to _popover_html; registration is codegen-only.
 register_element("pop-over", "PopOver", PopOverProps)
 
 

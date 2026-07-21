@@ -466,7 +466,11 @@ def NavbarLogButton(
                     "games:list_sessions_start_session_from_session",
                     args=[session.pk],
                 ),
-                NameWithIcon(game=session.game, linkify=False),
+                # tap=False: DropdownLinkItem wraps this in its own <a role=
+                # menuitem>, so the truncation popover must stay a hover-only
+                # <span> (a <button> would nest illegally). On touch the row is
+                # tapped to navigate, revealing the full name on the game page.
+                NameWithIcon(game=session.game, linkify=False, tap=False),
             )
             for session in recent_resumes
         ]
