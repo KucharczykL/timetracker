@@ -1425,7 +1425,6 @@ def AddForm(
 
     return Div(id_="add-form", class_="max-width-container")[
         Div(
-            id_="add-form",
             class_=f"form-container w-full {FORM_MAX_WIDTH_CLASS} mx-auto @container",
         )[inner_form]
     ]
