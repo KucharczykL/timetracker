@@ -183,7 +183,7 @@ def _section_panel(section: SettingsSection) -> Node:
     header_children: list[Node] = [
         Element(
             "h2",
-            [("id", heading_id), ("class", "text-type-section text-heading")],
+            [("id", heading_id), ("class", "text-type-subheading text-heading")],
         )[section.label]
     ]
     if section.description:

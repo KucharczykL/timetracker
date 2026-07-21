@@ -67,7 +67,7 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert body.count("<settings-section-nav") == 1
     assert body.count("<fieldset") == 2
     assert body.count("data-section-hierarchy-variant") == 3
-    assert "Typography hierarchy" in body
+    assert "Typography + spacing" in body
     assert "Spacing hierarchy" in body
     assert "Divider hierarchy" in body
     assert "border-t border-default-strong pt-4" in body

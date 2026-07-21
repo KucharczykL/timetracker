@@ -209,10 +209,10 @@ def _section_hierarchy_gallery():
     return Div(class_="grid grid-cols-1 gap-6 xl:grid-cols-3")[
         _hierarchy_sample(
             option="Option 1",
-            name="Typography hierarchy",
-            explanation="Only the type roles differ: 20px/700 outside, 18px/600 inside.",
+            name="Typography + spacing",
+            explanation="20px/700 outside, 18px/600 inside, with 8px/24px grouping.",
             outer_heading_class="text-type-subheading text-heading",
-            sample_class="flex flex-col gap-3",
+            sample_class="flex flex-col gap-6",
             nested_class="flex flex-col gap-3",
         ),
         _hierarchy_sample(

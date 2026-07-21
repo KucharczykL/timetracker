@@ -10,7 +10,7 @@ page-local variants.
 | Page width and shell | Reuse | `render_page()` + `ContentContainer` | Settings are a normal page body and must keep the shared max width and gutters. |
 | Responsive section layout | New | `ContentContainer`; container-query vocabulary | There is no existing rail/two-pane component. One scaffold owns the mobile stack and desktop rail with the same DOM. |
 | Anchor-chip overflow | New behavior, shared math | Quick-filter `ResizeObserver` priority-plus pattern | The nav moves, rather than clones, anchors so focus and state survive. Its desktop bypass and menu-role changes differ from filter facets, so only the width-fit calculation is extracted; the load-bearing quick-filter movement stays specialized. |
-| Section headings and surfaces | Reuse | `text-type-section`, semantic surface/border tokens, `@container` | The visual audit reserved this type token and established the surface/radius vocabulary for this kit. |
+| Section headings and surfaces | Reuse | `text-type-subheading`, `text-type-section`, semantic surface/border tokens, `@container` | Outer section headings use the stronger subheading role; nested field-group headings use the section role. |
 | Grouped form fields | Extend | `FormFields` | Fieldsets are another organization mode of the existing renderer. A second renderer would drift on errors, checkboxes, hidden fields, and extras. |
 | Checkbox/select/number/text controls | Reuse | Django fields + `PrimitiveWidgetsMixin` + `FormFields` | The mixin already maps field types to the canonical native controls, including disabled styling and the 42px control height. `field_widget` is filter-criterion machinery and is intentionally excluded. |
 | Source and locked indicators | New composite | `Badge` + `Popover` | One static badge sits beside the field label and contains the source plus a lock icon when pinned. Every source has an accessible hover/focus/tap tooltip explaining its origin; locked variants also include the field-specific reason. It is not a removable `Pill` filter tag. `Badge` gains a semantic `tone` option so callers do not fight its palette with class overrides. |
@@ -24,10 +24,12 @@ page-local variants.
 
 A page supplies ordered `SettingsSection` values to `SettingsScaffold`. Inside a
 section, ordinary fields are a Django form rendered by grouped `FormFields`.
-The scaffold owns section rhythm: title and description form an 8px header
-group, separated by 24px from section content. Consumers provide content only;
-they do not recreate or tune this spacing per page. Server-rendered and browser
-tests lock both the anatomy and computed gaps.
+The scaffold owns section hierarchy and rhythm: its outer title uses
+`text-type-subheading` (20px/700), while nested field-group legends use
+`text-type-section` (18px/600). Title and description form an 8px header group,
+separated by 24px from section content. Consumers provide content only; they do
+not recreate or tune these styles per page. Server-rendered and browser tests
+lock the anatomy, computed typography, and gaps.
 `SettingFieldState` adds the registry key, origin, help, and optional lock reason;
 the kit puts the merged source/lock badge beside the label and gives every badge
 an origin tooltip. Locked tooltips repeat the field-specific reason, while help

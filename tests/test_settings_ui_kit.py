@@ -203,7 +203,7 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert html.count('data-settings-section-content=""') == 2
         assert "scroll-mt-4 flex flex-col gap-6" in html
         assert "flex flex-col gap-2" in html
-        assert "text-type-section" in html
+        assert html.count('class="text-type-subheading text-heading"') == 2
 
         media = collect_media(scaffold)
         assert "dist/elements/settings-section-nav.js" in media.js

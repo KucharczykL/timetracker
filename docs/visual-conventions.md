@@ -252,8 +252,8 @@ See the full design rationale in
 | `text-type-title` | 30 | 700 | 2.25rem | tracking −0.025em |
 | `text-type-heading` | 24 | 700 | 2rem | |
 | `text-type-dialog` | 24 | 500 | 1.5rem | dialog/modal titles |
-| `text-type-subheading` | 20 | 700 | 1.75rem | |
-| `text-type-section` | 18 | 600 | 1.75rem | settings-kit section and field-group headings |
+| `text-type-subheading` | 20 | 700 | 1.75rem | settings-kit outer section headings |
+| `text-type-section` | 18 | 600 | 1.75rem | settings-kit nested field-group headings |
 | `text-type-body` | 14 | 400† | 1.25rem | default body / table cells |
 | `text-type-label` | 14 | 500 | 1.25rem | form labels |
 | `text-type-micro` | 12 | 400† | 1rem | |
@@ -290,9 +290,10 @@ guard). The **color guard is `ts/`-only**: `common/` still carries raw palette m
   `PrimitiveWidgetsMixin` field inherits this; a bare input outside the mixin must also use
   `text-type-input`. Do **not** work around this by locking the viewport
   (`maximum-scale` / `user-scalable=no`) — that fails WCAG 1.4.4.
-- **`text-type-section` is the settings-kit section heading** introduced by #384. Its real
-  consumers live in `common/components/settings_kit.py`, so it is discovered normally by
-  Tailwind and needs no `@source inline` safelist.
+- **Settings-kit hierarchy combines typography and spacing.** Outer section headings use
+  `text-type-subheading` (20px/700); nested field-group legends use `text-type-section`
+  (18px/600). Keep a section title and description 8px apart, then leave 24px before its
+  content. These roles and gaps belong to the shared components, not page-local overrides.
 - **`font-condensed`** (`IBM Plex Sans Condensed`) is the dense-UI font family used by
   Badge and dense list surfaces (names, `tbody`). It is separate from the `text-type-*` size
   tokens; apply it alongside the appropriate size token where space is tight and text is
