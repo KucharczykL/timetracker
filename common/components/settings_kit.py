@@ -63,6 +63,7 @@ _SOURCE_DESCRIPTIONS = {
     "ini": "Loaded from the application's settings.ini file.",
     "default": "The built-in default, used because no higher-priority value is set.",
 }
+_NON_DEFAULT_SOURCE_STATUS = "Non-default source (default source: “Default”)"
 
 _NAV_LINK_CLASS = (
     "inline-flex min-h-control w-full items-center whitespace-nowrap rounded-base px-3 "
@@ -328,6 +329,19 @@ def SettingSourceBadge(
             [("data-setting-source-description", "")],
         )
     ]
+    if not locked:
+        status_attributes: list[tuple[str, str]] = [
+            ("data-setting-source-status", "")
+        ]
+        if source_value == "default":
+            status_attributes.append(("hidden", ""))
+        tooltip_definitions.append(
+            TooltipDefinition(
+                "Status",
+                _NON_DEFAULT_SOURCE_STATUS,
+                status_attributes,
+            )
+        )
     if locked:
         lock_reason = reason or (
             f"{label} values take priority over settings saved in the application, "
