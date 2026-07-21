@@ -31,7 +31,6 @@ from common.components import (
     NameWithIcon,
     Node,
     Popover,
-    PopoverTruncated,
     PurchasePrice,
     QuickFilterBar,
     parse_filter_dict,
@@ -39,6 +38,7 @@ from common.components import (
     ControlButton,
     StyledTable,
     TableData,
+    TruncatedText,
     Ul,
     make_row,
     paginated_table_content,
@@ -109,7 +109,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "columns": [
-            Column("Name", "name"),
+            Column("Name", "name", class_="w-full max-w-0"),
             Column("Sort Name", "sort_name"),
             Column("Year", "year"),
             Column("Playtime", "filtered_playtime"),
@@ -122,11 +122,10 @@ def list_games(request: HttpRequest) -> HttpResponse:
         "rows": [
             make_row(
                 NameWithIcon(game=game),
-                PopoverTruncated(
+                TruncatedText(
                     game.sort_name
                     if game.sort_name is not None and game.name != game.sort_name
                     else "(identical)",
-                    selectable_text=True,
                 ),
                 str(game.year_released),
                 format_duration(game.filtered_playtime or timedelta(0), "%2.1H"),
@@ -620,7 +619,7 @@ def _purchases_section(game: Game) -> Node:
     ]
     table = StyledTable(
         columns=[
-            Column("Name"),
+            Column("Name", class_="w-full max-w-0"),
             Column("Type"),
             Column("Date"),
             Column("Price"),

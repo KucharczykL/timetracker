@@ -350,7 +350,7 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
 
     def test_name_with_icon_output_not_escaped(self):
         result = str(components.NameWithIcon(name="Test", linkify=False))
-        self.assertTrue(str(result).startswith("<div"))
+        self.assertTrue(str(result).startswith("<truncated-text"))
 
 
 class ComponentEdgeCasesTest(unittest.TestCase):
@@ -360,6 +360,11 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             str(components.Element("", children="hello"))
         self.assertIn("tag_name", str(ctx.exception))
+
+    def test_duplicate_element_ids_are_rejected_by_document_walk(self):
+        tree = components.Div()[components.Span(id="same"), components.Span(id="same")]
+        with self.assertRaisesRegex(ValueError, "Duplicate element id"):
+            components.assert_unique_element_ids(tree)
 
     def test_single_string_children_wrapped(self):
         result = str(components.Element(tag_name="span", children="hello"))
@@ -1014,54 +1019,60 @@ class DropdownActionItemContractTest(SimpleTestCase):
         self.assertIn("ddi.js", components.collect_media(item).js)
 
 
-class PopoverTruncatedTest(unittest.TestCase):
-    """Test PopoverTruncated() component function."""
+class TruncatedTextTest(unittest.TestCase):
+    """The server-side contract for width-based text truncation."""
 
-    def test_short_string_no_popover(self):
-        result = str(components.PopoverTruncated("hi"))
-        self.assertEqual(result, "hi")
+    def test_default_keeps_full_text_and_is_visual_only_for_at(self):
+        html = str(components.TruncatedText("The complete visible value"))
+        self.assertTrue(html.startswith("<truncated-text"))
+        self.assertIn("The complete visible value", html)
+        self.assertIn("data-truncated-clip", html)
+        self.assertIn('aria-hidden="true"', html)
+        self.assertNotIn("aria-describedby", html)
+        self.assertNotRegex(html, r'data-pop-over-panel=""[^>]*\sid=')
 
-    def test_long_string_wrapped_in_popover(self):
-        long_text = "a" * 100
-        result = str(components.PopoverTruncated(long_text))
-        # Should NOT equal the truncated form directly
-        truncated = components.truncate(long_text, 30)
-        self.assertNotEqual(result, truncated)
-        # Should contain popover markers
-        self.assertIn("<pop-over", result)
-
-    def test_custom_ellipsis_used(self):
-        long_text = "a" * 50
-        result = str(components.PopoverTruncated(long_text, ellipsis=">>"))
-        # Django template escapes >> to &gt;&gt; in the wrapped_content
-        self.assertIn("&gt;&gt;", result)
-
-    def test_popover_content_override(self):
-        result = str(
-            components.PopoverTruncated("short", popover_content="custom popover")
+    def test_default_adds_the_component_script(self):
+        node = components.TruncatedText("text")
+        self.assertIn(
+            "dist/elements/truncated-text.js", components.collect_media(node).js
         )
-        # Short text is returned as-is; use PopoverIf for unconditional popovers
-        self.assertEqual(result, "short")
 
-    def test_endpart_visible_in_output(self):
-        long_text = "a" * 50
-        result = str(components.PopoverTruncated(long_text, endpart="..."))
-        self.assertIn("...", result)
+    def test_leading_content_and_clip_remain_inside_link(self):
+        html = str(
+            components.TruncatedText(
+                "Linked text", leading=components.Span()["icon"], link="/target"
+            )
+        )
+        link = html[html.index("<a ") : html.index("</a>")]
+        self.assertIn("icon", link)
+        self.assertIn("data-truncated-clip", link)
+        self.assertNotIn("<button", link)
 
-    def test_returns_safetext(self):
-        result = str(components.PopoverTruncated("a" * 100))
-        self.assertIsInstance(result, SafeText)
+    def test_tap_false_has_no_reveal_button(self):
+        html = str(components.TruncatedText("menu text", tap=False))
+        self.assertNotIn("<button", html)
 
-    def test_default_length(self):
-        text = "a" * 31
-        result = str(components.PopoverTruncated(text))
-        # 31 chars exceeds default length of 30, so should be truncated
-        self.assertIn("<pop-over", result)
+    def test_differing_tooltip_content_gets_safe_aria_relationship(self):
+        html = str(
+            components.TruncatedText(
+                "Bundle",
+                link="/bundle",
+                reveal="always",
+                tooltip_content=components.Ul()[components.Li()["Game"]],
+                instance_key="purchase-list:7",
+            )
+        )
+        panel_id = re.search(r'data-pop-over-panel="" id="([^"]+)"', html)
+        self.assertIsNotNone(panel_id)
+        assert panel_id is not None
+        self.assertRegex(panel_id.group(1), r"^[0-9a-f]{10}$")
+        self.assertEqual(html.count(f'aria-describedby="{panel_id.group(1)}"'), 2)
+        self.assertIn('role="tooltip"', html)
+        self.assertNotIn('aria-hidden="true"', html)
 
-    def test_length_zero(self):
-        result = str(components.PopoverTruncated("hello", length=0))
-        # Even empty length triggers popover for any content
-        self.assertIn("<pop-over", result)
+    def test_differing_content_requires_instance_key(self):
+        with self.assertRaises(ValueError):
+            components.TruncatedText("Bundle", tooltip_content="Game")
 
 
 class TruncateInfoTest(unittest.TestCase):
@@ -1272,16 +1283,19 @@ class ModelDependentComponentsTest(django.test.TestCase):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform, name=self._LONG_NAME)
         html = str(components.NameWithIcon(game=game, linkify=True))
-        self.assertIn("<pop-over", html)
-        self.assertRegex(html, r"<button[^>]*data-pop-over-trigger")
+        self.assertIn("<truncated-text", html)
+        self.assertRegex(html, r"<button[^>]*data-truncated-reveal")
         self._assert_no_button_inside_link(html)
 
-    def test_short_linked_name_has_no_reveal(self):
+    def test_short_linked_name_renders_an_inert_auto_reveal(self):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform, name="Short Name")
         html = str(components.NameWithIcon(game=game, linkify=True))
-        self.assertNotIn("<button", html)
-        self.assertNotIn("<pop-over", html)
+        # Overflow is a browser-width decision, so the inert auto-reveal exists
+        # in markup and stays hidden until the element measures real overflow.
+        self.assertIn('reveal="auto"', html)
+        self.assertIn("data-truncated-reveal", html)
+        self.assertIn('aria-hidden="true"', html)
 
     def test_menu_wrapped_name_keeps_button_out_of_link(self):
         # The navbar recent-resumes case: DropdownLinkItem wraps NameWithIcon in
@@ -1305,8 +1319,8 @@ class ModelDependentComponentsTest(django.test.TestCase):
         game_two = self._create_game(platform, name="Bundle Game Two")
         purchase = self._create_purchase([game_one, game_two], platform=platform)
         html = str(components.LinkedPurchase(purchase))
-        self.assertIn("<pop-over", html)
-        self.assertRegex(html, r"<button[^>]*data-pop-over-trigger")
+        self.assertIn("<truncated-text", html)
+        self.assertRegex(html, r"<button[^>]*data-truncated-reveal")
         self._assert_no_button_inside_link(html)
 
     def test_name_with_icon_emulated_flag(self):
@@ -1394,7 +1408,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         purchase.name = "Bundle"
         purchase.save()
         result = str(components.LinkedPurchase(purchase))
-        self.assertIn("<pop-over", result)
+        self.assertIn("<truncated-text", result)
         self.assertIn("Game A", result)
         self.assertIn("Game B", result)
 
@@ -1407,26 +1421,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIsInstance(result, SafeText)
         self.assertIn("Alpha", result)
         self.assertIn("Beta", result)
-
-
-class PurchaseTruncatedTest(unittest.TestCase):
-    """Test PopoverTruncated with endpart edge cases."""
-
-    def test_endpart_shorter_than_length(self):
-        text = "a" * 50
-        result = str(components.PopoverTruncated(text, length=10, endpart="x"))
-        # endpart=x takes 1 char, so content gets truncated at 9 chars
-        self.assertIn("<pop-over", result)
-        self.assertIn("x", result)
-
-    def test_no_truncation_no_ellipsis(self):
-        result = str(components.PopoverTruncated("short text"))
-        self.assertEqual(result, "short text")
-
-    def test_custom_length(self):
-        text = "hello world"
-        result = str(components.PopoverTruncated(text, length=6))
-        self.assertIn("<pop-over", result)
 
 
 class NameWithIconPlatformTest(django.test.TestCase):
@@ -1451,7 +1445,8 @@ class NameWithIconPlatformTest(django.test.TestCase):
         result = str(components.NameWithIcon(name="Unknown Game", linkify=False))
         self.assertIsInstance(result, SafeText)
         self.assertIn("Unknown Game", result)
-        self.assertNotIn("<svg", result)
+        visible_prefix = result[: result.index("data-truncated-clip")]
+        self.assertNotIn("<svg", visible_prefix)
 
     def test_name_with_icon_null_platform_shows_unspecified_icon(self):
         # A game without a platform (NULL since issue #290) keeps a badge:
@@ -1651,6 +1646,25 @@ class StyledTableRenderingTest(unittest.TestCase):
         self.assertIn("GameA", tbody)
         self.assertIn("GameB", tbody)
         self.assertEqual(tbody.count("<tr"), 2)
+
+    def test_first_column_class_reaches_header_and_body_cell(self):
+        result = str(
+            components.StyledTable(
+                columns=[
+                    components.Column("Name", class_="w-full max-w-0"),
+                    components.Column("Actions"),
+                ],
+                rows=[components.make_row("Game", "Edit")],
+            )
+        )
+        self.assertIn('class="px-2 sm:px-3 lg:px-6 py-3 w-full max-w-0"', result)
+        tbody = self._tbody(result)
+        self.assertIn("w-full max-w-0", tbody)
+
+    def test_direct_table_row_keeps_columns_optional(self):
+        result = str(components.TableRow(components.make_row("Game", "Edit")))
+        self.assertIn('th scope="row"', result)
+        self.assertNotIn("w-full max-w-0", result)
 
     def test_simple_table_rows_with_attributes(self):
         """Verify make_row attributes (id, hx-*) land on the <tr>."""

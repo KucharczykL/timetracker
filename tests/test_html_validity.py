@@ -9,6 +9,7 @@ a per-component guard a caller-supplied wrapper could defeat.
 """
 
 from datetime import date, datetime
+from collections import Counter
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
@@ -55,9 +56,15 @@ class _InteractiveNestingParser(HTMLParser):
         # Names of the currently-open interactive ancestors, innermost last.
         self._open_interactive: list[str] = []
         self.violations: list[str] = []
+        self.ids: list[str] = []
+        self.describedby: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_map = dict(attrs)
+        if attr_map.get("id"):
+            self.ids.append(attr_map["id"] or "")
+        if attr_map.get("aria-describedby"):
+            self.describedby.extend((attr_map["aria-describedby"] or "").split())
         role = (attr_map.get("role") or "").strip()
         if (tag in _INTERACTIVE_TAGS or role in _INTERACTIVE_ROLES) and (
             self._open_interactive
@@ -112,6 +119,12 @@ class HtmlValidityTest(TestCase):
             platform=self.platform,
         )
         self.bundle.games.add(self.long_game, self.other_game)
+        self.other_bundle = Purchase.objects.create(
+            date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
+            platform=self.platform,
+            price=1,
+        )
+        self.other_bundle.games.add(self.long_game, self.other_game)
 
         Session.objects.create(
             game=self.long_game,
@@ -162,4 +175,27 @@ class HtmlValidityTest(TestCase):
             [],
             "Interactive elements nested inside interactive ancestors:\n"
             + "\n".join(failures),
+        )
+
+    def test_ids_are_unique_and_describedby_targets_resolve_once(self) -> None:
+        """Full pages keep IDREFs valid, including same-label bundle rows and
+        the desktop/mobile navbar copies of one recent game."""
+        url = reverse("games:list_purchases")
+        response = self.client.get(url, follow=True)
+        self.assertEqual(response.status_code, 200)
+        parser = _InteractiveNestingParser()
+        parser.feed(response.content.decode())
+        counts = Counter(parser.ids)
+        failures = [
+            f"duplicate id {element_id!r}"
+            for element_id, count in counts.items()
+            if count > 1
+        ]
+        failures.extend(
+            f"aria-describedby {token!r} resolves {counts[token]} times"
+            for token in parser.describedby
+            if counts[token] != 1
+        )
+        self.assertEqual(
+            failures, [], "Invalid page ID relationships:\n" + "\n".join(failures)
         )

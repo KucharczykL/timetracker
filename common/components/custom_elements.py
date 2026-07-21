@@ -524,6 +524,16 @@ class PopOverProps(TypedDict):
 register_element("pop-over", "PopOver", PopOverProps)
 
 
+class TruncatedTextProps(TypedDict):
+    tap: bool
+    reveal: str  # "auto" (overflow-gated) | "always" (informational tooltip)
+
+
+# The <truncated-text> builder lives beside Popover in primitives.py; this is
+# its codegen-only property schema.
+register_element("truncated-text", "TruncatedText", TruncatedTextProps)
+
+
 class ModalDialogProps(TypedDict):
     pass
 
@@ -626,7 +636,7 @@ _DROPDOWN_PANEL_PLAIN_CLASS = (
 def _menu_panel_class(width: str = "w-44") -> str:
     """The plain menu-panel look at an arbitrary width. Default ``w-44`` matches
     the fixed-width menus; a split button can pass e.g. ``w-max max-w-xs`` to grow
-    to its item content (the item names self-truncate via ``PopoverTruncated``)."""
+    to its item content (the item names self-clip via ``TruncatedText``)."""
     return f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm border border-default-medium"
 
 
