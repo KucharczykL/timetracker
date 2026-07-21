@@ -67,7 +67,7 @@ _SOURCE_DESCRIPTIONS = {
 _NAV_LINK_CLASS = (
     "inline-flex min-h-control items-center whitespace-nowrap rounded px-3 "
     "text-type-body font-medium bg-brand-soft text-heading no-underline "
-    "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 "
+    "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 focus:ring-inset "
     "focus:ring-brand-medium @4xl:w-full @4xl:justify-start @4xl:rounded-base "
     "@4xl:bg-transparent"
 )
