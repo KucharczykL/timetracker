@@ -71,6 +71,12 @@ function mountTwoSheets(): {
   };
 }
 
+function pointerEvent(type: "pointerdown" | "pointerup", pointerId: number): Event {
+  const event = new MouseEvent(type, { bubbles: true });
+  Object.defineProperty(event, "pointerId", { value: pointerId });
+  return event;
+}
+
 beforeEach(() => {
   reducedMotion = true;
   previousShowModal = HTMLDialogElement.prototype.showModal;
@@ -212,16 +218,24 @@ describe('drop-down behavior="sheet"', () => {
     expect(dialog.open).toBe(true);
   });
 
-  it("closes on a true backdrop gesture but not one starting in the panel", () => {
+  it("closes only when the same pointer starts and ends on the backdrop", () => {
     const { toggle, dialog, panel } = mountSheet();
     toggle.click();
 
-    panel.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-    dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    panel.dispatchEvent(pointerEvent("pointerdown", 1));
+    dialog.dispatchEvent(pointerEvent("pointerup", 1));
     expect(dialog.open).toBe(true);
 
-    dialog.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-    dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    dialog.dispatchEvent(pointerEvent("pointerdown", 2));
+    panel.dispatchEvent(pointerEvent("pointerup", 2));
+    expect(dialog.open).toBe(true);
+
+    dialog.dispatchEvent(pointerEvent("pointerdown", 3));
+    dialog.dispatchEvent(pointerEvent("pointerup", 4));
+    expect(dialog.open).toBe(true);
+
+    dialog.dispatchEvent(pointerEvent("pointerdown", 5));
+    dialog.dispatchEvent(pointerEvent("pointerup", 5));
     expect(dialog.open).toBe(false);
   });
 

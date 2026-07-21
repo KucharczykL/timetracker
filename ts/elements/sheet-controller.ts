@@ -295,6 +295,11 @@ export function attachSheet(
   const onPointerDown = (event: PointerEvent): void => {
     backdropPointer = event.target === dialog ? event.pointerId : null;
   };
+  const onPointerUp = (event: PointerEvent): void => {
+    const startedOnBackdrop = backdropPointer === event.pointerId;
+    backdropPointer = null;
+    if (startedOnBackdrop && event.target === dialog) close();
+  };
   const onPointerCancel = (): void => {
     backdropPointer = null;
   };
@@ -313,8 +318,6 @@ export function attachSheet(
       close();
       return;
     }
-    if (event.target === dialog && backdropPointer !== null) close();
-    backdropPointer = null;
   };
   const onPanelTransitionEnd = (event: TransitionEvent): void => {
     if (
@@ -336,6 +339,7 @@ export function attachSheet(
   dialog.addEventListener("cancel", onCancel);
   dialog.addEventListener("keydown", onDialogKeyDown);
   dialog.addEventListener("pointerdown", onPointerDown);
+  dialog.addEventListener("pointerup", onPointerUp);
   dialog.addEventListener("pointercancel", onPointerCancel);
   dialog.addEventListener("click", onDialogClick);
   dialog.addEventListener("close", onNativeClose);

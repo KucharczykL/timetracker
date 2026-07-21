@@ -475,6 +475,14 @@ def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     page.mouse.up()
     expect(dialog).to_have_attribute("open", "")
 
+    # The reverse drag is safe too: starting on the backdrop is insufficient
+    # when the same pointer is released over the visible panel.
+    page.mouse.move(10, 10)
+    page.mouse.down()
+    page.mouse.move(panel_box["x"] + 20, panel_box["y"] + 20)
+    page.mouse.up()
+    expect(dialog).to_have_attribute("open", "")
+
     # A gesture beginning and ending on the backdrop does dismiss.
     page.mouse.click(10, 10)
     expect(dialog).not_to_have_attribute("open", "")
