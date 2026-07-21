@@ -122,6 +122,15 @@ def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
     assert currency["source"] == "user"
 
 
+def test_user_patch_emits_saved_success_toast(auth_client, no_currency_env):
+    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+    trigger = json.loads(response.headers["HX-Trigger"])
+    assert trigger["show-toast"] == {
+        "message": "Default currency saved",
+        "type": "success",
+    }
+
+
 def test_user_settings_are_scoped_per_user(
     auth_client, second_auth_client, no_currency_env
 ):
