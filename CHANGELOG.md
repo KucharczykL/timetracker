@@ -34,6 +34,11 @@
   mark becomes the tap target — so a tap reveals without navigating; the navbar
   recent-resumes menu keeps a hover-only name and reveals the full title by
   tapping through to the game (#445).
+* Small icon-button popover triggers now meet the WCAG 2.5.8 24px minimum
+  touch-target size: the filter-builder incomplete "!" cue is a 24px circle, and
+  the truncation-reveal ellipsis is a 24px button (with a negative vertical
+  margin so it doesn't grow the table row). Inline text triggers (prices,
+  truncated names) are covered by the criterion's inline exception (#454).
 
 ### Changed
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
