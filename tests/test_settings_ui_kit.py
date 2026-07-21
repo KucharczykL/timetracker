@@ -199,6 +199,10 @@ class SettingsScaffoldTest(SimpleTestCase):
         assert "@4xl:grid-cols-[12rem_minmax(0,1fr)]" in html
         assert "@4xl:sticky" in html
         assert html.count('data-settings-section=""') == 2
+        assert html.count('data-settings-section-header=""') == 2
+        assert html.count('data-settings-section-content=""') == 2
+        assert "scroll-mt-4 flex flex-col gap-6" in html
+        assert "flex flex-col gap-2" in html
         assert "text-type-section" in html
 
         media = collect_media(scaffold)

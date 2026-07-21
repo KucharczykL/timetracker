@@ -180,15 +180,16 @@ def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
 
 def _section_panel(section: SettingsSection) -> Node:
     heading_id = f"{section.id}-heading"
-    children: list[Node] = [
+    header_children: list[Node] = [
         Element(
             "h2",
             [("id", heading_id), ("class", "text-type-section text-heading")],
         )[section.label]
     ]
     if section.description:
-        children.append(P(class_="text-type-body text-body")[section.description])
-    children.append(Div(class_="flex flex-col gap-4")[section.content])
+        header_children.append(
+            P(class_="text-type-body text-body")[section.description]
+        )
     return Element(
         "section",
         [
@@ -197,11 +198,20 @@ def _section_panel(section: SettingsSection) -> Node:
             ("data-settings-section", ""),
             (
                 "class",
-                "scroll-mt-4 flex flex-col gap-3 rounded-base border "
+                "scroll-mt-4 flex flex-col gap-6 rounded-base border "
                 "border-default bg-neutral-primary-medium p-4 @container",
             ),
         ],
-    )[*children]
+    )[
+        Div(
+            data_settings_section_header="",
+            class_="flex flex-col gap-2",
+        )[*header_children],
+        Div(
+            data_settings_section_content="",
+            class_="flex flex-col gap-4",
+        )[section.content],
+    ]
 
 
 def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:

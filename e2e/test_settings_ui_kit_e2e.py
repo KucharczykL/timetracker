@@ -141,6 +141,14 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     assert second_box["y"] > first_box["y"] + first_box["height"]
     assert abs(second_box["x"] - first_box["x"]) < 2
 
+    # The title/description are one tight header group; nested form content is
+    # separated more strongly so the description cannot look attached to it.
+    first_section = sections.nth(0)
+    expect(first_section).to_have_css("row-gap", "24px")
+    expect(first_section.locator("[data-settings-section-header]")).to_have_css(
+        "row-gap", "8px"
+    )
+
     # The long chip set cannot fit at 390px, so rightmost *same nodes* move to
     # the More dropdown instead of being cloned or wrapped into another nav.
     overflow = page.locator("[data-section-nav-overflow]")

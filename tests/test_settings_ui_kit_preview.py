@@ -61,7 +61,9 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "Settings UI kit preview" in body
     assert "DEBUG only" in body
     assert "No persistence" in body
-    assert body.count("data-settings-section") == 5
+    assert body.count('data-settings-section=""') == 5
+    assert body.count('data-settings-section-header=""') == 5
+    assert body.count('data-settings-section-content=""') == 5
     assert body.count("<settings-section-nav") == 1
     assert body.count("<fieldset") == 2
 
