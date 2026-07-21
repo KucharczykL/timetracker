@@ -84,9 +84,9 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
             Div(class_="h-96")["Appearance controls arrive in a later stage."],
         ),
         SettingsSection(
-            "notifications-and-reminders",
-            "Notifications and reminders",
-            Div(class_="h-96")["Notification controls arrive in a later stage."],
+            "setting-source-and-lock-states",
+            "Setting source and lock states",
+            Div(class_="h-96")["Source and lock controls arrive in a later stage."],
         ),
         SettingsSection(
             "privacy-and-data",
@@ -105,7 +105,12 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
     return render_page(
         request,
         Div(class_="flex flex-col gap-4")[
-            PageHeading(["Settings kit test"]), SettingsScaffold(sections)
+            PageHeading(["Settings kit test"]),
+            SettingsScaffold(sections),
+            # Test-only runway proving the sticky host stops with its scaffold.
+            Div(data_settings_after_scaffold="", class_="min-h-screen")[
+                "Content after the settings scaffold."
+            ],
         ],
         title="Settings kit test",
     )
@@ -224,27 +229,92 @@ def test_desktop_scaffold_promotes_same_nav_to_sticky_rail(live_server, page: Pa
 
     nav_host = page.locator("settings-section-nav")
     nav = nav_host.locator("nav")
+    scaffold = page.locator("[data-settings-scaffold]")
     first_section = page.locator("[data-settings-section]").first
     expect(
         page.locator("[data-section-nav-primary] [data-section-nav-item]")
     ).to_have_count(5)
     expect(page.locator("[data-section-nav-overflow]")).to_be_hidden()
-    expect(nav).to_have_css("position", "sticky")
+    expect(nav_host).to_have_css("position", "sticky")
+    expect(nav_host).to_have_css("top", "16px")
+    expect(nav).to_have_css("position", "static")
+    expect(nav).to_have_css("overflow-y", "auto")
+
+    primary_links = nav.locator("[data-section-nav-primary] a[href^='#']")
+    overflowing_labels = primary_links.evaluate_all(
+        """elements => elements
+            .filter(element => element.scrollWidth > element.clientWidth)
+            .map(element => element.textContent?.trim() || "<unnamed>")"""
+    )
+    assert overflowing_labels == [], (
+        f"Section labels exceed the 14rem rail: {overflowing_labels}"
+    )
+    assert nav.evaluate("element => element.scrollWidth <= element.clientWidth")
+
+    first_link = primary_links.first
+    first_link.focus()
+    assert "inset" in first_link.evaluate(
+        "element => getComputedStyle(element).boxShadow"
+    )
+
     nav_box = nav_host.bounding_box()
     section_box = first_section.bounding_box()
-    assert nav_box and section_box
+    scaffold_box = scaffold.bounding_box()
+    assert nav_box and section_box and scaffold_box
     assert nav_box["x"] < section_box["x"]
     assert abs(nav_box["y"] - section_box["y"]) < 2
+    assert nav_box["y"] > 66
+    assert scaffold_box["height"] > nav_box["height"] + 100
     single_column = first_section.locator('[data-settings-field-layout="1"]')
     expect(single_column).to_have_css("max-width", "576px")
     single_column_box = single_column.bounding_box()
     assert single_column_box
     assert single_column_box["width"] < section_box["width"] - 32
 
-    page.evaluate("window.scrollTo(0, 1000)")
-    page.wait_for_timeout(50)
-    stuck_box = nav.bounding_box()
-    assert stuck_box and stuck_box["y"] <= 18
+    target = nav_box["y"] + 100
+    max_scroll = page.evaluate(
+        "document.documentElement.scrollHeight - window.innerHeight"
+    )
+    assert target <= max_scroll
+    page.evaluate("target => window.scrollTo(0, target)", target)
+    page.wait_for_function("target => window.scrollY >= target - 1", arg=target)
+    stuck_box = nav_host.bounding_box()
+    assert stuck_box and 14 <= stuck_box["y"] <= 18
+
+    after_scaffold = page.locator("[data-settings-after-scaffold]")
+    after_document_y = after_scaffold.evaluate(
+        "element => element.getBoundingClientRect().top + window.scrollY"
+    )
+    max_scroll = page.evaluate(
+        "document.documentElement.scrollHeight - window.innerHeight"
+    )
+    assert after_document_y <= max_scroll
+    page.evaluate("target => window.scrollTo(0, target)", after_document_y)
+    page.wait_for_function(
+        "target => window.scrollY >= target - 1",
+        arg=after_document_y,
+    )
+    stopped_box = nav_host.bounding_box()
+    after_box = after_scaffold.bounding_box()
+    assert stopped_box and after_box
+    assert stopped_box["y"] + stopped_box["height"] <= after_box["y"] + 1
+
+
+@override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
+def test_desktop_section_nav_scrolls_in_short_viewport(live_server, page: Page):
+    page.set_viewport_size({"width": 1280, "height": 240})
+    page.goto(f"{live_server.url}/settings-kit-test/")
+
+    nav_host = page.locator("settings-section-nav")
+    nav = nav_host.locator("nav")
+    expect(nav_host).to_have_css("position", "sticky")
+    expect(nav).to_have_css("overflow-y", "auto")
+    assert nav.evaluate("element => element.scrollHeight > element.clientHeight")
+
+    window_y = page.evaluate("window.scrollY")
+    nav.evaluate("element => { element.scrollTop = element.scrollHeight; }")
+    assert nav.evaluate("element => element.scrollTop") > 0
+    assert page.evaluate("window.scrollY") == window_y
 
 
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")

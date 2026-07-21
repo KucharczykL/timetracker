@@ -162,15 +162,16 @@ def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
             placement="bottom-end",
         )
     ]
-    return _SettingsSectionNav(class_="block min-w-0")[
+    return _SettingsSectionNav(
+        class_="block min-w-0 @4xl:sticky @4xl:top-4 @4xl:self-start"
+    )[
         Element(
             "nav",
             [
                 ("aria-label", "Settings sections"),
                 (
                     "class",
-                    "mb-4 @4xl:sticky @4xl:top-4 @4xl:mb-0 "
-                    "@4xl:max-h-[calc(100vh-2rem)] @4xl:overflow-y-auto",
+                    "mb-4 @4xl:mb-0 @4xl:max-h-[calc(100vh-2rem)] @4xl:overflow-y-auto",
                 ),
             ],
         )[

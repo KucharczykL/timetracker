@@ -1,9 +1,18 @@
 # Desktop settings rail sticky repair plan (#384)
 
-**Status:** planned; not implemented  
-**Prepared:** 2026-07-21  
+**Status:** implemented; focused verification complete
+
+**Prepared:** 2026-07-21
+
+**Implemented:** 2026-07-21
+
 **Scope:** repair the desktop settings section rail's intended sticky behavior and its
 false-positive browser test.
+
+Focused verification completed with 16 server-rendered component tests, two desktop rail
+browser tests, the mobile priority-plus browser test, targeted Ruff lint/format checks, a CSS
+rebuild, and `git diff --check`. The full project gate remains reserved for the epic's final
+verification run.
 
 ## Outcome
 
@@ -342,30 +351,30 @@ local `main` and the feature branch resolve to the same commit.
 
 ## Acceptance checklist
 
-- [ ] At desktop scaffold width, the outer navigation host computes to `position: sticky` with
+- [x] At desktop scaffold width, the outer navigation host computes to `position: sticky` with
       a 16px top offset.
-- [ ] After the page scrolls beyond the rail's original position, the host remains between
+- [x] After the page scrolls beyond the rail's original position, the host remains between
       14px and 18px from the viewport top.
-- [ ] The browser test fails if the rail scrolls to a negative `y` coordinate.
-- [ ] The browser test proves its target scroll position is reachable and was reached.
-- [ ] A short-viewport browser test proves the inner navigation is genuinely overflowing and
+- [x] The browser test fails if the rail scrolls to a negative `y` coordinate.
+- [x] The browser test proves its target scroll position is reachable and was reached.
+- [x] A short-viewport browser test proves the inner navigation is genuinely overflowing and
       can scroll without changing `window.scrollY`.
-- [ ] The rail does not overlap the test-only content following the settings scaffold.
-- [ ] Every representative fixture label passes the per-link rendered-width check; any failure
+- [x] The rail does not overlap the test-only content following the settings scaffold.
+- [x] Every representative fixture label passes the per-link rendered-width check; any failure
       reports the offending label text.
-- [ ] The fixture includes the reported near-limit preview label, `Setting source and lock
+- [x] The fixture includes the reported near-limit preview label, `Setting source and lock
       states`.
-- [ ] The inner navigation as a whole has no horizontal overflow.
-- [ ] Production contains no runtime label measurement or character-count validation.
-- [ ] Visual conventions require each future concrete `SettingsScaffold` page to apply the
+- [x] The inner navigation as a whole has no horizontal overflow.
+- [x] Production contains no runtime label measurement or character-count validation.
+- [x] Visual conventions require each future concrete `SettingsScaffold` page to apply the
       same browser assertion to its actual labels.
-- [ ] Section-link focus rings remain complete and visible, and the browser-computed focus
+- [x] Section-link focus rings remain complete and visible, and the browser-computed focus
       shadow is inset.
-- [ ] The desktop rail remains 14rem wide.
-- [ ] Mobile priority-plus behavior and same-node restoration are unchanged.
-- [ ] The focused component and desktop browser tests pass.
-- [ ] `git diff --check` passes.
-- [ ] The unrelated `Makefile` modification remains unstaged and unchanged.
+- [x] The desktop rail remains 14rem wide.
+- [x] Mobile priority-plus behavior and same-node restoration are unchanged.
+- [x] The focused component and desktop browser tests pass.
+- [x] `git diff --check` passes.
+- [x] The unrelated `Makefile` modification remains unstaged and unchanged.
 
 ## Risks and checks
 
