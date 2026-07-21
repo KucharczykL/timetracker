@@ -153,6 +153,22 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             assert str(escape(description)) in html
             assert ">Locked</dt>" not in html
 
+    def test_default_source_is_neutral_and_overrides_use_brand_tone(self):
+        default = str(SettingSourceBadge("default", id="default-source-tip"))
+        default_badge = default.split('data-setting-origin="default"')[0].rsplit(
+            "<span", 1
+        )[1]
+        assert "bg-neutral-quaternary" in default_badge
+        assert "bg-brand-soft" not in default_badge
+
+        for source in ("user", "database", "env", "env_file", "dotenv", "ini"):
+            override = str(SettingSourceBadge(source, id=f"{source}-source-tip"))
+            override_badge = override.split(f'data-setting-origin="{source}"')[
+                0
+            ].rsplit("<span", 1)[1]
+            assert "bg-brand-soft" in override_badge
+            assert "bg-neutral-quaternary" not in override_badge
+
     def test_locked_state_disables_the_real_django_field_and_adds_reason(self):
         form = KitForm()
         states = {
@@ -320,6 +336,7 @@ class LiveAndSecretComponentTest(SimpleTestCase):
         assert 'patch-url-template="/api/settings/user/__key__"' in html
         assert 'csrf="csrf-token"' in html
         assert 'event="setting-saved"' in html
+        assert 'data-setting-source-key="DISPLAY_NAME"' in html
         assert 'data-settings-field-layout="1"' in html
         assert "w-full max-w-xl" in html
         assert "dist/elements/live-setting-fields.js" in collect_media(node).js

@@ -252,9 +252,10 @@ def resolve_str_for_user(user: object, key: SettingKey) -> str:
     return value
 
 
-def set_user_preference(user: object, key: SettingKey, value: object) -> None:
+def set_user_preference(user: object, key: SettingKey, value: object) -> object:
     """Upsert a user-scoped preference (validated + normalized); ``None`` clears.
 
+    Returns the normalized value that was stored, or ``None`` when cleared.
     Raises for an unregistered key, a non-``USER`` key, a value the definition's
     validator rejects, or a ``DEFAULT_DEVICE`` id with no matching Device —
     nothing is written in those cases (validation runs before the write).
@@ -273,6 +274,7 @@ def set_user_preference(user: object, key: SettingKey, value: object) -> None:
             raise ValidationError(f"No device with id {device_id!r}.")
 
     UserPreferences.get_for_user(user).set_preference_value(key, normalized)
+    return normalized
 
 
 def set_site_setting(key: SettingKey, value: object) -> None:

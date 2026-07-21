@@ -11,6 +11,17 @@ function mountFields(): HTMLElement {
       <select data-setting-key="DESTINATION" name="destination">
         <option value="">Unset</option><option value="stats">Statistics</option>
       </select>
+      <pop-over>
+        <button data-pop-over-trigger aria-label="Default source">
+          <span data-setting-origin="default"
+              data-setting-source-key="DESTINATION"
+              class="bg-neutral-quaternary text-heading">Default</span>
+        </button>
+        <div data-pop-over-panel>
+          <dl><div data-setting-source-description><dt>Source</dt>
+            <dd>The built-in default.</dd></div></dl>
+        </div>
+      </pop-over>
       <input data-setting-key="LIMIT" name="limit" type="number" value="10">
       <input data-setting-key="NAME" name="name" type="text" value="Before">
       <input data-setting-key="LOCKED" name="locked" value="Pinned" disabled>
@@ -92,6 +103,61 @@ describe("<live-setting-fields>", () => {
     expect(JSON.parse(String(options.body))).toEqual({ value: "After" });
     await vi.waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
     expect(input.hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("updates source metadata from each resolved PATCH response", async () => {
+    const fetchStub = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "DESTINATION",
+          value: "stats",
+          source: "user",
+          locked: false,
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "DESTINATION",
+          value: "sessions",
+          source: "database",
+          locked: false,
+        }),
+      } as Response);
+    window.fetchWithHtmxTriggers = fetchStub;
+    const host = mountFields();
+    const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
+    const badge = host.querySelector<HTMLElement>("[data-setting-source-key]")!;
+    const trigger = badge.closest("pop-over")!.querySelector("[data-pop-over-trigger]")!;
+    const description = badge.closest("pop-over")!
+      .querySelector<HTMLElement>("[data-setting-source-description] dd")!;
+
+    expect(badge.classList.contains("bg-neutral-quaternary")).toBe(true);
+    expect(badge.classList.contains("bg-brand-soft")).toBe(false);
+
+    select.value = "stats";
+    change(select);
+    await vi.waitFor(() => expect(badge.textContent).toBe("Personal"));
+    expect(badge.dataset.settingOrigin).toBe("user");
+    expect(badge.classList.contains("bg-brand-soft")).toBe(true);
+    expect(badge.classList.contains("bg-neutral-quaternary")).toBe(false);
+    expect(trigger.getAttribute("aria-label")).toBe("Personal source");
+    expect(description.textContent).toBe(
+      "Saved for your account and overrides the site default.",
+    );
+
+    select.value = "";
+    change(select);
+    await vi.waitFor(() => expect(badge.textContent).toBe("Database"));
+    expect(badge.dataset.settingOrigin).toBe("database");
+    expect(trigger.getAttribute("aria-label")).toBe("Database source");
+    expect(description.textContent).toBe(
+      "Saved in the application database as the current site-wide value.",
+    );
   });
 
   it("reverts to the last committed value and toasts on a rejected PATCH", async () => {

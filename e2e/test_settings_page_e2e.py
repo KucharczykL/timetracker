@@ -1,5 +1,7 @@
 """Mobile/desktop end-to-end coverage for the personal settings page."""
 
+import re
+
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
@@ -29,7 +31,11 @@ def _save_select(page: Page, key: str, name: str, value: str) -> None:
         )
     ) as saved:
         page.locator(f'select[name="{name}"]').select_option(value)
-    assert saved.value.status == 204
+    assert saved.value.status == 200
+    badge = page.locator(f'[data-setting-source-key="{key}"]')
+    expect(badge).to_have_attribute("data-setting-origin", "user")
+    expect(badge).to_have_text("Personal")
+    expect(badge).to_have_class(re.compile(r"\bbg-brand-soft\b"))
 
 
 @pytest.mark.parametrize(
@@ -60,6 +66,10 @@ def test_personal_settings_persist_and_drive_consumers(
         expect(trigger).to_be_hidden()
         expect(rail).to_be_visible()
 
+    device_badge = page.locator('[data-setting-source-key="DEFAULT_DEVICE"]')
+    expect(device_badge).to_have_attribute("data-setting-origin", "default")
+    expect(device_badge).to_have_class(re.compile(r"\bbg-neutral-quaternary\b"))
+
     currency = page.locator('input[name="default_currency"]')
     currency.fill("EUR")
     with page.expect_response(
@@ -69,7 +79,7 @@ def test_personal_settings_persist_and_drive_consumers(
         )
     ) as currency_saved:
         currency.press("Tab")
-    assert currency_saved.value.status == 204
+    assert currency_saved.value.status == 200
     _save_select(
         page,
         "DEFAULT_DEVICE",
