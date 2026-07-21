@@ -106,7 +106,9 @@ class GroupedFormFieldsTest(SimpleTestCase):
 class SettingsBadgeAndFieldStateTest(SimpleTestCase):
     def test_badge_tone_is_a_real_palette_parameter(self):
         assert "bg-brand-soft" in str(Badge("Default"))
-        assert "bg-neutral-secondary-medium" in str(Badge("Database", tone="neutral"))
+        neutral = str(Badge("Database", tone="neutral"))
+        assert "bg-neutral-quaternary" in neutral
+        assert " border " not in neutral
         assert "bg-warning-soft" in str(Badge("Locked", tone="warning"))
 
     def test_source_lock_composite_is_one_badge_with_an_icon(self):
