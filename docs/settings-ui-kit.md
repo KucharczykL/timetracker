@@ -24,6 +24,10 @@ page-local variants.
 
 A page supplies ordered `SettingsSection` values to `SettingsScaffold`. Inside a
 section, ordinary fields are a Django form rendered by grouped `FormFields`.
+The scaffold owns section rhythm: title and description form an 8px header
+group, separated by 24px from section content. Consumers provide content only;
+they do not recreate or tune this spacing per page. Server-rendered and browser
+tests lock both the anatomy and computed gaps.
 `SettingFieldState` adds the registry key, origin, help, and optional lock reason;
 the kit puts the merged source/lock badge beside the label and gives every badge
 an origin tooltip. Locked tooltips repeat the field-specific reason, while help
