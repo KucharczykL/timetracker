@@ -346,13 +346,13 @@ def _lock_reason(state: SettingFieldState) -> str:
     return f"Managed by {source_label}; it cannot be changed here."
 
 
-def _field_metadata(field_name: str, state: SettingFieldState) -> Node | None:
+def _field_metadata(metadata_id: str, state: SettingFieldState) -> Node | None:
     reason = _lock_reason(state) if state.locked else state.reason
     details = [text for text in (state.help_text, reason) if text]
     if not details:
         return None
     return Div(
-        id=f"id_{field_name}_setting_metadata",
+        id=metadata_id,
         class_="mt-2 flex flex-col gap-1",
         data_setting_metadata="",
     )[*[P(class_="text-type-micro text-body")[text] for text in details]]
@@ -374,6 +374,18 @@ def prepare_setting_fields(
         if field_name not in form.fields:
             raise ValueError(f"Unknown setting form field {field_name!r}.")
         field = form.fields[field_name]
+        bound_field = form[field_name]
+        # Django prefixes the bound control ID when multiple forms share a page.
+        # Derive every related ID from that real control identity rather than
+        # from the unprefixed field name, or separate forms containing e.g.
+        # `enabled` would emit duplicate tooltip/metadata IDs.
+        control_id = (
+            bound_field.id_for_label
+            or bound_field.auto_id
+            or f"id_{form.add_prefix(field_name)}"
+        )
+        tooltip_id = f"{control_id}_setting_source_tooltip"
+        metadata_id = f"{control_id}_setting_metadata"
         field.widget.attrs["data-setting-key"] = state.key
         # Provisional for unlocked fields; see the epic-final deletion gate above
         # SettingSourceBadge before extending this pattern to more settings.
@@ -381,11 +393,10 @@ def prepare_setting_fields(
             state.source,
             locked=state.locked,
             reason=_lock_reason(state) if state.locked else "",
-            id=f"id_{field_name}_setting_source_tooltip",
+            id=tooltip_id,
         )
-        metadata = _field_metadata(field_name, state)
+        metadata = _field_metadata(metadata_id, state)
         if metadata is not None:
-            metadata_id = f"id_{field_name}_setting_metadata"
             describedby = str(field.widget.attrs.get("aria-describedby", "")).strip()
             field.widget.attrs["aria-describedby"] = " ".join(
                 part for part in (describedby, metadata_id) if part
