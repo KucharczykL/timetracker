@@ -203,7 +203,7 @@ def NameWithIcon(
                     ("class", "hidden group-data-[overflowing]:block"),
                 ]
             )[
-                Div(class_="text-type-micro text-body-subtle")["Name"],
+                Div(class_="text-type-micro text-body")["Name"],
                 Div(class_="font-medium")[resolved.name],
             ],
             Div(
@@ -212,7 +212,7 @@ def NameWithIcon(
                     ("class", "group-data-[overflowing]:mt-2"),
                 ]
             )[
-                Div(class_="text-type-micro text-body-subtle")["Sort name"],
+                Div(class_="text-type-micro text-body")["Sort name"],
                 Div(class_="font-medium")[sort_name],
             ],
         )

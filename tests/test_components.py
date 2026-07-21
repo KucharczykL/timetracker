@@ -1315,7 +1315,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIn('data-truncated-detail="name"', html)
         self.assertIn("hidden group-data-[overflowing]:block", html)
         self.assertIn('data-truncated-detail="sort-name"', html)
-        self.assertIn("text-type-micro text-body-subtle", html)
+        self.assertIn("text-type-micro text-body", html)
         self.assertIn(">Name</div>", html)
         self.assertIn(">Sort name</div>", html)
         self.assertIn("Display Name, The", html)
