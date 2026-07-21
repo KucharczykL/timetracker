@@ -197,31 +197,44 @@ class SettingsScaffoldTest(SimpleTestCase):
             SettingsSection("privacy", "Privacy", Div()["Privacy fields"]),
         ]
 
-    def test_same_dom_carries_mobile_chips_and_desktop_rail_classes(self):
+    def test_same_dom_carries_mobile_sheet_and_desktop_rail_classes(self):
         scaffold = SettingsScaffold(self._sections())
         html = str(scaffold)
         assert html.count("<settings-section-nav") == 1
         assert html.count('data-section-nav-item=""') == 2
+        assert html.count('data-section-nav-list=""') == 1
         assert 'href="#general"' in html and 'href="#privacy"' in html
         assert "@4xl:grid-cols-[14rem_minmax(0,1fr)]" in html
         host_start = html.index("<settings-section-nav")
         host_tag = html[host_start : html.index(">", host_start) + 1]
-        nav_start = html.index("<nav", host_start)
+        nav_start = html.index('data-section-nav-rail=""', host_start)
+        nav_start = html.rfind("<nav", host_start, nav_start)
         nav_tag = html[nav_start : html.index(">", nav_start) + 1]
-        assert "@4xl:sticky" in host_tag
-        assert "@4xl:top-4" in host_tag
-        assert "@4xl:self-start" in host_tag
-        assert "@4xl:sticky" not in nav_tag
-        assert "@4xl:top-4" not in nav_tag
-        assert "@4xl:max-h-[calc(100vh-2rem)]" in nav_tag
-        assert "@4xl:overflow-y-auto" in nav_tag
+        assert "sticky" in host_tag
+        assert "top-4" in host_tag
+        assert "self-start" in host_tag
+        assert "sticky" not in nav_tag
+        assert "max-h-[calc(100vh-2rem)]" in nav_tag
+        assert "overflow-y-auto" in nav_tag
         assert "focus:ring-4 focus:ring-inset" in html
+        assert "Settings sections" in html
+        assert "Jump to a section" in html
+        assert 'aria-haspopup="dialog"' in html
+        assert 'data-bottom-sheet=""' in html
+        assert 'data-section-nav-sheet-destination=""' in html
+        dialog_start = html.index("<dialog")
+        dialog_tag = html[dialog_start : html.index(">", dialog_start) + 1]
+        assert "hidden" not in dialog_tag
+        assert 'role="menu"' not in html
+        assert 'role="menuitem"' not in html
         assert html.count('data-settings-section=""') == 2
         assert html.count('data-settings-section-header=""') == 2
         assert html.count('data-settings-section-content=""') == 2
-        assert "scroll-mt-4 flex flex-col gap-6" in html
+        assert "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6" in html
+        assert html.count('data-settings-section-heading=""') == 2
+        assert html.count('tabindex="-1"') == 2
         assert "flex flex-col gap-2" in html
-        assert html.count('class="text-type-subheading text-heading"') == 2
+        assert html.count("text-type-subheading text-heading") == 2
 
         media = collect_media(scaffold)
         assert "dist/elements/settings-section-nav.js" in media.js

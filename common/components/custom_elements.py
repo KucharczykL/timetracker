@@ -636,11 +636,14 @@ _Dropdown = custom_element_builder("drop-down")
 # panel constant below — the single source of truth for "what a dropdown panel
 # looks like" (#295: unshared panel styling is how a text token ends up as a
 # background). Width is per-variant.
-_DROPDOWN_PANEL_SURFACE = (
-    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
+_OVERLAY_SURFACE_CLASS = (
     "bg-surface-overlay text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
+)
+_DROPDOWN_PANEL_SURFACE = (
+    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
+    f"{_OVERLAY_SURFACE_CLASS}"
 )
 _DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
 DROPDOWN_PANEL_OUTLINE_CLASS = f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
@@ -733,13 +736,22 @@ def _stamp_trigger_contract(trigger: Element, id: str) -> Element:
     )
 
 
-def _stamp_target_contract(target: Element, id: str) -> Element:
-    """The panel's behavioral contract: the [data-menu] hook + initial hidden
-    state + id. `aria-labelledby` auto-wires to the toggle UNLESS the target
-    carries an explicit `aria-label` (which would otherwise be overridden by it —
-    the icon-only-trigger case)."""
-    contract = [("data-menu", ""), ("id", id), ("hidden", "")]
-    if not any(key == "aria-label" for key, _ in target.attributes):
+def _stamp_target_contract(
+    target: Element, id: str, *, initially_hidden: bool = True
+) -> Element:
+    """Stamp the panel hook/id and ordinary dropdown visibility contract.
+
+    Anchored panels begin with ``hidden``. A native ``<dialog>`` is already
+    hidden while closed, so the sheet opts out and lets ``showModal``/``close``
+    remain its sole visibility source. An explicit accessible name/labelled-by
+    supplied by a richer dialog target is preserved.
+    """
+    contract = [("data-menu", ""), ("id", id)]
+    if initially_hidden:
+        contract.append(("hidden", ""))
+    if not any(
+        key in {"aria-label", "aria-labelledby"} for key, _ in target.attributes
+    ):
         contract.append(("aria-labelledby", f"{id}Link"))
     return _stamp(target, contract, id)
 
@@ -750,6 +762,13 @@ def _as_menu_trigger(trigger: Element) -> Element:
     if any(key == "aria-haspopup" for key, _ in trigger.attributes):
         return trigger
     return _stamp(trigger, [("aria-haspopup", "menu")], "menu")
+
+
+def _as_dialog_trigger(trigger: Element) -> Element:
+    """Add the modal-dialog popup semantic without overriding an explicit one."""
+    if any(key == "aria-haspopup" for key, _ in trigger.attributes):
+        return trigger
+    return _stamp(trigger, [("aria-haspopup", "dialog")], "dialog")
 
 
 def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
@@ -832,7 +851,9 @@ def DropdownDivider() -> Node:
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
-type DropdownBehaviorName = Literal["menu", "select", "combobox", "inline-combobox"]
+type DropdownBehaviorName = Literal[
+    "menu", "select", "combobox", "inline-combobox", "sheet"
+]
 
 
 def _assemble(
@@ -864,7 +885,7 @@ def _assemble(
     )[
         Fragment(
             _stamp_trigger_contract(trigger, id),
-            _stamp_target_contract(target, id),
+            _stamp_target_contract(target, id, initially_hidden=behavior != "sheet"),
         )
     ]
 
@@ -896,6 +917,76 @@ def Dropdown(
         wrapper_class="relative inline-flex",
         behavior=behavior,
         config=config,
+    )
+
+
+def BottomSheet(
+    *,
+    trigger_element: Element,
+    title: Child,
+    children: Children,
+    id: str,
+    close_label: str = "Close dialog",
+) -> Node:
+    """A reusable modal bottom sheet behind the generic ``<drop-down>`` shell.
+
+    The native dialog is a transparent viewport hit area; the visible child
+    panel owns surface geometry, header, close action, internal scrolling, and
+    safe-area padding. Callers supply semantic body content only.
+    """
+    title_id = f"{id}-title"
+    close_button = ControlButton(
+        [
+            ("data-sheet-dismiss", ""),
+            ("aria-label", close_label),
+            ("class", "shrink-0 rounded-base focus:ring-inset"),
+        ],
+        variant="ghost",
+    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    target = Element(
+        "dialog",
+        [
+            ("data-bottom-sheet", ""),
+            ("aria-labelledby", title_id),
+        ],
+    )[
+        Div(
+            data_sheet_panel="",
+            class_=(
+                "relative isolate flex w-full max-h-[min(80dvh,32rem)] flex-col "
+                "overflow-hidden rounded-t-base border border-default-medium "
+                f"shadow-lg/50 {_OVERLAY_SURFACE_CLASS}"
+            ),
+        )[
+            Div(
+                class_=(
+                    "relative z-10 flex shrink-0 items-center justify-between gap-4 "
+                    "border-b border-default-medium bg-surface-overlay px-4 py-3"
+                )
+            )[
+                Element(
+                    "h2",
+                    [("id", title_id), ("class", "text-type-section text-heading")],
+                )[title],
+                close_button,
+            ],
+            Div(
+                data_sheet_body="",
+                class_=(
+                    "min-h-0 overflow-y-auto overscroll-contain px-2 pt-2 "
+                    "pb-[max(1rem,env(safe-area-inset-bottom))]"
+                ),
+            )[*as_children(children)],
+        ]
+    ]
+    return _assemble(
+        _as_dialog_trigger(trigger_element),
+        target,
+        id=id,
+        placement="bottom-start",
+        submenu=False,
+        wrapper_class="relative flex w-full",
+        behavior="sheet",
     )
 
 

@@ -6,6 +6,7 @@ import "./behaviors/menu.js";
 import "./behaviors/select.js";
 import "./behaviors/combobox.js";
 import "./behaviors/inline-combobox.js";
+import "./behaviors/sheet.js";
 
 // Finds the element's own [data-toggle]/[data-menu], ignoring any that belong to
 // a nested <drop-down> (so a sub-dropdown never cross-wires its parent).
@@ -16,9 +17,10 @@ function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
   return null;
 }
 
-// The one generic dropdown element. attachMenu owns open/close/position/keyboard;
-// a registered behavior (menu, select, …) declares the attachMenu options it
-// needs and layers its own wiring. The element reads no type-specific attribute.
+// The one generic dropdown element. A registered behavior may provide its own
+// controller (the modal sheet does); otherwise attachMenu owns the usual
+// open/close/position/keyboard behavior. The element reads no type-specific
+// attribute.
 class DropdownElement extends HTMLElement {
   private controller?: MenuController;
   private unbindDocument?: () => void;
@@ -47,11 +49,13 @@ class DropdownElement extends HTMLElement {
           "it will open/close but its behavior wiring is missing.",
       );
     }
-    const controller = attachMenu(this, toggle, menu, {
-      placement: props.placement as MenuPlacement,
-      submenu: props.submenu,
-      ...(behavior?.menuOptions?.(this) ?? {}),
-    });
+    const controller = behavior?.createController
+      ? behavior.createController(this, toggle, menu)
+      : attachMenu(this, toggle, menu, {
+          placement: props.placement as MenuPlacement,
+          submenu: props.submenu,
+          ...(behavior?.menuOptions?.(this) ?? {}),
+        });
     this.controller = controller;
     this.unbindDocument = controller.bindDocument();
     // wire()'s cleanup return is intentionally discarded. Every behavior binds

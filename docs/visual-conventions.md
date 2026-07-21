@@ -190,11 +190,15 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   idiom (`filters.py` comparison row). Panes declare `@container` inside, so controls
   auto-size by available width (the `@md:` = 28rem contract). The split itself stays
   viewport-driven; container-driven splits are self-referential.
-- **Overlay stack** (`anchored-position` / `menu-behavior` / `drop-down` / `pop-over` /
-  `modal-dialog`): reuse unchanged for every chip dropdown, flyout, or future sheet. No new
-  positioning code. The `<pop-over>` host carries `self-start` so a flex parent can't stretch
-  it to full width — `positionAnchored` centres the fixed panel on the host, so a stretched
-  host throws the panel far off the trigger (#446). Keep it when reusing popovers in flex rows.
+- **Overlay stack:** reuse trigger/panel IDs, lifecycle, surface tokens, and the documented
+  z-scale, but keep presentation controllers distinct. `anchored-position` + `menu-behavior`
+  own trigger-anchored dropdown geometry and menu keyboard behavior; `pop-over` owns passive
+  tooltip behavior; a modal bottom sheet uses a native `<dialog>` in the UA top layer and a
+  dedicated sheet controller. A sheet is viewport-docked and document-scroll-locking, so it
+  must never pass through `positionAnchored` or inherit menu roles/roving tabindex. The
+  `<pop-over>` host carries `self-start` so a flex parent can't stretch it to full width —
+  `positionAnchored` centres the fixed panel on the host, so a stretched host throws the panel
+  far off the trigger (#446). Keep it when reusing popovers in flex rows.
 - **Popover trigger** (`_popover_html`, #445): by default (`tap=True`) the trigger is a real
   `<button>`, so a tap toggles it on touch (mouse hover unchanged, pointer-type gated); it is a
   toggletip (`role="tooltip"` + `aria-describedby`, no `aria-expanded`). A popover nested inside
@@ -209,10 +213,21 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   It owns semantic `<dl>` markup, an 8px item rhythm, micro muted terms, and medium-weight
   values; callers supply only the definitions and any conditional visibility attributes.
 - **Priority-plus overflow** (quick-filter bar): the full recipe (measure-once, reserved
-  furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) is directly
-  liftable for an anchor-chip nav — but the logic is private to `QuickFilterBarElement`.
-  Extract-vs-replicate is **#384's decision**, made explicitly there (extraction touches a
-  load-bearing tested element).
+  furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) remains the
+  quick-filter solution. It was tested for the #384 anchor-chip navigation and rejected: a
+  lone chip plus `More` does not identify itself as page navigation. Settings instead move
+  one semantic link list between a mobile modal bottom sheet and the desktop sticky rail;
+  quick-filter priority-plus and its shared width arithmetic remain unchanged.
+- **Modal bottom sheet:** the closed mobile control names both subject and action (`Settings
+  sections` / `Jump to a section`). The native `<dialog>` is a transparent viewport hit area
+  with a visible bottom-docked child panel, safe-area padding, internal scrolling, native
+  `cancel` handling, a local Tab/Shift+Tab boundary guard, and a reversible document scroll
+  lock. Escape remains exclusively owned by native `cancel`; the boundary guard exists only
+  because browser sequential-focus behavior differs at modal edges. Its contents retain
+  document semantics (`nav` / list / links), not ARIA-menu semantics. Section activation
+  closes first, then updates the hash, scrolls below the sticky trigger, and focuses the
+  destination. Do not show a drag handle without implementing and testing the corresponding
+  gesture.
 - **Navbar collapse** is the pattern precedent (same-DOM stacked↔inline reflow), not a code
   precedent — its mechanic is legacy Flowbite `data-collapse-toggle` + raw palette +
   viewport breakpoints. New responsive behavior is custom elements + container queries.

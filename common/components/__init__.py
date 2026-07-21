@@ -23,6 +23,7 @@ from common.components.core import (
     render,
 )
 from common.components.custom_elements import (
+    BottomSheet,
     ButtonDropdown,
     Dropdown,
     DropdownActionItem,
@@ -190,6 +191,7 @@ __all__ = [
     "Truncation",
     "BaseComponent",
     "register_element",
+    "BottomSheet",
     "Dropdown",
     "DropdownActionItem",
     "DropdownCheckItem",

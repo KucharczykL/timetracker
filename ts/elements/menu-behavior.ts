@@ -65,11 +65,20 @@ export interface MenuController {
 // aesthetic: flush edges read as one merged surface; 1px of daylight makes the
 // flyout legible as a distinct, layered panel without looking detached.
 const SUBMENU_GAP = 1;
-const OPEN_MENUS_EVENT = "dropdown-menu:open";
+export const OPEN_MENUS_EVENT = "dropdown-menu:open";
 const TYPEAHEAD_RESET_MS = 500;
 
-interface OpenMenuDetail {
+export interface OpenMenuDetail {
   host: HTMLElement;
+}
+
+// Shared single-open notification for every controller hosted by <drop-down>.
+// Anchored menus listen below; the modal sheet emits the same notification so
+// an already-open dropdown cannot linger underneath it.
+export function notifyDropdownOpen(host: HTMLElement): void {
+  document.dispatchEvent(
+    new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
+  );
 }
 
 // Wires open/close + positioning + keyboard nav for one toggle/menu pair living
@@ -200,9 +209,7 @@ export function attachMenu(
     // filtering shrinks the list), so a top-flipped panel re-anchors instead of
     // keeping a stale top.
     resizeObserver?.observe(menu);
-    document.dispatchEvent(
-      new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
-    );
+    notifyDropdownOpen(host);
     // Lifecycle seam for future consumers: behaviors or htmx (hx-on:dropdown:show)
     // can observe visibility here instead of via a JS callback. These bubble, so a
     // submenu open also fires dropdown:show on its ancestor <drop-down>s.

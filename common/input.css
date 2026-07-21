@@ -256,6 +256,59 @@
     }
 }
 
+/* Native modal bottom sheet. The dialog is the transparent viewport hit area;
+   its child panel owns the visible surface, so a press on panel padding never
+   masquerades as a backdrop press. Visibility itself remains native
+   showModal()/close() state — never a competing hidden/open class. */
+dialog[data-bottom-sheet] {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    color: inherit;
+    background: transparent;
+}
+
+dialog[data-bottom-sheet][open] {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+dialog[data-bottom-sheet]::backdrop {
+    @apply bg-dark-backdrop/70;
+    opacity: 0;
+    transition: opacity 200ms ease-out;
+}
+
+dialog[data-bottom-sheet] [data-sheet-panel] {
+    transform: translateY(100%);
+    transition: transform 200ms ease-out;
+}
+
+dialog[data-bottom-sheet][data-sheet-state="opening"]::backdrop,
+dialog[data-bottom-sheet][data-sheet-state="open"]::backdrop {
+    opacity: 1;
+}
+
+dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
+    transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    dialog[data-bottom-sheet]::backdrop,
+    dialog[data-bottom-sheet] [data-sheet-panel] {
+        transition: none;
+    }
+}
+
 /* The touch reveal button occupies the final 1.5rem of a truncated-text host.
    Keep that region fully transparent without putting the overflow-only button
    in layout (which would make its visibility change the overflow measurement). */

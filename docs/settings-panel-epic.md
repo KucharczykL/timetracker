@@ -73,8 +73,11 @@ targets and the corrections from adversarial review:
 - **Page shell / width:** `render_page()` + `ContentContainer` ([common/layout.py](common/layout.py)).
 - **Per-user store + API shape:** copy `FilterPreset` + its preset router
   ([games/api.py:382](games/api.py)) — `request.user` scoping, `NinjaAPI(auth=django_auth)` CSRF.
-- **Responsive overflow reference:** the quick-filter ResizeObserver priority-plus pattern
-  ([ts/elements/quick-filter-bar.ts](ts/elements/quick-filter-bar.ts)).
+- **Responsive section navigation:** the kit uses one same-DOM link list. At narrow scaffold
+  widths it moves into a native-dialog bottom sheet behind a full-width `Settings sections` /
+  `Jump to a section` trigger; at wide widths it returns to the sticky rail. The generic
+  `Dropdown` trigger/panel shell is reused, but the sheet has its own modal controller and
+  never inherits quick-filter priority-plus or ARIA-menu semantics.
 
 Genuinely net-new (nothing to reuse): the responsive **section-nav scaffold**, the
 **source+locked badge** composite (on `Badge`), the **masked-secret** field.
