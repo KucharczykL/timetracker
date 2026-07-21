@@ -497,6 +497,22 @@ register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
 _QuickFilterBarElement = custom_element_builder("quick-filter-bar")
 
 
+class SettingsSectionNavProps(TypedDict):
+    pass
+
+
+register_element("settings-section-nav", "SettingsSectionNav", SettingsSectionNavProps)
+
+
+class LiveSettingFieldsProps(TypedDict):
+    patch_url_template: str  # contains the literal __key__ placeholder
+    csrf: str
+    event: str  # body event dispatched after a successful save
+
+
+register_element("live-setting-fields", "LiveSettingFields", LiveSettingFieldsProps)
+
+
 class YearPickerProps(TypedDict):
     selected_year: str  # "" for the all-time/empty state
     available_years: str  # csv, e.g. "2019,2020"

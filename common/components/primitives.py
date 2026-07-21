@@ -45,6 +45,8 @@ type ButtonVariant = Literal[
     "plain",  # borderless navbar nav-link look (colorless)
     "ghost",  # transparent-until-hover dropdown-toggle look (colorless)
 ]
+type BadgeSize = Literal["sm", "base", "lg"]
+type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
 # Shared disabled appearance for every form control, so all form elements look
 # the same when disabled. Put on the control itself (DISABLED_CONTROL_CLASS) or,
@@ -987,32 +989,47 @@ def Pill(
 # it reads well from a heading count down to a one-character sort position.
 _BADGE_BASE_CLASS = (
     "font-condensed inline-flex items-center justify-center font-semibold "
-    "leading-none rounded bg-brand-soft text-heading"
+    "leading-none rounded"
 )
 _BADGE_SIZE_CLASSES = {
     "sm": "text-type-micro px-1.5 py-0.5",
     "base": "text-type-body px-2 py-0.5",
     "lg": "text-type-heading px-2.5 py-0.5",
 }
+_BADGE_TONE_CLASSES = {
+    "brand": "bg-brand-soft text-heading",
+    "neutral": "bg-neutral-secondary-medium text-heading",
+    "success": "bg-success-soft text-fg-success-strong",
+    "warning": "bg-warning-soft text-fg-warning",
+    "danger": "bg-danger-soft text-fg-danger-strong",
+}
 
 
 def Badge(
     content: Child,
     *,
-    size: str = "base",
+    size: BadgeSize = "base",
+    tone: BadgeTone = "brand",
     extra_class: str = "",
     attributes: Attributes | None = None,
 ) -> Node:
     """A static brand-soft badge for counts and indicators.
 
-    ``size`` picks the text/padding scale (``sm`` / ``base`` / ``lg``);
+    ``size`` picks the text/padding scale (``sm`` / ``base`` / ``lg``), and
+    ``tone`` picks a semantic palette while preserving the historical
+    brand-soft default. Palette changes belong here rather than in
+    ``extra_class``: two competing background utilities resolve by stylesheet
+    order, not by the order in the HTML class attribute.
     ``extra_class`` appends positioning utilities (e.g. ``ms-2`` next to a
     heading). For a removable filter tag use :func:`Pill` instead.
     """
     attributes = as_attributes(attributes)
-    size_class = _BADGE_SIZE_CLASSES.get(size, _BADGE_SIZE_CLASSES["base"])
+    size_class = _BADGE_SIZE_CLASSES[size]
+    tone_class = _BADGE_TONE_CLASSES[tone]
     classes = " ".join(
-        part for part in (_BADGE_BASE_CLASS, size_class, extra_class) if part
+        part
+        for part in (_BADGE_BASE_CLASS, size_class, tone_class, extra_class)
+        if part
     )
     return Span([("class", classes), *attributes])[content]
 
@@ -1138,7 +1155,115 @@ def _field_errors(errors) -> Node | None:
     return Ul(class_=_FIELD_ERROR_CLASS)[*items]
 
 
-def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
+class FormFieldGroup(NamedTuple):
+    """One semantic group rendered by :func:`FormFields`.
+
+    ``fields`` contains Django form field names in display order. ``id`` is
+    optional, but useful when a page links directly to a group. Any visible
+    form fields omitted from every explicit group are rendered afterwards in
+    their original form order, so extending an existing form cannot silently
+    hide a newly-added field.
+    """
+
+    legend: str
+    fields: Sequence[str]
+    description: str = ""
+    id: str = ""
+
+
+def _form_field_row(field, extra: Node | None = None) -> Node:
+    """Render one visible ``BoundField`` using the established row contract."""
+    is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
+    label = Label(for_=field.id_for_label, class_=_LABEL_CLASS)[str(field.label)]
+    control = Safe(str(field))
+    errors = _field_errors(field.errors)
+
+    if is_checkbox:
+        children: list[Node] = [label, control]
+        if errors:
+            children.append(errors)
+        if extra:
+            children.append(extra)
+        return Div(class_=_CHECKBOX_ROW_CLASS)[*children]
+
+    children = []
+    if errors:
+        children.append(errors)
+    children.extend([label, control])
+    if extra:
+        children.append(extra)
+    return Div()[*children]
+
+
+def _grouped_form_fields(
+    form,
+    groups: Sequence[FormFieldGroup],
+    extras: dict[str, Node],
+) -> list[Node]:
+    """Render validated fieldsets plus any visible, ungrouped remainder."""
+    field_names = set(form.fields)
+    grouped_names: set[str] = set()
+    for group in groups:
+        for name in group.fields:
+            if name not in field_names:
+                raise ValueError(
+                    f"FormFields group {group.legend!r} names unknown field {name!r}."
+                )
+            if name in grouped_names:
+                raise ValueError(
+                    f"FormFields field {name!r} appears in multiple groups."
+                )
+            grouped_names.add(name)
+
+    fieldsets: list[Node] = []
+    for group in groups:
+        group_fields = [form[name] for name in group.fields if not form[name].is_hidden]
+        if not group_fields:
+            continue
+        description_id = f"{group.id}-description" if group.id else ""
+        attributes: list[HTMLAttribute] = [
+            ("class", "flex flex-col gap-3"),
+            ("data-form-field-group", ""),
+        ]
+        if group.id:
+            attributes.append(("id", group.id))
+        if description_id and group.description:
+            attributes.append(("aria-describedby", description_id))
+        group_children: list[Node] = [
+            Element(
+                "legend",
+                [("class", "text-type-section text-heading")],
+            )[group.legend]
+        ]
+        if group.description:
+            description_attributes: list[HTMLAttribute] = [
+                ("class", "text-type-body text-body")
+            ]
+            if description_id:
+                description_attributes.append(("id", description_id))
+            group_children.append(P(description_attributes)[group.description])
+        group_children.extend(
+            _form_field_row(field, extras.get(field.name)) for field in group_fields
+        )
+        fieldsets.append(Element("fieldset", attributes)[*group_children])
+
+    # Hidden controls stay outside fieldsets and render exactly once. Visible
+    # fields not named by a group follow the fieldsets in their normal order.
+    hidden = [Safe(str(field)) for field in form if field.is_hidden]
+    remainder = [
+        _form_field_row(field, extras.get(field.name))
+        for field in form
+        if not field.is_hidden and field.name not in grouped_names
+    ]
+    return [*hidden, *fieldsets, *remainder]
+
+
+def FormFields(
+    form,
+    *,
+    extras: dict[str, Node] | None = None,
+    groups: Sequence[FormFieldGroup] | None = None,
+) -> Node:
     """Render a Django form's fields as self-styled component rows.
 
     Replaces ``form.as_div()`` so labels, errors, row layout, and the checkbox
@@ -1146,6 +1271,11 @@ def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
     get their classes from ``PrimitiveWidgetsMixin``; composite widgets
     (SearchSelect) self-style. ``extras`` maps a field name to a node appended
     inside that field's row (e.g. the session timestamp helper buttons).
+
+    ``groups`` extends this renderer with semantic ``fieldset``/``legend``
+    grouping. It never delegates to a parallel renderer: errors, checkbox rows,
+    hidden controls, and extras keep the exact same path. Unknown or duplicate
+    field names raise instead of producing a partially-rendered settings form.
     """
     extras = extras or {}
     rows: list[Node] = []
@@ -1154,32 +1284,15 @@ def FormFields(form, *, extras: dict[str, Node] | None = None) -> Node:
     if non_field:
         rows.append(non_field)
 
+    if groups is not None:
+        rows.extend(_grouped_form_fields(form, groups, extras))
+        return Fragment(*rows, separator="\n")
+
     for field in form:
         if field.is_hidden:
             rows.append(Safe(str(field)))
             continue
-
-        is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
-        label = Label(for_=field.id_for_label, class_=_LABEL_CLASS)[str(field.label)]
-        control = Safe(str(field))
-        errors = _field_errors(field.errors)
-        extra = extras.get(field.name)
-
-        if is_checkbox:
-            children: list[Node] = [label, control]
-            if errors:
-                children.append(errors)
-            if extra:
-                children.append(extra)
-            rows.append(Div(class_=_CHECKBOX_ROW_CLASS)[*children])
-        else:
-            children = []
-            if errors:
-                children.append(errors)
-            children.extend([label, control])
-            if extra:
-                children.append(extra)
-            rows.append(Div()[*children])
+        rows.append(_form_field_row(field, extras.get(field.name)))
 
     return Fragment(*rows, separator="\n")
 

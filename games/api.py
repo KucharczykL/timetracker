@@ -639,6 +639,7 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
         set_user_preference(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
+    messages.success(request, f"{definition.label} saved")
     return Status(204, None)
 
 
@@ -673,6 +674,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
             set_site_setting(key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
+    messages.success(request, f"{definition.label} saved")
     return Status(204, None)
 
 

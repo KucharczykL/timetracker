@@ -18,6 +18,10 @@ import {
   setupModifierToggles,
 } from "./filter-widgets.js";
 import { readJSONProp, reportClientError } from "../client-errors.js";
+import {
+  priorityPlusFitCount,
+  priorityPlusTotalWidth,
+} from "./priority-plus.js";
 
 // The preset picker's search-select change payload: `last` is
 // the picked row, whose data-filter attribute carries the preset's filter
@@ -158,23 +162,15 @@ class QuickFilterBarElement extends HTMLElement {
     const rowWidth = row.clientWidth;
     // First try without the "⋯" reserve: if every facet fits alongside the
     // permanent furniture, nothing collapses.
-    const totalFacetsWidth = this.facets.reduce(
-      (sum, facet) => sum + facet.width + this.rowGap,
-      0,
-    );
+    const facetWidths = this.facets.map((facet) => facet.width);
+    const totalFacetsWidth = priorityPlusTotalWidth(facetWidths, this.rowGap);
     const furnitureOnly = this.reservedWidth - this.rowGap - overflowHost.offsetWidth;
     let fitCount: number;
     if (totalFacetsWidth + Math.max(furnitureOnly, 0) <= rowWidth) {
       fitCount = this.facets.length;
     } else {
-      let used = 0;
-      fitCount = 0;
       const available = rowWidth - this.reservedWidth;
-      for (const facet of this.facets) {
-        used += facet.width + this.rowGap;
-        if (used > available) break;
-        fitCount += 1;
-      }
+      fitCount = priorityPlusFitCount(facetWidths, available, this.rowGap);
     }
 
     this.facets.forEach((facet, index) => {
