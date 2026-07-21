@@ -215,12 +215,56 @@ def test_split_modal_dismisses_on_escape_and_backdrop(
     expect(modal).to_have_count(0)
 
 
+@pytest.fixture
+def touch_page(live_server, browser, django_user_model):
+    """A logged-in page in a touch-enabled context (so locator.tap() works and
+    pointer events report pointerType "touch"). Desktop-width viewport."""
+    django_user_model.objects.create_user(username="tester", password="secret123")
+    context = browser.new_context(has_touch=True)
+    page = context.new_page()
+    page.goto(f"{live_server.url}{reverse('login')}")
+    page.fill('input[name="username"]', "tester")
+    page.fill('input[name="password"]', "secret123")
+    page.click('button:has-text("Login")')
+    page.wait_for_url(f"{live_server.url}/tracker**")
+    yield page
+    context.close()
+
+
 def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
-    """A truncated name's <pop-over> tooltip: the panel is hidden until the
-    trigger is hovered, then revealed. Anchored on a long game name (its trigger
-    text is always visible), not the converted price (blank until the FX task
-    runs)."""
+    """A truncated name's <pop-over> tooltip: the panel is hidden until hovered,
+    then revealed. The reveal trigger is a glyph <button> beside the link, but
+    the whole host opens on hover — so hovering the NAME (the link) opens it too,
+    preserving the pre-extraction hover surface (#445 M1)."""
     page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    Game.objects.create(
+        name="A Very Long Game Name That Exceeds The Thirty Char Limit",
+        platform=platform,
+    )
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    trigger = page.locator("pop-over [data-pop-over-trigger]").first
+    name_link = page.locator("pop-over a").first
+    panel = page.locator("pop-over [data-pop-over-panel]").first
+
+    expect(panel).to_be_hidden()
+    # Hovering the name link (not just the glyph) opens the tooltip.
+    name_link.hover()
+    expect(panel).to_be_visible()
+    expect(panel.locator("[data-pop-over-arrow]")).to_be_visible()
+    page.mouse.move(0, 0)
+    expect(panel).to_be_hidden()
+    # The glyph trigger opens it too.
+    trigger.hover()
+    expect(panel).to_be_visible()
+
+
+def test_name_popover_taps_open_on_touch(touch_page: Page, live_server):
+    """On touch (no hover) a tap on the glyph trigger toggles the tooltip; a tap
+    elsewhere dismisses it. The link is a sibling of the trigger, so this reveal
+    path never fights the link's own navigation."""
+    page = touch_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     Game.objects.create(
         name="A Very Long Game Name That Exceeds The Thirty Char Limit",
@@ -232,10 +276,8 @@ def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
     panel = page.locator("pop-over [data-pop-over-panel]").first
 
     expect(panel).to_be_hidden()
-    trigger.hover()
+    trigger.tap()
     expect(panel).to_be_visible()
-    # The pointer arrow is rendered and visible while the tooltip is open.
-    expect(panel.locator("[data-pop-over-arrow]")).to_be_visible()
-    # Moving the pointer away hides it again.
-    page.mouse.move(0, 0)
+    # A tap on empty page space dismisses (pointerdown outside the host).
+    page.touchscreen.tap(2, 2)
     expect(panel).to_be_hidden()

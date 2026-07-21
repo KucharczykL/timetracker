@@ -241,6 +241,11 @@ def _popover_html(
     wrapped_content: str = "",
     wrapped_classes: str = "",
     slot: "Node | str" = "",
+    *,
+    tap: bool = True,
+    trigger_label: str = "",
+    preface: "Node | str" = "",
+    selectable_text: bool = False,
 ) -> Node:
     """Generate popover HTML. Single source of truth for popover structure.
 
@@ -248,16 +253,42 @@ def _popover_html(
     ``ts/elements/pop-over.ts``). The trigger carries ``aria-describedby``
     pointing at the ``role="tooltip"`` panel; the element owns show/hide and
     viewport-aware ``position: fixed`` placement.
+
+    ``tap`` (default) renders the trigger as a real ``<button>`` so a tap on a
+    touch device toggles the panel; ``tap=False`` keeps the hover/focus-only
+    ``<span>`` (used where the popover sits inside a caller's interactive
+    element, so a ``<button>`` would nest illegally). ``preface`` renders a node
+    (e.g. a link) as a sibling *before* the trigger inside the host — the whole
+    host still opens on hover, but only the small ``<button>`` trigger is
+    tappable, keeping the trigger out of the preface link. ``trigger_label``
+    sets the button's ``aria-label`` when its visible content is a bare glyph;
+    ``selectable_text`` re-enables text selection + left alignment on button
+    triggers whose content is meaningful text (e.g. a price).
     """
     display_content = wrapped_content if wrapped_content else slot
+    trigger_children = [display_content] if display_content else []
 
-    trigger = Span(
-        [
+    if tap:
+        button_classes = wrapped_classes
+        if selectable_text:
+            button_classes = f"{button_classes} select-text text-start".strip()
+        trigger_attributes = [
+            ("type", "button"),
             ("data-pop-over-trigger", ""),
             ("aria-describedby", id),
-            ("class", wrapped_classes),
+            ("class", button_classes),
         ]
-    )[*([display_content] if display_content else [])]
+        if trigger_label:
+            trigger_attributes.append(("aria-label", trigger_label))
+        trigger: Node = Button(trigger_attributes)[*trigger_children]
+    else:
+        trigger = Span(
+            [
+                ("data-pop-over-trigger", ""),
+                ("aria-describedby", id),
+                ("class", wrapped_classes),
+            ]
+        )[*trigger_children]
 
     # No positioning class — the element sets `position: fixed` + coords on show
     # and clears them on hide; the `hidden` attribute owns the closed state.
@@ -296,9 +327,21 @@ def _popover_html(
     # a flex column blockifies the inline-block and stretches it to full width,
     # which mis-anchors the fixed panel (the positioner centres on the host, #446).
     # align-self opts out of that cross-axis stretch; it's inert outside flex.
-    return _PopOver(class_="inline-block self-start")[
-        Fragment(trigger, panel, separator="\n")
-    ]
+    # With a preface (the host-wraps-link case) the host lays the preface and the
+    # glyph trigger side by side; hover on the whole host opens, only the trigger
+    # is tappable — keeping the <button> a sibling of the preface link, never a
+    # descendant.
+    host_class = (
+        "inline-flex items-center gap-1 self-start"
+        if preface
+        else "inline-block self-start"
+    )
+    host_children = (
+        Fragment(preface, trigger, panel, separator="\n")
+        if preface
+        else Fragment(trigger, panel, separator="\n")
+    )
+    return _PopOver(tap="true" if tap else "false", class_=host_class)[host_children]
 
 
 def Popover(
@@ -308,6 +351,11 @@ def Popover(
     children: Children = None,
     attributes: Attributes | None = None,
     id: str = "",
+    *,
+    tap: bool = True,
+    trigger_label: str = "",
+    preface: "Node | str" = "",
+    selectable_text: bool = False,
 ) -> Node:
     children = as_children(children)
     if not wrapped_content and not children:
@@ -322,20 +370,30 @@ def Popover(
         wrapped_content=wrapped_content,
         wrapped_classes=wrapped_classes,
         slot=slot,
+        tap=tap,
+        trigger_label=trigger_label,
+        preface=preface,
+        selectable_text=selectable_text,
     )
 
 
 def PopoverIf(
-    condition: bool, popover_content: Child, node: Node | str, id: str = ""
+    condition: bool,
+    popover_content: Child,
+    node: Node | str,
+    id: str = "",
+    *,
+    tap: bool = True,
 ) -> Node | str:
     """Wrap `node` in a popover showing `popover_content` when `condition` holds.
 
     Without an explicit `id`, the popover's DOM id is derived from
     `popover_content` alone — pass `id` when two popovers on the same page
-    could share the same content.
+    could share the same content. `tap=False` keeps the hover/focus-only span
+    (for a popover nested inside a caller's interactive element).
     """
     if condition:
-        return Popover(popover_content=popover_content, children=[node], id=id)
+        return Popover(popover_content=popover_content, children=[node], id=id, tap=tap)
     return node
 
 
@@ -345,6 +403,9 @@ def PopoverTruncated(
     length: int = 30,
     ellipsis: str = "…",
     endpart: str = "",
+    *,
+    tap: bool = True,
+    selectable_text: bool = False,
 ) -> Node | str:
     """
     Returns `input_string` truncated after `length` of characters
@@ -353,13 +414,16 @@ def PopoverTruncated(
     an always-visible `endpart` can be specified.
     `popover_content` can be specified if it needs to differ from
     `input_string`. For a popover that must appear regardless of
-    truncation, use `PopoverIf` instead.
+    truncation, use `PopoverIf` instead. `tap=False` keeps the hover-only span
+    (for a popover nested inside a caller's interactive element).
     """
     truncation = truncate_info(input_string, length, ellipsis, endpart)
     if truncation.display != input_string:
         return Popover(
             wrapped_content=truncation.display,
             popover_content=popover_content if popover_content else input_string,
+            tap=tap,
+            selectable_text=selectable_text,
         )
     return input_string
 

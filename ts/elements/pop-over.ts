@@ -1,17 +1,22 @@
 /**
- * PopOver — hover/focus tooltip custom element. The server renders the trigger +
- * panel (common/components/primitives.py `_popover_html`); this owns show/hide
- * and viewport-aware `position: fixed` placement via positionAnchored.
+ * PopOver — tooltip custom element. The server renders the trigger + panel
+ * (common/components/primitives.py `_popover_html`); this owns show/hide and
+ * viewport-aware `position: fixed` placement via positionAnchored.
  *
- * Shows on hover/focus, hides on leave/blur/Escape — deliberately not attachMenu
- * (a click/keyboard menu) or bindPopupDismiss (outside-click). The panel is
- * non-interactive text, so the pointer never needs to travel into it.
+ * Mouse: shows on hover, hides on leave. Keyboard: shows on focus (when the
+ * focusable is inside the host), hides on blur/Escape. Touch has no hover, so
+ * when the server marks the element `tap` (the trigger is a real <button>) a tap
+ * toggles the panel and bindPopupDismiss handles outside-tap/Escape. Hover is
+ * pointer-type gated to mouse so the compat mouse events a tap synthesises on a
+ * <button> can't open the panel behind the tap toggle.
  */
 import {
   clearAnchoredPosition,
   positionAnchored,
   type Side,
 } from "./anchored-position.js";
+import { bindPopupDismiss } from "../utils.js";
+import { readPopOverProps } from "../generated/props.js";
 
 // The arrow is an `w-2 h-2` (8px) square rotated 45°; half of it overhangs the
 // panel edge to form the tip.
@@ -97,36 +102,97 @@ function positionArrow(
 class PopOverElement extends HTMLElement {
   private panel: HTMLElement | null = null;
   private isOpen = false;
+  private tap = false;
+  private trigger: HTMLElement | null = null;
+  // The pointer type of the in-flight interaction on the trigger, recorded at
+  // pointerdown and consumed by the focusin/click handlers of the SAME tap
+  // (cleared after). "" means "no pointer" — i.e. a keyboard interaction.
+  private lastPointerType = "";
+  private dismissCleanup: (() => void) | null = null;
 
   connectedCallback(): void {
     this.panel = this.querySelector<HTMLElement>("[data-pop-over-panel]");
     if (!this.panel) return;
+    this.tap = readPopOverProps(this).tap;
     // Hover reveals the tooltip; keyboard focus reveals it only when the
-    // focusable element is INSIDE the pop-over (e.g. PopoverIf wrapping a
-    // button) — focusin/out bubble up to this host. For a wrapping <a> ANCESTOR
-    // (the NameWithIcon case) focusin fires on the <a> and bubbles up past this
-    // element, not into it, so those keyboard users get only hover + the
-    // aria-describedby link to the panel text.
-    this.addEventListener("mouseenter", this.show);
-    this.addEventListener("mouseleave", this.hide);
-    this.addEventListener("focusin", this.show);
+    // focusable element is INSIDE the pop-over (e.g. a <button> trigger, or a
+    // PopoverIf wrapping a button) — focusin/out bubble up to this host. For a
+    // wrapping <a> ANCESTOR (the hover-only NameWithIcon case) focusin fires on
+    // the <a> and bubbles up past this element, not into it, so those keyboard
+    // users get only hover + the aria-describedby link to the panel text.
+    //
+    // Hover is pointerenter/leave gated to a mouse pointer: a tap on the
+    // <button> trigger synthesises compat mouse events, so an ungated hover
+    // would flash the panel open and fight the tap toggle.
+    this.addEventListener("pointerenter", this.onPointerEnter);
+    this.addEventListener("pointerleave", this.onPointerLeave);
+    this.addEventListener("focusin", this.onFocusIn);
     this.addEventListener("focusout", this.onFocusOut);
+    if (this.tap) {
+      this.trigger = this.querySelector<HTMLElement>("[data-pop-over-trigger]");
+      this.trigger?.addEventListener("pointerdown", this.onTriggerPointerDown);
+      this.trigger?.addEventListener("click", this.onTriggerClick);
+      // The single dismiss driver for tap mode (outside press + Escape); the
+      // per-open Escape listener is not added in tap mode (show()).
+      this.dismissCleanup = bindPopupDismiss({
+        host: this,
+        isOpen: () => this.isOpen,
+        close: () => this.close(),
+      });
+    }
   }
 
   disconnectedCallback(): void {
     // Drop the panel's inline positioning + document listeners; a lingering
     // open panel would sit at stale fixed coordinates after an htmx swap.
     this.close();
-    this.removeEventListener("mouseenter", this.show);
-    this.removeEventListener("mouseleave", this.hide);
-    this.removeEventListener("focusin", this.show);
+    this.removeEventListener("pointerenter", this.onPointerEnter);
+    this.removeEventListener("pointerleave", this.onPointerLeave);
+    this.removeEventListener("focusin", this.onFocusIn);
     this.removeEventListener("focusout", this.onFocusOut);
+    this.trigger?.removeEventListener("pointerdown", this.onTriggerPointerDown);
+    this.trigger?.removeEventListener("click", this.onTriggerClick);
+    this.dismissCleanup?.();
+    this.dismissCleanup = null;
   }
+
+  private onPointerEnter = (event: PointerEvent): void => {
+    if (event.pointerType === "mouse") this.show();
+  };
+
+  private onPointerLeave = (event: PointerEvent): void => {
+    if (event.pointerType === "mouse") this.hide();
+  };
+
+  private onFocusIn = (): void => {
+    // A tap focuses the <button> before its click fires; the click owns the
+    // toggle, so don't also open on that focus. Keyboard focus (no preceding
+    // pointerdown, so lastPointerType is "") still opens.
+    if (this.lastPointerType === "touch" || this.lastPointerType === "pen") {
+      return;
+    }
+    this.show();
+  };
 
   private onFocusOut = (event: FocusEvent): void => {
     // Only hide when focus actually left the element (not on a move between
     // the trigger and a focusable descendant).
     if (!this.contains(event.relatedTarget as Node)) this.hide();
+    this.lastPointerType = "";
+  };
+
+  private onTriggerPointerDown = (event: PointerEvent): void => {
+    this.lastPointerType = event.pointerType;
+  };
+
+  private onTriggerClick = (): void => {
+    // Mouse already toggles via hover; only a non-mouse activation drives the
+    // toggle. "" covers a keyboard-synthesised click (Enter/Space).
+    if (this.lastPointerType !== "mouse") {
+      if (this.isOpen) this.close();
+      else this.show();
+    }
+    this.lastPointerType = "";
   };
 
   private show = (): void => {
@@ -135,7 +201,9 @@ class PopOverElement extends HTMLElement {
     this.panel.hidden = false;
     tintArrow(this.panel); // once per open; positionPanel only places it
     positionPanel(this, this.panel);
-    document.addEventListener("keydown", this.onKeyDown);
+    // In tap mode bindPopupDismiss owns Escape; only the hover/focus path needs
+    // its own per-open Escape listener.
+    if (!this.tap) document.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("scroll", this.reposition, true);
     window.addEventListener("resize", this.reposition);
   };
@@ -154,7 +222,7 @@ class PopOverElement extends HTMLElement {
     this.panel
       .querySelector<HTMLElement>("[data-pop-over-content]")
       ?.style.removeProperty("max-height");
-    document.removeEventListener("keydown", this.onKeyDown);
+    if (!this.tap) document.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("scroll", this.reposition, true);
     window.removeEventListener("resize", this.reposition);
   }

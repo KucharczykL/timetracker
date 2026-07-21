@@ -15,13 +15,38 @@ from common.components.primitives import (
     Icon,
     Li,
     Popover,
-    PopoverIf,
     PopoverTruncated,
     Span,
     Ul,
 )
 from common.utils import truncate_info
 from games.models import Game, Purchase, Session
+
+# A quiet reveal affordance rendered beside a link when its text is truncated (or
+# a bundle needs its games list): a real <button> sibling of the link hosting the
+# popover, so touch users can tap to reveal without the tap navigating — the link
+# itself stays a link. The truncated name is rendered WITHOUT its trailing
+# ellipsis and this ellipsis-icon button stands in for it — so the "…" both marks
+# the cut and is the tap target, instead of a redundant "…" + separate glyph. An
+# SVG icon (not a unicode "⋯", whose ink sits high in its line box) so it
+# optically centres against the adjacent name.
+_REVEAL_GLYPH_CLASS = (
+    "inline-flex items-center text-subtle hover:text-heading "
+    "hover:cursor-pointer rounded-base shrink-0"
+)
+
+
+def _reveal_popover(popover_content: Node | str, preface: Node, label: str) -> Node:
+    """A truncation/bundle reveal: an ellipsis-icon <button> beside ``preface``
+    (the link), hosting ``popover_content``. The whole host still opens on hover;
+    only the button is tappable, keeping the trigger out of the link."""
+    return Popover(
+        popover_content=popover_content,
+        children=[Icon("ellipsis", [("class", "size-[1.1em] shrink-0")])],
+        wrapped_classes=_REVEAL_GLYPH_CLASS,
+        trigger_label=label,
+        preface=preface,
+    )
 
 
 def GameLink(
@@ -121,7 +146,6 @@ def LinkedPurchase(purchase: Purchase) -> Node:
             first_game_name = first_game.name
             if purchase.name:
                 link_content = f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
-                popover_content = first_game.name
             else:
                 link_content = first_game.name
             popover_content = link_content
@@ -142,21 +166,24 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     )
     if link_content == "":
         raise ValueError("link_content is empty!!")
-    truncation = truncate_info(link_content)
-    a_content = Div(class_="font-condensed inline-flex gap-2 items-center")[
-        Icon(
-            icon,
-            [("title", "Multiple")],
-        ),
-        # Multi-game purchases always show the games list; single-game
-        # purchases only need the popover when the name was cut off.
-        PopoverIf(
-            truncation.was_truncated or game_count > 1,
-            popover_content,
+    # No trailing ellipsis: the reveal button's ellipsis icon stands in for it.
+    truncation = truncate_info(link_content, ellipsis="")
+    link_node = A(href=link)[
+        Div(class_="font-condensed inline-flex gap-2 items-center")[
+            Icon(
+                icon,
+                [("title", "Multiple")],
+            ),
             truncation.display,
-        ),
+        ]
     ]
-    return A(href=link)[a_content]
+    # Multi-game purchases always expose the games list; single-game purchases
+    # only need the reveal when the name was cut off. The reveal trigger is a
+    # <button> sibling of the link (see `preface`), never nested inside it, so a
+    # tap toggles the popover while the link stays a navigable link.
+    if not (truncation.was_truncated or game_count > 1):
+        return link_node
+    return _reveal_popover(popover_content, link_node, "Show purchase details")
 
 
 class PlatformBadge(NamedTuple):
@@ -178,10 +205,14 @@ def NameWithIcon(
     game: Game | None = None,
     session: Session | None = None,
     linkify: bool = True,
+    tap: bool = True,
 ) -> Node:
     resolved = _resolve_name_with_icon(name, game, session, linkify)
+    # No trailing ellipsis on the linked name: the reveal button's ellipsis icon
+    # stands in for it (the unlinked branch keeps PopoverTruncated's inline "…").
+    truncation = truncate_info(resolved.name, ellipsis="")
 
-    content = Div(class_="font-condensed inline-flex gap-2 items-center")[
+    icons = Fragment(
         Icon(
             resolved.badge.icon,
             [("title", resolved.badge.title), ("class", "shrink-0")],
@@ -191,10 +222,26 @@ def NameWithIcon(
         Icon("emulated", [("title", "Emulated"), ("class", "shrink-0")])
         if resolved.emulated
         else "",
-        PopoverTruncated(resolved.name),
-    ]
+    )
 
-    return A(href=resolved.link)[content] if resolved.link is not None else content
+    if resolved.link is None:
+        # Unlinked: a caller may wrap this in its own interactive element (the
+        # navbar menu passes tap=False, so no <button> nests inside its <a>); a
+        # standalone unlinked name keeps the tappable default.
+        return Div(class_="font-condensed inline-flex gap-2 items-center")[
+            icons,
+            PopoverTruncated(resolved.name, tap=tap, selectable_text=True),
+        ]
+
+    link_node = A(href=resolved.link)[
+        Div(class_="font-condensed inline-flex gap-2 items-center")[
+            icons,
+            truncation.display,
+        ]
+    ]
+    if not truncation.was_truncated:
+        return link_node
+    return _reveal_popover(resolved.name, link_node, "Show full name")
 
 
 def _platform_badge(game: Game) -> PlatformBadge:
@@ -237,6 +284,7 @@ def PurchasePrice(purchase) -> Node:
         popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
         wrapped_classes="underline decoration-dotted",
+        selectable_text=True,
     )
 
 

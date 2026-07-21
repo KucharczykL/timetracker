@@ -22,6 +22,19 @@
   (`/user`) and superuser-gated site (`/site`) settings. `DEFAULT_CURRENCY` is now
   user-scoped, alongside new `DEFAULT_DEVICE` / `DEFAULT_LANDING_PAGE` prefs.
 
+### Fixed
+* Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously
+  they showed only on hover/focus, so on phones the trigger — including the
+  filter builder's incomplete-condition "!" cue and every truncated-name/price
+  tooltip — was a dead glyph. The trigger is now a real `<button>` that a tap
+  toggles (outside-tap and Escape dismiss), while mouse hover is unchanged
+  (pointer-type gated, so a tap can't flash it open). Popovers that sit inside a
+  link (`LinkedPurchase`, truncated linked names) now render their reveal as a
+  small tappable ellipsis (`⋯`) button *beside* the link — the name's truncation
+  mark becomes the tap target — so a tap reveals without navigating; the navbar
+  recent-resumes menu keeps a hover-only name and reveals the full title by
+  tapping through to the game (#445).
+
 ### Changed
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
   currency comes solely from the resolved `DEFAULT_CURRENCY` (`CZK` out of the

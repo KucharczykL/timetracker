@@ -187,6 +187,15 @@ settings scaffold's layout is net-new, but nearly all *behavior* exists. Calls r
   positioning code. The `<pop-over>` host carries `self-start` so a flex parent can't stretch
   it to full width — `positionAnchored` centres the fixed panel on the host, so a stretched
   host throws the panel far off the trigger (#446). Keep it when reusing popovers in flex rows.
+- **Popover trigger** (`_popover_html`, #445): by default (`tap=True`) the trigger is a real
+  `<button>`, so a tap toggles it on touch (mouse hover unchanged, pointer-type gated); it is a
+  toggletip (`role="tooltip"` + `aria-describedby`, no `aria-expanded`). A popover nested inside
+  a caller's interactive element uses `tap=False` (hover-only `<span>`) so no `<button>` nests
+  in an `<a>` — enforced globally by `tests/test_html_validity.py`. When the popover *this*
+  code wraps in a link needs touch reach, extract the trigger as a sibling ellipsis-icon button
+  (`⋯`, replacing the name's truncation mark) via `preface=` (see `NameWithIcon` /
+  `LinkedPurchase`): the whole host still opens on hover, but only the small button is tappable,
+  keeping the trigger out of the link.
 - **Priority-plus overflow** (quick-filter bar): the full recipe (measure-once, reserved
   furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) is directly
   liftable for an anchor-chip nav — but the logic is private to `QuickFilterBarElement`.
