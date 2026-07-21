@@ -32,6 +32,27 @@ function pointer(type: string, pointerType: string, init: EventInit = {}): Event
   return event;
 }
 
+function setRect(
+  element: HTMLElement,
+  { x, y = 100, width, height = 24 }: Partial<DOMRect> & {
+    x: number;
+    width: number;
+  },
+): void {
+  element.getBoundingClientRect = () =>
+    ({
+      x,
+      y,
+      width,
+      height,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+      left: x,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
 describe("<pop-over> tooltip (hover/focus)", () => {
   beforeEach(() => document.body.replaceChildren());
 
@@ -57,6 +78,22 @@ describe("<pop-over> tooltip (hover/focus)", () => {
     expect(arrow.style.top).toBe("-4px");
     expect(arrow.style.bottom).toBe("");
     expect(arrow.style.left).not.toBe("");
+  });
+
+  it("continues to use the host as its positioning anchor by default", () => {
+    const { host, panel, trigger } = mount();
+    setRect(host, { x: 200, width: 100 });
+    setRect(trigger, { x: 20, width: 20 });
+    setRect(panel, { x: 0, y: 0, width: 100, height: 40 });
+    Object.defineProperties(panel, {
+      offsetWidth: { configurable: true, value: 100 },
+      offsetHeight: { configurable: true, value: 40 },
+      scrollHeight: { configurable: true, value: 40 },
+    });
+
+    host.dispatchEvent(pointer("pointerenter", "mouse"));
+
+    expect(panel.style.left).toBe("200px");
   });
 
   it("shows on focusin and hides on Escape", () => {

@@ -28,6 +28,7 @@ function mount(options: {
 } = {}): {
   host: HTMLElement;
   clip: HTMLElement;
+  button: HTMLElement;
   panel: HTMLElement;
   setWidths(clientWidth: number, scrollWidth: number): void;
 } {
@@ -54,12 +55,44 @@ function mount(options: {
   return {
     host,
     clip,
+    button: host.querySelector<HTMLElement>("[data-truncated-reveal]")!,
     panel: host.querySelector<HTMLElement>("[data-pop-over-panel]")!,
     setWidths(nextClientWidth: number, nextScrollWidth: number): void {
       clientWidth = nextClientWidth;
       scrollWidth = nextScrollWidth;
     },
   };
+}
+
+function setRect(
+  element: HTMLElement,
+  { x, y = 100, width, height = 24 }: Partial<DOMRect> & {
+    x: number;
+    width: number;
+  },
+): DOMRect {
+  const rect = {
+    x,
+    y,
+    width,
+    height,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+    left: x,
+    toJSON: () => ({}),
+  } as DOMRect;
+  element.getBoundingClientRect = () => rect;
+  return rect;
+}
+
+function setPanelSize(panel: HTMLElement, width: number, height: number): void {
+  setRect(panel, { x: 0, y: 0, width, height });
+  Object.defineProperties(panel, {
+    offsetWidth: { configurable: true, value: width },
+    offsetHeight: { configurable: true, value: height },
+    scrollHeight: { configurable: true, value: height },
+  });
 }
 
 describe("<truncated-text>", () => {
@@ -111,6 +144,40 @@ describe("<truncated-text>", () => {
     const mounted = mount({ reveal: "always" });
     mounted.host.dispatchEvent(pointer("pointerenter", "mouse"));
     expect(mounted.panel.hidden).toBe(false);
+  });
+
+  it("anchors a tapped tooltip to the rendered button near the viewport edge", () => {
+    const mounted = mount({ reveal: "always" });
+    const buttonRect = setRect(mounted.button, {
+      x: window.innerWidth - 44,
+      width: 20,
+    });
+    let buttonRendered = true;
+    mounted.button.getClientRects = () =>
+      (buttonRendered ? [buttonRect] : []) as unknown as DOMRectList;
+    setRect(mounted.clip, { x: 100, width: 80 });
+    setPanelSize(mounted.panel, 100, 40);
+
+    mounted.button.dispatchEvent(pointer("pointerdown", "touch"));
+    mounted.button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(mounted.panel.style.left).toBe(`${window.innerWidth - 108}px`);
+
+    buttonRendered = false;
+    window.dispatchEvent(new Event("resize"));
+    expect(mounted.panel.style.left).toBe("90px");
+  });
+
+  it("positions a hover tooltip against the text when the button is hidden", () => {
+    const mounted = mount({ clientWidth: 100, scrollWidth: 130 });
+    mounted.button.getClientRects = () => [] as unknown as DOMRectList;
+    setRect(mounted.button, { x: 300, width: 20 });
+    setRect(mounted.clip, { x: 100, width: 80 });
+    setPanelSize(mounted.panel, 100, 40);
+
+    mounted.host.dispatchEvent(pointer("pointerenter", "mouse"));
+
+    expect(mounted.panel.style.left).toBe("90px");
   });
 
   it("remeasures after fonts become ready without a resize", async () => {
