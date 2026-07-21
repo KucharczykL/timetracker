@@ -15,6 +15,7 @@ from common.components import (
     BadgeTone,
     ContentContainer,
     Div,
+    Element,
     FormFieldGroup,
     LiveSettingFields,
     MaskedSecretField,
@@ -163,11 +164,87 @@ def _badge_gallery():
     )[*[Badge(tone.title(), tone=tone) for tone in _BADGE_TONES]]
 
 
+def _hierarchy_sample(
+    *,
+    option: str,
+    name: str,
+    explanation: str,
+    outer_heading_class: str,
+    sample_class: str,
+    nested_class: str = "",
+):
+    return Div(
+        class_="flex min-w-0 flex-col gap-3",
+        data_section_hierarchy_variant=option,
+    )[
+        Div(class_="flex flex-wrap items-center gap-2")[
+            Badge(option, tone="brand"),
+            Element("h3", [("class", "text-type-subheading text-heading")])[name],
+        ],
+        P(class_="text-type-body text-body")[explanation],
+        Div(
+            class_=f"rounded-base border border-default p-4 {sample_class}",
+        )[
+            Div(class_="flex flex-col gap-2")[
+                Element("h4", [("class", outer_heading_class)])[
+                    "Live grouped settings fields"
+                ],
+                P(class_="text-type-body text-body")[
+                    "Successful changes show a toast and stay in client memory until reload."
+                ],
+            ],
+            Div(class_=nested_class)[
+                Element("h5", [("class", "text-type-section text-heading")])[
+                    "Preferences"
+                ],
+                P(class_="text-type-body text-body")[
+                    "Checkbox, select, number, and text controls use the shared form path."
+                ],
+            ],
+        ],
+    ]
+
+
+def _section_hierarchy_gallery():
+    return Div(class_="grid grid-cols-1 gap-6 xl:grid-cols-3")[
+        _hierarchy_sample(
+            option="Option 1",
+            name="Typography hierarchy",
+            explanation="Only the type roles differ: 20px/700 outside, 18px/600 inside.",
+            outer_heading_class="text-type-subheading text-heading",
+            sample_class="flex flex-col gap-3",
+            nested_class="flex flex-col gap-3",
+        ),
+        _hierarchy_sample(
+            option="Option 2",
+            name="Spacing hierarchy",
+            explanation="Matching heading styles, grouped by 8px inside and 24px before content.",
+            outer_heading_class="text-type-section text-heading",
+            sample_class="flex flex-col gap-6",
+            nested_class="flex flex-col gap-3",
+        ),
+        _hierarchy_sample(
+            option="Option 3",
+            name="Divider hierarchy",
+            explanation="Matching heading styles, separated by a thin but visible structural rule.",
+            outer_heading_class="text-type-section text-heading",
+            sample_class="flex flex-col gap-4",
+            nested_class="flex flex-col gap-3 border-t border-default-strong pt-4",
+        ),
+    ]
+
+
 @login_required
 def settings_kit_preview(request: HttpRequest) -> HttpResponse:
     """Render every reusable settings-kit state without touching stored settings."""
 
     sections = [
+        SettingsSection(
+            "section-hierarchy-comparison",
+            "Section hierarchy comparison",
+            _section_hierarchy_gallery(),
+            "The same content with typography, spacing, and divider treatments isolated for comparison.",
+        ),
         SettingsSection(
             "live-settings-fields",
             "Live grouped settings fields",

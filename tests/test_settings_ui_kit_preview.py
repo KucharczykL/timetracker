@@ -61,11 +61,16 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "Settings UI kit preview" in body
     assert "DEBUG only" in body
     assert "No persistence" in body
-    assert body.count('data-settings-section=""') == 5
-    assert body.count('data-settings-section-header=""') == 5
-    assert body.count('data-settings-section-content=""') == 5
+    assert body.count('data-settings-section=""') == 6
+    assert body.count('data-settings-section-header=""') == 6
+    assert body.count('data-settings-section-content=""') == 6
     assert body.count("<settings-section-nav") == 1
     assert body.count("<fieldset") == 2
+    assert body.count("data-section-hierarchy-variant") == 3
+    assert "Typography hierarchy" in body
+    assert "Spacing hierarchy" in body
+    assert "Divider hierarchy" in body
+    assert "border-t border-default-strong pt-4" in body
 
     assert 'type="checkbox"' in _named_tag(body, "input", "enabled")
     assert _named_tag(body, "select", "destination")
