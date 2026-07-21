@@ -257,6 +257,13 @@ def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
     ]
 
 
+# EPIC-FINAL DELETION GATE (#381)
+# Inline source badges on ordinary unlocked/editable fields are provisional. Before
+# closing the settings-panel epic, identify at least one concrete shipped field where
+# visible origin materially helps the user. A source badge must never replace a
+# visible field label. If no such unlocked use case exists, remove the unlocked badge
+# integration from prepare_setting_fields together with its preview, tests, and docs;
+# retain provenance only for concrete locked/read-only settings that require it.
 def SettingSourceBadge(
     source: str,
     *,
@@ -355,6 +362,8 @@ def prepare_setting_fields(
             raise ValueError(f"Unknown setting form field {field_name!r}.")
         field = form.fields[field_name]
         field.widget.attrs["data-setting-key"] = state.key
+        # Provisional for unlocked fields; see the epic-final deletion gate above
+        # SettingSourceBadge before extending this pattern to more settings.
         label_extras[field_name] = SettingSourceBadge(
             state.source,
             locked=state.locked,
