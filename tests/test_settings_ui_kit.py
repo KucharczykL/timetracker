@@ -171,6 +171,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert 'data-setting-locked=""' in html
         assert "Change APP_URL in the environment and restart." in html
         assert 'aria-describedby="id_locked_value_setting_metadata"' in html
+        assert 'class="mt-2 flex flex-col gap-1"' in html
         assert 'id="id_locked_value_setting_source_tooltip"' in html
         assert 'role="tooltip"' in html
         assert "Source: Loaded from an environment variable." in html
