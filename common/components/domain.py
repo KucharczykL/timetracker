@@ -33,9 +33,13 @@ from games.models import Game, Purchase, Session
 # A 24px-square button (WCAG 2.5.8 touch-target minimum) centring the smaller
 # icon. `-my-1` lets the 24px box overflow the ~20px text line vertically so a
 # truncated-name row stays the same height as its neighbours instead of growing.
+# Shown only where the device can't hover: on a hover-capable (desktop) device
+# hovering the name already reveals the tooltip, so the tap button is redundant
+# and hidden.
 _REVEAL_GLYPH_CLASS = (
     "inline-flex items-center justify-center size-6 -my-1 text-subtle "
-    "hover:text-heading hover:cursor-pointer rounded-base shrink-0"
+    "hover:text-heading hover:cursor-pointer rounded-base shrink-0 "
+    "[@media(hover:hover)]:hidden"
 )
 
 

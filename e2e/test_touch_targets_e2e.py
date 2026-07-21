@@ -1,9 +1,8 @@
 """WCAG 2.5.8 touch-target size for small popover triggers (#454).
 
-The small icon-button popover triggers (the truncation reveal, the filter-builder
-incomplete "!" cue) are sized to the 24px minimum touch target. This proves the
-reveal button's box is at least 24x24 and that a press anywhere in it activates
-the trigger.
+The truncation-reveal button is shown only on no-hover (touch) devices, where it
+must be at least 24x24. This drives a mobile, no-hover context and proves the
+button is visible, meets the minimum size, and activates on a press.
 """
 
 import pytest
@@ -14,18 +13,23 @@ from games.models import Game, Platform
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
+def touch_page(live_server, browser, django_user_model):
     django_user_model.objects.create_user(username="tester", password="secret123")
+    context = browser.new_context(
+        has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
+    )
+    page = context.new_page()
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
+    yield page
+    context.close()
 
 
-def test_reveal_button_meets_min_touch_target(authenticated_page: Page, live_server):
-    page = authenticated_page
+def test_reveal_button_meets_min_touch_target(touch_page: Page, live_server):
+    page = touch_page
     platform = Platform.objects.create(name="Steam", icon="steam", group="PC")
     Game.objects.create(
         name="A Very Long Game Name That Exceeds The Thirty Char Limit",
@@ -33,17 +37,14 @@ def test_reveal_button_meets_min_touch_target(authenticated_page: Page, live_ser
     )
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    box = page.evaluate(
-        """() => {
-        const button = document.querySelector('pop-over button[data-pop-over-trigger]');
-        const b = button.getBoundingClientRect();
-        return { width: b.width, height: b.height };
-      }"""
-    )
+    button = page.locator("pop-over button[data-pop-over-trigger]").first
+    expect(button).to_be_visible()  # shown on a no-hover device
+    box = button.bounding_box()
+    assert box is not None
     assert box["width"] >= 24, f"reveal button width {box['width']} < 24px"
     assert box["height"] >= 24, f"reveal button height {box['height']} < 24px"
 
     panel = page.locator("pop-over [data-pop-over-panel]").first
     expect(panel).to_be_hidden()
-    page.locator("pop-over button[data-pop-over-trigger]").first.click()
+    button.tap()
     expect(panel).to_be_visible()
