@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from django.urls import reverse
 from django.utils import timezone
-from playwright.sync_api import Page, Route, expect
+from playwright.sync_api import Locator, Page, Route, expect
 
 from games.models import Game, Platform, Purchase, Session
 
@@ -48,6 +48,12 @@ def _wait_for_fonts(page: Page) -> None:
 
 def _host(page: Page, text: str):
     return page.locator("tbody truncated-text", has_text=text).first
+
+
+def _center_x(locator: Locator) -> float:
+    box = locator.bounding_box()
+    assert box is not None
+    return box["x"] + box["width"] / 2
 
 
 def test_desktop_overflow_hover_focus_and_short_name_noop(
@@ -129,6 +135,8 @@ def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_
     )
     name_button.tap()
     expect(name_panel).to_be_visible()
+    name_arrow = name_panel.locator("[data-pop-over-arrow]")
+    assert abs(_center_x(name_button) - _center_x(name_arrow)) < 1
     expect(name_panel.locator('[data-truncated-detail="name"]')).to_be_hidden()
     sort_detail = name_panel.locator('[data-truncated-detail="sort-name"]')
     expect(sort_detail).to_be_visible()

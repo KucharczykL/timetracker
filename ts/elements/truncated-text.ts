@@ -36,18 +36,23 @@ class TruncatedTextElement extends HTMLElement {
   connectedCallback(): void {
     this.clip = this.querySelector<HTMLElement>("[data-truncated-clip]");
     const panel = this.querySelector<HTMLElement>("[data-pop-over-panel]");
-    if (!this.clip || !panel) return;
+    const clip = this.clip;
+    if (!clip || !panel) return;
 
     const props = readTruncatedTextProps(this);
     this.tap = props.tap;
     this.reveal = props.reveal === "always" ? "always" : "auto";
-    this.linked = this.clip.closest("a") !== null;
+    this.linked = clip.closest("a") !== null;
     const revealButton = this.querySelector<HTMLElement>("[data-truncated-reveal]");
-    const trigger = revealButton ?? this.clip.closest<HTMLElement>("a") ?? this.clip;
+    const trigger = revealButton ?? clip.closest<HTMLElement>("a") ?? clip;
 
     this.controller = attachTooltip({
       host: this,
       trigger,
+      anchor: () =>
+        revealButton && revealButton.getClientRects().length > 0
+          ? revealButton
+          : clip,
       panel,
       content:
         panel.querySelector<HTMLElement>("[data-pop-over-content]") ?? undefined,
@@ -62,7 +67,7 @@ class TruncatedTextElement extends HTMLElement {
     this.measure();
     if (typeof ResizeObserver !== "undefined") {
       this.observer = new ResizeObserver(() => this.measure());
-      this.observer.observe(this.clip);
+      this.observer.observe(clip);
     }
   }
 

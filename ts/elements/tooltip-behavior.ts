@@ -18,6 +18,8 @@ const TRIGGER_GAP = 8;
 export interface TooltipConfig {
   host: HTMLElement;
   trigger: HTMLElement;
+  /** Geometry anchor; defaults to the interaction host for existing consumers. */
+  anchor?: HTMLElement | (() => HTMLElement);
   panel: HTMLElement;
   content?: HTMLElement;
   arrow?: HTMLElement;
@@ -70,6 +72,7 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   const {
     host,
     trigger,
+    anchor = host,
     panel,
     content = panel,
     arrow,
@@ -82,7 +85,8 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   let destroyed = false;
 
   const positionPanel = (): void => {
-    const result = positionAnchored(host, panel, {
+    const resolvedAnchor = typeof anchor === "function" ? anchor() : anchor;
+    const result = positionAnchored(resolvedAnchor, panel, {
       align: "center",
       side,
       gap: TRIGGER_GAP,
