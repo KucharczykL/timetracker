@@ -217,6 +217,11 @@ export function attachSheet(
 
   const open = (): void => {
     if (state !== "closed" || dialog.open) return;
+    // Responsive consumers hide the complete trigger surface when the sheet is
+    // unavailable (the settings list lives in its desktop rail at that point).
+    // The public drop-down.open() API must not create an empty/invisible modal
+    // or lock the page behind a trigger the user cannot reach.
+    if (!host.isConnected || toggle.closest("[hidden], [inert]")) return;
     // A sheet's scroll snapshot is meaningful only when it starts from the
     // unlocked document. Close any previously active sheet synchronously—an
     // animated overlap would let the first sheet restore styles underneath the
