@@ -25,6 +25,7 @@ from common.components.primitives import (
     Label,
     Li,
     P,
+    Popover,
     Span,
     Ul,
     custom_element_builder,
@@ -42,6 +43,15 @@ _SOURCE_LABELS = {
     "dotenv": ".env",
     "ini": "settings.ini",
     "default": "Default",
+}
+_SOURCE_DESCRIPTIONS = {
+    "user": "Saved for your account and overrides the site default.",
+    "database": "Saved in the application database as the current site-wide value.",
+    "env": "Loaded from an environment variable.",
+    "env_file": "Loaded from a file referenced by an environment variable.",
+    "dotenv": "Loaded from the application's .env file.",
+    "ini": "Loaded from the application's settings.ini file.",
+    "default": "The built-in default, used because no higher-priority value is set.",
 }
 
 _NAV_LINK_CLASS = (
@@ -217,8 +227,14 @@ def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
     ]
 
 
-def SettingSourceBadge(source: str, *, locked: bool = False) -> Node:
-    """One setting-origin badge, with a lock icon when the value is pinned."""
+def SettingSourceBadge(
+    source: str,
+    *,
+    locked: bool = False,
+    reason: str = "",
+    id: str = "",
+) -> Node:
+    """One setting-origin badge with an accessible explanatory tooltip."""
     source_value = str(source)
     label = _SOURCE_LABELS.get(source_value, source_value.replace("_", " ").title())
     attributes: list[tuple[str, str]] = [("data-setting-origin", source_value)]
@@ -227,7 +243,6 @@ def SettingSourceBadge(source: str, *, locked: bool = False) -> Node:
         attributes.extend(
             [
                 ("data-setting-locked", ""),
-                ("aria-label", f"Locked; source: {label}"),
             ]
         )
         content = Fragment(
@@ -238,22 +253,52 @@ def SettingSourceBadge(source: str, *, locked: bool = False) -> Node:
             ),
             label,
         )
-    return Badge(
+    badge = Badge(
         content,
         size="sm",
         tone="warning" if locked else "neutral",
         extra_class="gap-1",
         attributes=attributes,
     )
+    source_description = _SOURCE_DESCRIPTIONS.get(
+        source_value,
+        f"Provided by {label}.",
+    )
+    tooltip_lines: list[Node] = [
+        P(class_="text-type-body text-heading")[f"Source: {source_description}"]
+    ]
+    if locked:
+        lock_reason = reason or (
+            f"{label} values take priority over settings saved in the application, "
+            "so this field cannot be edited here."
+        )
+        tooltip_lines.append(
+            P(class_="text-type-body text-heading")[f"Locked: {lock_reason}"]
+        )
+    return Popover(
+        popover_content=Div(class_="flex max-w-sm flex-col gap-2")[*tooltip_lines],
+        children=[badge],
+        id=id,
+        trigger_label=f"{label} source" + (", locked" if locked else ""),
+        wrapped_classes=(
+            "cursor-help rounded leading-none focus:outline-hidden "
+            "focus:ring-2 focus:ring-fg-brand"
+        ),
+    )
+
+
+def _lock_reason(state: SettingFieldState) -> str:
+    if state.reason:
+        return state.reason
+    source_label = _SOURCE_LABELS.get(
+        str(state.source),
+        str(state.source).replace("_", " ").title(),
+    )
+    return f"Managed by {source_label}; it cannot be changed here."
 
 
 def _field_metadata(field_name: str, state: SettingFieldState) -> Node | None:
-    reason = state.reason
-    if state.locked and not reason:
-        source_label = _SOURCE_LABELS.get(
-            str(state.source), str(state.source).replace("_", " ").title()
-        )
-        reason = f"Managed by {source_label}; it cannot be changed here."
+    reason = _lock_reason(state) if state.locked else state.reason
     details = [text for text in (state.help_text, reason) if text]
     if not details:
         return None
@@ -284,6 +329,8 @@ def prepare_setting_fields(
         label_extras[field_name] = SettingSourceBadge(
             state.source,
             locked=state.locked,
+            reason=_lock_reason(state) if state.locked else "",
+            id=f"id_{field_name}_setting_source_tooltip",
         )
         metadata = _field_metadata(field_name, state)
         if metadata is not None:

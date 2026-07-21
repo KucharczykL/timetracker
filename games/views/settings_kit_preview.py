@@ -135,7 +135,10 @@ def _source_gallery():
                 class_="flex min-h-control items-center justify-between gap-3 rounded-base border border-default p-3"
             )[
                 P(class_="text-type-body text-heading")[source],
-                SettingSourceBadge(source),
+                SettingSourceBadge(
+                    source,
+                    id=f"preview-source-{source}-tooltip",
+                ),
             ]
             for source in _SOURCES
         ],
@@ -143,7 +146,12 @@ def _source_gallery():
             class_="flex min-h-control items-center justify-between gap-3 rounded-base border border-default p-3"
         )[
             P(class_="text-type-body text-heading")["locked environment"],
-            SettingSourceBadge("env", locked=True),
+            SettingSourceBadge(
+                "env",
+                locked=True,
+                reason="Environment values override saved settings in this example.",
+                id="preview-source-env-locked-tooltip",
+            ),
         ],
     ]
 
