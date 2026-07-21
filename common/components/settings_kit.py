@@ -304,7 +304,7 @@ def _field_metadata(field_name: str, state: SettingFieldState) -> Node | None:
         return None
     return Div(
         id=f"id_{field_name}_setting_metadata",
-        class_="flex flex-col gap-1",
+        class_="mt-2 flex flex-col gap-1",
         data_setting_metadata="",
     )[*[P(class_="text-type-micro text-body")[text] for text in details]]
 
