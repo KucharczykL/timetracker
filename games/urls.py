@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.urls import path
 
 from games.views import (
@@ -161,3 +162,27 @@ urlpatterns = [
     path("stats/<int:year>", general.stats, name="stats_by_year"),
     path("<str:model>/filter", general.filter_builder, name="filter_builder"),
 ]
+
+
+def _settings_kit_preview_urlpatterns():
+    """Keep the developer gallery entirely absent from production routing."""
+
+    if not settings.DEBUG:
+        return []
+    from games.views import settings_kit_preview
+
+    return [
+        path(
+            "settings-kit-preview/",
+            settings_kit_preview.settings_kit_preview,
+            name="settings_kit_preview",
+        ),
+        path(
+            "settings-kit-preview/patch/<str:key>/",
+            settings_kit_preview.settings_kit_preview_patch,
+            name="settings_kit_preview_patch",
+        ),
+    ]
+
+
+urlpatterns += _settings_kit_preview_urlpatterns()
