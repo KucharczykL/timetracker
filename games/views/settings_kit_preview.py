@@ -27,6 +27,8 @@ from common.components import (
     Select,
     SettingFieldState,
     SettingSourceBadge,
+    SettingsFieldColumns,
+    SettingsFieldLayout,
     SettingsScaffold,
     SettingsSection,
 )
@@ -182,12 +184,7 @@ def _preview_label_line(
     ]
 
 
-def _preview_checkbox_field(
-    prefix: str,
-    *,
-    placement: str = "trailing",
-    gap_class: str = "gap-3",
-):
+def _preview_checkbox_field(prefix: str):
     field_id = f"{prefix}-enabled"
     help_id = f"{field_id}-help"
     label_line = _preview_label_line(
@@ -206,16 +203,8 @@ def _preview_checkbox_field(
     help_text = P(id_=help_id, class_="text-type-micro text-body")[
         "Toggle the checkbox to trigger a successful preview save."
     ]
-    if placement == "leading":
-        return Div(
-            class_="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3",
-            data_preview_checkbox_field="",
-        )[
-            Div(class_="pt-1")[checkbox],
-            Div(class_="flex min-w-0 flex-col gap-2")[label_line, help_text],
-        ]
     return Div(class_="flex min-w-0 flex-col gap-2", data_preview_checkbox_field="")[
-        Div(class_=f"flex items-center justify-between {gap_class}")[
+        Div(class_="flex items-center justify-between gap-6")[
             label_line,
             checkbox,
         ],
@@ -258,165 +247,49 @@ def _preview_standard_field(prefix: str, *, kind: str):
     ]
 
 
-def _layout_option(*, option: str, name: str, explanation: str, content, hook: str):
+def _supported_form_layout(
+    *, columns: SettingsFieldColumns, name: str, explanation: str
+):
+    label = f"{columns} column" + ("s" if columns != 1 else "")
     return Div(
         class_="flex min-w-0 flex-col gap-3",
-        **{hook: option},
+        data_supported_form_layout=str(columns),
     )[
         Div(class_="flex flex-wrap items-center gap-2")[
-            Badge(option, tone="brand"),
+            Badge(label, tone="brand"),
             Element("h4", [("class", "text-type-section text-heading")])[name],
         ],
         P(class_="text-type-body text-body")[explanation],
-        Div(class_="rounded-base border border-default p-4")[content],
+        Div(class_="rounded-base border border-default p-4")[
+            SettingsFieldLayout(columns)[*_column_fields(f"columns-{columns}")]
+        ],
     ]
 
 
 def _column_fields(prefix: str):
     return [
-        _preview_checkbox_field(prefix, gap_class="gap-6"),
+        _preview_checkbox_field(prefix),
         _preview_standard_field(prefix, kind="destination"),
         _preview_standard_field(prefix, kind="limit"),
     ]
 
 
-def _checkbox_and_form_layout_gallery():
-    return Div(class_="flex flex-col gap-8", data_checkbox_form_layout_gallery="")[
-        Div(class_="flex flex-col gap-2")[
-            Element("h3", [("class", "text-type-subheading text-heading")])[
-                "Checkbox placement"
-            ],
-            P(class_="text-type-body text-body")[
-                "A fluid trailing row is intentionally excluded. Compare the adopted bounded row with the leading-control alternative."
-            ],
-        ],
-        Div(class_="flex flex-col gap-6")[
-            _layout_option(
-                option="Adopted",
-                name="Constrained trailing checkbox",
-                explanation="Keep the familiar right-aligned control inside a readable-width field column, with a 24px minimum gap.",
-                content=Div(class_="max-w-xl")[
-                    _preview_checkbox_field("checkbox-constrained", gap_class="gap-6")
-                ],
-                hook="data_checkbox_placement_variant",
-            ),
-            _layout_option(
-                option="Option 2",
-                name="Leading checkbox",
-                explanation="Put the control immediately before its label; association stays strong at every container width.",
-                content=_preview_checkbox_field(
-                    "checkbox-leading",
-                    placement="leading",
-                ),
-                hook="data_checkbox_placement_variant",
-            ),
-        ],
-        Div(class_="flex flex-col gap-2")[
-            Element("h3", [("class", "text-type-subheading text-heading")])[
-                "Form-field column flow"
-            ],
-            P(class_="text-type-body text-body")[
-                "The production renderer is single-column today. The two- and three-column areas elsewhere on this page are component galleries, not form modes."
-            ],
-        ],
-        Div(class_="flex flex-col gap-6")[
-            _layout_option(
-                option="1 column",
-                name="Constrained vertical form",
-                explanation="Best scanning order and room for help, errors, and long translated labels.",
-                content=Div(class_="flex max-w-xl flex-col gap-4")[
-                    *_column_fields("columns-one")
-                ],
-                hook="data_form_column_variant",
-            ),
-            _layout_option(
-                option="2 columns",
-                name="Responsive paired fields",
-                explanation="Useful for independent, compact settings; collapses to one column on narrow screens.",
-                content=Div(class_="grid grid-cols-1 gap-6 @md:grid-cols-2")[
-                    *_column_fields("columns-two")
-                ],
-                hook="data_form_column_variant",
-            ),
-            _layout_option(
-                option="3 columns",
-                name="Responsive compact grid",
-                explanation="Only suitable for short, uniform controls; labels and metadata run out of room first.",
-                content=Div(
-                    class_="grid grid-cols-1 gap-6 @md:grid-cols-2 @4xl:grid-cols-3"
-                )[*_column_fields("columns-three")],
-                hook="data_form_column_variant",
-            ),
-        ],
-    ]
-
-
-def _hierarchy_sample(
-    *,
-    option: str,
-    name: str,
-    explanation: str,
-    outer_heading_class: str,
-    sample_class: str,
-    nested_class: str = "",
-):
-    return Div(
-        class_="flex min-w-0 flex-col gap-3",
-        data_section_hierarchy_variant=option,
-    )[
-        Div(class_="flex flex-wrap items-center gap-2")[
-            Badge(option, tone="brand"),
-            Element("h3", [("class", "text-type-subheading text-heading")])[name],
-        ],
-        P(class_="text-type-body text-body")[explanation],
-        Div(
-            class_=f"rounded-base border border-default p-4 {sample_class}",
-        )[
-            Div(class_="flex flex-col gap-2")[
-                Element("h4", [("class", outer_heading_class)])[
-                    "Live grouped settings fields"
-                ],
-                P(class_="text-type-body text-body")[
-                    "Successful changes show a toast and stay in client memory until reload."
-                ],
-            ],
-            Div(class_=nested_class)[
-                Element("h5", [("class", "text-type-section text-heading")])[
-                    "Preferences"
-                ],
-                P(class_="text-type-body text-body")[
-                    "Checkbox, select, number, and text controls use the shared form path."
-                ],
-            ],
-        ],
-    ]
-
-
-def _section_hierarchy_gallery():
-    return Div(class_="grid grid-cols-1 gap-6 xl:grid-cols-3")[
-        _hierarchy_sample(
-            option="Option 1",
-            name="Typography + spacing",
-            explanation="20px/700 outside, 18px/600 inside, with 8px/24px grouping.",
-            outer_heading_class="text-type-subheading text-heading",
-            sample_class="flex flex-col gap-6",
-            nested_class="flex flex-col gap-3",
+def _supported_form_layouts():
+    return Div(class_="flex flex-col gap-6", data_supported_form_layouts="")[
+        _supported_form_layout(
+            columns=1,
+            name="Constrained vertical form",
+            explanation="Best scanning order and room for help, errors, and long translated labels.",
         ),
-        _hierarchy_sample(
-            option="Option 2",
-            name="Spacing hierarchy",
-            explanation="Matching heading styles, grouped by 8px inside and 24px before content.",
-            outer_heading_class="text-type-section text-heading",
-            sample_class="flex flex-col gap-6",
-            nested_class="flex flex-col gap-3",
+        _supported_form_layout(
+            columns=2,
+            name="Responsive paired fields",
+            explanation="For independent compact settings; collapses to one column on narrow screens.",
         ),
-        _hierarchy_sample(
-            option="Option 3",
-            name="Divider hierarchy",
-            explanation="Matching heading styles, separated by a thin but visible structural rule.",
-            outer_heading_class="text-type-section text-heading",
-            sample_class="flex flex-col gap-4",
-            nested_class="flex flex-col gap-3 border-t border-default-strong pt-4",
+        _supported_form_layout(
+            columns=3,
+            name="Responsive compact grid",
+            explanation="For short uniform controls; collapses through two columns to one as space narrows.",
         ),
     ]
 
@@ -427,16 +300,10 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
 
     sections = [
         SettingsSection(
-            "section-hierarchy-comparison",
-            "Section hierarchy comparison",
-            _section_hierarchy_gallery(),
-            "The same content with typography, spacing, and divider treatments isolated for comparison.",
-        ),
-        SettingsSection(
-            "checkbox-and-form-layout-comparison",
-            "Checkbox and form layout comparison",
-            _checkbox_and_form_layout_gallery(),
-            "Placement and column-flow candidates using real kit controls and source badges.",
+            "supported-form-layouts",
+            "Supported form layouts",
+            _supported_form_layouts(),
+            "The complete one-, two-, and three-column layouts exposed by SettingsFieldLayout.",
         ),
         SettingsSection(
             "live-settings-fields",

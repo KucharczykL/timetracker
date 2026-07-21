@@ -24,10 +24,10 @@ page-local variants.
 
 A page supplies ordered `SettingsSection` values to `SettingsScaffold`. Inside a
 section, ordinary fields are a Django form rendered by grouped `FormFields`.
-`LiveSettingFields` enforces `w-full max-w-xl` for that single-column form: it
-may fill a narrow pane but can never stretch across the whole wide content
-pane. Explicit two- and three-column layouts may use the available width and
-collapse responsively; a single-column layout must keep the shared form cap.
+`SettingsFieldLayout` exposes the only supported field flows: a
+`w-full max-w-xl` single column, a responsive two-column grid, or a responsive
+three-column grid. `LiveSettingFields` always composes the first, so it may fill
+a narrow pane but can never stretch across the whole wide content pane.
 The scaffold owns section hierarchy and rhythm: its outer title uses
 `text-type-subheading` (20px/700), while nested field-group legends use
 `text-type-section` (18px/600). Title and description form an 8px header group,

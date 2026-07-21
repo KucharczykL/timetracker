@@ -298,8 +298,9 @@ guard). The **color guard is `ts/`-only**: `common/` still carries raw palette m
   `text-type-subheading` (20px/700); nested field-group legends use `text-type-section`
   (18px/600). Keep a section title and description 8px apart, then leave 24px before its
   content. These roles and gaps belong to the shared components, not page-local overrides.
-- **A settings form may not be a fluid single column.** `LiveSettingFields` owns the
-  `w-full max-w-xl` cap. Two-column (`@md:grid-cols-2`) and three-column
+- **A settings form may not be a fluid single column.** `SettingsFieldLayout` owns the only
+  three supported flows, and `LiveSettingFields` composes its `w-full max-w-xl` single-column
+  mode. Two-column (`@md:grid-cols-2`) and three-column
   (`@md:grid-cols-2 @4xl:grid-cols-3`) layouts may fill the pane for compact independent
   fields, but collapse responsively. Checkbox rows use a 24px minimum gap and a
   non-shrinking control so metadata wraps before the checkbox becomes crowded.
