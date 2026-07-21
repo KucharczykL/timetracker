@@ -153,6 +153,16 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             assert str(escape(description)) in html
             assert ">Locked</dt>" not in html
 
+    def test_non_default_source_badge_explains_highlight(self):
+        personal = str(SettingSourceBadge("user", id="personal-source-tip"))
+        default = str(SettingSourceBadge("default", id="default-source-tip"))
+        locked = str(SettingSourceBadge("env", locked=True, id="locked-source-tip"))
+
+        assert "Non-default source (default source: “Default”)" in personal
+        assert 'data-setting-source-status=""' in personal
+        assert 'data-setting-source-status="" hidden=""' in default
+        assert "Non-default source" not in locked
+
     def test_default_source_is_neutral_and_overrides_use_brand_tone(self):
         default = str(SettingSourceBadge("default", id="default-source-tip"))
         default_badge = default.split('data-setting-origin="default"')[0].rsplit(
