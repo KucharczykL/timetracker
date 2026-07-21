@@ -61,24 +61,19 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "Settings UI kit preview" in body
     assert "DEBUG only" in body
     assert "No persistence" in body
-    assert body.count('data-settings-section=""') == 7
-    assert body.count('data-settings-section-header=""') == 7
-    assert body.count('data-settings-section-content=""') == 7
+    assert body.count('data-settings-section=""') == 6
+    assert body.count('data-settings-section-header=""') == 6
+    assert body.count('data-settings-section-content=""') == 6
     assert body.count("<settings-section-nav") == 1
     assert body.count("<fieldset") == 2
-    assert body.count("data-section-hierarchy-variant") == 3
-    assert "Typography + spacing" in body
-    assert "Spacing hierarchy" in body
-    assert "Divider hierarchy" in body
-    assert "border-t border-default-strong pt-4" in body
-    assert body.count("data-checkbox-placement-variant") == 2
-    assert "Fluid trailing checkbox" not in body
-    assert "Constrained trailing checkbox" in body
-    assert "Leading checkbox" in body
-    assert body.count("data-form-column-variant") == 3
+    assert body.count("data-supported-form-layout=") == 3
+    assert body.count("data-settings-field-layout") == 4
     assert "Constrained vertical form" in body
     assert "Responsive paired fields" in body
     assert "Responsive compact grid" in body
+    assert "Option 1" not in body
+    assert "Leading checkbox" not in body
+    assert "Divider hierarchy" not in body
 
     assert 'type="checkbox"' in _named_tag(body, "input", "enabled")
     assert _named_tag(body, "select", "destination")

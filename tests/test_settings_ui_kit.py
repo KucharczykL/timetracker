@@ -14,6 +14,8 @@ from common.components import (
     MaskedSecretField,
     SettingFieldState,
     SettingSourceBadge,
+    SettingsFieldColumns,
+    SettingsFieldLayout,
     SettingsScaffold,
     SettingsSection,
     collect_media,
@@ -229,6 +231,20 @@ class SettingsScaffoldTest(SimpleTestCase):
 
 
 class LiveAndSecretComponentTest(SimpleTestCase):
+    def test_field_layout_exposes_only_the_three_supported_flows(self):
+        expected_classes: dict[SettingsFieldColumns, str] = {
+            1: "flex w-full max-w-xl flex-col gap-6",
+            2: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2",
+            3: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2 @4xl:grid-cols-3",
+        }
+        for columns, classes in expected_classes.items():
+            html = str(SettingsFieldLayout(columns)["field"])
+            assert f'data-settings-field-layout="{columns}"' in html
+            assert classes in html
+
+        with pytest.raises(ValueError, match="1, 2, or 3"):
+            SettingsFieldLayout(4)  # type: ignore[arg-type]
+
     def test_live_wrapper_uses_registered_codegen_attributes_and_media(self):
         node = LiveSettingFields(
             KitForm(),
@@ -246,6 +262,7 @@ class LiveAndSecretComponentTest(SimpleTestCase):
         assert 'patch-url-template="/api/settings/user/__key__"' in html
         assert 'csrf="csrf-token"' in html
         assert 'event="setting-saved"' in html
+        assert 'data-settings-field-layout="1"' in html
         assert "w-full max-w-xl" in html
         assert "dist/elements/live-setting-fields.js" in collect_media(node).js
 

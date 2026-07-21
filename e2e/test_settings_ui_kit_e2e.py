@@ -235,11 +235,11 @@ def test_desktop_scaffold_promotes_same_nav_to_sticky_rail(live_server, page: Pa
     assert nav_box and section_box
     assert nav_box["x"] < section_box["x"]
     assert abs(nav_box["y"] - section_box["y"]) < 2
-    live_fields = first_section.locator("live-setting-fields")
-    expect(live_fields).to_have_css("max-width", "576px")
-    live_fields_box = live_fields.bounding_box()
-    assert live_fields_box
-    assert live_fields_box["width"] < section_box["width"] - 32
+    single_column = first_section.locator('[data-settings-field-layout="1"]')
+    expect(single_column).to_have_css("max-width", "576px")
+    single_column_box = single_column.bounding_box()
+    assert single_column_box
+    assert single_column_box["width"] < section_box["width"] - 32
 
     page.evaluate("window.scrollTo(0, 1000)")
     page.wait_for_timeout(50)

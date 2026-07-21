@@ -9,6 +9,7 @@ navigation, secret masking, and the live-save host around that existing path.
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from common.components.core import Child, Element, Fragment, Node, randomid
 from common.components.custom_elements import Dropdown, DropdownMenuPanel
@@ -38,6 +39,12 @@ _SettingsSectionNav = custom_element_builder("settings-section-nav")
 _LiveSettingFields = custom_element_builder("live-setting-fields")
 
 _SECTION_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+type SettingsFieldColumns = Literal[1, 2, 3]
+_SETTINGS_FIELD_LAYOUT_CLASSES: dict[SettingsFieldColumns, str] = {
+    1: f"flex w-full {FORM_MAX_WIDTH_CLASS} flex-col gap-6",
+    2: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2",
+    3: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2 @4xl:grid-cols-3",
+}
 _SOURCE_LABELS = {
     "user": "Personal",
     "database": "Database",
@@ -90,6 +97,16 @@ class SettingFieldState:
     locked: bool = False
     reason: str = ""
     help_text: str = ""
+
+
+def SettingsFieldLayout(columns: SettingsFieldColumns = 1) -> Element:
+    """A supported settings-field flow; one column is always width-capped."""
+    if columns not in _SETTINGS_FIELD_LAYOUT_CLASSES:
+        raise ValueError("SettingsFieldLayout columns must be 1, 2, or 3.")
+    return Div(
+        class_=_SETTINGS_FIELD_LAYOUT_CLASSES[columns],
+        data_settings_field_layout=str(columns),
+    )
 
 
 def _validate_sections(sections: Sequence[SettingsSection]) -> None:
@@ -374,14 +391,16 @@ def LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
         event=event,
-        class_=f"flex w-full {FORM_MAX_WIDTH_CLASS} flex-col gap-6 @container",
+        class_="block w-full @container",
     )[
-        FormFields(
-            form,
-            extras=extras,
-            label_extras=label_extras,
-            groups=groups,
-        )
+        SettingsFieldLayout(1)[
+            FormFields(
+                form,
+                extras=extras,
+                label_extras=label_extras,
+                groups=groups,
+            )
+        ]
     ]
 
 
@@ -424,6 +443,8 @@ __all__ = [
     "MaskedSecretField",
     "SettingFieldState",
     "SettingSourceBadge",
+    "SettingsFieldColumns",
+    "SettingsFieldLayout",
     "SettingsScaffold",
     "SettingsSection",
     "SettingsSectionNav",
