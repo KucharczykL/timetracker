@@ -164,8 +164,30 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     expect(locked_badge).to_be_visible()
     expect(locked_badge).to_contain_text("Environment")
     expect(locked_badge.locator("svg")).to_be_visible()
+    locked_badge.hover()
+    locked_tooltip = page.locator("#id_pinned_url_setting_source_tooltip")
+    expect(locked_tooltip).to_be_visible()
+    expect(locked_tooltip).to_contain_text(
+        "Source: Loaded from an environment variable."
+    )
+    expect(locked_tooltip).to_contain_text(
+        "Locked: Change APP_URL in the environment and restart."
+    )
+    page.mouse.move(0, 0)
+    expect(locked_tooltip).to_be_hidden()
+
+    unlocked_badge = page.locator('[data-setting-origin="database"]')
+    unlocked_badge.hover()
+    unlocked_tooltip = page.locator("#id_destination_setting_source_tooltip")
+    expect(unlocked_tooltip).to_be_visible()
+    expect(unlocked_tooltip).to_contain_text(
+        "Source: Saved in the application database as the current site-wide value."
+    )
+    expect(unlocked_tooltip).not_to_contain_text("Locked:")
     expect(
-        page.get_by_text("Change APP_URL in the environment and restart.")
+        page.locator("[data-setting-metadata]").get_by_text(
+            "Change APP_URL in the environment and restart."
+        )
     ).to_be_visible()
 
     masked = page.locator("[data-masked-secret] input")

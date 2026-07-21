@@ -83,6 +83,7 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "super-secret-value" not in body
     assert "dist/elements/settings-section-nav.js" in body
     assert "dist/elements/live-setting-fields.js" in body
+    assert "dist/elements/pop-over.js" in body
     assert _patch_url("__key__") in body
 
 

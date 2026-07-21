@@ -3,6 +3,7 @@
 import pytest
 from django import forms
 from django.test import SimpleTestCase
+from django.utils.html import escape
 
 from common.components import (
     Badge,
@@ -106,14 +107,43 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "bg-warning-soft" in str(Badge("Locked", tone="warning"))
 
     def test_source_lock_composite_is_one_badge_with_an_icon(self):
-        html = str(SettingSourceBadge("env_file", locked=True))
+        node = SettingSourceBadge(
+            "env_file",
+            locked=True,
+            reason="Change SECRET__FILE and restart.",
+            id="env-file-source-tip",
+        )
+        html = str(node)
         assert "Environment file" in html
-        assert html.count("<span") == 1
+        assert html.count('data-setting-origin="env_file"') == 1
         assert html.count("<svg") == 1
         assert 'data-setting-origin="env_file"' in html
         assert 'data-setting-locked=""' in html
-        assert 'aria-label="Locked; source: Environment file"' in html
+        assert 'aria-label="Environment file source, locked"' in html
+        assert 'id="env-file-source-tip"' in html
+        assert 'role="tooltip"' in html
+        assert (
+            "Source: Loaded from a file referenced by an environment variable." in html
+        )
+        assert "Locked: Change SECRET__FILE and restart." in html
+        assert "dist/elements/pop-over.js" in collect_media(node).js
         assert "data-pill" not in html
+
+    def test_every_unlocked_source_badge_explains_its_origin(self):
+        descriptions = {
+            "user": "Saved for your account and overrides the site default.",
+            "database": "Saved in the application database as the current site-wide value.",
+            "env": "Loaded from an environment variable.",
+            "env_file": "Loaded from a file referenced by an environment variable.",
+            "dotenv": "Loaded from the application's .env file.",
+            "ini": "Loaded from the application's settings.ini file.",
+            "default": "The built-in default, used because no higher-priority value is set.",
+        }
+        for source, description in descriptions.items():
+            html = str(SettingSourceBadge(source, id=f"{source}-source-tip"))
+            assert 'role="tooltip"' in html
+            assert str(escape(f"Source: {description}")) in html
+            assert "Locked:" not in html
 
     def test_locked_state_disables_the_real_django_field_and_adds_reason(self):
         form = KitForm()
@@ -141,6 +171,10 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert 'data-setting-locked=""' in html
         assert "Change APP_URL in the environment and restart." in html
         assert 'aria-describedby="id_locked_value_setting_metadata"' in html
+        assert 'id="id_locked_value_setting_source_tooltip"' in html
+        assert 'role="tooltip"' in html
+        assert "Source: Loaded from an environment variable." in html
+        assert "Locked: Change APP_URL in the environment and restart." in html
         label_line = html.index('data-form-field-label-line=""')
         badge = html.index('data-setting-origin="env"', label_line)
         control = html.index('name="locked_value"', badge)
