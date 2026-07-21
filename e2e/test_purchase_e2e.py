@@ -217,10 +217,13 @@ def test_split_modal_dismisses_on_escape_and_backdrop(
 
 @pytest.fixture
 def touch_page(live_server, browser, django_user_model):
-    """A logged-in page in a touch-enabled context (so locator.tap() works and
-    pointer events report pointerType "touch"). Desktop-width viewport."""
+    """A logged-in page in a touch, no-hover mobile context (so locator.tap()
+    works, pointer events report pointerType "touch", and `(hover: none)` matches
+    — the reveal button is shown only where the device can't hover)."""
     django_user_model.objects.create_user(username="tester", password="secret123")
-    context = browser.new_context(has_touch=True)
+    context = browser.new_context(
+        has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
+    )
     page = context.new_page()
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
@@ -232,10 +235,9 @@ def touch_page(live_server, browser, django_user_model):
 
 
 def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
-    """A truncated name's <pop-over> tooltip: the panel is hidden until hovered,
-    then revealed. The reveal trigger is a glyph <button> beside the link, but
-    the whole host opens on hover — so hovering the NAME (the link) opens it too,
-    preserving the pre-extraction hover surface (#445 M1)."""
+    """On a hover-capable (desktop) device the tap reveal button is hidden, and
+    hovering the NAME (the link) opens the tooltip — the whole host opens on
+    hover, so the hover surface is the visible name, not a glyph (#445 M1)."""
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     Game.objects.create(
@@ -244,20 +246,17 @@ def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
     )
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    trigger = page.locator("pop-over [data-pop-over-trigger]").first
     name_link = page.locator("pop-over a").first
     panel = page.locator("pop-over [data-pop-over-panel]").first
+    # The reveal button is mobile-only (shown only where the device can't hover).
+    expect(page.locator("pop-over [data-pop-over-trigger]").first).to_be_hidden()
 
     expect(panel).to_be_hidden()
-    # Hovering the name link (not just the glyph) opens the tooltip.
     name_link.hover()
     expect(panel).to_be_visible()
     expect(panel.locator("[data-pop-over-arrow]")).to_be_visible()
     page.mouse.move(0, 0)
     expect(panel).to_be_hidden()
-    # The glyph trigger opens it too.
-    trigger.hover()
-    expect(panel).to_be_visible()
 
 
 def test_name_popover_taps_open_on_touch(touch_page: Page, live_server):
