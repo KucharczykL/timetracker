@@ -166,9 +166,11 @@ restart; existing behavior unchanged with an empty table. Update [docs/configura
 **First task:** an inventory mapping each needed piece to reuse / extend / new (per "enhance, don't
 duplicate").
 **Deliverables:**
-- **Responsive section-nav scaffold** (net-new): mobile = stacked labeled sections + top anchor-chip
-  nav; desktop = sticky section-nav rail beside content. Container-query driven, same DOM both sizes.
-  Reference the quick-filter ResizeObserver pattern; reuse `ContentContainer`.
+- **Responsive section-nav scaffold** (net-new): mobile = stacked labeled sections + a full-width,
+  self-explanatory trigger opening a native-dialog bottom sheet; desktop = sticky section-nav rail
+  beside content. Container-query driven, with the same semantic link list moved—not cloned—between
+  both sizes. Reuse `ContentContainer` and the generic dropdown trigger/panel shell, but do not apply
+  anchored-menu positioning or ARIA-menu keyboard semantics to the sheet.
 - **Field grouping**: extend `FormFields` to render grouped fieldsets (not a new renderer).
 - **Setting widgets**: via the Django-form + `FormFields`/`PrimitiveWidgetsMixin` path (checkbox /
   select / number / text). **Not** `field_widget`.

@@ -9,17 +9,23 @@
 **Scope:** repair the desktop settings section rail's intended sticky behavior and its
 false-positive browser test.
 
-Focused verification completed with 16 server-rendered component tests, two desktop rail
-browser tests, the mobile priority-plus browser test, targeted Ruff lint/format checks, a CSS
-rebuild, and `git diff --check`. The full project gate remains reserved for the epic's final
-verification run.
+> **Mobile supersession:** this document records the intermediate rail repair, when settings
+> still used priority-plus chips on mobile. That mobile design was subsequently replaced by the
+> native-dialog bottom sheet in [settings-mobile-bottom-sheet-plan.md](settings-mobile-bottom-sheet-plan.md).
+> The desktop sticky, label-fit, focus-ring, and overflow contracts below remain current; any
+> chip/`More` wording describes history rather than supported UI.
+
+Focused verification originally completed with 16 server-rendered component tests, two desktop
+rail browser tests, the then-current mobile priority-plus browser test, targeted Ruff lint/format
+checks, a CSS rebuild, and `git diff --check`. The later bottom-sheet plan replaced and extended
+the mobile coverage.
 
 ## Outcome
 
 At desktop settings-scaffold widths, the section menu remains approximately 16px from the
 top of the viewport while the settings content scrolls. If the menu itself is taller than
-the available viewport space, its inner navigation can scroll vertically. Mobile keeps the
-existing priority-plus chip row and `More` dropdown unchanged.
+the available viewport space, its inner navigation can scroll vertically. The later mobile
+bottom-sheet implementation keeps the same list identity while moving it out of this rail.
 
 This repair must preserve:
 
@@ -69,7 +75,7 @@ but does not eliminate it; the browser checks below must prove the current label
 | --- | --- |
 | `<settings-section-nav>` | Desktop grid item, sticky positioning, 16px top offset, non-stretched alignment |
 | Inner `<nav>` | Accessible navigation landmark, mobile bottom margin, desktop viewport-height cap and vertical overflow; must pass the no-horizontal-overflow gate |
-| Primary `<ul>` | Horizontal clipped chip row on mobile; restored vertical list on desktop |
+| Primary `<ul>` | Moved into the mobile bottom sheet; restored as the vertical desktop list |
 | Section `<a>` | Navigation label, hover state, and contained inset focus ring |
 
 Sticky positioning belongs to the outer grid item because its containing block is the full
@@ -109,7 +115,7 @@ No TypeScript behavior should change.
 
 ### 2. Make the component contract assert ownership
 
-Update `SettingsScaffoldTest.test_same_dom_carries_mobile_chips_and_desktop_rail_classes`
+Update the settings scaffold's same-DOM mobile/desktop component contract test
 in `tests/test_settings_ui_kit.py`.
 
 The test must establish all of the following:
@@ -140,8 +146,8 @@ The trailing block gives the browser enough document height to verify that the s
 constrained by the settings scaffold and does not overlay later page content. It is fixture
 material, not part of `SettingsScaffold` and not a supported settings component.
 
-Keep five sections so the existing priority-plus counts remain stable, but replace one
-synthetic label with the reported near-limit preview label, `Setting source and lock states`.
+Keep five sections so the full navigation fixture remains stable, but replace one synthetic
+label with the reported near-limit preview label, `Setting source and lock states`.
 This makes the test exercise the exact label seen in the rail-width and focus-ring review,
 without adding a production check or changing the supported component catalog.
 
@@ -175,8 +181,8 @@ overflow subject. The test should:
 10. Scroll to the test-only block after the scaffold. Assert the sticky host's bottom edge is
     at or above that block's top edge, proving the rail stops at the scaffold boundary rather
     than overlaying following content.
-11. Keep the existing desktop assertions that all five original navigation nodes are restored
-    to the primary list and the `More` control is hidden.
+11. Keep the desktop assertions that all five original navigation nodes are restored to the
+    primary list and the mobile sheet host is hidden.
 
 The post-scroll assertion must have both a lower and upper bound. In particular, negative
 coordinates must fail.
@@ -331,8 +337,8 @@ At a desktop width where the scaffold has promoted to two columns:
    following content.
 7. Reduce the desktop viewport height until the menu exceeds its available height; confirm the
    inner menu scrolls independently while the page remains still.
-8. Resize below the desktop container threshold and confirm the rail returns to the existing
-   chip row with priority-plus overflow.
+8. Resize below the desktop container threshold and confirm the rail becomes the full-width
+   `Settings sections` trigger whose bottom sheet contains the same links.
 9. Return to desktop width and confirm all original section nodes return to the vertical list.
 
 ### 9. Commit and integrate
@@ -371,7 +377,8 @@ local `main` and the feature branch resolve to the same commit.
 - [x] Section-link focus rings remain complete and visible, and the browser-computed focus
       shadow is inset.
 - [x] The desktop rail remains 14rem wide.
-- [x] Mobile priority-plus behavior and same-node restoration are unchanged.
+- [x] Same-node restoration survives the mobile/desktop transition. The later bottom-sheet plan
+      supersedes the priority-plus presentation originally verified here.
 - [x] The focused component and desktop browser tests pass.
 - [x] `git diff --check` passes.
 - [x] The unrelated `Makefile` modification remains unstaged and unchanged.
