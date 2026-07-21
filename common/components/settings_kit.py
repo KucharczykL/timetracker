@@ -283,11 +283,14 @@ def SettingSourceBadge(
     locked: bool = False,
     reason: str = "",
     id: str = "",
+    setting_key: str = "",
 ) -> Node:
     """One setting-origin badge with an accessible explanatory tooltip."""
     source_value = str(source)
     label = _SOURCE_LABELS.get(source_value, source_value.replace("_", " ").title())
     attributes: list[tuple[str, str]] = [("data-setting-origin", source_value)]
+    if setting_key:
+        attributes.append(("data-setting-source-key", setting_key))
     content: Node | str = label
     if locked:
         attributes.extend(
@@ -306,7 +309,11 @@ def SettingSourceBadge(
     badge = Badge(
         content,
         size="sm",
-        tone="warning" if locked else "neutral",
+        tone=(
+            "warning"
+            if locked
+            else ("neutral" if source_value == "default" else "brand")
+        ),
         extra_class="gap-1",
         attributes=attributes,
     )
@@ -314,7 +321,13 @@ def SettingSourceBadge(
         source_value,
         f"Provided by {label}.",
     )
-    tooltip_definitions = [TooltipDefinition("Source", source_description)]
+    tooltip_definitions = [
+        TooltipDefinition(
+            "Source",
+            source_description,
+            [("data-setting-source-description", "")],
+        )
+    ]
     if locked:
         lock_reason = reason or (
             f"{label} values take priority over settings saved in the application, "
@@ -394,6 +407,7 @@ def prepare_setting_fields(
             locked=state.locked,
             reason=_lock_reason(state) if state.locked else "",
             id=tooltip_id,
+            setting_key=state.key,
         )
         metadata = _field_metadata(metadata_id, state)
         if metadata is not None:

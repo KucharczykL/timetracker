@@ -3,7 +3,8 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
 
-from games.models import Device, UserPreferences
+from games.models import Device, SiteSetting, UserPreferences
+from timetracker import settings_resolver
 
 
 @pytest.fixture
@@ -59,6 +60,28 @@ def test_settings_page_lists_devices_by_name(auth_client):
     assert html.index(">Desktop (PC)</option>") < html.index(
         ">Steam Deck (Handheld)</option>"
     )
+
+
+def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert '<option value="" selected>Use site default (No device)</option>' in html
+    assert '<option value="" selected>Use site default (Sessions)</option>' in html
+
+
+def test_unset_selects_show_configured_site_defaults(auth_client):
+    desktop = Device.objects.create(name="Desktop", type=Device.PC)
+    SiteSetting.objects.create(key="DEFAULT_DEVICE", value=desktop.pk)
+    SiteSetting.objects.create(
+        key="DEFAULT_LANDING_PAGE",
+        value="games:list_games",
+    )
+    settings_resolver.clear_cache()
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert '<option value="" selected>Use site default (Desktop (PC))</option>' in html
+    assert '<option value="" selected>Use site default (Games)</option>' in html
 
 
 def test_authenticated_navbar_links_to_settings(auth_client):

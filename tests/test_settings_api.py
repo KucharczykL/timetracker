@@ -113,9 +113,14 @@ def test_site_endpoints_allowed_for_superuser(superuser_client):
 
 
 def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
-    assert _patch(
-        auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR"
-    ).status_code == (204)
+    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "DEFAULT_CURRENCY",
+        "value": "EUR",
+        "source": "user",
+        "locked": False,
+    }
     body = auth_client.get(_user_url()).json()
     currency = _currency(body)
     assert currency["value"] == "EUR"
@@ -146,12 +151,19 @@ def test_user_settings_are_scoped_per_user(
 
 
 def test_user_null_clears_back_to_fallback(auth_client, no_currency_env):
-    from games.models import UserPreferences
+    from games.models import SiteSetting, UserPreferences
+
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="USD")
 
     _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
-    assert _patch(
-        auth_client, _user_patch_url("DEFAULT_CURRENCY"), None
-    ).status_code == (204)
+    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), None)
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "DEFAULT_CURRENCY",
+        "value": "USD",
+        "source": "database",
+        "locked": False,
+    }
     preferences = UserPreferences.objects.get(user__username="tester")
     assert preferences.default_currency is None
     currency = _currency(auth_client.get(_user_url()).json())
@@ -216,7 +228,7 @@ def test_user_device_round_trips_as_int(auth_client, db):
     device = Device.objects.create(name="Deck", type=Device.HANDHELD)
     assert (
         _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk).status_code
-        == 204
+        == 200
     )
     row = next(
         r for r in auth_client.get(_user_url()).json() if r["key"] == "DEFAULT_DEVICE"
@@ -232,7 +244,7 @@ def test_user_device_null_clears(auth_client, db):
     device = Device.objects.create(name="Deck", type=Device.HANDHELD)
     _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), device.pk)
     assert (
-        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), None).status_code == 204
+        _patch(auth_client, _user_patch_url("DEFAULT_DEVICE"), None).status_code == 200
     )
     preferences = UserPreferences.objects.get(user__username="tester")
     assert preferences.default_device_id is None

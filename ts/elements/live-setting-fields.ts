@@ -21,6 +21,51 @@ interface PendingSave {
   restoreAfterSettle: boolean;
 }
 
+interface ResolvedSetting {
+  key: string;
+  value: SettingValue;
+  source: string;
+  locked: boolean;
+}
+
+const SOURCE_METADATA: Record<string, { label: string; description: string }> = {
+  user: {
+    label: "Personal",
+    description: "Saved for your account and overrides the site default.",
+  },
+  database: {
+    label: "Database",
+    description: "Saved in the application database as the current site-wide value.",
+  },
+  env: {
+    label: "Environment",
+    description: "Loaded from an environment variable.",
+  },
+  env_file: {
+    label: "Environment file",
+    description: "Loaded from a file referenced by an environment variable.",
+  },
+  dotenv: {
+    label: ".env",
+    description: "Loaded from the application's .env file.",
+  },
+  ini: {
+    label: "settings.ini",
+    description: "Loaded from the application's settings.ini file.",
+  },
+  default: {
+    label: "Default",
+    description: "The built-in default, used because no higher-priority value is set.",
+  },
+};
+
+const SOURCE_TONE_CLASSES = {
+  brand: ["bg-brand-soft", "text-heading"],
+  neutral: ["bg-neutral-quaternary", "text-heading"],
+  warning: ["bg-warning-soft", "text-fg-warning"],
+};
+const ALL_SOURCE_TONE_CLASSES = Object.values(SOURCE_TONE_CLASSES).flat();
+
 function isSettingControl(element: Element | null): element is SettingControl {
   return (
     element instanceof HTMLInputElement ||
@@ -106,6 +151,39 @@ class LiveSettingFieldsElement extends HTMLElement {
     this.save(control);
   };
 
+  private updateSourceMetadata(resolved: ResolvedSetting): void {
+    const badge = Array.from(
+      this.querySelectorAll<HTMLElement>("[data-setting-source-key]"),
+    ).find((candidate) => candidate.dataset.settingSourceKey === resolved.key);
+    if (!badge) return;
+
+    const source = resolved.source;
+    const metadata = SOURCE_METADATA[source] ?? {
+      label: source
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      description: `Provided by ${source}.`,
+    };
+    badge.dataset.settingOrigin = source;
+    badge.textContent = metadata.label;
+    badge.classList.remove(...ALL_SOURCE_TONE_CLASSES);
+    const tone = resolved.locked
+      ? SOURCE_TONE_CLASSES.warning
+      : source === "default"
+        ? SOURCE_TONE_CLASSES.neutral
+        : SOURCE_TONE_CLASSES.brand;
+    badge.classList.add(...tone);
+
+    const popover = badge.closest("pop-over");
+    popover
+      ?.querySelector<HTMLElement>("[data-pop-over-trigger]")
+      ?.setAttribute("aria-label", `${metadata.label} source`);
+    const description = popover?.querySelector<HTMLElement>(
+      "[data-setting-source-description] dd",
+    );
+    if (description) description.textContent = metadata.description;
+  }
+
   private save(control: SettingControl): void {
     const key = control.dataset.settingKey ?? "";
     if (!key || !this.patchUrlTemplate.includes("__key__")) return;
@@ -164,10 +242,14 @@ class LiveSettingFieldsElement extends HTMLElement {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`PATCH ${url} → ${response.status}`);
+      const resolved = response.status === 204
+        ? null
+        : (await response.json()) as ResolvedSetting;
       if (this.pending.get(control) !== pending) return;
       // Record the exact value represented by this response. The user may have
       // already edited the DOM again while it was in flight.
       this.committed.set(control, attempt.state);
+      if (resolved) this.updateSourceMetadata(resolved);
       if (pending.restoreAfterSettle && pending.queued === null) {
         restore(control, attempt.state);
       }

@@ -22,6 +22,7 @@ from games.filters import (
 )
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
+from timetracker.config import ResolvedSetting, SettingSource
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
     SettingKey,
@@ -622,12 +623,12 @@ def list_user_settings(request):
     ]
 
 
-@settings_router.patch("/user/{key}", response={204: None})
+@settings_router.patch("/user/{key}", response=SettingOut)
 def update_user_setting(request, key: str, payload: SettingValueIn):
     """Set (or clear, with ``value: null``) one of the user's prefs.
 
-    ``response={204: None}`` is required — without it ``Status(204, None)`` raises
-    ConfigError → 500 (no schema for 204).
+    Return the freshly resolved value and origin so live controls can update their
+    source metadata without reloading the page.
     """
     try:
         definition = get_definition(key)
@@ -636,11 +637,19 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     if definition.scope is not SettingScope.USER:
         raise HttpError(400, f"{key} is not a user-scoped setting.")
     try:
-        set_user_preference(request.user, key, payload.value)
+        saved_value = set_user_preference(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
     messages.success(request, f"{definition.label} saved")
-    return Status(204, None)
+    # Build the immediate response without consulting the per-user snapshot: its
+    # signal invalidation intentionally runs on commit, which may not have happened
+    # yet when this endpoint participates in an outer transaction.
+    resolved = (
+        resolve_with_origin(key)
+        if saved_value is None
+        else ResolvedSetting(saved_value, SettingSource.USER, False)
+    )
+    return _setting_out(key, resolved, locked=False)
 
 
 @settings_router.get("/site", response=list[SettingOut])

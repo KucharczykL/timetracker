@@ -1,5 +1,7 @@
 """Authenticated personal settings page shared with later settings stages."""
 
+from typing import cast
+
 from django import forms
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
@@ -18,8 +20,12 @@ from common.components import (
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
+from timetracker.config import SettingSource
 from timetracker.settings_registry import LANDING_PAGE_CHOICES, get_definition
-from timetracker.settings_resolver import resolve_for_user_with_origin
+from timetracker.settings_resolver import (
+    resolve_for_user_with_origin,
+    resolve_with_origin,
+)
 
 _FIELD_KEYS = {
     "default_currency": "DEFAULT_CURRENCY",
@@ -48,11 +54,39 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         choices=(("", "Use site default"), *LANDING_PAGE_CHOICES),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        default_device_label: str = "No device",
+        default_landing_page_label: str = "Sessions",
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self.fields["default_device"].queryset = Device.objects.order_by("name")
+        device_field = cast(forms.ModelChoiceField, self.fields["default_device"])
+        device_field.queryset = Device.objects.order_by("name")
+        device_field.empty_label = f"Use site default ({default_device_label})"
+        landing_page_field = cast(
+            forms.ChoiceField, self.fields["default_landing_page"]
+        )
+        landing_page_field.choices = (
+            ("", f"Use site default ({default_landing_page_label})"),
+            *LANDING_PAGE_CHOICES,
+        )
         for field_name, key in _FIELD_KEYS.items():
             self.fields[field_name].label = get_definition(key).label
+
+
+def _device_label(value: object) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        device = Device.objects.filter(pk=value).first()
+        if device is not None:
+            return str(device)
+    return "No device"
+
+
+def _landing_page_label(value: object) -> str:
+    labels = dict(LANDING_PAGE_CHOICES)
+    return labels.get(value, "Sessions") if isinstance(value, str) else "Sessions"
 
 
 def _form_and_states(
@@ -63,13 +97,23 @@ def _form_and_states(
     for field_name, key in _FIELD_KEYS.items():
         definition = get_definition(key)
         resolved = resolve_for_user_with_origin(user, key)
-        initial[field_name] = resolved.value
+        if field_name == "default_currency" or resolved.source is SettingSource.USER:
+            initial[field_name] = resolved.value
         states[field_name] = SettingFieldState(
             key,
             str(resolved.source),
             help_text=definition.help_text,
         )
-    return UserSettingsForm(initial=initial), states
+    site_device = resolve_with_origin("DEFAULT_DEVICE").value
+    site_landing_page = resolve_with_origin("DEFAULT_LANDING_PAGE").value
+    return (
+        UserSettingsForm(
+            initial=initial,
+            default_device_label=_device_label(site_device),
+            default_landing_page_label=_landing_page_label(site_landing_page),
+        ),
+        states,
+    )
 
 
 @login_required
