@@ -399,7 +399,7 @@ def PopoverIf(
     return node
 
 
-_NAME_MAX_W = "max-w-[24rem]"
+NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
 _TRUNCATED_CLIP_CLASS = (
     "block min-w-0 overflow-hidden whitespace-nowrap "
     "group-data-[overflowing]:"
@@ -421,13 +421,15 @@ def TruncatedText(
     tooltip_content: Child | None = None,
     instance_key: str | None = None,
     reveal_label: str = "Show full text",
-    max_width: str = _NAME_MAX_W,
+    max_width: str = NAME_MAX_WIDTH_CLASS,
 ) -> Node:
     """Width-clipped text with a fade and a passive full-content tooltip.
 
     The full ``text`` always remains in the clip span. ``tooltip_content`` is
-    only for differing information (currently multi-game purchase contents),
-    where ``instance_key`` supplies a stable, page-unique ARIA relationship.
+    only for differing information (multi-game purchase contents or a differing
+    game sort name), where ``instance_key`` supplies a stable, page-unique ARIA
+    relationship. Informative tooltips use an info reveal icon; visual-only
+    overflow recovery uses an ellipsis.
     """
     informative = tooltip_content is not None
     if informative and not instance_key:
@@ -439,9 +441,17 @@ def TruncatedText(
         randomid(content=f"truncated-text:{instance_key}:{text}") if informative else ""
     )
     describedby = [("aria-describedby", panel_id)] if informative else []
+    # Informative content has an always-visible reveal button on no-hover
+    # devices. Reserve that stable 24px before measuring, so a name that only
+    # stops fitting because of the info button is correctly faded rather than
+    # painted underneath it. Overflow-only ellipses stay out of layout; their
+    # touch mask instead becomes fully transparent under the button.
+    clip_class = _TRUNCATED_CLIP_CLASS
+    if informative and tap:
+        clip_class = f"{clip_class} [@media(hover:none)]:pe-6"
     clip_attributes: list[HTMLAttribute] = [
         ("data-truncated-clip", ""),
-        ("class", _TRUNCATED_CLIP_CLASS),
+        ("class", clip_class),
     ]
     if informative and link is None:
         clip_attributes.extend(describedby)
@@ -465,16 +475,17 @@ def TruncatedText(
             if reveal == "always"
             else "[@media(hover:none)]:group-data-[overflowing]:inline-flex"
         )
+        reveal_icon = "info" if informative else "ellipsis"
         button_attributes: list[HTMLAttribute] = [
             ("type", "button"),
-            ("data-truncated-reveal", ""),
+            ("data-truncated-reveal", reveal_icon),
             ("aria-label", reveal_label),
             ("class", f"{_TRUNCATED_REVEAL_CLASS} {visibility}"),
             *describedby,
         ]
         children.append(
             Button(button_attributes)[
-                Icon("ellipsis", [("class", "shrink-0")], size="size-[1.1em]")
+                Icon(reveal_icon, [("class", "shrink-0")], size="size-[1.1em]")
             ]
         )
 

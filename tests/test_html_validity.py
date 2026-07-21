@@ -103,10 +103,11 @@ class HtmlValidityTest(TestCase):
         self.platform = Platform.objects.create(name="Test Platform", icon="test")
         self.device = Device.objects.create(name="Test Device", type="c")
 
-        # A name well past the 30-char popover-truncation threshold, so the
-        # truncation popover trigger actually renders on list/detail pages.
+        # A long display name with a different sort name exercises both the
+        # width-based reveal and the game-list tooltip's informative IDREF.
         self.long_game = Game.objects.create(
             name="A Very Long Game Name That Exceeds Thirty Characters For Sure",
+            sort_name="Very Long Game Name, A",
             platform=self.platform,
         )
         self.other_game = Game.objects.create(
@@ -178,24 +179,24 @@ class HtmlValidityTest(TestCase):
         )
 
     def test_ids_are_unique_and_describedby_targets_resolve_once(self) -> None:
-        """Full pages keep IDREFs valid, including same-label bundle rows and
-        the desktop/mobile navbar copies of one recent game."""
-        url = reverse("games:list_purchases")
-        response = self.client.get(url, follow=True)
-        self.assertEqual(response.status_code, 200)
-        parser = _InteractiveNestingParser()
-        parser.feed(response.content.decode())
-        counts = Counter(parser.ids)
-        failures = [
-            f"duplicate id {element_id!r}"
-            for element_id, count in counts.items()
-            if count > 1
-        ]
-        failures.extend(
-            f"aria-describedby {token!r} resolves {counts[token]} times"
-            for token in parser.describedby
-            if counts[token] != 1
-        )
+        """Informative purchase and sort-name tooltips keep valid IDREFs."""
+        failures: list[str] = []
+        for url in (reverse("games:list_games"), reverse("games:list_purchases")):
+            response = self.client.get(url, follow=True)
+            self.assertEqual(response.status_code, 200)
+            parser = _InteractiveNestingParser()
+            parser.feed(response.content.decode())
+            counts = Counter(parser.ids)
+            failures.extend(
+                f"{url}: duplicate id {element_id!r}"
+                for element_id, count in counts.items()
+                if count > 1
+            )
+            failures.extend(
+                f"{url}: aria-describedby {token!r} resolves {counts[token]} times"
+                for token in parser.describedby
+                if counts[token] != 1
+            )
         self.assertEqual(
             failures, [], "Invalid page ID relationships:\n" + "\n".join(failures)
         )

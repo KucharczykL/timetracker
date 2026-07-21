@@ -261,3 +261,16 @@
         @apply fixed z-50 flex flex-col items-end bottom-0 right-0 p-4;
     }
 }
+
+/* The touch reveal button occupies the final 1.5rem of a truncated-text host.
+   Keep that region fully transparent without putting the overflow-only button
+   in layout (which would make its visibility change the overflow measurement). */
+@media (hover: none) {
+    truncated-text[data-overflowing] [data-truncated-clip] {
+        mask-image: linear-gradient(
+            to right,
+            #000 calc(100% - 3rem),
+            transparent calc(100% - 1.5rem)
+        );
+    }
+}
