@@ -181,11 +181,13 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     locked_badge.hover()
     locked_tooltip = page.locator("#id_pinned_url_setting_source_tooltip")
     expect(locked_tooltip).to_be_visible()
-    expect(locked_tooltip).to_contain_text(
-        "Source: Loaded from an environment variable."
+    expect(locked_tooltip.locator("dt").nth(0)).to_have_text("Source")
+    expect(locked_tooltip.locator("dd").nth(0)).to_have_text(
+        "Loaded from an environment variable."
     )
-    expect(locked_tooltip).to_contain_text(
-        "Locked: Change APP_URL in the environment and restart."
+    expect(locked_tooltip.locator("dt").nth(1)).to_have_text("Locked")
+    expect(locked_tooltip.locator("dd").nth(1)).to_have_text(
+        "Change APP_URL in the environment and restart."
     )
     page.mouse.move(0, 0)
     expect(locked_tooltip).to_be_hidden()
@@ -194,10 +196,11 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     unlocked_badge.hover()
     unlocked_tooltip = page.locator("#id_destination_setting_source_tooltip")
     expect(unlocked_tooltip).to_be_visible()
-    expect(unlocked_tooltip).to_contain_text(
-        "Source: Saved in the application database as the current site-wide value."
+    expect(unlocked_tooltip.locator("dt")).to_have_text("Source")
+    expect(unlocked_tooltip.locator("dd")).to_have_text(
+        "Saved in the application database as the current site-wide value."
     )
-    expect(unlocked_tooltip).not_to_contain_text("Locked:")
+    expect(unlocked_tooltip.locator("dt")).to_have_count(1)
     expect(
         page.locator("[data-setting-metadata]").get_by_text(
             "Change APP_URL in the environment and restart."

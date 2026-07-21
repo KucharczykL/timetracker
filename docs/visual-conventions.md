@@ -196,6 +196,10 @@ settings scaffold's layout is net-new, but nearly all *behavior* exists. Calls r
   (`⋯`, replacing the name's truncation mark) via `preface=` (see `NameWithIcon` /
   `LinkedPurchase`): the whole host still opens on hover, but only the small button is tappable,
   keeping the trigger out of the link.
+- **Tooltip definition lists are cross-app UI.** Use `TooltipDefinitionList` for informative
+  term/value content such as game `Name` / `Sort name` and setting `Source` / `Locked`.
+  It owns semantic `<dl>` markup, an 8px item rhythm, micro muted terms, and medium-weight
+  values; callers supply only the definitions and any conditional visibility attributes.
 - **Priority-plus overflow** (quick-filter bar): the full recipe (measure-once, reserved
   furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) is directly
   liftable for an anchor-chip nav — but the logic is private to `QuickFilterBarElement`.

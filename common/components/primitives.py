@@ -103,6 +103,14 @@ MICRO_LABEL_CLASS = "text-type-micro-caps uppercase"
 DIALOG_TITLE_CLASS = "text-type-dialog text-heading text-center"
 
 
+class TooltipDefinition(NamedTuple):
+    """One term/value pair in a shared tooltip definition list."""
+
+    term: str
+    description: Child
+    attributes: AttrsArg | None = None
+
+
 # ── Generic leaf elements ────────────────────────────────────────────────────
 # A whitelist of plain tags, each turned into a builder over `Element`. The
 # tag name is data, not a separate class/function body. Add a tag = one line.
@@ -240,6 +248,29 @@ _TOOLTIP_PANEL_CLASS = (
     f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
     f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
 )
+
+
+def TooltipDefinitionList(
+    definitions: Sequence[TooltipDefinition],
+    *,
+    class_: str = "",
+) -> Node:
+    """Render the canonical term/value treatment for informative tooltips."""
+    list_class = f"flex flex-col gap-2 {class_}".strip()
+    items = [
+        Div(definition.attributes)[
+            Element("dt", [("class", "text-type-micro text-body")])[definition.term],
+            Element("dd", [("class", "font-medium")])[definition.description],
+        ]
+        for definition in definitions
+    ]
+    return Element(
+        "dl",
+        [
+            ("data-tooltip-definition-list", ""),
+            ("class", list_class),
+        ],
+    )[*items]
 
 
 def _tooltip_panel(
