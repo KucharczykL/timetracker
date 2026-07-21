@@ -629,7 +629,7 @@ def _field_comparison_row(
             type="button",
             data_fc_remove="",
             aria_label="Remove comparison",
-            class_="p-2 text-body hover:text-red-500 cursor-pointer",
+            class_="p-2 text-body hover:text-fg-danger cursor-pointer",
         )["✕"],
     ]
 
@@ -676,10 +676,7 @@ _CHIP_STATE_CLASSES: dict[ChipState, str] = {
         "border-orange-300 bg-orange-100 text-orange-800 "
         "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200"
     ),
-    "negate-off": (
-        "border-gray-200 text-gray-500 hover:bg-gray-100 "
-        "dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700"
-    ),
+    "negate-off": ("border-default-medium text-body hover:bg-neutral-tertiary-medium"),
     "negate-on": (
         "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 "
         "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 "
@@ -693,8 +690,8 @@ _CHIP_STATE_CLASSES: dict[ChipState, str] = {
 # px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
 # under the chevron. Set only vertical padding here.
 _RELATION_SELECT_CLASS = (
-    "rounded border border-gray-300 bg-white py-1 text-type-input dark:border-gray-600 "
-    "dark:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+    "rounded-base border border-default-medium bg-neutral-secondary-medium py-1 "
+    "text-type-input disabled:opacity-50 disabled:cursor-not-allowed"
 )
 
 
