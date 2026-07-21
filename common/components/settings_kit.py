@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from common.components.core import Child, Element, Fragment, Node, randomid
-from common.components.custom_elements import Dropdown, DropdownMenuPanel
+from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
     A,
     Badge,
@@ -65,11 +65,10 @@ _SOURCE_DESCRIPTIONS = {
 }
 
 _NAV_LINK_CLASS = (
-    "inline-flex min-h-control items-center whitespace-nowrap rounded px-3 "
-    "text-type-body font-medium bg-brand-soft text-heading no-underline "
+    "inline-flex min-h-control w-full items-center whitespace-nowrap rounded-base px-3 "
+    "text-type-body font-medium text-heading no-underline "
     "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 focus:ring-inset "
-    "focus:ring-brand-medium @4xl:w-full @4xl:justify-start @4xl:rounded-base "
-    "@4xl:bg-transparent"
+    "focus:ring-brand-medium"
 )
 
 
@@ -126,76 +125,84 @@ def _validate_sections(sections: Sequence[SettingsSection]) -> None:
 def _section_link(section: SettingsSection) -> Node:
     return Li(
         data_section_nav_item="",
-        class_="shrink-0 @4xl:w-full",
+        class_="w-full",
     )[A(href=f"#{section.id}", class_=_NAV_LINK_CLASS)[section.label]]
 
 
 def SettingsSectionNav(sections: Sequence[SettingsSection]) -> Node:
-    """Same-DOM mobile anchor chips and desktop sticky section rail.
+    """Same-DOM mobile bottom sheet and desktop sticky section rail.
 
-    At narrow container widths the custom element applies a priority-plus
-    layout and moves rightmost ``li`` nodes into the shared dropdown panel. At
-    ``@4xl`` the sentinel becomes visible, the element restores every node to
-    the primary list, and the same nav becomes a vertical sticky rail.
+    The server leaves the complete link list visible in the inline rail as the
+    no-JavaScript fallback. After enhancement, narrow containers move that one
+    list into a native-dialog bottom sheet; ``@4xl`` restores it to the rail.
     """
     _validate_sections(sections)
-    overflow_id = randomid(
+    sheet_id = randomid(
         seed="settings-nav-",
         content=":".join(section.id for section in sections),
         length=20,
     )
-    overflow_trigger = ControlButton(
-        variant="ghost",
-        aria_haspopup="menu",
-        aria_label="More settings sections",
-    )["More"].as_element()
-    overflow = Div(
-        data_section_nav_overflow="",
-        class_="hidden shrink-0 @4xl:hidden",
+    trigger = ControlButton(
+        [
+            ("data-section-nav-trigger", ""),
+            ("class", "w-full rounded-base py-2 focus:ring-inset"),
+        ],
+        variant="outline",
     )[
-        Dropdown(
-            trigger_element=overflow_trigger,
-            target_element=DropdownMenuPanel(
-                items=[], aria_label="More settings sections"
+        Span(class_="flex w-full items-center justify-between gap-3 text-left")[
+            Span(class_="flex min-w-0 flex-col")[
+                Span(class_="text-type-label text-heading")["Settings sections"],
+                Span(class_="text-type-micro text-body")["Jump to a section"],
+            ],
+            Icon(
+                "arrowdown",
+                [("aria-hidden", "true"), ("class", "shrink-0 rotate-180")],
+                size="h-3 w-3",
             ),
-            id=overflow_id,
-            placement="bottom-end",
+        ]
+    ].as_element()
+    sheet_destination = Element(
+        "nav",
+        [
+            ("data-section-nav-sheet-destination", ""),
+            ("aria-labelledby", f"{sheet_id}-title"),
+        ],
+    )
+    sheet = Div(data_section_nav_sheet="", hidden=True)[
+        BottomSheet(
+            trigger_element=trigger,
+            title="Settings sections",
+            children=sheet_destination,
+            id=sheet_id,
+            close_label="Close settings sections",
         )
     ]
     return _SettingsSectionNav(
-        class_="block min-w-0 @4xl:sticky @4xl:top-4 @4xl:self-start"
+        class_=("sticky top-4 z-10 block min-w-0 self-start @4xl:z-auto")
     )[
         Element(
             "nav",
             [
                 ("aria-label", "Settings sections"),
+                ("data-section-nav-rail", ""),
                 (
                     "class",
-                    "mb-4 @4xl:mb-0 @4xl:max-h-[calc(100vh-2rem)] @4xl:overflow-y-auto",
+                    "mb-4 max-h-[calc(100vh-2rem)] overflow-y-auto @4xl:mb-0",
                 ),
             ],
         )[
-            Div(
-                data_section_nav_row="",
-                class_="flex min-w-0 items-center gap-2 @4xl:block",
-            )[
-                Ul(
-                    data_section_nav_primary="",
-                    class_=(
-                        "flex min-w-0 flex-1 gap-2 overflow-hidden "
-                        "@4xl:flex-col @4xl:overflow-visible"
-                    ),
-                )[*[_section_link(section) for section in sections]],
-                overflow,
-            ],
-            # CSS/container-query truth exposed to the layout behavior without
-            # duplicating the @4xl threshold in matchMedia JavaScript.
-            Span(
-                data_section_nav_wide="",
-                class_="hidden @4xl:block",
-                aria_hidden="true",
-            ),
-        ]
+            Ul(data_section_nav_list="", class_="flex min-w-0 flex-col gap-1")[
+                *[_section_link(section) for section in sections]
+            ]
+        ],
+        sheet,
+        # CSS/container-query truth exposed to the layout behavior without
+        # duplicating the @4xl threshold in matchMedia JavaScript.
+        Span(
+            data_section_nav_wide="",
+            class_="hidden @4xl:block",
+            aria_hidden="true",
+        ),
     ]
 
 
@@ -204,7 +211,12 @@ def _section_panel(section: SettingsSection) -> Node:
     header_children: list[Node] = [
         Element(
             "h2",
-            [("id", heading_id), ("class", "text-type-subheading text-heading")],
+            [
+                ("id", heading_id),
+                ("tabindex", "-1"),
+                ("data-settings-section-heading", ""),
+                ("class", "text-type-subheading text-heading focus:outline-hidden"),
+            ],
         )[section.label]
     ]
     if section.description:
@@ -219,7 +231,7 @@ def _section_panel(section: SettingsSection) -> Node:
             ("data-settings-section", ""),
             (
                 "class",
-                "scroll-mt-4 flex flex-col gap-6 rounded-base border "
+                "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 rounded-base border "
                 "border-default bg-neutral-primary-medium p-4 @container",
             ),
         ],

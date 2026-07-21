@@ -135,9 +135,11 @@ The sheet must use:
 
 It must not add `role="menu"`, `role="menuitem"`, `role="presentation"`, or
 roving `tabindex` to the section navigation. Every link remains in the dialog's
-normal Tab order. Enter follows the normal link activation path. The browser's
-modal dialog behavior contains Tab focus, makes the background inert, and
-restores focus for ordinary dismissals.
+normal Tab order. Enter follows the normal link activation path. Native modal
+dialog behavior makes the background inert and restores focus for ordinary
+dismissals. Because browser sequential-focus behavior differs at the dialog
+boundary, the sheet controller also wraps Tab/Shift+Tab locally between its
+first and last tabbable controls; it does not add a competing Escape handler.
 
 The first section link receives focus after the dialog opens. Do not focus the
 dialog element itself; the HTML dialog element must not receive `tabindex`.

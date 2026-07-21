@@ -9,6 +9,14 @@ export interface BehaviorCtx {
 
 export interface DropdownBehavior {
   menuOptions?: (host: HTMLElement) => Partial<MenuOptions>;
+  // Most dropdowns use attachMenu. A presentation that shares the generic
+  // trigger/panel shell but is not an anchored ARIA menu (the modal sheet) may
+  // supply the same controller contract without adding branches to attachMenu.
+  createController?: (
+    host: HTMLElement,
+    toggle: HTMLElement,
+    menu: HTMLElement,
+  ) => MenuController;
   wire?: (ctx: BehaviorCtx) => (() => void) | void;
 }
 

@@ -345,13 +345,13 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
             "Responsive navigation behavior",
             Div(class_="flex min-h-64 flex-col gap-3")[
                 P(class_="text-type-body text-body")[
-                    "Resize the content area: section links collapse into a More menu on narrow widths and become a sticky rail on wide widths."
+                    "Resize the content area: section links move into the Settings sections bottom sheet on narrow widths and return to a sticky rail on wide widths."
                 ],
                 P(class_="text-type-body text-body")[
                     "The same navigation nodes move between those layouts; the page does not render duplicate mobile and desktop navigation."
                 ],
             ],
-            "A live target for the priority-plus and sticky-rail behavior.",
+            "A live target for the bottom-sheet and sticky-rail behavior.",
         ),
     ]
     intro = ContentContainer(class_="mb-6 flex flex-col gap-3")[

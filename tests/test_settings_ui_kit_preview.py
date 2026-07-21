@@ -74,6 +74,10 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "Option 1" not in body
     assert "Leading checkbox" not in body
     assert "Divider hierarchy" not in body
+    assert "Settings sections bottom sheet" in body
+    assert "bottom-sheet and sticky-rail behavior" in body
+    assert "More menu" not in body
+    assert "priority-plus and sticky-rail" not in body
 
     assert 'type="checkbox"' in _named_tag(body, "input", "enabled")
     assert _named_tag(body, "select", "destination")

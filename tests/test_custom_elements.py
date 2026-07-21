@@ -160,6 +160,16 @@ class ContractStampingTest(unittest.TestCase):
         auto = _stamp_target_contract(DropdownMenuPanel(items=[]), "p")
         self.assertIn('aria-labelledby="pLink"', render(auto))
 
+    def test_explicit_labelledby_is_preserved(self):
+        from common.components import Element, render
+        from common.components.custom_elements import _stamp_target_contract
+
+        target = Element("dialog", [("aria-labelledby", "sheet-title")])
+        html = render(_stamp_target_contract(target, "sheet", initially_hidden=False))
+        self.assertIn('aria-labelledby="sheet-title"', html)
+        self.assertNotIn('aria-labelledby="sheetLink"', html)
+        self.assertNotIn("hidden", html)
+
 
 class DropdownMenuPanelTest(unittest.TestCase):
     def test_renders_role_menu_panel(self):
@@ -176,6 +186,46 @@ class DropdownMenuPanelTest(unittest.TestCase):
         # ul/li carry role=presentation so menu→menuitem ownership isn't interrupted
         self.assertIn('<ul role="presentation"', html)
         self.assertIn('<li role="presentation"', html)
+
+
+class BottomSheetTest(unittest.TestCase):
+    def test_reuses_dropdown_shell_without_menu_or_hidden_semantics(self):
+        from common.components import (
+            BottomSheet,
+            ControlButton,
+            Div,
+            collect_media,
+            render,
+        )
+
+        node = BottomSheet(
+            trigger_element=ControlButton(variant="outline")[
+                "Settings sections"
+            ].as_element(),
+            title="Settings sections",
+            children=Div(data_sheet_test_body="")["body"],
+            id="settings-sheet",
+            close_label="Close settings sections",
+        )
+        html = render(node)
+        self.assertIn('<drop-down class="relative flex w-full"', html)
+        self.assertIn('behavior="sheet"', html)
+        self.assertIn('aria-haspopup="dialog"', html)
+        self.assertIn('aria-controls="settings-sheet"', html)
+        self.assertIn('aria-expanded="false"', html)
+        dialog_start = html.index("<dialog")
+        dialog_tag = html[dialog_start : html.index(">", dialog_start) + 1]
+        self.assertIn('data-bottom-sheet=""', dialog_tag)
+        self.assertIn('data-menu=""', dialog_tag)
+        self.assertIn('aria-labelledby="settings-sheet-title"', dialog_tag)
+        self.assertNotIn("hidden", dialog_tag)
+        self.assertNotIn('role="menu"', html)
+        self.assertNotIn('role="menuitem"', html)
+        self.assertIn('data-sheet-panel=""', html)
+        self.assertIn('data-sheet-dismiss=""', html)
+        self.assertIn('aria-label="Close settings sections"', html)
+        self.assertIn('data-sheet-test-body=""', html)
+        self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
 
 class DropdownWrapperTest(unittest.TestCase):
