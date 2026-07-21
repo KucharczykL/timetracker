@@ -27,6 +27,8 @@ from common.components.primitives import (
     P,
     Popover,
     Span,
+    TooltipDefinition,
+    TooltipDefinitionList,
     Ul,
     custom_element_builder,
 )
@@ -274,19 +276,18 @@ def SettingSourceBadge(
         source_value,
         f"Provided by {label}.",
     )
-    tooltip_lines: list[Node] = [
-        P(class_="text-type-body text-heading")[f"Source: {source_description}"]
-    ]
+    tooltip_definitions = [TooltipDefinition("Source", source_description)]
     if locked:
         lock_reason = reason or (
             f"{label} values take priority over settings saved in the application, "
             "so this field cannot be edited here."
         )
-        tooltip_lines.append(
-            P(class_="text-type-body text-heading")[f"Locked: {lock_reason}"]
-        )
+        tooltip_definitions.append(TooltipDefinition("Locked", lock_reason))
     return Popover(
-        popover_content=Div(class_="flex max-w-sm flex-col gap-2")[*tooltip_lines],
+        popover_content=TooltipDefinitionList(
+            tooltip_definitions,
+            class_="max-w-sm",
+        ),
         children=[badge],
         id=id,
         trigger_label=f"{label} source" + (", locked" if locked else ""),

@@ -15,6 +15,8 @@ from common.components.primitives import (
     Li,
     Popover,
     Span,
+    TooltipDefinition,
+    TooltipDefinitionList,
     TruncatedText,
     Ul,
 )
@@ -195,26 +197,23 @@ def NameWithIcon(
     tooltip_instance_key: str | None = None
     if sort_name is not None:
         assert game is not None
-        tooltip_content = Fragment(
-            Div(
-                [
-                    ("data-truncated-detail", "name"),
-                    ("aria-hidden", "true"),
-                    ("class", "hidden group-data-[overflowing]:block"),
-                ]
-            )[
-                Div(class_="text-type-micro text-body")["Name"],
-                Div(class_="font-medium")[resolved.name],
-            ],
-            Div(
-                [
-                    ("data-truncated-detail", "sort-name"),
-                    ("class", "group-data-[overflowing]:mt-2"),
-                ]
-            )[
-                Div(class_="text-type-micro text-body")["Sort name"],
-                Div(class_="font-medium")[sort_name],
-            ],
+        tooltip_content = TooltipDefinitionList(
+            [
+                TooltipDefinition(
+                    "Name",
+                    resolved.name,
+                    [
+                        ("data-truncated-detail", "name"),
+                        ("aria-hidden", "true"),
+                        ("class", "hidden group-data-[overflowing]:block"),
+                    ],
+                ),
+                TooltipDefinition(
+                    "Sort name",
+                    sort_name,
+                    [("data-truncated-detail", "sort-name")],
+                ),
+            ]
         )
         tooltip_instance_key = f"game-list-sort-name:{game.pk}"
 

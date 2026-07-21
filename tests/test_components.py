@@ -173,6 +173,32 @@ class PopoverDeterministicTest(unittest.TestCase):
         self.assertEqual(r1.encode(), r2.encode())
 
 
+class TooltipDefinitionListTest(unittest.TestCase):
+    def test_shared_semantic_term_and_value_treatment(self):
+        html = str(
+            components.TooltipDefinitionList(
+                [
+                    components.TooltipDefinition("Name", "The Display Name"),
+                    components.TooltipDefinition(
+                        "Sort name",
+                        "Display Name, The",
+                        {"data-example-detail": ""},
+                    ),
+                ],
+                class_="max-w-sm",
+            )
+        )
+
+        self.assertIn("<dl", html)
+        self.assertIn('data-tooltip-definition-list=""', html)
+        self.assertIn("flex flex-col gap-2 max-w-sm", html)
+        self.assertEqual(html.count('<dt class="text-type-micro text-body">'), 2)
+        self.assertEqual(html.count('<dd class="font-medium">'), 2)
+        self.assertIn(">Name</dt>", html)
+        self.assertIn(">The Display Name</dd>", html)
+        self.assertIn('data-example-detail=""', html)
+
+
 class TemplatetagRandomidTest(unittest.TestCase):
     """Test games/templatetags/randomid.py produces deterministic IDs."""
 
@@ -1315,9 +1341,10 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIn('data-truncated-detail="name"', html)
         self.assertIn("hidden group-data-[overflowing]:block", html)
         self.assertIn('data-truncated-detail="sort-name"', html)
+        self.assertIn('data-tooltip-definition-list=""', html)
         self.assertIn("text-type-micro text-body", html)
-        self.assertIn(">Name</div>", html)
-        self.assertIn(">Sort name</div>", html)
+        self.assertIn(">Name</dt>", html)
+        self.assertIn(">Sort name</dt>", html)
         self.assertIn("Display Name, The", html)
         self.assertIn('data-truncated-reveal="info"', html)
         self.assertIn('role="tooltip"', html)

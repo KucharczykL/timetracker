@@ -122,10 +122,11 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert 'aria-label="Environment file source, locked"' in html
         assert 'id="env-file-source-tip"' in html
         assert 'role="tooltip"' in html
-        assert (
-            "Source: Loaded from a file referenced by an environment variable." in html
-        )
-        assert "Locked: Change SECRET__FILE and restart." in html
+        assert 'data-tooltip-definition-list=""' in html
+        assert ">Source</dt>" in html
+        assert "Loaded from a file referenced by an environment variable." in html
+        assert ">Locked</dt>" in html
+        assert "Change SECRET__FILE and restart." in html
         assert "dist/elements/pop-over.js" in collect_media(node).js
         assert "data-pill" not in html
 
@@ -142,8 +143,9 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         for source, description in descriptions.items():
             html = str(SettingSourceBadge(source, id=f"{source}-source-tip"))
             assert 'role="tooltip"' in html
-            assert str(escape(f"Source: {description}")) in html
-            assert "Locked:" not in html
+            assert ">Source</dt>" in html
+            assert str(escape(description)) in html
+            assert ">Locked</dt>" not in html
 
     def test_locked_state_disables_the_real_django_field_and_adds_reason(self):
         form = KitForm()
@@ -174,8 +176,10 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert 'class="mt-2 flex flex-col gap-1"' in html
         assert 'id="id_locked_value_setting_source_tooltip"' in html
         assert 'role="tooltip"' in html
-        assert "Source: Loaded from an environment variable." in html
-        assert "Locked: Change APP_URL in the environment and restart." in html
+        assert ">Source</dt>" in html
+        assert "Loaded from an environment variable." in html
+        assert ">Locked</dt>" in html
+        assert "Change APP_URL in the environment and restart." in html
         label_line = html.index('data-form-field-label-line=""')
         badge = html.index('data-setting-origin="env"', label_line)
         control = html.index('name="locked_value"', badge)
