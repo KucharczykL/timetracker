@@ -246,7 +246,7 @@ def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
             data_settings_scaffold="",
             class_=(
                 "grid grid-cols-1 gap-6 "
-                "@4xl:grid-cols-[12rem_minmax(0,1fr)] @4xl:items-start @4xl:gap-8"
+                "@4xl:grid-cols-[14rem_minmax(0,1fr)] @4xl:items-start @4xl:gap-8"
             ),
         )[
             SettingsSectionNav(sections),
