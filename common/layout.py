@@ -363,6 +363,17 @@ def NavbarMenu(
         )["Stats"]
     ]
 
+    settings_link = (
+        Li()[
+            A(
+                href=reverse("games:settings"),
+                class_=_NAV_LINK_CLASS,
+            )["Settings"]
+        ]
+        if authenticated
+        else ""
+    )
+
     logout = Li()[
         Form(method="post", action=reverse("logout"))[
             Input(
@@ -402,6 +413,7 @@ def NavbarMenu(
             home,
             entity_menu,
             stats,
+            settings_link,
             logout,
         ]
     ]

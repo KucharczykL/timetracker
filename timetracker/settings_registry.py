@@ -25,6 +25,16 @@ type Cast = Callable[[str], object]  # coercion applied to raw string sources
 type DefaultFactory = Callable[[], object]  # lazy default, read at resolve time
 type SettingValidator = Callable[[object], object]  # returns normalized or raises
 
+LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("games:list_sessions", "Sessions"),
+    ("games:list_games", "Games"),
+    ("games:list_purchases", "Purchases"),
+    ("games:stats_by_year", "Statistics (this year)"),
+)
+_LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
+    url_name for url_name, _label in LANDING_PAGE_CHOICES
+)
+
 
 class SettingScope(StrEnum):
     USER = "user"  # per-user override (UserPreferences) above the site default
@@ -97,12 +107,13 @@ def _validate_optional_device_id(value: object) -> int | None:
 
 
 def _validate_optional_landing_page(value: object) -> str | None:
-    """Type-only check for the personal landing-page pref. ``None`` means unset.
-    TODO: validate the value against the landing-page URL map once one exists."""
+    """Accept only stable, argument-free destinations plus current-year stats."""
     if value is None:
         return None
     if not isinstance(value, str):
         raise ValidationError(f"Landing page must be a string (got {value!r}).")
+    if value not in _LANDING_PAGE_URL_NAMES:
+        raise ValidationError(f"Unsupported landing page {value!r}.")
     return value
 
 

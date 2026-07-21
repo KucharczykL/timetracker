@@ -40,6 +40,7 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
+from timetracker.settings_resolver import resolve_for_user
 
 
 def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
@@ -159,7 +160,10 @@ def _session_fields(form) -> Node:
 
 @login_required
 def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
-    initial: dict[str, Any] = {"timestamp_start": timezone.now()}
+    initial: dict[str, Any] = {
+        "timestamp_start": timezone.now(),
+        "device": resolve_for_user(request.user, "DEFAULT_DEVICE"),
+    }
 
     if request.method == "POST":
         form = SessionForm(request.POST or None, initial=initial)
@@ -194,7 +198,12 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 @login_required
 def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
-    form = SessionForm(request.POST or None, instance=session)
+    initial = (
+        {"device": resolve_for_user(request.user, "DEFAULT_DEVICE")}
+        if session.device_id is None
+        else None
+    )
+    form = SessionForm(request.POST or None, instance=session, initial=initial)
     if form.is_valid():
         form.save()
         return redirect("games:list_sessions")

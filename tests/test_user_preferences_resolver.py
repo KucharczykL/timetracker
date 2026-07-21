@@ -150,9 +150,12 @@ def test_device_pref_round_trips_as_id(user, db, django_capture_on_commit_callba
 
 def test_landing_page_pref_round_trips(user, db, django_capture_on_commit_callbacks):
     _set_user(
-        django_capture_on_commit_callbacks, user, "DEFAULT_LANDING_PAGE", "/stats"
+        django_capture_on_commit_callbacks,
+        user,
+        "DEFAULT_LANDING_PAGE",
+        "games:stats_by_year",
     )
-    assert resolve_for_user(user, "DEFAULT_LANDING_PAGE") == "/stats"
+    assert resolve_for_user(user, "DEFAULT_LANDING_PAGE") == "games:stats_by_year"
 
 
 # --- poison value / robustness --------------------------------------------
