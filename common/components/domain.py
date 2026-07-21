@@ -25,8 +25,11 @@ from games.models import Game, Purchase, Session
 # A quiet reveal affordance rendered beside a link when its text is truncated (or
 # a bundle needs its games list): a real <button> sibling of the link hosting the
 # popover, so touch users can tap to reveal without the tap navigating — the link
-# itself stays a link. An SVG info icon (not a unicode glyph, whose ink sits high
-# in its line box) so it optically centres against the adjacent name.
+# itself stays a link. The truncated name is rendered WITHOUT its trailing
+# ellipsis and this ellipsis-icon button stands in for it — so the "…" both marks
+# the cut and is the tap target, instead of a redundant "…" + separate glyph. An
+# SVG icon (not a unicode "⋯", whose ink sits high in its line box) so it
+# optically centres against the adjacent name.
 _REVEAL_GLYPH_CLASS = (
     "inline-flex items-center text-subtle hover:text-heading "
     "hover:cursor-pointer rounded-base shrink-0"
@@ -34,12 +37,12 @@ _REVEAL_GLYPH_CLASS = (
 
 
 def _reveal_popover(popover_content: Node | str, preface: Node, label: str) -> Node:
-    """A truncation/bundle reveal: an info-icon <button> beside ``preface`` (the
-    link), hosting ``popover_content``. The whole host still opens on hover; only
-    the button is tappable, keeping the trigger out of the link."""
+    """A truncation/bundle reveal: an ellipsis-icon <button> beside ``preface``
+    (the link), hosting ``popover_content``. The whole host still opens on hover;
+    only the button is tappable, keeping the trigger out of the link."""
     return Popover(
         popover_content=popover_content,
-        children=[Icon("info", [("class", "size-[1.1em] shrink-0")])],
+        children=[Icon("ellipsis", [("class", "size-[1.1em] shrink-0")])],
         wrapped_classes=_REVEAL_GLYPH_CLASS,
         trigger_label=label,
         preface=preface,
@@ -163,7 +166,8 @@ def LinkedPurchase(purchase: Purchase) -> Node:
     )
     if link_content == "":
         raise ValueError("link_content is empty!!")
-    truncation = truncate_info(link_content)
+    # No trailing ellipsis: the reveal button's ellipsis icon stands in for it.
+    truncation = truncate_info(link_content, ellipsis="")
     link_node = A(href=link)[
         Div(class_="font-condensed inline-flex gap-2 items-center")[
             Icon(
@@ -204,7 +208,9 @@ def NameWithIcon(
     tap: bool = True,
 ) -> Node:
     resolved = _resolve_name_with_icon(name, game, session, linkify)
-    truncation = truncate_info(resolved.name)
+    # No trailing ellipsis on the linked name: the reveal button's ellipsis icon
+    # stands in for it (the unlinked branch keeps PopoverTruncated's inline "…").
+    truncation = truncate_info(resolved.name, ellipsis="")
 
     icons = Fragment(
         Icon(

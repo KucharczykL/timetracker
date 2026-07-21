@@ -30,9 +30,10 @@
   toggles (outside-tap and Escape dismiss), while mouse hover is unchanged
   (pointer-type gated, so a tap can't flash it open). Popovers that sit inside a
   link (`LinkedPurchase`, truncated linked names) now render their reveal as a
-  small `ⓘ` button *beside* the link so a tap reveals without navigating; the
-  navbar recent-resumes menu keeps a hover-only name and reveals the full title
-  by tapping through to the game (#445).
+  small tappable ellipsis (`⋯`) button *beside* the link — the name's truncation
+  mark becomes the tap target — so a tap reveals without navigating; the navbar
+  recent-resumes menu keeps a hover-only name and reveals the full title by
+  tapping through to the game (#445).
 
 ### Changed
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default

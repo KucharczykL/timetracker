@@ -192,9 +192,10 @@ settings scaffold's layout is net-new, but nearly all *behavior* exists. Calls r
   toggletip (`role="tooltip"` + `aria-describedby`, no `aria-expanded`). A popover nested inside
   a caller's interactive element uses `tap=False` (hover-only `<span>`) so no `<button>` nests
   in an `<a>` — enforced globally by `tests/test_html_validity.py`. When the popover *this*
-  code wraps in a link needs touch reach, extract the trigger as a sibling glyph (`ⓘ`) via
-  `preface=` (see `NameWithIcon` / `LinkedPurchase`): the whole host still opens on hover, but
-  only the small button is tappable, keeping the trigger out of the link.
+  code wraps in a link needs touch reach, extract the trigger as a sibling ellipsis-icon button
+  (`⋯`, replacing the name's truncation mark) via `preface=` (see `NameWithIcon` /
+  `LinkedPurchase`): the whole host still opens on hover, but only the small button is tappable,
+  keeping the trigger out of the link.
 - **Priority-plus overflow** (quick-filter bar): the full recipe (measure-once, reserved
   furniture, ResizeObserver+rAF, move-don't-clone into a `<drop-down>` panel) is directly
   liftable for an anchor-chip nav — but the logic is private to `QuickFilterBarElement`.
