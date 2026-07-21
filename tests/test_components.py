@@ -1025,8 +1025,10 @@ class TruncatedTextTest(unittest.TestCase):
     def test_default_keeps_full_text_and_is_visual_only_for_at(self):
         html = str(components.TruncatedText("The complete visible value"))
         self.assertTrue(html.startswith("<truncated-text"))
+        self.assertIn("max-w-[16rem]", html)
         self.assertIn("The complete visible value", html)
         self.assertIn("data-truncated-clip", html)
+        self.assertIn('data-truncated-reveal="ellipsis"', html)
         self.assertIn('aria-hidden="true"', html)
         self.assertNotIn("aria-describedby", html)
         self.assertNotRegex(html, r'data-pop-over-panel=""[^>]*\sid=')
@@ -1067,6 +1069,8 @@ class TruncatedTextTest(unittest.TestCase):
         assert panel_id is not None
         self.assertRegex(panel_id.group(1), r"^[0-9a-f]{10}$")
         self.assertEqual(html.count(f'aria-describedby="{panel_id.group(1)}"'), 2)
+        self.assertIn('data-truncated-reveal="info"', html)
+        self.assertIn("[@media(hover:none)]:pe-6", html)
         self.assertIn('role="tooltip"', html)
         self.assertNotIn('aria-hidden="true"', html)
 
@@ -1295,6 +1299,42 @@ class ModelDependentComponentsTest(django.test.TestCase):
         # in markup and stays hidden until the element measures real overflow.
         self.assertIn('reveal="auto"', html)
         self.assertIn("data-truncated-reveal", html)
+        self.assertIn('aria-hidden="true"', html)
+
+    def test_game_list_name_includes_different_sort_name_in_tooltip(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform, name="The Display Name")
+        game.sort_name = "Display Name, The"
+        game.save(update_fields=["sort_name"])
+
+        html = str(
+            components.NameWithIcon(game=game, include_sort_name=True, linkify=True)
+        )
+
+        self.assertIn('reveal="always"', html)
+        self.assertIn('data-truncated-detail="name"', html)
+        self.assertIn("hidden group-data-[overflowing]:block", html)
+        self.assertIn('data-truncated-detail="sort-name"', html)
+        self.assertIn("text-type-micro text-body-subtle", html)
+        self.assertIn(">Name</div>", html)
+        self.assertIn(">Sort name</div>", html)
+        self.assertIn("Display Name, The", html)
+        self.assertIn('data-truncated-reveal="info"', html)
+        self.assertIn('role="tooltip"', html)
+        self.assertIn('aria-describedby="', html)
+        self.assertIn("Show full name and sort name", html)
+
+    def test_game_list_name_omits_identical_sort_name_from_tooltip(self):
+        platform = self._create_platform(name="Steam", icon="steam")
+        game = self._create_game(platform, name="Same Name")
+        game.sort_name = game.name
+        game.save(update_fields=["sort_name"])
+
+        html = str(components.NameWithIcon(game=game, include_sort_name=True))
+
+        self.assertIn('reveal="auto"', html)
+        self.assertNotIn("Sort name", html)
+        self.assertNotIn('role="tooltip"', html)
         self.assertIn('aria-hidden="true"', html)
 
     def test_menu_wrapped_name_keeps_button_out_of_link(self):

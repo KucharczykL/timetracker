@@ -8,6 +8,7 @@ from django.urls import reverse
 from common.components.core import Children, Fragment, Node, as_children
 from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
+    NAME_MAX_WIDTH_CLASS,
     A,
     Div,
     Icon,
@@ -165,7 +166,8 @@ def NameWithIcon(
     session: Session | None = None,
     linkify: bool = True,
     tap: bool = True,
-    max_width: str = "max-w-[24rem]",
+    include_sort_name: bool = False,
+    max_width: str = NAME_MAX_WIDTH_CLASS,
 ) -> Node:
     resolved = _resolve_name_with_icon(name, game, session, linkify)
 
@@ -181,13 +183,55 @@ def NameWithIcon(
         else "",
     )
 
+    sort_name = (
+        game.sort_name
+        if include_sort_name
+        and game is not None
+        and game.sort_name
+        and game.sort_name != resolved.name
+        else None
+    )
+    tooltip_content: Node | None = None
+    tooltip_instance_key: str | None = None
+    if sort_name is not None:
+        assert game is not None
+        tooltip_content = Fragment(
+            Div(
+                [
+                    ("data-truncated-detail", "name"),
+                    ("aria-hidden", "true"),
+                    ("class", "hidden group-data-[overflowing]:block"),
+                ]
+            )[
+                Div(class_="text-type-micro text-body-subtle")["Name"],
+                Div(class_="font-medium")[resolved.name],
+            ],
+            Div(
+                [
+                    ("data-truncated-detail", "sort-name"),
+                    ("class", "group-data-[overflowing]:mt-2"),
+                ]
+            )[
+                Div(class_="text-type-micro text-body-subtle")["Sort name"],
+                Div(class_="font-medium")[sort_name],
+            ],
+        )
+        tooltip_instance_key = f"game-list-sort-name:{game.pk}"
+
     return TruncatedText(
         resolved.name,
         leading=icons,
         link=resolved.link,
         tap=tap,
+        reveal="always" if sort_name is not None else "auto",
+        tooltip_content=tooltip_content,
+        instance_key=tooltip_instance_key,
         max_width=max_width,
-        reveal_label="Show full name",
+        reveal_label=(
+            "Show full name and sort name"
+            if sort_name is not None
+            else "Show full name"
+        ),
     )
 
 

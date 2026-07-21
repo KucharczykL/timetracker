@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from django.urls import reverse
 from django.utils import timezone
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from games.models import Game, Platform, Purchase, Session
 
@@ -66,9 +66,11 @@ def test_desktop_overflow_hover_focus_and_short_name_noop(
     long_button = long_host.locator("[data-truncated-reveal]")
 
     expect(long_host).to_have_attribute("data-overflowing", "")
+    assert long_host.evaluate("element => element.getBoundingClientRect().width") <= 256
     assert "gradient" in long_clip.evaluate(
         "element => getComputedStyle(element).maskImage"
     )
+    expect(long_button).to_have_attribute("data-truncated-reveal", "ellipsis")
     expect(long_button).to_be_hidden()
     long_clip.hover()
     expect(long_panel).to_be_visible()
@@ -96,27 +98,79 @@ def test_desktop_overflow_hover_focus_and_short_name_noop(
     expect(short_panel).to_be_hidden()
 
 
-def test_unlinked_sort_name_gets_only_an_overflow_tab_stop(
-    authenticated_page: Page, live_server
-):
-    page = authenticated_page
+def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_server):
+    page = touch_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    Game.objects.create(name="Long sort", sort_name=LONG_NAME, platform=platform)
-    Game.objects.create(name="Short sort", sort_name="Tiny", platform=platform)
+    display_name = "Short Display Name"
+    sort_name = "Display Name, Short"
+    Game.objects.create(name=display_name, sort_name=sort_name, platform=platform)
+    long_sort_name = "Extraordinary Game Name, A Deliberately"
+    Game.objects.create(name=LONG_NAME, sort_name=long_sort_name, platform=platform)
+    Game.objects.create(name="Same Name", sort_name="Same Name", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     _wait_for_fonts(page)
-    sort_host = _host(page, LONG_NAME)
-    sort_clip = sort_host.locator("[data-truncated-clip]")
-    sort_panel = sort_host.locator("[data-pop-over-panel]")
-    expect(sort_clip).to_have_attribute("tabindex", "0")
-    sort_clip.focus()
-    expect(sort_panel).to_be_visible()
-    page.keyboard.press("Escape")
-    expect(sort_panel).to_be_hidden()
 
-    short_sort = _host(page, "Tiny").locator("[data-truncated-clip]")
-    assert short_sort.get_attribute("tabindex") is None
+    expect(
+        page.get_by_role("columnheader", name="Sort Name", exact=True)
+    ).to_have_count(0)
+
+    name_host = _host(page, display_name)
+    name_panel = name_host.locator("[data-pop-over-panel]")
+    name_button = name_host.locator("[data-truncated-reveal]")
+    expect(name_host).to_have_attribute("reveal", "always")
+    expect(name_button).to_have_attribute("data-truncated-reveal", "info")
+    expect(name_button).to_be_visible()
+    assert (
+        name_host.locator("[data-truncated-clip]").evaluate(
+            "element => getComputedStyle(element).paddingInlineEnd"
+        )
+        == "24px"
+    )
+    name_button.tap()
+    expect(name_panel).to_be_visible()
+    expect(name_panel.locator('[data-truncated-detail="name"]')).to_be_hidden()
+    sort_detail = name_panel.locator('[data-truncated-detail="sort-name"]')
+    expect(sort_detail).to_be_visible()
+    expect(sort_detail).to_contain_text("Sort name")
+    expect(sort_detail).to_contain_text(sort_name)
+    panel_id = name_panel.get_attribute("id")
+    assert panel_id
+    expect(name_host.locator("a")).to_have_attribute("aria-describedby", panel_id)
+    page.keyboard.press("Escape")
+    expect(name_panel).to_be_hidden()
+
+    long_host = _host(page, LONG_NAME)
+    expect(long_host).to_have_attribute("data-overflowing", "")
+    long_button = long_host.locator("[data-truncated-reveal]")
+    expect(long_button).to_have_attribute("data-truncated-reveal", "info")
+    expect(long_button).to_be_visible()
+    long_panel = long_host.locator("[data-pop-over-panel]")
+    long_name_detail = long_panel.locator('[data-truncated-detail="name"]')
+    assert (
+        long_name_detail.evaluate("element => getComputedStyle(element).display")
+        == "block"
+    )
+    expect(long_name_detail).to_contain_text("Name")
+    expect(long_name_detail).to_contain_text(LONG_NAME)
+    expect(long_panel.locator('[data-truncated-detail="sort-name"]')).to_contain_text(
+        long_sort_name
+    )
+
+    same_host = _host(page, "Same Name")
+    same_panel = same_host.locator("[data-pop-over-panel]")
+    same_button = same_host.locator("[data-truncated-reveal]")
+    expect(same_host).to_have_attribute("reveal", "auto")
+    expect(same_button).to_have_attribute("data-truncated-reveal", "ellipsis")
+    expect(same_button).to_be_hidden()
+    assert (
+        same_host.locator("[data-truncated-clip]").evaluate(
+            "element => getComputedStyle(element).paddingInlineEnd"
+        )
+        == "0px"
+    )
+    expect(same_panel).to_be_hidden()
+    expect(same_panel).to_have_attribute("aria-hidden", "true")
 
 
 def test_table_constraints_hold_at_mobile_and_intermediate_widths(
@@ -148,7 +202,7 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
                 host.locator("[data-truncated-clip]").evaluate(
                     "element => element.clientWidth"
                 )
-                < 384
+                < 256
             )
             host_box = host.bounding_box()
             action_box = action_cell.bounding_box()
@@ -165,7 +219,7 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
 ):
     page = touch_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
-    name = "Medium Length Name For A Responsive Resize"
+    name = "Medium Length Name For Resize"
     Game.objects.create(name=name, platform=platform)
     page.set_viewport_size({"width": 240, "height": 844})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
@@ -175,7 +229,12 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
     button = host.locator("[data-truncated-reveal]")
     panel = host.locator("[data-pop-over-panel]")
     expect(host).to_have_attribute("data-overflowing", "")
+    expect(button).to_have_attribute("data-truncated-reveal", "ellipsis")
     expect(button).to_be_visible()
+    mask = host.locator("[data-truncated-clip]").evaluate(
+        "element => getComputedStyle(element).maskImage"
+    )
+    assert "48px" in mask and "24px" in mask
     button.tap()
     expect(panel).to_be_visible()
 
@@ -205,6 +264,7 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
     expect(host.locator("[data-pop-over-panel]")).to_have_count(1)
     expect(host.locator("pop-over")).to_have_count(0)
     button = host.locator("[data-truncated-reveal]")
+    expect(button).to_have_attribute("data-truncated-reveal", "info")
     expect(button).to_be_visible()
     button.tap()
     panel = host.locator("[data-pop-over-panel]")
@@ -215,6 +275,40 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
     assert panel_id
     expect(host.locator("a")).to_have_attribute("aria-describedby", panel_id)
     expect(button).to_have_attribute("aria-describedby", panel_id)
+
+
+def test_fallback_font_is_measured_when_webfonts_are_blocked(
+    live_server, browser, django_user_model
+):
+    django_user_model.objects.create_user(
+        username="fallback-font", password="secret123"
+    )
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    Game.objects.create(name=LONG_NAME, platform=platform)
+
+    context = browser.new_context(viewport={"width": 1280, "height": 844})
+    page = context.new_page()
+    blocked_fonts: list[str] = []
+
+    def block_font(route: Route) -> None:
+        blocked_fonts.append(route.request.url)
+        route.abort()
+
+    page.route("**/*.woff2", block_font)
+    page.goto(f"{live_server.url}{reverse('login')}")
+    page.fill('input[name="username"]', "fallback-font")
+    page.fill('input[name="password"]', "secret123")
+    page.click('button:has-text("Login")')
+    page.wait_for_url(f"{live_server.url}/tracker**")
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    host = _host(page, LONG_NAME)
+    expect(host).to_have_attribute("data-overflowing", "")
+    expect(host.locator("[data-truncated-reveal]")).to_have_attribute(
+        "data-truncated-reveal", "ellipsis"
+    )
+    assert blocked_fonts
+    context.close()
 
 
 def test_navbar_menu_name_is_hover_only_and_has_no_nested_button(

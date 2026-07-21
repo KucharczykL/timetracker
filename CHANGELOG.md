@@ -47,7 +47,14 @@
 * Game and purchase names now truncate by their rendered width instead of a
   fixed character count. Clipped names fade at the right edge and reveal their
   full text only when needed: hover/focus on desktop and a 24px tap target on
-  touch devices. Multi-game purchases keep their always-available games list.
+  touch devices. The game list no longer spends a column on sort names; a
+  differing sort name appears in the name tooltip instead. The desktop name cap
+  is tuned to 16rem from the measured game-name distribution. Touch reveal
+  controls use an ellipsis for clipped text and an info icon for additional
+  details, with a reserved/cleared icon gutter so text never overlaps them.
+  Sort-name tooltips use labeled fields and repeat the full display name only
+  when that name is actually clipped. Multi-game purchases keep their
+  always-available games list.
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
   currency comes solely from the resolved `DEFAULT_CURRENCY` (`CZK` out of the
   box). A purchase created directly via the ORM without a currency now gets the
