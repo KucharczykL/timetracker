@@ -210,6 +210,14 @@ ICON_NODES: dict[str, Element] = {
             ),
         ],
     ),
+    'lock': Element(
+        "svg",
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [
+            Element("rect", [('x', '5'), ('y', '10'), ('width', '14'), ('height', '10'), ('rx', '2')], []),
+            Element("path", [('d', 'M8 10V7a4 4 0 0 1 8 0v3')], []),
+        ],
+    ),
     'microsoft': Element(
         "svg",
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 30 30'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],

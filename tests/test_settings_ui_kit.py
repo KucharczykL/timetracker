@@ -85,6 +85,19 @@ class GroupedFormFieldsTest(SimpleTestCase):
         assert "min-h-control" in form.fields["limit"].widget.attrs["class"]
         assert "min-h-control" in form.fields["display_name"].widget.attrs["class"]
 
+    def test_label_extras_render_beside_the_label_before_the_control(self):
+        html = str(
+            FormFields(
+                KitForm(),
+                label_extras={"display_name": Badge("Personal", size="sm")},
+            )
+        )
+        label_line = html.index('data-form-field-label-line=""')
+        badge = html.index(">Personal</span>", label_line)
+        control = html.index('name="display_name"', badge)
+
+        assert label_line < badge < control
+
 
 class SettingsBadgeAndFieldStateTest(SimpleTestCase):
     def test_badge_tone_is_a_real_palette_parameter(self):
@@ -92,11 +105,14 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "bg-neutral-secondary-medium" in str(Badge("Database", tone="neutral"))
         assert "bg-warning-soft" in str(Badge("Locked", tone="warning"))
 
-    def test_source_lock_composite_uses_badges_not_pills(self):
+    def test_source_lock_composite_is_one_badge_with_an_icon(self):
         html = str(SettingSourceBadge("env_file", locked=True))
         assert "Environment file" in html
-        assert "Locked" in html
-        assert html.count("<span") == 3  # composite + two Badge spans
+        assert html.count("<span") == 1
+        assert html.count("<svg") == 1
+        assert 'data-setting-origin="env_file"' in html
+        assert 'data-setting-locked=""' in html
+        assert 'aria-label="Locked; source: Environment file"' in html
         assert "data-pill" not in html
 
     def test_locked_state_disables_the_real_django_field_and_adds_reason(self):
@@ -121,9 +137,15 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert " disabled" in html
         assert "disabled:opacity-50" in html
         assert 'data-setting-key="APP_URL"' in html
-        assert "Environment" in html and "Locked" in html
+        assert "Environment" in html
+        assert 'data-setting-locked=""' in html
         assert "Change APP_URL in the environment and restart." in html
         assert 'aria-describedby="id_locked_value_setting_metadata"' in html
+        label_line = html.index('data-form-field-label-line=""')
+        badge = html.index('data-setting-origin="env"', label_line)
+        control = html.index('name="locked_value"', badge)
+        reason = html.index("Change APP_URL", control)
+        assert label_line < badge < control < reason
 
 
 class SettingsScaffoldTest(SimpleTestCase):

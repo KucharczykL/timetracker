@@ -10,7 +10,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from common.components.core import Child, Element, Node, randomid
+from common.components.core import Child, Element, Fragment, Node, randomid
 from common.components.custom_elements import Dropdown, DropdownMenuPanel
 from common.components.primitives import (
     A,
@@ -20,6 +20,7 @@ from common.components.primitives import (
     Div,
     FormFieldGroup,
     FormFields,
+    Icon,
     Input,
     Label,
     Li,
@@ -217,19 +218,36 @@ def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
 
 
 def SettingSourceBadge(source: str, *, locked: bool = False) -> Node:
-    """Static setting-origin + optional lock badges, built only on ``Badge``."""
+    """One setting-origin badge, with a lock icon when the value is pinned."""
     source_value = str(source)
     label = _SOURCE_LABELS.get(source_value, source_value.replace("_", " ").title())
-    badges: list[Node] = [Badge(label, size="sm", tone="neutral")]
+    attributes: list[tuple[str, str]] = [("data-setting-origin", source_value)]
+    content: Node | str = label
     if locked:
-        badges.append(Badge("Locked", size="sm", tone="warning"))
-    return Span(
-        class_="inline-flex flex-wrap items-center gap-2",
-        data_setting_origin=source_value,
-    )[*badges]
+        attributes.extend(
+            [
+                ("data-setting-locked", ""),
+                ("aria-label", f"Locked; source: {label}"),
+            ]
+        )
+        content = Fragment(
+            Icon(
+                "lock",
+                [("aria-hidden", "true"), ("class", "shrink-0")],
+                size="size-3",
+            ),
+            label,
+        )
+    return Badge(
+        content,
+        size="sm",
+        tone="warning" if locked else "neutral",
+        extra_class="gap-1",
+        attributes=attributes,
+    )
 
 
-def _field_metadata(field_name: str, state: SettingFieldState) -> Node:
+def _field_metadata(field_name: str, state: SettingFieldState) -> Node | None:
     reason = state.reason
     if state.locked and not reason:
         source_label = _SOURCE_LABELS.get(
@@ -237,41 +255,47 @@ def _field_metadata(field_name: str, state: SettingFieldState) -> Node:
         )
         reason = f"Managed by {source_label}; it cannot be changed here."
     details = [text for text in (state.help_text, reason) if text]
+    if not details:
+        return None
     return Div(
         id=f"id_{field_name}_setting_metadata",
         class_="flex flex-col gap-1",
         data_setting_metadata="",
-    )[
-        SettingSourceBadge(state.source, locked=state.locked),
-        *[P(class_="text-type-micro text-body")[text] for text in details],
-    ]
+    )[*[P(class_="text-type-micro text-body")[text] for text in details]]
 
 
 def prepare_setting_fields(
     form,
     states: Mapping[str, SettingFieldState],
-) -> dict[str, Node]:
-    """Stamp live-save/lock semantics and return ``FormFields.extras``.
+) -> tuple[dict[str, Node], dict[str, Node]]:
+    """Stamp semantics and return control-below + label-line metadata.
 
     This is intentionally preparation for the existing renderer, not a second
     field renderer. The mapping key is a Django form field name; ``state.key``
     is the registry key sent to the API.
     """
     extras: dict[str, Node] = {}
+    label_extras: dict[str, Node] = {}
     for field_name, state in states.items():
         if field_name not in form.fields:
             raise ValueError(f"Unknown setting form field {field_name!r}.")
         field = form.fields[field_name]
         field.widget.attrs["data-setting-key"] = state.key
-        metadata_id = f"id_{field_name}_setting_metadata"
-        describedby = str(field.widget.attrs.get("aria-describedby", "")).strip()
-        field.widget.attrs["aria-describedby"] = " ".join(
-            part for part in (describedby, metadata_id) if part
+        label_extras[field_name] = SettingSourceBadge(
+            state.source,
+            locked=state.locked,
         )
+        metadata = _field_metadata(field_name, state)
+        if metadata is not None:
+            metadata_id = f"id_{field_name}_setting_metadata"
+            describedby = str(field.widget.attrs.get("aria-describedby", "")).strip()
+            field.widget.attrs["aria-describedby"] = " ".join(
+                part for part in (describedby, metadata_id) if part
+            )
+            extras[field_name] = metadata
         if state.locked:
             field.disabled = True
-        extras[field_name] = _field_metadata(field_name, state)
-    return extras
+    return extras, label_extras
 
 
 def LiveSettingFields(
@@ -286,13 +310,20 @@ def LiveSettingFields(
     """Render existing ``FormFields`` inside the optimistic live-save host."""
     if "__key__" not in patch_url_template:
         raise ValueError("patch_url_template must contain the literal __key__ token.")
-    extras = prepare_setting_fields(form, states)
+    extras, label_extras = prepare_setting_fields(form, states)
     return _LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
         event=event,
         class_="flex flex-col gap-6 @container",
-    )[FormFields(form, extras=extras, groups=groups)]
+    )[
+        FormFields(
+            form,
+            extras=extras,
+            label_extras=label_extras,
+            groups=groups,
+        )
+    ]
 
 
 def MaskedSecretField(

@@ -160,7 +160,10 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
 
     locked = page.locator('input[name="pinned_url"]')
     expect(locked).to_be_disabled()
-    expect(page.get_by_text("Locked", exact=True)).to_be_visible()
+    locked_badge = page.locator('[data-setting-origin="env"][data-setting-locked]')
+    expect(locked_badge).to_be_visible()
+    expect(locked_badge).to_contain_text("Environment")
+    expect(locked_badge.locator("svg")).to_be_visible()
     expect(
         page.get_by_text("Change APP_URL in the environment and restart.")
     ).to_be_visible()

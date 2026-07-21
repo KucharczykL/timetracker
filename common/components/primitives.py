@@ -1171,25 +1171,56 @@ class FormFieldGroup(NamedTuple):
     id: str = ""
 
 
-def _form_field_row(field, extra: Node | None = None) -> Node:
+def _form_field_label(field, label_extra: Node | None = None) -> Node:
+    """Render a label, optionally with adjacent label-line metadata."""
+    label_class = (
+        "text-type-label text-heading" if label_extra is not None else _LABEL_CLASS
+    )
+    label = Label(for_=field.id_for_label, class_=label_class)[str(field.label)]
+    if label_extra is None:
+        return label
+    return Div(
+        class_="flex min-w-0 flex-wrap items-center gap-2",
+        data_form_field_label_line="",
+    )[label, label_extra]
+
+
+def _form_field_row(
+    field,
+    extra: Node | None = None,
+    label_extra: Node | None = None,
+) -> Node:
     """Render one visible ``BoundField`` using the established row contract."""
     is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
-    label = Label(for_=field.id_for_label, class_=_LABEL_CLASS)[str(field.label)]
+    label = _form_field_label(field, label_extra)
     control = Safe(str(field))
     errors = _field_errors(field.errors)
 
     if is_checkbox:
-        children: list[Node] = [label, control]
+        if label_extra is None:
+            children: list[Node] = [label, control]
+            if errors:
+                children.append(errors)
+            if extra:
+                children.append(extra)
+            return Div(class_=_CHECKBOX_ROW_CLASS)[*children]
+
+        row = Div(class_=f"{_CHECKBOX_ROW_CLASS} items-center gap-3")[label, control]
+        children = [row]
         if errors:
             children.append(errors)
         if extra:
             children.append(extra)
-        return Div(class_=_CHECKBOX_ROW_CLASS)[*children]
+        return Div()[*children]
 
     children = []
     if errors:
         children.append(errors)
-    children.extend([label, control])
+    if label_extra is not None:
+        children.append(Div(class_="mb-2.5")[label])
+    else:
+        children.append(label)
+    children.append(control)
     if extra:
         children.append(extra)
     return Div()[*children]
@@ -1199,6 +1230,7 @@ def _grouped_form_fields(
     form,
     groups: Sequence[FormFieldGroup],
     extras: dict[str, Node],
+    label_extras: dict[str, Node],
 ) -> list[Node]:
     """Render validated fieldsets plus any visible, ungrouped remainder."""
     field_names = set(form.fields)
@@ -1243,7 +1275,12 @@ def _grouped_form_fields(
                 description_attributes.append(("id", description_id))
             group_children.append(P(description_attributes)[group.description])
         group_children.extend(
-            _form_field_row(field, extras.get(field.name)) for field in group_fields
+            _form_field_row(
+                field,
+                extras.get(field.name),
+                label_extras.get(field.name),
+            )
+            for field in group_fields
         )
         fieldsets.append(Element("fieldset", attributes)[*group_children])
 
@@ -1251,7 +1288,11 @@ def _grouped_form_fields(
     # fields not named by a group follow the fieldsets in their normal order.
     hidden = [Safe(str(field)) for field in form if field.is_hidden]
     remainder = [
-        _form_field_row(field, extras.get(field.name))
+        _form_field_row(
+            field,
+            extras.get(field.name),
+            label_extras.get(field.name),
+        )
         for field in form
         if not field.is_hidden and field.name not in grouped_names
     ]
@@ -1262,6 +1303,7 @@ def FormFields(
     form,
     *,
     extras: dict[str, Node] | None = None,
+    label_extras: dict[str, Node] | None = None,
     groups: Sequence[FormFieldGroup] | None = None,
 ) -> Node:
     """Render a Django form's fields as self-styled component rows.
@@ -1270,7 +1312,9 @@ def FormFields(
     row carry their own classes (no form styling in input.css). Native controls
     get their classes from ``PrimitiveWidgetsMixin``; composite widgets
     (SearchSelect) self-style. ``extras`` maps a field name to a node appended
-    inside that field's row (e.g. the session timestamp helper buttons).
+    below its control (e.g. help text or session timestamp helper buttons).
+    ``label_extras`` maps a field name to compact metadata rendered beside its
+    label, such as a setting-source badge.
 
     ``groups`` extends this renderer with semantic ``fieldset``/``legend``
     grouping. It never delegates to a parallel renderer: errors, checkbox rows,
@@ -1278,6 +1322,7 @@ def FormFields(
     field names raise instead of producing a partially-rendered settings form.
     """
     extras = extras or {}
+    label_extras = label_extras or {}
     rows: list[Node] = []
 
     non_field = _field_errors(form.non_field_errors())
@@ -1285,14 +1330,20 @@ def FormFields(
         rows.append(non_field)
 
     if groups is not None:
-        rows.extend(_grouped_form_fields(form, groups, extras))
+        rows.extend(_grouped_form_fields(form, groups, extras, label_extras))
         return Fragment(*rows, separator="\n")
 
     for field in form:
         if field.is_hidden:
             rows.append(Safe(str(field)))
             continue
-        rows.append(_form_field_row(field, extras.get(field.name)))
+        rows.append(
+            _form_field_row(
+                field,
+                extras.get(field.name),
+                label_extras.get(field.name),
+            )
+        )
 
     return Fragment(*rows, separator="\n")
 
