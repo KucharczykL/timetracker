@@ -46,6 +46,31 @@ function mountSheet(): {
   return { host, toggle, dialog, panel, closeButton, link, destination, heading };
 }
 
+function mountTwoSheets(): {
+  hosts: DropdownHost[];
+  toggles: HTMLButtonElement[];
+  dialogs: HTMLDialogElement[];
+} {
+  document.body.innerHTML = ["first", "second"]
+    .map(
+      (id) => `
+        <drop-down behavior="sheet" placement="bottom-start" submenu="false">
+          <button data-toggle aria-expanded="false">Open ${id}</button>
+          <dialog data-menu data-bottom-sheet>
+            <div data-sheet-panel>
+              <button data-sheet-dismiss>Close</button>
+            </div>
+          </dialog>
+        </drop-down>`,
+    )
+    .join("");
+  return {
+    hosts: Array.from(document.querySelectorAll("drop-down")) as DropdownHost[],
+    toggles: Array.from(document.querySelectorAll("[data-toggle]")),
+    dialogs: Array.from(document.querySelectorAll("dialog")),
+  };
+}
+
 beforeEach(() => {
   reducedMotion = true;
   previousShowModal = HTMLDialogElement.prototype.showModal;
@@ -255,5 +280,34 @@ describe('drop-down behavior="sheet"', () => {
     expect(dialog.open).toBe(false);
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.position).toBe("");
+  });
+
+  it("fully closes a sibling sheet before taking over its scroll lock", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { hosts, toggles, dialogs } = mountTwoSheets();
+    document.documentElement.style.overflow = "clip";
+    document.body.style.position = "relative";
+    const originalHtmlStyle = document.documentElement.getAttribute("style");
+    const originalBodyStyle = document.body.getAttribute("style");
+
+    hosts[0].open();
+    expect(dialogs[0].open).toBe(true);
+    expect(document.body.style.position).toBe("fixed");
+
+    hosts[1].open();
+    expect(dialogs[0].open).toBe(false);
+    expect(toggles[0].getAttribute("aria-expanded")).toBe("false");
+    expect(dialogs[1].open).toBe(true);
+    expect(toggles[1].getAttribute("aria-expanded")).toBe("true");
+    expect(document.body.style.position).toBe("fixed");
+
+    // The second close may animate, but its final restoration must return to
+    // the page's original values—not the first sheet's locked snapshot.
+    hosts[1].close();
+    vi.runAllTimers();
+    expect(dialogs[1].open).toBe(false);
+    expect(document.documentElement.getAttribute("style")).toBe(originalHtmlStyle);
+    expect(document.body.getAttribute("style")).toBe(originalBodyStyle);
   });
 });
