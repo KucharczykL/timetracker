@@ -294,6 +294,14 @@ promotion path for `TZ` (edit ini → restart).
 - **Manual epic check:** set a value via env AND panel → env wins, field shows locked+reason; change
   `DEFAULT_CURRENCY` in the panel → new purchase form, `Purchase.save()` default, and FX task all
   pick it up with no restart.
+- **SOURCE-BADGE DELETION GATE (must be resolved before closing #381):**
+  - [ ] List at least one concrete shipped unlocked/editable setting where an inline source badge
+    adds user value beyond the field label and help text.
+  - [ ] Verify every badged control still has a visible field label; source metadata must never act
+    as the field's identity.
+  - [ ] If no such unlocked use case exists, delete unlocked inline source badges from
+    `prepare_setting_fields`, the preview gallery/variants, tests, and documentation. Keep
+    source/lock provenance only for concrete locked/read-only use cases in Stages 8 and 9.
 
 ## Deferred — file as its own issue, linked from the epic, NOT executed here
 
