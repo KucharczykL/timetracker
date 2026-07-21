@@ -18,6 +18,7 @@ from common.components.primitives import (
     ContentContainer,
     ControlButton,
     Div,
+    FORM_MAX_WIDTH_CLASS,
     FormFieldGroup,
     FormFields,
     Icon,
@@ -373,7 +374,7 @@ def LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
         event=event,
-        class_="flex flex-col gap-6 @container",
+        class_=f"flex w-full {FORM_MAX_WIDTH_CLASS} flex-col gap-6 @container",
     )[
         FormFields(
             form,
