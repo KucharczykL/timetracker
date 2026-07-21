@@ -22,6 +22,17 @@ function change(control: HTMLElement): void {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function deferredResponse(): {
+  promise: Promise<Response>;
+  resolve: (response: Response) => void;
+} {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   document.body.replaceChildren();
   window.toast = vi.fn();
@@ -99,6 +110,83 @@ describe("<live-setting-fields>", () => {
       "error",
     );
     expect(consoleError).toHaveBeenCalled();
+  });
+
+  it("serializes rapid writes and sends only the latest queued value", async () => {
+    const first = deferredResponse();
+    const second = deferredResponse();
+    const fetchStub = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    window.fetchWithHtmxTriggers = fetchStub;
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "First";
+    change(input);
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(1));
+
+    input.value = "Intermediate";
+    change(input);
+    input.value = "Latest";
+    change(input);
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+
+    first.resolve({ ok: true, status: 204 } as Response);
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
+    expect(
+      JSON.parse(String((fetchStub.mock.calls[1][1] as RequestInit).body)),
+    ).toEqual({ value: "Latest" });
+    expect(input.getAttribute("aria-busy")).toBe("true");
+
+    second.resolve({ ok: true, status: 204 } as Response);
+    await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
+    expect(input.value).toBe("Latest");
+  });
+
+  it("does not let a superseded failure revert the newer queued edit", async () => {
+    const first = deferredResponse();
+    const second = deferredResponse();
+    const fetchStub = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    window.fetchWithHtmxTriggers = fetchStub;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "Rejected older value";
+    change(input);
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(1));
+    input.value = "Newer value";
+    change(input);
+
+    first.resolve({ ok: false, status: 422 } as Response);
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
+    expect(input.value).toBe("Newer value");
+    expect(window.toast).not.toHaveBeenCalled();
+
+    second.resolve({ ok: true, status: 204 } as Response);
+    await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
+    expect(input.value).toBe("Newer value");
+  });
+
+  it("preserves newer typing when an in-flight edit fails", async () => {
+    const response = deferredResponse();
+    window.fetchWithHtmxTriggers = vi.fn(() => response.promise);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+
+    input.value = "Submitted";
+    change(input);
+    input.value = "Still typing";
+    response.resolve({ ok: false, status: 422 } as Response);
+
+    await vi.waitFor(() => expect(window.toast).toHaveBeenCalledTimes(1));
+    expect(input.value).toBe("Still typing");
   });
 
   it("does not PATCH a disabled locked field", async () => {
