@@ -617,9 +617,7 @@ _DROPDOWN_PANEL_SURFACE = (
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
 _DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
-DROPDOWN_PANEL_OUTLINE_CLASS = (
-    f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
-)
+DROPDOWN_PANEL_OUTLINE_CLASS = f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
 _DROPDOWN_PANEL_PLAIN_CLASS = (
     f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-default-medium"
 )
@@ -629,10 +627,7 @@ def _menu_panel_class(width: str = "w-44") -> str:
     """The plain menu-panel look at an arbitrary width. Default ``w-44`` matches
     the fixed-width menus; a split button can pass e.g. ``w-max max-w-xs`` to grow
     to its item content (the item names self-truncate via ``PopoverTruncated``)."""
-    return (
-        f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm "
-        "border border-default-medium"
-    )
+    return f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm border border-default-medium"
 
 
 # The combobox dialog (the preset picker, #297): wider than a menu, bordered.
