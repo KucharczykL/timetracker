@@ -37,14 +37,14 @@ def test_reveal_button_meets_min_touch_target(touch_page: Page, live_server):
     )
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    button = page.locator("pop-over button[data-pop-over-trigger]").first
+    button = page.locator("truncated-text button[data-truncated-reveal]").first
     expect(button).to_be_visible()  # shown on a no-hover device
     box = button.bounding_box()
     assert box is not None
     assert box["width"] >= 24, f"reveal button width {box['width']} < 24px"
     assert box["height"] >= 24, f"reveal button height {box['height']} < 24px"
 
-    panel = page.locator("pop-over [data-pop-over-panel]").first
+    panel = page.locator("truncated-text [data-pop-over-panel]").first
     expect(panel).to_be_hidden()
     button.tap()
     expect(panel).to_be_visible()

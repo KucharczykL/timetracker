@@ -467,6 +467,36 @@ def collect_media(node: "Node | str") -> Media:
     return Media()
 
 
+def assert_unique_element_ids(node: "Node | str") -> None:
+    """Raise in DEBUG page assembly when an Element tree repeats a DOM id."""
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+
+    def visit(current: object) -> None:
+        if isinstance(current, Element):
+            for name, value in current.attributes:
+                if name != "id":
+                    continue
+                element_id = str(value)
+                if element_id in seen:
+                    duplicates.add(element_id)
+                seen.add(element_id)
+            for child in current.children:
+                visit(child)
+        elif isinstance(current, Fragment):
+            for fragment_child in current.children:
+                visit(fragment_child)
+        elif isinstance(current, Document):
+            visit(current.html)
+        elif isinstance(current, BaseComponent):
+            visit(current._tree())
+
+    visit(node)
+    if duplicates:
+        rendered = ", ".join(repr(value) for value in sorted(duplicates))
+        raise ValueError(f"Duplicate element id(s) in document: {rendered}")
+
+
 def randomid(seed: str = "", content: str = "", length: int = 10) -> str:
     if not seed and not content:
         return seed

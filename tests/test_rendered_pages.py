@@ -621,9 +621,17 @@ class PurchaseListDateFilterTest(TestCase):
 
     def test_unfiltered_lists_all_three(self):
         html = self._get().content.decode()
-        self.assertEqual(html.count("EARLY-MARKER"), 1)
-        self.assertEqual(html.count("MID-MARKER"), 1)
-        self.assertEqual(html.count("LATE-MARKER"), 1)
+        # The visual-only tooltip repeats the full string in an aria-hidden
+        # panel; count the actual table-cell clip, not all text nodes.
+        for marker in ("EARLY-MARKER", "MID-MARKER", "LATE-MARKER"):
+            self.assertEqual(
+                len(
+                    re.findall(
+                        rf'data-truncated-clip=""[^>]*>{re.escape(marker)}', html
+                    )
+                ),
+                1,
+            )
 
     def test_date_purchased_between_narrows_and_prepopulates(self):
         """BETWEEN 2024-01-01..2024-12-31 → only early + mid; both date

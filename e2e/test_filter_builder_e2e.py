@@ -187,8 +187,10 @@ def test_game_list_filter_narrows_results(
     page.goto(game_list_url)
 
     # DoneGame (status=f) must appear; PlayGame (status=p) must not.
-    expect(page.get_by_text("DoneGame")).to_be_visible()
-    expect(page.get_by_text("PlayGame")).not_to_be_visible()
+    expect(page.locator("[data-truncated-clip]", has_text="DoneGame")).to_be_visible()
+    expect(
+        page.locator("[data-truncated-clip]", has_text="PlayGame")
+    ).not_to_be_visible()
 
 
 def test_prefill_apply_roundtrip_carries_filter(
@@ -230,8 +232,10 @@ def test_prefill_apply_roundtrip_carries_filter(
     )
 
     # With the prefilled filter active, only the finished game should appear.
-    expect(page.get_by_text("DoneGame")).to_be_visible()
-    expect(page.get_by_text("PlayGame")).not_to_be_visible()
+    expect(page.locator("[data-truncated-clip]", has_text="DoneGame")).to_be_visible()
+    expect(
+        page.locator("[data-truncated-clip]", has_text="PlayGame")
+    ).not_to_be_visible()
 
 
 def test_empty_preset_dropdown_shows_readable_placeholder(
@@ -668,8 +672,10 @@ def test_scoped_aggregate_narrows_game_list(
     # Scope to the results table: the navbar log dropdown (#419) also lists recent
     # games by name, so a bare page-level text match would be ambiguous.
     table = page.locator("table")
-    expect(table.get_by_text("DeckGame")).to_be_visible()
-    expect(table.get_by_text("DeskGame")).not_to_be_visible()
+    expect(table.locator("[data-truncated-clip]", has_text="DeckGame")).to_be_visible()
+    expect(
+        table.locator("[data-truncated-clip]", has_text="DeskGame")
+    ).not_to_be_visible()
 
 
 def test_cross_model_year_comparison_filters_sessions(

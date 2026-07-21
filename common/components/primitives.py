@@ -36,7 +36,6 @@ from common.components.core import (
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterWidgetPath, LeafWidgetKind
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
-from common.utils import truncate_info
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
 type ButtonVariant = Literal[
@@ -233,6 +232,38 @@ H3 = _html_element("h3", default_class="text-type-subheading mb-2")
 # from this module, so registration can't live here). Media is auto-attached, so
 # Page() emits the compiled JS wherever a Popover appears.
 _PopOver = custom_element_builder("pop-over")
+_TruncatedText = custom_element_builder("truncated-text")
+
+_TOOLTIP_PANEL_CLASS = (
+    f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
+    f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
+)
+
+
+def _tooltip_panel(
+    content: Child,
+    *,
+    id: str = "",
+    aria_hidden: bool = False,
+) -> Node:
+    """The shared server-rendered panel anatomy for passive tooltips."""
+    attributes: list[HTMLAttribute] = [("data-pop-over-panel", "")]
+    if aria_hidden:
+        attributes.append(("aria-hidden", "true"))
+    else:
+        attributes.extend([("id", id), ("role", "tooltip")])
+    attributes.extend([("hidden", ""), ("class", _TOOLTIP_PANEL_CLASS)])
+    return Div(attributes)[
+        Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
+            content
+        ],
+        Div([("data-pop-over-arrow", "")], class_="absolute w-2 h-2 rotate-45"),
+        Safe(  # nosec — intentional HTML comment for Tailwind JIT
+            "<!-- for Tailwind CSS to generate decoration-dotted CSS "
+            "from Python component -->"
+        ),
+        Span(class_="hidden decoration-dotted"),
+    ]
 
 
 def _popover_html(
@@ -292,36 +323,7 @@ def _popover_html(
 
     # No positioning class — the element sets `position: fixed` + coords on show
     # and clears them on hide; the `hidden` attribute owns the closed state.
-    # Shares the one content max-width as a cap only (no `w-full`): the tooltip
-    # stays inline-block and small, the cap just bounds huge content.
-    panel_class = (
-        f"z-10 inline-block text-type-body text-heading bg-brand-soft border "
-        f"border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
-    )
-
-    panel = Div(
-        [
-            ("data-pop-over-panel", ""),
-            ("id", id),
-            ("role", "tooltip"),
-            ("hidden", ""),
-            ("class", panel_class),
-        ]
-    )[
-        Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
-            popover_content
-        ],
-        # The pointer. A small square the element rotates 45° and pins to the
-        # panel edge facing the trigger, tinted (bg + border) from the panel's
-        # own computed styles so it tracks the theme. Placement (which edge, how
-        # far along) is set by ts/elements/pop-over.ts alongside the panel.
-        Div([("data-pop-over-arrow", "")], class_="absolute w-2 h-2 rotate-45"),
-        Safe(  # nosec — intentional HTML comment for Tailwind JIT
-            "<!-- for Tailwind CSS to generate decoration-dotted CSS "
-            "from Python component -->"
-        ),
-        Span(class_="hidden decoration-dotted"),
-    ]
+    panel = _tooltip_panel(popover_content, id=id)
 
     # self-start keeps the host at its trigger's content width in a flex parent:
     # a flex column blockifies the inline-block and stretches it to full width,
@@ -397,35 +399,101 @@ def PopoverIf(
     return node
 
 
-def PopoverTruncated(
-    input_string: str,
-    popover_content: Child = "",
-    length: int = 30,
-    ellipsis: str = "…",
-    endpart: str = "",
+_NAME_MAX_W = "max-w-[24rem]"
+_TRUNCATED_CLIP_CLASS = (
+    "block min-w-0 overflow-hidden whitespace-nowrap "
+    "group-data-[overflowing]:"
+    "[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]"
+)
+_TRUNCATED_REVEAL_CLASS = (
+    "absolute inset-y-0 right-0 my-auto hidden size-6 items-center justify-center "
+    "text-subtle hover:text-heading hover:cursor-pointer rounded-base shrink-0 "
+)
+
+
+def TruncatedText(
+    text: str,
     *,
+    leading: Child | None = None,
+    link: str | None = None,
     tap: bool = True,
-    selectable_text: bool = False,
-) -> Node | str:
+    reveal: Literal["auto", "always"] = "auto",
+    tooltip_content: Child | None = None,
+    instance_key: str | None = None,
+    reveal_label: str = "Show full text",
+    max_width: str = _NAME_MAX_W,
+) -> Node:
+    """Width-clipped text with a fade and a passive full-content tooltip.
+
+    The full ``text`` always remains in the clip span. ``tooltip_content`` is
+    only for differing information (currently multi-game purchase contents),
+    where ``instance_key`` supplies a stable, page-unique ARIA relationship.
     """
-    Returns `input_string` truncated after `length` of characters
-    and displays the untruncated text in a popover HTML element.
-    The truncated text ends in `ellipsis`, and optionally
-    an always-visible `endpart` can be specified.
-    `popover_content` can be specified if it needs to differ from
-    `input_string`. For a popover that must appear regardless of
-    truncation, use `PopoverIf` instead. `tap=False` keeps the hover-only span
-    (for a popover nested inside a caller's interactive element).
-    """
-    truncation = truncate_info(input_string, length, ellipsis, endpart)
-    if truncation.display != input_string:
-        return Popover(
-            wrapped_content=truncation.display,
-            popover_content=popover_content if popover_content else input_string,
-            tap=tap,
-            selectable_text=selectable_text,
+    informative = tooltip_content is not None
+    if informative and not instance_key:
+        raise ValueError("instance_key is required when tooltip_content is set")
+    if not informative and instance_key:
+        raise ValueError("instance_key is only valid when tooltip_content is set")
+
+    panel_id = (
+        randomid(content=f"truncated-text:{instance_key}:{text}") if informative else ""
+    )
+    describedby = [("aria-describedby", panel_id)] if informative else []
+    clip_attributes: list[HTMLAttribute] = [
+        ("data-truncated-clip", ""),
+        ("class", _TRUNCATED_CLIP_CLASS),
+    ]
+    if informative and link is None:
+        clip_attributes.extend(describedby)
+    clip = Span(clip_attributes)[text]
+
+    if link is not None:
+        visible: Node = A(
+            [
+                ("href", link),
+                ("class", "inline-flex w-full min-w-0 items-center gap-2"),
+                *describedby,
+            ]
+        )[leading or "", clip]
+    else:
+        visible = Fragment(leading or "", clip)
+
+    children: list[Child] = [visible]
+    if tap:
+        visibility = (
+            "[@media(hover:none)]:inline-flex"
+            if reveal == "always"
+            else "[@media(hover:none)]:group-data-[overflowing]:inline-flex"
         )
-    return input_string
+        button_attributes: list[HTMLAttribute] = [
+            ("type", "button"),
+            ("data-truncated-reveal", ""),
+            ("aria-label", reveal_label),
+            ("class", f"{_TRUNCATED_REVEAL_CLASS} {visibility}"),
+            *describedby,
+        ]
+        children.append(
+            Button(button_attributes)[
+                Icon("ellipsis", [("class", "shrink-0")], size="size-[1.1em]")
+            ]
+        )
+
+    panel_content: Child = tooltip_content if tooltip_content is not None else text
+    children.append(
+        _tooltip_panel(
+            panel_content,
+            id=panel_id,
+            aria_hidden=not informative,
+        )
+    )
+    return _TruncatedText(
+        tap="true" if tap else "false",
+        reveal=reveal,
+        class_=(
+            f"group relative inline-flex w-full min-w-0 items-center gap-2 "
+            f"font-condensed {max_width}"
+        ),
+    )[*children]
 
 
 # The classes both ControlButton variants truly share. Everything else —
@@ -1278,7 +1346,7 @@ def TableTd(
 ) -> Element:
     """Styled table cell."""
     children = children or []
-    return Td(class_="px-4 py-2")[*as_children(children)]
+    return Td(class_="px-2 sm:px-3 lg:px-4 py-2")[*as_children(children)]
 
 
 type Cell = Child  # one table cell, e.g. NameWithIcon(game=game) or "2024"
@@ -1305,11 +1373,14 @@ class Column(NamedTuple):
     ``*_SORTS`` map) makes the header clickable-to-sort; ``None`` → a static
     header (e.g. an "Actions" column). ``align`` aligns *the header*; the body
     cell owns its own alignment (e.g. an Actions ``ButtonGroup`` right-aligns
-    itself), so set both to "right" together for an Actions column."""
+    itself), so set both to "right" together for an Actions column. ``class_``
+    supplies column sizing classes to the header and, for the row-header first
+    column, its body ``<th>``."""
 
     label: str
     sort_key: str | None = None
     align: Align = "left"
+    class_: str = ""
 
 
 class TableData(TypedDict):
@@ -1344,7 +1415,7 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
     return data
 
 
-def TableRow(data: TableRowData) -> Element:
+def TableRow(data: TableRowData, columns: Sequence[Column] | None = None) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
     First cell is a ``<th scope="row">``, the rest ``<td>``. The cosmetic row
@@ -1366,10 +1437,15 @@ def TableRow(data: TableRowData) -> Element:
     cell_elements: list[Node] = []
     for i, cell in enumerate(cells):
         if i == 0:
+            column_class = columns[0].class_ if columns else ""
             cell_elements.append(
                 Th(
                     scope="row",
-                    class_="px-6 py-4 font-medium text-heading whitespace-nowrap",
+                    class_=(
+                        "px-2 sm:px-3 lg:px-6 py-4 font-medium text-heading "
+                        "whitespace-nowrap "
+                        f"{column_class}"
+                    ).strip(),
                 )[cell]
             )
         else:
@@ -1610,7 +1686,11 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
 def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
-    base_class = "px-6 py-3" + (" text-right" if column.align == "right" else "")
+    base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
+        " text-right" if column.align == "right" else ""
+    )
+    if column.class_:
+        base_class = f"{base_class} {column.class_}"
     if column.sort_key is None:
         return Th(scope="col", class_=base_class)[column.label]
 
@@ -1723,7 +1803,7 @@ def StyledTable(
             Thead(
                 class_=(
                     "text-type-micro text-body uppercase bg-neutral-tertiary "
-                    "max-sm:[&_th:not(:first-child):not(:last-child)]:hidden"
+                    "max-md:[&_th:not(:first-child):not(:last-child)]:hidden"
                 ),
             )[header_row]
         )
@@ -1734,7 +1814,7 @@ def StyledTable(
     # The nth-child literals are safelisted via @source inline in input.css.
     tbody_class = (
         "font-condensed dark:divide-y "
-        "max-sm:[&_td:not(:first-child):not(:last-child)]:hidden"
+        "max-md:[&_td:not(:first-child):not(:last-child)]:hidden"
     )
     align_rules = " ".join(
         f"[&_td:nth-child({index + 1})]:text-right"
@@ -1744,7 +1824,7 @@ def StyledTable(
     if align_rules:
         tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
-        Tbody(class_=tbody_class)[[TableRow(data=row) for row in rows]]
+        Tbody(class_=tbody_class)[[TableRow(data=row, columns=columns) for row in rows]]
     )
 
     table = Table(

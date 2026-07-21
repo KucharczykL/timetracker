@@ -67,8 +67,12 @@ def test_quick_facet_apply_filters_the_list(authenticated_page: Page, live_serve
             "modifier": "INCLUDES",
         }
     }
-    expect(page.get_by_text("Finished Game")).to_be_visible()
-    expect(page.get_by_text("Unplayed Game")).to_have_count(0)
+    expect(
+        page.locator("[data-truncated-clip]", has_text="Finished Game")
+    ).to_be_visible()
+    expect(
+        page.locator("[data-truncated-clip]", has_text="Unplayed Game")
+    ).to_have_count(0)
 
     # The applied filter round-trips back into an editable quick bar with the
     # picked value rendered as an include pill (the round-trip guarantee).

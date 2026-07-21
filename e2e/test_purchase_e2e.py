@@ -241,15 +241,18 @@ def test_name_popover_shows_on_hover(authenticated_page: Page, live_server):
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     Game.objects.create(
-        name="A Very Long Game Name That Exceeds The Thirty Char Limit",
+        name=(
+            "A Very Long Game Name That Exceeds Every Practical Desktop Column "
+            "Width And Must Be Clipped By The Browser"
+        ),
         platform=platform,
     )
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    name_link = page.locator("pop-over a").first
-    panel = page.locator("pop-over [data-pop-over-panel]").first
+    name_link = page.locator("truncated-text a").first
+    panel = page.locator("truncated-text [data-pop-over-panel]").first
     # The reveal button is mobile-only (shown only where the device can't hover).
-    expect(page.locator("pop-over [data-pop-over-trigger]").first).to_be_hidden()
+    expect(page.locator("truncated-text [data-truncated-reveal]").first).to_be_hidden()
 
     expect(panel).to_be_hidden()
     name_link.hover()
@@ -266,13 +269,16 @@ def test_name_popover_taps_open_on_touch(touch_page: Page, live_server):
     page = touch_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     Game.objects.create(
-        name="A Very Long Game Name That Exceeds The Thirty Char Limit",
+        name=(
+            "A Very Long Game Name That Exceeds Every Practical Mobile Column "
+            "Width And Must Be Clipped By The Browser"
+        ),
         platform=platform,
     )
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    trigger = page.locator("pop-over [data-pop-over-trigger]").first
-    panel = page.locator("pop-over [data-pop-over-panel]").first
+    trigger = page.locator("truncated-text [data-truncated-reveal]").first
+    panel = page.locator("truncated-text [data-pop-over-panel]").first
 
     expect(panel).to_be_hidden()
     trigger.tap()

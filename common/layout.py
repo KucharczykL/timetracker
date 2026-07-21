@@ -11,6 +11,7 @@ import json
 from typing import TYPE_CHECKING
 
 from django.contrib.messages import get_messages
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
@@ -470,7 +471,12 @@ def NavbarLogButton(
                 # menuitem>, so the truncation popover must stay a hover-only
                 # <span> (a <button> would nest illegally). On touch the row is
                 # tapped to navigate, revealing the full name on the game page.
-                NameWithIcon(game=session.game, linkify=False, tap=False),
+                NameWithIcon(
+                    game=session.game,
+                    linkify=False,
+                    tap=False,
+                    max_width="max-w-full",
+                ),
             )
             for session in recent_resumes
         ]
@@ -483,8 +489,7 @@ def NavbarLogButton(
         id=id,
         caret_color="green",
         aria_label="Recent games",
-        # Grow to fit the game names on one line (they self-truncate via
-        # PopoverTruncated), capped so the panel never runs away.
+        # Grow to fit game names on one line; TruncatedText clips inside this cap.
         menu_width="w-max max-w-xs",
     )
 
@@ -630,7 +635,7 @@ def TimetrackerDocument(
         mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
             _main_script(mastered)
         ]
-        return Document(
+        document = Document(
             Html(lang="en")[
                 Head()[
                     [
@@ -686,6 +691,11 @@ def TimetrackerDocument(
                 ],
             ],
         )
+        if settings.DEBUG:
+            from common.components import assert_unique_element_ids
+
+            assert_unique_element_ids(document)
+        return document
 
     return html_document(title=title)
 
