@@ -226,8 +226,8 @@ Calls from #402:
   in the radius follow-up.)
 - **Form rows: adopt the whole path** — `PrimitiveWidgetsMixin` → `FormFields` → `AddForm`
   (`gap-3` column). Settings forms subclass the mixin and inherit the control look, disabled
-  state, row layout, and container upsizing for free. The `extras` mapping is the ready-made
-  insertion point for source badges / help text. Normalize separately: `_FIELD_ERROR_CLASS`
+  state, row layout, and container upsizing for free. The `label_extras` mapping puts compact
+  source badges beside labels; `extras` keeps help and reasons below controls. Normalize separately: `_FIELD_ERROR_CLASS`
   (raw red/slate, hardcoded `w-[300px]`, unstyled 16px text — three conventions violated in
   one string) and the `INPUT_CLASS mb-3` (§3).
 - **Tables: settings rows are mostly not tables** — label + control + badge + help is the
