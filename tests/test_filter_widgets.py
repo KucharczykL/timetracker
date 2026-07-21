@@ -249,6 +249,16 @@ class FilterGroupComparisonTest(TestCase):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
         self.assertEqual(html.count("data-relation-select-template"), 1)
 
+    def test_nested_builder_templates_use_semantic_control_and_danger_tokens(self):
+        from common.components import FilterGroup
+
+        html = str(FilterGroup(model="session"))
+        self.assertIn("rounded-base border border-default-medium", html)
+        self.assertIn("bg-neutral-secondary-medium", html)
+        self.assertIn("hover:bg-neutral-tertiary-medium", html)
+        self.assertIn("hover:text-fg-danger", html)
+        self.assertNotIn("hover:text-red-500", html)
+
 
 class FilterBuilderApplyUrlTest(SimpleTestCase):
     """FilterBuilder derives apply-url from mode via list_url_for."""
