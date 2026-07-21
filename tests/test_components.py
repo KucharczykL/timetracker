@@ -4,7 +4,9 @@ from typing import get_args
 from unittest.mock import MagicMock, patch
 
 import django
+from django import forms
 from django.test import SimpleTestCase, override_settings
+from django.test.client import RequestFactory
 from django.utils.safestring import SafeText, mark_safe
 
 from common import components
@@ -392,6 +394,13 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         tree = components.Div()[components.Span(id="same"), components.Span(id="same")]
         with self.assertRaisesRegex(ValueError, "Duplicate element id"):
             components.assert_unique_element_ids(tree)
+
+    def test_add_form_has_one_unique_add_form_id(self):
+        request = RequestFactory().get("/tracker/purchase/add")
+        tree = components.AddForm(forms.Form(), request=request)
+
+        self.assertEqual(str(tree).count('id="add-form"'), 1)
+        components.assert_unique_element_ids(tree)
 
     def test_single_string_children_wrapped(self):
         result = str(components.Element(tag_name="span", children="hello"))

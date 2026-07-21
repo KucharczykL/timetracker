@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from games.models import Game, GameStatusChange, Platform, Purchase, Session
@@ -291,6 +291,13 @@ class RenderedPagesTest(TestCase):
         self.assertIn("Submit &amp; Create Session", html)
         self.assertIn('name="submit_and_redirect"', html)
         self.assertNoEscapedTags(html)
+
+    @override_settings(DEBUG=True, INTERNAL_IPS=[])
+    def test_add_purchase_form_has_unique_ids_in_debug(self):
+        response = self.get("games:add_purchase")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode().count('id="add-form"'), 1)
 
     def _element_with_id(self, html, element_id):
         """Return the single tag (e.g. an <input>) carrying ``id="<element_id>"``."""
