@@ -612,16 +612,16 @@ _Dropdown = custom_element_builder("drop-down")
 # background). Width is per-variant.
 _DROPDOWN_PANEL_SURFACE = (
     "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
-    "bg-white dark:bg-gray-800/40 text-type-body "
+    "bg-surface-overlay text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
 _DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
 DROPDOWN_PANEL_OUTLINE_CLASS = (
-    f"{_DROPDOWN_PANEL_BASE} border border-gray-200 dark:border-gray-700"
+    f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
 )
 _DROPDOWN_PANEL_PLAIN_CLASS = (
-    f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-gray-200 dark:border-gray-700"
+    f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-default-medium"
 )
 
 
@@ -631,7 +631,7 @@ def _menu_panel_class(width: str = "w-44") -> str:
     to its item content (the item names self-truncate via ``PopoverTruncated``)."""
     return (
         f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm "
-        "border border-gray-200 dark:border-gray-700"
+        "border border-default-medium"
     )
 
 
@@ -639,7 +639,7 @@ def _menu_panel_class(width: str = "w-44") -> str:
 # Width is a knob: w-72 suits list-shaped content (presets, filter options);
 # content with an intrinsic width (the date facets' calendar) passes w-auto.
 _DROPDOWN_COMBOBOX_PANEL_BASE = (
-    f"{_DROPDOWN_PANEL_SURFACE} border border-gray-200 dark:border-gray-700"
+    f"{_DROPDOWN_PANEL_SURFACE} border border-default-medium"
 )
 
 
@@ -652,8 +652,8 @@ DROPDOWN_COMBOBOX_PANEL_CLASS = dropdown_combobox_panel_class()
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (
     "block w-full text-left px-4 py-2 cursor-pointer no-underline rounded-base "
-    "hover:bg-gray-100 dark:hover:bg-gray-700 text-body hover:text-heading "
-    "focus:bg-gray-100 dark:focus:bg-gray-700 dark:focus:text-white "
+    "hover:bg-neutral-tertiary-medium text-body hover:text-heading "
+    "focus:bg-neutral-tertiary-medium dark:focus:text-white "
     "focus:outline-hidden aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
 )
 
@@ -805,7 +805,7 @@ def DropdownCheckItem(
 
 def DropdownDivider() -> Node:
     """A separator between groups of items."""
-    return Li(role="separator", class_="my-1 h-px bg-gray-100 dark:bg-gray-600")
+    return Li(role="separator", class_="my-1 h-px bg-neutral-quaternary-medium")
 
 
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept

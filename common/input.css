@@ -51,6 +51,10 @@
         var(--color-neutral-primary)
     );
 
+    /* Opaque dropdown surface in light mode; dark mode overrides this with the
+       translucent color used by the frosted panel. */
+    --color-surface-overlay: var(--color-white);
+
     /* Foreground text color for each solid fill, chosen by APCA (white or
      black, whichever contrasts more). White on every fill under the current
      palette; a lighter fill would author black here (and, if the pick differed
@@ -104,6 +108,14 @@
        inputs, selects, SearchSelect, dropdown triggers) floors to this via
        min-h-control, so height is font- and container-independent. */
     --height-control: 2.625rem; /* 42px */
+}
+
+.dark {
+    --color-surface-overlay: color-mix(
+        in srgb,
+        var(--color-gray-800) 40%,
+        transparent
+    );
 }
 
 /* Solid fill + APCA-picked on-color, paired in one class so a component sets a
