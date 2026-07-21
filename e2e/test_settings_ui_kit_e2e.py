@@ -148,6 +148,12 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     expect(first_section.locator("[data-settings-section-header]")).to_have_css(
         "row-gap", "8px"
     )
+    section_heading = first_section.locator("[data-settings-section-header] h2")
+    group_heading = first_section.locator("fieldset legend").first
+    expect(section_heading).to_have_css("font-size", "20px")
+    expect(section_heading).to_have_css("font-weight", "700")
+    expect(group_heading).to_have_css("font-size", "18px")
+    expect(group_heading).to_have_css("font-weight", "600")
 
     # The long chip set cannot fit at 390px, so rightmost *same nodes* move to
     # the More dropdown instead of being cloned or wrapped into another nav.
