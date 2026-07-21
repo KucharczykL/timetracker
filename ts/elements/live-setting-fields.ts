@@ -8,6 +8,19 @@ interface ControlSnapshot {
   checked?: boolean;
 }
 
+type SettingValue = string | number | boolean | null;
+
+interface SaveAttempt {
+  value: SettingValue;
+  state: ControlSnapshot;
+}
+
+interface PendingSave {
+  controller: AbortController;
+  queued: SaveAttempt | null;
+  restoreAfterSettle: boolean;
+}
+
 function isSettingControl(element: Element | null): element is SettingControl {
   return (
     element instanceof HTMLInputElement ||
@@ -18,7 +31,7 @@ function isSettingControl(element: Element | null): element is SettingControl {
 
 export function settingPayloadValue(
   control: SettingControl,
-): string | number | boolean | null {
+): SettingValue {
   if (control instanceof HTMLInputElement) {
     if (control.type === "checkbox") return control.checked;
     if (control.type === "number") {
@@ -52,12 +65,16 @@ function restore(control: SettingControl, state: ControlSnapshot): void {
   }
 }
 
+function snapshotsEqual(left: ControlSnapshot, right: ControlSnapshot): boolean {
+  return left.value === right.value && left.checked === right.checked;
+}
+
 class LiveSettingFieldsElement extends HTMLElement {
   private patchUrlTemplate = "";
   private csrf = "";
   private successEvent = "setting-saved";
   private committed = new Map<SettingControl, ControlSnapshot>();
-  private pending = new Map<SettingControl, AbortController>();
+  private pending = new Map<SettingControl, PendingSave>();
 
   connectedCallback(): void {
     const props = readLiveSettingFieldsProps(this);
@@ -72,7 +89,7 @@ class LiveSettingFieldsElement extends HTMLElement {
 
   disconnectedCallback(): void {
     this.removeEventListener("change", this.onChange);
-    this.pending.forEach((controller) => controller.abort());
+    this.pending.forEach(({ controller }) => controller.abort());
     this.pending.clear();
   }
 
@@ -86,22 +103,53 @@ class LiveSettingFieldsElement extends HTMLElement {
         control instanceof HTMLTextAreaElement) &&
       control.readOnly;
     if (control.disabled || readOnly) return;
-    void this.save(control);
+    this.save(control);
   };
 
-  private async save(control: SettingControl): Promise<void> {
+  private save(control: SettingControl): void {
     const key = control.dataset.settingKey ?? "";
     if (!key || !this.patchUrlTemplate.includes("__key__")) return;
     const value = settingPayloadValue(control);
     if (typeof value === "number" && !Number.isFinite(value)) {
       window.toast("Enter a valid number before saving.", "error");
       restore(control, this.committed.get(control) ?? snapshot(control));
+      const active = this.pending.get(control);
+      if (active) {
+        // The invalid edit supersedes any queued valid edit. Let the active
+        // request settle, then reflect whichever value really committed.
+        active.queued = null;
+        active.restoreAfterSettle = true;
+      }
       return;
     }
 
-    this.pending.get(control)?.abort();
+    const attempt = { value, state: snapshot(control) };
+    const active = this.pending.get(control);
+    if (active) {
+      // Never overlap writes for one setting. Aborting fetch only stops the
+      // browser from observing a response; a Django handler may already be
+      // committing it. Coalesce rapid edits to the latest desired value and
+      // send it after the current request has completed server-side.
+      active.queued = attempt;
+      active.restoreAfterSettle = false;
+      return;
+    }
+
+    void this.performSave(control, key, attempt);
+  }
+
+  private async performSave(
+    control: SettingControl,
+    key: string,
+    attempt: SaveAttempt,
+  ): Promise<void> {
     const controller = new AbortController();
-    this.pending.set(control, controller);
+    const pending: PendingSave = {
+      controller,
+      queued: null,
+      restoreAfterSettle: false,
+    };
+    this.pending.set(control, pending);
     control.setAttribute("aria-busy", "true");
     const url = this.patchUrlTemplate.replace("__key__", encodeURIComponent(key));
 
@@ -112,29 +160,46 @@ class LiveSettingFieldsElement extends HTMLElement {
           "Content-Type": "application/json",
           "X-CSRFToken": this.csrf,
         },
-        body: JSON.stringify({ value }),
+        body: JSON.stringify({ value: attempt.value }),
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`PATCH ${url} → ${response.status}`);
-      if (this.pending.get(control) !== controller) return;
-      this.committed.set(control, snapshot(control));
+      if (this.pending.get(control) !== pending) return;
+      // Record the exact value represented by this response. The user may have
+      // already edited the DOM again while it was in flight.
+      this.committed.set(control, attempt.state);
+      if (pending.restoreAfterSettle && pending.queued === null) {
+        restore(control, attempt.state);
+      }
       document.body.dispatchEvent(
         new CustomEvent(this.successEvent, {
-          detail: { key, value },
+          detail: { key, value: attempt.value },
           bubbles: true,
         }),
       );
     } catch (error) {
       if (controller.signal.aborted) return;
       console.error("Failed to update setting", key, error);
-      if (this.pending.get(control) !== controller) return;
-      const previous = this.committed.get(control);
-      if (previous) restore(control, previous);
-      window.toast("Couldn't save your change — please try again.", "error");
+      if (this.pending.get(control) !== pending) return;
+      // A superseded failure must not overwrite or alarm for the newer value
+      // waiting behind it. If the user is typing but has not fired `change`
+      // yet, preserve that newer DOM state while still reporting the failure.
+      if (pending.queued === null) {
+        const previous = this.committed.get(control);
+        if (previous && snapshotsEqual(snapshot(control), attempt.state)) {
+          restore(control, previous);
+        }
+        window.toast("Couldn't save your change — please try again.", "error");
+      }
     } finally {
-      if (this.pending.get(control) === controller) {
+      if (this.pending.get(control) === pending) {
+        const next = pending.queued;
         this.pending.delete(control);
-        control.removeAttribute("aria-busy");
+        if (next && this.isConnected) {
+          void this.performSave(control, key, next);
+        } else {
+          control.removeAttribute("aria-busy");
+        }
       }
     }
   }
