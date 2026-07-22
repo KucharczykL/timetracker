@@ -502,10 +502,16 @@ register_element("settings-section-nav", "SettingsSectionNav", SettingsSectionNa
 class LiveSettingFieldsProps(TypedDict):
     patch_url_template: str  # contains the literal __key__ placeholder
     csrf: str
-    event: str  # body event dispatched after a successful save
 
 
 register_element("live-setting-fields", "LiveSettingFields", LiveSettingFieldsProps)
+
+
+class SettingSourceBadgeProps(TypedDict):
+    key: str
+
+
+register_element("setting-source-badge", "SettingSourceBadge", SettingSourceBadgeProps)
 
 
 class ThemeToggleProps(TypedDict):

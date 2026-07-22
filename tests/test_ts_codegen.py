@@ -258,9 +258,7 @@ def test_choice_vocabulary_emits_const_union_and_labels() -> None:
         'export const THEME_PREFERENCES = ["system", "light", "dark"] as const;'
         in output
     )
-    assert (
-        "export type ThemePreference = typeof THEME_PREFERENCES[number];" in output
-    )
+    assert "export type ThemePreference = typeof THEME_PREFERENCES[number];" in output
     assert 'system: "System"' in output
     assert 'light: "Light"' in output
     assert 'dark: "Dark"' in output
@@ -270,7 +268,7 @@ def test_choice_vocabulary_emits_const_union_and_labels() -> None:
 @pytest.mark.parametrize(
     ("choices", "message"),
     [
-        ((('', "Empty"),), "non-empty"),
+        ((("", "Empty"),), "non-empty"),
         ((("dark", "Dark"), ("dark", "Again")), "duplicate"),
     ],
 )

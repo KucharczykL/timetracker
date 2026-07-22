@@ -1,5 +1,10 @@
 /** Optimistic live-save for native Django setting controls (issue #384). */
 import { readLiveSettingFieldsProps } from "../generated/props.js";
+import {
+  dispatchSettingCommitted,
+  parseResolvedSetting,
+  type ResolvedSetting,
+} from "../settings-events.js";
 
 type SettingControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -20,51 +25,6 @@ interface PendingSave {
   queued: SaveAttempt | null;
   restoreAfterSettle: boolean;
 }
-
-interface ResolvedSetting {
-  key: string;
-  value: SettingValue;
-  source: string;
-  locked: boolean;
-}
-
-const SOURCE_METADATA: Record<string, { label: string; description: string }> = {
-  user: {
-    label: "Personal",
-    description: "Saved for your account and overrides the site default.",
-  },
-  database: {
-    label: "Database",
-    description: "Saved in the application database as the current site-wide value.",
-  },
-  env: {
-    label: "Environment",
-    description: "Loaded from an environment variable.",
-  },
-  env_file: {
-    label: "Environment file",
-    description: "Loaded from a file referenced by an environment variable.",
-  },
-  dotenv: {
-    label: ".env",
-    description: "Loaded from the application's .env file.",
-  },
-  ini: {
-    label: "settings.ini",
-    description: "Loaded from the application's settings.ini file.",
-  },
-  default: {
-    label: "Default",
-    description: "The built-in default, used because no higher-priority value is set.",
-  },
-};
-
-const SOURCE_TONE_CLASSES = {
-  brand: ["bg-brand-soft", "text-heading"],
-  neutral: ["bg-neutral-quaternary", "text-heading"],
-  warning: ["bg-warning-soft", "text-fg-warning"],
-};
-const ALL_SOURCE_TONE_CLASSES = Object.values(SOURCE_TONE_CLASSES).flat();
 
 function isSettingControl(element: Element | null): element is SettingControl {
   return (
@@ -138,7 +98,6 @@ function snapshotsEqual(left: ControlSnapshot, right: ControlSnapshot): boolean 
 class LiveSettingFieldsElement extends HTMLElement {
   private patchUrlTemplate = "";
   private csrf = "";
-  private successEvent = "setting-saved";
   private committed = new Map<SettingControl, ControlSnapshot>();
   private pending = new Map<SettingControl, PendingSave>();
 
@@ -146,8 +105,7 @@ class LiveSettingFieldsElement extends HTMLElement {
     const props = readLiveSettingFieldsProps(this);
     this.patchUrlTemplate = props.patchUrlTemplate;
     this.csrf = props.csrf;
-    this.successEvent = props.event || "setting-saved";
-    this.querySelectorAll<HTMLElement>("[data-setting-key]").forEach((candidate) => {
+    this.querySelectorAll<HTMLElement>("[data-live-setting-control]").forEach((candidate) => {
       if (isSettingControl(candidate)) this.committed.set(candidate, snapshot(candidate));
     });
     this.addEventListener("change", this.onChange);
@@ -162,7 +120,7 @@ class LiveSettingFieldsElement extends HTMLElement {
   private onChange = (event: Event): void => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const control = target.closest<HTMLElement>("[data-setting-key]");
+    const control = target.closest<HTMLElement>("[data-live-setting-control]");
     if (!isSettingControl(control) || !this.contains(control)) return;
     const readOnly =
       (control instanceof HTMLInputElement ||
@@ -171,43 +129,6 @@ class LiveSettingFieldsElement extends HTMLElement {
     if (control.disabled || readOnly) return;
     this.save(control);
   };
-
-  private updateSourceMetadata(resolved: ResolvedSetting): void {
-    const badge = Array.from(
-      this.querySelectorAll<HTMLElement>("[data-setting-source-key]"),
-    ).find((candidate) => candidate.dataset.settingSourceKey === resolved.key);
-    if (!badge) return;
-
-    const source = resolved.source;
-    const metadata = SOURCE_METADATA[source] ?? {
-      label: source
-        .replaceAll("_", " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-      description: `Provided by ${source}.`,
-    };
-    badge.dataset.settingOrigin = source;
-    badge.textContent = metadata.label;
-    badge.classList.remove(...ALL_SOURCE_TONE_CLASSES);
-    const tone = resolved.locked
-      ? SOURCE_TONE_CLASSES.warning
-      : source === "default"
-        ? SOURCE_TONE_CLASSES.neutral
-        : SOURCE_TONE_CLASSES.brand;
-    badge.classList.add(...tone);
-
-    const popover = badge.closest("pop-over");
-    popover
-      ?.querySelector<HTMLElement>("[data-pop-over-trigger]")
-      ?.setAttribute("aria-label", `${metadata.label} source`);
-    const description = popover?.querySelector<HTMLElement>(
-      "[data-setting-source-description] dd",
-    );
-    if (description) description.textContent = metadata.description;
-    const status = popover?.querySelector<HTMLElement>(
-      "[data-setting-source-status]",
-    );
-    if (status) status.hidden = resolved.locked || source === "default";
-  }
 
   private save(control: SettingControl): void {
     const key = control.dataset.settingKey ?? "";
@@ -267,15 +188,11 @@ class LiveSettingFieldsElement extends HTMLElement {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`PATCH ${url} → ${response.status}`);
-      const resolved = response.status === 204
-        ? null
-        : (await response.json()) as ResolvedSetting;
+      const resolved = parseResolvedSetting(await response.json());
+      if (resolved.key !== key) throw new Error(`PATCH ${url} returned ${resolved.key}`);
       if (this.pending.get(control) !== pending) return;
-      const committedState = resolved
-        ? resolvedSnapshot(control, attempt, resolved)
-        : attempt.state;
+      const committedState = resolvedSnapshot(control, attempt, resolved);
       this.committed.set(control, committedState);
-      if (resolved) this.updateSourceMetadata(resolved);
       if (pending.restoreAfterSettle && pending.queued === null) {
         restore(control, committedState);
       } else if (
@@ -286,12 +203,7 @@ class LiveSettingFieldsElement extends HTMLElement {
         // still represents the visible edit. Preserve newer unsubmitted input.
         restore(control, committedState);
       }
-      document.body.dispatchEvent(
-        new CustomEvent(this.successEvent, {
-          detail: { key, value: attempt.value },
-          bubbles: true,
-        }),
-      );
+      dispatchSettingCommitted(resolved);
     } catch (error) {
       if (controller.signal.aborted) return;
       console.error("Failed to update setting", key, error);

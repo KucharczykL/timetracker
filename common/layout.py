@@ -588,7 +588,10 @@ def TimetrackerDocument(
         ]
         theme_attributes = [
             ("lang", "en"),
-            ("data-theme-mode", "account" if request.user.is_authenticated else "browser"),
+            (
+                "data-theme-mode",
+                "account" if request.user.is_authenticated else "browser",
+            ),
             (
                 "data-theme-preferences",
                 " ".join(value for value, _label in THEME_CHOICES),
