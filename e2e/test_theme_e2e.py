@@ -172,7 +172,10 @@ def test_settings_and_navbar_share_three_state_theme_controller(
     assert page.evaluate("localStorage.getItem('color-theme')") == "dark"
 
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
+    tooltip = page.locator("[data-theme-tooltip]")
     expect(toggle).to_have_attribute("aria-label", "Theme: Dark — switch to Auto")
+    toggle.hover()
+    expect(tooltip).to_be_visible()
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ) as cycled:
@@ -181,3 +184,5 @@ def test_settings_and_navbar_share_three_state_theme_controller(
     expect(theme).to_have_value("auto")
     expect(page.locator("html")).not_to_have_class("dark")
     expect(toggle).to_have_attribute("aria-label", "Theme: Auto — switch to Light")
+    expect(tooltip).to_be_visible()
+    expect(tooltip).to_have_text("Theme: Auto — switch to Light")

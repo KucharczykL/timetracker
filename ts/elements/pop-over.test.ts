@@ -151,6 +151,20 @@ describe("<pop-over> tap mode (touch)", () => {
     expect(panel.hidden).toBe(false); // mouse owns hover; click is inert
   });
 
+  it("reopens when a hovered trigger is re-enabled without pointer movement", async () => {
+    const { host, panel, trigger } = mount({ tap: true });
+    host.dispatchEvent(pointer("pointerenter", "mouse"));
+    expect(panel.hidden).toBe(false);
+
+    trigger.setAttribute("disabled", "");
+    await Promise.resolve();
+    expect(panel.hidden).toBe(true);
+
+    trigger.removeAttribute("disabled");
+    await Promise.resolve();
+    expect(panel.hidden).toBe(false);
+  });
+
   it("opens on keyboard focus and toggles on keyboard activation", () => {
     const { host, panel, trigger } = mount({ tap: true });
     host.dispatchEvent(new FocusEvent("focusin")); // no preceding pointerdown
