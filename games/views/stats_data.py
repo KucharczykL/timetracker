@@ -10,7 +10,7 @@ year. The two scopes genuinely diverge (different aggregations, and all-time
 hides the per-purchase list sections), so the differences are kept explicit.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, NotRequired, TypedDict
 
 from django.db.models import (
@@ -27,7 +27,7 @@ from django.db.models import (
 )
 from django.db.models.functions import TruncDate, TruncMonth
 
-from common.time import available_stats_year_range, dateformat, format_duration
+from common.time import available_stats_year_range, format_duration
 from common.utils import safe_division
 from games.models import Game, Purchase, Session
 
@@ -63,9 +63,9 @@ class StatsData(TypedDict):
     highest_session_average: Any
     highest_session_average_game: Any
     first_play_game: Any
-    first_play_date: str
+    first_play_date: datetime | None
     last_play_game: Any
-    last_play_date: str
+    last_play_date: datetime | None
     stats_dropdown_year_range: Any
     # --- per-year only (omitted for all-time, which hides these sections) ---
     total_games: NotRequired[int]
@@ -156,12 +156,8 @@ def compute_stats(year: int | None = None) -> StatsData:
     last_session = sessions.latest() if sessions.exists() else None
     first_play_game = first_session.game if first_session else None
     last_play_game = last_session.game if last_session else None
-    first_play_date = (
-        first_session.timestamp_start.strftime(dateformat) if first_session else "N/A"
-    )
-    last_play_date = (
-        last_session.timestamp_start.strftime(dateformat) if last_session else "N/A"
-    )
+    first_play_date = first_session.timestamp_start if first_session else None
+    last_play_date = last_session.timestamp_start if last_session else None
     if is_alltime:
         unique_days_percent = (
             _days_played_percent(

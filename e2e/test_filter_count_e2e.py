@@ -18,6 +18,7 @@ from playwright.sync_api import Page, expect
 
 from common.components import FilterCount, FilterGroup
 from common.components.core import Document
+from common.date_time_presentation import date_time_presentation_for_request
 from common.components.primitives import (
     Body,
     Div,
@@ -59,7 +60,10 @@ def filter_count_view(request):
                 Script(type="module", src=static("js/dist/elements/filter-count.js")),
             ],
             Body(class_="p-6")[
-                FilterGroup(model="game"),
+                FilterGroup(
+                    model="game",
+                    presentation=date_time_presentation_for_request(request),
+                ),
                 Div(id="count")[
                     FilterCount(
                         model=badge_model,

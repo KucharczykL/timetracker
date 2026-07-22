@@ -6,7 +6,6 @@ from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
-from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
 
 from common.components import (
@@ -44,11 +43,11 @@ from common.components import (
 )
 from common.components.primitives import Li, P, Span, Strong
 from common.layout import render_page
-from common.time import (
-    dateformat,
-    format_duration,
-    local_strftime,
+from common.date_time_presentation import (
+    DateTimePresentation,
+    date_time_presentation_for_request,
 )
+from common.time import format_duration
 from common.utils import paginate, safe_division
 from games.filters import (
     PlayEventFilter,
@@ -72,6 +71,7 @@ from games.views.playevent import create_playevent_tabledata
 
 @login_required
 def list_games(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     games = Game.objects.select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
@@ -124,7 +124,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 format_duration(game.filtered_playtime or timedelta(0), "%2.1H"),
                 GameStatusSelector(game, Game.Status.choices, get_token(request)),
                 game.wikidata,
-                local_strftime(game.created_at, dateformat),
+                presentation.format(game.created_at, "date"),
                 ButtonGroup(
                     [
                         {
@@ -157,6 +157,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="games",
         existing=parsed_filter,
         builder_url=builder_url,
@@ -422,11 +423,14 @@ def _game_action_buttons(game: Game) -> Node:
     ]
 
 
-def _game_history(statuschanges: QuerySet[GameStatusChange]) -> Node:
+def _game_history(
+    statuschanges: QuerySet[GameStatusChange],
+    presentation: DateTimePresentation,
+) -> Node:
     items = []
     for change in statuschanges:
         if change.timestamp:
-            prefix = f"{date_filter(change.timestamp, 'd/m/Y H:i')}: Changed"
+            prefix = f"{presentation.format(change.timestamp, 'datetime')}: Changed"
         else:
             prefix = "At some point changed"
         old_status = GameStatus(
@@ -492,12 +496,8 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
     session_count = sessions.count()
     session_count_without_manual = sessions.without_manual().count()
 
-    if sessions.exists():
-        start = local_strftime(sessions.earliest().timestamp_start, "%b %Y")
-        end = local_strftime(sessions.latest().timestamp_start, "%b %Y")
-        playrange = start if start == end else f"{start} — {end}"
-    else:
-        playrange = "N/A"
+    playrange_start = sessions.earliest().timestamp_start if sessions.exists() else None
+    playrange_end = sessions.latest().timestamp_start if sessions.exists() else None
 
     total_hours_without_manual = float(
         format_duration(sessions.calculated_duration_unformatted(), "%2.1H")
@@ -507,12 +507,26 @@ def _game_overview_metrics(game: Game) -> dict[str, Any]:
     )
     return {
         "session_count": session_count,
-        "playrange": playrange,
+        "playrange_start": playrange_start,
+        "playrange_end": playrange_end,
         "session_average_without_manual": session_average_without_manual,
     }
 
 
-def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> Node:
+def _game_header(
+    game: Game,
+    request: HttpRequest,
+    metrics: dict[str, Any],
+    presentation: DateTimePresentation,
+) -> Node:
+    playrange_start = metrics["playrange_start"]
+    playrange_end = metrics["playrange_end"]
+    if playrange_start and playrange_end:
+        start = presentation.format(playrange_start, "month_year")
+        end = presentation.format(playrange_end, "month_year")
+        playrange = start if start == end else f"{start} — {end}"
+    else:
+        playrange = "N/A"
     grey_value_class = "text-black dark:text-slate-300"
     title_span = Span(class_="text-balance max-w-120")[
         *(
@@ -557,7 +571,7 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
             "popover-playrange",
             "Earliest and latest dates played",
             "playrange",
-            metrics["playrange"],
+            playrange,
         ),
     ]
     metadata = Div(
@@ -588,13 +602,13 @@ def _game_header(game: Game, request: HttpRequest, metrics: dict[str, Any]) -> N
     ]
 
 
-def _purchases_section(game: Game) -> Node:
+def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
     purchases = game.purchases.order_by("date_purchased")
     rows = [
         make_row(
             LinkedPurchase(purchase),
             purchase.get_type_display(),
-            purchase.date_purchased.strftime(dateformat),
+            presentation.format(purchase.date_purchased, "date"),
             PurchasePrice(purchase),
             ButtonGroup(
                 [
@@ -632,12 +646,12 @@ def _purchases_section(game: Game) -> Node:
     )
 
 
-def _sessions_section(game: Game) -> Node:
+def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
     sessions = game.sessions.select_related("device").order_by("-timestamp_start")
     session_count = sessions.count()
     rows = [
         make_row(
-            session_time_range(session),
+            session_time_range(session, presentation),
             session.duration_formatted_with_mark(),
             session.device.name if session.device else "No device",
         )
@@ -660,9 +674,11 @@ def _sessions_section(game: Game) -> Node:
     )
 
 
-def _playevents_section(game: Game) -> Node:
+def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
     playevents = game.playevents.all()
-    data = create_playevent_tabledata(playevents, exclude_columns=["Game"])
+    data = create_playevent_tabledata(
+        playevents, presentation, exclude_columns=["Game"]
+    )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
     # the detail page), so render plain headers like the sibling sections do —
     # drop the sort keys the shared list-view builder now sets (#343).
@@ -687,7 +703,7 @@ def _playevents_section(game: Game) -> Node:
     )[section]
 
 
-def _history_section(game: Game) -> Node:
+def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
     count = statuschanges.count()
     return Div(
@@ -699,19 +715,20 @@ def _history_section(game: Game) -> Node:
         hx_swap="outerHTML",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
-        _game_history(statuschanges),
+        _game_history(statuschanges, presentation),
     ]
 
 
 @login_required
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
+    presentation = date_time_presentation_for_request(request)
     content = ContentContainer(class_="dark:text-white")[
-        _game_header(game, request, _game_overview_metrics(game)),
-        _purchases_section(game),
-        _sessions_section(game),
-        _playevents_section(game),
-        _history_section(game),
+        _game_header(game, request, _game_overview_metrics(game), presentation),
+        _purchases_section(game, presentation),
+        _sessions_section(game, presentation),
+        _playevents_section(game, presentation),
+        _history_section(game, presentation),
     ]
     request.session["return_path"] = request.path
     return render_page(

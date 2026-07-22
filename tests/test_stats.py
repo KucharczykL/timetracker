@@ -118,3 +118,9 @@ class ComputeStatsTest(TestCase):
     def test_year_label(self):
         self.assertEqual(compute_stats(None)["year"], "Alltime")
         self.assertEqual(compute_stats(2023)["year"], 2023)
+
+    def test_first_and_last_play_values_stay_native_for_rendering(self):
+        stats = compute_stats(2023)
+
+        self.assertIsInstance(stats["first_play_date"], datetime)
+        self.assertIsInstance(stats["last_play_date"], datetime)

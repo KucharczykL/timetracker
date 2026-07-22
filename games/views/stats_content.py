@@ -5,7 +5,6 @@ dict and pass it here. Optional sections are driven by `ctx.get(...)` exactly
 like the old `{% if key %}` blocks: a missing or empty value hides the section.
 """
 
-from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils.html import conditional_escape
@@ -29,6 +28,7 @@ from common.components import (
     YearPicker,
     make_row,
 )
+from common.date_time_presentation import DateTimePresentation
 from common.time import durationformat, format_duration
 from games.filters import filter_url
 from games.views import stats_links
@@ -143,7 +143,7 @@ def _year_nav(year, year_range, url_template) -> Node:
     return Div(class_="flex justify-center items-center mb-12")[alltime_btn, picker]
 
 
-def _playtime_table(ctx) -> Node:
+def _playtime_table(ctx, presentation: DateTimePresentation) -> Node:
     year = ctx.get("year")
     rows = [
         make_row("Hours", _cell(ctx.get("total_hours"))),
@@ -214,24 +214,26 @@ def _playtime_table(ctx) -> Node:
         )
     first_game = ctx.get("first_play_game")
     if first_game and first_game.id:
+        first_play_date = ctx.get("first_play_date")
         rows.append(
             make_row(
                 "First play",
                 Fragment(
                     GameLink(first_game.id, first_game.name),
-                    f" ({ctx.get('first_play_date')})",
+                    f" ({presentation.format(first_play_date, 'date') if first_play_date else 'N/A'})",
                     _session_link(first_game.id, year, first_game.name),
                 ),
             )
         )
     last_game = ctx.get("last_play_game")
     if last_game and last_game.id:
+        last_play_date = ctx.get("last_play_date")
         rows.append(
             make_row(
                 "Last play",
                 Fragment(
                     GameLink(last_game.id, last_game.name),
-                    f" ({ctx.get('last_play_date')})",
+                    f" ({presentation.format(last_play_date, 'date') if last_play_date else 'N/A'})",
                     _session_link(last_game.id, year, last_game.name),
                 ),
             )
@@ -301,11 +303,16 @@ def _two_col_table(header: str, items, name_key, value_fn, view_all_url=None) ->
     return table
 
 
-def _finished_table(purchases, view_all_url=None, total=None) -> Node:
+def _finished_table(
+    purchases,
+    presentation: DateTimePresentation,
+    view_all_url=None,
+    total=None,
+) -> Node:
     purchases = list(purchases)
     display = purchases[:_LIST_CAP] if view_all_url else purchases
     rows = [
-        make_row(_purchase_name(p), date_filter(p.date_finished, "d/m/Y"))
+        make_row(_purchase_name(p), presentation.format(p.date_finished, "date"))
         for p in display
     ]
     table = StyledTable(
@@ -333,7 +340,7 @@ def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
     return table
 
 
-def stats_content(ctx: StatsData) -> Node:
+def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
     year = ctx["year"]
     currency = ctx.get("total_spent_currency")
     # Build a navigation URL with an `__year__` placeholder the picker's JS
@@ -344,14 +351,14 @@ def stats_content(ctx: StatsData) -> Node:
     )
     # Each stats section is one card in the grid: a title above its table.
     cards: list[Node] = [
-        _card("Playtime", _playtime_table(ctx)),
+        _card("Playtime", _playtime_table(ctx, presentation)),
     ]
 
     months = list(ctx.get("month_playtimes") or [])
     if months:
         month_rows = [
             make_row(
-                date_filter(m["month"], "F"),
+                presentation.format(m["month"], "month_year"),
                 A(
                     href=filter_url(
                         stats_links.games_in_month(year, m["month"].month),
@@ -405,6 +412,7 @@ def stats_content(ctx: StatsData) -> Node:
                 "Finished",
                 _finished_table(
                     all_finished,
+                    presentation,
                     view_all_url=filter_url(
                         stats_links.purchases_finished(year), sort="-finished"
                     ),
@@ -420,6 +428,7 @@ def stats_content(ctx: StatsData) -> Node:
                 f"Finished ({year} games)",
                 _finished_table(
                     year_finished,
+                    presentation,
                     view_all_url=filter_url(
                         stats_links.purchases_finished_released(year), sort="finished"
                     ),
@@ -435,6 +444,7 @@ def stats_content(ctx: StatsData) -> Node:
                 f"Bought and Finished ({year})",
                 _finished_table(
                     bought_finished,
+                    presentation,
                     view_all_url=filter_url(
                         stats_links.purchases_bought_and_finished(year), sort="finished"
                     ),

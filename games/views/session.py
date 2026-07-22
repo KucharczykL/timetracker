@@ -26,8 +26,9 @@ from common.components import (
     paginated_table_content,
 )
 from common.layout import render_page
-from common.time import (
-    dateformat,
+from common.date_time_presentation import (
+    DateTimePresentation,
+    date_time_presentation_for_request,
 )
 from games.formatting import session_time_range
 from common.utils import paginate
@@ -44,16 +45,21 @@ from games.views.filtering import warn_unknown_sort
 from timetracker.settings_resolver import resolve_for_user
 
 
-def session_row_data(session: Session, device_list, csrf_token: str) -> TableRowData:
+def session_row_data(
+    session: Session,
+    device_list,
+    csrf_token: str,
+    presentation: DateTimePresentation,
+) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
     table. Finish/reset are driven by the <session-actions> custom element
     (PATCH /api/session/<id> + client-side row swap); Edit/Delete stay links."""
     return make_row(
         NameWithIcon(session=session),
-        session_time_range(session),
+        session_time_range(session, presentation),
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
-        session.created_at.strftime(dateformat),
+        presentation.format(session.created_at, "date"),
         SessionActions(session, csrf_token),
         id=f"session-row-{session.pk}",
     )
@@ -61,6 +67,7 @@ def session_row_data(session: Session, device_list, csrf_token: str) -> TableRow
 
 @login_required
 def list_sessions(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
     )
@@ -95,7 +102,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         ],
         "sort_terms": sort.terms,
         "rows": [
-            session_row_data(session, device_list, csrf_token) for session in sessions
+            session_row_data(session, device_list, csrf_token, presentation)
+            for session in sessions
         ],
     }
     content = paginated_table_content(
@@ -120,6 +128,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="sessions",
         existing=parsed_filter,
         builder_url=builder_url,

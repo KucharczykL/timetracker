@@ -14,7 +14,7 @@ from common.components import (
     paginated_table_content,
 )
 from common.layout import render_page
-from common.time import dateformat, local_strftime
+from common.date_time_presentation import date_time_presentation_for_request
 from common.utils import paginate
 from games.sorting import parse_find_filter
 from games.forms import GameStatusChangeForm
@@ -46,6 +46,7 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
 
 @login_required
 def list_statuschanges(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     find = parse_find_filter(request)
     statuschanges, page_obj, elided_page_range = paginate(
         GameStatusChange.objects.select_related("game").all(), find
@@ -63,7 +64,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
                 sc.game.name,
                 sc.get_old_status_display() if sc.old_status else "-",
                 sc.get_new_status_display(),
-                local_strftime(sc.timestamp, dateformat) if sc.timestamp else "-",
+                presentation.format(sc.timestamp, "date") if sc.timestamp else "-",
             )
             for sc in statuschanges
         ],

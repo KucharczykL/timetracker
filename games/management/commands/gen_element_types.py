@@ -9,6 +9,7 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components  # noqa: F401
 import common.criteria
+from common.date_time_presentation import DateTimePresentationConfig
 from common.components.custom_elements import render_props_module
 from common.components.ts_codegen import (
     TsConstant,
@@ -59,6 +60,9 @@ class Command(BaseCommand):
                 values_name="THEME_PREFERENCES",
                 labels_name="THEME_LABELS",
                 choices=THEME_CHOICES,
+            ),
+            output_dir / "date-time-presentation.ts": render_filter_metadata_module(
+                [DateTimePresentationConfig]
             ),
         }
         for target, content in targets.items():

@@ -23,6 +23,7 @@ from django.test import override_settings
 from django.urls import path
 
 from common.components import QuickFilterBar
+from common.date_time_presentation import date_time_presentation_for_request
 
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -41,20 +42,31 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
-    bar = QuickFilterBar(mode="devices", filter_json=filter_json, apply_url=apply_url)
+def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
+    bar = QuickFilterBar(
+        mode="devices",
+        filter_json=filter_json,
+        apply_url=apply_url,
+        presentation=presentation,
+    )
     return _PAGE_TEMPLATE.format(body=str(bar), title="Set filter E2E")
 
 
 def empty_bar_view(request):
-    return HttpResponse(_bar_page(apply_url=request.path))
+    return HttpResponse(
+        _bar_page(date_time_presentation_for_request(request), apply_url=request.path)
+    )
 
 
 def sessions_bar_view(request):
     # The sessions bar's ``device`` facet is a NULLABLE column, so it renders
     # the (None) presence modifier — devices' own ``type`` column is not
     # nullable and field_widget derives presence from the real column.
-    bar = QuickFilterBar(mode="sessions", apply_url=request.path)
+    bar = QuickFilterBar(
+        mode="sessions",
+        apply_url=request.path,
+        presentation=date_time_presentation_for_request(request),
+    )
     return HttpResponse(
         _PAGE_TEMPLATE.format(body=str(bar), title="Set filter E2E (sessions)")
     )

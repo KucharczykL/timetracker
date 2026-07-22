@@ -1,41 +1,10 @@
 import re
 from datetime import date, datetime, timedelta
-from typing import NamedTuple
-
-from django.utils import timezone
 
 from common.utils import generate_split_ranges
 
-dateformat: str = "%d/%m/%Y"
-dateformat_hyphenated: str = "%d-%m-%Y"
-datetimeformat: str = "%d/%m/%Y %H:%M"
-timeformat: str = "%H:%M"
 durationformat: str = "%2.1H hours"
 durationformat_manual: str = "%H hours"
-
-
-class DatePartSpec(NamedTuple):
-    """One date part (day/month/year) of a hyphenated date format."""
-
-    name: str
-    placeholder: str
-    length: int
-
-
-_DATE_PART_SPECS: dict[str, DatePartSpec] = {
-    "%d": DatePartSpec("day", "DD", 2),
-    "%m": DatePartSpec("month", "MM", 2),
-    "%Y": DatePartSpec("year", "YYYY", 4),
-}
-
-
-def date_parts(format_string: str = dateformat_hyphenated) -> list[DatePartSpec]:
-    """Split a hyphenated strftime date format into its ordered parts.
-
-    ``"%d-%m-%Y"`` becomes ``[day, month, year]`` specs, each carrying the
-    placeholder text (``DD``/``MM``/``YYYY``) and digit length shown by the
-    DateRangeField segments."""
-    return [_DATE_PART_SPECS[directive] for directive in format_string.split("-")]
 
 
 def _safe_timedelta(duration: timedelta | int | float | None):
@@ -107,10 +76,6 @@ def format_duration(
                 rf"%\d*\.?\d*{pattern}", replacement, formatted_string
             )
     return formatted_string
-
-
-def local_strftime(datetime: datetime, format: str = datetimeformat) -> str:
-    return timezone.localtime(datetime).strftime(format)
 
 
 def daterange(start: date, end: date, end_inclusive: bool = False) -> list[date]:

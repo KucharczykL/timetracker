@@ -8,7 +8,6 @@ from django.http import (
 from django.db import transaction
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404, redirect
-from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils import timezone
@@ -47,7 +46,10 @@ from common.components import (
 )
 from common.components.primitives import Li, P, Ul
 from common.layout import render_page
-from common.time import dateformat
+from common.date_time_presentation import (
+    DateTimePresentation,
+    date_time_presentation_for_request,
+)
 from common.utils import paginate
 from games.forms import PurchaseForm
 from games.models import Game, PlayEvent, Purchase
@@ -107,7 +109,9 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
     )
 
 
-def _render_purchase_row(purchase: Purchase) -> TableRowData:
+def _render_purchase_row(
+    purchase: Purchase, presentation: DateTimePresentation
+) -> TableRowData:
     """Return a row for simple-table rendering."""
     # TODO: simplify if multiple purchases are no longer allowed
     date_finished = "-"
@@ -118,7 +122,7 @@ def _render_purchase_row(purchase: Purchase) -> TableRowData:
         ).latest("ended")
         if latest_play_event:
             if latest_play_event.ended:
-                date_finished = latest_play_event.ended.strftime(dateformat)
+                date_finished = presentation.format(latest_play_event.ended, "date")
     except PlayEvent.DoesNotExist:
         pass
     return make_row(
@@ -126,14 +130,14 @@ def _render_purchase_row(purchase: Purchase) -> TableRowData:
         purchase.get_type_display(),
         PurchasePrice(purchase),
         str(purchase.infinite),
-        purchase.date_purchased.strftime(dateformat),
+        presentation.format(purchase.date_purchased, "date"),
         date_finished,
         (
-            purchase.date_refunded.strftime(dateformat)
+            presentation.format(purchase.date_refunded, "date")
             if purchase.date_refunded
             else "-"
         ),
-        purchase.created_at.strftime(dateformat),
+        presentation.format(purchase.created_at, "date"),
         _render_purchase_buttons(
             purchase.id,
             bool(purchase.date_refunded),
@@ -145,6 +149,7 @@ def _render_purchase_row(purchase: Purchase) -> TableRowData:
 
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     purchases: QuerySet[Purchase] = Purchase.objects.select_related(
         "platform"
     ).prefetch_related("games", "games__platform")
@@ -180,7 +185,9 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             Column("Actions", align="right"),
         ],
         "sort_terms": sort.terms,
-        "rows": [_render_purchase_row(purchase) for purchase in purchases],
+        "rows": [
+            _render_purchase_row(purchase, presentation) for purchase in purchases
+        ],
     }
     content = paginated_table_content(
         data,
@@ -200,6 +207,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="purchases",
         existing=parsed_filter,
         builder_url=builder_url,
@@ -391,11 +399,13 @@ def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return redirect("games:list_purchases")
 
 
-def _view_purchase_content(purchase: Purchase) -> Node:
+def _view_purchase_content(
+    purchase: Purchase, presentation: DateTimePresentation
+) -> Node:
     first_game = purchase.first_game
-    owned = f"Owned on {date_filter(purchase.date_purchased, 'd/m/Y')}"
+    owned = f"Owned on {presentation.format(purchase.date_purchased, 'date')}"
     if purchase.date_refunded:
-        owned += f" (refunded {date_filter(purchase.date_refunded, 'd/m/Y')})"
+        owned += f" (refunded {presentation.format(purchase.date_refunded, 'date')})"
 
     row_class = "text-slate-500 text-type-body"
     title_class = "text-type-title font-serif text-slate-500"
@@ -422,9 +432,10 @@ def _view_purchase_content(purchase: Purchase) -> Node:
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
+    presentation = date_time_presentation_for_request(request)
     return render_page(
         request,
-        _view_purchase_content(purchase),
+        _view_purchase_content(purchase, presentation),
         title=f"Purchase: {purchase.full_name}",
     )
 
@@ -487,7 +498,9 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase.refund()
 
     messages.success(request, "Purchase refunded")
-    row_data = _render_purchase_row(purchase)
+    row_data = _render_purchase_row(
+        purchase, date_time_presentation_for_request(request)
+    )
     row_html = str(TableRow(data=row_data))
     modal_close = (
         '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'

@@ -1,9 +1,18 @@
 import pytest
 from django.utils import timezone
+from zoneinfo import ZoneInfo
 
 from common.components import TableRow
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.models import Device, Game, Platform, Session
 from games.views.session import session_row_data
+
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("Europe/Prague")
+)
 
 
 @pytest.fixture
@@ -18,12 +27,12 @@ def running_session(db):
 
 def render_row(session) -> str:
     device_list = Device.objects.order_by("name")
-    return str(TableRow(session_row_data(session, device_list, "tok")))
+    return str(TableRow(session_row_data(session, device_list, "tok", _PRESENTATION)))
 
 
 def test_session_row_data_shape(running_session):
     device_list = Device.objects.order_by("name")
-    data = session_row_data(running_session, device_list, "tok")
+    data = session_row_data(running_session, device_list, "tok", _PRESENTATION)
     assert len(data["cell_data"]) == 6
     assert ("id", f"session-row-{running_session.pk}") in data["attributes"]
     # No htmx row-swap wiring remains on the row.

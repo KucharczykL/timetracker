@@ -1,7 +1,7 @@
 """Unit tests for the DateRangePicker component family.
 
 Pins the structural contract of DateRangeField / DateRangeCalendar /
-DateRangePicker — segment inputs ordered by ``dateformat_hyphenated``, the
+DateRangePicker — segments ordered by the active presentation profile, the
 hidden ISO ``{prefix}-min`` / ``{prefix}-max`` inputs that ``filter_bar.js``
 serializes, the calendar's preset/footer hooks — and the purchases quick bar
 integration that replaced the native-date DateRangeFilter for the Purchased
@@ -10,37 +10,43 @@ field.
 
 import json
 import re
+from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
 
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DatePartSpec,
+    DateTimeFormatProfile,
+    DateTimePresentation,
+)
 from common.components import (
     DateRangeCalendar,
     DateRangeField,
     DateRangePicker,
 )
-from common.time import date_parts, dateformat_hyphenated
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
+DEFAULT_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 class DatePartsTest(SimpleTestCase):
     def test_default_format_yields_day_month_year(self):
-        parts = date_parts()
+        parts = DEFAULT_PRESENTATION.profile.date_parts
         self.assertEqual([part.name for part in parts], ["day", "month", "year"])
         self.assertEqual([part.placeholder for part in parts], ["DD", "MM", "YYYY"])
         self.assertEqual([part.length for part in parts], [2, 2, 4])
 
-    def test_parts_follow_format_order(self):
-        parts = date_parts("%Y-%d-%m")
-        self.assertEqual([part.name for part in parts], ["year", "day", "month"])
-
-    def test_dateformat_hyphenated_is_parseable(self):
-        self.assertEqual(len(date_parts(dateformat_hyphenated)), 3)
-
 
 class DateRangeFieldTest(SimpleTestCase):
     def render(self, **kwargs):
-        defaults = {"label": "Purchased", "input_name_prefix": "filter-date-purchased"}
+        defaults = {
+            "presentation": DEFAULT_PRESENTATION,
+            "label": "Purchased",
+            "input_name_prefix": "filter-date-purchased",
+        }
         defaults.update(kwargs)
         return str(DateRangeField(**defaults))
 
@@ -53,7 +59,7 @@ class DateRangeFieldTest(SimpleTestCase):
         self.assertIn('value="2024-03-15"', html)
         self.assertIn('value="2024-09-20"', html)
 
-    def test_renders_segments_in_dateformat_order_for_both_sides(self):
+    def test_renders_segments_in_profile_order_for_both_sides(self):
         html = self.render()
         for side in ("min", "max"):
             side_segments = re.findall(
@@ -89,6 +95,33 @@ class DateRangeFieldTest(SimpleTestCase):
 
     def test_no_native_date_inputs(self):
         self.assertNotIn('type="date"', self.render())
+
+    def test_alternate_presentation_controls_segment_order_and_separator(self):
+        presentation = DateTimePresentation(
+            DateTimeFormatProfile(
+                date_parts=(
+                    DatePartSpec("year", "YYYY", 4),
+                    DatePartSpec("day", "DD", 2),
+                    DatePartSpec("month", "MM", 2),
+                ),
+                date_separator="/",
+                segmented_date_separator="·",
+                time_separator=":",
+                date_time_separator=" ",
+                hour_cycle="h23",
+            ),
+            "en-us",
+            ZoneInfo("UTC"),
+        )
+
+        html = self.render(presentation=presentation)
+
+        for side in ("min", "max"):
+            side_segments = re.findall(
+                rf'data-date-part="(\w+)" data-date-side="{side}"', html
+            )
+            self.assertEqual(side_segments, ["year", "day", "month"])
+        self.assertEqual(html.count(">·</span>"), 4)
 
 
 class DateRangeCalendarTest(SimpleTestCase):
@@ -138,6 +171,7 @@ class DateRangePickerTest(SimpleTestCase):
     def test_composes_field_and_calendar(self):
         html = str(
             DateRangePicker(
+                presentation=DEFAULT_PRESENTATION,
                 label="Purchased",
                 input_name_prefix="filter-date-purchased",
                 min_value="2024-01-01",
@@ -162,7 +196,10 @@ class QuickBarDateRangePanelTest(TestCase):
 
         return str(
             QuickFilterBar(
-                mode="purchases", filter_json=filter_json, apply_url="/purchases"
+                presentation=DEFAULT_PRESENTATION,
+                mode="purchases",
+                filter_json=filter_json,
+                apply_url="/purchases",
             )
         )
 
@@ -209,6 +246,7 @@ class DateRangePanelTest(SimpleTestCase):
 
         return str(
             DateRangePanel(
+                presentation=DEFAULT_PRESENTATION,
                 label="Started",
                 input_name_prefix="quick-timestamp_start",
                 min_value="2026-01-01",
@@ -241,7 +279,13 @@ class DateRangePanelTest(SimpleTestCase):
     def test_popup_variant_is_unchanged(self):
         # The panel variant must not leak into the existing widget: the flat
         # bar's DateRangePicker keeps toggle, hidden popup, and full footer.
-        html = str(DateRangePicker(label="Started", input_name_prefix="filter-started"))
+        html = str(
+            DateRangePicker(
+                presentation=DEFAULT_PRESENTATION,
+                label="Started",
+                input_name_prefix="filter-started",
+            )
+        )
         self.assertIn("data-date-range-calendar-toggle", html)
         self.assertIn("hidden absolute", html)
         self.assertIn("data-date-range-cancel", html)

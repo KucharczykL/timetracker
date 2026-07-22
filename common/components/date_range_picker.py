@@ -3,8 +3,8 @@
 ``DateRangePicker`` composes two parts:
 
 - ``DateRangeField`` — the visible widget, styled as a single input. Each
-  date is split into per-part segments (``DD``/``MM``/``YYYY``, ordered by
-  ``common.time.dateformat_hyphenated``) that the user fills digit by digit,
+  date is split into per-part segments ordered by the active presentation
+  profile that the user fills digit by digit,
   plus a calendar icon that opens the popup.
 - ``DateRangeCalendar`` — the popup: a preset column (today, yesterday,
   last 7 days, …), a month grid rendered client-side, and a
@@ -26,7 +26,7 @@ from common.components.primitives import (
     Span,
     filter_widget_attributes,
 )
-from common.time import DatePartSpec, date_parts
+from common.date_time_presentation import DatePartSpec, DateTimePresentation
 
 # font-mono: every glyph (placeholder letters and digits alike) is exactly
 # 1ch wide, so the exact segment widths below leave no slack and the gaps
@@ -127,14 +127,24 @@ def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> 
     )
 
 
-def _segment_group(*, side: str, label: str, iso_value: str) -> Node:
+def _segment_group(
+    *,
+    side: str,
+    label: str,
+    iso_value: str,
+    presentation: DateTimePresentation,
+) -> Node:
     """One date's worth of segments (``DD - MM - YYYY``) for a range side."""
-    parts = date_parts()
+    parts = list(presentation.profile.date_parts)
     initial_values = _iso_part_values(iso_value, parts)
     children: list[Node] = []
     for index, part in enumerate(parts):
         if index > 0:
-            children.append(Span(class_="text-body select-none")["-"])
+            children.append(
+                Span(class_="text-body select-none")[
+                    presentation.profile.segmented_date_separator
+                ]
+            )
         children.append(
             _segment_input(
                 part=part,
@@ -150,6 +160,7 @@ def _segment_group(*, side: str, label: str, iso_value: str) -> Node:
 
 def DateRangeField(
     *,
+    presentation: DateTimePresentation,
     label: str,
     input_name_prefix: str,
     min_value: str = "",
@@ -183,9 +194,19 @@ def DateRangeField(
             data_date_range_hidden="max",
             data_range_max="",
         ),
-        _segment_group(side="min", label=label, iso_value=min_value),
+        _segment_group(
+            side="min",
+            label=label,
+            iso_value=min_value,
+            presentation=presentation,
+        ),
         Span(class_="text-body select-none px-0.5")["–"],
-        _segment_group(side="max", label=label, iso_value=max_value),
+        _segment_group(
+            side="max",
+            label=label,
+            iso_value=max_value,
+            presentation=presentation,
+        ),
     ]
     if calendar_toggle:
         children.append(
@@ -288,6 +309,7 @@ def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
 
 def DateRangePicker(
     *,
+    presentation: DateTimePresentation,
     label: str,
     input_name_prefix: str,
     min_value: str = "",
@@ -308,6 +330,7 @@ def DateRangePicker(
     )
     return _DateRangePicker(widget_attributes, class_="relative")[
         DateRangeField(
+            presentation=presentation,
             label=label,
             input_name_prefix=input_name_prefix,
             min_value=min_value,
@@ -319,6 +342,7 @@ def DateRangePicker(
 
 def DateRangePanel(
     *,
+    presentation: DateTimePresentation,
     label: str,
     input_name_prefix: str,
     min_value: str = "",
@@ -340,6 +364,7 @@ def DateRangePanel(
     )
     return _DateRangePicker(widget_attributes, class_="block", data_static_calendar="")[
         DateRangeField(
+            presentation=presentation,
             label=label,
             input_name_prefix=input_name_prefix,
             min_value=min_value,

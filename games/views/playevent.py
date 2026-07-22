@@ -27,7 +27,11 @@ from common.components import (
     parse_filter_dict,
 )
 from common.layout import render_page
-from common.time import dateformat, format_duration, local_strftime
+from common.date_time_presentation import (
+    DateTimePresentation,
+    date_time_presentation_for_request,
+)
+from common.time import format_duration
 from common.utils import paginate
 from games.sorting import (
     PLAYEVENT_DEFAULT_SORT,
@@ -50,6 +54,7 @@ logger = logging.getLogger("games")
 
 def create_playevent_tabledata(
     playevents: list[PlayEvent] | BaseManager[PlayEvent] | QuerySet[PlayEvent],
+    presentation: DateTimePresentation,
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
     sort_terms: Sequence[SortTerm] = (),
@@ -77,11 +82,13 @@ def create_playevent_tabledata(
     row_list: list[list[Cell]] = [
         [
             GameLink(playevent.game.id, playevent.game.name),
-            playevent.started.strftime(dateformat) if playevent.started else "-",
-            playevent.ended.strftime(dateformat) if playevent.ended else "-",
+            presentation.format(playevent.started, "date")
+            if playevent.started
+            else "-",
+            presentation.format(playevent.ended, "date") if playevent.ended else "-",
             str(playevent.days_to_finish) if playevent.days_to_finish else "-",
             playevent.note,
-            local_strftime(playevent.created_at, dateformat),
+            presentation.format(playevent.created_at, "date"),
             ButtonGroup(
                 [
                     {
@@ -145,6 +152,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     playevents = PlayEvent.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -161,7 +169,10 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="playevent")
     playevents, page_obj, elided_page_range = paginate(playevents, find)
     data = create_playevent_tabledata(
-        playevents, request=request, sort_terms=sort.terms
+        playevents,
+        presentation,
+        request=request,
+        sort_terms=sort.terms,
     )
     content = paginated_table_content(
         data,
@@ -175,6 +186,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="playevents",
         existing=parsed_filter,
         builder_url=builder_url,

@@ -1,6 +1,7 @@
 """Rendering tests: game-detail sections wire "View all" links to filtered lists (#66)."""
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
@@ -15,6 +16,14 @@ from games.filters import (
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views.game import view_game
 from games.formatting import session_time_range
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
+
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("Europe/Prague")
+)
 
 
 def _dt(day, hour=12):
@@ -121,8 +130,8 @@ def test_sessions_section_shows_last_five(db, django_user_model, rf):
 
     newest, oldest = sessions[-1], sessions[0]
     # session_time_range output (digits/spaces/em-dash) isn't HTML-escaped, so no escape() needed
-    assert session_time_range(newest) in html  # day 6 shown
-    assert session_time_range(oldest) not in html  # day 1 dropped (6th newest)
+    assert session_time_range(newest, _PRESENTATION) in html  # day 6 shown
+    assert session_time_range(oldest, _PRESENTATION) not in html  # day 1 dropped
 
 
 def test_no_view_all_for_empty_section(db, django_user_model, rf):

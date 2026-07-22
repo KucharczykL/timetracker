@@ -28,6 +28,7 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import ContentContainer, PageHeading, Span
 from common.layout import render_page
+from common.date_time_presentation import date_time_presentation_for_request
 from common.time import format_duration
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
@@ -110,7 +111,8 @@ def use_custom_redirect(
 def stats_alltime(request: HttpRequest) -> HttpResponse:
     request.session["return_path"] = request.path
     data = compute_stats(None)
-    return render_page(request, stats_content(data), title=data["title"])
+    presentation = date_time_presentation_for_request(request)
+    return render_page(request, stats_content(data, presentation), title=data["title"])
 
 
 @login_required
@@ -124,7 +126,8 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
     request.session["return_path"] = request.path
     data = compute_stats(year)
-    return render_page(request, stats_content(data), title=data["title"])
+    presentation = date_time_presentation_for_request(request)
+    return render_page(request, stats_content(data, presentation), title=data["title"])
 
 
 # The lists backed by an OperatorFilter + nested builder. Keys are model keys
@@ -143,6 +146,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     Mounts the toolbar + NL summary + live count + root <filter-group>, seeded
     from ?filter=. Apply navigates back to the model's list with ?filter=.
     """
+    presentation = date_time_presentation_for_request(request)
     mode = _BUILDER_MODELS.get(model)
     if mode is None:
         raise Http404(f"No filter builder for model {model!r}")
@@ -203,7 +207,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             noun_plural=str(meta.verbose_name_plural),
             endpoint=reverse("api-1.0.0:filter_count"),
         ),
-        FilterGroup(model=model, filter=filter_json),
+        FilterGroup(presentation=presentation, model=model, filter=filter_json),
     ]
     return render_page(request, content, title=f"Filter {label}")
 

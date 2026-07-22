@@ -10,7 +10,14 @@ reader so drift fails ``tsc``.
 
 import warnings
 from dataclasses import dataclass
-from typing import Literal, NamedTuple, TypedDict, get_type_hints, is_typeddict
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    NamedTuple,
+    TypedDict,
+    get_type_hints,
+    is_typeddict,
+)
 
 from django.urls import reverse
 
@@ -40,6 +47,9 @@ from common.components.primitives import (
     Ul,
     custom_element_builder,
 )
+
+if TYPE_CHECKING:
+    from common.date_time_presentation import DateTimePresentation
 
 
 type FilterMode = str  # plural preset/list mode, e.g. "games"
@@ -238,7 +248,9 @@ _INCOMPLETE_BADGE_CLASS = (
 )
 
 
-def FilterGroup(*, model: str, filter: str = "") -> Node:
+def FilterGroup(
+    *, presentation: "DateTimePresentation", model: str, filter: str = ""
+) -> Node:
     """The recursive nested-filter group shell (issue #189, phase 2c of #168).
 
     A self-seeding client-built tree: the element starts from an empty root AND
@@ -286,7 +298,11 @@ def FilterGroup(*, model: str, filter: str = "") -> Node:
                 FilterFieldPicker(filter_cls)
             ]
         )
-        templates.extend(field_widget_templates(filter_cls, model=model_key).values())
+        templates.extend(
+            field_widget_templates(
+                filter_cls, presentation=presentation, model=model_key
+            ).values()
+        )
         if has_comparable_group(columns):
             templates.append(comparison_row_template(columns, model=model_key))
 

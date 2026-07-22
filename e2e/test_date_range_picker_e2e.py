@@ -22,11 +22,12 @@ from playwright.sync_api import expect
 
 from common.components import parse_filter_dict
 from common.components.filters import field_widget
+from common.date_time_presentation import date_time_presentation_for_request
 from games.filters import PurchaseFilter
 from django.urls import path
 
 
-def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
+def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
     # Two bare POPUP-variant pickers (the builder's date-leaf widget) hosted
     # directly in a quick-filter-bar form — the serializer scans
     # [data-filter-widget] anywhere in the form, so the popup calendar's whole
@@ -38,12 +39,14 @@ def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
         "date_purchased",
         value=existing.get("date_purchased"),
         name_prefix="filter-date-purchased",
+        presentation=presentation,
     )
     refunded = field_widget(
         PurchaseFilter,
         "date_refunded",
         value=existing.get("date_refunded"),
         name_prefix="filter-date-refunded",
+        presentation=presentation,
     )
     return f"""<!DOCTYPE html>
 <html>
@@ -67,7 +70,9 @@ def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
 
 
 def empty_bar_view(request):
-    return HttpResponse(_bar_page(apply_url=request.path))
+    return HttpResponse(
+        _bar_page(date_time_presentation_for_request(request), apply_url=request.path)
+    )
 
 
 def prefilled_bar_view(request):
@@ -80,7 +85,13 @@ def prefilled_bar_view(request):
             }
         }
     )
-    return HttpResponse(_bar_page(filter_json, apply_url=request.path))
+    return HttpResponse(
+        _bar_page(
+            date_time_presentation_for_request(request),
+            filter_json,
+            apply_url=request.path,
+        )
+    )
 
 
 urlpatterns = [

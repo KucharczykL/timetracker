@@ -12,10 +12,15 @@ rendered-widget analogue of ``gen_icons --check``.
 import json
 from html.parser import HTMLParser
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from common.components import QUICK_FACETS, QuickFilterBar
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from common.criteria import (
     OperatorFilter,
     resolve_path_kind,
@@ -82,12 +87,19 @@ _BAR_CASES = [
     _BarCase("platforms", PlatformFilter),
     _BarCase("playevents", PlayEventFilter),
 ]
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 @pytest.mark.parametrize("case", _BAR_CASES, ids=lambda case: case.mode)
 def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
     """Every rendered facet widget's path resolves to a matching-kind criterion."""
-    html = str(QuickFilterBar(mode=case.mode, apply_url="/synthetic"))
+    html = str(
+        QuickFilterBar(
+            presentation=_PRESENTATION, mode=case.mode, apply_url="/synthetic"
+        )
+    )
     widgets = _collect_widgets(html)
     assert len(widgets) == len(QUICK_FACETS[case.mode]), (
         f"{case.mode} bar rendered {len(widgets)} filter widgets, expected one "
