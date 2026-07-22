@@ -89,7 +89,10 @@ class SettingsSection:
 class SettingFieldState:
     """Settings metadata applied to one Django form field.
 
-    ``key`` is the registry/API key (kept separate from the form field name).
+    ``key`` is the registry/event identity stamped on the control and source
+    badge. ``live_save`` grants generic PATCH ownership to
+    ``LiveSettingFieldsElement``; a custom owner retains the key and sets
+    ``live_save=False``.
     A locked state sets Django's real ``Field.disabled`` flag before rendering,
     so native semantics and the shared disabled utility classes do the work.
     """
@@ -394,7 +397,9 @@ def prepare_setting_fields(
 
     This is intentionally preparation for the existing renderer, not a second
     field renderer. The mapping key is a Django form field name; ``state.key``
-    is the registry key sent to the API.
+    is the registry/event identity, while ``state.live_save`` controls whether
+    ``data-live-setting-control`` grants PATCH ownership to
+    ``LiveSettingFieldsElement``.
     """
     supplied = dict(presentations or {})
     unknown = set(supplied) - set(form.fields)
@@ -422,8 +427,6 @@ def prepare_setting_fields(
             field.widget.attrs["data-live-setting-control"] = ""
         else:
             field.widget.attrs.pop("data-live-setting-control", None)
-        # Provisional for unlocked fields; see the epic-final deletion gate above
-        # SettingSourceBadge before extending this pattern to more settings.
         label_extra = SettingSourceBadge(
             state.source,
             locked=state.locked,

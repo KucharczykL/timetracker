@@ -1367,8 +1367,9 @@ def FormFields(
 
     ``groups`` extends this renderer with semantic ``fieldset``/``legend``
     grouping. It never delegates to a parallel renderer: errors, checkbox rows,
-    hidden controls, and extras keep the exact same path. Unknown or duplicate
-    field names raise instead of producing a partially-rendered settings form.
+    hidden controls, and presentation content keep the exact same path. Unknown
+    or duplicate field names raise instead of producing a partially-rendered
+    settings form.
     """
     presentations = presentations or {}
     unknown_presentations = set(presentations) - set(form.fields)
