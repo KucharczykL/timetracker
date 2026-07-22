@@ -158,6 +158,18 @@ def test_landing_page_pref_round_trips(user, db, django_capture_on_commit_callba
     assert resolve_for_user(user, "DEFAULT_LANDING_PAGE") == "games:stats_by_year"
 
 
+def test_theme_pref_round_trips_through_typed_column(
+    user, db, django_capture_on_commit_callbacks
+):
+    from games.models import UserPreferences
+
+    _set_user(django_capture_on_commit_callbacks, user, "THEME", "dark")
+
+    preferences = UserPreferences.objects.get(user=user)
+    assert preferences.theme == "dark"
+    assert resolve_for_user(user, "THEME") == "dark"
+
+
 # --- poison value / robustness --------------------------------------------
 
 
