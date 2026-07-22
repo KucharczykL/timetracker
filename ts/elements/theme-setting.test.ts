@@ -5,6 +5,7 @@ import {
   resetThemeCoordinatorForTests,
 } from "../theme-coordinator.js";
 import "./theme-setting.js";
+import "./theme-toggle.js";
 
 function configureInheritedDark(): void {
   const root = document.documentElement;
@@ -50,6 +51,7 @@ beforeEach(() => {
   });
   window.toast = vi.fn();
   window.fetchWithHtmxTriggers = vi.fn();
+  window.dispatchHtmxTriggers = vi.fn();
 });
 
 afterEach(() => {
@@ -87,6 +89,69 @@ describe("<theme-setting>", () => {
     } as Response);
     await vi.waitFor(() => expect(select.disabled).toBe(false));
     expect(select.value).toBe("light");
+  });
+
+  it.each(["toggle-first", "setting-first"])(
+    "synchronizes presenters connected in %s order",
+    async (order) => {
+      configureInheritedDark();
+      vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "THEME", value: "light", source: "user", locked: false,
+        }),
+      } as Response);
+      const setting = `<theme-setting><select><option value=""></option>
+        <option value="system">System</option><option value="light">Light</option>
+        <option value="dark">Dark</option></select></theme-setting>`;
+      const toggle = `<theme-toggle><button data-pop-over-trigger>
+        <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
+        <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
+        </theme-toggle>`;
+      document.body.innerHTML = order === "toggle-first"
+        ? toggle + setting
+        : setting + toggle;
+
+      const select = document.querySelector<HTMLSelectElement>("theme-setting select")!;
+      select.value = "light";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(document.querySelector<HTMLSelectElement>("theme-setting select")?.value)
+          .toBe("light");
+      });
+      expect(document.querySelector('[data-theme-icon="light"]')?.hasAttribute("hidden"))
+        .toBe(false);
+    },
+  );
+
+  it("keeps multiple instances of both presenters synchronized", async () => {
+    configureInheritedDark();
+    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "THEME", value: "system", source: "user", locked: false,
+      }),
+    } as Response);
+    const setting = `<theme-setting><select><option value=""></option>
+      <option value="system">System</option><option value="dark">Dark</option>
+      </select></theme-setting>`;
+    const toggle = `<theme-toggle><button data-pop-over-trigger>
+      <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
+      <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
+      </theme-toggle>`;
+    document.body.innerHTML = toggle + setting + toggle + setting;
+
+    document.querySelector<HTMLButtonElement>("theme-toggle button")!.click();
+
+    await vi.waitFor(() => {
+      expect(Array.from(document.querySelectorAll<HTMLSelectElement>("theme-setting select"))
+        .map((select) => select.value)).toEqual(["system", "system"]);
+    });
+    expect(Array.from(document.querySelectorAll("[data-theme-icon=system]"))
+      .every((icon) => !icon.hasAttribute("hidden"))).toBe(true);
   });
 
   it("restores the blank personal selection and inherited Dark after failure", async () => {

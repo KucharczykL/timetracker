@@ -205,6 +205,7 @@ export class ThemeCoordinator {
           },
           body: JSON.stringify({ value: desired }),
         },
+        "deferred",
       );
       if (!response.ok) {
         throw new Error(
@@ -236,6 +237,7 @@ export class ThemeCoordinator {
       this.applyState();
       this.notify();
       dispatchSettingCommitted(resolved);
+      window.dispatchHtmxTriggers(response);
       return "committed";
     } catch (error) {
       console.error("Failed to update theme", error);

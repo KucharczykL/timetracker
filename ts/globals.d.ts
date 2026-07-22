@@ -2,7 +2,12 @@ export {};
 
 declare global {
   interface Window {
-    fetchWithHtmxTriggers(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    dispatchHtmxTriggers(response: Response): void;
+    fetchWithHtmxTriggers(
+      input: RequestInfo | URL,
+      init?: RequestInit,
+      triggerDispatch?: "immediate" | "deferred",
+    ): Promise<Response>;
     toast(message: string, type?: string): void;
   }
 }

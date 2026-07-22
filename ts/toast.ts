@@ -164,53 +164,58 @@ function toast(message: string, type?: string): void {
 }
 window.toast = toast;
 
+/** Dispatch the Django/HTMX events carried by one fetch response. */
+function dispatchHtmxTriggers(response: Response): void {
+  const htmxTrigger = response.headers.get("HX-Trigger");
+  if (!htmxTrigger) return;
+
+  let triggers;
+  try {
+    triggers = JSON.parse(htmxTrigger);
+  } catch (error) {
+    // Reporting a broken toast trigger via the toast would be circular —
+    // suppress the toast, keep the guaranteed server log line.
+    reportClientError(
+      "fetchWithHtmxTriggers[HX-Trigger]",
+      String((error as Error)?.message ?? error),
+      { toast: false },
+    );
+    return;
+  }
+  // Handle both single object and array of events.
+  const events = Array.isArray(triggers) ? triggers : [triggers];
+  events.forEach((triggerObject: Record<string, unknown>) => {
+    Object.entries(triggerObject).forEach(([name, detail]) => {
+      let parsedDetail: unknown = detail;
+      try {
+        parsedDetail = JSON.parse(detail as string);
+      } catch {
+        // Keep non-JSON detail as-is.
+      }
+      document.dispatchEvent(new CustomEvent(name, {
+        detail: parsedDetail,
+        bubbles: true,
+      }));
+    });
+  });
+}
+window.dispatchHtmxTriggers = dispatchHtmxTriggers;
+
 /**
- * Wrapper around fetch() that dispatches HTMX HX-Trigger events.
- * Use this for any fetch() call that expects HX-Trigger headers
- * (e.g., to show toasts via the HTMX middleware).
+ * Wrapper around fetch() that dispatches HTMX HX-Trigger events. Callers that
+ * must validate the response first can defer dispatch, then explicitly call
+ * dispatchHtmxTriggers() after accepting it.
  *
  * @todo Migrate these call sites to hx-post + hx-on::after-request
  * for HTMX-native toast handling.
  */
 window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
   url: RequestInfo | URL,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  triggerDispatch: "immediate" | "deferred" = "immediate",
 ): Promise<Response> {
-  return fetch(url, options).then(async (response) => {
-    const htmxTrigger = response.headers.get("HX-Trigger");
-    if (htmxTrigger) {
-      let triggers;
-      try {
-        triggers = JSON.parse(htmxTrigger);
-      } catch (error) {
-        // Reporting a broken toast trigger via the toast would be circular —
-        // suppress the toast, keep the guaranteed server log line.
-        reportClientError(
-          "fetchWithHtmxTriggers[HX-Trigger]",
-          String((error as Error)?.message ?? error),
-          { toast: false }
-        );
-        return response;
-      }
-      // Handle both single object and array of events
-      const events = Array.isArray(triggers) ? triggers : [triggers];
-      events.forEach((triggerObject: Record<string, unknown>) => {
-        Object.entries(triggerObject).forEach(([name, detail]) => {
-          let parsedDetail: unknown = detail;
-          try {
-            parsedDetail = JSON.parse(detail as string);
-          } catch {
-            // keep as string
-          }
-          document.dispatchEvent(
-            new CustomEvent(name, {
-              detail: parsedDetail,
-              bubbles: true,
-            })
-          );
-        });
-      });
-    }
+  return fetch(url, options).then((response) => {
+    if (triggerDispatch === "immediate") dispatchHtmxTriggers(response);
     return response;
   });
 };

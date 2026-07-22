@@ -2,7 +2,7 @@
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Browser, Page, expect
 
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
@@ -109,13 +109,29 @@ def test_navbar_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
     expect(tooltip).to_have_text("Theme: System — switch to Light")
 
 
+@pytest.mark.parametrize(
+    ("preference", "scheme", "expected_dark", "anonymous"),
+    [
+        ("system", "dark", True, "light"),
+        ("light", "dark", False, "dark"),
+        ("dark", "light", True, "light"),
+    ],
+)
 def test_account_theme_wins_before_redirect_paints_without_touching_storage(
-    live_server, page: Page, django_user_model
+    live_server,
+    page: Page,
+    django_user_model,
+    preference,
+    scheme,
+    expected_dark,
+    anonymous,
 ):
-    user = django_user_model.objects.create_user(username="dark-user", password="pw")
-    UserPreferences.objects.create(user=user, theme="dark")
-    page.emulate_media(color_scheme="light")
-    _set_anonymous_theme(page, live_server, "light")
+    user = django_user_model.objects.create_user(
+        username=f"{preference}-user", password="pw"
+    )
+    UserPreferences.objects.create(user=user, theme=preference)
+    page.emulate_media(color_scheme=scheme)
+    _set_anonymous_theme(page, live_server, anonymous)
     _install_first_frame_probe(page)
 
     page.fill('input[name="username"]', user.username)
@@ -123,8 +139,31 @@ def test_account_theme_wins_before_redirect_paints_without_touching_storage(
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
 
-    assert _first_frame(page) == {"preference": "dark", "dark": True}
+    assert _first_frame(page) == {
+        "preference": preference,
+        "dark": expected_dark,
+    }
+    assert page.evaluate("localStorage.getItem('color-theme')") == anonymous
+
+
+def test_logout_restores_the_anonymous_browser_preference(
+    live_server, page: Page, django_user_model
+):
+    user = django_user_model.objects.create_user(username="logout-user", password="pw")
+    UserPreferences.objects.create(user=user, theme="dark")
+    page.emulate_media(color_scheme="light")
+    _set_anonymous_theme(page, live_server, "light")
+    page.fill('input[name="username"]', user.username)
+    page.fill('input[name="password"]', "pw")
+    page.click('button:has-text("Login")')
+    page.wait_for_url(f"{live_server.url}/tracker**")
     expect(page.locator("html")).to_have_class("dark")
+
+    page.get_by_role("button", name="Log out").click()
+    page.wait_for_url(f"{live_server.url}{reverse('login')}**")
+
+    expect(page.locator("html")).to_have_attribute("data-theme-preference", "light")
+    expect(page.locator("html")).not_to_have_class("dark")
     assert page.evaluate("localStorage.getItem('color-theme')") == "light"
 
 
@@ -180,22 +219,84 @@ def test_settings_and_navbar_share_account_coordinator(
     expect(tooltip).to_have_text("Theme: System — switch to Light")
 
 
-def test_failed_theme_save_restores_inherited_selection_class_and_source(
+def test_second_browser_reconciles_account_theme_on_navigation(
+    live_server, browser: Browser, django_user_model
+):
+    user = django_user_model.objects.create_user(username="two-browser", password="pw")
+    UserPreferences.objects.create(user=user, theme="light")
+    first_context = browser.new_context()
+    second_context = browser.new_context()
+    first = first_context.new_page()
+    second = second_context.new_page()
+    try:
+        _login(first, live_server, user.username)
+        _login(second, live_server, user.username)
+        first.goto(f"{live_server.url}{reverse('games:settings')}")
+        second.goto(f"{live_server.url}{reverse('games:settings')}")
+        expect(second.locator("html")).to_have_attribute(
+            "data-theme-preference", "light"
+        )
+
+        with first.expect_response(
+            lambda response: "/api/settings/user/THEME" in response.url
+        ):
+            first.locator('select[name="theme"]').select_option("dark")
+
+        expect(second.locator("html")).to_have_attribute(
+            "data-theme-preference", "light"
+        )
+        second.reload()
+        expect(second.locator("html")).to_have_attribute(
+            "data-theme-preference", "dark"
+        )
+        expect(second.locator("html")).to_have_class("dark")
+    finally:
+        first_context.close()
+        second_context.close()
+
+
+def test_clearing_personal_theme_commits_inherited_value_and_source(
+    live_server, page: Page, django_user_model
+):
+    user = django_user_model.objects.create_user(username="inherit-user", password="pw")
+    UserPreferences.objects.create(user=user, theme="light")
+    SiteSetting.objects.create(key="THEME", value="dark")
+    settings_resolver.clear_cache()
+    _login(page, live_server, user.username)
+    page.goto(f"{live_server.url}{reverse('games:settings')}")
+    theme = page.locator('select[name="theme"]')
+    source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
+
+    with page.expect_response(
+        lambda response: "/api/settings/user/THEME" in response.url
+    ):
+        theme.select_option("")
+
+    expect(theme).to_have_value("")
+    expect(page.locator("html")).to_have_attribute("data-theme-preference", "dark")
+    expect(page.locator("html")).to_have_class("dark")
+    expect(source).to_have_attribute("data-setting-origin", "database")
+
+
+def test_failed_theme_save_restores_system_state_then_allows_retry(
     live_server, page: Page, django_user_model
 ):
     user = django_user_model.objects.create_user(
         username="rollback-user", password="pw"
     )
-    SiteSetting.objects.create(key="THEME", value="dark")
+    SiteSetting.objects.create(key="THEME", value="system")
     settings_resolver.clear_cache()
-    page.emulate_media(color_scheme="light")
+    page.emulate_media(color_scheme="dark")
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = page.locator('select[name="theme"]')
     source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
+    toggle = page.locator("theme-toggle [data-pop-over-trigger]")
+    tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("")
     expect(source).to_have_attribute("data-setting-origin", "database")
     expect(page.locator("html")).to_have_class("dark")
+    toggle.hover()
     page.route(
         "**/api/settings/user/THEME",
         lambda route: route.fulfill(status=500, body="save failed"),
@@ -206,4 +307,17 @@ def test_failed_theme_save_restores_inherited_selection_class_and_source(
     expect(theme).to_have_value("")
     expect(theme).to_be_enabled()
     expect(page.locator("html")).to_have_class("dark")
+    expect(page.locator("html")).to_have_attribute("data-theme-preference", "system")
     expect(source).to_have_attribute("data-setting-origin", "database")
+    expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
+    expect(tooltip).to_be_visible()
+    expect(tooltip).to_have_text("Theme: System — switch to Light")
+    expect(page.get_by_text("Couldn't save your theme", exact=False)).to_be_visible()
+
+    page.unroute("**/api/settings/user/THEME")
+    with page.expect_response(
+        lambda response: "/api/settings/user/THEME" in response.url
+    ):
+        theme.select_option("light")
+    expect(theme).to_have_value("light")
+    expect(page.locator("html")).not_to_have_class("dark")

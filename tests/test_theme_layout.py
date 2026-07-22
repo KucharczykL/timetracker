@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
+from common.components import Div, ThemeToggle, assert_unique_element_ids
 
 
 def _root_tag(html: str) -> str:
@@ -89,6 +90,12 @@ def test_theme_component_keeps_three_icons_and_tooltip(db):
     assert 'role="tooltip"' in html
     assert "data-theme-tooltip" in html
     assert "dist/elements/theme-toggle.js" in html
+
+
+def test_multiple_theme_toggles_have_unique_tooltip_ids():
+    assert_unique_element_ids(
+        Div()[ThemeToggle(instance_key="first"), ThemeToggle(instance_key="second")]
+    )
 
 
 def test_layout_removes_legacy_inline_navbar_theme_handler(db):
