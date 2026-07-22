@@ -37,7 +37,12 @@ from common.components.primitives import (
     Title,
 )
 from games.templatetags.version import version, version_date
-from timetracker.theme import theme_bootstrap_script
+from timetracker.config import SettingSource
+from timetracker.settings_registry import THEME_CHOICES
+from timetracker.settings_resolver import (
+    resolve_for_user_with_origin,
+    resolve_with_origin,
+)
 
 if TYPE_CHECKING:
     from common.components import Node
@@ -524,13 +529,14 @@ def TimetrackerDocument(
 
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
+    csrf_token = get_token(request)
     navbar = Navbar(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
         today_url=counts["today_url"],
         last_7_url=counts["last_7_url"],
         current_year=year,
-        csrf_token=get_token(request),
+        csrf_token=csrf_token,
         authenticated=request.user.is_authenticated,
         recent_resumes=recent_session_resumes(request),
     )
@@ -580,8 +586,34 @@ def TimetrackerDocument(
         mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
             _main_script(mastered)
         ]
+        theme_attributes = [
+            ("lang", "en"),
+            ("data-theme-mode", "account" if request.user.is_authenticated else "browser"),
+            (
+                "data-theme-preferences",
+                " ".join(value for value, _label in THEME_CHOICES),
+            ),
+        ]
+        if request.user.is_authenticated:
+            resolved = resolve_for_user_with_origin(request.user, "THEME")
+            inherited = resolve_with_origin("THEME")
+            personal = resolved.value if resolved.source is SettingSource.USER else ""
+            theme_attributes.extend(
+                [
+                    ("data-theme-preference", str(resolved.value)),
+                    ("data-theme-personal-preference", str(personal)),
+                    ("data-theme-inherited-preference", str(inherited.value)),
+                    ("data-theme-source", str(resolved.source)),
+                    (
+                        "data-theme-update-url",
+                        reverse("api-1.0.0:update_user_setting", args=["THEME"]),
+                    ),
+                    ("data-theme-csrf", csrf_token),
+                ]
+            )
+
         document = Document(
-            Html(lang="en")[
+            Html(theme_attributes)[
                 Head()[
                     [
                         Title()[f"Timetracker - {title}"],
@@ -600,6 +632,7 @@ def TimetrackerDocument(
                             type="image/svg+xml",
                             href=static("icons/tesserae-favicon.svg"),
                         ),
+                        StaticScript("dist/theme-bootstrap.js"),
                         ModuleScript("dist/global-error-handler.js"),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
@@ -611,7 +644,6 @@ def TimetrackerDocument(
                             "htmx.config.scrollBehavior = 'smooth';\n"
                             "htmx.config.selfRequestsOnly = false;\n"
                         ],
-                        Script(id="theme-bootstrap")[theme_bootstrap_script()],
                         Script(id="django-messages", type="application/json")[
                             messages_json
                         ],

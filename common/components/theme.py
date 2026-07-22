@@ -6,10 +6,10 @@ from common.components.primitives import Popover, Span, custom_element_builder
 _ThemeToggle = custom_element_builder("theme-toggle")
 
 _THEME_ICONS = """
-<svg data-theme-icon="auto" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
+<svg data-theme-icon="system" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="2" aria-hidden="true">
   <circle cx="12" cy="12" r="8"/>
-  <path data-theme-auto-half d="M12 4a8 8 0 0 0 0 16V4Z"
+  <path data-theme-system-half d="M12 4a8 8 0 0 0 0 16V4Z"
         fill="currentColor" stroke="none"/>
 </svg>
 <svg data-theme-icon="light" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
@@ -25,7 +25,7 @@ _THEME_ICONS = """
 
 
 def ThemeToggle(*, api_url: str, csrf: str, cookie_secure: bool) -> Node:
-    label = "Theme: Auto — switch to Light"
+    label = "Theme: System — switch to Light"
     return _ThemeToggle(
         api_url=api_url,
         csrf=csrf,
