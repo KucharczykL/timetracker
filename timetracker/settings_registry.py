@@ -138,7 +138,9 @@ def _validate_page_size(value: object) -> int:
 
 def _validate_theme(value: object) -> str:
     if not isinstance(value, str) or value not in _THEME_VALUES:
-        raise ValidationError(f"Theme must be one of auto, light, dark (got {value!r}).")
+        raise ValidationError(
+            f"Theme must be one of auto, light, dark (got {value!r})."
+        )
     return value
 
 

@@ -70,11 +70,12 @@ the global `SiteSetting` model.
   absent `extra_preferences` key) falls through to the `SiteSetting` site default
   and then the code default. Non-user keys proxy straight to `resolve_with_origin`.
 - **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
-  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`) have a personal override layer *and* a `SiteSetting`
-  site default; a plain **site**-scoped setting has only the shared `SiteSetting`
-  default (none exist today). **infra**-scoped settings (`DEBUG`, `SECRET_KEY`,
-  `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`,
-  `HASHED_STATIC`) are boot-only and never read from the DB.
+  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`, `THEME`) have a personal override
+  layer *and* a `SiteSetting` site default; a plain **site**-scoped setting has
+  only the shared `SiteSetting` default (none exist today). **infra**-scoped
+  settings (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`,
+  `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`, `HASHED_STATIC`) are boot-only and never
+  read from the DB.
 - **`TZ` is display-only.** `TIME_ZONE` is frozen when `settings.py` imports, so
   a DB value could never take effect; change it via env/`.ini` + restart.
 - **Not runtime-editable, not registered.** `ENV_FILE`/`INI_FILE` *locate* the
@@ -107,6 +108,13 @@ Changes save immediately against the account through `/api/settings/user`:
   has no valid `per_page` override. Presets saved without an explicit size keep
   inheriting this preference; choosing a size from a list pins that exact value
   in the URL and any subsequently saved preset.
+- **Theme** supports System (auto), Light, and Dark. The navbar button cycles
+  through those three states and the settings page exposes the same account
+  preference. A readable `color-theme` cookie mirrors the resolved preference
+  so it can be applied before CSS loads, avoiding a flash of the wrong theme on
+  login and anonymous pages. On the first login after upgrading, a valid legacy
+  `localStorage` theme is migrated once to the account; after that, the saved
+  account preference wins and is copied back to browser storage.
 
 Clearing a control removes the personal override and restores the resolved site
 or built-in default. Existing non-empty values on edit forms are never replaced

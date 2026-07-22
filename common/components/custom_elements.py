@@ -508,6 +508,15 @@ class LiveSettingFieldsProps(TypedDict):
 register_element("live-setting-fields", "LiveSettingFields", LiveSettingFieldsProps)
 
 
+class ThemeToggleProps(TypedDict):
+    api_url: str  # empty for anonymous pages
+    csrf: str
+    cookie_secure: bool
+
+
+register_element("theme-toggle", "ThemeToggle", ThemeToggleProps)
+
+
 class YearPickerProps(TypedDict):
     selected_year: str  # "" for the all-time/empty state
     available_years: str  # csv, e.g. "2019,2020"

@@ -4,15 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0029_userpreferences'),
+        ("games", "0029_userpreferences"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='userpreferences',
-            name='theme',
-            field=models.CharField(blank=True, choices=[('auto', 'System (auto)'), ('light', 'Light'), ('dark', 'Dark')], default=None, max_length=5, null=True),
+            model_name="userpreferences",
+            name="theme",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("auto", "System (auto)"),
+                    ("light", "Light"),
+                    ("dark", "Dark"),
+                ],
+                default=None,
+                max_length=5,
+                null=True,
+            ),
         ),
     ]
