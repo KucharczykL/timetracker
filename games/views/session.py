@@ -114,13 +114,16 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     # The quick bar is the page's only filter tier; the builder
     # entry point lives in its action group.
     filter_json = request.GET.get("filter", "")
-    builder_url = builder_url_for("sessions", filter_json, find.sort, find.per_page)
+    builder_url = builder_url_for(
+        "sessions", filter_json, find.sort, find.per_page_override
+    )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="sessions",
         existing=parsed_filter,
         builder_url=builder_url,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        per_page_override=find.per_page_override,
     )
     content = ContentContainer()[quick_bar, content]
     return render_page(

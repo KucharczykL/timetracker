@@ -209,11 +209,13 @@ class QuickFilterBar(BaseComponent):
         existing: dict | None = None,
         apply_url: str = "",
         preset_api_url: str = "",
+        per_page_override: int | None = None,
     ) -> None:
         self.mode = mode
         self.builder_url = builder_url
         self.apply_url = apply_url
         self.preset_api_url = preset_api_url
+        self.per_page_override = per_page_override
         # ``existing`` lets the view hand over an already-parsed filter
         # (read-only); otherwise the bar parses its own copy.
         self.existing = (
@@ -257,7 +259,12 @@ class QuickFilterBar(BaseComponent):
         # selects have no per-widget unset, so the bar needs a one-click
         # reset.
         row_children.append(ButtonGroup(self._action_group_members()))
-        return _QuickFilterBarElement(apply_url=self._list_url())[
+        return _QuickFilterBarElement(
+            apply_url=self._list_url(),
+            per_page=(
+                "" if self.per_page_override is None else str(self.per_page_override)
+            ),
+        )[
             # A real <form> so Enter in any facet input applies; the element
             # intercepts submit and navigates.
             Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]

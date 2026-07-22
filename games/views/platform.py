@@ -97,13 +97,16 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     )
     # Thread the active sort + rows-per-page into the builder so a preset saved
     # there captures both (#335 sort, #337 per_page).
-    builder_url = builder_url_for("platforms", filter_json, find.sort, find.per_page)
+    builder_url = builder_url_for(
+        "platforms", filter_json, find.sort, find.per_page_override
+    )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="platforms",
         existing=parsed_filter,
         preset_api_url=reverse("api-1.0.0:list_presets"),
         builder_url=builder_url,
+        per_page_override=find.per_page_override,
     )
     content = ContentContainer()[quick_bar, content]
     return render_page(

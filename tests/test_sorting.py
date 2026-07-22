@@ -12,7 +12,15 @@ from django.test import RequestFactory
 from django.urls import reverse
 
 from games.filters import FindFilter
-from games.models import Device, Game, PlayEvent, Platform, Purchase, Session
+from games.models import (
+    Device,
+    Game,
+    PlayEvent,
+    Platform,
+    Purchase,
+    Session,
+    UserPreferences,
+)
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -149,11 +157,15 @@ class TestParseFindFilter:
         request = RequestFactory().get("/x", {"page": "3", "per_page": "50"})
         find = parse_find_filter(request)
         assert (find.page, find.per_page) == (3, 50)
+        assert find.per_page_explicit is True
+        assert find.per_page_override == 50
 
     def test_per_page_zero_flows_through(self):
         # 0 is meaningful (disables pagination) — not coerced to the default.
         request = RequestFactory().get("/x", {"per_page": "0"})
-        assert parse_find_filter(request).per_page == 0
+        find = parse_find_filter(request)
+        assert find.per_page == 0
+        assert find.per_page_override == 0
 
     def test_negative_per_page_degrades_to_default(self):
         # A negative page size would make Django's Paginator slice [0:-n] and
@@ -169,6 +181,64 @@ class TestParseFindFilter:
     def test_absent_pagination_uses_dataclass_defaults(self):
         find = parse_find_filter(RequestFactory().get("/x"))
         assert (find.page, find.per_page) == (FindFilter.page, FindFilter.per_page)
+        assert find.per_page_explicit is False
+        assert find.per_page_override is None
+
+    @pytest.mark.django_db
+    def test_absent_per_page_uses_current_users_preference(self, django_user_model):
+        from timetracker import settings_resolver
+
+        user = django_user_model.objects.create_user(username="pages", password="pw")
+        UserPreferences.objects.create(
+            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        )
+        settings_resolver.clear_cache()
+        request = RequestFactory().get("/x")
+        request.user = user
+
+        find = parse_find_filter(request)
+
+        assert find.per_page == 50
+        assert find.per_page_override is None
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize("raw", ["", " ", "lots", "-5"])
+    def test_invalid_per_page_inherits_user_preference(self, django_user_model, raw):
+        from timetracker import settings_resolver
+
+        user = django_user_model.objects.create_user(
+            username=f"pages-{raw!r}", password="pw"
+        )
+        UserPreferences.objects.create(
+            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        )
+        settings_resolver.clear_cache()
+        request = RequestFactory().get("/x", {"per_page": raw})
+        request.user = user
+
+        find = parse_find_filter(request)
+
+        assert find.per_page == 50
+        assert find.per_page_override is None
+
+    @pytest.mark.django_db
+    def test_explicit_value_equal_to_user_default_remains_explicit(
+        self, django_user_model
+    ):
+        from timetracker import settings_resolver
+
+        user = django_user_model.objects.create_user(username="equal", password="pw")
+        UserPreferences.objects.create(
+            user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+        )
+        settings_resolver.clear_cache()
+        request = RequestFactory().get("/x", {"per_page": "50"})
+        request.user = user
+
+        find = parse_find_filter(request)
+
+        assert find.per_page == 50
+        assert find.per_page_override == 50
 
 
 class TestSortMapShapes:

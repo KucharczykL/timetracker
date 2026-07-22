@@ -18,10 +18,10 @@ export function applyUrl(
   // Only a truthy sort is emitted; an empty sort omits ?sort= so the list view
   // applies its own default order (a default-order preset round-trips) (#77).
   if (sort) params.push("sort=" + encodeURIComponent(sort));
-  // Likewise a non-empty page size pins rows-per-page (#337); "" omits it so a
-  // default-size preset round-trips to the default. "0" (show all) is non-empty,
-  // so it rides through. `page` is deliberately never emitted — loading a filter
-  // resets to page 1.
+  // Likewise a non-empty page size pins rows-per-page (#337, #386); "" omits it
+  // so the preset inherits the user's current default. "0" (show all) is
+  // non-empty, so it rides through. `page` is deliberately never emitted —
+  // loading a filter resets to page 1.
   if (perPage) params.push("per_page=" + encodeURIComponent(perPage));
   return params.length ? listUrl + "?" + params.join("&") : listUrl;
 }

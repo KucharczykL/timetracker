@@ -31,6 +31,7 @@ from common.layout import render_page
 from common.time import format_duration
 from games.filters import SessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
+from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
@@ -155,10 +156,10 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     # The list's active ?sort= is threaded in so a preset saved here captures it
     # and Apply navigates back preserving it (#77). Empty when no sort is active.
     sort = request.GET.get("sort", "")
-    # The list's active rows-per-page threads in the same way so a preset saved
-    # here pins it (#337). builder_url_for only carries a non-default size, so
-    # this is "" (default) or a concrete size; page is transient and never here.
-    per_page = request.GET.get("per_page", "")
+    # Normalize direct builder URLs too: "" means inherit the current user
+    # default; a valid non-negative integer is an explicit preset pin (#386).
+    per_page_override = parse_per_page_override(request.GET.get("per_page"))
+    per_page = "" if per_page_override is None else str(per_page_override)
     models_json = json.dumps(model_field_registry(model))
 
     def _item(model):

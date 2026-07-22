@@ -53,6 +53,7 @@ from common.criteria import (
     relation_to_q,
     search_q,
 )
+from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
 
@@ -67,8 +68,14 @@ class FindFilter:
     """
 
     page: int = 1
-    per_page: int = 25
+    per_page: int = DEFAULT_PAGE_SIZE
     sort: str | None = None  # e.g. "-created_at" (a signed SortString)
+    per_page_explicit: bool = field(default=False, kw_only=True)
+
+    @property
+    def per_page_override(self) -> int | None:
+        """URL-provided size, or ``None`` when the user default is inherited."""
+        return self.per_page if self.per_page_explicit else None
 
 
 # ── GameFilter ─────────────────────────────────────────────────────────────

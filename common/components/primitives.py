@@ -36,6 +36,7 @@ from common.components.core import (
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterWidgetPath, LeafWidgetKind
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
+from timetracker.settings_registry import PAGE_SIZE_CHOICES
 
 type ButtonColor = Literal["blue", "red", "gray", "green"]  # e.g. "red" (destructive)
 type ButtonVariant = Literal[
@@ -1934,7 +1935,7 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
 
 
 # The per-page sizes offered by the list-view rows-per-page picker.
-PAGE_SIZE_PRESETS = (10, 25, 50, 100, 500, 1000)
+PAGE_SIZE_PRESETS = PAGE_SIZE_CHOICES
 
 
 def PageSizeSelect(request, current: int) -> Node:

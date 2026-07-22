@@ -280,9 +280,9 @@ def test_save_persists_non_default_per_page(auth_client):
     assert preset.find_filter == {"per_page": 100}
 
 
-def test_save_default_per_page_stores_nothing(auth_client):
-    # The default size round-trips to the default, so it is not persisted — the
-    # find_filter stays empty (mirrors the default-sort behaviour).
+def test_save_explicit_default_per_page_is_pinned(auth_client):
+    # Explicit selection is intent: it remains pinned even when its value equals
+    # the current built-in default.
     from games.filters import FindFilter
 
     _save(
@@ -293,7 +293,7 @@ def test_save_default_per_page_stores_nothing(auth_client):
         per_page=str(FindFilter.per_page),
     )
     preset = FilterPreset.objects.get(name="Default")
-    assert preset.find_filter == {}
+    assert preset.find_filter == {"per_page": FindFilter.per_page}
 
 
 def test_save_zero_per_page_is_persisted(auth_client):
@@ -349,6 +349,25 @@ def test_list_emits_persisted_per_page(auth_client):
             "value": preset.id,
             "label": "Big",
             "data": {"filter": "{}", "sort": "", "per_page": "100"},
+        }
+    ]
+
+
+@pytest.mark.parametrize("stored", [-5, True, 25.0, "25", "lots"])
+def test_list_degrades_corrupt_stored_per_page_to_inherited(auth_client, user, stored):
+    preset = FilterPreset.objects.create(
+        user=user,
+        name="Corrupt",
+        mode="games",
+        object_filter={},
+        find_filter={"per_page": stored},
+    )
+
+    assert _list(auth_client).json() == [
+        {
+            "value": preset.id,
+            "label": "Corrupt",
+            "data": {"filter": "{}", "sort": "", "per_page": ""},
         }
     ]
 

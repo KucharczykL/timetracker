@@ -20,6 +20,7 @@ USER_KEYS = {
     "DEFAULT_CURRENCY",
     "DEFAULT_DEVICE",
     "DEFAULT_LANDING_PAGE",
+    "DEFAULT_PAGE_SIZE",
 }
 
 EXPECTED_KEYS = {
@@ -128,6 +129,21 @@ def test_landing_page_validator_accepts_supported_url_names(url_name):
 )
 def test_landing_page_validator_rejects_unsupported_destinations(bad):
     validator = get_definition("DEFAULT_LANDING_PAGE").validator
+    assert validator is not None
+    with pytest.raises(ValidationError):
+        validator(bad)
+
+
+@pytest.mark.parametrize("value", [10, 25, 50, 100, 500, 1000])
+def test_page_size_validator_accepts_picker_choices(value):
+    validator = get_definition("DEFAULT_PAGE_SIZE").validator
+    assert validator is not None
+    assert validator(value) == value
+
+
+@pytest.mark.parametrize("bad", [True, 0, -1, 20, 1001, "lots"])
+def test_page_size_validator_rejects_non_choices(bad):
+    validator = get_definition("DEFAULT_PAGE_SIZE").validator
     assert validator is not None
     with pytest.raises(ValidationError):
         validator(bad)
