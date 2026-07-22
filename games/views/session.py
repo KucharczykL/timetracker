@@ -11,6 +11,7 @@ from django.utils import timezone
 from common.components import (
     AddForm,
     Column,
+    FormFieldPresentation,
     FormFields,
     ModuleScript,
     NameWithIcon,
@@ -154,8 +155,8 @@ def _session_fields(form) -> Node:
     buttons appended to the two timestamp rows."""
     return FormFields(
         form,
-        extras={
-            name: _timestamp_buttons(name)
+        presentations={
+            name: FormFieldPresentation(after_control=_timestamp_buttons(name))
             for name in ("timestamp_start", "timestamp_end")
         },
     )

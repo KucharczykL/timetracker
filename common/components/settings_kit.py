@@ -21,6 +21,7 @@ from common.components.primitives import (
     Div,
     FORM_MAX_WIDTH_CLASS,
     FormFieldGroup,
+    FormFieldPresentation,
     FormFields,
     Icon,
     Input,
@@ -97,6 +98,7 @@ class SettingFieldState:
     locked: bool = False
     reason: str = ""
     help_text: str = ""
+    live_save: bool = True
 
 
 def SettingsFieldLayout(columns: SettingsFieldColumns = 1) -> Element:
@@ -386,15 +388,14 @@ def _field_metadata(metadata_id: str, state: SettingFieldState) -> Node | None:
 def prepare_setting_fields(
     form,
     states: Mapping[str, SettingFieldState],
-) -> tuple[dict[str, Node], dict[str, Node]]:
-    """Stamp semantics and return control-below + label-line metadata.
+) -> dict[str, FormFieldPresentation]:
+    """Stamp semantics and return one presentation per setting field.
 
     This is intentionally preparation for the existing renderer, not a second
     field renderer. The mapping key is a Django form field name; ``state.key``
     is the registry key sent to the API.
     """
-    extras: dict[str, Node] = {}
-    label_extras: dict[str, Node] = {}
+    presentations: dict[str, FormFieldPresentation] = {}
     for field_name, state in states.items():
         if field_name not in form.fields:
             raise ValueError(f"Unknown setting form field {field_name!r}.")
@@ -412,9 +413,13 @@ def prepare_setting_fields(
         tooltip_id = f"{control_id}_setting_source_tooltip"
         metadata_id = f"{control_id}_setting_metadata"
         field.widget.attrs["data-setting-key"] = state.key
+        if state.live_save:
+            field.widget.attrs["data-live-setting-control"] = ""
+        else:
+            field.widget.attrs.pop("data-live-setting-control", None)
         # Provisional for unlocked fields; see the epic-final deletion gate above
         # SettingSourceBadge before extending this pattern to more settings.
-        label_extras[field_name] = SettingSourceBadge(
+        label_extra = SettingSourceBadge(
             state.source,
             locked=state.locked,
             reason=_lock_reason(state) if state.locked else "",
@@ -427,10 +432,13 @@ def prepare_setting_fields(
             field.widget.attrs["aria-describedby"] = " ".join(
                 part for part in (describedby, metadata_id) if part
             )
-            extras[field_name] = metadata
         if state.locked:
             field.disabled = True
-    return extras, label_extras
+        presentations[field_name] = FormFieldPresentation(
+            label_extra=label_extra,
+            after_control=metadata,
+        )
+    return presentations
 
 
 def LiveSettingFields(
@@ -445,7 +453,7 @@ def LiveSettingFields(
     """Render existing ``FormFields`` inside the optimistic live-save host."""
     if "__key__" not in patch_url_template:
         raise ValueError("patch_url_template must contain the literal __key__ token.")
-    extras, label_extras = prepare_setting_fields(form, states)
+    presentations = prepare_setting_fields(form, states)
     return _LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
@@ -455,8 +463,7 @@ def LiveSettingFields(
         SettingsFieldLayout(1)[
             FormFields(
                 form,
-                extras=extras,
-                label_extras=label_extras,
+                presentations=presentations,
                 groups=groups,
             )
         ]

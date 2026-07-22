@@ -8,7 +8,9 @@ from django.utils.html import escape
 from common.components import (
     Badge,
     Div,
+    Element,
     FormFieldGroup,
+    FormFieldPresentation,
     FormFields,
     LiveSettingFields,
     MaskedSecretField,
@@ -90,18 +92,54 @@ class GroupedFormFieldsTest(SimpleTestCase):
         assert "min-h-control" in form.fields["limit"].widget.attrs["class"]
         assert "min-h-control" in form.fields["display_name"].widget.attrs["class"]
 
-    def test_label_extras_render_beside_the_label_before_the_control(self):
+    def test_presentation_composes_label_control_decorator_and_after_control(self):
         html = str(
             FormFields(
                 KitForm(),
-                label_extras={"display_name": Badge("Personal", size="sm")},
+                presentations={
+                    "display_name": FormFieldPresentation(
+                        label_extra=Badge("Personal", size="sm"),
+                        after_control=Div()["Shown publicly."],
+                        decorate_control=lambda control: Element("control-owner")[
+                            control
+                        ],
+                    )
+                },
             )
         )
         label_line = html.index('data-form-field-label-line=""')
         badge = html.index(">Personal</span>", label_line)
-        control = html.index('name="display_name"', badge)
+        wrapper = html.index("<control-owner>", badge)
+        control = html.index('name="display_name"', wrapper)
+        help_text = html.index("Shown publicly.", control)
 
-        assert label_line < badge < control
+        assert label_line < badge < wrapper < control < help_text
+        assert html.count('name="display_name"') == 1
+
+    def test_grouped_fields_use_the_same_control_decorator_path(self):
+        html = str(
+            FormFields(
+                KitForm(),
+                groups=self.groups,
+                presentations={
+                    "destination": FormFieldPresentation(
+                        decorate_control=lambda control: Element("control-owner")[
+                            control
+                        ]
+                    )
+                },
+            )
+        )
+
+        assert "<control-owner><select" in html
+        assert html.index("<legend") < html.index("<control-owner>")
+
+    def test_unknown_presentation_field_fails_loudly(self):
+        with pytest.raises(ValueError, match="unknown field"):
+            FormFields(
+                KitForm(),
+                presentations={"nope": FormFieldPresentation()},
+            )
 
 
 class SettingsBadgeAndFieldStateTest(SimpleTestCase):
@@ -201,6 +239,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert " disabled" in html
         assert "disabled:opacity-50" in html
         assert 'data-setting-key="APP_URL"' in html
+        assert 'data-live-setting-control=""' in html
         assert "Environment" in html
         assert 'data-setting-locked=""' in html
         assert "Change APP_URL in the environment and restart." in html
@@ -248,6 +287,25 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             assert f'id="{control_id}_setting_source_tooltip"' in html
             assert f'id="{control_id}_setting_metadata"' in html
             assert f'aria-describedby="{control_id}_setting_metadata"' in html
+
+    def test_non_live_state_keeps_identity_without_generic_save_ownership(self):
+        html = str(
+            LiveSettingFields(
+                KitForm(),
+                states={
+                    "destination": SettingFieldState(
+                        key="THEME",
+                        source="default",
+                        live_save=False,
+                    )
+                },
+                patch_url_template="/api/settings/user/__key__",
+                csrf="token",
+            )
+        )
+
+        assert 'data-setting-key="THEME"' in html
+        assert "data-live-setting-control" not in html
 
 
 class SettingsScaffoldTest(SimpleTestCase):
