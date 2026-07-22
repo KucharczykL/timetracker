@@ -3,6 +3,8 @@ all: css migrate
 initialize: npm css migrate loadplatforms
 
 PYTHON_VERSION = 3.14
+DEV_HOST ?= 127.0.0.1
+DEV_PORT ?= 8000
 
 # Ensure a usable CPython 3.14 exists for uv before any target that needs it.
 # Fast no-op when one is already available (a Nix shell puts it on PATH; a
@@ -58,7 +60,7 @@ server: gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
-		"uv run --frozen python -Wa manage.py runserver" \
+		"uv run --frozen python -Wa manage.py runserver $(DEV_HOST):$(DEV_PORT)" \
 		"pnpm exec tsc --watch"
 
 gen-element-types:
@@ -87,7 +89,7 @@ dev: ensure-python gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
-		"uv run --frozen python -Wa manage.py runserver" \
+		"uv run --frozen python -Wa manage.py runserver $(DEV_HOST):$(DEV_PORT)" \
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
 		"pnpm exec tsc --watch"
 

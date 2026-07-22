@@ -27,6 +27,7 @@ dist/
 /ts/elements/filter-tree/summary-modifiers.canonical.json
 /ts/elements/filter-tokens.canonical.json
 .claude/
+/.worktrees/
 
 # Playwright MCP browser session artifacts
 .playwright-mcp/
