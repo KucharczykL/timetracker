@@ -34,6 +34,7 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
         default_currency="EUR",
         default_device=preferred,
         default_landing_page="games:list_games",
+        theme="dark",
     )
 
     response = auth_client.get(reverse("games:settings"))
@@ -46,10 +47,12 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert 'name="default_currency" value="EUR"' in html
     assert f'<option value="{preferred.pk}" selected>' in html
     assert '<option value="games:list_games" selected>Games</option>' in html
+    assert '<option value="dark" selected>Dark</option>' in html
     assert 'data-setting-key="DEFAULT_CURRENCY"' in html
     assert 'data-setting-key="DEFAULT_DEVICE"' in html
     assert 'data-setting-key="DEFAULT_LANDING_PAGE"' in html
     assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in html
+    assert 'data-setting-key="THEME"' in html
 
 
 def test_settings_page_lists_devices_by_name(auth_client):
@@ -69,6 +72,16 @@ def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     assert '<option value="" selected>Use site default (No device)</option>' in html
     assert '<option value="" selected>Use site default (Sessions)</option>' in html
     assert '<option value="" selected>Use site default (25)</option>' in html
+    assert '<option value="auto" selected>System (auto)</option>' in html
+
+
+def test_personal_theme_is_selected(auth_client, user):
+    UserPreferences.objects.create(user=user, theme="light")
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert '<select name="theme"' in html
+    assert '<option value="light" selected>Light</option>' in html
 
 
 def test_personal_page_size_is_selected(auth_client, user):

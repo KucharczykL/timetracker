@@ -24,6 +24,7 @@ from timetracker.config import SettingSource
 from timetracker.settings_registry import (
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
+    THEME_CHOICES,
     get_definition,
 )
 from timetracker.settings_resolver import (
@@ -36,6 +37,7 @@ _FIELD_KEYS = {
     "default_device": "DEFAULT_DEVICE",
     "default_landing_page": "DEFAULT_LANDING_PAGE",
     "default_page_size": "DEFAULT_PAGE_SIZE",
+    "theme": "THEME",
 }
 
 
@@ -65,6 +67,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
             *((size, str(size)) for size in PAGE_SIZE_CHOICES),
         ),
     )
+    theme = forms.ChoiceField(choices=THEME_CHOICES)
 
     def __init__(
         self,
@@ -115,7 +118,10 @@ def _form_and_states(
     for field_name, key in _FIELD_KEYS.items():
         definition = get_definition(key)
         resolved = resolve_for_user_with_origin(user, key)
-        if field_name == "default_currency" or resolved.source is SettingSource.USER:
+        if (
+            field_name in {"default_currency", "theme"}
+            or resolved.source is SettingSource.USER
+        ):
             initial[field_name] = resolved.value
         states[field_name] = SettingFieldState(
             key,
