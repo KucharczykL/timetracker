@@ -4,6 +4,7 @@ These cover the new machinery directly: rendering, escaping, media bubbling.
 """
 
 import unittest
+from zoneinfo import ZoneInfo
 
 from django.utils.safestring import mark_safe
 
@@ -16,6 +17,14 @@ from common.components import (
     Safe,
     collect_media,
     render,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
+
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
 
 
@@ -149,7 +158,11 @@ class RealComponentMediaTest(unittest.TestCase):
         from common.components import DateRangePicker
 
         media = collect_media(
-            DateRangePicker(label="Played", input_name_prefix="played")
+            DateRangePicker(
+                presentation=_PRESENTATION,
+                label="Played",
+                input_name_prefix="played",
+            )
         )
         self.assertEqual(media.js, ("dist/elements/date-range-picker.js",))
 
@@ -158,7 +171,9 @@ class RealComponentMediaTest(unittest.TestCase):
         scripts that bubble up from the widgets its facet dropdowns contain."""
         from common.components import QuickFilterBar
 
-        media = collect_media(QuickFilterBar(mode="games", apply_url="/games"))
+        media = collect_media(
+            QuickFilterBar(presentation=_PRESENTATION, mode="games", apply_url="/games")
+        )
         self.assertIn("dist/elements/quick-filter-bar.js", media.js)
         self.assertIn("dist/elements/search-select.js", media.js)
         self.assertIn("dist/elements/drop-down.js", media.js)

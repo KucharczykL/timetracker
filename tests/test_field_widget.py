@@ -7,9 +7,29 @@ acceptance cases from the issue plus the dispatch, prefill, and guard behaviour.
 """
 
 import pytest
+from zoneinfo import ZoneInfo
 
-from common.components.filters import field_widget, field_widget_templates
+from common.components.filters import (
+    field_widget as _field_widget,
+    field_widget_templates as _field_widget_templates,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.filters import GameFilter, PurchaseFilter
+
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
+
+
+def field_widget(*args, **kwargs):
+    return _field_widget(*args, presentation=_PRESENTATION, **kwargs)
+
+
+def field_widget_templates(*args, **kwargs):
+    return _field_widget_templates(*args, presentation=_PRESENTATION, **kwargs)
 
 
 class TestFieldWidgetKindDispatch:

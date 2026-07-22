@@ -31,8 +31,8 @@ function pad2(value: number): string {
 
 /**
  * "DD/MM/YYYY HH:MM" for the start, plus " — HH:MM" when the session is
- * finished. Mirrors games.formatting.session_time_range (datetimeformat +
- * timeformat), formatted in the browser's local timezone.
+ * finished. Stage 6b will replace this browser-local implementation with the
+ * root document's date/time presentation contract.
  */
 function formatTimeRange(startISO: string, endISO: string | null): string {
   const start = new Date(startISO);

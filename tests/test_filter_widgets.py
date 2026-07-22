@@ -7,14 +7,22 @@ FilterGroup template emission, and the mode->list-URL table.
 
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from zoneinfo import ZoneInfo
 
 from common.components import (
     FilterBuilder,
     NumberFilter,
 )
 from common.components.custom_elements import FILTER_MODE_LIST_URLS, list_url_for
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input", "&lt;a"]
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 class NumberFilterRenderTest(TestCase):
@@ -209,7 +217,7 @@ class FilterGroupComparisonTest(TestCase):
     def test_models_prop_carries_every_reachable_model(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="game"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
         self.assertIn("models=", html)
         # Session's datetime pair — the field-comparison driving use case — reaches
         # the child-model bundle even though the root is game.
@@ -219,14 +227,14 @@ class FilterGroupComparisonTest(TestCase):
     def test_emits_model_namespaced_templates_for_each_reachable_model(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="game"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
         for key in ("game", "session", "purchase", "playevent", "platform", "device"):
             self.assertIn(f'data-model="{key}"', html)
 
     def test_emits_comparison_row_template_when_model_has_comparable_group(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
         self.assertIn("data-fc-row-template", html)
         # The reused single row's hooks reach the cloned template.
         self.assertIn("data-fc-left", html)
@@ -234,7 +242,7 @@ class FilterGroupComparisonTest(TestCase):
     def test_columns_prop_has_no_double_escaped_markup(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
         for marker in _ESCAPED_TAG_MARKERS:
             self.assertNotIn(marker, html)
 
@@ -244,7 +252,7 @@ class FilterGroupComparisonTest(TestCase):
         model-agnostic (emitted once, not per reachable model)."""
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="game"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
         for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
         self.assertEqual(html.count("data-relation-select-template"), 1)
@@ -252,7 +260,7 @@ class FilterGroupComparisonTest(TestCase):
     def test_nested_builder_templates_use_semantic_control_and_danger_tokens(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
         self.assertIn("rounded-base border border-default-medium", html)
         self.assertIn("bg-neutral-secondary-medium", html)
         self.assertIn("hover:bg-neutral-tertiary-medium", html)

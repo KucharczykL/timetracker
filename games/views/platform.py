@@ -15,8 +15,8 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
-from common.time import dateformat, local_strftime
 from common.utils import paginate
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
@@ -37,6 +37,7 @@ from games.views.general import use_custom_redirect
 
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     platforms = Platform.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -67,7 +68,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 platform.name,
                 Icon(platform.icon),
                 platform.group,
-                local_strftime(platform.created_at, dateformat),
+                presentation.format(platform.created_at, "date"),
                 ButtonGroup(
                     [
                         {
@@ -100,6 +101,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="platforms",
         existing=parsed_filter,
         preset_api_url=reverse("api-1.0.0:list_presets"),

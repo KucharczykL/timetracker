@@ -16,8 +16,8 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
-from common.time import dateformat, local_strftime
 from common.utils import paginate
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
@@ -37,6 +37,7 @@ from games.models import Device
 
 @login_required
 def list_devices(request: HttpRequest) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     devices = Device.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -65,7 +66,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             make_row(
                 device.name,
                 device.get_type_display(),
-                local_strftime(device.created_at, dateformat),
+                presentation.format(device.created_at, "date"),
                 ButtonGroup(
                     [
                         {
@@ -96,6 +97,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
+        presentation=presentation,
         mode="devices",
         existing=parsed_filter,
         preset_api_url=reverse("api-1.0.0:list_presets"),

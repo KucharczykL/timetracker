@@ -1,6 +1,7 @@
 """Rendering tests: stats page wires rows/counts to filtered-list links (#65)."""
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils.html import escape
@@ -8,10 +9,21 @@ from django.utils.html import escape
 from games.filters import filter_url
 from games.models import Game, Platform, PlayEvent, Purchase, Session
 from games.views import stats_links
-from games.views.stats_content import stats_content
+from games.views.stats_content import stats_content as _stats_content
 from games.views.stats_data import compute_stats
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 
 YEAR = 2024
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
+
+
+def stats_content(ctx):
+    return _stats_content(ctx, _PRESENTATION)
 
 
 def _dt(month, day, hour=12):

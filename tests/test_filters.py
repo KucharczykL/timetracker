@@ -785,10 +785,23 @@ class TestGameFilterToQ:
 
 
 def _games_bar(filter_json: str = "") -> str:
+    from zoneinfo import ZoneInfo
+
     from common.components import QuickFilterBar
+    from common.date_time_presentation import (
+        DEFAULT_DATE_TIME_FORMAT_PROFILE,
+        DateTimePresentation,
+    )
 
     return str(
-        QuickFilterBar(mode="games", filter_json=filter_json, apply_url="/games")
+        QuickFilterBar(
+            presentation=DateTimePresentation(
+                DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+            ),
+            mode="games",
+            filter_json=filter_json,
+            apply_url="/games",
+        )
     )
 
 

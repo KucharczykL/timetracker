@@ -5,14 +5,19 @@ serializer output must reload as editable, never flip to "advanced")."""
 import json
 import re
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
 
 from common.components import (
     QUICK_FACET_KINDS,
     QUICK_FACETS,
-    QuickFilterBar,
+    QuickFilterBar as _QuickFilterBar,
     is_quick_editable,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
 )
 from common.components.custom_elements import FILTER_MODE_MODELS, list_url_for
 from common.criteria import field_metadata
@@ -20,6 +25,13 @@ from games.filters import MODE_PARSERS, filter_for_model
 from games.views.filtering import BUILDER_MODES, builder_url_for
 
 _GAME_FACETS = {"status", "platform"}
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
+
+
+def QuickFilterBar(**kwargs):
+    return _QuickFilterBar(presentation=_PRESENTATION, **kwargs)
 
 
 class IsQuickEditableTest(SimpleTestCase):

@@ -5,7 +5,7 @@ and the nested builder render every leaf field through."""
 import json
 from typing import Literal, NamedTuple
 
-
+from common.date_time_presentation import DateTimePresentation
 from common.components.core import Node
 from common.components.date_range_picker import DateRangePanel, DateRangePicker
 from common.components.primitives import (
@@ -333,6 +333,7 @@ def field_widget(
     filter_cls: type[OperatorFilter],
     field_name: AttrName,
     *,
+    presentation: DateTimePresentation,
     value: dict | None = None,
     path: FilterWidgetPath | None = None,
     name_prefix: str | None = None,
@@ -410,6 +411,7 @@ def field_widget(
         bounds = _range_from_field(blob)
         date_builder = DateRangePanel if layout == "panel" else DateRangePicker
         return date_builder(
+            presentation=presentation,
             label=label if label is not None else meta["label"],
             input_name_prefix=prefix,
             min_value=bounds.min,
@@ -458,6 +460,7 @@ def field_widget(
 def field_widget_templates(
     filter_cls: type[OperatorFilter],
     *,
+    presentation: DateTimePresentation,
     model: str = "",
 ) -> dict[AttrName, Node]:
     """One blank value-widget ``<template>`` per non-relation leaf field, keyed by
@@ -466,7 +469,7 @@ def field_widget_templates(
     builder (#193) can bucket templates by the model whose child group they belong to."""
     return {
         meta["name"]: Template(_model_attr(model), data_field=meta["name"])[
-            field_widget(filter_cls, meta["name"])
+            field_widget(filter_cls, meta["name"], presentation=presentation)
         ]
         for meta in field_metadata(filter_cls)
         if meta["kind"] != "relation"

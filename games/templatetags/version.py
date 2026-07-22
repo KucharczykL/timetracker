@@ -1,5 +1,6 @@
 import os
-import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 from django import template
 from django.conf import settings
@@ -7,15 +8,12 @@ from django.conf import settings
 register = template.Library()
 
 
-@register.simple_tag
-def version_date():
-    return time.strftime(
-        "%d-%b-%Y %H:%m",
-        time.gmtime(
-            os.path.getmtime(
-                os.path.abspath(os.path.join(settings.BASE_DIR, "pyproject.toml"))
-            )
-        ),
+def version_modified_at() -> datetime:
+    """Return the version source's modification instant as aware UTC."""
+
+    return datetime.fromtimestamp(
+        (Path(settings.BASE_DIR) / "pyproject.toml").stat().st_mtime,
+        tz=UTC,
     )
 
 

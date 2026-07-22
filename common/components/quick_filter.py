@@ -23,6 +23,7 @@ next apply, and Clear always discards the *whole* filter.
 from collections.abc import Collection
 from typing import NamedTuple
 
+from common.date_time_presentation import DateTimePresentation
 from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
@@ -203,6 +204,7 @@ class QuickFilterBar(BaseComponent):
     def __init__(
         self,
         *,
+        presentation: DateTimePresentation,
         mode: FilterMode,
         filter_json: str = "",
         builder_url: str = "",
@@ -211,6 +213,7 @@ class QuickFilterBar(BaseComponent):
         preset_api_url: str = "",
         per_page_override: int | None = None,
     ) -> None:
+        self.presentation = presentation
         self.mode = mode
         self.builder_url = builder_url
         self.apply_url = apply_url
@@ -286,6 +289,7 @@ class QuickFilterBar(BaseComponent):
             content=field_widget(
                 filter_cls,
                 facet.field,
+                presentation=self.presentation,
                 value=self.existing.get(facet.field),
                 # The quick- name prefix keeps scalar-widget input names (and
                 # the date picker's hidden-input DOM ids) unique and stable.

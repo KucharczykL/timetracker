@@ -16,10 +16,16 @@ from django.test import override_settings
 from django.urls import path
 
 from common.components import QuickFilterBar
+from common.date_time_presentation import date_time_presentation_for_request
 
 
-def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
-    bar = QuickFilterBar(mode="games", filter_json=filter_json, apply_url=apply_url)
+def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
+    bar = QuickFilterBar(
+        mode="games",
+        filter_json=filter_json,
+        apply_url=apply_url,
+        presentation=presentation,
+    )
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -37,7 +43,9 @@ def _bar_page(filter_json: str = "", apply_url: str = "") -> str:
 
 
 def empty_bar_view(request):
-    return HttpResponse(_bar_page(apply_url=request.path))
+    return HttpResponse(
+        _bar_page(date_time_presentation_for_request(request), apply_url=request.path)
+    )
 
 
 urlpatterns = [

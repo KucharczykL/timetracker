@@ -36,7 +36,7 @@ from common.components.primitives import (
     Span,
     Title,
 )
-from games.templatetags.version import version, version_date
+from games.templatetags.version import version, version_modified_at
 from timetracker.config import SettingSource
 from timetracker.settings_registry import THEME_CHOICES
 from timetracker.settings_resolver import (
@@ -512,8 +512,10 @@ def TimetrackerDocument(
     that isn't owned by a reusable component (e.g. the add-form helpers).
     """
     from common.components import Media, ModuleScript, StaticScript, collect_media
+    from common.date_time_presentation import date_time_presentation_for_request
     from games.views.general import global_current_year, model_counts
 
+    date_time_presentation = date_time_presentation_for_request(request)
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
     csrf_token = get_token(request)
@@ -565,7 +567,10 @@ def TimetrackerDocument(
             # Deliberately faint decorative build stamp; fg-disabled is the
             # dimmest token (one shade brighter than the old slate-300 in light).
             class_="fixed left-2 bottom-2 text-type-micro text-fg-disabled"
-        )[f"{version()} ({version_date()})"]
+        )[
+            f"{version()} "
+            f"({date_time_presentation.format(version_modified_at(), 'datetime')})"
+        ]
 
         script_body = Safe(all_scripts)
         global_modal_container = Div(id="global-modal-container", hx_swap_oob="true")
@@ -575,6 +580,13 @@ def TimetrackerDocument(
         ]
         theme_attributes = [
             ("lang", "en"),
+            (
+                "data-date-time-presentation",
+                json.dumps(
+                    date_time_presentation.to_client_config(),
+                    separators=(",", ":"),
+                ),
+            ),
             (
                 "data-theme-mode",
                 "account" if request.user.is_authenticated else "browser",
