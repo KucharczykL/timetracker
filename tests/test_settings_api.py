@@ -230,25 +230,17 @@ def test_user_page_size_round_trips_as_int(auth_client):
     assert _page_size(auth_client.get(_user_url()).json())["value"] == 50
 
 
-def test_user_theme_patch_sets_account_cookie_and_clears_migration_marker(
-    auth_client,
-):
-    auth_client.cookies["color-theme-migrate"] = "1"
-
+def test_user_theme_patch_persists_without_browser_cookies(auth_client):
     response = _patch(auth_client, _user_patch_url("THEME"), "dark")
 
     assert response.status_code == 200
     assert response.json()["value"] == "dark"
     assert _theme(auth_client.get(_user_url()).json())["value"] == "dark"
-    assert response.cookies["color-theme"].value == "dark"
-    assert response.cookies["color-theme"]["path"] == "/"
-    assert response.cookies["color-theme"]["samesite"] == "Lax"
-    assert response.cookies["color-theme"]["max-age"] == 31_536_000
-    assert not response.cookies["color-theme"]["httponly"]
-    assert response.cookies["color-theme-migrate"]["max-age"] == 0
+    assert "color-theme" not in response.cookies
+    assert "color-theme-migrate" not in response.cookies
 
 
-@pytest.mark.parametrize("bad", ["sepia", "Dark", "", 1, True])
+@pytest.mark.parametrize("bad", ["auto", "sepia", "Dark", "", 1, True])
 def test_user_theme_patch_rejects_invalid_preferences(auth_client, bad):
     response = _patch(auth_client, _user_patch_url("THEME"), bad)
 
@@ -256,11 +248,24 @@ def test_user_theme_patch_rejects_invalid_preferences(auth_client, bad):
     assert "color-theme" not in response.cookies
 
 
-def test_unrelated_user_patch_does_not_write_theme_cookies(
-    auth_client, no_currency_env
-):
-    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+def test_user_theme_null_durably_clears_to_site_default(auth_client):
+    from games.models import SiteSetting, UserPreferences
+    from timetracker import settings_resolver
 
+    SiteSetting.objects.create(key="THEME", value="dark")
+    settings_resolver.clear_cache()
+    assert _patch(auth_client, _user_patch_url("THEME"), "light").status_code == 200
+
+    response = _patch(auth_client, _user_patch_url("THEME"), None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "THEME",
+        "value": "dark",
+        "source": "database",
+        "locked": False,
+    }
+    assert UserPreferences.objects.get(user__username="tester").theme is None
     assert "color-theme" not in response.cookies
     assert "color-theme-migrate" not in response.cookies
 

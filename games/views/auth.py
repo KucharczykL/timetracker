@@ -17,7 +17,6 @@ from common.components import (
 from common.layout import render_page
 from games.dev_login import prefill_credentials
 from games.forms import LoginForm
-from timetracker.theme import write_login_theme_cookies
 
 
 def _login_content(form, request) -> Node:
@@ -48,11 +47,6 @@ class LoginView(auth_views.LoginView):
         if credentials:
             initial["username"], initial["password"] = credentials
         return initial
-
-    def form_valid(self, form) -> HttpResponse:
-        response = super().form_valid(form)
-        write_login_theme_cookies(response, self.request.user)
-        return response
 
     def render_to_response(self, context, **response_kwargs) -> HttpResponse:
         response = render_page(
