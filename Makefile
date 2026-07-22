@@ -81,7 +81,7 @@ ts-check: gen-element-types
 # Vitest consumes generated modules, and the classic bootstrap tests inspect its
 # emitted script, so a clean checkout needs the complete TypeScript build first.
 test-ts: ts
-	pnpm exec vitest run
+	pnpm test:ts
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
 dev: ensure-python gen-element-types

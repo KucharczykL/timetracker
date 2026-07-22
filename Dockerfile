@@ -22,13 +22,14 @@ RUN uv run python manage.py gen_element_types
 
 # Front-end assets: Tailwind CSS + the TypeScript custom elements. Built here so
 # the compiled output ships in the image (dist/ is build-only, not committed).
-FROM node:22-bookworm-slim AS assets
+FROM node:26-bookworm-slim AS assets
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# Corepack ships with Node and activates the pnpm version pinned in
-# package.json's "packageManager" field — no npm bootstrap needed.
-RUN corepack enable && pnpm install --frozen-lockfile --ignore-scripts
+# Node 26 no longer bundles Corepack, so install the version pinned in
+# package.json's "packageManager" field explicitly.
+RUN npm install --global pnpm@10.33.0 \
+    && pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 COPY --from=builder /home/timetracker/app/ts/generated ./ts/generated
 RUN pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css \
