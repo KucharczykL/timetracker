@@ -9,8 +9,12 @@ def test_login_layout_uses_isolated_prepaint_bootstrap_and_theme_component(db):
     assert html.index('id="theme-bootstrap"') < html.index('href="/static/base.css"')
     assert "<theme-toggle" in html
     assert 'data-theme-icon="auto"' in html
+    assert "data-theme-auto-half" in html
     assert 'data-theme-icon="light"' in html
     assert 'data-theme-icon="dark"' in html
+    assert "<pop-over" in html
+    assert 'role="tooltip"' in html
+    assert "data-theme-tooltip" in html
     assert "dist/elements/theme-toggle.js" in html
 
 
