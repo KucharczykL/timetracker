@@ -83,6 +83,32 @@ def test_invalid_browser_theme_falls_back_to_operating_system(live_server, page:
     assert _first_frame(page) == {"preference": "auto", "dark": True}
 
 
+def test_navbar_toggle_swaps_visible_icon_and_shows_tooltip(live_server, page: Page):
+    page.emulate_media(color_scheme="light")
+    page.goto(f"{live_server.url}{reverse('login')}")
+    toggle = page.locator("theme-toggle [data-pop-over-trigger]")
+
+    expect(toggle.locator('[data-theme-icon="auto"]')).to_be_visible()
+    toggle.click()
+
+    expect(toggle.locator('[data-theme-icon="auto"]')).to_be_hidden()
+    expect(toggle.locator('[data-theme-icon="light"]')).to_be_visible()
+    toggle.hover()
+    tooltip = page.locator("[data-theme-tooltip]")
+    expect(tooltip).to_be_visible()
+    expect(tooltip).to_have_text("Theme: Light — switch to Dark")
+
+    toggle.click()
+    expect(toggle.locator('[data-theme-icon="light"]')).to_be_hidden()
+    expect(toggle.locator('[data-theme-icon="dark"]')).to_be_visible()
+    expect(tooltip).to_have_text("Theme: Dark — switch to Auto")
+
+    toggle.click()
+    expect(toggle.locator('[data-theme-icon="dark"]')).to_be_hidden()
+    expect(toggle.locator('[data-theme-icon="auto"]')).to_be_visible()
+    expect(tooltip).to_have_text("Theme: Auto — switch to Light")
+
+
 def test_fresh_browser_gets_saved_account_theme_before_redirect_paints(
     live_server, page: Page, django_user_model
 ):
@@ -145,7 +171,7 @@ def test_settings_and_navbar_share_three_state_theme_controller(
     expect(page.locator("html")).to_have_class("dark")
     assert page.evaluate("localStorage.getItem('color-theme')") == "dark"
 
-    toggle = page.locator("[data-theme-toggle]")
+    toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     expect(toggle).to_have_attribute("aria-label", "Theme: Dark — switch to Auto")
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url

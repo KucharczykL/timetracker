@@ -31,6 +31,7 @@ class ThemeToggleElement extends HTMLElement {
   private csrf = "";
   private cookieSecure = false;
   private button: HTMLButtonElement | null = null;
+  private tooltip: HTMLElement | null = null;
   private theme: ThemePreference = "auto";
   private saving = false;
   private readonly media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -40,7 +41,8 @@ class ThemeToggleElement extends HTMLElement {
     this.apiUrl = props.apiUrl;
     this.csrf = props.csrf;
     this.cookieSecure = props.cookieSecure;
-    this.button = this.querySelector<HTMLButtonElement>("[data-theme-toggle]");
+    this.button = this.querySelector<HTMLButtonElement>("[data-pop-over-trigger]");
+    this.tooltip = this.querySelector<HTMLElement>("[data-theme-tooltip]");
     const initial = document.documentElement.dataset.themePreference;
     this.theme = isThemePreference(initial) ? initial : "auto";
     this.apply(this.theme);
@@ -97,13 +99,13 @@ class ThemeToggleElement extends HTMLElement {
     this.theme = theme;
     document.documentElement.dataset.themePreference = theme;
     this.applyEffectiveClass();
-    this.querySelectorAll<HTMLElement>("[data-theme-icon]").forEach((icon) => {
-      icon.hidden = icon.dataset.themeIcon !== theme;
+    this.querySelectorAll<SVGElement>("[data-theme-icon]").forEach((icon) => {
+      icon.toggleAttribute("hidden", icon.dataset.themeIcon !== theme);
     });
     const next = nextTheme(theme);
     const description = `Theme: ${label(theme)} — switch to ${label(next)}`;
     this.button?.setAttribute("aria-label", description);
-    this.button?.setAttribute("title", description);
+    if (this.tooltip) this.tooltip.textContent = description;
   }
 
   private applyEffectiveClass(): void {

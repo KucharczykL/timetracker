@@ -1,15 +1,16 @@
 """Server-rendered host and icons for the account-aware theme controller."""
 
 from common.components.core import Media, Node, Safe
-from common.components.primitives import Button, custom_element_builder
+from common.components.primitives import Popover, Span, custom_element_builder
 
 _ThemeToggle = custom_element_builder("theme-toggle")
 
 _THEME_ICONS = """
 <svg data-theme-icon="auto" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="2" aria-hidden="true">
-  <rect x="3" y="4" width="18" height="13" rx="2"/>
-  <path d="M8 21h8M12 17v4"/>
+  <circle cx="12" cy="12" r="8"/>
+  <path data-theme-auto-half d="M12 4a8 8 0 0 0 0 16V4Z"
+        fill="currentColor" stroke="none"/>
 </svg>
 <svg data-theme-icon="light" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="2" aria-hidden="true" hidden>
@@ -31,15 +32,16 @@ def ThemeToggle(*, api_url: str, csrf: str, cookie_secure: bool) -> Node:
         cookie_secure=cookie_secure,
         class_="block",
     )[
-        Button(
-            type="button",
-            data_theme_toggle="",
-            title=label,
-            aria_label=label,
-            class_="p-2 text-body-subtle hover:bg-neutral-tertiary-medium "
-            "focus:outline-hidden focus:ring-4 focus:ring-neutral-tertiary-medium "
-            "rounded-base text-type-body hover:cursor-pointer",
-        )[Safe(_THEME_ICONS)]
+        Popover(
+            popover_content=Span(data_theme_tooltip="")[label],
+            children=[Safe(_THEME_ICONS)],
+            id="theme-toggle-tooltip",
+            trigger_label=label,
+            wrapped_classes="p-2 text-body-subtle "
+            "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 "
+            "focus:ring-neutral-tertiary-medium rounded-base text-type-body "
+            "hover:cursor-pointer",
+        )
     ].with_media(Media(js=("dist/elements/theme-toggle.js",)))
 
 

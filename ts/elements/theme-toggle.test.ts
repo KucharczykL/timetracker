@@ -13,11 +13,16 @@ function mount(apiUrl = "", theme = "auto", migrating = false): HTMLElement {
   if (migrating) document.documentElement.dataset.themeMigration = "true";
   document.body.innerHTML = `
     <theme-toggle api-url="${apiUrl}" csrf="token" cookie-secure="false">
-      <button type="button" data-theme-toggle>
-        <span data-theme-icon="auto"></span>
-        <span data-theme-icon="light" hidden></span>
-        <span data-theme-icon="dark" hidden></span>
+      <pop-over tap="true">
+      <button type="button" data-pop-over-trigger aria-describedby="theme-tooltip">
+        <svg data-theme-icon="auto"></svg>
+        <svg data-theme-icon="light" hidden></svg>
+        <svg data-theme-icon="dark" hidden></svg>
       </button>
+      <div data-pop-over-panel id="theme-tooltip" role="tooltip" hidden>
+        <span data-theme-tooltip>Theme: Auto — switch to Light</span>
+      </div>
+      </pop-over>
     </theme-toggle>`;
   return document.querySelector("theme-toggle")!;
 }
@@ -63,7 +68,7 @@ describe("nextTheme", () => {
 describe("<theme-toggle>", () => {
   it("persists anonymous cycles in localStorage and the readable cookie", () => {
     const host = mount();
-    const button = host.querySelector<HTMLButtonElement>("[data-theme-toggle]")!;
+    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
 
     button.click();
 
@@ -72,7 +77,33 @@ describe("<theme-toggle>", () => {
     expect(localStorage.getItem("color-theme")).toBe("light");
     expect(document.cookie).toContain("color-theme=light");
     expect(button.getAttribute("aria-label")).toBe("Theme: Light — switch to Dark");
-    expect(button.getAttribute("title")).toBe("Theme: Light — switch to Dark");
+    expect(host.querySelector("[data-theme-tooltip]")?.textContent).toBe(
+      "Theme: Light — switch to Dark",
+    );
+  });
+
+  it("shows only the SVG icon for the current state", () => {
+    const host = mount();
+    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
+    const auto = host.querySelector('[data-theme-icon="auto"]')!;
+    const light = host.querySelector('[data-theme-icon="light"]')!;
+    const dark = host.querySelector('[data-theme-icon="dark"]')!;
+
+    button.click();
+
+    expect(auto.hasAttribute("hidden")).toBe(true);
+    expect(light.hasAttribute("hidden")).toBe(false);
+    expect(dark.hasAttribute("hidden")).toBe(true);
+
+    button.click();
+    expect(auto.hasAttribute("hidden")).toBe(true);
+    expect(light.hasAttribute("hidden")).toBe(true);
+    expect(dark.hasAttribute("hidden")).toBe(false);
+
+    button.click();
+    expect(auto.hasAttribute("hidden")).toBe(false);
+    expect(light.hasAttribute("hidden")).toBe(true);
+    expect(dark.hasAttribute("hidden")).toBe(true);
   });
 
   it("reacts to operating-system changes while preference is auto", () => {
@@ -89,7 +120,7 @@ describe("<theme-toggle>", () => {
       status: 500,
     } as Response);
     const host = mount("/api/settings/user/THEME", "dark");
-    const button = host.querySelector<HTMLButtonElement>("[data-theme-toggle]")!;
+    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
 
     button.click();
 
