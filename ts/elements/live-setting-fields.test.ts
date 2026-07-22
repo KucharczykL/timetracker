@@ -1,22 +1,24 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SETTING_COMMITTED_EVENT } from "../settings-events.js";
 import { settingPayloadValue } from "./live-setting-fields.js";
 import "./live-setting-fields.js";
+import "./setting-source-badge.js";
 
 function mountFields(): HTMLElement {
   document.body.innerHTML = `
     <live-setting-fields patch-url-template="/api/settings/user/__key__"
-        csrf="token" event="setting-saved">
-      <input data-setting-key="ENABLED" name="enabled" type="checkbox">
-      <select data-setting-key="DESTINATION" name="destination">
+        csrf="token">
+      <input data-setting-key="ENABLED" data-live-setting-control name="enabled" type="checkbox">
+      <select data-setting-key="DESTINATION" data-live-setting-control name="destination">
         <option value="">Unset</option><option value="stats">Statistics</option>
         <option value="sessions">Sessions</option>
       </select>
-      <pop-over>
+      <setting-source-badge key="DESTINATION"><pop-over>
         <button data-pop-over-trigger aria-label="Default source">
           <span data-setting-origin="default"
-              data-setting-source-key="DESTINATION"
-              class="bg-neutral-quaternary text-heading">Default</span>
+              class="bg-neutral-quaternary text-heading"><span
+              data-setting-source-label>Default</span></span>
         </button>
         <div data-pop-over-panel>
           <dl><div data-setting-source-description><dt>Source</dt>
@@ -26,10 +28,11 @@ function mountFields(): HTMLElement {
               <dd>Non-default source (default source: “Default”)</dd>
             </div></dl>
         </div>
-      </pop-over>
-      <input data-setting-key="LIMIT" name="limit" type="number" value="10">
-      <input data-setting-key="NAME" name="name" type="text" value="Before">
-      <input data-setting-key="LOCKED" name="locked" value="Pinned" disabled>
+      </pop-over></setting-source-badge>
+      <input data-setting-key="LIMIT" data-live-setting-control name="limit" type="number" value="10">
+      <input data-setting-key="NAME" data-live-setting-control name="name" type="text" value="Before">
+      <input data-setting-key="IDENTITY_ONLY" name="identity-only" value="Not owned">
+      <input data-setting-key="LOCKED" data-live-setting-control name="locked" value="Pinned" disabled>
     </live-setting-fields>`;
   return document.querySelector("live-setting-fields")!;
 }
@@ -87,13 +90,23 @@ describe("settingPayloadValue", () => {
 });
 
 describe("<live-setting-fields>", () => {
-  it("PATCHes the changed key and dispatches the configured success event", async () => {
-    const fetchStub = vi.fn().mockResolvedValue({ ok: true, status: 204 } as Response);
+  it("PATCHes the changed key and dispatches the complete committed response", async () => {
+    const resolved = {
+      key: "NAME",
+      value: "After",
+      source: "user",
+      locked: false,
+    };
+    const fetchStub = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => resolved,
+    } as Response);
     window.fetchWithHtmxTriggers = fetchStub;
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
     const saved = vi.fn();
-    document.body.addEventListener("setting-saved", saved);
+    document.body.addEventListener(SETTING_COMMITTED_EVENT, saved);
     input.value = "After";
     change(input);
 
@@ -107,7 +120,39 @@ describe("<live-setting-fields>", () => {
     });
     expect(JSON.parse(String(options.body))).toEqual({ value: "After" });
     await vi.waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+    expect(saved.mock.calls[0][0]).toMatchObject({ detail: resolved });
     expect(input.hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("ignores setting identity without the positive live-save marker", async () => {
+    const fetchStub = vi.fn();
+    window.fetchWithHtmxTriggers = fetchStub;
+    const host = mountFields();
+
+    change(host.querySelector<HTMLInputElement>('[name="identity-only"]')!);
+    await Promise.resolve();
+
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed successful response and restores the committed value", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ key: "NAME", value: "After" }),
+    } as Response);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+    input.value = "After";
+
+    change(input);
+
+    await vi.waitFor(() => expect(input.value).toBe("Before"));
+    expect(window.toast).toHaveBeenCalledWith(
+      "Couldn't save your change — please try again.",
+      "error",
+    );
   });
 
   it("updates source metadata from each resolved PATCH response", async () => {
@@ -146,7 +191,8 @@ describe("<live-setting-fields>", () => {
     window.fetchWithHtmxTriggers = fetchStub;
     const host = mountFields();
     const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
-    const badge = host.querySelector<HTMLElement>("[data-setting-source-key]")!;
+    const badge = host.querySelector<HTMLElement>("[data-setting-origin]")!;
+    const label = badge.querySelector<HTMLElement>("[data-setting-source-label]")!;
     const trigger = badge.closest("pop-over")!.querySelector("[data-pop-over-trigger]")!;
     const description = badge.closest("pop-over")!
       .querySelector<HTMLElement>("[data-setting-source-description] dd")!;
@@ -159,7 +205,7 @@ describe("<live-setting-fields>", () => {
 
     select.value = "stats";
     change(select);
-    await vi.waitFor(() => expect(badge.textContent).toBe("Personal"));
+    await vi.waitFor(() => expect(label.textContent).toBe("Personal"));
     expect(badge.dataset.settingOrigin).toBe("user");
     expect(badge.classList.contains("bg-brand-soft")).toBe(true);
     expect(badge.classList.contains("bg-neutral-quaternary")).toBe(false);
@@ -171,7 +217,7 @@ describe("<live-setting-fields>", () => {
 
     select.value = "";
     change(select);
-    await vi.waitFor(() => expect(badge.textContent).toBe("Database"));
+    await vi.waitFor(() => expect(label.textContent).toBe("Database"));
     expect(badge.dataset.settingOrigin).toBe("database");
     expect(trigger.getAttribute("aria-label")).toBe("Database source");
     expect(description.textContent).toBe(
@@ -180,7 +226,7 @@ describe("<live-setting-fields>", () => {
 
     select.value = "stats";
     change(select);
-    await vi.waitFor(() => expect(badge.textContent).toBe("Default"));
+    await vi.waitFor(() => expect(label.textContent).toBe("Default"));
     expect(badge.dataset.settingOrigin).toBe("default");
     expect(trigger.getAttribute("aria-label")).toBe("Default source");
     expect(description.textContent).toBe(
@@ -332,7 +378,16 @@ describe("<live-setting-fields>", () => {
     expect(input.value).toBe("Latest");
     expect(input.getAttribute("aria-busy")).toBe("true");
 
-    second.resolve({ ok: true, status: 204 } as Response);
+    second.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "Latest",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
     await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
     expect(input.value).toBe("Latest");
   });
@@ -360,7 +415,16 @@ describe("<live-setting-fields>", () => {
     expect(input.value).toBe("Newer value");
     expect(window.toast).not.toHaveBeenCalled();
 
-    second.resolve({ ok: true, status: 204 } as Response);
+    second.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "Newer value",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
     await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
     expect(input.value).toBe("Newer value");
   });
@@ -391,7 +455,15 @@ describe("<live-setting-fields>", () => {
   });
 
   it("sends native boolean, null, and numeric JSON values", async () => {
-    const fetchStub = vi.fn().mockResolvedValue({ ok: true, status: 204 } as Response);
+    const fetchStub = vi.fn((url: string, options: RequestInit) => {
+      const key = url.split("/").pop()!;
+      const value = JSON.parse(String(options.body)).value;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ key, value, source: "user", locked: false }),
+      } as Response);
+    });
     window.fetchWithHtmxTriggers = fetchStub;
     const host = mountFields();
     const checkbox = host.querySelector<HTMLInputElement>('[name="enabled"]')!;

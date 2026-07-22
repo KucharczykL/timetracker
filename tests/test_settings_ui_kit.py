@@ -403,11 +403,12 @@ class LiveAndSecretComponentTest(SimpleTestCase):
         assert html.startswith("<live-setting-fields")
         assert 'patch-url-template="/api/settings/user/__key__"' in html
         assert 'csrf="csrf-token"' in html
-        assert 'event="setting-saved"' in html
-        assert 'data-setting-source-key="DISPLAY_NAME"' in html
+        assert " event=" not in html
+        assert '<setting-source-badge key="DISPLAY_NAME">' in html
         assert 'data-settings-field-layout="1"' in html
         assert "w-full max-w-xl" in html
         assert "dist/elements/live-setting-fields.js" in collect_media(node).js
+        assert "dist/elements/setting-source-badge.js" in collect_media(node).js
 
     def test_live_wrapper_requires_a_key_placeholder(self):
         with pytest.raises(ValueError, match="__key__"):

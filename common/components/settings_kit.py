@@ -38,6 +38,7 @@ from common.components.primitives import (
 
 _SettingsSectionNav = custom_element_builder("settings-section-nav")
 _LiveSettingFields = custom_element_builder("live-setting-fields")
+_SettingSourceBadge = custom_element_builder("setting-source-badge")
 
 _SECTION_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 type SettingsFieldColumns = Literal[1, 2, 3]
@@ -292,9 +293,7 @@ def SettingSourceBadge(
     source_value = str(source)
     label = _SOURCE_LABELS.get(source_value, source_value.replace("_", " ").title())
     attributes: list[tuple[str, str]] = [("data-setting-origin", source_value)]
-    if setting_key:
-        attributes.append(("data-setting-source-key", setting_key))
-    content: Node | str = label
+    content: Node | str = Span(data_setting_source_label="")[label]
     if locked:
         attributes.extend(
             [
@@ -307,7 +306,7 @@ def SettingSourceBadge(
                 [("aria-hidden", "true"), ("class", "shrink-0")],
                 size="size-3",
             ),
-            label,
+            Span(data_setting_source_label="")[label],
         )
     badge = Badge(
         content,
@@ -348,7 +347,7 @@ def SettingSourceBadge(
             "so this field cannot be edited here."
         )
         tooltip_definitions.append(TooltipDefinition("Locked", lock_reason))
-    return Popover(
+    popover = Popover(
         popover_content=TooltipDefinitionList(
             tooltip_definitions,
             class_="max-w-sm",
@@ -361,6 +360,7 @@ def SettingSourceBadge(
             "focus:ring-2 focus:ring-fg-brand"
         ),
     )
+    return _SettingSourceBadge(key=setting_key)[popover]
 
 
 def _lock_reason(state: SettingFieldState) -> str:
@@ -448,7 +448,6 @@ def LiveSettingFields(
     patch_url_template: str,
     csrf: str,
     groups: Sequence[FormFieldGroup] | None = None,
-    event: str = "setting-saved",
 ) -> Node:
     """Render existing ``FormFields`` inside the optimistic live-save host."""
     if "__key__" not in patch_url_template:
@@ -457,7 +456,6 @@ def LiveSettingFields(
     return _LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
-        event=event,
         class_="block w-full @container",
     )[
         SettingsFieldLayout(1)[
