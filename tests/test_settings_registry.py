@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from django.core.exceptions import ValidationError
 
+from games.models import UserPreferences
 from timetracker import settings_registry
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
@@ -96,12 +97,30 @@ def test_currency_validator_normalizes():
 def test_theme_validator_accepts_only_supported_preferences():
     validator = get_definition("THEME").validator
     assert validator is not None
-    assert validator("auto") == "auto"
+    assert validator("system") == "system"
     assert validator("light") == "light"
     assert validator("dark") == "dark"
 
     with pytest.raises(ValidationError):
         validator("sepia")
+    with pytest.raises(ValidationError):
+        validator("auto")
+
+
+def test_theme_choices_use_the_final_shared_vocabulary():
+    assert settings_registry.THEME_CHOICES == (
+        ("system", "System"),
+        ("light", "Light"),
+        ("dark", "Dark"),
+    )
+    assert get_definition("THEME").default_factory() == "system"
+
+
+def test_theme_model_field_fits_the_longest_preference():
+    field = UserPreferences._meta.get_field("theme")
+
+    assert field.max_length == 6
+    assert tuple(field.choices) == settings_registry.THEME_CHOICES
 
 
 @pytest.mark.parametrize("bad", ["EU", "EURO", "12$", "e1r", ""])

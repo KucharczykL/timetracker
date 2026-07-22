@@ -10,7 +10,11 @@ from django.core.management.base import BaseCommand
 import common.components  # noqa: F401
 import common.criteria
 from common.components.custom_elements import render_props_module
-from common.components.ts_codegen import TsConstant, render_filter_metadata_module
+from common.components.ts_codegen import (
+    TsConstant,
+    render_choice_vocabulary,
+    render_filter_metadata_module,
+)
 from common.criteria import (
     SPACE_GROUPS,
     ComparableColumn,
@@ -18,6 +22,7 @@ from common.criteria import (
     Modifier,
     ModifierToken,
 )
+from timetracker.settings_registry import THEME_CHOICES
 
 
 class Command(BaseCommand):
@@ -48,6 +53,12 @@ class Command(BaseCommand):
             output_dir / "props.ts": render_props_module(),
             output_dir / "filter-metadata.ts": render_filter_metadata_module(
                 [FieldMeta, ComparableColumn], constants=filter_constants
+            ),
+            output_dir / "theme-preferences.ts": render_choice_vocabulary(
+                type_name="ThemePreference",
+                values_name="THEME_PREFERENCES",
+                labels_name="THEME_LABELS",
+                choices=THEME_CHOICES,
             ),
         }
         for target, content in targets.items():

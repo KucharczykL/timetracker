@@ -589,7 +589,7 @@ class UserPreferences(models.Model):
         max_length=100, null=True, blank=True, default=None
     )
     theme = models.CharField(
-        max_length=5,
+        max_length=6,
         choices=THEME_CHOICES,
         null=True,
         blank=True,

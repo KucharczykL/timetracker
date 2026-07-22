@@ -39,7 +39,7 @@ _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
 DEFAULT_PAGE_SIZE: Final[int] = 25
 PAGE_SIZE_CHOICES: Final[tuple[int, ...]] = (10, 25, 50, 100, 500, 1000)
 THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
-    ("auto", "System (auto)"),
+    ("system", "System"),
     ("light", "Light"),
     ("dark", "Dark"),
 )
@@ -139,7 +139,7 @@ def _validate_page_size(value: object) -> int:
 def _validate_theme(value: object) -> str:
     if not isinstance(value, str) or value not in _THEME_VALUES:
         raise ValidationError(
-            f"Theme must be one of auto, light, dark (got {value!r})."
+            f"Theme must be one of system, light, dark (got {value!r})."
         )
     return value
 
@@ -197,7 +197,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             apply_timing=ApplyTiming.LIVE,
             label="Theme",
             help_text="Color theme used across browsers signed in to this account.",
-            default_factory=lambda: "auto",
+            default_factory=lambda: "system",
             validator=_validate_theme,
             widget="select",
         ),
