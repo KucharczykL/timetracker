@@ -579,7 +579,7 @@ def TimetrackerDocument(
             _main_script(mastered)
         ]
         theme_attributes = [
-            ("lang", "en"),
+            ("lang", date_time_presentation.locale),
             (
                 "data-date-time-presentation",
                 json.dumps(

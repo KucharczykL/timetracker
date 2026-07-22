@@ -1,12 +1,14 @@
 from datetime import UTC, date, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 import re
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import timezone, translation
 
+import common.layout
 from common import date_time_presentation as presentation_module
 from common.date_time_presentation import (
     DatePartSpec,
@@ -23,6 +25,40 @@ from games.models import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _TitleParser(HTMLParser):
+    title = ""
+    _in_title = False
+    _document_title_seen = False
+
+    def handle_starttag(self, tag, attrs) -> None:
+        if tag == "title" and not self._document_title_seen:
+            self._in_title = True
+            self._document_title_seen = True
+
+    def handle_endtag(self, tag) -> None:
+        if tag == "title":
+            self._in_title = False
+
+    def handle_data(self, data) -> None:
+        if self._in_title:
+            self.title += data
+
+
+class _DatePartParser(HTMLParser):
+    parts: list[str]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs) -> None:
+        if tag != "input":
+            return
+        attributes = dict(attrs)
+        if part := attributes.get("data-date-part"):
+            self.parts.append(part)
 
 
 ALTERNATE_PROFILE = DateTimeFormatProfile(
@@ -47,6 +83,11 @@ def test_non_default_presentation_reaches_every_server_display_path(
         presentation_module,
         "DEFAULT_DATE_TIME_FORMAT_PROFILE",
         ALTERNATE_PROFILE,
+    )
+    monkeypatch.setattr(
+        common.layout,
+        "version_modified_at",
+        lambda: datetime(2022, 7, 22, 12, 5, tzinfo=UTC),
     )
     user = django_user_model.objects.create_user(username="dates", password="pw")
     client.force_login(user)
@@ -91,21 +132,58 @@ def test_non_default_presentation_reaches_every_server_display_path(
         model.objects.filter(pk=pk).update(created_at=value)
 
     expected_by_route = {
-        reverse("games:list_games"): "2022.01.10",
-        reverse("games:list_platforms"): "2022.02.10",
-        reverse("games:list_devices"): "2022.03.10",
-        reverse("games:list_purchases"): "2022.04.10",
-        reverse("games:list_sessions"): "2022.26.09 @ 12h58",
-        reverse("games:list_playevents"): "2022.24.09",
-        reverse("games:list_statuschanges"): "2022.23.09",
-        reverse("games:view_purchase", args=[purchase.pk]): "Owned on 2022.26.09",
-        reverse("games:stats_alltime"): "2022.26.09",
+        reverse("games:list_games"): ("2022.01.10",),
+        reverse("games:list_platforms"): ("2022.02.10",),
+        reverse("games:list_devices"): ("2022.03.10",),
+        reverse("games:list_purchases"): (
+            "2022.26.09",
+            "2022.25.09",
+            "2022.27.09",
+            "2022.04.10",
+            'data-date-part="year"',
+            "·",
+        ),
+        reverse("games:list_sessions"): (
+            "2022.26.09 @ 12h58",
+            "13h58",
+            "2022.05.10",
+        ),
+        reverse("games:list_playevents"): (
+            "2022.24.09",
+            "2022.25.09",
+            "2022.06.10",
+        ),
+        reverse("games:list_statuschanges"): ("2022.23.09",),
+        reverse("games:stats_alltime"): ("2022.26.09",),
+        reverse("games:stats_by_year", args=[2022]): (
+            "září 2022",
+            "2022.25.09",
+        ),
     }
 
-    with timezone.override(ZoneInfo("UTC")):
-        for url, expected in expected_by_route.items():
+    with (
+        timezone.override(ZoneInfo("UTC")),
+        translation.override("cs"),
+    ):
+        for url, expected_values in expected_by_route.items():
             html = client.get(url).content.decode()
-            assert expected in html, url
+            for expected in expected_values:
+                assert expected in html, url
+            assert "git-main (2022.22.07 @ 12h05)" in html, url
+
+            if url == reverse("games:list_purchases"):
+                date_part_parser = _DatePartParser()
+                date_part_parser.feed(html)
+                assert date_part_parser.parts[:3] == ["year", "day", "month"]
+
+        purchase_html = client.get(
+            reverse("games:view_purchase", args=[purchase.pk])
+        ).content.decode()
+        assert "Owned on 2022.26.09" in purchase_html
+        title_parser = _TitleParser()
+        title_parser.feed(purchase_html)
+        assert "2022.26.09" in title_parser.title
+        assert "2022-09-26" not in title_parser.title
 
         game_html = client.get(
             reverse("games:view_game", args=[game.pk])
@@ -115,6 +193,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
             "2022.26.09",
             "2022.24.09",
             "2022.23.09 @ 10h30",
+            "září 2022",
         ):
             assert expected in game_html
 
