@@ -14,7 +14,7 @@ from django.conf import settings
 from django.http import HttpRequest
 from django.utils import timezone as django_timezone
 from django.utils.formats import date_format, get_format
-from django.utils.translation import override
+from django.utils.translation import get_language, override
 
 type DatePartName = Literal["day", "month", "year"]
 type HourCycle = Literal["h12", "h23"]
@@ -180,7 +180,7 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
     )
     presentation = DateTimePresentation(
         profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
-        locale=settings.LANGUAGE_CODE,
+        locale=get_language() or settings.LANGUAGE_CODE,
         timezone=zone,
     )
     setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)

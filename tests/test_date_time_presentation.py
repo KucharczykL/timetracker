@@ -158,6 +158,16 @@ def test_request_factory_uses_active_timezone_and_caches_identity() -> None:
     assert first.timezone.key == "Pacific/Kiritimati"
 
 
+@override_settings(LANGUAGE_CODE="en-us")
+def test_request_factory_captures_active_language() -> None:
+    request = HttpRequest()
+
+    with translation.override("cs"):
+        presentation = date_time_presentation_for_request(request)
+
+    assert presentation.locale == "cs"
+
+
 class _RootAttributeParser(HTMLParser):
     attributes: dict[str, str | None]
 
@@ -186,6 +196,18 @@ def test_root_document_emits_active_client_contract(db) -> None:
         "date_time_separator": " ",
         "hour_cycle": "h23",
     }
+
+
+@override_settings(LANGUAGE_CODE="en-us")
+def test_root_document_uses_active_language_for_contract_and_lang(db) -> None:
+    parser = _RootAttributeParser()
+
+    with translation.override("cs"):
+        parser.feed(Client().get(reverse("login")).content.decode())
+
+    contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
+    assert contract["locale"] == "cs"
+    assert parser.attributes["lang"] == "cs"
 
 
 def test_codegen_command_emits_date_time_presentation_type(tmp_path: Path) -> None:

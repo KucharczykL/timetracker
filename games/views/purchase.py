@@ -8,7 +8,7 @@ from django.http import (
 from django.db import transaction
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404, redirect
-from django.template.defaultfilters import floatformat
+from django.template.defaultfilters import floatformat, pluralize
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -50,7 +50,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
-from common.utils import paginate
+from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
 from games.models import Game, PlayEvent, Purchase
 from games.sorting import (
@@ -429,6 +429,15 @@ def _view_purchase_content(
     return ContentContainer(class_="dark:text-white")[inner]
 
 
+def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation) -> str:
+    return label_with_details(
+        purchase.standardized_name,
+        f"{purchase.num_purchases} game{pluralize(purchase.num_purchases)}",
+        presentation.format(purchase.date_purchased, "date"),
+        purchase.standardized_price,
+    )
+
+
 @login_required
 def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
@@ -436,7 +445,7 @@ def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return render_page(
         request,
         _view_purchase_content(purchase, presentation),
-        title=f"Purchase: {purchase.full_name}",
+        title=f"Purchase: {_purchase_page_title(purchase, presentation)}",
     )
 
 

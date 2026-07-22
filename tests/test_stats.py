@@ -122,5 +122,15 @@ class ComputeStatsTest(TestCase):
     def test_first_and_last_play_values_stay_native_for_rendering(self):
         stats = compute_stats(2023)
 
-        self.assertIsInstance(stats["first_play_date"], datetime)
-        self.assertIsInstance(stats["last_play_date"], datetime)
+        self.assertEqual(stats["first_play_date"], datetime(2023, 6, 10, 10, tzinfo=TZ))
+        self.assertEqual(stats["last_play_date"], datetime(2023, 7, 2, 12, tzinfo=TZ))
+        self.assertIsNotNone(stats["first_play_date"].utcoffset())
+        self.assertIsNotNone(stats["last_play_date"].utcoffset())
+
+    def test_first_and_last_play_values_are_none_without_sessions(self):
+        Session.objects.all().delete()
+
+        stats = compute_stats(2023)
+
+        self.assertIsNone(stats["first_play_date"])
+        self.assertIsNone(stats["last_play_date"])
