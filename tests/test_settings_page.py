@@ -53,6 +53,15 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert 'data-setting-key="DEFAULT_LANDING_PAGE"' in html
     assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in html
     assert 'data-setting-key="THEME"' in html
+    assert '<theme-setting class="block w-full">' in html
+    theme_select = html[
+        html.index('<select name="theme"') : html.index(
+            "</select>", html.index('<select name="theme"')
+        )
+    ]
+    assert " required" not in theme_select
+    assert "data-live-setting-control" not in theme_select
+    assert "System follows the operating-system theme." in html
 
 
 def test_settings_page_lists_devices_by_name(auth_client):
@@ -72,7 +81,7 @@ def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     assert '<option value="" selected>Use site default (No device)</option>' in html
     assert '<option value="" selected>Use site default (Sessions)</option>' in html
     assert '<option value="" selected>Use site default (25)</option>' in html
-    assert '<option value="auto" selected>System (auto)</option>' in html
+    assert '<option value="" selected>Use site default (System)</option>' in html
 
 
 def test_personal_theme_is_selected(auth_client, user):
@@ -101,12 +110,14 @@ def test_unset_selects_show_configured_site_defaults(auth_client):
         key="DEFAULT_LANDING_PAGE",
         value="games:list_games",
     )
+    SiteSetting.objects.create(key="THEME", value="dark")
     settings_resolver.clear_cache()
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
     assert '<option value="" selected>Use site default (Desktop (PC))</option>' in html
     assert '<option value="" selected>Use site default (Games)</option>' in html
+    assert '<option value="" selected>Use site default (Dark)</option>' in html
 
 
 def test_authenticated_navbar_links_to_settings(auth_client):

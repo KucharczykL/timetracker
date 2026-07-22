@@ -515,12 +515,17 @@ register_element("setting-source-badge", "SettingSourceBadge", SettingSourceBadg
 
 
 class ThemeToggleProps(TypedDict):
-    api_url: str  # empty for anonymous pages
-    csrf: str
-    cookie_secure: bool
+    pass
 
 
 register_element("theme-toggle", "ThemeToggle", ThemeToggleProps)
+
+
+class ThemeSettingProps(TypedDict):
+    pass
+
+
+register_element("theme-setting", "ThemeSetting", ThemeSettingProps)
 
 
 class YearPickerProps(TypedDict):

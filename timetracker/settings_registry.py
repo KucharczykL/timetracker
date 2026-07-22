@@ -196,7 +196,10 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             scope=SettingScope.USER,
             apply_timing=ApplyTiming.LIVE,
             label="Theme",
-            help_text="Color theme used across browsers signed in to this account.",
+            help_text=(
+                "Color theme used across browsers signed in to this account. "
+                "System follows the operating-system theme."
+            ),
             default_factory=lambda: "system",
             validator=_validate_theme,
             widget="select",

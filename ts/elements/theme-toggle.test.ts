@@ -1,174 +1,118 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetThemeCoordinatorForTests } from "../theme-coordinator.js";
 import { nextTheme } from "./theme-toggle.js";
 import "./theme-toggle.js";
 
-type MediaListener = (event: MediaQueryListEvent) => void;
+function configure(mode: "browser" | "account", preference = "system"): void {
+  const root = document.documentElement;
+  root.dataset.themeMode = mode;
+  root.dataset.themePreferences = "system light dark";
+  root.dataset.themePreference = preference;
+  if (mode === "account") {
+    root.dataset.themePersonalPreference = preference;
+    root.dataset.themeInheritedPreference = "system";
+    root.dataset.themeSource = "user";
+    root.dataset.themeUpdateUrl = "/api/settings/user/THEME";
+    root.dataset.themeCsrf = "token";
+  }
+}
 
-let systemDark = false;
-let mediaListener: MediaListener | null = null;
-
-function mount(apiUrl = "", theme = "auto", migrating = false): HTMLElement {
-  document.documentElement.dataset.themePreference = theme;
-  if (migrating) document.documentElement.dataset.themeMigration = "true";
+function mount(): HTMLElement {
   document.body.innerHTML = `
-    <theme-toggle api-url="${apiUrl}" csrf="token" cookie-secure="false">
-      <pop-over tap="true">
-      <button type="button" data-pop-over-trigger aria-describedby="theme-tooltip">
-        <svg data-theme-icon="auto"></svg>
+    <theme-toggle class="block">
+      <pop-over><button type="button" data-pop-over-trigger>
+        <svg data-theme-icon="system"></svg>
         <svg data-theme-icon="light" hidden></svg>
         <svg data-theme-icon="dark" hidden></svg>
-      </button>
-      <div data-pop-over-panel id="theme-tooltip" role="tooltip" hidden>
-        <span data-theme-tooltip>Theme: Auto — switch to Light</span>
-      </div>
-      </pop-over>
+      </button><div data-pop-over-panel><span data-theme-tooltip></span></div></pop-over>
     </theme-toggle>`;
   return document.querySelector("theme-toggle")!;
 }
 
 beforeEach(() => {
+  document.body.replaceChildren();
+  document.documentElement.className = "";
+  for (const key of Object.keys(document.documentElement.dataset)) {
+    delete document.documentElement.dataset[key];
+  }
   localStorage.clear();
-  document.cookie = "color-theme=; Max-Age=0; Path=/";
-  document.cookie = "color-theme-migrate=; Max-Age=0; Path=/";
-  document.documentElement.classList.remove("dark");
-  delete document.documentElement.dataset.themeMigration;
-  systemDark = false;
-  mediaListener = null;
-  window.matchMedia = vi.fn().mockImplementation(() => ({
-    get matches() {
-      return systemDark;
-    },
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
     media: "(prefers-color-scheme: dark)",
     onchange: null,
-    addEventListener: (_type: string, listener: MediaListener) => {
-      mediaListener = listener;
-    },
+    addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     addListener: vi.fn(),
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
-  }));
+  });
   window.toast = vi.fn();
+  window.fetchWithHtmxTriggers = vi.fn();
 });
-
 afterEach(() => {
+  resetThemeCoordinatorForTests();
   vi.restoreAllMocks();
-  document.body.replaceChildren();
 });
 
 describe("nextTheme", () => {
-  it("cycles auto to light to dark to auto", () => {
-    expect(nextTheme("auto")).toBe("light");
+  it("cycles the generated System, Light, and Dark vocabulary", () => {
+    expect(nextTheme("system")).toBe("light");
     expect(nextTheme("light")).toBe("dark");
-    expect(nextTheme("dark")).toBe("auto");
+    expect(nextTheme("dark")).toBe("system");
   });
 });
 
 describe("<theme-toggle>", () => {
-  it("persists anonymous cycles in localStorage and the readable cookie", () => {
+  it("presents coordinator state with distinct icons, tooltip text, and labels", async () => {
+    configure("browser");
     const host = mount();
-    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
+    const button = host.querySelector<HTMLButtonElement>("button")!;
 
+    expect(button.getAttribute("aria-label")).toBe(
+      "Theme: System — switch to Light",
+    );
     button.click();
+    await vi.waitFor(() => expect(localStorage.getItem("color-theme")).toBe("light"));
 
-    expect(document.documentElement.dataset.themePreference).toBe("light");
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
-    expect(localStorage.getItem("color-theme")).toBe("light");
-    expect(document.cookie).toContain("color-theme=light");
-    expect(button.getAttribute("aria-label")).toBe("Theme: Light — switch to Dark");
+    expect(host.querySelector('[data-theme-icon="system"]')?.hasAttribute("hidden"))
+      .toBe(true);
+    expect(host.querySelector('[data-theme-icon="light"]')?.hasAttribute("hidden"))
+      .toBe(false);
+    expect(host.querySelector('[data-theme-icon="dark"]')?.hasAttribute("hidden"))
+      .toBe(true);
     expect(host.querySelector("[data-theme-tooltip]")?.textContent).toBe(
       "Theme: Light — switch to Dark",
     );
+    expect(document.cookie).not.toContain("color-theme=");
   });
 
-  it("shows only the SVG icon for the current state", () => {
-    const host = mount();
-    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
-    const auto = host.querySelector('[data-theme-icon="auto"]')!;
-    const light = host.querySelector('[data-theme-icon="light"]')!;
-    const dark = host.querySelector('[data-theme-icon="dark"]')!;
-
-    button.click();
-
-    expect(auto.hasAttribute("hidden")).toBe(true);
-    expect(light.hasAttribute("hidden")).toBe(false);
-    expect(dark.hasAttribute("hidden")).toBe(true);
-
-    button.click();
-    expect(auto.hasAttribute("hidden")).toBe(true);
-    expect(light.hasAttribute("hidden")).toBe(true);
-    expect(dark.hasAttribute("hidden")).toBe(false);
-
-    button.click();
-    expect(auto.hasAttribute("hidden")).toBe(false);
-    expect(light.hasAttribute("hidden")).toBe(true);
-    expect(dark.hasAttribute("hidden")).toBe(true);
-  });
-
-  it("reacts to operating-system changes while preference is auto", () => {
-    mount();
-    systemDark = true;
-    mediaListener?.({ matches: true } as MediaQueryListEvent);
-
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-  });
-
-  it("rolls back an authenticated optimistic change after a rejected PATCH", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+  it("disables while an account save is pending and reflects rollback", async () => {
+    configure("account", "dark");
+    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
       ok: false,
       status: 500,
     } as Response);
-    const host = mount("/api/settings/user/THEME", "dark");
-    const button = host.querySelector<HTMLButtonElement>("[data-pop-over-trigger]")!;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mount();
+    const button = host.querySelector<HTMLButtonElement>("button")!;
 
     button.click();
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(document.documentElement.dataset.themePreference).toBe("system");
 
-    await vi.waitFor(() => expect(window.toast).toHaveBeenCalled());
+    await vi.waitFor(() => expect(button.disabled).toBe(false));
+    expect(button.hasAttribute("aria-busy")).toBe(false);
     expect(document.documentElement.dataset.themePreference).toBe("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(localStorage.getItem("color-theme")).toBeNull();
+    expect(host.querySelector('[data-theme-icon="dark"]')?.hasAttribute("hidden"))
+      .toBe(false);
   });
 
-  it("applies successful settings-page saves through the shared event", () => {
-    mount("/api/settings/user/THEME");
-
-    document.body.dispatchEvent(
-      new CustomEvent("setting-saved", {
-        detail: { key: "THEME", value: "dark" },
-      }),
-    );
-
-    expect(document.documentElement.dataset.themePreference).toBe("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(localStorage.getItem("color-theme")).toBe("dark");
-  });
-
-  it("applies theme changes received from another tab", () => {
-    mount();
-
-    window.dispatchEvent(
-      new StorageEvent("storage", { key: "color-theme", newValue: "dark" }),
-    );
-
-    expect(document.documentElement.dataset.themePreference).toBe("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-  });
-
-  it("migrates the legacy localStorage value for an authenticated account", async () => {
-    localStorage.setItem("color-theme", "dark");
-    document.documentElement.dataset.themePreference = "dark";
-    document.documentElement.dataset.themeMigration = "true";
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ key: "THEME", value: "dark", source: "user", locked: false }),
-    } as Response);
-
-    mount("/api/settings/user/THEME", "dark", true);
-
-    await vi.waitFor(() => expect(window.fetchWithHtmxTriggers).toHaveBeenCalled());
-    const options = vi.mocked(window.fetchWithHtmxTriggers).mock.calls[0][1] as RequestInit;
-    expect(JSON.parse(String(options.body))).toEqual({ value: "dark" });
+  it("disables when document theme configuration is unavailable", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mount();
+    expect(host.querySelector<HTMLButtonElement>("button")?.disabled).toBe(true);
+    expect(error).toHaveBeenCalled();
   });
 });
