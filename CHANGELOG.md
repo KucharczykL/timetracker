@@ -29,6 +29,10 @@
   now distinguish inherited defaults from explicit page-size selections, so an
   unpinned preset follows later preference changes while a selected size remains
   pinned across save/load (#386).
+* Add an account-backed System/Light/Dark theme preference with a three-state
+  navbar toggle and Settings control. The theme now follows the account across
+  browsers, is applied before first paint on login and anonymous pages, and
+  migrates the old browser-only preference once on first login (#387).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously

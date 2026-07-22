@@ -248,6 +248,14 @@ def test_user_theme_patch_sets_account_cookie_and_clears_migration_marker(
     assert response.cookies["color-theme-migrate"]["max-age"] == 0
 
 
+@pytest.mark.parametrize("bad", ["sepia", "Dark", "", 1, True])
+def test_user_theme_patch_rejects_invalid_preferences(auth_client, bad):
+    response = _patch(auth_client, _user_patch_url("THEME"), bad)
+
+    assert response.status_code == 400
+    assert "color-theme" not in response.cookies
+
+
 def test_unrelated_user_patch_does_not_write_theme_cookies(
     auth_client, no_currency_env
 ):

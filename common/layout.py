@@ -37,67 +37,20 @@ from common.components.primitives import (
     Title,
 )
 from games.templatetags.version import version, version_date
+from timetracker.theme import theme_bootstrap_script
 
 if TYPE_CHECKING:
     from common.components import Node
     from games.models import Session
 
-# Static head script that sets the dark/light class before paint (avoids FOUC).
-# Bare JS body — emitted inside a `Script()` node (a raw-text element).
-_THEME_FOUC_SCRIPT = """
-            if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark')
-            }
-        """
-
-# The main module script: crown icon mount + theme-toggle wiring.
-# Bare JS body (no `<script>` wrapper) — split around the single dynamic value
-# (game.mastered) and emitted inside a `Script(type="module")` node.
+# The main module script only owns the crown icon mount. Theme behavior lives in
+# its own component so this unrelated page glue no longer controls appearance.
 _MAIN_SCRIPT_A = """
             document.addEventListener('DOMContentLoaded', () => {
                 if (window.mountCrownIcon) {
                     window.mountCrownIcon('#crown-icon-mount-point', {
                         mastered: """
 _MAIN_SCRIPT_B = """
-                    });
-                }
-
-                const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
-                const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
-                const themeToggleBtn = document.getElementById('theme-toggle');
-
-                if (themeToggleDarkIcon && themeToggleLightIcon && themeToggleBtn) {
-                    if (document.documentElement.classList.contains('dark')) {
-                        themeToggleLightIcon.classList.remove('hidden');
-                        themeToggleDarkIcon.classList.add('hidden');
-                    } else {
-                        themeToggleDarkIcon.classList.remove('hidden');
-                        themeToggleLightIcon.classList.add('hidden');
-                    }
-
-                    themeToggleBtn.addEventListener('click', function () {
-                        themeToggleDarkIcon.classList.toggle('hidden');
-                        themeToggleLightIcon.classList.toggle('hidden');
-
-                        if (localStorage.getItem('color-theme')) {
-                            if (localStorage.getItem('color-theme') === 'light') {
-                                document.documentElement.classList.add('dark');
-                                localStorage.setItem('color-theme', 'dark');
-                            } else {
-                                document.documentElement.classList.remove('dark');
-                                localStorage.setItem('color-theme', 'light');
-                            }
-                        } else {
-                            if (document.documentElement.classList.contains('dark')) {
-                                document.documentElement.classList.remove('dark');
-                                localStorage.setItem('color-theme', 'light');
-                            } else {
-                                document.documentElement.classList.add('dark');
-                                localStorage.setItem('color-theme', 'dark');
-                            }
-                        }
                     });
                 }
             });
@@ -240,27 +193,6 @@ def NavbarPlaytime(
     )
 
 
-# Theme toggle sun/moon SVGs: kept as a Safe() snippet because the FOUC script in
-# TimetrackerDocument() targets their ids (theme-toggle-dark-icon / -light-icon). The hamburger
-# is a plain icon, so it lives in the icon system (Icon("hamburger")).
-_THEME_TOGGLE_SVGS = (
-    '<svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" '
-    'viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path '
-    'd="M3.32031 11.6835C3.32031 16.6541 7.34975 20.6835 12.3203 20.6835C16.1075 '
-    "20.6835 19.3483 18.3443 20.6768 15.032C19.6402 15.4486 18.5059 15.6834 "
-    "17.3203 15.6834C12.3497 15.6834 8.32031 11.654 8.32031 6.68342C8.32031 "
-    "5.50338 8.55165 4.36259 8.96453 3.32996C5.65605 4.66028 3.32031 7.89912 "
-    '3.32031 11.6835Z" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round"/></svg>'
-    '<svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" '
-    'viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path '
-    'd="M12 3V4M12 20V21M4 12H3M6.31412 6.31412L5.5 5.5M17.6859 6.31412L18.5 '
-    "5.5M6.31412 17.69L5.5 18.5001M17.6859 17.69L18.5 18.5001M21 12H20M16 "
-    "12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 "
-    '8 12 8C14.2091 8 16 9.79086 16 12Z" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round"/></svg>'
-)
-
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
     "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
@@ -291,7 +223,7 @@ def NavbarMenu(
         Input,
         Li,
         MenuDropdown,
-        Safe,
+        ThemeToggle,
         Ul,
     )
 
@@ -306,14 +238,15 @@ def NavbarMenu(
         )
 
     theme_toggle = Li(class_="flex items-center")[
-        Button(
-            id_="theme-toggle",
-            type="button",
-            class_="p-2 text-body-subtle hover:bg-neutral-tertiary-medium "
-            "focus:outline-hidden focus:ring-4 "
-            "focus:ring-neutral-tertiary-medium rounded-base "
-            "text-type-body hover:cursor-pointer",
-        )[Safe(_THEME_TOGGLE_SVGS)]
+        ThemeToggle(
+            api_url=(
+                reverse("api-1.0.0:update_user_setting", args=["THEME"])
+                if authenticated
+                else ""
+            ),
+            csrf=csrf_token,
+            cookie_secure=settings.SESSION_COOKIE_SECURE,
+        )
     ]
 
     home = Li()[
@@ -678,7 +611,7 @@ def TimetrackerDocument(
                             "htmx.config.scrollBehavior = 'smooth';\n"
                             "htmx.config.selfRequestsOnly = false;\n"
                         ],
-                        Script()[_THEME_FOUC_SCRIPT],
+                        Script(id="theme-bootstrap")[theme_bootstrap_script()],
                         Script(id="django-messages", type="application/json")[
                             messages_json
                         ],
