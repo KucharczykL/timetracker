@@ -242,7 +242,7 @@ def NavbarMenu(
             ],
         )
 
-    theme_toggle = Li(class_="flex items-center")[ThemeToggle()]
+    theme_toggle = Li(class_="flex items-center")[ThemeToggle(instance_key="navbar")]
 
     home = Li()[
         A(

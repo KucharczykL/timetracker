@@ -78,10 +78,9 @@ ts: gen-element-types
 ts-check: gen-element-types
 	pnpm exec tsc --noEmit -p tsconfig.check.json
 
-# gen-element-types prereq: field-comparison-set.ts value-imports the generated
-# filter-metadata module, so vitest needs it present AND current — a stale file
-# would silently validate against outdated vocabulary.
-test-ts: gen-element-types
+# Vitest consumes generated modules, and the classic bootstrap tests inspect its
+# emitted script, so a clean checkout needs the complete TypeScript build first.
+test-ts: ts
 	pnpm exec vitest run
 
 dev: export DEV_LOGIN_PREFILL := admin:admin

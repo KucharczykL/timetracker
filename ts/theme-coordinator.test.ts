@@ -7,6 +7,7 @@ type MediaListener = (event: MediaQueryListEvent) => void;
 
 let systemDark = false;
 let mediaListener: MediaListener | null = null;
+let dispatchHtmxTriggers: ReturnType<typeof vi.fn>;
 
 function configureBrowser(preference = "system"): void {
   const root = document.documentElement;
@@ -65,6 +66,8 @@ beforeEach(() => {
   }));
   window.toast = vi.fn();
   window.fetchWithHtmxTriggers = vi.fn();
+  dispatchHtmxTriggers = vi.fn();
+  Object.assign(window, { dispatchHtmxTriggers });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -146,7 +149,10 @@ describe("ThemeCoordinator account state", () => {
     expect(document.documentElement.dataset.themePreference).toBe("light");
     expect(await coordinator.requestPreferenceChange("dark")).toBe("busy");
 
-    resolve(response({ key: "THEME", value: "light", source: "user", locked: false }));
+    const savedResponse = response({
+      key: "THEME", value: "light", source: "user", locked: false,
+    });
+    resolve(savedResponse);
     expect(await saving).toBe("committed");
     expect(coordinator.currentState()).toMatchObject({
       preference: "light",
@@ -155,6 +161,12 @@ describe("ThemeCoordinator account state", () => {
       saving: false,
     });
     expect(committed).toHaveBeenCalledTimes(1);
+    expect(window.fetchWithHtmxTriggers).toHaveBeenCalledWith(
+      "/api/settings/user/THEME",
+      expect.any(Object),
+      "deferred",
+    );
+    expect(dispatchHtmxTriggers).toHaveBeenCalledWith(savedResponse);
     expect(JSON.parse(String(
       (vi.mocked(window.fetchWithHtmxTriggers).mock.calls[0][1] as RequestInit).body,
     ))).toEqual({ value: "light" });
@@ -206,11 +218,13 @@ describe("ThemeCoordinator account state", () => {
       "Couldn't save your theme — please try again.",
       "error",
     );
+    expect(dispatchHtmxTriggers).not.toHaveBeenCalled();
 
     vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValueOnce(response({
       key: "THEME", value: "light", source: "user", locked: false,
     }));
     expect(await coordinator.requestPreferenceChange("light")).toBe("committed");
+    expect(dispatchHtmxTriggers).toHaveBeenCalledTimes(1);
     coordinator.destroy();
   });
 

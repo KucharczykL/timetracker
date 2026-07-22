@@ -11,7 +11,7 @@
     preference = isAllowed(root.dataset.themePreference)
       ? root.dataset.themePreference
       : null;
-  } else {
+  } else if (root.dataset.themeMode === "browser") {
     try {
       const stored = localStorage.getItem("color-theme");
       preference = isAllowed(stored) ? stored : null;

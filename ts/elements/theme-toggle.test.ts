@@ -49,6 +49,7 @@ beforeEach(() => {
   });
   window.toast = vi.fn();
   window.fetchWithHtmxTriggers = vi.fn();
+  window.dispatchHtmxTriggers = vi.fn();
 });
 afterEach(() => {
   resetThemeCoordinatorForTests();

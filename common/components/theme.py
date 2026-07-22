@@ -1,6 +1,6 @@
 """Server-rendered theme presenters backed by the shared browser coordinator."""
 
-from common.components.core import Element, Node
+from common.components.core import Element, Node, randomid
 from common.components.primitives import Popover, Span, custom_element_builder
 
 _ThemeToggle = custom_element_builder("theme-toggle")
@@ -66,13 +66,13 @@ def _theme_icons() -> list[Element]:
     ]
 
 
-def ThemeToggle() -> Node:
+def ThemeToggle(*, instance_key: str) -> Node:
     label = "Theme: System — switch to Light"
     return _ThemeToggle(class_="block")[
         Popover(
             popover_content=Span(data_theme_tooltip="")[label],
             children=_theme_icons(),
-            id="theme-toggle-tooltip",
+            id=randomid(seed="theme-tip-", content=instance_key, length=20),
             trigger_label=label,
             wrapped_classes="p-2 text-body-subtle "
             "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 "

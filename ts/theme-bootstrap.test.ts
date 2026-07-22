@@ -53,4 +53,15 @@ describe("classic theme bootstrap", () => {
     expect(document.documentElement.dataset.themePreference).toBe("system");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
+
+  it("does not read anonymous storage for an invalid document mode", () => {
+    configureRoot("browser");
+    document.documentElement.dataset.themeMode = "invalid";
+    localStorage.setItem("color-theme", "dark");
+
+    runBootstrap();
+
+    expect(document.documentElement.dataset.themePreference).toBe("system");
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
 });
