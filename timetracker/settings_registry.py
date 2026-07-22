@@ -5,9 +5,10 @@ and future settings widgets.
 so ``settings.py`` can import this module safely.
 
 Registers the 9 settings read via ``config()`` plus the per-user preference keys
-(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``, ``DEFAULT_PAGE_SIZE``), which are *not* read via
-``config()`` — no Django setting consumes them at boot; they resolve through the
-runtime chain (personal → env → site DB → default). Excluded on purpose:
+(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``, ``DEFAULT_PAGE_SIZE``, ``THEME``),
+which are *not* read via ``config()`` — no Django setting consumes them at boot;
+they resolve through the runtime chain (personal → env → site DB → default).
+Excluded on purpose:
 ``ENV_FILE``/``INI_FILE`` (they *locate* the sources, read via bare ``os.environ``
 before the chain exists) and the deprecated ``PROD`` alias.
 """
@@ -37,6 +38,12 @@ _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
 
 DEFAULT_PAGE_SIZE: Final[int] = 25
 PAGE_SIZE_CHOICES: Final[tuple[int, ...]] = (10, 25, 50, 100, 500, 1000)
+THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("auto", "System (auto)"),
+    ("light", "Light"),
+    ("dark", "Dark"),
+)
+_THEME_VALUES: Final[frozenset[str]] = frozenset(value for value, _ in THEME_CHOICES)
 
 
 class SettingScope(StrEnum):
@@ -129,6 +136,12 @@ def _validate_page_size(value: object) -> int:
     return value
 
 
+def _validate_theme(value: object) -> str:
+    if not isinstance(value, str) or value not in _THEME_VALUES:
+        raise ValidationError(f"Theme must be one of auto, light, dark (got {value!r}).")
+    return value
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
@@ -174,6 +187,16 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             cast=int,
             default_factory=lambda: DEFAULT_PAGE_SIZE,
             validator=_validate_page_size,
+            widget="select",
+        ),
+        SettingDefinition(
+            "THEME",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Theme",
+            help_text="Color theme used across browsers signed in to this account.",
+            default_factory=lambda: "auto",
+            validator=_validate_theme,
             widget="select",
         ),
         SettingDefinition(

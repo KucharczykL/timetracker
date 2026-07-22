@@ -21,6 +21,7 @@ USER_KEYS = {
     "DEFAULT_DEVICE",
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
+    "THEME",
 }
 
 EXPECTED_KEYS = {
@@ -90,6 +91,17 @@ def test_currency_validator_normalizes():
     assert validator is not None
     assert validator("eur") == "EUR"
     assert validator(" usd ") == "USD"
+
+
+def test_theme_validator_accepts_only_supported_preferences():
+    validator = get_definition("THEME").validator
+    assert validator is not None
+    assert validator("auto") == "auto"
+    assert validator("light") == "light"
+    assert validator("dark") == "dark"
+
+    with pytest.raises(ValidationError):
+        validator("sepia")
 
 
 @pytest.mark.parametrize("bad", ["EU", "EURO", "12$", "e1r", ""])

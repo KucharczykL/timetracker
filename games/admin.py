@@ -75,6 +75,7 @@ class UserPreferencesForm(forms.ModelForm):
         "default_currency": "DEFAULT_CURRENCY",
         "default_device": "DEFAULT_DEVICE",
         "default_landing_page": "DEFAULT_LANDING_PAGE",
+        "theme": "THEME",
     }
 
     class Meta:
@@ -84,6 +85,7 @@ class UserPreferencesForm(forms.ModelForm):
             "default_currency",
             "default_device",
             "default_landing_page",
+            "theme",
             "extra_preferences",
         ]
 
@@ -92,7 +94,7 @@ class UserPreferencesForm(forms.ModelForm):
         # Nullable CharFields clean blank input to "" by default, which would
         # store an empty-string sentinel (and fail the currency validator).
         # Map blank -> None so "unset" stays NULL.
-        for field_name in ("default_currency", "default_landing_page"):
+        for field_name in ("default_currency", "default_landing_page", "theme"):
             self.fields[field_name].empty_value = None
 
     def clean(self):
@@ -149,4 +151,4 @@ class UserPreferencesForm(forms.ModelForm):
 @admin.register(UserPreferences)
 class UserPreferencesAdmin(admin.ModelAdmin):
     form = UserPreferencesForm
-    list_display = ["user", "default_currency", "default_device", "updated_at"]
+    list_display = ["user", "default_currency", "default_device", "theme", "updated_at"]

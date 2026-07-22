@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from common.time import format_duration
 from common.utils import label_with_details
-from timetracker.settings_registry import SettingKey
+from timetracker.settings_registry import THEME_CHOICES, SettingKey
 
 logger = logging.getLogger("games")
 
@@ -560,6 +560,7 @@ USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
     "DEFAULT_CURRENCY": "default_currency",
     "DEFAULT_DEVICE": "default_device_id",
     "DEFAULT_LANDING_PAGE": "default_landing_page",
+    "THEME": "theme",
 }
 
 
@@ -586,6 +587,13 @@ class UserPreferences(models.Model):
     )
     default_landing_page = models.CharField(
         max_length=100, null=True, blank=True, default=None
+    )
+    theme = models.CharField(
+        max_length=5,
+        choices=THEME_CHOICES,
+        null=True,
+        blank=True,
+        default=None,
     )
     #: Extension bag for USER keys without a typed column. Absent key == unset.
     extra_preferences = models.JSONField(default=dict, blank=True)
