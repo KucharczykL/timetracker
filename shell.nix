@@ -4,11 +4,11 @@
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    nodejs
+    nodejs_26
     python3
     uv
     ruff
-    pnpm
+    pnpm_10
   ];
 
   # manylinux wheels with native extensions (greenlet, pulled in by

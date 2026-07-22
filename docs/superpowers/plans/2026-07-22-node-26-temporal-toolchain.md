@@ -65,7 +65,7 @@ direnv exec . env PATH="$(nix-build '<nixpkgs>' -A nodejs_26 --no-out-link)/bin:
 
 Expected: Vitest reports all test files and tests passing.
 
-- [ ] **Step 4: Commit the test-runner change**
+- [x] **Step 4: Commit the test-runner change**
 
 ```bash
 git add package.json Makefile
@@ -79,12 +79,13 @@ git commit -m "test: run Vitest without Node web storage"
 - Modify: `.github/workflows/build-docker.yml`
 - Modify: `Dockerfile`
 - Modify: `CLAUDE.md`
+- Modify: `scripts/bootstrap-cloud-env.sh`
 
 **Interfaces:**
 - Consumes: `package.json`'s `packageManager` value `pnpm@10.33.0`.
 - Produces: Node 26 and pnpm 10.33.0 in each supported execution environment.
 
-- [ ] **Step 1: Select pinned Nix packages**
+- [x] **Step 1: Select pinned Nix packages**
 
 Replace the generic Nix packages in `shell.nix`:
 
@@ -100,7 +101,7 @@ nodejs_26
 pnpm_10
 ```
 
-- [ ] **Step 2: Update GitHub Actions provisioning**
+- [x] **Step 2: Update GitHub Actions provisioning**
 
 In `.github/workflows/build-docker.yml`, set the setup-node input to `"26"`. Replace Corepack activation with explicit pnpm provisioning, matching `package.json`:
 
@@ -108,7 +109,7 @@ In `.github/workflows/build-docker.yml`, set the setup-node input to `"26"`. Rep
 run: npm install --global pnpm@10.33.0 && pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-- [ ] **Step 3: Update the Docker assets stage**
+- [x] **Step 3: Update the Docker assets stage**
 
 In `Dockerfile`, change the assets image to `node:26-bookworm-slim`. Replace the Corepack comment and command with an explanation that Node 26 has no bundled Corepack and:
 
@@ -117,11 +118,11 @@ RUN npm install --global pnpm@10.33.0 \
     && pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-- [ ] **Step 4: Correct contributor documentation**
+- [x] **Step 4: Update the cloud bootstrap helper and contributor documentation**
 
-Update `CLAUDE.md` so its package-manager guidance says Node 26 does not bundle Corepack, Nix supplies `pnpm_10`, and Docker/CI explicitly install the version pinned by `package.json`. Replace the conda Corepack setup advice with installation of `pnpm@10.33.0`.
+Update `scripts/bootstrap-cloud-env.sh` to prefer `/opt/node26/bin`, require Node 26 before installing dependencies, and install the exact `pnpm@10.33.0` version into `$HOME/.local`. Update `CLAUDE.md` so its package-manager guidance says Node 26 does not bundle Corepack, Nix supplies `pnpm_10`, and Docker/CI/bootstrap explicitly install the version pinned by `package.json`. Replace the conda Corepack setup advice with installation of `pnpm@10.33.0`.
 
-- [ ] **Step 5: Verify the local shell's effective versions and full checks**
+- [x] **Step 5: Verify the local shell's effective versions and full checks**
 
 Run:
 
@@ -134,7 +135,7 @@ direnv exec . make check
 
 Expected: Node prints a `v26.` version, pnpm prints `10.33.0`, and `make check` exits 0.
 
-- [ ] **Step 6: Verify the Docker assets stage**
+- [x] **Step 6: Verify the Docker assets stage**
 
 Run:
 
@@ -147,7 +148,7 @@ Expected: dependency installation, Tailwind build, and TypeScript compilation co
 - [ ] **Step 7: Commit the toolchain migration**
 
 ```bash
-git add shell.nix .github/workflows/build-docker.yml Dockerfile CLAUDE.md
+git add shell.nix .github/workflows/build-docker.yml Dockerfile CLAUDE.md scripts/bootstrap-cloud-env.sh
 git commit -m "chore: align toolchain on Node 26"
 ```
 

@@ -56,8 +56,8 @@ dev shell already provides CPython 3.14; anything else must supply it too.
 
 - **Miniconda / conda-forge** (known to work): `conda create -n timetracker
   python=3.14 && conda activate timetracker`. Then install the rest of the
-  toolchain into that env — `uv` (for `uv sync`), Node + `pnpm` (via Corepack:
-  `corepack enable`), and `ruff` (pulled in by `uv sync`). Run the same
+  toolchain into that env — `uv` (for `uv sync`), Node 26 + pnpm 10.33.0
+  (`npm install --global pnpm@10.33.0`), and `ruff` (pulled in by `uv sync`). Run the same
   `make`/`pnpm`/`uv`/`pytest` targets from the activated env.
 - **uv-managed Python**: `uv python install 3.14` then `uv sync` (uv builds the
   venv against 3.14). Still need Node + `pnpm` on `PATH` separately.
@@ -217,7 +217,7 @@ New interactive components are **custom elements**, not inline JS in Python. A c
 
 Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): a `test` job runs `make check` (lint, format-check, mypy, ts-check, icon drift, the vitest suite, and the pytest suite incl. the cross-language filter-tree contract), then a `build-and-push` job builds + pushes the Docker image on `main`.
 
-**Package manager (pnpm):** front-end deps use **pnpm**, not npm. The pnpm version is pinned in `package.json`'s `packageManager` field and provisioned via **Corepack** (bundled with Node) — the Docker assets stage runs `corepack enable` rather than `npm install -g pnpm`. To bump pnpm, update the `packageManager` field; local, CI, and Docker all follow it. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
+**Package manager (pnpm):** front-end deps use **pnpm**, not npm. Node 26 does not bundle Corepack: the Nix shell provides `pnpm_10`, while CI, Docker, and the cloud bootstrap helper explicitly install the `pnpm@10.33.0` version declared in `package.json`'s `packageManager` field. To bump pnpm, update that field and every explicit install command. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
 
 ### Database
 
@@ -258,7 +258,7 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
 
-**TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`, run with `make test-ts` (`vitest run`) — and automatically by `make test` (a prereq) and `make check`. vitest/Vite resolves the NodeNext-style `.js` import specifiers to the sibling `.ts`, so no compile step is needed; the test files are excluded from the emit build but type-checked by `make ts-check` (via `tsconfig.check.json`). The filter-tree serializer (`ts/elements/filter-tree/`, issue #188) is covered this way, plus a **cross-language contract** (`tests/test_filter_tree_contract.py`): the vitest suite writes `ts/elements/filter-tree/fixtures.canonical.json` (the serializer's actual output for the shared `fixtures.json` cases, gitignored) and the pytest test asserts each is `to_q()`-equivalent to the source filter — so the TS serializer cannot drift from the Python backend. The contract `skipif`-skips when the artifact is absent; `make check`/`make test` order `test-ts` first so it always runs there.
+**TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`, run with `make test-ts` (`pnpm test:ts`) — and automatically by `make test` (a prereq) and `make check`. The pnpm script passes Node 26's `--no-experimental-webstorage` flag to Vitest workers so jsdom, rather than Node's experimental global, provides `localStorage`. vitest/Vite resolves the NodeNext-style `.js` import specifiers to the sibling `.ts`, so no compile step is needed; the test files are excluded from the emit build but type-checked by `make ts-check` (via `tsconfig.check.json`). The filter-tree serializer (`ts/elements/filter-tree/`, issue #188) is covered this way, plus a **cross-language contract** (`tests/test_filter_tree_contract.py`): the vitest suite writes `ts/elements/filter-tree/fixtures.canonical.json` (the serializer's actual output for the shared `fixtures.json` cases, gitignored) and the pytest test asserts each is `to_q()`-equivalent to the source filter — so the TS serializer cannot drift from the Python backend. The contract `skipif`-skips when the artifact is absent; `make check`/`make test` order `test-ts` first so it always runs there.
 
 **Browser/E2E tests** live in `e2e/` and run with `make test-e2e` (`pytest-playwright` driving a real Chromium against pytest-django's `live_server`). `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers a system Chrome/Chromium (discovered via `E2E_CHROME` → `PATH` → per-OS install locations — see the env section above); otherwise install browsers once via `uv run playwright install chromium`. All JS (including Alpine/Flowbite) is vendored in `games/static/js/`, so the tests run fully offline. Note that a bare `pytest` (`make test`) collects `e2e/` too, so it needs a browser as well. Key files: `test_widgets_e2e.py` (onSwap initialization lifecycle, FilterSelect/RangeSlider/add-purchase behavior), `test_search_select_e2e.py` (single-select edge cases on a synthetic page).
 

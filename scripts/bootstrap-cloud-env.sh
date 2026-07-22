@@ -80,16 +80,19 @@ uv sync --frozen   # --frozen: install exactly what uv.lock says, never rewrite 
 # ── 3. JS toolchain (needed by make check's ts-check / test-ts steps) ────────
 # Skip with SKIP_JS=1 for a Python-only workflow.
 if [ "${SKIP_JS:-0}" != "1" ]; then
-  # node ships in the image; pnpm is pinned via package.json's packageManager
-  # field. Add node's bin dir so `pnpm` (and corepack shims) resolve.
-  for node_bin in /opt/node22/bin /opt/node*/bin; do
+  # Node 26 is required for native Temporal. pnpm is pinned in package.json's
+  # packageManager field; Node 26 no longer bundles Corepack, so provision the
+  # exact pinned version into the user-owned bin directory already on PATH.
+  for node_bin in /opt/node26/bin /opt/node*/bin; do
     [ -d "$node_bin" ] && export PATH="$node_bin:$PATH" && break
   done
-  if command -v pnpm >/dev/null; then
+  if command -v node >/dev/null \
+     && node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0 : 1)'; then
+    npm install --global --prefix "$HOME/.local" pnpm@10.33.0
     log "Installing JS deps (pnpm install --frozen-lockfile)"
     pnpm install --frozen-lockfile
   else
-    echo "warning: pnpm not found; skipping JS deps (ts-check/test-ts will fail)" >&2
+    echo "warning: Node 26 and pnpm 10.33.0 are required; skipping JS deps (ts-check/test-ts will fail)" >&2
   fi
 fi
 
