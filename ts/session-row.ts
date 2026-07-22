@@ -11,11 +11,7 @@
 // and means the cloned <drop-down> device selector re-wires via its own
 // connectedCallback when the new row is inserted.
 //
-// NB: the formatters below run in the BROWSER's timezone, whereas the Python
-// render uses the server timezone (TIME_ZONE, default Europe/Prague). For the
-// single-user/same-machine case these match; a user in a different tz would see
-// post-swap times in their own tz. Accepted for this slice — revisit if
-// multi-timezone ever matters.
+import { formatSessionTimeRange } from "./date-time-presentation.js";
 
 interface SessionOut {
   id: number;
@@ -23,25 +19,6 @@ interface SessionOut {
   timestamp_end: string | null;
   duration_manual_seconds: number;
   is_manual: boolean;
-}
-
-function pad2(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-/**
- * "DD/MM/YYYY HH:MM" for the start, plus " — HH:MM" when the session is
- * finished. Stage 6b will replace this browser-local implementation with the
- * root document's date/time presentation contract.
- */
-function formatTimeRange(startISO: string, endISO: string | null): string {
-  const start = new Date(startISO);
-  const startText =
-    `${pad2(start.getDate())}/${pad2(start.getMonth() + 1)}/${start.getFullYear()} ` +
-    `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
-  if (!endISO) return startText;
-  const end = new Date(endISO);
-  return `${startText} — ${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
 }
 
 /**
@@ -56,12 +33,20 @@ function formatDurationWithMark(
   endISO: string | null,
   durationManualSeconds: number,
   isManual: boolean,
-): string {
-  const calculatedSeconds = endISO
-    ? Math.max(0, (new Date(endISO).getTime() - new Date(startISO).getTime()) / 1000)
-    : 0;
-  const totalHours = (calculatedSeconds + durationManualSeconds) / 3600;
-  return `${totalHours.toFixed(1)}${isManual ? "*" : ""}`;
+): string | null {
+  try {
+    const startMilliseconds = Temporal.Instant.from(startISO).epochMilliseconds;
+    const calculatedSeconds = endISO === null
+      ? 0
+      : Math.max(
+          0,
+          (Temporal.Instant.from(endISO).epochMilliseconds - startMilliseconds) / 1000,
+        );
+    const totalHours = (calculatedSeconds + durationManualSeconds) / 3600;
+    return `${totalHours.toFixed(1)}${isManual ? "*" : ""}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -74,22 +59,24 @@ function renderSessionRow(session: SessionOut, oldRow: HTMLTableRowElement): HTM
   const newRow = oldRow.cloneNode(true) as HTMLTableRowElement;
   const cells = newRow.children; // [name(th), timeRange, duration, device, created, actions]
 
+  const formattedTimeRange = formatSessionTimeRange(
+    session.timestamp_start,
+    session.timestamp_end,
+  );
   const timeRangeCell = cells[1];
-  if (timeRangeCell) {
-    timeRangeCell.textContent = formatTimeRange(
-      session.timestamp_start,
-      session.timestamp_end,
-    );
+  if (timeRangeCell && formattedTimeRange !== null) {
+    timeRangeCell.textContent = formattedTimeRange;
   }
 
+  const formattedDuration = formatDurationWithMark(
+    session.timestamp_start,
+    session.timestamp_end,
+    session.duration_manual_seconds,
+    session.is_manual,
+  );
   const durationCell = cells[2];
-  if (durationCell) {
-    durationCell.textContent = formatDurationWithMark(
-      session.timestamp_start,
-      session.timestamp_end,
-      session.duration_manual_seconds,
-      session.is_manual,
-    );
+  if (durationCell && formattedDuration !== null) {
+    durationCell.textContent = formattedDuration;
   }
 
   // Once finished, the session is no longer open: drop the finish/reset buttons
@@ -110,4 +97,4 @@ function renderSessionRow(session: SessionOut, oldRow: HTMLTableRowElement): HTM
   return newRow;
 }
 
-export { renderSessionRow, formatTimeRange, formatDurationWithMark };
+export { renderSessionRow, formatDurationWithMark };

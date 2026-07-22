@@ -114,7 +114,7 @@ def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> 
     return Input(
         inputmode="numeric",
         autocomplete="off",
-        maxlength=str(part.length),
+        maxlength=str(part.input_length),
         placeholder=part.placeholder,
         value=value,
         data_date_part=part.name,
@@ -122,7 +122,7 @@ def _segment_input(*, part: DatePartSpec, side: str, label: str, value: str) -> 
         aria_label=f"{label} {side_label} {part.name}",
         class_=(
             f"{_SEGMENT_INPUT_CLASS} "
-            f"{_SEGMENT_WIDTH_CLASSES.get(part.length, 'w-[4ch]')}"
+            f"{_SEGMENT_WIDTH_CLASSES.get(part.input_length, 'w-[4ch]')}"
         ),
     )
 

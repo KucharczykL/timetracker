@@ -37,7 +37,8 @@ class DatePartsTest(SimpleTestCase):
         parts = DEFAULT_PRESENTATION.profile.date_parts
         self.assertEqual([part.name for part in parts], ["day", "month", "year"])
         self.assertEqual([part.placeholder for part in parts], ["DD", "MM", "YYYY"])
-        self.assertEqual([part.length for part in parts], [2, 2, 4])
+        self.assertEqual([part.input_length for part in parts], [2, 2, 4])
+        self.assertEqual([part.display_min_digits for part in parts], [2, 2, 4])
 
 
 class DateRangeFieldTest(SimpleTestCase):
@@ -100,9 +101,9 @@ class DateRangeFieldTest(SimpleTestCase):
         presentation = DateTimePresentation(
             DateTimeFormatProfile(
                 date_parts=(
-                    DatePartSpec("year", "YYYY", 4),
-                    DatePartSpec("day", "DD", 2),
-                    DatePartSpec("month", "MM", 2),
+                    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+                    DatePartSpec("day", "DD", input_length=2, display_min_digits=1),
+                    DatePartSpec("month", "MM", input_length=2, display_min_digits=1),
                 ),
                 date_separator="/",
                 segmented_date_separator="·",
@@ -122,6 +123,10 @@ class DateRangeFieldTest(SimpleTestCase):
             )
             self.assertEqual(side_segments, ["year", "day", "month"])
         self.assertEqual(html.count(">·</span>"), 4)
+        self.assertEqual(html.count('maxlength="2"'), 4)
+        self.assertEqual(html.count('maxlength="4"'), 2)
+        self.assertEqual(html.count("w-[2ch]"), 4)
+        self.assertEqual(html.count("w-[4ch]"), 2)
 
 
 class DateRangeCalendarTest(SimpleTestCase):

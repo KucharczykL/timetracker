@@ -39,9 +39,9 @@ def test_default_presentation_formats_each_semantic_style() -> None:
 def test_alternate_profile_controls_order_separators_and_hour_cycle() -> None:
     profile = DateTimeFormatProfile(
         date_parts=(
-            DatePartSpec("year", "YYYY", 4),
-            DatePartSpec("month", "MM", 2),
-            DatePartSpec("day", "DD", 2),
+            DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+            DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+            DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
         ),
         date_separator=".",
         segmented_date_separator="·",
@@ -59,6 +59,46 @@ def test_alternate_profile_controls_order_separators_and_hour_cycle() -> None:
         presentation.format(datetime(2026, 7, 2, 17, 5, tzinfo=UTC), "datetime")
         == "2026.07.02 @ 05h05 PM"
     )
+
+
+def test_date_parts_can_have_shorter_display_than_input_width() -> None:
+    presentation = DateTimePresentation(
+        profile=DateTimeFormatProfile(
+            date_parts=(
+                DatePartSpec("day", "DD", input_length=2, display_min_digits=1),
+                DatePartSpec("month", "MM", input_length=2, display_min_digits=1),
+                DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+            ),
+            date_separator="/",
+            segmented_date_separator="-",
+            time_separator=":",
+            date_time_separator=" ",
+            hour_cycle="h23",
+        ),
+        locale="en-us",
+        timezone=ZoneInfo("UTC"),
+    )
+
+    assert presentation.format(date(2026, 7, 2), "date") == "2/7/2026"
+
+
+def test_h12_time_uses_the_exact_client_day_period_for_non_english_locale() -> None:
+    presentation = DateTimePresentation(
+        profile=DateTimeFormatProfile(
+            date_parts=DEFAULT_DATE_TIME_FORMAT_PROFILE.date_parts,
+            date_separator="/",
+            segmented_date_separator="-",
+            time_separator=":",
+            date_time_separator=" ",
+            hour_cycle="h12",
+        ),
+        locale="cs",
+        timezone=ZoneInfo("UTC"),
+    )
+
+    assert presentation.format(
+        datetime(2026, 7, 2, 17, 5, tzinfo=UTC), "time"
+    ).endswith(presentation.to_client_config()["day_periods"]["pm"])
 
 
 def test_aware_datetime_converts_before_calendar_fields_are_read() -> None:
@@ -143,9 +183,24 @@ def test_client_config_is_exact_and_versioned() -> None:
         "time_zone": "Europe/Prague",
         "profile": {
             "date_parts": [
-                {"name": "day", "placeholder": "DD", "length": 2},
-                {"name": "month", "placeholder": "MM", "length": 2},
-                {"name": "year", "placeholder": "YYYY", "length": 4},
+                {
+                    "name": "day",
+                    "placeholder": "DD",
+                    "input_length": 2,
+                    "display_min_digits": 2,
+                },
+                {
+                    "name": "month",
+                    "placeholder": "MM",
+                    "input_length": 2,
+                    "display_min_digits": 2,
+                },
+                {
+                    "name": "year",
+                    "placeholder": "YYYY",
+                    "input_length": 4,
+                    "display_min_digits": 4,
+                },
             ],
             "date_separator": "/",
             "segmented_date_separator": "-",
@@ -153,6 +208,7 @@ def test_client_config_is_exact_and_versioned() -> None:
             "date_time_separator": " ",
             "hour_cycle": "h23",
         },
+        "day_periods": {"am": "AM", "pm": "PM"},
     }
 
 
@@ -197,9 +253,24 @@ def test_root_document_emits_active_client_contract(db) -> None:
     assert contract["time_zone"] == "Europe/Prague"
     assert contract["profile"] == {
         "date_parts": [
-            {"name": "day", "placeholder": "DD", "length": 2},
-            {"name": "month", "placeholder": "MM", "length": 2},
-            {"name": "year", "placeholder": "YYYY", "length": 4},
+            {
+                "name": "day",
+                "placeholder": "DD",
+                "input_length": 2,
+                "display_min_digits": 2,
+            },
+            {
+                "name": "month",
+                "placeholder": "MM",
+                "input_length": 2,
+                "display_min_digits": 2,
+            },
+            {
+                "name": "year",
+                "placeholder": "YYYY",
+                "input_length": 4,
+                "display_min_digits": 4,
+            },
         ],
         "date_separator": "/",
         "segmented_date_separator": "-",
@@ -207,6 +278,7 @@ def test_root_document_emits_active_client_contract(db) -> None:
         "date_time_separator": " ",
         "hour_cycle": "h23",
     }
+    assert contract["day_periods"] == {"am": "AM", "pm": "PM"}
 
 
 @override_settings(LANGUAGE_CODE="en-us")
@@ -231,3 +303,6 @@ def test_codegen_command_emits_date_time_presentation_type(tmp_path: Path) -> No
     assert "export interface DateTimePresentationConfig" in output
     assert "version: 1;" in output
     assert "profile: DateTimeFormatProfileConfig;" in output
+    assert "day_periods: DayPeriodsConfig;" in output
+    assert "input_length: number;" in output
+    assert "display_min_digits: number;" in output

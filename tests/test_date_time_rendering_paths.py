@@ -63,9 +63,9 @@ class _DatePartParser(HTMLParser):
 
 ALTERNATE_PROFILE = DateTimeFormatProfile(
     date_parts=(
-        DatePartSpec("year", "YYYY", 4),
-        DatePartSpec("day", "DD", 2),
-        DatePartSpec("month", "MM", 2),
+        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
     ),
     date_separator=".",
     segmented_date_separator="·",

@@ -7,6 +7,7 @@ display text can follow the same contract without exposing ``strftime`` patterns
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cache
 from typing import Literal, TypedDict
 from zoneinfo import ZoneInfo
 
@@ -29,7 +30,8 @@ class DatePartSpec:
 
     name: DatePartName
     placeholder: str
-    length: int
+    input_length: int
+    display_min_digits: int
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,13 @@ class DateTimeFormatProfile:
 class DatePartConfig(TypedDict):
     name: DatePartName
     placeholder: str
-    length: int
+    input_length: int
+    display_min_digits: int
+
+
+class DayPeriodsConfig(TypedDict):
+    am: str
+    pm: str
 
 
 class DateTimeFormatProfileConfig(TypedDict):
@@ -64,13 +72,14 @@ class DateTimePresentationConfig(TypedDict):
     locale: str
     time_zone: str
     profile: DateTimeFormatProfileConfig
+    day_periods: DayPeriodsConfig
 
 
 DEFAULT_DATE_TIME_FORMAT_PROFILE = DateTimeFormatProfile(
     date_parts=(
-        DatePartSpec("day", "DD", 2),
-        DatePartSpec("month", "MM", 2),
-        DatePartSpec("year", "YYYY", 4),
+        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
     ),
     date_separator="/",
     segmented_date_separator="-",
@@ -78,6 +87,23 @@ DEFAULT_DATE_TIME_FORMAT_PROFILE = DateTimeFormatProfile(
     date_time_separator=" ",
     hour_cycle="h23",
 )
+
+
+@cache
+def _day_periods_for_locale(locale: str) -> DayPeriodsConfig:
+    """Return the locale's AM/PM text shared by server and client formatting."""
+
+    with override(locale):
+        return {
+            "am": date_format(datetime(2000, 1, 1, 0), "A"),
+            "pm": date_format(datetime(2000, 1, 1, 12), "A"),
+        }
+
+
+def _format_numeric_date_part(value: int, minimum_digits: int) -> str:
+    """Pad a number for display without truncating larger values."""
+
+    return str(value).zfill(minimum_digits)
 
 
 @dataclass(frozen=True)
@@ -97,12 +123,13 @@ class DateTimePresentation:
 
     def _format_date(self, value: date | datetime) -> str:
         part_values = {
-            "day": f"{value.day:02d}",
-            "month": f"{value.month:02d}",
-            "year": f"{value.year:04d}",
+            "day": value.day,
+            "month": value.month,
+            "year": value.year,
         }
         return self.profile.date_separator.join(
-            part_values[part.name] for part in self.profile.date_parts
+            _format_numeric_date_part(part_values[part.name], part.display_min_digits)
+            for part in self.profile.date_parts
         )
 
     def _format_time(self, value: datetime) -> str:
@@ -111,8 +138,8 @@ class DateTimePresentation:
             day_period = ""
         else:
             hour = value.hour % 12 or 12
-            with override(self.locale):
-                day_period = f" {date_format(value, 'A')}"
+            day_periods = _day_periods_for_locale(self.locale)
+            day_period = f" {day_periods['am' if value.hour < 12 else 'pm']}"
         return f"{hour:02d}{self.profile.time_separator}{value.minute:02d}{day_period}"
 
     def format(self, value: date | datetime, style: DateTimeStyle) -> str:
@@ -154,7 +181,8 @@ class DateTimePresentation:
                     {
                         "name": part.name,
                         "placeholder": part.placeholder,
-                        "length": part.length,
+                        "input_length": part.input_length,
+                        "display_min_digits": part.display_min_digits,
                     }
                     for part in self.profile.date_parts
                 ],
@@ -164,6 +192,7 @@ class DateTimePresentation:
                 "date_time_separator": self.profile.date_time_separator,
                 "hour_cycle": self.profile.hour_cycle,
             },
+            "day_periods": _day_periods_for_locale(self.locale),
         }
 
 
