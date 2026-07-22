@@ -1,4 +1,4 @@
-"""Write ts/generated/*.ts: element-props + filter-metadata contracts."""
+"""Generate TypeScript contracts from registered elements and Python vocabularies."""
 
 from pathlib import Path
 from typing import get_type_hints
@@ -26,7 +26,7 @@ from timetracker.settings_registry import THEME_CHOICES
 
 
 class Command(BaseCommand):
-    help = "Generate ts/generated/*.ts contracts from Python (props + filter metadata)."
+    help = "Generate ts/generated/*.ts contracts from registered Python sources."
 
     def handle(self, *args, **options) -> None:
         output_dir = Path(settings.BASE_DIR) / "ts" / "generated"

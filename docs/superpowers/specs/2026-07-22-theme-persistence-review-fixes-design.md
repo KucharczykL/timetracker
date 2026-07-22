@@ -94,21 +94,16 @@ JavaScript. The current `theme_bootstrap_script()` function is removed.
 
 ### Interactive state and persistence
 
-A new shared TypeScript singleton, `ThemeCoordinator`, owns interactive theme
+The shared TypeScript singleton `ThemeCoordinator` owns interactive theme
 state after bootstrap. It parses the `TimetrackerDocument()` configuration exactly
 once and uses a discriminated state model: browser, account/idle,
-account/saving, or unavailable. The state uses distinct names for distinct facts:
-
-- `resolvedPreference`: `system | light | dark`, displayed by
-  `ThemeToggleElement`;
-- `effectiveColorScheme`: `light | dark`, after resolving System against the OS;
-- `personalPreference`: `ThemePreference | null`, displayed by
-  `ThemeSettingElement`;
-- `inheritedPreference`: the site/default preference applied when the personal
-  preference is null.
-
-Account state keeps separate `committed` and `optimistic` snapshots, the resolved
-source, transport configuration, the OS media listener, and subscribers.
+account/saving, or unavailable. `state.preference` is the resolved
+System/Light/Dark preference displayed by `ThemeToggleElement`. Account state
+also exposes `personalPreference`, `source`, and `saving`.
+`configuration.inheritedPreference` supplies the resolved value for a null
+personal selection. `applyState()` derives the effective light/dark scheme from
+`state.preference` and `matchMedia`. The private `committed` snapshot provides
+rollback state, while `state` carries the current optimistic or committed view.
 
 `ThemeCoordinator` exposes typed operations to:
 
@@ -332,13 +327,13 @@ Delete legacy migration and cookie assertions.
 - Cookie-only `tests/test_theme_auth.py` coverage is removed.
 - Codegen tests verify the reusable choice-vocabulary renderer and that
   `THEME_CHOICES` and `ts/generated/theme-preferences.ts` remain identical.
-- Migration tests verify amended migration `0030` has the final System contract.
+- Registry tests verify the current model field has the final System contract.
 - `tests/test_hashed_static.py` compiles/collects the bootstrap under production
   manifest storage, verifies its hashed URL and ordering before the hashed
-  stylesheet, and asserts the emitted script remains import/export-free.
-- Caddy configuration validation covers the hashed-filename matcher and verifies
-  that only hashed `/static/` responses receive the one-year immutable cache
-  header.
+  stylesheet, while `theme-bootstrap.test.ts` executes the emitted file as a
+  classic script.
+- Static Caddy assertions verify the hashed-filename matcher and immutable-header
+  directive; the production image build validates the Caddyfile syntax.
 
 Final verification is the full `direnv exec . make check` plus
 `python manage.py makemigrations --check --dry-run` inside the Nix development

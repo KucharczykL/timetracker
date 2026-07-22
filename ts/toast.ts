@@ -173,8 +173,8 @@ function dispatchHtmxTriggers(response: Response): void {
   try {
     triggers = JSON.parse(htmxTrigger);
   } catch (error) {
-    // Reporting a broken toast trigger via the toast would be circular —
-    // suppress the toast, keep the guaranteed server log line.
+    // Reporting through the toast would be circular. Suppress it and use the
+    // best-effort client-error reporting channel.
     reportClientError(
       "fetchWithHtmxTriggers[HX-Trigger]",
       String((error as Error)?.message ?? error),

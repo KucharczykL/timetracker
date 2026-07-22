@@ -48,8 +48,6 @@ if TYPE_CHECKING:
     from common.components import Node
     from games.models import Session
 
-# The main module script only owns the crown icon mount. Theme behavior lives in
-# its own component so this unrelated page glue no longer controls appearance.
 _MAIN_SCRIPT_A = """
             document.addEventListener('DOMContentLoaded', () => {
                 if (window.mountCrownIcon) {
@@ -61,7 +59,6 @@ _MAIN_SCRIPT_B = """
             });
         """
 
-# Toast notification region (Alpine.js). Verbatim from the old base.html.
 _TOAST_CONTAINER = """<div x-data="toastStore()"
          role="region"
          aria-label="Notifications"
