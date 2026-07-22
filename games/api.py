@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, ModelSchema, NinjaAPI, Router, Schema, Status
@@ -36,6 +37,7 @@ from timetracker.settings_resolver import (
     set_site_setting,
     set_user_preference,
 )
+from timetracker.theme import write_theme_cookies
 from games.sorting import (
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
@@ -593,7 +595,9 @@ def list_user_settings(request):
 
 
 @settings_router.patch("/user/{key}", response=SettingOut)
-def update_user_setting(request, key: str, payload: SettingValueIn):
+def update_user_setting(
+    request, key: str, payload: SettingValueIn, response: HttpResponse
+):
     """Set (or clear, with ``value: null``) one of the user's prefs.
 
     Return the freshly resolved value and origin so live controls can update their
@@ -618,6 +622,12 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
         if saved_value is None
         else ResolvedSetting(saved_value, SettingSource.USER, False)
     )
+    if key == "THEME":
+        write_theme_cookies(
+            response,
+            str(resolved.value),
+            needs_migration=saved_value is None,
+        )
     return _setting_out(key, resolved, locked=False)
 
 

@@ -90,6 +90,10 @@ def _page_size(payload_list) -> dict:
     return next(row for row in payload_list if row["key"] == "DEFAULT_PAGE_SIZE")
 
 
+def _theme(payload_list) -> dict:
+    return next(row for row in payload_list if row["key"] == "THEME")
+
+
 # --- auth -----------------------------------------------------------------
 
 
@@ -224,6 +228,33 @@ def test_user_page_size_round_trips_as_int(auth_client):
     assert response.json()["value"] == 50
     assert response.json()["source"] == "user"
     assert _page_size(auth_client.get(_user_url()).json())["value"] == 50
+
+
+def test_user_theme_patch_sets_account_cookie_and_clears_migration_marker(
+    auth_client,
+):
+    auth_client.cookies["color-theme-migrate"] = "1"
+
+    response = _patch(auth_client, _user_patch_url("THEME"), "dark")
+
+    assert response.status_code == 200
+    assert response.json()["value"] == "dark"
+    assert _theme(auth_client.get(_user_url()).json())["value"] == "dark"
+    assert response.cookies["color-theme"].value == "dark"
+    assert response.cookies["color-theme"]["path"] == "/"
+    assert response.cookies["color-theme"]["samesite"] == "Lax"
+    assert response.cookies["color-theme"]["max-age"] == 31_536_000
+    assert not response.cookies["color-theme"]["httponly"]
+    assert response.cookies["color-theme-migrate"]["max-age"] == 0
+
+
+def test_unrelated_user_patch_does_not_write_theme_cookies(
+    auth_client, no_currency_env
+):
+    response = _patch(auth_client, _user_patch_url("DEFAULT_CURRENCY"), "EUR")
+
+    assert "color-theme" not in response.cookies
+    assert "color-theme-migrate" not in response.cookies
 
 
 @pytest.mark.parametrize("bad", [0, 20, True, "lots"])
