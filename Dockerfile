@@ -70,7 +70,8 @@ COPY --from=assets --chown=timetracker:timetracker /app/games/static/js/dist /ho
 COPY --chown=timetracker:timetracker Caddyfile /etc/caddy/Caddyfile
 COPY --chown=timetracker:timetracker supervisor.conf /etc/supervisor/conf.d/supervisor.conf
 COPY --chown=timetracker:timetracker entrypoint.sh /
-RUN chmod +x /entrypoint.sh
+RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile \
+    && chmod +x /entrypoint.sh
 
 ENV VERSION_NUMBER=1.7.0
 

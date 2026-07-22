@@ -22,7 +22,8 @@ from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.management import call_command
 from django.templatetags.static import static
-from django.test import override_settings
+from django.test import Client, override_settings
+from django.urls import reverse
 
 VENDORED_JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "js"
 DIST_DIR = VENDORED_JS_DIR / "dist"
@@ -63,9 +64,30 @@ def _collect(static_root: Path):
 def test_asset_urls_are_hashed(tmp_path):
     with _collect(tmp_path):
         call_command("collectstatic", "--no-input", verbosity=0)
-        for name in ("js/dist/toast.js", "base.css", "js/flowbite.min.js"):
+        for name in (
+            "js/dist/toast.js",
+            "js/dist/theme-bootstrap.js",
+            "base.css",
+            "js/flowbite.min.js",
+        ):
             url = static(name)
             assert _HASHED_FRAGMENT.search(url), f"{name} not hashed: {url}"
+
+
+@needs_dist
+def test_production_document_loads_hashed_bootstrap_before_hashed_css(tmp_path, db):
+    with _collect(tmp_path):
+        call_command("collectstatic", "--no-input", verbosity=0)
+        html = Client().get(reverse("login")).content.decode()
+        bootstrap = static("js/dist/theme-bootstrap.js")
+        stylesheet = static("base.css")
+
+        assert _HASHED_FRAGMENT.search(bootstrap)
+        assert _HASHED_FRAGMENT.search(stylesheet)
+        assert html.index(f'src="{bootstrap}"') < html.index(f'href="{stylesheet}"')
+        assert html.rfind("<script", 0, html.index(f'src="{bootstrap}"')) == html.index(
+            "<script"
+        )
 
 
 @needs_dist
@@ -114,4 +136,20 @@ def test_no_vendored_js_has_dangling_sourcemap():
                 offenders.append(f"{js.name} -> {reference}")
     assert not offenders, (
         "dangling sourceMappingURL (ship the .map or strip it): " + ", ".join(offenders)
+    )
+
+
+def test_caddy_immutable_policy_matches_only_hashed_static_names():
+    caddyfile = (Path(settings.BASE_DIR) / "Caddyfile").read_text()
+    matcher = re.search(r"path_regexp\s+hashed\s+(\S+)", caddyfile)
+
+    assert matcher is not None
+    pattern = re.compile(matcher.group(1))
+    assert pattern.search("/js/dist/theme-bootstrap.0123456789ab.js")
+    assert pattern.search("/base.abcdef012345.css")
+    assert not pattern.search("/js/dist/theme-bootstrap.js")
+    assert not pattern.search("/base.abcdef01234g.css")
+    assert (
+        'header @hashed Cache-Control "public, max-age=31536000, immutable"'
+        in caddyfile
     )
