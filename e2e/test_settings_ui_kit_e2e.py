@@ -145,7 +145,14 @@ def settings_kit_patch(request: HttpRequest, key: str) -> HttpResponse:
     if payload.get("value") == "reject":
         return JsonResponse({"detail": "Rejected for the test."}, status=422)
     messages.success(request, f"{key} saved")
-    return HttpResponse(status=204)
+    return JsonResponse(
+        {
+            "key": key,
+            "value": payload.get("value"),
+            "source": "user",
+            "locked": False,
+        }
+    )
 
 
 urlpatterns = [
@@ -613,7 +620,7 @@ def test_live_save_toasts_and_reverts_on_error(live_server, page: Page):
         )
     ) as saved_response:
         control.press("Tab")
-    assert saved_response.value.status == 204
+    assert saved_response.value.status == 200
     expect(page.get_by_text("DISPLAY_NAME saved", exact=True)).to_be_visible()
     expect(control).to_have_value("Saved name")
 
