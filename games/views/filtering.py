@@ -18,7 +18,6 @@ from django.urls import reverse
 
 from common.components.custom_elements import FILTER_MODE_MODELS, FilterMode
 from common.criteria import FilterError, OperatorFilter
-from games.filters import FindFilter
 from games.sorting import SortKey
 
 logger = logging.getLogger("games")
@@ -46,11 +45,10 @@ def builder_url_for(
     saved from the builder can capture it (#77); every mode has a sort map now,
     so a caller passes ``None`` only when no sort is active on the list.
 
-    ``per_page`` threads the list's active rows-per-page in so a preset saved
-    there pins it and Apply navigates back preserving it (#337). Only a
-    *non-default* size is carried — a default size threads nothing, so a
-    default-size preset round-trips to the default. ``page`` is deliberately not
-    threaded: it is transient (loading a preset resets to page 1).
+    ``per_page`` is the normalized explicit override. ``None`` means inherit the
+    current user's default; every integer, including that same default or ``0``,
+    is carried so a preset can pin the user's intent (#386). ``page`` remains
+    transient and is never threaded.
 
     Raises ``LookupError`` for a mode without a builder page (``BUILDER_MODES``);
     those views simply don't call this.
@@ -63,7 +61,7 @@ def builder_url_for(
         params.append(f"filter={quote(filter_json)}")
     if sort:
         params.append(f"sort={quote(sort)}")
-    if per_page is not None and per_page != FindFilter.per_page:
+    if per_page is not None:
         params.append(f"per_page={per_page}")
     if params:
         url = f"{url}?{'&'.join(params)}"

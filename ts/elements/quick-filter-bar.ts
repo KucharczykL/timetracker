@@ -42,6 +42,7 @@ interface OverflowFacet {
 
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
+  private perPage = "";
   private facets: OverflowFacet[] = [];
   private row: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
@@ -52,7 +53,9 @@ class QuickFilterBarElement extends HTMLElement {
   private layoutQueued = false;
 
   connectedCallback(): void {
-    this.applyTarget = readQuickFilterBarProps(this).applyUrl;
+    const props = readQuickFilterBarProps(this);
+    this.applyTarget = props.applyUrl;
+    this.perPage = props.perPage;
     // Wires the number/string modifier selects (presence disables inputs,
     // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
@@ -85,7 +88,8 @@ class QuickFilterBarElement extends HTMLElement {
       // Restore the preset's stored sort (not the live URL sort) (#77). Empty
       // filter + empty sort means "show everything": applyUrl returns the bare list.
       const sort = detail.last.data.sort ?? "";
-      // Restore the preset's pinned page size the same way (#337); "" → default.
+      // Restore the preset's pinned page size the same way (#337, #386); ""
+      // inherits the user's current default.
       const perPage = detail.last.data.per_page ?? "";
       this.navigate(applyUrl(this.applyTarget, filter, sort, perPage));
     } catch (error) {
@@ -203,13 +207,13 @@ class QuickFilterBarElement extends HTMLElement {
 
   private onSubmit = (event: Event): void => {
     event.preventDefault();
-    // Carry the live ?sort= and ?per_page= forward so tweaking a facet keeps the
-    // active sort and page size (the bar has no UI for either; the list page URL
-    // is the source) (#77, #337). page is dropped, so the result is page 1.
+    // Sort remains raw URL state. Page size comes from the server-normalized
+    // prop so malformed/negative input becomes inheritance while a valid
+    // explicit value (including 0 or the current default) stays pinned (#386).
+    // page is dropped, so the result is page 1.
     const params = new URLSearchParams(window.location.search);
     const sort = params.get("sort") ?? "";
-    const perPage = params.get("per_page") ?? "";
-    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort, perPage));
+    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort, this.perPage));
   };
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry

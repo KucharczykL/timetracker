@@ -1,5 +1,6 @@
 """Tests for the layered, origin-aware settings resolver."""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -386,6 +387,52 @@ def test_user_prefs_form_rejects_unregistered_key_in_bag(db):
     )
     assert not form.is_valid()
     assert "extra_preferences" in form.errors
+
+
+def test_user_prefs_form_normalizes_registered_bag_values(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={
+            "user": user.pk,
+            "extra_preferences": '{"DEFAULT_PAGE_SIZE": "50"}',
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.save().extra_preferences == {"DEFAULT_PAGE_SIZE": 50}
+
+
+@pytest.mark.parametrize("bad", ["20", True, "lots"])
+def test_user_prefs_form_rejects_invalid_registered_bag_values(db, bad):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={
+            "user": user.pk,
+            "extra_preferences": json.dumps({"DEFAULT_PAGE_SIZE": bad}),
+        }
+    )
+
+    assert not form.is_valid()
+    assert "extra_preferences" in form.errors
+
+
+def test_user_prefs_form_drops_null_bag_values_as_unset(db):
+    from games.admin import UserPreferencesForm
+
+    user = _prefs_user()
+    form = UserPreferencesForm(
+        data={
+            "user": user.pk,
+            "extra_preferences": '{"DEFAULT_PAGE_SIZE": null}',
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.save().extra_preferences == {}
 
 
 # --- no DB access at settings import --------------------------------------

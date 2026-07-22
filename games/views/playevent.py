@@ -170,13 +170,16 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    builder_url = builder_url_for("playevents", filter_json, find.sort, find.per_page)
+    builder_url = builder_url_for(
+        "playevents", filter_json, find.sort, find.per_page_override
+    )
     parsed_filter = parse_filter_dict(filter_json)
     quick_bar = QuickFilterBar(
         mode="playevents",
         existing=parsed_filter,
         builder_url=builder_url,
         preset_api_url=reverse("api-1.0.0:list_presets"),
+        per_page_override=find.per_page_override,
     )
     content = ContentContainer()[quick_bar, content]
     return render_page(

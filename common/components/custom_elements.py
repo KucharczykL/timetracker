@@ -352,7 +352,7 @@ class FilterBuilderProps(TypedDict):
     apply_url: str  # list URL to navigate to on Apply
     preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
     sort: str  # the list's active ?sort= (SortString), "" if none — #77
-    per_page: str  # the list's active rows-per-page, "" if default — #337
+    per_page: str  # normalized explicit override; "" means inherit — #386
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
@@ -376,8 +376,8 @@ def FilterBuilder(
 
     ``sort`` is the list's active ?sort= threaded in (#77): Apply re-emits it and
     Save-as-preset captures it, unless a loaded preset overrides it client-side.
-    ``per_page`` is the list's active rows-per-page threaded in the same way
-    (#337) — "" when the list is at the default size."""
+    ``per_page`` is the normalized explicit override threaded in the same way;
+    ``""`` means inherit the current user's default (#386)."""
     # Function-local import: search_select imports this module (for _SearchSelect
     # and the panel constant), so a top-level import here would be a cycle.
     from common.components.search_select import LoadPresetDropdown
@@ -491,6 +491,7 @@ _SearchSelect = custom_element_builder("search-select")
 
 class QuickFilterBarProps(TypedDict):
     apply_url: str  # list URL a facet change navigates to (#197)
+    per_page: str  # normalized explicit override; "" means inherit user default
 
 
 register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)

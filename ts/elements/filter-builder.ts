@@ -173,7 +173,8 @@ export class FilterBuilderElement extends HTMLElement {
       // Adopt the preset's stored sort so a subsequent Apply restores it rather
       // than the origin list's sort (#77). Missing/empty clears it → default order.
       this.sort = detail.last.data.sort ?? "";
-      // Same for the page size (#337): missing/empty → default rows-per-page.
+      // Same for the page size (#337, #386): missing/empty → inherit the user's
+      // current default rows-per-page.
       this.perPage = detail.last.data.per_page ?? "";
     } catch (error) {
       // Message must keep the "preset load failed" substring — the builder e2e

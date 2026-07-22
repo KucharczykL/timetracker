@@ -21,7 +21,11 @@ from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
 from timetracker.config import SettingSource
-from timetracker.settings_registry import LANDING_PAGE_CHOICES, get_definition
+from timetracker.settings_registry import (
+    LANDING_PAGE_CHOICES,
+    PAGE_SIZE_CHOICES,
+    get_definition,
+)
 from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
@@ -31,6 +35,7 @@ _FIELD_KEYS = {
     "default_currency": "DEFAULT_CURRENCY",
     "default_device": "DEFAULT_DEVICE",
     "default_landing_page": "DEFAULT_LANDING_PAGE",
+    "default_page_size": "DEFAULT_PAGE_SIZE",
 }
 
 
@@ -53,12 +58,20 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         required=False,
         choices=(("", "Use site default"), *LANDING_PAGE_CHOICES),
     )
+    default_page_size = forms.ChoiceField(
+        required=False,
+        choices=(
+            ("", "Use site default"),
+            *((size, str(size)) for size in PAGE_SIZE_CHOICES),
+        ),
+    )
 
     def __init__(
         self,
         *args,
         default_device_label: str = "No device",
         default_landing_page_label: str = "Sessions",
+        default_page_size_label: str = "25",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -71,6 +84,11 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         landing_page_field.choices = (
             ("", f"Use site default ({default_landing_page_label})"),
             *LANDING_PAGE_CHOICES,
+        )
+        page_size_field = cast(forms.ChoiceField, self.fields["default_page_size"])
+        page_size_field.choices = (
+            ("", f"Use site default ({default_page_size_label})"),
+            *((size, str(size)) for size in PAGE_SIZE_CHOICES),
         )
         for field_name, key in _FIELD_KEYS.items():
             self.fields[field_name].label = get_definition(key).label
@@ -106,11 +124,13 @@ def _form_and_states(
         )
     site_device = resolve_with_origin("DEFAULT_DEVICE").value
     site_landing_page = resolve_with_origin("DEFAULT_LANDING_PAGE").value
+    site_page_size = resolve_with_origin("DEFAULT_PAGE_SIZE").value
     return (
         UserSettingsForm(
             initial=initial,
             default_device_label=_device_label(site_device),
             default_landing_page_label=_landing_page_label(site_landing_page),
+            default_page_size_label=str(site_page_size),
         ),
         states,
     )

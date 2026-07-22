@@ -6,7 +6,7 @@ docs/superpowers/specs/2026-06-21-list-view-sort-param-design.md.
 """
 
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from django.db.models import Aggregate, Max, Min, QuerySet, Sum
 from django.http import HttpRequest
@@ -21,6 +21,7 @@ from common.sorting import (
     parse_sort_terms,
 )
 from games.filters import FindFilter
+from timetracker.settings_resolver import resolve_for_user
 
 __all__ = [
     "ParsedSort",
@@ -47,6 +48,7 @@ __all__ = [
     "apply_sort",
     "parse_find_filter",
     "parse_int_param",
+    "parse_per_page_override",
 ]
 
 type AnnotationName = (
@@ -184,6 +186,17 @@ def apply_sort(
     return SortResult(queryset.order_by(*order_by), terms, unknown)
 
 
+def parse_per_page_override(raw: str | None) -> int | None:
+    """Return a valid explicit page size, or ``None`` to inherit the default."""
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
 def parse_int_param(
     raw: str | None, *, default: int, minimum: int | None = None
 ) -> int:
@@ -215,10 +228,18 @@ def parse_find_filter(request: HttpRequest) -> FindFilter:
 
     Free-text search is not here — it rides in the ``?filter=`` JSON as a
     ``search`` criterion."""
+    per_page_override = parse_per_page_override(request.GET.get("per_page"))
+    user = getattr(request, "user", None)
+    default_page_size = (
+        FindFilter.per_page
+        if user is None
+        else cast(int, resolve_for_user(user, "DEFAULT_PAGE_SIZE"))
+    )
     return FindFilter(
         sort=request.GET.get("sort") or None,  # FindFilter.sort holds a SortString
         page=parse_int_param(request.GET.get("page"), default=FindFilter.page),
-        per_page=parse_int_param(
-            request.GET.get("per_page"), default=FindFilter.per_page, minimum=0
+        per_page=(
+            default_page_size if per_page_override is None else per_page_override
         ),
+        per_page_explicit=per_page_override is not None,
     )

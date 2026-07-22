@@ -40,6 +40,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
 | `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Time zone. |
 | `DEFAULT_CURRENCY` | str | `CZK` | no | Default currency for new purchases when none is entered, and the FX conversion target for background price conversion. |
+| `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
 | `DATA_DIR` | path | project root | no | Directory holding the SQLite database. Also read by `entrypoint.sh`. |
 | `DEV_LOGIN_PREFILL` | str (`user:pass`) | `""` (off) | no | **Dev/staging only — never set in production.** When set to `username:password`, the login page prefills those credentials (one click to log in) and sends `X-Robots-Tag: noindex`. Login is not bypassed. `make dev` sets it to `admin:admin`; `make devlogin` provisions that superuser. |
 
@@ -69,7 +70,7 @@ the global `SiteSetting` model.
   absent `extra_preferences` key) falls through to the `SiteSetting` site default
   and then the code default. Non-user keys proxy straight to `resolve_with_origin`.
 - **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
-  `DEFAULT_LANDING_PAGE`) have a personal override layer *and* a `SiteSetting`
+  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`) have a personal override layer *and* a `SiteSetting`
   site default; a plain **site**-scoped setting has only the shared `SiteSetting`
   default (none exist today). **infra**-scoped settings (`DEBUG`, `SECRET_KEY`,
   `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`,
@@ -102,6 +103,10 @@ Changes save immediately against the account through `/api/settings/user`:
   are the Sessions, Games, and Purchases lists and Statistics for the current
   calendar year. The stored value is a validated Django URL name, not an
   arbitrary URL.
+- **Default rows per page** controls every list using `FindFilter` when its URL
+  has no valid `per_page` override. Presets saved without an explicit size keep
+  inheriting this preference; choosing a size from a list pins that exact value
+  in the URL and any subsequently saved preset.
 
 Clearing a control removes the personal override and restores the resolved site
 or built-in default. Existing non-empty values on edit forms are never replaced

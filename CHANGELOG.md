@@ -25,6 +25,10 @@
   device, and landing page. Preferences save live, follow the account across
   browsers, and pre-fill every purchase/session entry path; landing choices
   include Sessions, Games, Purchases, and the current year's Statistics (#385).
+* Add a personal default rows-per-page preference. List URLs and saved presets
+  now distinguish inherited defaults from explicit page-size selections, so an
+  unpinned preset follows later preference changes while a selected size remains
+  pinned across save/load (#386).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously

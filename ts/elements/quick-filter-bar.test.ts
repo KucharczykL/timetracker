@@ -54,13 +54,13 @@ function boolFacet(field: string, checked: "true" | "false" | "" = ""): string {
     </div>`;
 }
 
-function mount(facets: string): {
+function mount(facets: string, perPage = ""): {
   bar: HTMLElement;
   form: HTMLFormElement;
   navigate: ReturnType<typeof vi.fn>;
 } {
   document.body.innerHTML = `
-    <quick-filter-bar apply-url="${LIST_URL}">
+    <quick-filter-bar apply-url="${LIST_URL}" per-page="${perPage}">
       <form>
         ${facets}
         <button type="submit">Apply</button>
@@ -178,15 +178,17 @@ describe("<quick-filter-bar>", () => {
     expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, {}, "-duration"));
   });
 
-  it("carries the live ?per_page= from the URL through a facet Apply (#337)", () => {
-    // Tweaking a facet must not reset the active page size; the bar reads it from
-    // window.location alongside the sort (it has no page-size UI of its own).
+  it("carries the normalized explicit page size through a facet Apply (#386)", () => {
+    // The server prop is authoritative; raw URL state may be invalid or stale.
     window.history.replaceState(
       {},
       "",
-      "/tracker/session/list?sort=-duration&per_page=100",
+      "/tracker/session/list?sort=-duration&per_page=lots",
     );
-    const { form, navigate } = mount(setFacet("game", includePill("1", "X")));
+    const { form, navigate } = mount(
+      setFacet("game", includePill("1", "X")),
+      "100",
+    );
     submit(form);
     const filter = {
       game: {
@@ -196,6 +198,19 @@ describe("<quick-filter-bar>", () => {
       },
     };
     expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-duration", "100"));
+  });
+
+  it("drops an invalid raw page size when the server marks it inherited (#386)", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/tracker/session/list?sort=-duration&per_page=-5",
+    );
+    const { form, navigate } = mount(setFacet("game"));
+
+    submit(form);
+
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, {}, "-duration"));
   });
 
   it("does not navigate on a facet change without Apply", () => {

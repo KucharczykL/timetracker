@@ -45,6 +45,23 @@ def test_builder_prefills_filter_prop(logged_in_client):
     assert "Zelda" in response.content.decode()
 
 
+@pytest.mark.parametrize("raw", ["", " ", "lots", "-5"])
+def test_builder_normalizes_invalid_page_size_to_inherited(logged_in_client, raw):
+    response = logged_in_client.get(
+        reverse("games:filter_builder", args=["game"]), {"per_page": raw}
+    )
+
+    assert 'per-page=""' in response.content.decode()
+
+
+def test_builder_preserves_valid_explicit_page_size(logged_in_client):
+    response = logged_in_client.get(
+        reverse("games:filter_builder", args=["game"]), {"per_page": "25"}
+    )
+
+    assert 'per-page="25"' in response.content.decode()
+
+
 def test_builder_requires_login(client):
     response = client.get(reverse("games:filter_builder", args=["game"]))
     assert response.status_code == 302  # redirect to login

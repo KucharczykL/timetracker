@@ -86,6 +86,10 @@ def _currency(payload_list) -> dict:
     return next(row for row in payload_list if row["key"] == "DEFAULT_CURRENCY")
 
 
+def _page_size(payload_list) -> dict:
+    return next(row for row in payload_list if row["key"] == "DEFAULT_PAGE_SIZE")
+
+
 # --- auth -----------------------------------------------------------------
 
 
@@ -211,6 +215,22 @@ def test_user_patch_rejects_unsupported_landing_page_and_writes_nothing(auth_cli
 
     assert response.status_code == 400
     assert not UserPreferences.objects.filter(user__username="tester").exists()
+
+
+def test_user_page_size_round_trips_as_int(auth_client):
+    response = _patch(auth_client, _user_patch_url("DEFAULT_PAGE_SIZE"), "50")
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 50
+    assert response.json()["source"] == "user"
+    assert _page_size(auth_client.get(_user_url()).json())["value"] == 50
+
+
+@pytest.mark.parametrize("bad", [0, 20, True, "lots"])
+def test_user_page_size_rejects_values_outside_picker(auth_client, bad):
+    response = _patch(auth_client, _user_patch_url("DEFAULT_PAGE_SIZE"), bad)
+
+    assert response.status_code == 400
 
 
 def test_site_patch_rejects_infra_key(superuser_client):

@@ -327,15 +327,27 @@ class BuilderUrlForTest(TestCase):
         url = builder_url_for("games", "", None, 100)
         self.assertIn("?per_page=100", url)
 
-    def test_default_per_page_is_not_carried(self):
-        # The default size round-trips to the default, so it threads nothing —
-        # keeping the builder URL clean (mirrors the default-sort behaviour).
+    def test_explicit_default_per_page_is_carried(self):
+        # A supplied value is explicit intent even when it equals the default.
         from games.filters import FindFilter
 
-        self.assertNotIn(
-            "per_page=", builder_url_for("games", "", None, FindFilter.per_page)
+        self.assertIn(
+            f"per_page={FindFilter.per_page}",
+            builder_url_for("games", "", None, FindFilter.per_page),
         )
+
+    def test_inherited_per_page_is_not_carried(self):
         self.assertNotIn("per_page=", builder_url_for("games", "", None, None))
+
+    def test_quick_bar_receives_normalized_per_page_override(self):
+        html = str(
+            QuickFilterBar(mode="games", apply_url="/games", per_page_override=25)
+        )
+        self.assertIn('per-page="25"', html)
+
+    def test_quick_bar_emits_empty_override_when_inherited(self):
+        html = str(QuickFilterBar(mode="games", apply_url="/games"))
+        self.assertIn('per-page=""', html)
 
     def test_sort_and_per_page_combine_with_ampersand(self):
         url = builder_url_for("games", "", "-playtime", 50)

@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from games.models import Device
+from games.models import Device, Game
 
 
 @pytest.fixture
@@ -15,6 +15,7 @@ def authenticated_page(
 ) -> tuple[Page, Device]:
     django_user_model.objects.create_user(username="tester", password="secret123")
     preferred = Device.objects.create(name="Steam Deck", type=Device.HANDHELD)
+    Game.objects.bulk_create([Game(name=f"Game {index:02}") for index in range(51)])
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -94,6 +95,12 @@ def test_personal_settings_persist_and_drive_consumers(
         "default_landing_page",
         "games:list_games",
     )
+    _save_select(
+        page,
+        "DEFAULT_PAGE_SIZE",
+        "default_page_size",
+        "50",
+    )
 
     page.reload()
     expect(currency).to_have_value("EUR")
@@ -103,6 +110,7 @@ def test_personal_settings_persist_and_drive_consumers(
     expect(page.locator('select[name="default_landing_page"]')).to_have_value(
         "games:list_games"
     )
+    expect(page.locator('select[name="default_page_size"]')).to_have_value("50")
 
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     expect(page.locator('input[name="price_currency"]')).to_have_value("EUR")
@@ -112,3 +120,5 @@ def test_personal_settings_persist_and_drive_consumers(
     )
     page.goto(f"{live_server.url}{reverse('games:index')}")
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_games')}")
+    expect(page).not_to_have_url(re.compile(r"[?&]per_page="))
+    expect(page.locator("#page-sizeLink")).to_have_text("50")

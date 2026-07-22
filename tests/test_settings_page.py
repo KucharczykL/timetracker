@@ -49,6 +49,7 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert 'data-setting-key="DEFAULT_CURRENCY"' in html
     assert 'data-setting-key="DEFAULT_DEVICE"' in html
     assert 'data-setting-key="DEFAULT_LANDING_PAGE"' in html
+    assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in html
 
 
 def test_settings_page_lists_devices_by_name(auth_client):
@@ -67,6 +68,17 @@ def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
 
     assert '<option value="" selected>Use site default (No device)</option>' in html
     assert '<option value="" selected>Use site default (Sessions)</option>' in html
+    assert '<option value="" selected>Use site default (25)</option>' in html
+
+
+def test_personal_page_size_is_selected(auth_client, user):
+    UserPreferences.objects.create(
+        user=user, extra_preferences={"DEFAULT_PAGE_SIZE": 50}
+    )
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert '<option value="50" selected>50</option>' in html
 
 
 def test_unset_selects_show_configured_site_defaults(auth_client):

@@ -5,7 +5,7 @@ and future settings widgets.
 so ``settings.py`` can import this module safely.
 
 Registers the 9 settings read via ``config()`` plus the per-user preference keys
-(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``), which are *not* read via
+(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``, ``DEFAULT_PAGE_SIZE``), which are *not* read via
 ``config()`` — no Django setting consumes them at boot; they resolve through the
 runtime chain (personal → env → site DB → default). Excluded on purpose:
 ``ENV_FILE``/``INI_FILE`` (they *locate* the sources, read via bare ``os.environ``
@@ -34,6 +34,9 @@ LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
 _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
     url_name for url_name, _label in LANDING_PAGE_CHOICES
 )
+
+DEFAULT_PAGE_SIZE: Final[int] = 25
+PAGE_SIZE_CHOICES: Final[tuple[int, ...]] = (10, 25, 50, 100, 500, 1000)
 
 
 class SettingScope(StrEnum):
@@ -117,6 +120,16 @@ def _validate_optional_landing_page(value: object) -> str | None:
     return value
 
 
+def _validate_page_size(value: object) -> int:
+    """Accept exactly the sizes exposed by the rows-per-page picker."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(f"Page size must be an integer (got {value!r}).")
+    if value not in PAGE_SIZE_CHOICES:
+        choices = ", ".join(str(choice) for choice in PAGE_SIZE_CHOICES)
+        raise ValidationError(f"Page size must be one of {choices} (got {value!r}).")
+    return value
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
@@ -152,6 +165,17 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             default_factory=lambda: None,
             validator=_validate_optional_landing_page,
             widget="text",
+        ),
+        SettingDefinition(
+            "DEFAULT_PAGE_SIZE",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Default rows per page",
+            help_text="Rows shown on list pages when no page size is selected.",
+            cast=int,
+            default_factory=lambda: DEFAULT_PAGE_SIZE,
+            validator=_validate_page_size,
+            widget="select",
         ),
         SettingDefinition(
             "TZ",

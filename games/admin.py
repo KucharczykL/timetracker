@@ -113,11 +113,14 @@ class UserPreferencesForm(forms.ModelForm):
                 raise ValidationError({field_name: [str(error)]})
             if field_name != "default_device":
                 cleaned[field_name] = normalized
-        self._validate_extra_preferences(cleaned.get("extra_preferences") or {})
+        cleaned["extra_preferences"] = self._normalize_extra_preferences(
+            cleaned.get("extra_preferences") or {}
+        )
         return cleaned
 
-    def _validate_extra_preferences(self, extra):
-        for key in extra:
+    def _normalize_extra_preferences(self, extra):
+        normalized = {}
+        for key, value in extra.items():
             if key in USER_PREFERENCE_FIELD_BY_KEY:
                 raise ValidationError(
                     {"extra_preferences": f"{key!r} has a typed column; use it."}
@@ -132,6 +135,15 @@ class UserPreferencesForm(forms.ModelForm):
                 raise ValidationError(
                     {"extra_preferences": f"{key!r} is not a user-scoped setting."}
                 )
+            if value is None:
+                continue
+            try:
+                normalized[key] = normalize_setting_value(value, definition)
+            except ValidationError as error:
+                raise ValidationError({"extra_preferences": error.messages})
+            except (ValueError, TypeError) as error:
+                raise ValidationError({"extra_preferences": [str(error)]})
+        return normalized
 
 
 @admin.register(UserPreferences)
