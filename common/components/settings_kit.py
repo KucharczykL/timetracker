@@ -388,6 +388,7 @@ def _field_metadata(metadata_id: str, state: SettingFieldState) -> Node | None:
 def prepare_setting_fields(
     form,
     states: Mapping[str, SettingFieldState],
+    presentations: Mapping[str, FormFieldPresentation] | None = None,
 ) -> dict[str, FormFieldPresentation]:
     """Stamp semantics and return one presentation per setting field.
 
@@ -395,7 +396,11 @@ def prepare_setting_fields(
     field renderer. The mapping key is a Django form field name; ``state.key``
     is the registry key sent to the API.
     """
-    presentations: dict[str, FormFieldPresentation] = {}
+    supplied = dict(presentations or {})
+    unknown = set(supplied) - set(form.fields)
+    if unknown:
+        raise ValueError(f"Unknown setting presentations: {sorted(unknown)!r}.")
+    prepared: dict[str, FormFieldPresentation] = {}
     for field_name, state in states.items():
         if field_name not in form.fields:
             raise ValueError(f"Unknown setting form field {field_name!r}.")
@@ -434,11 +439,24 @@ def prepare_setting_fields(
             )
         if state.locked:
             field.disabled = True
-        presentations[field_name] = FormFieldPresentation(
-            label_extra=label_extra,
-            after_control=metadata,
+        presentation = supplied.get(field_name, FormFieldPresentation())
+        prepared[field_name] = FormFieldPresentation(
+            label_extra=(
+                Fragment(presentation.label_extra, label_extra)
+                if presentation.label_extra is not None
+                else label_extra
+            ),
+            after_control=(
+                Fragment(presentation.after_control, metadata)
+                if presentation.after_control is not None and metadata is not None
+                else presentation.after_control or metadata
+            ),
+            decorate_control=presentation.decorate_control,
         )
-    return presentations
+    prepared.update(
+        {key: value for key, value in supplied.items() if key not in states}
+    )
+    return prepared
 
 
 def LiveSettingFields(
@@ -448,11 +466,12 @@ def LiveSettingFields(
     patch_url_template: str,
     csrf: str,
     groups: Sequence[FormFieldGroup] | None = None,
+    presentations: Mapping[str, FormFieldPresentation] | None = None,
 ) -> Node:
     """Render existing ``FormFields`` inside the optimistic live-save host."""
     if "__key__" not in patch_url_template:
         raise ValueError("patch_url_template must contain the literal __key__ token.")
-    presentations = prepare_setting_fields(form, states)
+    prepared = prepare_setting_fields(form, states, presentations)
     return _LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
@@ -461,7 +480,7 @@ def LiveSettingFields(
         SettingsFieldLayout(1)[
             FormFields(
                 form,
-                presentations=presentations,
+                presentations=prepared,
                 groups=groups,
             )
         ]

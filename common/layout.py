@@ -242,17 +242,7 @@ def NavbarMenu(
             ],
         )
 
-    theme_toggle = Li(class_="flex items-center")[
-        ThemeToggle(
-            api_url=(
-                reverse("api-1.0.0:update_user_setting", args=["THEME"])
-                if authenticated
-                else ""
-            ),
-            csrf=csrf_token,
-            cookie_secure=settings.SESSION_COOKIE_SECURE,
-        )
-    ]
+    theme_toggle = Li(class_="flex items-center")[ThemeToggle()]
 
     home = Li()[
         A(

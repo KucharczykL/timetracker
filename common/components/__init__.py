@@ -171,7 +171,7 @@ from common.components.settings_kit import (
     SettingsSectionNav,
     prepare_setting_fields,
 )
-from common.components.theme import ThemeToggle
+from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     ComboboxDropdown,
@@ -282,6 +282,7 @@ __all__ = [
     "SettingsSectionNav",
     "prepare_setting_fields",
     "ThemeToggle",
+    "ThemeSetting",
     "DEFAULT_PREFETCH",
     "ComboboxDropdown",
     "FilterSelect",

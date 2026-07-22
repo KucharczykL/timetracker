@@ -11,11 +11,13 @@ from django.urls import reverse
 from common.components import (
     ContentContainer,
     Div,
+    FormFieldPresentation,
     LiveSettingFields,
     PageHeading,
     SettingFieldState,
     SettingsScaffold,
     SettingsSection,
+    ThemeSetting,
 )
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
@@ -67,7 +69,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
             *((size, str(size)) for size in PAGE_SIZE_CHOICES),
         ),
     )
-    theme = forms.ChoiceField(choices=THEME_CHOICES)
+    theme = forms.ChoiceField(required=False, choices=THEME_CHOICES)
 
     def __init__(
         self,
@@ -75,6 +77,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         default_device_label: str = "No device",
         default_landing_page_label: str = "Sessions",
         default_page_size_label: str = "25",
+        default_theme_label: str = "System",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -92,6 +95,11 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         page_size_field.choices = (
             ("", f"Use site default ({default_page_size_label})"),
             *((size, str(size)) for size in PAGE_SIZE_CHOICES),
+        )
+        theme_field = cast(forms.ChoiceField, self.fields["theme"])
+        theme_field.choices = (
+            ("", f"Use site default ({default_theme_label})"),
+            *THEME_CHOICES,
         )
         for field_name, key in _FIELD_KEYS.items():
             self.fields[field_name].label = get_definition(key).label
@@ -118,25 +126,25 @@ def _form_and_states(
     for field_name, key in _FIELD_KEYS.items():
         definition = get_definition(key)
         resolved = resolve_for_user_with_origin(user, key)
-        if (
-            field_name in {"default_currency", "theme"}
-            or resolved.source is SettingSource.USER
-        ):
+        if field_name == "default_currency" or resolved.source is SettingSource.USER:
             initial[field_name] = resolved.value
         states[field_name] = SettingFieldState(
             key,
             str(resolved.source),
             help_text=definition.help_text,
+            live_save=field_name != "theme",
         )
     site_device = resolve_with_origin("DEFAULT_DEVICE").value
     site_landing_page = resolve_with_origin("DEFAULT_LANDING_PAGE").value
     site_page_size = resolve_with_origin("DEFAULT_PAGE_SIZE").value
+    site_theme = resolve_with_origin("THEME").value
     return (
         UserSettingsForm(
             initial=initial,
             default_device_label=_device_label(site_device),
             default_landing_page_label=_landing_page_label(site_landing_page),
             default_page_size_label=str(site_page_size),
+            default_theme_label=dict(THEME_CHOICES).get(str(site_theme), "System"),
         ),
         states,
     )
@@ -158,6 +166,9 @@ def user_settings(request: HttpRequest) -> HttpResponse:
                 states=states,
                 patch_url_template=patch_url,
                 csrf=get_token(request),
+                presentations={
+                    "theme": FormFieldPresentation(decorate_control=ThemeSetting)
+                },
             ),
             "Defaults used when creating records and opening Timetracker.",
         )

@@ -289,6 +289,9 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             assert f'aria-describedby="{control_id}_setting_metadata"' in html
 
     def test_non_live_state_keeps_identity_without_generic_save_ownership(self):
+        presentation = FormFieldPresentation(
+            decorate_control=lambda control: Element("theme-setting")[control]
+        )
         html = str(
             LiveSettingFields(
                 KitForm(),
@@ -301,11 +304,13 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
                 },
                 patch_url_template="/api/settings/user/__key__",
                 csrf="token",
+                presentations={"destination": presentation},
             )
         )
 
         assert 'data-setting-key="THEME"' in html
         assert "data-live-setting-control" not in html
+        assert "<theme-setting><select" in html
 
 
 class SettingsScaffoldTest(SimpleTestCase):
