@@ -6,10 +6,13 @@ test asserts the row updates without navigation and the PATCH succeeds (200, not
 403 — the real-browser CSRF path).
 """
 
+import datetime as dt
+
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Browser, Page, expect
 
 from games.models import Device, Game, Platform, Session
 
@@ -67,6 +70,59 @@ def test_finish_session_swaps_row_in_place(authenticated_page: Page, live_server
 
     session.refresh_from_db()
     assert session.timestamp_end is not None
+
+
+@override_settings(TIME_ZONE="Europe/Prague")
+def test_finish_preserves_server_rendered_start_across_browser_timezone(
+    authenticated_page: Page, browser: Browser, live_server
+):
+    """The rebuilt row must retain Django's text despite the browser's zone."""
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    game = Game.objects.create(name="Tunic", platform=platform)
+    session = Session.objects.create(
+        game=game,
+        timestamp_start=dt.datetime(2026, 1, 1, 0, 30, tzinfo=dt.UTC),
+    )
+
+    context = browser.new_context(timezone_id="Pacific/Honolulu")
+    try:
+        page = context.new_page()
+        page.goto(f"{live_server.url}{reverse('login')}")
+        page.fill('input[name="username"]', "tester")
+        page.fill('input[name="password"]', "secret123")
+        page.click('button:has-text("Login")')
+        page.wait_for_url(f"{live_server.url}/tracker**")
+        assert (
+            page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+            == "Pacific/Honolulu"
+        )
+
+        page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+        row = page.locator(f"#session-row-{session.pk}")
+        time_cell = row.locator("td").nth(0)
+        expect(time_cell).to_have_text("01/01/2026 01:30")
+        server_rendered_start = time_cell.inner_text()
+
+        with page.expect_response(
+            lambda response: (
+                "/api/session/" in response.url
+                and "/device" not in response.url
+                and response.request.method == "PATCH"
+            )
+        ) as response_info:
+            row.locator("button[data-finish]").click()
+
+        assert response_info.value.status == 200
+
+        row = page.locator(f"#session-row-{session.pk}")
+        expect(row.locator("button[data-finish]")).to_have_count(0)
+        rendered_start, separator, _ = (
+            row.locator("td").nth(0).inner_text().partition(" — ")
+        )
+        assert separator == " — "
+        assert rendered_start.encode() == server_rendered_start.encode()
+    finally:
+        context.close()
 
 
 def test_device_selector_still_works_after_finish(
