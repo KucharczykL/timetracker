@@ -1934,7 +1934,6 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
     return Th(scope="col", class_=base_class, aria_sort=aria_sort)[_SortHeader()[link]]
 
 
-# The per-page sizes offered by the list-view rows-per-page picker.
 PAGE_SIZE_PRESETS = PAGE_SIZE_CHOICES
 
 

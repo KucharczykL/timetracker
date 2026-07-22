@@ -121,7 +121,6 @@ def _validate_optional_landing_page(value: object) -> str | None:
 
 
 def _validate_page_size(value: object) -> int:
-    """Accept exactly the sizes exposed by the rows-per-page picker."""
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"Page size must be an integer (got {value!r}).")
     if value not in PAGE_SIZE_CHOICES:

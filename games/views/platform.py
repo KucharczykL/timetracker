@@ -95,8 +95,6 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    # Thread the active sort + rows-per-page into the builder so a preset saved
-    # there captures both (#335 sort, #337 per_page).
     builder_url = builder_url_for(
         "platforms", filter_json, find.sort, find.per_page_override
     )

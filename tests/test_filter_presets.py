@@ -271,7 +271,7 @@ def test_resaving_without_sort_clears_stored_sort(auth_client):
     assert preset.find_filter == {}
 
 
-# ── Page-size round-trip (#337) ──────────────────────────────────────────────
+# ── Page-size round-trip ─────────────────────────────────────────────────────
 
 
 def test_save_persists_non_default_per_page(auth_client):
@@ -281,8 +281,6 @@ def test_save_persists_non_default_per_page(auth_client):
 
 
 def test_save_explicit_default_per_page_is_pinned(auth_client):
-    # Explicit selection is intent: it remains pinned even when its value equals
-    # the current built-in default.
     from games.filters import FindFilter
 
     _save(
@@ -297,8 +295,6 @@ def test_save_explicit_default_per_page_is_pinned(auth_client):
 
 
 def test_save_zero_per_page_is_persisted(auth_client):
-    # per_page=0 (show all) differs from the default, so it is kept — a truthiness
-    # check would wrongly drop it.
     _save(auth_client, name="All", mode="games", filter=None, per_page="0")
     preset = FilterPreset.objects.get(name="All")
     assert preset.find_filter == {"per_page": 0}
@@ -311,9 +307,6 @@ def test_save_non_integer_per_page_stores_nothing(auth_client):
 
 
 def test_save_negative_per_page_stores_nothing(auth_client):
-    # A negative size would 500 the list on load (Paginator slices [0:-n]); the
-    # save path reuses parse_int_param's minimum=0 bound, so it degrades to the
-    # default and is not persisted (#337).
     _save(auth_client, name="Neg", mode="games", filter=None, per_page="-5")
     preset = FilterPreset.objects.get(name="Neg")
     assert preset.find_filter == {}
@@ -333,8 +326,6 @@ def test_save_persists_sort_and_per_page_together(auth_client):
 
 
 def test_save_persists_per_page_for_non_games_mode(auth_client):
-    # per_page is universal (every list paginates) and, unlike sort, is not gated
-    # on MODE_SORTS at all — it pins the page size for any mode.
     _save(auth_client, name="PE", mode="playevents", filter=None, per_page="50")
     preset = FilterPreset.objects.get(name="PE")
     assert preset.find_filter == {"per_page": 50}
@@ -373,8 +364,6 @@ def test_list_degrades_corrupt_stored_per_page_to_inherited(auth_client, user, s
 
 
 def test_resaving_without_per_page_clears_stored_per_page(auth_client):
-    # find_filter is part of the upsert defaults, so re-saving with no per_page
-    # must overwrite a previously-stored size rather than leaving it stale.
     _save(auth_client, name="V", mode="games", filter=None, per_page="100")
     _save(auth_client, name="V", mode="games", filter=None)
     preset = FilterPreset.objects.get(name="V")

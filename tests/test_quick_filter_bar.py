@@ -322,13 +322,10 @@ class BuilderUrlForTest(TestCase):
         self.assertNotIn("sort=", builder_url_for("games", "", ""))
 
     def test_non_default_per_page_is_carried(self):
-        # A non-default page size threads into the builder so a preset saved
-        # there pins it (#337).
         url = builder_url_for("games", "", None, 100)
         self.assertIn("?per_page=100", url)
 
     def test_explicit_default_per_page_is_carried(self):
-        # A supplied value is explicit intent even when it equals the default.
         from games.filters import FindFilter
 
         self.assertIn(

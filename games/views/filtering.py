@@ -37,21 +37,9 @@ def builder_url_for(
     sort: str | None = None,
     per_page: int | None = None,
 ) -> str:
-    """The fully-formed nested-builder URL for ``mode``, carrying ``?filter=``,
-    ``&sort=`` and ``&per_page=`` when active — the single home of the URL format
-    the list views and the quick bar's degraded pill rely on.
+    """Build a filter-builder URL with persistent list state.
 
-    ``sort`` threads the list's active ``?sort=`` into the builder so a preset
-    saved from the builder can capture it (#77); every mode has a sort map now,
-    so a caller passes ``None`` only when no sort is active on the list.
-
-    ``per_page`` is the normalized explicit override. ``None`` means inherit the
-    current user's default; every integer, including that same default or ``0``,
-    is carried so a preset can pin the user's intent (#386). ``page`` remains
-    transient and is never threaded.
-
-    Raises ``LookupError`` for a mode without a builder page (``BUILDER_MODES``);
-    those views simply don't call this.
+    ``None`` page size inherits; ``0`` is explicit. Page number is transient.
     """
     if mode not in BUILDER_MODES:
         raise LookupError(f"mode {mode!r} has no filter-builder page")
