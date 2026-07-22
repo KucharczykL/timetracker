@@ -82,7 +82,10 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   } = config;
   let isOpen = false;
   let lastPointerType = "";
+  let pointerInside = false;
   let destroyed = false;
+
+  const triggerIsDisabled = (): boolean => trigger.hasAttribute("disabled");
 
   const positionPanel = (): void => {
     const resolvedAnchor = typeof anchor === "function" ? anchor() : anchor;
@@ -132,10 +135,16 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   };
 
   const onPointerEnter = (event: PointerEvent): void => {
-    if (event.pointerType === "mouse") open();
+    if (event.pointerType === "mouse") {
+      pointerInside = true;
+      if (!triggerIsDisabled()) open();
+    }
   };
   const onPointerLeave = (event: PointerEvent): void => {
-    if (event.pointerType === "mouse") close();
+    if (event.pointerType === "mouse") {
+      pointerInside = false;
+      close();
+    }
   };
   const onFocusIn = (): void => {
     if (lastPointerType !== "touch" && lastPointerType !== "pen") open();
@@ -166,6 +175,14 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   const dismissCleanup = tap
     ? bindPopupDismiss({ host, isOpen: () => isOpen, close })
     : null;
+  const disabledObserver = new MutationObserver(() => {
+    if (triggerIsDisabled()) close();
+    else if (pointerInside) open();
+  });
+  disabledObserver.observe(trigger, {
+    attributes: true,
+    attributeFilter: ["disabled"],
+  });
 
   const destroy = (): void => {
     if (destroyed) return;
@@ -177,6 +194,7 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     host.removeEventListener("focusout", onFocusOut);
     trigger.removeEventListener("pointerdown", onTriggerPointerDown);
     trigger.removeEventListener("click", onTriggerClick);
+    disabledObserver.disconnect();
     dismissCleanup?.();
   };
 
