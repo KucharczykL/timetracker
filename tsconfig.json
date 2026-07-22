@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "ESNext.Intl", "ESNext.Temporal"],
     "strict": true,
     "noEmitOnError": true,
     "forceConsistentCasingInFileNames": true,
@@ -13,4 +13,3 @@
   "include": ["ts/**/*.ts"],
   "exclude": ["ts/**/*.test.ts"]
 }
-
