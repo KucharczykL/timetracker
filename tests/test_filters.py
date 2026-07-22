@@ -5237,8 +5237,8 @@ class TestStringFieldNullConvention:
     Known intentional exceptions (pre-existing nullable string fields not used
     in any filter, listed as "ModelName.field_name"):
     - GameStatusChange.old_status: NULL means "no previous status" (first-time set)
-    - UserPreferences.default_currency / default_landing_page: NULL means "unset"
-      (fall through to the site/default settings layer); never filtered.
+    - UserPreferences.default_currency / default_landing_page / theme: NULL means
+      "unset" (fall through to the site/default settings layer); never filtered.
     """
 
     # Fields that are intentionally null=True for domain reasons and are NOT used
@@ -5252,6 +5252,7 @@ class TestStringFieldNullConvention:
             # resolver falls through on, deliberately not the "" convention.
             "UserPreferences.default_currency",
             "UserPreferences.default_landing_page",
+            "UserPreferences.theme",
         }
     )
 
