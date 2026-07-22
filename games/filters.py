@@ -74,7 +74,7 @@ class FindFilter:
 
     @property
     def per_page_override(self) -> int | None:
-        """URL-provided size, or ``None`` when the user default is inherited."""
+        """Explicit URL override, if any."""
         return self.per_page if self.per_page_explicit else None
 
 

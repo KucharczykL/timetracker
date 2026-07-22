@@ -41,13 +41,8 @@ export class FilterBuilderElement extends HTMLElement {
   private mode = "";
   private applyTarget = "";
   private presetApiUrl = "";
-  // The active sort (a SortString), threaded from the list via the `sort` prop
-  // (#77). Apply re-emits it and Save captures it; loading a preset overwrites
-  // it with the preset's stored sort so a subsequent Apply restores that.
+  // Apply and Save preserve list state; loading a preset replaces it.
   private sort = "";
-  // The active rows-per-page, threaded from the list via the `per_page` prop
-  // (#337), handled exactly like `sort`: Apply re-emits it, Save captures it,
-  // and loading a preset adopts the preset's stored size.
   private perPage = "";
   private incompleteCount = 0;
   private changeListener: ((event: Event) => void) | null = null;
@@ -170,11 +165,8 @@ export class FilterBuilderElement extends HTMLElement {
     try {
       const raw = detail.last.data.filter ?? "";
       this.group()?.loadFilter(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
-      // Adopt the preset's stored sort so a subsequent Apply restores it rather
-      // than the origin list's sort (#77). Missing/empty clears it → default order.
+      // Missing values restore inherited defaults.
       this.sort = detail.last.data.sort ?? "";
-      // Same for the page size (#337, #386): missing/empty → inherit the user's
-      // current default rows-per-page.
       this.perPage = detail.last.data.per_page ?? "";
     } catch (error) {
       // Message must keep the "preset load failed" substring — the builder e2e

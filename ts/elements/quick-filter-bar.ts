@@ -85,11 +85,8 @@ class QuickFilterBarElement extends HTMLElement {
     try {
       const raw = detail.last.data.filter ?? "";
       const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      // Restore the preset's stored sort (not the live URL sort) (#77). Empty
-      // filter + empty sort means "show everything": applyUrl returns the bare list.
+      // Preset state replaces live URL state.
       const sort = detail.last.data.sort ?? "";
-      // Restore the preset's pinned page size the same way (#337, #386); ""
-      // inherits the user's current default.
       const perPage = detail.last.data.per_page ?? "";
       this.navigate(applyUrl(this.applyTarget, filter, sort, perPage));
     } catch (error) {
@@ -207,10 +204,7 @@ class QuickFilterBarElement extends HTMLElement {
 
   private onSubmit = (event: Event): void => {
     event.preventDefault();
-    // Sort remains raw URL state. Page size comes from the server-normalized
-    // prop so malformed/negative input becomes inheritance while a valid
-    // explicit value (including 0 or the current default) stays pinned (#386).
-    // page is dropped, so the result is page 1.
+    // Page size is server-normalized; the raw URL may be invalid.
     const params = new URLSearchParams(window.location.search);
     const sort = params.get("sort") ?? "";
     this.navigate(applyUrl(this.applyTarget, this.serialize(), sort, this.perPage));

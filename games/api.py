@@ -398,15 +398,7 @@ preset_router = Router()
 
 
 class PresetOption(Schema):
-    """A FilterPreset shaped as a SearchSelectOption for the preset picker.
-
-    ``data`` values are strings (the SearchSelectOption contract — they land as
-    ``data-*`` attributes on the option row): ``data["filter"]`` is the preset's
-    ``object_filter`` re-serialized to compact JSON (``"{}"`` for an empty
-    preset), ``data["sort"]`` is the persisted sort string (``""`` when none —
-    #77), and ``data["per_page"]`` is the persisted rows-per-page (``""`` when
-    the preset pins no size — #337).
-    """
+    """Preset picker option; empty string values mean inherit."""
 
     value: int
     label: str
@@ -420,23 +412,18 @@ class PresetIn(Schema):
     name: str
     mode: str
     filter: dict | None = None
-    # The list's active ?sort= (a SortString) to persist in find_filter (#77).
-    # Gated to modes with a sort map at save time; re-validated on load via the
-    # ?sort= contract, so an unknown value is harmless. None means "no sort".
+    # Sort is persisted only for modes that support it.
     sort: str | None = None
-    # The list's explicit rows-per-page override to persist in find_filter,
-    # carried as the normalized ?per_page= string. Every valid non-negative
-    # value is pinned; missing/invalid means inherit and stores nothing (#386).
+    # Missing or invalid means inherit; any valid value is pinned.
     per_page: str | None = None
 
 
 def _preset_per_page(raw: str | None) -> int | None:
-    """Return a valid explicit preset pin, or ``None`` for inherited size."""
     return parse_per_page_override(raw)
 
 
 def _stored_per_page(find_filter: dict | None) -> str:
-    """The persisted page-size override as a string ("" means inherit) — #386."""
+    """Serialize a valid override; otherwise inherit."""
     per_page = (find_filter or {}).get("per_page")
     if isinstance(per_page, bool) or not isinstance(per_page, int) or per_page < 0:
         return ""
@@ -475,12 +462,7 @@ def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
             "label": preset.name,
             "data": {
                 "filter": json.dumps(preset.object_filter or {}),
-                # Always present ("" for an inherited-size preset), so the
-                # client reads a stable key; restored by appending ?sort= on load
-                # and re-validated by the list view's warn_unknown_sort (#77).
                 "sort": (preset.find_filter or {}).get("sort", ""),
-                # Likewise "" when no size is pinned; restored by appending
-                # ?per_page= on load (#337).
                 "per_page": _stored_per_page(preset.find_filter),
             },
         }
@@ -518,10 +500,7 @@ def save_preset(request, payload: PresetIn):
         )
         raise HttpError(400, f"Invalid filter: {exc}") from exc
 
-    # find_filter carries the list's sort + pagination alongside the criteria.
-    # Sort is gated to modes with a sort map (a sort-less mode stores nothing);
-    # per_page applies to every paginated list and stores every valid explicit
-    # override. Missing/invalid means inherited; page is transient and omitted.
+    # Page size is universal; sort is mode-gated. Page is never persisted.
     find_filter: dict[str, object] = {}
     if payload.sort and payload.mode in MODE_SORTS:
         find_filter["sort"] = payload.sort

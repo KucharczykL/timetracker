@@ -179,7 +179,6 @@ describe("<quick-filter-bar>", () => {
   });
 
   it("carries the normalized explicit page size through a facet Apply (#386)", () => {
-    // The server prop is authoritative; raw URL state may be invalid or stale.
     window.history.replaceState(
       {},
       "",
@@ -405,7 +404,6 @@ describe("quick-filter-bar preset pick", () => {
   });
 
   it("restores the preset's stored per_page, not the live URL size (#337)", () => {
-    // The URL per_page is deliberately different to prove the preset's own size wins.
     window.history.replaceState({}, "", "/tracker/session/list?per_page=25");
     const { navigate, pick } = mountWithPicker();
     const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };

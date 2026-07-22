@@ -34,12 +34,9 @@ export interface SavePresetRequest {
   name: string;
   mode: string;
   filter: Record<string, unknown>;
-  // The active sort (a SortString) to persist alongside the filter (#77).
-  // Omitted/empty means "no sort"; the server gates it to sort-capable modes.
+  // Empty means no sort; unsupported modes ignore it.
   sort?: string;
-  // The normalized explicit rows-per-page override to persist (#337, #386).
-  // Omitted/empty means inherit the user's default; every valid explicit value
-  // remains pinned, even when it currently equals that default.
+  // Empty means inherit; any valid value is pinned.
   per_page?: string;
 }
 

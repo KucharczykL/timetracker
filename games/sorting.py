@@ -187,7 +187,7 @@ def apply_sort(
 
 
 def parse_per_page_override(raw: str | None) -> int | None:
-    """Return a valid explicit page size, or ``None`` to inherit the default."""
+    """Parse an explicit size; invalid input inherits."""
     if raw is None:
         return None
     try:
@@ -200,18 +200,7 @@ def parse_per_page_override(raw: str | None) -> int | None:
 def parse_int_param(
     raw: str | None, *, default: int, minimum: int | None = None
 ) -> int:
-    """Parse an optional integer query param, falling back to ``default``.
-
-    Blank, missing, or non-integer input degrades to ``default`` (matching
-    ``Paginator.get_page``'s forgiving contract) rather than raising. ``0`` is a
-    valid value — it flows through (``per_page=0`` disables pagination).
-
-    ``minimum`` rejects out-of-range integers: a parsed value below it degrades
-    to ``default`` too. ``per_page`` passes ``minimum=0`` because Django's
-    ``Paginator`` raises on a negative page size (it slices ``[0:-n]``), so a
-    negative ``?per_page=`` — hand-typed or restored from a saved preset — would
-    otherwise 500 the list (#337). This is the single load-side gate; the preset
-    save path reuses it so it can't disagree on which sizes are valid."""
+    """Parse an integer; invalid or out-of-range input returns ``default``."""
     if raw is None:
         return default
     try:
@@ -224,10 +213,7 @@ def parse_int_param(
 
 
 def parse_find_filter(request: HttpRequest) -> FindFilter:
-    """The single list-view request parser: sort + pagination.
-
-    Free-text search is not here — it rides in the ``?filter=`` JSON as a
-    ``search`` criterion."""
+    """Parse list state; an invalid page size inherits the user preference."""
     per_page_override = parse_per_page_override(request.GET.get("per_page"))
     user = getattr(request, "user", None)
     default_page_size = (

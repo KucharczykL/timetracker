@@ -156,8 +156,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     # The list's active ?sort= is threaded in so a preset saved here captures it
     # and Apply navigates back preserving it (#77). Empty when no sort is active.
     sort = request.GET.get("sort", "")
-    # Normalize direct builder URLs too: "" means inherit the current user
-    # default; a valid non-negative integer is an explicit preset pin (#386).
+    # Direct builder URLs use the same inherit-or-pin contract.
     per_page_override = parse_per_page_override(request.GET.get("per_page"))
     per_page = "" if per_page_override is None else str(per_page_override)
     models_json = json.dumps(model_field_registry(model))
