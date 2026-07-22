@@ -73,6 +73,13 @@ script as the first executable script in `<head>`, before unrelated vendor scrip
 and `base.css`. It is an IIFE with no imports or exports; it must not be loaded
 through `ModuleScript()`, `defer`, or `async`.
 
+Production Caddy delivery adds
+`Cache-Control: public, max-age=31536000, immutable` only for `/static/` filenames
+containing Django's 12-hex content-hash fragment (`.<12 hex>.`). Unhashed static
+paths do not receive the immutable policy. This realizes the existing
+`HashedStaticStorage` cache-forever contract and makes the parser-blocking
+bootstrap a browser-cache hit after its first download.
+
 The bootstrap performs only prepaint state application:
 
 1. Read the generated allowed values from `data-theme-preferences`.
@@ -156,7 +163,9 @@ rollback, localStorage, `matchMedia`, or direct Settings DOM synchronization.
 A new `ThemeSettingElement` owns the Settings theme `<select>`. The select is
 decorated with the custom element through `FormFields`; both controls read state
 and transport from the already-initialized `ThemeCoordinator`. The blank choice
-is labeled `Use site default (<resolved label>)`. The element subscribes to
+is labeled `Use site default (<resolved label>)`, and the Django `ChoiceField`
+uses `required=False` so the null choice is valid and does not emit a misleading
+`required` attribute. The element subscribes to
 `ThemeCoordinator`, stops its theme `change` event before it reaches
 `LiveSettingFieldsElement`, and delegates the requested value. It updates the
 select value, disabled state, and `aria-busy` from coordinator notifications.
@@ -199,7 +208,9 @@ control retains `data-setting-key`, while only controls owned by
 marker. `SettingFieldState.live_save` records whether generic live saving applies;
 `prepare_setting_fields()` stamps the marker and produces/merges
 `FormFieldPresentation` values. The theme state opts out and supplies a
-`decorate_control` that wraps its select with `ThemeSettingElement`.
+`decorate_control` that wraps its select with `ThemeSettingElement`. The Python
+component renders `class_="block w-full"`; custom elements otherwise default to
+inline layout and would not preserve the select's full-width field geometry.
 `LiveSettingFieldsElement` discovers and snapshots only
 `[data-live-setting-control]` descendants.
 
@@ -313,7 +324,8 @@ Delete legacy migration and cookie assertions.
 - `tests/test_settings_api.py` verifies System/Light/Dark persistence and durable
   `null` clearing without cookies.
 - `tests/test_settings_page.py` verifies the dynamic
-  `Use site default (<resolved label>)` choice and nullable initial selection.
+  `Use site default (<resolved label>)` choice, `required=False`, nullable initial
+  selection, and the block/full-width `ThemeSettingElement` wrapper.
 - `tests/test_settings_ui_kit.py` verifies `FormFieldPresentation` for grouped and
   ungrouped fields, control decoration without bypassing labels/errors/metadata,
   rejection of unknown keys, and positive `data-live-setting-control` ownership.
@@ -324,6 +336,9 @@ Delete legacy migration and cookie assertions.
 - `tests/test_hashed_static.py` compiles/collects the bootstrap under production
   manifest storage, verifies its hashed URL and ordering before the hashed
   stylesheet, and asserts the emitted script remains import/export-free.
+- Caddy configuration validation covers the hashed-filename matcher and verifies
+  that only hashed `/static/` responses receive the one-year immutable cache
+  header.
 
 Final verification is the full `direnv exec . make check` plus
 `python manage.py makemigrations --check --dry-run` inside the Nix development
