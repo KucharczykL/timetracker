@@ -15,12 +15,12 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 blank=True,
                 choices=[
-                    ("auto", "System (auto)"),
+                    ("system", "System"),
                     ("light", "Light"),
                     ("dark", "Dark"),
                 ],
                 default=None,
-                max_length=5,
+                max_length=6,
                 null=True,
             ),
         ),
