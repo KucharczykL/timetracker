@@ -6,12 +6,12 @@
 
 ## Context
 
-Timetracker has **no runtime-configurable settings and almost no per-user preferences**.
+At the outset of this epic, Timetracker had **no runtime-configurable settings and almost no per-user preferences**.
 All 9 config values (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`,
 `DATA_DIR`, `TZ`, `DEFAULT_CURRENCY`, `HASHED_STATIC`) resolve **once at boot** via `config()`
 (env → `.env` → `settings.ini` → default) in [timetracker/config.py](timetracker/config.py) /
 [timetracker/settings.py](timetracker/settings.py). The only per-user DB state is `FilterPreset`
-([games/models.py:487](games/models.py)); even dark/light theme is browser-`localStorage`-only
+([games/models.py:487](games/models.py)); even dark/light theme was browser-`localStorage`-only
 ([common/layout.py:44](common/layout.py)).
 
 This epic introduces a **settings panel** so that (a) users set personal preferences that persist
@@ -103,9 +103,10 @@ Genuinely net-new (nothing to reuse): the responsive **section-nav scaffold**, t
   an `is_superuser` check and render an error page via `render_page()`.
 - **Navbar needs `is_superuser` threaded** into `NavbarMenu()` ([common/layout.py:270](common/layout.py))
   — it currently receives no `request`.
-- **Theme FOUC:** today's inline FOUC script reads `localStorage` only ([common/layout.py:44](common/layout.py));
-  add a cookie mirror it reads first. No CSP configured (only `SecurityMiddleware`) and the script is
-  inline, so no HashedStaticStorage/CSP conflict.
+- **Theme FOUC:** `TimetrackerDocument()` renders account-authoritative theme state
+  on the root element, and a synchronous external bootstrap applies it before
+  CSS. Anonymous pages alone read `localStorage`; theme cookies and
+  browser-to-account migration are intentionally absent.
 - **Date/time format is centralized-ish but has a client mirror.** ~16 `local_strftime` sites across
   ~7 view/formatting modules (NOT 50+; `games/models.py` has zero `strftime`), plus one direct
   `strftime` at [games/views/game.py:609](games/views/game.py). **A Python-only refactor is
@@ -220,13 +221,13 @@ across users with different defaults; Python + vitest tests updated; `make check
 ### Stage 5 — Server-side theme persistence
 **Depends on:** 2, 3, 4.
 **Deliverables:**
-- `UserPreferences.theme` (`light|dark|auto`); write a **cookie mirror** on save **and at login**
-  ([games/views/auth.py](games/views/auth.py) — add to key files); FOUC script reads cookie → then
-  localStorage → then `prefers-color-scheme` ([common/layout.py:44](common/layout.py)). Navbar toggle
-  syncs DB + cookie + localStorage. Define behavior for anonymous/login pages (no `UserPreferences`).
+- `UserPreferences.theme` (`system|light|dark`, nullable to inherit). The root
+  document state is authoritative for accounts; anonymous pages retain a
+  separate `localStorage` preference. One shared coordinator owns immediate
+  application, account PATCHes, and rollback. No theme cookies or migration.
 - Surface theme as a control in `/settings`.
-**Acceptance:** theme follows the account on a fresh browser; e2e asserts **no** flash-of-wrong-theme,
-including the login page.
+**Acceptance:** theme follows the account on a fresh browser; e2e asserts **no**
+flash-of-wrong-theme, including the login page, and verifies inherited rollback.
 **Key files:** [common/layout.py](common/layout.py), [games/views/auth.py](games/views/auth.py), `ts/`, `games/api.py`, `UserPreferences`.
 
 ### Stage 6 — Prerequisite: centralize date/time formatting (server + client)

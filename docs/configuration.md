@@ -108,13 +108,16 @@ Changes save immediately against the account through `/api/settings/user`:
   has no valid `per_page` override. Presets saved without an explicit size keep
   inheriting this preference; choosing a size from a list pins that exact value
   in the URL and any subsequently saved preset.
-- **Theme** supports System (auto), Light, and Dark. The navbar button cycles
-  through those three states and the settings page exposes the same account
-  preference. A readable `color-theme` cookie mirrors the resolved preference
-  so it can be applied before CSS loads, avoiding a flash of the wrong theme on
-  login and anonymous pages. On the first login after upgrading, a valid legacy
-  `localStorage` theme is migrated once to the account; after that, the saved
-  account preference wins and is copied back to browser storage.
+- **Theme** supports System, Light, and Dark; System follows the operating-system
+  color scheme. The navbar button cycles through those three states and the
+  settings page exposes the same account preference, including a blank “Use site
+  default” choice. Changes apply immediately and a failed account save restores
+  the last server-committed theme. A synchronous external bootstrap applies the
+  resolved value before CSS loads, avoiding a flash of the wrong theme.
+  Authenticated pages always use the account/site value and ignore browser
+  storage. Anonymous pages use `color-theme` in `localStorage`; it is neither
+  migrated into the account nor overwritten at login, so it resumes after
+  logout. Theme cookies are not used.
 
 Clearing a control removes the personal override and restores the resolved site
 or built-in default. Existing non-empty values on edit forms are never replaced
