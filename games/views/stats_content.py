@@ -358,7 +358,7 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
     if months:
         month_rows = [
             make_row(
-                presentation.format(m["month"], "month_year"),
+                presentation.format(m["month"], "month"),
                 A(
                     href=filter_url(
                         stats_links.games_in_month(year, m["month"].month),

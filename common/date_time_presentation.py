@@ -18,7 +18,9 @@ from django.utils.translation import get_language, override
 
 type DatePartName = Literal["day", "month", "year"]
 type HourCycle = Literal["h12", "h23"]
-type DateTimeStyle = Literal["date", "time", "datetime", "month_year"]
+# Each member is an exact display intent. A missing intent requires a design
+# decision and a new style; callers must never substitute the nearest style.
+type DateTimeStyle = Literal["date", "time", "datetime", "month", "month_year"]
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,9 @@ class DateTimePresentation:
         localized = self._localized(value)
         if style == "date":
             return self._format_date(localized)
+        if style == "month":
+            with override(self.locale):
+                return date_format(localized, "F")
         if style == "month_year":
             with override(self.locale):
                 return date_format(

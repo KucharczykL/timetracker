@@ -156,7 +156,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
         reverse("games:list_statuschanges"): ("2022.23.09",),
         reverse("games:stats_alltime"): ("2022.26.09",),
         reverse("games:stats_by_year", args=[2022]): (
-            "září 2022",
+            "září",
             "2022.25.09",
         ),
     }
@@ -175,6 +175,8 @@ def test_non_default_presentation_reaches_every_server_display_path(
                 date_part_parser = _DatePartParser()
                 date_part_parser.feed(html)
                 assert date_part_parser.parts[:3] == ["year", "day", "month"]
+            if url == reverse("games:stats_by_year", args=[2022]):
+                assert "září 2022" not in html
 
         purchase_html = client.get(
             reverse("games:view_purchase", args=[purchase.pk])

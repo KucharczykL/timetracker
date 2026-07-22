@@ -32,6 +32,7 @@ def test_default_presentation_formats_each_semantic_style() -> None:
     assert presentation.format(value, "date") == "22/07/2026"
     assert presentation.format(value, "time") == "14:05"
     assert presentation.format(value, "datetime") == "22/07/2026 14:05"
+    assert presentation.format(value, "month") == "July"
     assert presentation.format(value, "month_year") == "July 2026"
 
 
@@ -104,6 +105,16 @@ def test_month_year_uses_presentation_locale_without_changing_ui_locale() -> Non
 
     assert presentation.format(date(2026, 7, 1), "month_year") == "červenec 2026"
     assert translation.get_language() == before
+
+
+def test_month_uses_exact_month_only_intent() -> None:
+    presentation = DateTimePresentation(
+        profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
+        locale="cs",
+        timezone=ZoneInfo("UTC"),
+    )
+
+    assert presentation.format(date(2026, 7, 1), "month") == "červenec"
 
 
 def test_presentation_and_nested_profile_are_immutable() -> None:
