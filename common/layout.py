@@ -213,6 +213,7 @@ def NavbarMenu(
     current_year: int,
     csrf_token: str,
     authenticated: bool = False,
+    is_superuser: bool = False,
     recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
@@ -300,6 +301,17 @@ def NavbarMenu(
         else ""
     )
 
+    admin_settings_link = (
+        Li()[
+            A(
+                href=reverse("games:admin_settings"),
+                class_=_NAV_LINK_CLASS,
+            )["Admin settings"]
+        ]
+        if authenticated and is_superuser
+        else ""
+    )
+
     logout = Li()[
         Form(method="post", action=reverse("logout"))[
             Input(
@@ -340,6 +352,7 @@ def NavbarMenu(
             entity_menu,
             stats,
             settings_link,
+            admin_settings_link,
             logout,
         ]
     ]
@@ -441,6 +454,7 @@ def Navbar(
     current_year: int,
     csrf_token: str,
     authenticated: bool = False,
+    is_superuser: bool = False,
     recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
@@ -475,6 +489,7 @@ def Navbar(
         current_year=current_year,
         csrf_token=csrf_token,
         authenticated=authenticated,
+        is_superuser=is_superuser,
         recent_resumes=recent_resumes or [],
     )
     # Two breakpoint instances of the log button: the mobile one sits in the top
@@ -528,6 +543,7 @@ def TimetrackerDocument(
         current_year=year,
         csrf_token=csrf_token,
         authenticated=request.user.is_authenticated,
+        is_superuser=request.user.is_superuser,
         recent_resumes=recent_session_resumes(request),
     )
 

@@ -19,6 +19,7 @@ from common.components import (
     SettingsSection,
     ThemeSetting,
 )
+from common.components.primitives import P
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
@@ -138,6 +139,66 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
             self.fields[field_name].widget.attrs["data-reload-after-save"] = ""
 
 
+class SiteSettingsForm(PrimitiveWidgetsMixin, forms.Form):
+    """Typed controls for the editable site-default slice."""
+
+    default_currency = forms.CharField(
+        required=False,
+        max_length=3,
+        widget=forms.TextInput(
+            attrs={"x-mask": "aaa", "x-data": "", "class": "uppercase"}
+        ),
+    )
+    default_device = forms.ModelChoiceField(
+        queryset=Device.objects.none(),
+        required=False,
+        empty_label="Use configured default",
+    )
+    default_landing_page = forms.ChoiceField(
+        required=False,
+        choices=(("", "Use configured default"), *LANDING_PAGE_CHOICES),
+    )
+    default_page_size = forms.TypedChoiceField(
+        required=False,
+        choices=(
+            ("", "Use configured default"),
+            *((size, str(size)) for size in PAGE_SIZE_CHOICES),
+        ),
+        coerce=int,
+        empty_value=None,
+    )
+    theme = forms.ChoiceField(
+        required=False,
+        choices=(("", "Use configured default"), *THEME_CHOICES),
+    )
+    display_time_zone = forms.ChoiceField(
+        required=False,
+        choices=(("", "Use configured default"), *DISPLAY_TIME_ZONE_CHOICES),
+    )
+    date_format_locale = forms.ChoiceField(
+        required=False,
+        choices=(("", "Use configured default"), *FORMAT_LOCALE_CHOICES),
+    )
+    datetime_format = forms.ChoiceField(
+        required=False,
+        choices=(("", "Use configured default"), *DATETIME_FORMAT_CHOICES),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        device_field = cast(forms.ModelChoiceField, self.fields["default_device"])
+        device_field.queryset = Device.objects.order_by("name")
+        for field_name, key in _FIELD_KEYS.items():
+            self.fields[field_name].label = get_definition(key).label
+        for field_name in (
+            "theme",
+            "display_time_zone",
+            "date_format_locale",
+            "datetime_format",
+        ):
+            self.fields[field_name].widget.attrs["data-reload-after-save"] = ""
+
+
 def _device_label(value: object) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
         device = Device.objects.filter(pk=value).first()
@@ -205,6 +266,22 @@ def _form_and_states(
     )
 
 
+def _site_form_and_states() -> tuple[SiteSettingsForm, dict[str, SettingFieldState]]:
+    initial: dict[str, object] = {}
+    states: dict[str, SettingFieldState] = {}
+    for field_name, key in _FIELD_KEYS.items():
+        definition = get_definition(key)
+        resolved = resolve_with_origin(key)
+        initial[field_name] = resolved.value
+        states[field_name] = SettingFieldState(
+            key,
+            str(resolved.source),
+            locked=resolved.locked,
+            help_text=definition.help_text,
+        )
+    return SiteSettingsForm(initial=initial), states
+
+
 @login_required
 def user_settings(request: HttpRequest) -> HttpResponse:
     form, states = _form_and_states(request.user)
@@ -235,4 +312,57 @@ def user_settings(request: HttpRequest) -> HttpResponse:
     return render_page(request, content, title="Settings")
 
 
-__all__ = ["UserSettingsForm", "user_settings"]
+@login_required
+def admin_settings(request: HttpRequest) -> HttpResponse:
+    if not request.user.is_superuser:
+        content = Div(class_="flex flex-col")[
+            ContentContainer(class_="flex flex-col gap-4")[
+                PageHeading(["Admin settings"]),
+                P(class_="text-type-body text-body")[
+                    "Superuser access is required to manage site defaults."
+                ],
+            ]
+        ]
+        return render_page(
+            request,
+            content,
+            title="Admin settings",
+            status=403,
+        )
+
+    form, states = _site_form_and_states()
+    patch_url = reverse(
+        "api-1.0.0:update_site_setting",
+        kwargs={"key": "__key__"},
+    )
+    sections = [
+        SettingsSection(
+            "site-defaults",
+            "Site defaults",
+            LiveSettingFields(
+                form,
+                states=states,
+                patch_url_template=patch_url,
+                csrf=get_token(request),
+            ),
+            "Defaults inherited by users who have not saved personal overrides.",
+        )
+    ]
+    content = Div(class_="flex flex-col")[
+        ContentContainer(class_="mb-6 flex flex-col gap-2")[
+            PageHeading(["Admin settings"]),
+            P(class_="text-type-body text-body")[
+                "Defaults inherited by users who have not saved personal overrides."
+            ],
+        ],
+        SettingsScaffold(sections),
+    ]
+    return render_page(request, content, title="Admin settings")
+
+
+__all__ = [
+    "SiteSettingsForm",
+    "UserSettingsForm",
+    "admin_settings",
+    "user_settings",
+]
