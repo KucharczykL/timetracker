@@ -107,12 +107,11 @@ Genuinely net-new (nothing to reuse): the responsive **section-nav scaffold**, t
   on the root element, and a synchronous external bootstrap applies it before
   CSS. Anonymous pages alone read `localStorage`; theme cookies and
   browser-to-account migration are intentionally absent.
-- **Date/time format is centralized-ish but has a client mirror.** ~16 `local_strftime` sites across
-  ~7 view/formatting modules (NOT 50+; `games/models.py` has zero `strftime`), plus one direct
-  `strftime` at [games/views/game.py:609](games/views/game.py). **A Python-only refactor is
-  insufficient:** `ts/session-row.ts` hardcodes `DD/MM/YYYY HH:MM` ("Mirrors
-  games.formatting.session_time_range") and the date-range widget uses `date_parts()`/format
-  constants ([common/time.py:32](common/time.py), [ts/elements/date-range-picker.ts](ts/elements/date-range-picker.ts)).
+- **Date/time presentation is now a shared server/client contract.** Stage 6 routes application
+  display through `common.date_time_presentation.DateTimePresentation` and its versioned browser
+  mirror; session rows and date-picker calendar chrome consume that contract rather than independent
+  format strings or browser-default locale APIs. Stage 6.5 adds the remaining per-user timezone and
+  formatting-locale prerequisite before the later date/time preference work.
 - **ini export must match the reader.** `_unquote` applies only to `.env`, not ini
   ([config.py:75](timetracker/config.py)); the ini path returns raw `dict(parser[INI_SECTION])`
   ([config.py:110](timetracker/config.py)) under default `BasicInterpolation`. So export must **not**
@@ -125,8 +124,8 @@ Genuinely net-new (nothing to reuse): the responsive **section-nav scaffold**, t
 
 Dependency summary: **1** blocks all. **2** needs 1. **3** blocks all pages. **4** needs 1+2+3 and
 **owns the shared `/settings` view module + navbar plumbing**. **4b** needs 4. **5** needs 2+3+4.
-**6** independent. **7** needs 1+2+3+6. **8** needs 1+2+3+4 (reuses 4's module + navbar). **9** needs
-1+3+8. **10** needs 1+8.
+**6** independent. **6.5** needs 1+2+3+4+6 and blocks 7. **7** needs 1+2+3+4+6+6.5. **8** needs
+1+2+3+4 (reuses 4's module + navbar). **9** needs 1+3+8. **10** needs 1+8.
 
 ### Stage 1 — Config registry + layered resolver + SiteSetting store (backend)
 **Depends on:** none.
@@ -231,21 +230,36 @@ flash-of-wrong-theme, including the login page, and verifies inherited rollback.
 **Key files:** [common/layout.py](common/layout.py), [games/views/auth.py](games/views/auth.py), `ts/`, `games/api.py`, `UserPreferences`.
 
 ### Stage 6 — Prerequisite: centralize date/time formatting (server + client)
-**Depends on:** none.
-**Deliverables:**
-- Route the ~16 `local_strftime` call sites (~7 modules) and the direct
-  [games/views/game.py:609](games/views/game.py) `strftime` through a single formatter entry point
-  that honors an active format (arg/context).
-- Extend the contract to the **client mirror**: `ts/session-row.ts` (hardcoded `DD/MM/YYYY HH:MM`)
-  and the date-widget format constants (`date_parts()`, [common/time.py:32](common/time.py),
-  [ts/elements/date-range-picker.ts](ts/elements/date-range-picker.ts)) must read the same active
-  format, not a hardcoded copy.
-- No behavior change yet (still the current default) — pure centralization.
-**Acceptance:** all server + client display formatting flows through one source; snapshot/e2e unchanged.
-**Key files:** [common/time.py](common/time.py), [games/formatting.py](games/formatting.py), `ts/session-row.ts`, `ts/elements/date-range-picker.ts`, call sites.
+**Depends on:** none. **Completed by:** #470, #471, #472.
+**Delivered behavior:**
+- `common.date_time_presentation.DateTimePresentation` is the sole server display contract;
+  legacy `local_strftime`, Django `date_filter`, display `.strftime()`, and old format constants
+  are retired from application rendering paths.
+- Its versioned v1 root-document contract drives client session-row formatting and calendar chrome.
+  Invalid/missing contracts report silently once and have no browser-default fallback.
+- Session rebuilds convert instants with native Temporal into the configured zone, preserving the
+  initial server-rendered wall-clock value across browser zones. Calendar headings and Monday-first
+  weekday labels use the explicit contract locale/timezone; visible segment order, placeholders, and
+  separators remain profile-driven.
+- Hidden date bounds, calendar `data-date` values, and emitted filter criteria remain ISO
+  `YYYY-MM-DD`; presentation never changes filter serialization.
+**Acceptance:** server/client presentation consumes this one contract; snapshots and e2e are unchanged
+except for the approved explicit-locale, footer-minute, and cross-timezone corrections.
+**Key files:** [common/date_time_presentation.py](common/date_time_presentation.py),
+[games/formatting.py](games/formatting.py), `ts/date-time-presentation.ts`, `ts/session-row.ts`,
+`ts/elements/date-range-picker.ts`.
+
+### Stage 6.5 — Per-user timezone and formatting locale
+**Depends on:** 1, 2, 3, 4, and Stage 6. **Blocks:** Stage 7. See #473.
+**Deliverables:** nullable user timezone and formatting-locale preferences with validated, normalized
+values; request-scoped timezone activation; datetime-local form interpretation in the selected zone;
+and live settings controls/API persistence. The timezone remains distinct from boot-time infrastructure
+`TZ`; formatting locale changes calendar/date conventions only, never application-copy translation.
+**Acceptance:** server and client wall-clock displays agree after timezone/locale changes; date-only
+values and UTC/API storage remain stable; DST validation and concurrent-user isolation are covered.
 
 ### Stage 7 — Per-user date/time format preference
-**Depends on:** 1, 2, 3, 6.
+**Depends on:** 1, 2, 3, 4, 6, 6.5.
 **Deliverables:** `UserPreferences.datetime_format` (choice set), resolved per request, fed to the
 Stage 6 server formatter **and** exposed to the client mirror; control surfaced in `/settings`.
 **Acceptance:** changing the pref changes rendered dates app-wide, server- and client-rendered rows

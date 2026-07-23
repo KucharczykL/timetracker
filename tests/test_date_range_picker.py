@@ -128,6 +128,47 @@ class DateRangeFieldTest(SimpleTestCase):
         self.assertEqual(html.count("w-[2ch]"), 4)
         self.assertEqual(html.count("w-[4ch]"), 2)
 
+    def test_alternate_presentation_prefills_each_side_from_iso(self):
+        presentation = DateTimePresentation(
+            DateTimeFormatProfile(
+                date_parts=(
+                    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+                    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+                    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+                ),
+                date_separator=".",
+                segmented_date_separator="·",
+                time_separator=":",
+                date_time_separator=" ",
+                hour_cycle="h23",
+            ),
+            "en-us",
+            ZoneInfo("UTC"),
+        )
+
+        html = self.render(
+            presentation=presentation,
+            min_value="2024-03-15",
+            max_value="2025-09-20",
+        )
+
+        for side, year, day, month in (
+            ("min", "2024", "15", "03"),
+            ("max", "2025", "20", "09"),
+        ):
+            self.assertIn(
+                f'value="{year}" data-date-part="year" data-date-side="{side}"',
+                html,
+            )
+            self.assertIn(
+                f'value="{day}" data-date-part="day" data-date-side="{side}"',
+                html,
+            )
+            self.assertIn(
+                f'value="{month}" data-date-part="month" data-date-side="{side}"',
+                html,
+            )
+
 
 class DateRangeCalendarTest(SimpleTestCase):
     def render(self):
