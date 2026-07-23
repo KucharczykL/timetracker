@@ -30,7 +30,7 @@ admin.site.register(ExchangeRate)
 
 
 class SiteSettingForm(forms.ModelForm):
-    """Apply the same key/scope/normalize guards as ``set_site_setting`` so the
+    """Apply the same key/scope/normalize guards as the site command so the
     admin isn't an unvalidated back door into the resolver's DB layer."""
 
     class Meta:

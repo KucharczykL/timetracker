@@ -6,7 +6,7 @@ import pytest
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
-from timetracker.settings_resolver import set_site_setting
+from timetracker.settings_commands import change_site_setting
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def game(db):
 
 def _set_currency(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_CURRENCY", value)
 
 
 def test_purchase_save_uses_live_db_currency(

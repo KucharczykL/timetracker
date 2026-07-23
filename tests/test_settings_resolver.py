@@ -12,10 +12,10 @@ from django.db.utils import OperationalError
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import SettingSource
+from timetracker.settings_commands import change_site_setting
 from timetracker.settings_resolver import (
     resolve,
     resolve_with_origin,
-    set_site_setting,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,7 +58,7 @@ def ini_file(tmp_path, monkeypatch):
 
 def _write_currency_row(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_CURRENCY", value)
 
 
 # --- precedence -----------------------------------------------------------
@@ -132,7 +132,7 @@ def test_secret_key_file_origin(monkeypatch, tmp_path):
 def test_db_value_is_cast_and_validated_like_env(db, no_currency_env):
     from games.models import SiteSetting
 
-    # Raw lowercase row inserted directly (bypassing set_site_setting's normalize)
+    # Raw lowercase row inserted directly (bypassing the command's normalization)
     # must still resolve normalized on read — proving the DB layer runs the cast.
     SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="eur")
     settings_resolver.clear_cache()
@@ -165,7 +165,7 @@ def test_cache_invalidation_on_write(
     assert result.value == "EUR"
     assert result.source is SettingSource.DATABASE
     with django_capture_on_commit_callbacks(execute=True):
-        settings_resolver.clear_site_setting("DEFAULT_CURRENCY")
+        change_site_setting("DEFAULT_CURRENCY", None)
     assert resolve_with_origin("DEFAULT_CURRENCY").source is SettingSource.DEFAULT
 
 
@@ -196,22 +196,22 @@ def test_resolve_pair_hits_db_at_most_once(
 # --- write guards ---------------------------------------------------------
 
 
-def test_set_site_setting_rejects_unknown_key(db):
+def test_change_site_setting_rejects_unknown_key(db):
     with pytest.raises(KeyError):
-        set_site_setting("NOPE", "x")
+        change_site_setting("NOPE", "x")
 
 
-def test_set_site_setting_rejects_infra_key(db):
+def test_change_site_setting_rejects_infra_key(db):
     with pytest.raises(ValueError):
-        set_site_setting("TZ", "Europe/Prague")
+        change_site_setting("TZ", "Europe/Prague")
 
 
-def test_set_site_setting_rejects_invalid_and_writes_nothing(db):
+def test_change_site_setting_rejects_invalid_and_writes_nothing(db):
     from django.core.exceptions import ValidationError
     from games.models import SiteSetting
 
     with pytest.raises(ValidationError):
-        set_site_setting("DEFAULT_CURRENCY", "EURO")
+        change_site_setting("DEFAULT_CURRENCY", "EURO")
     assert not SiteSetting.objects.filter(key="DEFAULT_CURRENCY").exists()
 
 

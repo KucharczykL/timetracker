@@ -14,10 +14,10 @@ from django.test import override_settings
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import SettingSource
+from timetracker.settings_commands import change_site_setting
 from timetracker.settings_resolver import (
     resolve_for_user,
     resolve_for_user_with_origin,
-    set_site_setting,
     set_user_preference,
 )
 
@@ -43,7 +43,7 @@ def other_user(db):
 
 def _write_currency_row(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_CURRENCY", value)
 
 
 def _set_user(django_capture_on_commit_callbacks, user, key, value):
@@ -121,7 +121,7 @@ def test_datetime_format_personal_clear_inherits_site_default(
     user, no_datetime_format_env, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+        change_site_setting("DATETIME_FORMAT", "dmy_24h")
     _set_user(django_capture_on_commit_callbacks, user, "DATETIME_FORMAT", "mdy_12h")
     _set_user(django_capture_on_commit_callbacks, user, "DATETIME_FORMAT", None)
 
@@ -153,7 +153,7 @@ def test_datetime_format_environment_beats_site_default(
     django_capture_on_commit_callbacks,
 ):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+        change_site_setting("DATETIME_FORMAT", "dmy_24h")
     monkeypatch.setenv("DATETIME_FORMAT", "mdy_12h")
     config_module.reset_caches()
 
@@ -173,7 +173,7 @@ def test_datetime_format_ini_beats_site_default_and_normalizes(
     django_capture_on_commit_callbacks,
 ):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+        change_site_setting("DATETIME_FORMAT", "dmy_24h")
     ini_path = tmp_path / "datetime-format.ini"
     ini_path.write_text("[timetracker]\nDATETIME_FORMAT = MDY_12H\n")
     monkeypatch.setenv("INI_FILE", str(ini_path))

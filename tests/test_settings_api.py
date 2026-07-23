@@ -431,7 +431,7 @@ def test_site_patch_sets_fallback_for_overlayless_user(
             _patch(
                 superuser_client, _site_patch_url("DEFAULT_CURRENCY"), "USD"
             ).status_code
-            == 204
+            == 200
         )
     currency = _currency(auth_client.get(_user_url()).json())
     assert currency["value"] == "USD"

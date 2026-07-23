@@ -65,7 +65,7 @@ _user_snapshot_at: float = 0.0
 
 def normalize_setting_value(value: object, definition: SettingDefinition) -> object:
     """Cast (strings only) + validate a value. Shared by the resolver read path,
-    ``set_site_setting``, and the admin form so every write/read normalizes alike."""
+    site/user commands, and admin forms so every write/read normalizes alike."""
     if isinstance(value, str):
         value = cast_value(value, definition.cast)
     if definition.validator is not None:
@@ -277,38 +277,11 @@ def set_user_preference(user: object, key: SettingKey, value: object) -> object:
     return normalized
 
 
-def set_site_setting(key: SettingKey, value: object) -> None:
-    """Upsert a site-editable setting's DB value (validated + normalized).
-
-    This DB layer is the site default for SITE and USER keys alike (a USER key's
-    row is the shared default under any personal override). Raises for an
-    unregistered key, an ``INFRA`` key, or a value the validator rejects —
-    nothing is written in those cases.
-    """
-    definition = get_definition(key)
-    if definition.scope is SettingScope.INFRA:
-        raise ValueError(f"{key} is infra-scoped (boot-only); cannot store in DB.")
-    normalized = normalize_setting_value(value, definition)
-
-    from games.models import SiteSetting
-
-    SiteSetting.objects.update_or_create(key=key, defaults={"value": normalized})
-
-
-def clear_site_setting(key: SettingKey) -> None:
-    """Delete a setting's site-default DB row (SITE or USER key); the resolver
-    then falls back to env/default (and, for a USER key, any personal override)."""
-    from games.models import SiteSetting
-
-    SiteSetting.objects.filter(key=key).delete()
-
-
 __all__ = [
     "ResolvedSetting",
     "SITE_SETTINGS_TTL_SECONDS",
     "ValidationError",
     "clear_cache",
-    "clear_site_setting",
     "normalize_setting_value",
     "resolve",
     "resolve_for_user",
@@ -316,6 +289,5 @@ __all__ = [
     "resolve_str",
     "resolve_str_for_user",
     "resolve_with_origin",
-    "set_site_setting",
     "set_user_preference",
 ]
