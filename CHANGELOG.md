@@ -12,10 +12,11 @@
   its box clears by design).
 * Add a layered settings resolver (`env > database > default`) with a declarative
   registry and a global `SiteSetting` store — the backend foundation for a future
-  settings panel. `DEFAULT_CURRENCY` is now resolved through it, so it can be
-  changed at runtime without a restart (all three consumption sites — purchase
-  save, the purchase form placeholder, and the FX conversion task — read the live
-  value). See [Runtime settings layer](docs/configuration.md#runtime-settings-layer).
+  settings panel. `DEFAULT_CURRENCY` can now change without a restart:
+  purchase-entry requests use the current user's resolved preference, while
+  context-free `Purchase.save()` calls and the FX conversion/reporting target
+  use the live site value. See
+  [Runtime settings layer](docs/configuration.md#runtime-settings-layer).
 * Add a per-user preferences layer on top of the resolver: a `UserPreferences`
   store, `resolve_for_user_with_origin()` (a personal value wins over the site
   default and env), and an `/api/settings` router for reading and writing personal
@@ -41,6 +42,12 @@
   `settings.ini`, or site default before falling back to ISO. The profile
   controls numeric date order, separators, and hour cycle; locale continues to
   supply month names and localized AM/PM labels (#389).
+* Add a superuser-only Admin settings page for all eight live site defaults:
+  currency, device, landing page, page size, theme, display timezone,
+  formatting locale, and date/time format. It is available from the existing
+  navbar Menu; configured higher-priority sources stay disabled with their
+  owner shown, and boot-only infrastructure `TZ` remains outside the page
+  (#390).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously
@@ -76,10 +83,18 @@
   when that name is actually clipped. Multi-game purchases keep their
   always-available games list.
 * `Purchase.price_currency` now defaults to empty instead of `"USD"`; the default
-  currency comes solely from the resolved `DEFAULT_CURRENCY` (`CZK` out of the
-  box). A purchase created directly via the ORM without a currency now gets the
-  resolved default rather than a hardcoded `USD`. `loaddata` bypasses
-  `Purchase.save()`, so fixtures now set `price_currency` explicitly.
+  currency comes solely from resolved `DEFAULT_CURRENCY` (`CZK` out of the box).
+  Purchase-entry views supply the current user's resolved value; a purchase
+  created directly via the ORM without a currency gets the site value rather
+  than a hardcoded `USD`. `loaddata` bypasses `Purchase.save()`, so fixtures set
+  `price_currency` explicitly.
+
+### Removed
+
+* Remove the Django admin application and `/admin/` route. Django
+  authentication and superuser accounts remain, and debug builds retain
+  `django_extensions` plus the Django debug toolbar. Live site defaults are
+  managed through the validated Admin settings page instead (#390).
 
 ## 1.7.0 / 2026-05-12
 

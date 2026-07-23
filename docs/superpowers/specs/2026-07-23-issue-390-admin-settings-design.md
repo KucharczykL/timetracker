@@ -1,30 +1,15 @@
 # Design: superuser site settings page
 
-> Approved design for issue #390, revised after the per-user presentation work
-> merged in PR #480.
+> Approved issue #390 design, revised to match the implemented command,
+> navigation, timezone, administration, and currency contracts.
 
-## Context
+## Goal and scope
 
-The settings epic already provides an origin-aware registry and resolver,
-database-backed site defaults and personal overrides, authenticated settings
-APIs, the reusable settings UI kit, and the personal `/settings` page. Issue
-#390 adds the superuser-facing `/admin-settings` page.
+`/tracker/admin-settings` gives superusers one component-rendered surface for
+editing all live site defaults. Authenticated non-superusers receive a rendered
+HTTP 403 response; anonymous users follow the ordinary login redirect.
 
-The issue originally named `DEFAULT_CURRENCY` as the only editable site default
-and described infrastructure `TZ` as a display-only field. PR #480 subsequently
-introduced `DISPLAY_TIME_ZONE`: a validated, live setting used for wall-clock
-display and datetime-form interpretation. It is deliberately distinct from
-boot-time `TZ`, which initializes Django's `TIME_ZONE` before database-backed
-resolution is available.
-
-Stage 8 will therefore expose `DISPLAY_TIME_ZONE` as the editable site-wide
-“Time zone” default. Infrastructure `TZ` remains boot-only and is deferred,
-along with every other infrastructure value, to Stage 9's read-only inspector.
-
-## Scope
-
-The page exposes all eight settings that currently support a site default and an
-optional personal override:
+Stage 8 exposes exactly:
 
 - `DEFAULT_CURRENCY`
 - `DEFAULT_DEVICE`
@@ -35,137 +20,99 @@ optional personal override:
 - `DATE_FORMAT_LOCALE`
 - `DATETIME_FORMAT`
 
-Stage 8 does not render infrastructure settings. It does not change resolver
-precedence, cache behavior, personal settings semantics, or the Stage 9
-inspector.
+The page does not render infrastructure configuration. In particular,
+boot-time `TZ` remains deferred to Stage 9's read-only inspector.
 
-## Architecture
+## Page and navigation
 
-Add `admin_settings()` beside `user_settings()` in
-`games/views/settings.py`, route it as `/admin-settings`, and render it through
-`render_page()`. Keep `@login_required` for anonymous requests, then explicitly
-check `request.user.is_superuser`. An authenticated non-superuser receives an
-HTTP 403 page assembled with existing Python components and `render_page()`;
-there is no Django 403 template.
+`SiteSettingsForm` remains explicit beside `UserSettingsForm` in
+`games/views/settings.py`. It uses the existing registry choices, native Django
+fields, `SettingsScaffold`, `LiveSettingFields`, source badges, and disabled
+control treatment. A blank site control removes the database override and
+reveals the configured or built-in fallback.
 
-Add an explicit `SiteSettingsForm` rather than generating a form from registry
-metadata or parameterizing `UserSettingsForm`. The form uses the same registry
-choice constants, typed Django fields, widget conventions, and small formatting
-helpers as the personal form, while keeping its different inheritance semantics
-clear. A blank site value means “remove the database override and use the
-configured or code default,” whereas a blank personal value means “inherit the
-site default.”
+The request's superuser state is threaded through `render_page()` and
+`NavbarMenu()`. Settings, Admin settings, and the POST Logout action live
+inside the existing **Menu** dropdown; Admin settings is omitted for
+non-superusers. It is not a new top-level navbar item.
 
-Render the form with the existing `SettingsScaffold`, `SettingsSection`,
-`LiveSettingFields`, source badge, and locked-control behavior. The live PATCH
-URL template targets `/api/settings/site/{key}`. The site-theme field uses the
-generic live-setting save path, not the personal `ThemeSetting` coordinator,
-because it writes a site default rather than the current user's override. Theme
-and presentation-related fields request the existing post-save reload where
-required so document-level presentation state is rebuilt from the committed
-site value.
+The navbar theme switcher is disabled on personal and Admin settings pages. The
+form remains the authoritative theme control there.
 
-Thread an `is_superuser` boolean through the existing document/navbar call
-chain into `NavbarMenu()`. Render a distinct “Admin settings” link only when the
-request is authenticated as a superuser. The existing personal “Settings” link
-remains visible to every authenticated user.
+## Mutation and source contract
 
-## Resolution and form state
+`PATCH /api/settings/site/{key}` is independently superuser-gated and delegates
+all writes to `change_site_setting()` in
+`timetracker/settings_commands.py`. The command:
 
-Build each field's initial state with `resolve_with_origin()`. The form displays
-the effective site value and the existing source metadata.
+1. resolves the current source and rejects environment, environment-file,
+   `.env`, or `settings.ini` ownership before mutation;
+2. validates and normalizes through the registry;
+3. sets or deletes the `SiteSetting` row; and
+4. returns the canonical `ResolvedSetting` directly.
 
-- A value from the site database or registry default is editable.
-- A value pinned by an environment variable, file-backed environment variable,
-  `.env`, or `settings.ini` is disabled and displays its source and lock reason.
-- Clearing an editable value removes its `SiteSetting` row and immediately
-  resolves the lower-priority configured or registry default.
-- Infrastructure `TZ` is neither resolved nor rendered by this page.
+The API maps a locked command to HTTP 409 and returns the command result on
+success. Site mutation helpers do not belong to `settings_resolver.py`.
 
-`DISPLAY_TIME_ZONE` uses the existing IANA timezone choices and validator. A
-site change is live: users without a personal override inherit it on their next
-request, while a user's `DISPLAY_TIME_ZONE` override continues to win.
+Resolver snapshots are not cleared inline during the command. Model signals
+schedule local invalidation on transaction commit, preventing rolled-back
+values from entering the cache. Other web/worker processes converge within the
+existing TTL.
 
-## Save flow and errors
+The page displays the effective value and source for every field. Higher
+configuration sources render a genuinely disabled native control, their owning
+source, and a visible lock explanation. Browser tests observe them but never
+interact with disabled controls.
 
-The existing CSRF-protected site settings API remains the write boundary and
-continues to enforce superuser authorization independently of the page.
-`PATCH /api/settings/site/{key}` validates through the registry and resolver,
-then returns the freshly resolved `SettingOut` instead of an empty 204 response.
-This makes its success contract match the personal settings endpoint and lets
-the live settings component immediately reconcile the effective value, source
-badge, and lock state.
+## Timezone contract
 
-Invalid values do not modify the database. The UI keeps the last committed value
-and uses the existing toast/error path. Validation remains specific to each
-setting: currencies normalize to three uppercase ASCII letters, device IDs must
-exist, enumerated settings accept only registered choices, and timezones accept
-only supported IANA names.
+`DISPLAY_TIME_ZONE` is a live user-scoped setting with a site default. It
+controls wall-clock presentation and datetime-form interpretation. Saving it
+uses the existing reload-after-save flow so the server rebuilds the root
+document's date/time presentation contract.
 
-The existing resolver cache and invalidation design does not change. A successful
-write invalidates the writing process immediately; other web or worker processes
-converge within the existing TTL.
+Infrastructure `TZ` initializes Django's `TIME_ZONE` at boot. It is not stored
+in `SiteSetting`, is not present on Stage 8, and still requires configuration
+plus restart. Stage 9 may show it read-only with its source and restart
+semantics.
 
-## Apply semantics
+## Currency contract
 
-All eight controls edit live site defaults. Their existing consumers continue to
-resolve per user, so personal overrides remain authoritative:
+Currency is intentionally context-sensitive:
 
-- Currency changes affect purchase-form defaults, `Purchase.save()`, and the FX
-  task for inheriting users.
-- Device, landing-page, page-size, theme, locale, and date/time-format changes
-  affect their already-routed consumers.
-- Display-timezone changes affect request timezone activation, wall-clock
-  rendering, and datetime-local form interpretation for inheriting users.
+- add/edit purchase requests resolve `DEFAULT_CURRENCY` for the authenticated
+  user; this drives initial values, blank submissions, and separate-per-game
+  purchases;
+- `Purchase.save()` has no user context, so an absent currency uses the shared
+  site resolution chain;
+- the FX conversion task also uses the site value as the single reporting
+  target for its run.
 
-This design does not make Django's boot-time `TIME_ZONE` database-editable and
-does not claim that changing `TZ` can take effect without a restart.
+A personal preference therefore changes that user's purchase-entry default,
+not context-free model behavior or reporting currency.
 
-## Testing
+## Administration
 
-### View and navigation
+Django admin is removed: `django.contrib.admin`, `games/admin.py`, and the
+`/admin/` route are absent. The replacement for runtime site-default changes is
+this page plus the validated command/API boundary. Django authentication and
+superuser accounts remain. Debug builds continue to include
+`django_extensions` and the Django debug toolbar.
 
-- Anonymous users are redirected to login.
-- Authenticated non-superusers receive a rendered HTTP 403 page.
-- Superusers see all eight site-default controls and the site PATCH contract.
-- Infrastructure keys, including `TZ`, do not appear.
-- “Admin settings” appears in the navbar only for superusers.
-- Personal “Settings” remains visible to every authenticated user.
+## Acceptance coverage
 
-### Form and API
+Backend coverage owns the exact eight-key matrix, validation, lock/409,
+transaction/cache, authorization, inheritance, and consumer semantics.
+Playwright remains representative:
 
-- Each setting renders the correct typed widget, effective value, source, and
-  lock state.
-- Environment/file/ini-pinned fields are disabled with the existing source and
-  reason treatment; database/default-backed fields are editable.
-- Non-superusers cannot list or mutate site settings through the API.
-- A successful PATCH returns the reconciled `SettingOut`.
-- Clearing deletes the database override and returns the fallback value/source.
-- Invalid currency, device, enum, and timezone writes fail without changing the
-  database.
+- open Admin settings through the superuser Menu dropdown at mobile and desktop
+  viewports and verify the responsive settings navigation;
+- normalize a lowercase currency PATCH and update its source badge;
+- update one native select through the site PATCH path;
+- clear an override and verify its fallback value/default source;
+- save `DISPLAY_TIME_ZONE`, observe reload, and inspect the rebuilt document
+  contract; and
+- verify a locked field is disabled with its owner and explanation.
 
-### Inheritance and consumers
-
-- Every supported site default is inherited by a user without a personal
-  override.
-- A personal override continues to win over its site default.
-- Currency remains live across the purchase form, `Purchase.save()`, and FX
-  task.
-- A display-timezone site change drives request timezone activation and
-  server/client presentation for inheriting users.
-
-### Browser behavior
-
-- A superuser can update and clear representative text and select controls.
-- Effective values and source badges reconcile without a manual reload.
-- A locked control cannot submit a write.
-- The page remains usable in the existing mobile and desktop settings scaffold.
-
-Final verification is `direnv exec . make check`.
-
-## Out of scope
-
-- Editing or inspecting boot-time infrastructure settings.
-- Exporting settings to `settings.ini`.
-- Changing resolver precedence or cross-process cache timing.
-- Adding new settings or personal-preference consumers.
+Browser waits use locators, response/navigation waiters, and state predicates;
+they do not use fixed sleeps or interact with disabled controls.
