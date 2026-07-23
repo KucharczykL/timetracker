@@ -250,7 +250,7 @@ def test_root_document_emits_active_client_contract(db) -> None:
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
     assert contract["version"] == 1
     assert contract["locale"] == "en-us"
-    assert contract["time_zone"] == "Europe/Prague"
+    assert contract["time_zone"] == "UTC"
     assert contract["profile"] == {
         "date_parts": [
             {
@@ -282,14 +282,16 @@ def test_root_document_emits_active_client_contract(db) -> None:
 
 
 @override_settings(LANGUAGE_CODE="en-us")
-def test_root_document_uses_active_language_for_contract_and_lang(db) -> None:
+def test_root_document_keeps_ui_language_separate_from_formatting_locale(
+    db,
+) -> None:
     parser = _RootAttributeParser()
 
     with translation.override("cs"):
         parser.feed(Client().get(reverse("login")).content.decode())
 
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
-    assert contract["locale"] == "cs"
+    assert contract["locale"] == "en-us"
     assert parser.attributes["lang"] == "cs"
 
 

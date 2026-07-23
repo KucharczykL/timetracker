@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reloadAfterSettingSave } from "../settings-reload.js";
 import { SETTING_COMMITTED_EVENT } from "../settings-events.js";
 import { settingPayloadValue } from "./live-setting-fields.js";
+
+vi.mock("../settings-reload.js", () => ({
+  reloadAfterSettingSave: vi.fn(),
+}));
 import "./live-setting-fields.js";
 import "./setting-source-badge.js";
 
@@ -31,6 +36,11 @@ function mountFields(): HTMLElement {
       </pop-over></setting-source-badge>
       <input data-setting-key="LIMIT" data-live-setting-control name="limit" type="number" value="10">
       <input data-setting-key="NAME" data-live-setting-control name="name" type="text" value="Before">
+      <select data-setting-key="DISPLAY_TIME_ZONE" data-live-setting-control
+          data-reload-after-save name="display-time-zone">
+        <option value="">Use site default</option>
+        <option value="Pacific/Kiritimati">Pacific/Kiritimati</option>
+      </select>
       <input data-setting-key="IDENTITY_ONLY" name="identity-only" value="Not owned">
       <input data-setting-key="LOCKED" data-live-setting-control name="locked" value="Pinned" disabled>
     </live-setting-fields>`;
@@ -296,6 +306,28 @@ describe("<live-setting-fields>", () => {
 
     await vi.waitFor(() => expect(select.hasAttribute("aria-busy")).toBe(false));
     expect(select.value).toBe("");
+  });
+
+  it("reloads after a successful presentation setting save", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "DISPLAY_TIME_ZONE",
+        value: "Pacific/Kiritimati",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
+    const host = mountFields();
+    const select = host.querySelector<HTMLSelectElement>(
+      '[name="display-time-zone"]',
+    )!;
+
+    select.value = "Pacific/Kiritimati";
+    change(select);
+
+    await vi.waitFor(() => expect(reloadAfterSettingSave).toHaveBeenCalledOnce());
   });
 
   it("preserves newer typing when an older successful response resolves", async () => {

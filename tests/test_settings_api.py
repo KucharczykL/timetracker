@@ -94,6 +94,10 @@ def _theme(payload_list) -> dict:
     return next(row for row in payload_list if row["key"] == "THEME")
 
 
+def _setting(payload_list, key: str) -> dict:
+    return next(row for row in payload_list if row["key"] == key)
+
+
 # --- auth -----------------------------------------------------------------
 
 
@@ -238,6 +242,31 @@ def test_user_theme_patch_persists_without_browser_cookies(auth_client):
     assert _theme(auth_client.get(_user_url()).json())["value"] == "dark"
     assert "color-theme" not in response.cookies
     assert "color-theme-migrate" not in response.cookies
+
+
+def test_user_presentation_preferences_patch_and_clear_to_default(auth_client):
+    from timetracker import settings_resolver
+
+    time_zone = _patch(
+        auth_client,
+        _user_patch_url("DISPLAY_TIME_ZONE"),
+        "Pacific/Kiritimati",
+    )
+    locale = _patch(auth_client, _user_patch_url("DATE_FORMAT_LOCALE"), "cs")
+
+    assert time_zone.json()["value"] == "Pacific/Kiritimati"
+    assert locale.json()["value"] == "cs"
+    settings_resolver.clear_cache()
+    assert (
+        _setting(auth_client.get(_user_url()).json(), "DISPLAY_TIME_ZONE")["source"]
+        == "user"
+    )
+    assert (
+        _patch(auth_client, _user_patch_url("DATE_FORMAT_LOCALE"), None).json()[
+            "source"
+        ]
+        == "default"
+    )
 
 
 @pytest.mark.parametrize("bad", ["auto", "sepia", "Dark", "", 1, True])

@@ -103,6 +103,29 @@ def test_personal_page_size_is_selected(auth_client, user):
     assert '<option value="50" selected>50</option>' in html
 
 
+def test_personal_presentation_preferences_are_selected_and_live_saved(
+    auth_client, user
+):
+    UserPreferences.objects.create(
+        user=user,
+        display_time_zone="Pacific/Kiritimati",
+        date_format_locale="cs",
+    )
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert '<select name="display_time_zone"' in html
+    assert (
+        '<option value="Pacific/Kiritimati" selected>Pacific/Kiritimati</option>'
+        in html
+    )
+    assert '<select name="date_format_locale"' in html
+    assert '<option value="cs" selected>Čeština</option>' in html
+    assert 'data-setting-key="DISPLAY_TIME_ZONE"' in html
+    assert 'data-setting-key="DATE_FORMAT_LOCALE"' in html
+    assert "data-reload-after-save" in html
+
+
 def test_unset_selects_show_configured_site_defaults(auth_client):
     desktop = Device.objects.create(name="Desktop", type=Device.PC)
     SiteSetting.objects.create(key="DEFAULT_DEVICE", value=desktop.pk)

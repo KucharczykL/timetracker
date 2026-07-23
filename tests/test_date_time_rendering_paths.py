@@ -2,11 +2,9 @@ from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 import re
-from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
-from django.utils import timezone, translation
 
 import common.layout
 from common import date_time_presentation as presentation_module
@@ -23,6 +21,7 @@ from games.models import (
     Purchase,
     Session,
 )
+from timetracker.settings_resolver import set_user_preference
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,6 +89,8 @@ def test_non_default_presentation_reaches_every_server_display_path(
         lambda: datetime(2022, 7, 22, 12, 5, tzinfo=UTC),
     )
     user = django_user_model.objects.create_user(username="dates", password="pw")
+    set_user_preference(user, "DISPLAY_TIME_ZONE", "UTC")
+    set_user_preference(user, "DATE_FORMAT_LOCALE", "cs")
     client.force_login(user)
 
     platform = Platform.objects.create(name="PC")
@@ -161,43 +162,37 @@ def test_non_default_presentation_reaches_every_server_display_path(
         ),
     }
 
-    with (
-        timezone.override(ZoneInfo("UTC")),
-        translation.override("cs"),
+    for url, expected_values in expected_by_route.items():
+        html = client.get(url).content.decode()
+        for expected in expected_values:
+            assert expected in html, url
+        assert "git-main (2022.22.07 @ 12h05)" in html, url
+
+        if url == reverse("games:list_purchases"):
+            date_part_parser = _DatePartParser()
+            date_part_parser.feed(html)
+            assert date_part_parser.parts[:3] == ["year", "day", "month"]
+        if url == reverse("games:stats_by_year", args=[2022]):
+            assert "září 2022" not in html
+
+    purchase_html = client.get(
+        reverse("games:view_purchase", args=[purchase.pk])
+    ).content.decode()
+    assert "Owned on 2022.26.09" in purchase_html
+    title_parser = _TitleParser()
+    title_parser.feed(purchase_html)
+    assert "2022.26.09" in title_parser.title
+    assert "2022-09-26" not in title_parser.title
+
+    game_html = client.get(reverse("games:view_game", args=[game.pk])).content.decode()
+    for expected in (
+        "2022.26.09 @ 12h58",
+        "2022.26.09",
+        "2022.24.09",
+        "2022.23.09 @ 10h30",
+        "září 2022",
     ):
-        for url, expected_values in expected_by_route.items():
-            html = client.get(url).content.decode()
-            for expected in expected_values:
-                assert expected in html, url
-            assert "git-main (2022.22.07 @ 12h05)" in html, url
-
-            if url == reverse("games:list_purchases"):
-                date_part_parser = _DatePartParser()
-                date_part_parser.feed(html)
-                assert date_part_parser.parts[:3] == ["year", "day", "month"]
-            if url == reverse("games:stats_by_year", args=[2022]):
-                assert "září 2022" not in html
-
-        purchase_html = client.get(
-            reverse("games:view_purchase", args=[purchase.pk])
-        ).content.decode()
-        assert "Owned on 2022.26.09" in purchase_html
-        title_parser = _TitleParser()
-        title_parser.feed(purchase_html)
-        assert "2022.26.09" in title_parser.title
-        assert "2022-09-26" not in title_parser.title
-
-        game_html = client.get(
-            reverse("games:view_game", args=[game.pk])
-        ).content.decode()
-        for expected in (
-            "2022.26.09 @ 12h58",
-            "2022.26.09",
-            "2022.24.09",
-            "2022.23.09 @ 10h30",
-            "září 2022",
-        ):
-            assert expected in game_html
+        assert expected in game_html
 
 
 def test_legacy_server_display_formatting_source_audit_is_clean() -> None:

@@ -9,6 +9,7 @@ import pytest
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
@@ -76,6 +77,14 @@ def test_unset_user_falls_through_to_site(
 def test_unset_everything_falls_through_to_default(user, no_currency_env):
     result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
     assert result.value == django_settings.DEFAULT_CURRENCY
+    assert result.source is SettingSource.DEFAULT
+
+
+@override_settings(TIME_ZONE="Pacific/Kiritimati")
+def test_display_time_zone_defaults_to_utc(user):
+    settings_resolver.clear_cache()
+    result = resolve_for_user_with_origin(user, "DISPLAY_TIME_ZONE")
+    assert result.value == "UTC"
     assert result.source is SettingSource.DEFAULT
 
 
@@ -168,6 +177,47 @@ def test_theme_pref_round_trips_through_typed_column(
     preferences = UserPreferences.objects.get(user=user)
     assert preferences.theme == "dark"
     assert resolve_for_user(user, "THEME") == "dark"
+
+
+def test_presentation_preferences_round_trip_through_typed_columns(
+    user, django_capture_on_commit_callbacks
+):
+    from games.models import UserPreferences
+
+    _set_user(
+        django_capture_on_commit_callbacks,
+        user,
+        "DISPLAY_TIME_ZONE",
+        " Europe/Prague ",
+    )
+    _set_user(
+        django_capture_on_commit_callbacks,
+        user,
+        "DATE_FORMAT_LOCALE",
+        " CS ",
+    )
+
+    preferences = UserPreferences.objects.get(user=user)
+    assert preferences.display_time_zone == "Europe/Prague"
+    assert preferences.date_format_locale == "cs"
+    assert resolve_for_user(user, "DISPLAY_TIME_ZONE") == "Europe/Prague"
+    assert resolve_for_user(user, "DATE_FORMAT_LOCALE") == "cs"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("DISPLAY_TIME_ZONE", "Mars/Olympus"),
+        ("DATE_FORMAT_LOCALE", "de-de"),
+    ],
+)
+def test_presentation_preferences_reject_unsupported_values(user, key, value):
+    from games.models import UserPreferences
+
+    with pytest.raises(ValidationError):
+        set_user_preference(user, key, value)
+
+    assert not UserPreferences.objects.filter(user=user).exists()
 
 
 # --- poison value / robustness --------------------------------------------

@@ -212,9 +212,12 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
         if isinstance(active_timezone, ZoneInfo)
         else ZoneInfo(django_timezone.get_current_timezone_name())
     )
+    locale = getattr(request, "_date_format_locale", None)
     presentation = DateTimePresentation(
         profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
-        locale=get_language() or settings.LANGUAGE_CODE,
+        locale=locale
+        if isinstance(locale, str)
+        else get_language() or settings.LANGUAGE_CODE,
         timezone=zone,
     )
     setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
