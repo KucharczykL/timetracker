@@ -222,3 +222,52 @@ describe("formatSessionTimeRange", () => {
     );
   });
 });
+
+describe("calendar presentation", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  it("formats localized calendar chrome from the configured presentation", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.locale = "cs-CZ";
+        config.time_zone = "Europe/Prague";
+      }),
+    );
+    const { calendarWeekdayLabels, formatCalendarMonthYear } = await importFormatter();
+
+    expect(formatCalendarMonthYear(2026, 0)).toBe("leden 2026");
+    expect(calendarWeekdayLabels()).toEqual(["po", "út", "st", "čt", "pá", "so", "ne"]);
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it.each(["America/Adak", "Pacific/Kiritimati"])(
+    "keeps civil calendar dates stable in %s",
+    async (timeZone) => {
+      installConfig(
+        alteredConfig((config) => {
+          config.time_zone = timeZone;
+        }),
+      );
+      const { calendarWeekdayLabels, formatCalendarMonthYear } = await importFormatter();
+
+      expect(formatCalendarMonthYear(2026, 0)).toBe("January 2026");
+      expect(calendarWeekdayLabels()).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+    },
+  );
+
+  it("returns null calendar chrome and reports a missing contract once", async () => {
+    const { calendarWeekdayLabels, formatCalendarMonthYear } = await importFormatter();
+
+    expect(formatCalendarMonthYear(2026, 0)).toBeNull();
+    expect(calendarWeekdayLabels()).toBeNull();
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+    expect(reportClientError).toHaveBeenCalledWith(
+      "date-time-presentation",
+      expect.any(String),
+      { toast: false },
+    );
+  });
+});

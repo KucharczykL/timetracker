@@ -216,3 +216,16 @@ def test_legacy_server_display_formatting_source_audit_is_clean() -> None:
                     )
 
     assert matches == []
+
+
+def test_calendar_client_presentation_source_audit_is_clean() -> None:
+    path = PROJECT_ROOT / "ts" / "elements" / "date-range-picker.ts"
+    forbidden = re.compile(r"\bWEEKDAY_LABELS\b|toLocaleDateString\(undefined")
+
+    matches = [
+        f"{path.relative_to(PROJECT_ROOT)}:{line_number}: {line.strip()}"
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1)
+        if forbidden.search(line)
+    ]
+
+    assert matches == []

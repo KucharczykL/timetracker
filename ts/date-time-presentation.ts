@@ -14,6 +14,7 @@ interface DatePart {
 }
 
 interface CompiledPresentation {
+  locale: string;
   timeZone: string;
   dateParts: DatePart[];
   dateSeparator: string;
@@ -22,6 +23,8 @@ interface CompiledPresentation {
   hourCycle: HourCycle;
   dayPeriods: { am: string; pm: string };
   dateTimeFormatter: Intl.DateTimeFormat;
+  calendarMonthYearFormatter: Intl.DateTimeFormat;
+  calendarWeekdayFormatter: Intl.DateTimeFormat;
   numberFormats: Map<number, Intl.NumberFormat>;
 }
 
@@ -116,6 +119,19 @@ function compilePresentation(raw: unknown): CompiledPresentation {
     minute: "numeric",
     hourCycle,
   });
+  const calendarMonthYearFormatter = new Intl.DateTimeFormat(locale, {
+    calendar: "gregory",
+    numberingSystem: "latn",
+    timeZone,
+    month: "long",
+    year: "numeric",
+  });
+  const calendarWeekdayFormatter = new Intl.DateTimeFormat(locale, {
+    calendar: "gregory",
+    numberingSystem: "latn",
+    timeZone,
+    weekday: "short",
+  });
   const numberFormats = new Map<number, Intl.NumberFormat>();
   const widths = new Set([...dateParts.map((part) => part.displayMinimumDigits), TIME_MINIMUM_DIGITS]);
   for (const width of widths) {
@@ -131,6 +147,7 @@ function compilePresentation(raw: unknown): CompiledPresentation {
   }
 
   return {
+    locale,
     timeZone,
     dateParts,
     dateSeparator,
@@ -139,6 +156,8 @@ function compilePresentation(raw: unknown): CompiledPresentation {
     hourCycle,
     dayPeriods: { am, pm },
     dateTimeFormatter,
+    calendarMonthYearFormatter,
+    calendarWeekdayFormatter,
     numberFormats,
   };
 }
@@ -210,6 +229,54 @@ function formatDateTime(
       ? ` ${value.hour < 12 ? presentation.dayPeriods.am : presentation.dayPeriods.pm}`
       : "";
   return `${date}${time}${dayPeriod}`;
+}
+
+/** Convert a civil calendar date to a local-noon instant in the active zone. */
+function calendarEpochAtLocalNoon(
+  presentation: CompiledPresentation,
+  year: number,
+  monthIndex: number,
+  day: number,
+): number {
+  return Temporal.PlainDate.from({ year, month: monthIndex + 1, day })
+    .toZonedDateTime({
+      timeZone: presentation.timeZone,
+      plainTime: Temporal.PlainTime.from("12:00"),
+    })
+    .epochMilliseconds;
+}
+
+/** Format a calendar heading through the active presentation contract. */
+export function formatCalendarMonthYear(year: number, monthIndex: number): string | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+
+  try {
+    return presentation.calendarMonthYearFormatter.format(
+      calendarEpochAtLocalNoon(presentation, year, monthIndex, 1),
+    );
+  } catch (error) {
+    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    return null;
+  }
+}
+
+/** Return localized weekday labels in the picker’s fixed Monday-first order. */
+export function calendarWeekdayLabels(): readonly string[] | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+
+  try {
+    // 2000-01-03 was a Monday. Consecutive civil dates preserve the grid order.
+    return Array.from({ length: 7 }, (_, offset) =>
+      presentation.calendarWeekdayFormatter.format(
+        calendarEpochAtLocalNoon(presentation, 2000, 0, 3 + offset),
+      ),
+    );
+  } catch (error) {
+    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    return null;
+  }
 }
 
 /** Format a session range with the server-provided browser presentation contract. */

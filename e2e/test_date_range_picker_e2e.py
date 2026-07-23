@@ -14,6 +14,8 @@ minimal URLconf (no auth, no CSS) — the JS only cares about the DOM.
 import datetime
 import json
 import urllib.parse
+from html import escape
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.http import HttpResponse
@@ -22,7 +24,12 @@ from playwright.sync_api import expect
 
 from common.components import parse_filter_dict
 from common.components.filters import field_widget
-from common.date_time_presentation import date_time_presentation_for_request
+from common.date_time_presentation import (
+    DatePartSpec,
+    DateTimeFormatProfile,
+    DateTimePresentation,
+    date_time_presentation_for_request,
+)
 from games.filters import PurchaseFilter
 from django.urls import path
 
@@ -48,8 +55,9 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
         name_prefix="filter-date-refunded",
         presentation=presentation,
     )
+    contract = escape(json.dumps(presentation.to_client_config()), quote=True)
     return f"""<!DOCTYPE html>
-<html>
+<html data-date-time-presentation="{contract}">
 <head>
     <title>Date range picker E2E</title>
     <link rel="stylesheet" href="/static/base.css">
@@ -94,9 +102,34 @@ def prefilled_bar_view(request):
     )
 
 
+CZECH_YEAR_DAY_MONTH_PRESENTATION = DateTimePresentation(
+    DateTimeFormatProfile(
+        date_parts=(
+            DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+            DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+            DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+        ),
+        date_separator=".",
+        segmented_date_separator="·",
+        time_separator=":",
+        date_time_separator=" ",
+        hour_cycle="h23",
+    ),
+    "cs-CZ",
+    ZoneInfo("Pacific/Kiritimati"),
+)
+
+
+def alternate_bar_view(request):
+    return HttpResponse(
+        _bar_page(CZECH_YEAR_DAY_MONTH_PRESENTATION, apply_url=request.path)
+    )
+
+
 urlpatterns = [
     path("test-date-range-picker/", empty_bar_view),
     path("test-date-range-picker-prefilled/", prefilled_bar_view),
+    path("test-date-range-picker-alternate/", alternate_bar_view),
 ]
 
 
@@ -382,6 +415,46 @@ def test_prefilled_picker_round_trips_unchanged(live_server, page):
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
     assert parsed["date_purchased"] == {
+        "value": "2024-03-15",
+        "value2": "2024-09-20",
+        "modifier": "BETWEEN",
+    }
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_alternate_presentation_localizes_calendar_but_serializes_iso(
+    live_server, page
+):
+    page.goto(live_server.url + "/test-date-range-picker-alternate/")
+
+    assert [
+        _segment(page, "min", part).get_attribute("placeholder")
+        for part in ("year", "day", "month")
+    ] == ["YYYY", "DD", "MM"]
+    _open_calendar(page)
+    assert page.locator(PICKER + " [data-date-range-month-label]").text_content()
+    assert page.locator(
+        PICKER + " [data-date-range-grid] span"
+    ).all_text_contents() == [
+        "po",
+        "út",
+        "st",
+        "čt",
+        "pá",
+        "so",
+        "ne",
+    ]
+
+    _segment(page, "min", "year").click()
+    page.keyboard.type("20241503")
+    _segment(page, "max", "year").click()
+    page.keyboard.type("20242009")
+    assert page.locator(HIDDEN_MIN).input_value() == "2024-03-15"
+    assert page.locator(HIDDEN_MAX).input_value() == "2024-09-20"
+    page.locator(PICKER + " [data-date-range-select]").click()
+    _submit_filter_bar(page)
+    assert _filter_from_url(page.url)["date_purchased"] == {
         "value": "2024-03-15",
         "value2": "2024-09-20",
         "modifier": "BETWEEN",

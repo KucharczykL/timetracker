@@ -20,6 +20,10 @@
  * NB: class strings below are emitted verbatim so the Tailwind scanner picks
  * them up — keep them as plain literals.
  */
+import {
+  calendarWeekdayLabels,
+  formatCalendarMonthYear,
+} from "../date-time-presentation.js";
 import { bindPopupDismiss } from "../utils.js";
 
 // Fired whenever a committed bound actually changes — segment typing or a
@@ -62,8 +66,6 @@ interface CalendarState {
   readOnly: boolean;
   refreshFromField: () => void;
 }
-
-const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const WEEKDAY_CLASS =
   "w-8 h-6 flex items-center justify-center text-type-micro text-body select-none";
@@ -533,14 +535,10 @@ function createCalendarState(
   }
 
   function render(): void {
-    monthLabel.textContent = new Date(
-      state.viewYear,
-      state.viewMonth,
-      1
-    ).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    monthLabel.textContent = formatCalendarMonthYear(state.viewYear, state.viewMonth) ?? "";
 
     grid.textContent = "";
-    WEEKDAY_LABELS.forEach((weekdayLabel) => {
+    calendarWeekdayLabels()?.forEach((weekdayLabel) => {
       const headerCell = document.createElement("span");
       headerCell.className = WEEKDAY_CLASS;
       headerCell.textContent = weekdayLabel;

@@ -1,6 +1,16 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { DATE_RANGE_CHANGE_EVENT, type DateRangeChangeDetail } from "./date-range-picker.js";
+
+const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
+const calendarWeekdayLabels = vi.hoisted(() =>
+  vi.fn(() => ["M1", "T2", "W3", "T4", "F5", "S6", "S7"]),
+);
+
+vi.mock("../date-time-presentation.js", () => ({
+  formatCalendarMonthYear,
+  calendarWeekdayLabels,
+}));
 
 // Minimal-complete markup mirroring DateRangeField + DateRangeCalendar — only the
 // data hooks the element wires. One "min" side of day/month/year segments plus the
@@ -108,13 +118,30 @@ function mountStatic(): HTMLElement {
 }
 
 describe("date-range-picker static-calendar variant", () => {
-  beforeEach(() => document.body.replaceChildren());
+  beforeEach(() => {
+    document.body.replaceChildren();
+    formatCalendarMonthYear.mockClear();
+    calendarWeekdayLabels.mockClear();
+  });
 
   it("initializes without toggle/cancel/select and renders the grid at once", () => {
     const picker = mountStatic();
     const grid = picker.querySelector<HTMLElement>("[data-date-range-grid]")!;
     expect(grid.querySelectorAll("button[data-date]").length).toBe(42);
-    expect(picker.querySelector("[data-date-range-month-label]")!.textContent).not.toBe("");
+    expect(picker.querySelector("[data-date-range-month-label]")!.textContent).toBe(
+      "Contract month",
+    );
+    expect(Array.from(grid.querySelectorAll("span"), (label) => label.textContent)).toEqual([
+      "M1",
+      "T2",
+      "W3",
+      "T4",
+      "F5",
+      "S6",
+      "S7",
+    ]);
+    expect(formatCalendarMonthYear).toHaveBeenCalledTimes(1);
+    expect(calendarWeekdayLabels).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the calendar interactive after an outside click", () => {
