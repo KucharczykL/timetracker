@@ -76,6 +76,9 @@ class UserPreferencesForm(forms.ModelForm):
         "default_device": "DEFAULT_DEVICE",
         "default_landing_page": "DEFAULT_LANDING_PAGE",
         "theme": "THEME",
+        "display_time_zone": "DISPLAY_TIME_ZONE",
+        "date_format_locale": "DATE_FORMAT_LOCALE",
+        "datetime_format": "DATETIME_FORMAT",
     }
 
     class Meta:
@@ -86,6 +89,9 @@ class UserPreferencesForm(forms.ModelForm):
             "default_device",
             "default_landing_page",
             "theme",
+            "display_time_zone",
+            "date_format_locale",
+            "datetime_format",
             "extra_preferences",
         ]
 
@@ -94,7 +100,14 @@ class UserPreferencesForm(forms.ModelForm):
         # Nullable CharFields clean blank input to "" by default, which would
         # store an empty-string sentinel (and fail the currency validator).
         # Map blank -> None so "unset" stays NULL.
-        for field_name in ("default_currency", "default_landing_page", "theme"):
+        for field_name in (
+            "default_currency",
+            "default_landing_page",
+            "theme",
+            "display_time_zone",
+            "date_format_locale",
+            "datetime_format",
+        ):
             self.fields[field_name].empty_value = None
 
     def clean(self):
@@ -151,4 +164,13 @@ class UserPreferencesForm(forms.ModelForm):
 @admin.register(UserPreferences)
 class UserPreferencesAdmin(admin.ModelAdmin):
     form = UserPreferencesForm
-    list_display = ["user", "default_currency", "default_device", "theme", "updated_at"]
+    list_display = [
+        "user",
+        "default_currency",
+        "default_device",
+        "theme",
+        "display_time_zone",
+        "date_format_locale",
+        "datetime_format",
+        "updated_at",
+    ]

@@ -563,6 +563,7 @@ USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
     "THEME": "theme",
     "DISPLAY_TIME_ZONE": "display_time_zone",
     "DATE_FORMAT_LOCALE": "date_format_locale",
+    "DATETIME_FORMAT": "datetime_format",
 }
 
 
@@ -601,6 +602,9 @@ class UserPreferences(models.Model):
         max_length=100, null=True, blank=True, default=None
     )
     date_format_locale = models.CharField(
+        max_length=20, null=True, blank=True, default=None
+    )
+    datetime_format = models.CharField(
         max_length=20, null=True, blank=True, default=None
     )
     #: Extension bag for USER keys without a typed column. Absent key == unset.

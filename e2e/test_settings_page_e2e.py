@@ -42,6 +42,12 @@ def _save_select(page: Page, key: str, name: str, value: str) -> None:
     expect(status).to_contain_text("Non-default source (default source: “Default”)")
 
 
+def _wait_for_live_settings(page: Page) -> None:
+    page.wait_for_load_state("load")
+    page.wait_for_function("customElements.get('live-setting-fields') !== undefined")
+    expect(page.locator("live-setting-fields")).to_be_attached()
+
+
 @pytest.mark.parametrize(
     ("viewport", "mobile"),
     [
@@ -137,17 +143,20 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     page, _preferred = authenticated_page
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
+    _wait_for_live_settings(page)
 
-    with page.expect_response(
-        lambda response: (
-            "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
-            and response.request.method == "PATCH"
-        )
-    ) as time_zone_saved:
-        page.locator('select[name="display_time_zone"]').select_option(
-            "Pacific/Kiritimati"
-        )
+    with page.expect_navigation(wait_until="load"):
+        with page.expect_response(
+            lambda response: (
+                "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
+                and response.request.method == "PATCH"
+            )
+        ) as time_zone_saved:
+            page.locator('select[name="display_time_zone"]').select_option(
+                "Pacific/Kiritimati"
+            )
     assert time_zone_saved.value.status == 200
+    _wait_for_live_settings(page)
     page.wait_for_function(
         "document.documentElement.dataset.dateTimePresentation.includes('Pacific/Kiritimati')"
     )
@@ -155,14 +164,16 @@ def test_presentation_preferences_reload_with_the_updated_contract(
         "Pacific/Kiritimati"
     )
 
-    with page.expect_response(
-        lambda response: (
-            "/api/settings/user/DATE_FORMAT_LOCALE" in response.url
-            and response.request.method == "PATCH"
-        )
-    ) as locale_saved:
-        page.locator('select[name="date_format_locale"]').select_option("cs")
+    with page.expect_navigation(wait_until="load"):
+        with page.expect_response(
+            lambda response: (
+                "/api/settings/user/DATE_FORMAT_LOCALE" in response.url
+                and response.request.method == "PATCH"
+            )
+        ) as locale_saved:
+            page.locator('select[name="date_format_locale"]').select_option("cs")
     assert locale_saved.value.status == 200
+    _wait_for_live_settings(page)
     page.wait_for_function(
         "JSON.parse(document.documentElement.dataset.dateTimePresentation).locale === 'cs'"
     )
@@ -171,3 +182,35 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     )
     assert contract["time_zone"] == "Pacific/Kiritimati"
     assert contract["locale"] == "cs"
+
+    with page.expect_navigation(wait_until="load"):
+        with page.expect_response(
+            lambda response: (
+                "/api/settings/user/DATETIME_FORMAT" in response.url
+                and response.request.method == "PATCH"
+            )
+        ) as format_saved:
+            page.locator('select[name="datetime_format"]').select_option("mdy_12h")
+    assert format_saved.value.status == 200
+    _wait_for_live_settings(page)
+    page.wait_for_function(
+        """
+        (() => {
+          const config = JSON.parse(
+            document.documentElement.dataset.dateTimePresentation
+          );
+          return config.profile.date_parts[0].name === "month"
+            && config.profile.hour_cycle === "h12";
+        })()
+        """
+    )
+    expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")
+
+    page.reload()
+    _wait_for_live_settings(page)
+    contract = json.loads(
+        page.locator("html").get_attribute("data-date-time-presentation") or "{}"
+    )
+    assert contract["profile"]["date_parts"][0]["name"] == "month"
+    assert contract["profile"]["hour_cycle"] == "h12"
+    expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")

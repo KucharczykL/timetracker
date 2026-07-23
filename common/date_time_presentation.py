@@ -8,6 +8,7 @@ display text can follow the same contract without exposing ``strftime`` patterns
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
+from types import MappingProxyType
 from typing import Literal, TypedDict
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,8 @@ from django.http import HttpRequest
 from django.utils import timezone as django_timezone
 from django.utils.formats import date_format, get_format
 from django.utils.translation import get_language, override
+
+from timetracker.settings_resolver import resolve_str_for_user
 
 type DatePartName = Literal["day", "month", "year"]
 type HourCycle = Literal["h12", "h23"]
@@ -75,18 +78,61 @@ class DateTimePresentationConfig(TypedDict):
     day_periods: DayPeriodsConfig
 
 
-DEFAULT_DATE_TIME_FORMAT_PROFILE = DateTimeFormatProfile(
-    date_parts=(
-        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-    ),
-    date_separator="/",
-    segmented_date_separator="-",
-    time_separator=":",
-    date_time_separator=" ",
-    hour_cycle="h23",
+_ISO_DATE_PARTS = (
+    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
 )
+_DMY_DATE_PARTS = (
+    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+)
+_MDY_DATE_PARTS = (
+    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
+    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
+    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+)
+
+DATE_TIME_FORMAT_PROFILES = MappingProxyType(
+    {
+        "iso_8601": DateTimeFormatProfile(
+            date_parts=_ISO_DATE_PARTS,
+            date_separator="-",
+            segmented_date_separator="-",
+            time_separator=":",
+            date_time_separator=" ",
+            hour_cycle="h23",
+        ),
+        "dmy_24h": DateTimeFormatProfile(
+            date_parts=_DMY_DATE_PARTS,
+            date_separator="/",
+            segmented_date_separator="-",
+            time_separator=":",
+            date_time_separator=" ",
+            hour_cycle="h23",
+        ),
+        "mdy_12h": DateTimeFormatProfile(
+            date_parts=_MDY_DATE_PARTS,
+            date_separator="/",
+            segmented_date_separator="-",
+            time_separator=":",
+            date_time_separator=" ",
+            hour_cycle="h12",
+        ),
+    }
+)
+
+DEFAULT_DATE_TIME_FORMAT_PROFILE = DATE_TIME_FORMAT_PROFILES["iso_8601"]
+
+
+def date_time_format_profile(profile_id: str) -> DateTimeFormatProfile:
+    """Return the registered immutable profile for ``profile_id``."""
+
+    try:
+        return DATE_TIME_FORMAT_PROFILES[profile_id]
+    except KeyError as error:
+        raise ValueError(f"Unsupported date/time format {profile_id!r}.") from error
 
 
 @cache
@@ -213,8 +259,9 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
         else ZoneInfo(django_timezone.get_current_timezone_name())
     )
     locale = getattr(request, "_date_format_locale", None)
+    profile_id = resolve_str_for_user(getattr(request, "user", None), "DATETIME_FORMAT")
     presentation = DateTimePresentation(
-        profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
+        profile=date_time_format_profile(profile_id),
         locale=locale
         if isinstance(locale, str)
         else get_language() or settings.LANGUAGE_CODE,

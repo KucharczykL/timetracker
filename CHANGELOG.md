@@ -34,6 +34,13 @@
   browsers and is applied before first paint. Anonymous pages retain a separate
   browser preference; signing in uses the account value without migrating or
   overwriting that anonymous choice (#387).
+* Add a per-user date/time format preference with ISO-local
+  `YYYY-MM-DD HH:mm` as the built-in default. Users can choose ISO 8601,
+  `DD/MM/YYYY` with a 24-hour clock, or `MM/DD/YYYY` with a 12-hour clock.
+  Clearing the personal choice inherits the shared environment, `.env`,
+  `settings.ini`, or site default before falling back to ISO. The profile
+  controls numeric date order, separators, and hour cycle; locale continues to
+  supply month names and localized AM/PM labels (#389).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously

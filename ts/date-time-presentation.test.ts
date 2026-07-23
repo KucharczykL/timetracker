@@ -16,11 +16,11 @@ function validConfig(): DateTimePresentationConfig {
     day_periods: { am: "AM", pm: "PM" },
     profile: {
       date_parts: [
-        { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
-        { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
         { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
+        { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
+        { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
       ],
-      date_separator: "/",
+      date_separator: "-",
       segmented_date_separator: "-",
       time_separator: ":",
       date_time_separator: " ",
@@ -53,7 +53,7 @@ const invalidContracts = [
     name: "duplicate and missing date parts",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        config.profile.date_parts[2] = {
+        config.profile.date_parts[0] = {
           name: "day",
           placeholder: "DD",
           input_length: 2,
@@ -148,7 +148,7 @@ describe("formatSessionTimeRange", () => {
 
     expect(
       formatSessionTimeRange("2026-07-02T17:05:00Z", "2026-07-02T19:15:00Z"),
-    ).toBe("02/07/2026 19:05 — 21:15");
+    ).toBe("2026-07-02 19:05 — 21:15");
     expect(reportClientError).not.toHaveBeenCalled();
   });
 
@@ -160,7 +160,7 @@ describe("formatSessionTimeRange", () => {
     );
     const { formatSessionTimeRange } = await importFormatter();
 
-    expect(formatSessionTimeRange("2026-01-01T23:30:00Z", null)).toBe("02/01/2026 13:30");
+    expect(formatSessionTimeRange("2026-01-01T23:30:00Z", null)).toBe("2026-01-02 13:30");
   });
 
   it("uses the contract's date order, punctuation, and display widths", async () => {
@@ -192,7 +192,44 @@ describe("formatSessionTimeRange", () => {
 
     expect(
       formatSessionTimeRange("2026-07-02T03:05:00Z", "2026-07-02T17:15:00Z"),
-    ).toBe("02/07/2026 05:05 before — 07:15 after");
+    ).toBe("2026-07-02 05:05 before — 07:15 after");
+  });
+
+  it("formats the registered DMY 24-hour profile", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.profile.date_parts = [
+          { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
+          { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
+          { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
+        ];
+        config.profile.date_separator = "/";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    expect(
+      formatSessionTimeRange("2026-07-02T17:05:00Z", "2026-07-02T19:15:00Z"),
+    ).toBe("02/07/2026 19:05 — 21:15");
+  });
+
+  it("formats the registered MDY 12-hour profile", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        config.profile.date_parts = [
+          { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
+          { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
+          { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
+        ];
+        config.profile.date_separator = "/";
+        config.profile.hour_cycle = "h12";
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    expect(
+      formatSessionTimeRange("2026-07-02T17:05:00Z", "2026-07-02T19:15:00Z"),
+    ).toBe("07/02/2026 07:05 PM — 09:15 PM");
   });
 
   it.each(invalidContracts)("returns null and reports $name only once", async ({ raw }) => {

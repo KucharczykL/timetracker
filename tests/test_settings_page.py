@@ -82,6 +82,7 @@ def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     assert '<option value="" selected>Use site default (Sessions)</option>' in html
     assert '<option value="" selected>Use site default (25)</option>' in html
     assert '<option value="" selected>Use site default (System)</option>' in html
+    assert '<option value="" selected>Use site default (ISO 8601)</option>' in html
 
 
 def test_personal_theme_is_selected(auth_client, user):
@@ -110,6 +111,7 @@ def test_personal_presentation_preferences_are_selected_and_live_saved(
         user=user,
         display_time_zone="Pacific/Kiritimati",
         date_format_locale="cs",
+        datetime_format="mdy_12h",
     )
 
     html = auth_client.get(reverse("games:settings")).content.decode()
@@ -121,9 +123,17 @@ def test_personal_presentation_preferences_are_selected_and_live_saved(
     )
     assert '<select name="date_format_locale"' in html
     assert '<option value="cs" selected>Čeština</option>' in html
+    assert '<select name="datetime_format"' in html
+    assert '<option value="mdy_12h" selected>MM/DD/YYYY, 12-hour</option>' in html
     assert 'data-setting-key="DISPLAY_TIME_ZONE"' in html
     assert 'data-setting-key="DATE_FORMAT_LOCALE"' in html
-    assert "data-reload-after-save" in html
+    assert 'data-setting-key="DATETIME_FORMAT"' in html
+    datetime_select = html[
+        html.index('<select name="datetime_format"') : html.index(
+            "</select>", html.index('<select name="datetime_format"')
+        )
+    ]
+    assert "data-reload-after-save" in datetime_select
 
 
 def test_unset_selects_show_configured_site_defaults(auth_client):
@@ -134,6 +144,7 @@ def test_unset_selects_show_configured_site_defaults(auth_client):
         value="games:list_games",
     )
     SiteSetting.objects.create(key="THEME", value="dark")
+    SiteSetting.objects.create(key="DATETIME_FORMAT", value="dmy_24h")
     settings_resolver.clear_cache()
 
     html = auth_client.get(reverse("games:settings")).content.decode()
@@ -141,6 +152,22 @@ def test_unset_selects_show_configured_site_defaults(auth_client):
     assert '<option value="" selected>Use site default (Desktop (PC))</option>' in html
     assert '<option value="" selected>Use site default (Games)</option>' in html
     assert '<option value="" selected>Use site default (Dark)</option>' in html
+    assert (
+        '<option value="" selected>Use site default (DD/MM/YYYY, 24-hour)</option>'
+        in html
+    )
+
+
+def test_unset_datetime_format_shows_environment_default(auth_client, monkeypatch):
+    monkeypatch.setenv("DATETIME_FORMAT", "mdy_12h")
+    settings_resolver.clear_cache()
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert (
+        '<option value="" selected>Use site default (MM/DD/YYYY, 12-hour)</option>'
+        in html
+    )
 
 
 def test_authenticated_navbar_links_to_settings(auth_client):

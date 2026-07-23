@@ -25,6 +25,7 @@ USER_KEYS = {
     "THEME",
     "DISPLAY_TIME_ZONE",
     "DATE_FORMAT_LOCALE",
+    "DATETIME_FORMAT",
 }
 
 EXPECTED_KEYS = {
@@ -123,6 +124,42 @@ def test_theme_model_field_fits_the_longest_preference():
 
     assert field.max_length == 6
     assert tuple(field.choices) == settings_registry.THEME_CHOICES
+
+
+def test_datetime_format_registry_contract():
+    assert settings_registry.DATETIME_FORMAT_CHOICES == (
+        ("iso_8601", "ISO 8601"),
+        ("dmy_24h", "DD/MM/YYYY, 24-hour"),
+        ("mdy_12h", "MM/DD/YYYY, 12-hour"),
+    )
+
+    definition = get_definition("DATETIME_FORMAT")
+    assert definition.scope is SettingScope.USER
+    assert definition.apply_timing is ApplyTiming.LIVE
+    assert definition.widget == "select"
+    assert definition.default_factory() == "iso_8601"
+
+
+def test_datetime_format_model_field_is_nullable():
+    field = UserPreferences._meta.get_field("datetime_format")
+
+    assert field.null is True
+    assert field.blank is True
+    assert field.default is None
+
+
+def test_datetime_format_validator_normalizes_case_and_outer_whitespace():
+    validator = get_definition("DATETIME_FORMAT").validator
+    assert validator is not None
+    assert validator(" MDY_12H ") == "mdy_12h"
+
+
+@pytest.mark.parametrize("bad", ["rfc_3339", "", 1, True])
+def test_datetime_format_validator_rejects_unsupported_values(bad):
+    validator = get_definition("DATETIME_FORMAT").validator
+    assert validator is not None
+    with pytest.raises(ValidationError):
+        validator(bad)
 
 
 @pytest.mark.parametrize("bad", ["EU", "EURO", "12$", "e1r", ""])

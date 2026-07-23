@@ -28,6 +28,7 @@ from common.date_time_presentation import (
     DatePartSpec,
     DateTimeFormatProfile,
     DateTimePresentation,
+    date_time_format_profile,
     date_time_presentation_for_request,
 )
 from games.filters import PurchaseFilter
@@ -77,10 +78,18 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
 </html>"""
 
 
-def empty_bar_view(request):
-    return HttpResponse(
-        _bar_page(date_time_presentation_for_request(request), apply_url=request.path)
+def _dmy_presentation(request) -> DateTimePresentation:
+    """Keep the segmented-entry interaction suite explicit about its DMY order."""
+    request_presentation = date_time_presentation_for_request(request)
+    return DateTimePresentation(
+        date_time_format_profile("dmy_24h"),
+        request_presentation.locale,
+        request_presentation.timezone,
     )
+
+
+def empty_bar_view(request):
+    return HttpResponse(_bar_page(_dmy_presentation(request), apply_url=request.path))
 
 
 def prefilled_bar_view(request):
@@ -95,7 +104,7 @@ def prefilled_bar_view(request):
     )
     return HttpResponse(
         _bar_page(
-            date_time_presentation_for_request(request),
+            _dmy_presentation(request),
             filter_json,
             apply_url=request.path,
         )

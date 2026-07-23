@@ -33,12 +33,12 @@ DEFAULT_PRESENTATION = DateTimePresentation(
 
 
 class DatePartsTest(SimpleTestCase):
-    def test_default_format_yields_day_month_year(self):
+    def test_default_format_yields_year_month_day(self):
         parts = DEFAULT_PRESENTATION.profile.date_parts
-        self.assertEqual([part.name for part in parts], ["day", "month", "year"])
-        self.assertEqual([part.placeholder for part in parts], ["DD", "MM", "YYYY"])
-        self.assertEqual([part.input_length for part in parts], [2, 2, 4])
-        self.assertEqual([part.display_min_digits for part in parts], [2, 2, 4])
+        self.assertEqual([part.name for part in parts], ["year", "month", "day"])
+        self.assertEqual([part.placeholder for part in parts], ["YYYY", "MM", "DD"])
+        self.assertEqual([part.input_length for part in parts], [4, 2, 2])
+        self.assertEqual([part.display_min_digits for part in parts], [4, 2, 2])
 
 
 class DateRangeFieldTest(SimpleTestCase):
@@ -66,7 +66,7 @@ class DateRangeFieldTest(SimpleTestCase):
             side_segments = re.findall(
                 rf'data-date-part="(\w+)" data-date-side="{side}"', html
             )
-            self.assertEqual(side_segments, ["day", "month", "year"])
+            self.assertEqual(side_segments, ["year", "month", "day"])
 
     def test_segment_placeholders_and_lengths(self):
         html = self.render()
