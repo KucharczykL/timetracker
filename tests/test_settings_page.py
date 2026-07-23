@@ -72,7 +72,7 @@ def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
     toggle_end = html.index("</theme-toggle>", toggle_start) + len("</theme-toggle>")
     toggle_markup = html[toggle_start:toggle_end]
     toggle_button = re.search(
-        r"<button\b[^>]*\bdata-pop-over-trigger\b[^>]*>",
+        r"<button\b[^>]*\bdata-pop-over-control\b[^>]*>",
         toggle_markup,
     )
     assert toggle_button is not None

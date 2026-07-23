@@ -24,6 +24,28 @@ function mount(options: { tap?: boolean } = {}): {
   return { host, panel, trigger };
 }
 
+function mountDisabledControl(): {
+  host: HTMLElement;
+  panel: HTMLElement;
+  trigger: HTMLElement;
+  control: HTMLButtonElement;
+} {
+  const host = document.createElement("pop-over");
+  host.setAttribute("tap", "true");
+  host.innerHTML = `
+    <span data-pop-over-trigger tabindex="0" aria-describedby="pid">
+      <button type="button" data-pop-over-control disabled>word</button>
+    </span>
+    <div data-pop-over-panel id="pid" role="tooltip" hidden>why unavailable<div data-pop-over-arrow></div></div>`;
+  document.body.appendChild(host);
+  return {
+    host,
+    panel: host.querySelector<HTMLElement>("[data-pop-over-panel]")!,
+    trigger: host.querySelector<HTMLElement>("[data-pop-over-trigger]")!,
+    control: host.querySelector<HTMLButtonElement>("[data-pop-over-control]")!,
+  };
+}
+
 // jsdom ignores the `pointerType` init on PointerEvent, so build a MouseEvent and
 // pin pointerType onto it — the element reads only that field.
 function pointer(type: string, pointerType: string, init: EventInit = {}): Event {
@@ -102,6 +124,19 @@ describe("<pop-over> tooltip (hover/focus)", () => {
     expect(panel.hidden).toBe(false);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(panel.hidden).toBe(true);
+  });
+
+  it("explains a disabled control through its separate hover/focus trigger", () => {
+    const { host, panel, trigger, control } = mountDisabledControl();
+
+    expect(control.disabled).toBe(true);
+    expect(trigger.tabIndex).toBe(0);
+    host.dispatchEvent(pointer("pointerenter", "mouse"));
+    expect(panel.hidden).toBe(false);
+    host.dispatchEvent(pointer("pointerleave", "mouse"));
+    expect(panel.hidden).toBe(true);
+    trigger.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(panel.hidden).toBe(false);
   });
 
   it("hides when focus leaves the element entirely", () => {

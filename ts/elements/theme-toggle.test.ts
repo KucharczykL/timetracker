@@ -23,14 +23,21 @@ function configure(mode: "browser" | "account", preference = "system"): void {
 
 function mount(permanentlyDisabled = false): HTMLElement {
   const disabledHostAttribute = permanentlyDisabled ? ' disabled="true"' : "";
+  const triggerStart = permanentlyDisabled
+    ? '<span data-pop-over-trigger tabindex="0">'
+    : "";
+  const triggerEnd = permanentlyDisabled ? "</span>" : "";
+  const buttonTriggerAttribute = permanentlyDisabled
+    ? ""
+    : " data-pop-over-trigger";
   const disabledButtonAttribute = permanentlyDisabled ? " disabled" : "";
   document.body.innerHTML = `
     <theme-toggle class="block"${disabledHostAttribute}>
-      <pop-over><button type="button" data-pop-over-trigger${disabledButtonAttribute}>
+      <pop-over>${triggerStart}<button type="button" data-pop-over-control${buttonTriggerAttribute}${disabledButtonAttribute}>
         <svg data-theme-icon="system"></svg>
         <svg data-theme-icon="light" hidden></svg>
         <svg data-theme-icon="dark" hidden></svg>
-      </button><div data-pop-over-panel><span data-theme-tooltip></span></div></pop-over>
+      </button>${triggerEnd}<div data-pop-over-panel><span data-theme-tooltip></span></div></pop-over>
     </theme-toggle>`;
   return document.querySelector("theme-toggle")!;
 }
@@ -74,10 +81,15 @@ describe("<theme-toggle>", () => {
     configure("browser");
     const host = mount(true);
     const button = host.querySelector<HTMLButtonElement>("button")!;
+    const tooltipTrigger = host.querySelector<HTMLElement>(
+      "[data-pop-over-trigger]",
+    )!;
 
     await getThemeCoordinator().requestPreferenceChange("light");
 
     expect(button.disabled).toBe(true);
+    expect(tooltipTrigger).not.toBe(button);
+    expect(tooltipTrigger.tabIndex).toBe(0);
     expect(host.querySelector('[data-theme-icon="light"]')?.hasAttribute("hidden"))
       .toBe(false);
   });

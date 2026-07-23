@@ -24,7 +24,7 @@ class ThemeToggleElement extends HTMLElement {
 
   connectedCallback(): void {
     this.permanentlyDisabled = readThemeToggleProps(this).disabled;
-    this.button = this.querySelector<HTMLButtonElement>("[data-pop-over-trigger]");
+    this.button = this.querySelector<HTMLButtonElement>("[data-pop-over-control]");
     this.tooltip = this.querySelector<HTMLElement>("[data-theme-tooltip]");
     this.button?.addEventListener("click", this.onClick);
     this.unsubscribe = getThemeCoordinator().subscribe(this.renderState);

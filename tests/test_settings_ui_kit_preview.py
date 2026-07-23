@@ -50,7 +50,7 @@ def _theme_toggle_markup(body: str) -> tuple[str, str]:
     start = body.index("<theme-toggle")
     end = body.index("</theme-toggle>", start) + len("</theme-toggle>")
     markup = body[start:end]
-    button = re.search(r"<button\b[^>]*\bdata-pop-over-trigger\b[^>]*>", markup)
+    button = re.search(r"<button\b[^>]*\bdata-pop-over-control\b[^>]*>", markup)
     assert button is not None
     return markup, button.group()
 

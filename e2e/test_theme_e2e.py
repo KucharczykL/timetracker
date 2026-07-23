@@ -197,7 +197,8 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = page.locator('select[name="theme"]')
-    toggle = page.locator("theme-toggle [data-pop-over-trigger]")
+    toggle = page.locator("theme-toggle [data-pop-over-control]")
+    tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("light")
     expect(toggle).to_be_disabled()
@@ -205,6 +206,13 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
         "aria-label", "Theme switching is unavailable on settings pages."
     )
     expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
+    tooltip_surface.hover()
+    expect(tooltip).to_be_visible()
+    page.mouse.move(0, 0)
+    expect(tooltip).to_be_hidden()
+    tooltip_surface.focus()
+    expect(tooltip_surface).to_be_focused()
+    expect(tooltip).to_be_visible()
 
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
@@ -296,7 +304,7 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = page.locator('select[name="theme"]')
     source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
-    toggle = page.locator("theme-toggle [data-pop-over-trigger]")
+    toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("")
     expect(source).to_have_attribute("data-setting-origin", "database")

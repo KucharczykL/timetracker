@@ -188,3 +188,104 @@ TypeScript check/emit, and Tailwind passed; Vitest reported `41 files passed,
 No product-code concerns. The brief's literal `pnpm exec vitest` command omits
 the Node 26 `--no-experimental-webstorage` flag documented in `CLAUDE.md`; the
 flagged focused command and the authoritative `make check` path are green.
+
+## Review follow-up: accessible disabled-theme tooltip
+
+### Status and approach
+
+Complete. The settings-page toggle remains a native disabled button and its
+permanent click guard remains intact. When disabled, the shared server-rendered
+popover now gives tooltip-trigger ownership to a separate `tabindex="0"` span
+around the real button. That surface carries the restriction label and
+`aria-describedby`, so pointer hover and keyboard focus can expose the
+explanation. Enabled popovers retain the existing real-button trigger behavior.
+The shared tooltip controller was not changed.
+
+`ThemeToggleElement` now finds the real button through
+`data-pop-over-control`, independently of whichever node owns
+`data-pop-over-trigger`. Server-rendering, controller, presenter, and browser
+coverage all model this trigger/control distinction.
+
+### TDD evidence
+
+Focused server-rendering RED:
+
+```bash
+direnv exec . uv run --frozen pytest tests/test_theme_layout.py -q
+```
+
+Result before implementation: exit 1, `1 failed, 8 passed`; the native disabled
+button still carried `data-pop-over-trigger` and no focusable tooltip surface
+was rendered.
+
+The first repository-wide verification found two stale
+`theme-setting.test.ts` fixtures that still modeled a theme toggle with only
+`data-pop-over-trigger`. The affected synchronization test failed consistently,
+including in isolation (`1 failed, 5 passed`). Updating those fixtures to the
+new `data-pop-over-control data-pop-over-trigger` enabled-button contract made
+the isolated file green (`6 passed`); no product behavior was changed for that
+correction.
+
+### GREEN evidence
+
+Affected Python theme/layout surfaces:
+
+```bash
+direnv exec . uv run --frozen pytest \
+  tests/test_theme_layout.py \
+  tests/test_settings_page.py \
+  tests/test_admin_settings_page.py \
+  tests/test_settings_ui_kit_preview.py -q
+```
+
+Result: exit 0, `43 passed`.
+
+Affected tooltip/theme-toggle Vitest coverage:
+
+```bash
+direnv exec . pnpm exec vitest run \
+  ts/elements/pop-over.test.ts \
+  ts/elements/theme-toggle.test.ts \
+  --execArgv=--no-experimental-webstorage
+```
+
+Result: exit 0, `2 files passed`, `21 tests passed`.
+
+Changed theme E2Es:
+
+```bash
+direnv exec . uv run --frozen pytest \
+  e2e/test_theme_e2e.py::test_settings_control_updates_permanently_disabled_navbar_theme_state \
+  e2e/test_theme_e2e.py::test_failed_theme_save_restores_system_state_then_allows_retry -q
+```
+
+Result: exit 0, `2 passed`. The first scenario verifies real pointer hover,
+pointer leave, and keyboard focus on the separate tooltip surface while the
+underlying control remains disabled.
+
+TypeScript and diff checks:
+
+```bash
+direnv exec . pnpm exec tsc --noEmit -p tsconfig.check.json
+git diff --check
+```
+
+Results: both exit 0, with no diagnostics.
+
+Corrected final repository gate:
+
+```bash
+direnv exec . make check
+```
+
+Result: exit 0. Ruff check/format, mypy (222 files), element/icon codegen,
+TypeScript check/emit, and Tailwind passed; Vitest reported `41 files passed,
+649 tests passed`; pytest including browser coverage reported
+`2161 passed in 234.23s`.
+
+### Review follow-up concerns
+
+None. Native disabled semantics and click suppression are retained; the
+additional focusable surface exists only for permanently disabled popover
+controls. Ordinary theme toggles and ordinary popovers keep their previous
+button-trigger interaction.

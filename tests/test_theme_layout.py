@@ -18,7 +18,7 @@ def _theme_toggle_markup(html: str) -> tuple[str, str]:
     start = html.index("<theme-toggle")
     end = html.index("</theme-toggle>", start) + len("</theme-toggle>")
     markup = html[start:end]
-    button = re.search(r"<button\b[^>]*\bdata-pop-over-trigger\b[^>]*>", markup)
+    button = re.search(r"<button\b[^>]*\bdata-pop-over-control\b[^>]*>", markup)
     assert button is not None
     return markup, button.group()
 
@@ -111,6 +111,18 @@ def test_theme_toggle_renders_permanent_disabled_state_on_the_real_button():
     assert 'disabled="true"' in markup.split(">", 1)[0]
     assert 'disabled="disabled"' in button
     assert 'aria-label="Theme switching is unavailable on settings pages."' in button
+    assert "data-pop-over-trigger" not in button
+    interaction_surface = re.search(
+        r"<span\b[^>]*\bdata-pop-over-trigger\b[^>]*>",
+        markup,
+    )
+    assert interaction_surface is not None
+    assert 'tabindex="0"' in interaction_surface.group()
+    assert 'aria-describedby="theme-tip-' in interaction_surface.group()
+    assert (
+        'aria-label="Theme switching is unavailable on settings pages."'
+        in interaction_surface.group()
+    )
     assert "Theme switching is unavailable on settings pages." in markup
     assert "disabled:opacity-50" in button
     assert "disabled:cursor-not-allowed" in button
@@ -125,6 +137,7 @@ def test_ordinary_page_navbar_theme_toggle_is_server_rendered_enabled(db):
 
     assert 'disabled="true"' not in markup.split(">", 1)[0]
     assert not re.search(r'\sdisabled(?:="disabled")?(?=\s|>)', button)
+    assert "data-pop-over-trigger" in button
     assert 'aria-label="Theme: System — switch to Light"' in button
 
 
