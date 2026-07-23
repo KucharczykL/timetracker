@@ -250,7 +250,7 @@ def test_root_document_emits_active_client_contract(db) -> None:
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
     assert contract["version"] == 1
     assert contract["locale"] == "en-us"
-    assert contract["time_zone"] == "Europe/Prague"
+    assert contract["time_zone"] == "UTC"
     assert contract["profile"] == {
         "date_parts": [
             {

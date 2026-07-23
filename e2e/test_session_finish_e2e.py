@@ -9,12 +9,11 @@ test asserts the row updates without navigation and the PATCH succeeds (200, not
 import datetime as dt
 
 import pytest
-from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Browser, Page, expect
 
-from games.models import Device, Game, Platform, Session
+from games.models import Device, Game, Platform, Session, UserPreferences
 
 
 @pytest.fixture
@@ -72,11 +71,14 @@ def test_finish_session_swaps_row_in_place(authenticated_page: Page, live_server
     assert session.timestamp_end is not None
 
 
-@override_settings(TIME_ZONE="Europe/Prague")
 def test_finish_preserves_server_rendered_start_across_browser_timezone(
-    authenticated_page: Page, browser: Browser, live_server
+    authenticated_page: Page, browser: Browser, live_server, django_user_model
 ):
     """The rebuilt row must retain Django's text despite the browser's zone."""
+    UserPreferences.objects.create(
+        user=django_user_model.objects.get(username="tester"),
+        display_time_zone="Europe/Prague",
+    )
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
     game = Game.objects.create(name="Tunic", platform=platform)
     session = Session.objects.create(

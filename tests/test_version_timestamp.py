@@ -27,4 +27,4 @@ def test_footer_formats_build_timestamp_through_request_presentation(
 
     html = Client().get(reverse("login")).content.decode()
 
-    assert "git-main (22/07/2026 14:05)" in html
+    assert "git-main (22/07/2026 12:05)" in html
