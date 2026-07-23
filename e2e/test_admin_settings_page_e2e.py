@@ -23,8 +23,9 @@ SITE_SETTING_KEYS = (
 
 
 @pytest.fixture
-def editable_site_setting_sources(monkeypatch, tmp_path):
+def editable_site_setting_sources(monkeypatch, tmp_path, settings):
     """Keep source precedence deterministic for browser writes."""
+    settings.DEFAULT_CURRENCY = "CZK"
     for key in SITE_SETTING_KEYS:
         monkeypatch.delenv(key, raising=False)
         monkeypatch.delenv(f"{key}__FILE", raising=False)

@@ -178,3 +178,78 @@ All checks passed!
   `git diff --check`.
 - Per the task split, the controller still owns the final full
   `direnv exec . make check`.
+
+## Review follow-up: deterministic currency fallback
+
+Task 5 review identified that removing `DEFAULT_CURRENCY` from `os.environ`
+inside `editable_site_setting_sources` happened after Django settings had
+loaded. The registry fallback reads the already-booted
+`settings.DEFAULT_CURRENCY`, so a process started with
+`DEFAULT_CURRENCY=USD` returned `USD` after clear while the test hard-coded
+`CZK`.
+
+### Review RED
+
+Command:
+
+```bash
+DEFAULT_CURRENCY=USD direnv exec . uv run --frozen pytest \
+  e2e/test_admin_settings_page_e2e.py::test_text_select_and_clear_site_defaults -q
+```
+
+Output:
+
+```text
+F                                                                        [100%]
+E       AssertionError: assert {'value': 'USD', ...} == {'value': 'CZK', ...}
+FAILED e2e/test_admin_settings_page_e2e.py::test_text_select_and_clear_site_defaults[chromium]
+1 failed in 2.48s
+```
+
+### Fix
+
+`editable_site_setting_sources` now depends on pytest-django's `settings`
+fixture and pins `settings.DEFAULT_CURRENCY = "CZK"` for the fixture lifetime.
+The existing environment/config-source cleanup and pre/post cache resets remain
+in place. Pytest-django restores the Django setting after the test.
+
+### Focused review GREEN
+
+The same hostile boot condition now passes:
+
+```bash
+DEFAULT_CURRENCY=USD direnv exec . uv run --frozen pytest \
+  e2e/test_admin_settings_page_e2e.py::test_text_select_and_clear_site_defaults -q
+```
+
+```text
+.                                                                        [100%]
+1 passed in 2.47s
+```
+
+The complete Admin Settings module also passes under the conflicting boot
+environment:
+
+```bash
+DEFAULT_CURRENCY=USD direnv exec . uv run --frozen pytest \
+  e2e/test_admin_settings_page_e2e.py -q
+```
+
+```text
+.....                                                                    [100%]
+5 passed in 7.28s
+```
+
+Combined settings browser verification:
+
+```bash
+direnv exec . uv run --frozen pytest \
+  e2e/test_admin_settings_page_e2e.py \
+  e2e/test_settings_page_e2e.py \
+  e2e/test_settings_ui_kit_e2e.py -q
+```
+
+```text
+...................                                                      [100%]
+19 passed in 20.60s
+```
