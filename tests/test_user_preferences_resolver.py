@@ -9,6 +9,7 @@ import pytest
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
@@ -76,6 +77,14 @@ def test_unset_user_falls_through_to_site(
 def test_unset_everything_falls_through_to_default(user, no_currency_env):
     result = resolve_for_user_with_origin(user, "DEFAULT_CURRENCY")
     assert result.value == django_settings.DEFAULT_CURRENCY
+    assert result.source is SettingSource.DEFAULT
+
+
+@override_settings(TIME_ZONE="Pacific/Kiritimati")
+def test_display_time_zone_defaults_to_utc(user):
+    settings_resolver.clear_cache()
+    result = resolve_for_user_with_origin(user, "DISPLAY_TIME_ZONE")
+    assert result.value == "UTC"
     assert result.source is SettingSource.DEFAULT
 
 

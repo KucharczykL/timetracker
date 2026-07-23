@@ -242,7 +242,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
                 "Time zone used for wall-clock display and datetime form "
                 "interpretation."
             ),
-            default_factory=lambda: settings.TIME_ZONE,
+            default_factory=lambda: "UTC",
             validator=_validate_display_time_zone,
             widget="select",
         ),
