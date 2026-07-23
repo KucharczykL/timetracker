@@ -17,6 +17,7 @@ from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.safestring import SafeText
+from django.utils.translation import get_language
 from django_htmx.jinja import django_htmx_script
 
 from common.components.core import Document, Safe
@@ -579,7 +580,7 @@ def TimetrackerDocument(
             _main_script(mastered)
         ]
         theme_attributes = [
-            ("lang", date_time_presentation.locale),
+            ("lang", get_language() or settings.LANGUAGE_CODE),
             (
                 "data-date-time-presentation",
                 json.dumps(

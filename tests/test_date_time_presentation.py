@@ -282,7 +282,7 @@ def test_root_document_emits_active_client_contract(db) -> None:
 
 
 @override_settings(LANGUAGE_CODE="en-us")
-def test_root_document_uses_resolved_formatting_locale_not_active_translation(
+def test_root_document_keeps_ui_language_separate_from_formatting_locale(
     db,
 ) -> None:
     parser = _RootAttributeParser()
@@ -292,7 +292,7 @@ def test_root_document_uses_resolved_formatting_locale_not_active_translation(
 
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
     assert contract["locale"] == "en-us"
-    assert parser.attributes["lang"] == "en-us"
+    assert parser.attributes["lang"] == "cs"
 
 
 def test_codegen_command_emits_date_time_presentation_type(tmp_path: Path) -> None:
