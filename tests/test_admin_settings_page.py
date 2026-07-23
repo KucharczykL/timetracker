@@ -193,6 +193,23 @@ def test_superuser_receives_admin_settings_page(
     assert 'data-settings-scaffold=""' in html
 
 
+def test_admin_settings_page_explains_site_currency_scope(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    assert (
+        "Used for purchase entry by users without a personal value, purchases "
+        "saved without user context, and the FX/reporting target." in html
+    )
+    assert (
+        "A personal value affects only your purchase entry; purchases saved "
+        "without user context and FX/reporting continue to use the site value."
+        not in html
+    )
+
+
 def test_admin_settings_page_disables_only_the_navbar_theme_switcher(
     superuser_client,
     clean_site_setting_sources,

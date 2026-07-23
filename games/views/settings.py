@@ -49,6 +49,11 @@ _FIELD_KEYS = {
     "datetime_format": "DATETIME_FORMAT",
 }
 
+_PERSONAL_CURRENCY_HELP = (
+    "A personal value affects only your purchase entry; purchases saved without "
+    "user context and FX/reporting continue to use the site value."
+)
+
 
 class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
     """Typed controls for the initial personal-preference slice."""
@@ -239,7 +244,11 @@ def _form_and_states(
         states[field_name] = SettingFieldState(
             key,
             str(resolved.source),
-            help_text=definition.help_text,
+            help_text=(
+                _PERSONAL_CURRENCY_HELP
+                if key == "DEFAULT_CURRENCY"
+                else definition.help_text
+            ),
             live_save=field_name != "theme",
         )
     site_device = resolve_with_origin("DEFAULT_DEVICE").value

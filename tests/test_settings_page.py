@@ -66,6 +66,19 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert "System follows the operating-system theme." in html
 
 
+def test_settings_page_explains_personal_currency_scope(auth_client):
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert (
+        "A personal value affects only your purchase entry; purchases saved "
+        "without user context and FX/reporting continue to use the site value." in html
+    )
+    assert (
+        "Used for purchase entry by users without a personal value, purchases "
+        "saved without user context, and the FX/reporting target." not in html
+    )
+
+
 def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
     html = auth_client.get(reverse("games:settings")).content.decode()
     toggle_start = html.index("<theme-toggle")

@@ -27,11 +27,19 @@ def resolved_namespace(path):
         return None
 
 
+try:
+    resolve("/admin/")
+except Resolver404:
+    admin_route_raises_resolver404 = True
+else:
+    admin_route_raises_resolver404 = False
+
+
 print(json.dumps({
     "debug": settings.DEBUG,
     "installed_apps": settings.INSTALLED_APPS,
     "middleware": settings.MIDDLEWARE,
-    "admin_namespace": resolved_namespace("/admin/"),
+    "admin_route_raises_resolver404": admin_route_raises_resolver404,
     "debug_namespace": resolved_namespace("/__debug__/render_panel/"),
 }))
 """
@@ -60,5 +68,5 @@ def test_debug_configuration_excludes_admin_and_retains_development_tools():
 def test_debug_urls_exclude_admin_and_retain_debug_toolbar():
     configuration = _debug_configuration()
 
-    assert configuration["admin_namespace"] is None
+    assert configuration["admin_route_raises_resolver404"] is True
     assert configuration["debug_namespace"] == "djdt"
