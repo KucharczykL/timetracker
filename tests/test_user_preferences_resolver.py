@@ -313,38 +313,6 @@ def test_datetime_format_rejects_unsupported_values(user, value):
     assert not UserPreferences.objects.filter(user=user).exists()
 
 
-def test_user_prefs_admin_form_normalizes_datetime_format(db):
-    from games.admin import UserPreferencesForm
-
-    user = get_user_model().objects.create_user(username="admin-pref")
-    form = UserPreferencesForm(
-        data={
-            "user": user.pk,
-            "datetime_format": " MDY_12H ",
-            "extra_preferences": "{}",
-        }
-    )
-
-    assert form.is_valid(), form.errors
-    assert form.save().datetime_format == "mdy_12h"
-
-
-def test_user_prefs_admin_form_blank_datetime_format_saves_null(db):
-    from games.admin import UserPreferencesForm
-
-    user = get_user_model().objects.create_user(username="admin-clear")
-    form = UserPreferencesForm(
-        data={
-            "user": user.pk,
-            "datetime_format": "",
-            "extra_preferences": "{}",
-        }
-    )
-
-    assert form.is_valid(), form.errors
-    assert form.save().datetime_format is None
-
-
 @pytest.mark.parametrize(
     ("key", "value"),
     [

@@ -15,7 +15,6 @@ Including another URLconf
 """
 
 from django.conf import settings
-from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 from django.views.generic import RedirectView
@@ -32,5 +31,4 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns.append(path("admin/", admin.site.urls))
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))

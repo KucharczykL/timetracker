@@ -313,7 +313,11 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     }
 
     if request.method == "POST":
-        form = PurchaseForm(request.POST or None, initial=initial)
+        form = PurchaseForm(
+            request.POST or None,
+            initial=initial,
+            default_currency=default_currency,
+        )
         if form.is_valid():
             if request.POST.get("pricing_mode") == "per_game":
                 _create_separate_purchases(
@@ -342,14 +346,15 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                     **initial,
                     "games": [game],
                     "platform": game.platform,
-                }
+                },
+                default_currency=default_currency,
             )
             # Chained from add_game: game and platform are pre-filled, so focus
             # the first empty field the user still needs to fill instead.
             form.fields["games"].widget.autofocus = False
             form.fields["price"].widget.attrs["autofocus"] = "autofocus"
         else:
-            form = PurchaseForm(initial=initial)
+            form = PurchaseForm(initial=initial, default_currency=default_currency)
 
     return render_page(
         request,
@@ -375,7 +380,12 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     initial = (
         {"price_currency": default_currency} if not purchase.price_currency else None
     )
-    form = PurchaseForm(request.POST or None, instance=purchase, initial=initial)
+    form = PurchaseForm(
+        request.POST or None,
+        instance=purchase,
+        initial=initial,
+        default_currency=default_currency,
+    )
     if form.is_valid():
         if not form.cleaned_data["price_currency"]:
             form.instance.price_currency = default_currency
