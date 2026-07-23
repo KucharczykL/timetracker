@@ -4,8 +4,7 @@ and future settings widgets.
 ``settings`` is read only inside ``default_factory`` callables, never at import,
 so ``settings.py`` can import this module safely.
 
-Registers the 9 settings read via ``config()`` plus the per-user preference keys
-(``DEFAULT_DEVICE``, ``DEFAULT_LANDING_PAGE``, ``DEFAULT_PAGE_SIZE``, ``THEME``),
+Registers the 9 settings read via ``config()`` plus the per-user preference keys,
 which are *not* read via ``config()`` — no Django setting consumes them at boot;
 they resolve through the runtime chain (personal → env → site DB → default).
 Excluded on purpose:
@@ -17,6 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Final
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -44,6 +44,16 @@ THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("dark", "Dark"),
 )
 _THEME_VALUES: Final[frozenset[str]] = frozenset(value for value, _ in THEME_CHOICES)
+FORMAT_LOCALE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("en-us", "English (United States)"),
+    ("cs", "Čeština"),
+)
+_FORMAT_LOCALE_VALUES: Final[frozenset[str]] = frozenset(
+    value for value, _ in FORMAT_LOCALE_CHOICES
+)
+DISPLAY_TIME_ZONE_CHOICES: Final[tuple[tuple[str, str], ...]] = tuple(
+    (time_zone, time_zone) for time_zone in sorted(available_timezones())
+)
 
 
 class SettingScope(StrEnum):
@@ -144,6 +154,25 @@ def _validate_theme(value: object) -> str:
     return value
 
 
+def _validate_display_time_zone(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValidationError(f"Time zone must be an IANA name (got {value!r}).")
+    try:
+        return ZoneInfo(value.strip()).key
+    except ZoneInfoNotFoundError as error:
+        raise ValidationError(f"Unsupported time zone {value!r}.") from error
+
+
+def _validate_date_format_locale(value: object) -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else value
+    if not isinstance(normalized, str) or normalized not in _FORMAT_LOCALE_VALUES:
+        choices = ", ".join(_FORMAT_LOCALE_VALUES)
+        raise ValidationError(
+            f"Formatting locale must be one of {choices} (got {value!r})."
+        )
+    return normalized
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
@@ -202,6 +231,29 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: "system",
             validator=_validate_theme,
+            widget="select",
+        ),
+        SettingDefinition(
+            "DISPLAY_TIME_ZONE",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Time zone",
+            help_text=(
+                "Time zone used for wall-clock display and datetime form "
+                "interpretation."
+            ),
+            default_factory=lambda: settings.TIME_ZONE,
+            validator=_validate_display_time_zone,
+            widget="select",
+        ),
+        SettingDefinition(
+            "DATE_FORMAT_LOCALE",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Formatting locale",
+            help_text="Locale used for date and calendar names, not application copy.",
+            default_factory=lambda: settings.LANGUAGE_CODE,
+            validator=_validate_date_format_locale,
             widget="select",
         ),
         SettingDefinition(

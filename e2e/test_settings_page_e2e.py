@@ -1,5 +1,6 @@
 """Mobile/desktop end-to-end coverage for the personal settings page."""
 
+import json
 import re
 
 import pytest
@@ -124,3 +125,49 @@ def test_personal_settings_persist_and_drive_consumers(
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_games')}")
     expect(page).not_to_have_url(re.compile(r"[?&]per_page="))
     expect(page.locator("#page-sizeLink")).to_have_text("50")
+
+
+@pytest.mark.parametrize(
+    "viewport",
+    [{"width": 390, "height": 844}, {"width": 1280, "height": 900}],
+)
+def test_presentation_preferences_reload_with_the_updated_contract(
+    live_server, authenticated_page, viewport
+):
+    page, _preferred = authenticated_page
+    page.set_viewport_size(viewport)
+    page.goto(f"{live_server.url}{reverse('games:settings')}")
+
+    with page.expect_response(
+        lambda response: (
+            "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
+            and response.request.method == "PATCH"
+        )
+    ) as time_zone_saved:
+        page.locator('select[name="display_time_zone"]').select_option(
+            "Pacific/Kiritimati"
+        )
+    assert time_zone_saved.value.status == 200
+    page.wait_for_function(
+        "document.documentElement.dataset.dateTimePresentation.includes('Pacific/Kiritimati')"
+    )
+    expect(page.locator('select[name="display_time_zone"]')).to_have_value(
+        "Pacific/Kiritimati"
+    )
+
+    with page.expect_response(
+        lambda response: (
+            "/api/settings/user/DATE_FORMAT_LOCALE" in response.url
+            and response.request.method == "PATCH"
+        )
+    ) as locale_saved:
+        page.locator('select[name="date_format_locale"]').select_option("cs")
+    assert locale_saved.value.status == 200
+    page.wait_for_function(
+        "JSON.parse(document.documentElement.dataset.dateTimePresentation).locale === 'cs'"
+    )
+    contract = json.loads(
+        page.locator("html").get_attribute("data-date-time-presentation") or "{}"
+    )
+    assert contract["time_zone"] == "Pacific/Kiritimati"
+    assert contract["locale"] == "cs"

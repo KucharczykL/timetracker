@@ -5266,6 +5266,8 @@ class TestStringFieldNullConvention:
             "UserPreferences.default_currency",
             "UserPreferences.default_landing_page",
             "UserPreferences.theme",
+            "UserPreferences.display_time_zone",
+            "UserPreferences.date_format_locale",
         }
     )
 

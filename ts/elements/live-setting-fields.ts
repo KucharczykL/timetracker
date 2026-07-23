@@ -5,6 +5,7 @@ import {
   parseResolvedSetting,
   type ResolvedSetting,
 } from "../settings-events.js";
+import { reloadAfterSettingSave } from "../settings-reload.js";
 
 type SettingControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -204,6 +205,9 @@ class LiveSettingFieldsElement extends HTMLElement {
         restore(control, committedState);
       }
       dispatchSettingCommitted(resolved);
+      if (control.hasAttribute("data-reload-after-save")) {
+        reloadAfterSettingSave();
+      }
     } catch (error) {
       if (controller.signal.aborted) return;
       console.error("Failed to update setting", key, error);

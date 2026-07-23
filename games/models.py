@@ -561,6 +561,8 @@ USER_PREFERENCE_FIELD_BY_KEY: Final[dict[SettingKey, str]] = {
     "DEFAULT_DEVICE": "default_device_id",
     "DEFAULT_LANDING_PAGE": "default_landing_page",
     "THEME": "theme",
+    "DISPLAY_TIME_ZONE": "display_time_zone",
+    "DATE_FORMAT_LOCALE": "date_format_locale",
 }
 
 
@@ -594,6 +596,12 @@ class UserPreferences(models.Model):
         null=True,
         blank=True,
         default=None,
+    )
+    display_time_zone = models.CharField(
+        max_length=100, null=True, blank=True, default=None
+    )
+    date_format_locale = models.CharField(
+        max_length=20, null=True, blank=True, default=None
     )
     #: Extension bag for USER keys without a typed column. Absent key == unset.
     extra_preferences = models.JSONField(default=dict, blank=True)

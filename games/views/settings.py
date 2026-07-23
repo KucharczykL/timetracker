@@ -24,6 +24,8 @@ from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
 from timetracker.config import SettingSource
 from timetracker.settings_registry import (
+    DISPLAY_TIME_ZONE_CHOICES,
+    FORMAT_LOCALE_CHOICES,
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
     THEME_CHOICES,
@@ -40,6 +42,8 @@ _FIELD_KEYS = {
     "default_landing_page": "DEFAULT_LANDING_PAGE",
     "default_page_size": "DEFAULT_PAGE_SIZE",
     "theme": "THEME",
+    "display_time_zone": "DISPLAY_TIME_ZONE",
+    "date_format_locale": "DATE_FORMAT_LOCALE",
 }
 
 
@@ -70,6 +74,8 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         ),
     )
     theme = forms.ChoiceField(required=False, choices=THEME_CHOICES)
+    display_time_zone = forms.ChoiceField(required=False, choices=())
+    date_format_locale = forms.ChoiceField(required=False, choices=())
 
     def __init__(
         self,
@@ -78,6 +84,8 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         default_landing_page_label: str = "Sessions",
         default_page_size_label: str = "25",
         default_theme_label: str = "System",
+        default_display_time_zone_label: str = "UTC",
+        default_date_format_locale_label: str = "English (United States)",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -101,8 +109,20 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
             ("", f"Use site default ({default_theme_label})"),
             *THEME_CHOICES,
         )
+        time_zone_field = cast(forms.ChoiceField, self.fields["display_time_zone"])
+        time_zone_field.choices = (
+            ("", f"Use site default ({default_display_time_zone_label})"),
+            *DISPLAY_TIME_ZONE_CHOICES,
+        )
+        locale_field = cast(forms.ChoiceField, self.fields["date_format_locale"])
+        locale_field.choices = (
+            ("", f"Use site default ({default_date_format_locale_label})"),
+            *FORMAT_LOCALE_CHOICES,
+        )
         for field_name, key in _FIELD_KEYS.items():
             self.fields[field_name].label = get_definition(key).label
+        for field_name in ("display_time_zone", "date_format_locale"):
+            self.fields[field_name].widget.attrs["data-reload-after-save"] = ""
 
 
 def _device_label(value: object) -> str:
@@ -116,6 +136,15 @@ def _device_label(value: object) -> str:
 def _landing_page_label(value: object) -> str:
     labels = dict(LANDING_PAGE_CHOICES)
     return labels.get(value, "Sessions") if isinstance(value, str) else "Sessions"
+
+
+def _format_locale_label(value: object) -> str:
+    labels = dict(FORMAT_LOCALE_CHOICES)
+    return (
+        labels.get(value, "English (United States)")
+        if isinstance(value, str)
+        else "English (United States)"
+    )
 
 
 def _form_and_states(
@@ -138,6 +167,8 @@ def _form_and_states(
     site_landing_page = resolve_with_origin("DEFAULT_LANDING_PAGE").value
     site_page_size = resolve_with_origin("DEFAULT_PAGE_SIZE").value
     site_theme = resolve_with_origin("THEME").value
+    site_display_time_zone = resolve_with_origin("DISPLAY_TIME_ZONE").value
+    site_date_format_locale = resolve_with_origin("DATE_FORMAT_LOCALE").value
     return (
         UserSettingsForm(
             initial=initial,
@@ -145,6 +176,10 @@ def _form_and_states(
             default_landing_page_label=_landing_page_label(site_landing_page),
             default_page_size_label=str(site_page_size),
             default_theme_label=dict(THEME_CHOICES).get(str(site_theme), "System"),
+            default_display_time_zone_label=str(site_display_time_zone),
+            default_date_format_locale_label=_format_locale_label(
+                site_date_format_locale
+            ),
         ),
         states,
     )

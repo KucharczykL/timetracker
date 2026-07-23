@@ -170,6 +170,47 @@ def test_theme_pref_round_trips_through_typed_column(
     assert resolve_for_user(user, "THEME") == "dark"
 
 
+def test_presentation_preferences_round_trip_through_typed_columns(
+    user, django_capture_on_commit_callbacks
+):
+    from games.models import UserPreferences
+
+    _set_user(
+        django_capture_on_commit_callbacks,
+        user,
+        "DISPLAY_TIME_ZONE",
+        " Europe/Prague ",
+    )
+    _set_user(
+        django_capture_on_commit_callbacks,
+        user,
+        "DATE_FORMAT_LOCALE",
+        " CS ",
+    )
+
+    preferences = UserPreferences.objects.get(user=user)
+    assert preferences.display_time_zone == "Europe/Prague"
+    assert preferences.date_format_locale == "cs"
+    assert resolve_for_user(user, "DISPLAY_TIME_ZONE") == "Europe/Prague"
+    assert resolve_for_user(user, "DATE_FORMAT_LOCALE") == "cs"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("DISPLAY_TIME_ZONE", "Mars/Olympus"),
+        ("DATE_FORMAT_LOCALE", "de-de"),
+    ],
+)
+def test_presentation_preferences_reject_unsupported_values(user, key, value):
+    from games.models import UserPreferences
+
+    with pytest.raises(ValidationError):
+        set_user_preference(user, key, value)
+
+    assert not UserPreferences.objects.filter(user=user).exists()
+
+
 # --- poison value / robustness --------------------------------------------
 
 
