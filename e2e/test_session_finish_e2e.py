@@ -102,7 +102,7 @@ def test_finish_preserves_server_rendered_start_across_browser_timezone(
         page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
         row = page.locator(f"#session-row-{session.pk}")
         time_cell = row.locator("td").nth(0)
-        expect(time_cell).to_have_text("01/01/2026 01:30")
+        expect(time_cell).to_have_text("2026-01-01 01:30")
         server_rendered_start = time_cell.inner_text()
 
         with page.expect_response(

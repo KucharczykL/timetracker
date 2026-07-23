@@ -24,6 +24,7 @@ from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
 from timetracker.config import SettingSource
 from timetracker.settings_registry import (
+    DATETIME_FORMAT_CHOICES,
     DISPLAY_TIME_ZONE_CHOICES,
     FORMAT_LOCALE_CHOICES,
     LANDING_PAGE_CHOICES,
@@ -44,6 +45,7 @@ _FIELD_KEYS = {
     "theme": "THEME",
     "display_time_zone": "DISPLAY_TIME_ZONE",
     "date_format_locale": "DATE_FORMAT_LOCALE",
+    "datetime_format": "DATETIME_FORMAT",
 }
 
 
@@ -76,6 +78,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
     theme = forms.ChoiceField(required=False, choices=THEME_CHOICES)
     display_time_zone = forms.ChoiceField(required=False, choices=())
     date_format_locale = forms.ChoiceField(required=False, choices=())
+    datetime_format = forms.ChoiceField(required=False, choices=())
 
     def __init__(
         self,
@@ -86,6 +89,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         default_theme_label: str = "System",
         default_display_time_zone_label: str = "UTC",
         default_date_format_locale_label: str = "English (United States)",
+        default_datetime_format_label: str = "ISO 8601",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -119,9 +123,18 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
             ("", f"Use site default ({default_date_format_locale_label})"),
             *FORMAT_LOCALE_CHOICES,
         )
+        datetime_format_field = cast(forms.ChoiceField, self.fields["datetime_format"])
+        datetime_format_field.choices = (
+            ("", f"Use site default ({default_datetime_format_label})"),
+            *DATETIME_FORMAT_CHOICES,
+        )
         for field_name, key in _FIELD_KEYS.items():
             self.fields[field_name].label = get_definition(key).label
-        for field_name in ("display_time_zone", "date_format_locale"):
+        for field_name in (
+            "display_time_zone",
+            "date_format_locale",
+            "datetime_format",
+        ):
             self.fields[field_name].widget.attrs["data-reload-after-save"] = ""
 
 
@@ -147,6 +160,11 @@ def _format_locale_label(value: object) -> str:
     )
 
 
+def _datetime_format_label(value: object) -> str:
+    labels = dict(DATETIME_FORMAT_CHOICES)
+    return labels.get(value, "ISO 8601") if isinstance(value, str) else "ISO 8601"
+
+
 def _form_and_states(
     user: object,
 ) -> tuple[UserSettingsForm, dict[str, SettingFieldState]]:
@@ -169,6 +187,7 @@ def _form_and_states(
     site_theme = resolve_with_origin("THEME").value
     site_display_time_zone = resolve_with_origin("DISPLAY_TIME_ZONE").value
     site_date_format_locale = resolve_with_origin("DATE_FORMAT_LOCALE").value
+    site_datetime_format = resolve_with_origin("DATETIME_FORMAT").value
     return (
         UserSettingsForm(
             initial=initial,
@@ -180,6 +199,7 @@ def _form_and_states(
             default_date_format_locale_label=_format_locale_label(
                 site_date_format_locale
             ),
+            default_datetime_format_label=_datetime_format_label(site_datetime_format),
         ),
         states,
     )

@@ -269,6 +269,55 @@ def test_user_presentation_preferences_patch_and_clear_to_default(auth_client):
     )
 
 
+def test_user_datetime_format_patch_and_clear_to_site_default(auth_client):
+    from games.models import SiteSetting, UserPreferences
+    from timetracker import settings_resolver
+
+    SiteSetting.objects.create(key="DATETIME_FORMAT", value="dmy_24h")
+    settings_resolver.clear_cache()
+
+    saved = _patch(auth_client, _user_patch_url("DATETIME_FORMAT"), "mdy_12h")
+    cleared = _patch(auth_client, _user_patch_url("DATETIME_FORMAT"), None)
+
+    assert saved.json() == {
+        "key": "DATETIME_FORMAT",
+        "value": "mdy_12h",
+        "source": "user",
+        "locked": False,
+    }
+    assert cleared.json() == {
+        "key": "DATETIME_FORMAT",
+        "value": "dmy_24h",
+        "source": "database",
+        "locked": False,
+    }
+    assert UserPreferences.objects.get(user__username="tester").datetime_format is None
+    assert _setting(auth_client.get(_user_url()).json(), "DATETIME_FORMAT") == {
+        "key": "DATETIME_FORMAT",
+        "value": "dmy_24h",
+        "source": "database",
+        "locked": False,
+    }
+
+
+@pytest.mark.parametrize("bad", ["rfc_3339", "", 1, True, [], {}])
+def test_user_datetime_format_patch_rejects_unsupported_values(auth_client, bad):
+    from games.models import UserPreferences
+
+    assert (
+        _patch(auth_client, _user_patch_url("DATETIME_FORMAT"), "mdy_12h").status_code
+        == 200
+    )
+
+    response = _patch(auth_client, _user_patch_url("DATETIME_FORMAT"), bad)
+
+    assert response.status_code == 400
+    assert (
+        UserPreferences.objects.get(user__username="tester").datetime_format
+        == "mdy_12h"
+    )
+
+
 @pytest.mark.parametrize("bad", ["auto", "sepia", "Dark", "", 1, True])
 def test_user_theme_patch_rejects_invalid_preferences(auth_client, bad):
     response = _patch(auth_client, _user_patch_url("THEME"), bad)

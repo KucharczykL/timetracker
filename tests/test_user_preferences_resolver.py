@@ -51,6 +51,19 @@ def _set_user(django_capture_on_commit_callbacks, user, key, value):
         set_user_preference(user, key, value)
 
 
+@pytest.fixture
+def no_datetime_format_env(monkeypatch, tmp_path):
+    monkeypatch.delenv("DATETIME_FORMAT", raising=False)
+    # Isolate the shared chain from repository/developer config files. Pointing
+    # both locators at known-missing paths also prevents the default .env and
+    # settings.ini locations from being consulted.
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.setenv("INI_FILE", str(tmp_path / "missing.ini"))
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+    yield
+
+
 # --- precedence -----------------------------------------------------------
 
 
@@ -86,6 +99,92 @@ def test_display_time_zone_defaults_to_utc(user):
     result = resolve_for_user_with_origin(user, "DISPLAY_TIME_ZONE")
     assert result.value == "UTC"
     assert result.source is SettingSource.DEFAULT
+
+
+def test_datetime_format_defaults_to_iso_8601(user, no_datetime_format_env):
+    result = resolve_for_user_with_origin(user, "DATETIME_FORMAT")
+    assert result.value == "iso_8601"
+    assert result.source is SettingSource.DEFAULT
+
+
+def test_anonymous_user_datetime_format_defaults_to_iso_8601(
+    db, no_datetime_format_env
+):
+    from django.contrib.auth.models import AnonymousUser
+
+    result = resolve_for_user_with_origin(AnonymousUser(), "DATETIME_FORMAT")
+    assert result.value == "iso_8601"
+    assert result.source is SettingSource.DEFAULT
+
+
+def test_datetime_format_personal_clear_inherits_site_default(
+    user, no_datetime_format_env, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+    _set_user(django_capture_on_commit_callbacks, user, "DATETIME_FORMAT", "mdy_12h")
+    _set_user(django_capture_on_commit_callbacks, user, "DATETIME_FORMAT", None)
+
+    result = resolve_for_user_with_origin(user, "DATETIME_FORMAT")
+    assert (result.value, result.source) == (
+        "dmy_24h",
+        SettingSource.DATABASE,
+    )
+
+
+def test_datetime_format_personal_override_beats_environment(
+    user,
+    monkeypatch,
+    no_datetime_format_env,
+    django_capture_on_commit_callbacks,
+):
+    monkeypatch.setenv("DATETIME_FORMAT", "dmy_24h")
+    config_module.reset_caches()
+    _set_user(django_capture_on_commit_callbacks, user, "DATETIME_FORMAT", "mdy_12h")
+
+    result = resolve_for_user_with_origin(user, "DATETIME_FORMAT")
+    assert (result.value, result.source) == ("mdy_12h", SettingSource.USER)
+
+
+def test_datetime_format_environment_beats_site_default(
+    user,
+    monkeypatch,
+    no_datetime_format_env,
+    django_capture_on_commit_callbacks,
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+    monkeypatch.setenv("DATETIME_FORMAT", "mdy_12h")
+    config_module.reset_caches()
+
+    result = resolve_for_user_with_origin(user, "DATETIME_FORMAT")
+    assert (result.value, result.source, result.locked) == (
+        "mdy_12h",
+        SettingSource.ENV,
+        True,
+    )
+
+
+def test_datetime_format_ini_beats_site_default_and_normalizes(
+    user,
+    monkeypatch,
+    tmp_path,
+    no_datetime_format_env,
+    django_capture_on_commit_callbacks,
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        set_site_setting("DATETIME_FORMAT", "dmy_24h")
+    ini_path = tmp_path / "datetime-format.ini"
+    ini_path.write_text("[timetracker]\nDATETIME_FORMAT = MDY_12H\n")
+    monkeypatch.setenv("INI_FILE", str(ini_path))
+    config_module.reset_caches()
+
+    result = resolve_for_user_with_origin(user, "DATETIME_FORMAT")
+    assert (result.value, result.source, result.locked) == (
+        "mdy_12h",
+        SettingSource.INI,
+        True,
+    )
 
 
 def test_user_beats_env(
@@ -202,6 +301,48 @@ def test_presentation_preferences_round_trip_through_typed_columns(
     assert preferences.date_format_locale == "cs"
     assert resolve_for_user(user, "DISPLAY_TIME_ZONE") == "Europe/Prague"
     assert resolve_for_user(user, "DATE_FORMAT_LOCALE") == "cs"
+
+
+@pytest.mark.parametrize("value", ["ISO 8601", "rfc_3339", "", 1, True])
+def test_datetime_format_rejects_unsupported_values(user, value):
+    from games.models import UserPreferences
+
+    with pytest.raises(ValidationError):
+        set_user_preference(user, "DATETIME_FORMAT", value)
+
+    assert not UserPreferences.objects.filter(user=user).exists()
+
+
+def test_user_prefs_admin_form_normalizes_datetime_format(db):
+    from games.admin import UserPreferencesForm
+
+    user = get_user_model().objects.create_user(username="admin-pref")
+    form = UserPreferencesForm(
+        data={
+            "user": user.pk,
+            "datetime_format": " MDY_12H ",
+            "extra_preferences": "{}",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.save().datetime_format == "mdy_12h"
+
+
+def test_user_prefs_admin_form_blank_datetime_format_saves_null(db):
+    from games.admin import UserPreferencesForm
+
+    user = get_user_model().objects.create_user(username="admin-clear")
+    form = UserPreferencesForm(
+        data={
+            "user": user.pk,
+            "datetime_format": "",
+            "extra_preferences": "{}",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.save().datetime_format is None
 
 
 @pytest.mark.parametrize(

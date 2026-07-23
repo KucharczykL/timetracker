@@ -43,7 +43,7 @@ describe("renderSessionRow", () => {
   });
 
   it("uses the presentation formatter, calculates duration, and cleans up finished actions", () => {
-    formatSessionTimeRange.mockReturnValue("02/07/2026 19:05 — 21:15");
+    formatSessionTimeRange.mockReturnValue("2026-07-02 19:05 — 21:15");
     const oldRow = serverRenderedRow();
     const session = {
       id: 1,
@@ -56,7 +56,7 @@ describe("renderSessionRow", () => {
     const newRow = renderSessionRow(session, oldRow);
 
     expect(newRow).not.toBe(oldRow);
-    expect(newRow.children[1]?.textContent).toBe("02/07/2026 19:05 — 21:15");
+    expect(newRow.children[1]?.textContent).toBe("2026-07-02 19:05 — 21:15");
     expect(newRow.children[2]?.textContent).toBe("3.0*");
     expect(oldRow.children[1]?.textContent).toBe("server-rendered time");
     expect(oldRow.children[2]?.textContent).toBe("server-rendered duration");

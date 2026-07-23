@@ -41,6 +41,11 @@ function mountFields(): HTMLElement {
         <option value="">Use site default</option>
         <option value="Pacific/Kiritimati">Pacific/Kiritimati</option>
       </select>
+      <select data-setting-key="DATETIME_FORMAT" data-live-setting-control
+          data-reload-after-save name="datetime-format">
+        <option value="">Use site default</option>
+        <option value="mdy_12h">MM/DD/YYYY, 12-hour</option>
+      </select>
       <input data-setting-key="IDENTITY_ONLY" name="identity-only" value="Not owned">
       <input data-setting-key="LOCKED" data-live-setting-control name="locked" value="Pinned" disabled>
     </live-setting-fields>`;
@@ -328,6 +333,56 @@ describe("<live-setting-fields>", () => {
     change(select);
 
     await vi.waitFor(() => expect(reloadAfterSettingSave).toHaveBeenCalledOnce());
+  });
+
+  it("reloads after a successful date/time format save", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "DATETIME_FORMAT",
+        value: "mdy_12h",
+        source: "user",
+        locked: false,
+      }),
+    } as Response);
+    const host = mountFields();
+    const select = host.querySelector<HTMLSelectElement>(
+      '[name="datetime-format"]',
+    )!;
+
+    select.value = "mdy_12h";
+    change(select);
+
+    await vi.waitFor(() => expect(reloadAfterSettingSave).toHaveBeenCalledOnce());
+  });
+
+  it("does not reload after a malformed date/time format response", async () => {
+    vi.mocked(reloadAfterSettingSave).mockClear();
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "DATETIME_FORMAT",
+        value: "mdy_12h",
+      }),
+    } as Response);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mountFields();
+    const select = host.querySelector<HTMLSelectElement>(
+      '[name="datetime-format"]',
+    )!;
+
+    select.value = "mdy_12h";
+    change(select);
+
+    await vi.waitFor(() =>
+      expect(window.toast).toHaveBeenCalledWith(
+        "Couldn't save your change — please try again.",
+        "error",
+      ),
+    );
+    expect(reloadAfterSettingSave).not.toHaveBeenCalled();
   });
 
   it("preserves newer typing when an older successful response resolves", async () => {

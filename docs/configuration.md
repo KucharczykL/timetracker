@@ -67,15 +67,18 @@ the global `SiteSetting` model.
   a **user**-scoped key, a personal `UserPreferences` value (source `user`) wins
   over the shared chain above — even over env, because env-locking per-user prefs
   is deferred, so such a value reports `locked=False`. Unset (a NULL column / an
-  absent `extra_preferences` key) falls through to the `SiteSetting` site default
-  and then the code default. Non-user keys proxy straight to `resolve_with_origin`.
+  absent `extra_preferences` key) falls through to the complete shared chain:
+  enabled environment/config-file sources > `SiteSetting` > registry default.
+  Which sources are enabled depends on the setting's registry definition; for
+  example, only settings with `allow_file=True` accept a `NAME__FILE` source.
+  Non-user keys proxy straight to `resolve_with_origin`.
 - **Scopes.** **user**-scoped settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`,
-  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`, `THEME`) have a personal override
-  layer *and* a `SiteSetting` site default; a plain **site**-scoped setting has
-  only the shared `SiteSetting` default (none exist today). **infra**-scoped
-  settings (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`,
-  `ALLOWED_HOSTS`, `DATA_DIR`, `TZ`, `HASHED_STATIC`) are boot-only and never
-  read from the DB.
+  `DEFAULT_LANDING_PAGE`, `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`,
+  `DATE_FORMAT_LOCALE`, `DATETIME_FORMAT`) have a personal override layer *and*
+  a `SiteSetting` site default; a plain **site**-scoped setting has only the
+  shared `SiteSetting` default (none exist today). **infra**-scoped settings
+  (`DEBUG`, `SECRET_KEY`, `APP_URL`, `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`,
+  `DATA_DIR`, `TZ`, `HASHED_STATIC`) are boot-only and never read from the DB.
 - **`TZ` is display-only.** `TIME_ZONE` is frozen when `settings.py` imports, so
   a DB value could never take effect; change it via env/`.ini` + restart.
 - **Not runtime-editable, not registered.** `ENV_FILE`/`INI_FILE` *locate* the
@@ -118,10 +121,29 @@ Changes save immediately against the account through `/api/settings/user`:
   storage. Anonymous pages use `color-theme` in `localStorage`; it is neither
   migrated into the account nor overwritten at login, so it resumes after
   logout. Theme cookies are not used.
+- **Date/time format** controls numeric date order, visible date separators, and
+  the 12- or 24-hour clock used throughout the rendered application. Supported
+  profiles are:
+
+  | Value | Date and time example |
+  |-------|-----------------------|
+  | `iso_8601` | `2026-07-02 19:05` |
+  | `dmy_24h` | `02/07/2026 19:05` |
+  | `mdy_12h` | `07/02/2026 07:05 PM` |
+
+  `iso_8601` is the built-in default. It is an ISO-local display: the value is
+  converted to the active display time zone and shown without a `T` or UTC
+  offset. The preference does not change the display time zone. Locale remains
+  responsible for month names and localized AM/PM labels; the selected profile
+  controls only numeric order, separators, and hour cycle.
 
 Clearing a control removes the personal override and restores the resolved site
-or built-in default. Existing non-empty values on edit forms are never replaced
-just by opening the form.
+default through the setting's enabled environment/config-file sources and
+database chain, finally falling back to the built-in default. For Date/time
+format, this is `DATETIME_FORMAT` in the environment, `.env`, or `settings.ini`,
+then the site value, then `iso_8601`; `DATETIME_FORMAT__FILE` is not supported.
+Existing non-empty values on edit forms are never replaced just by opening the
+form.
 
 ## APP_URL, ALLOWED_HOSTS and CSRF
 

@@ -51,6 +51,14 @@ FORMAT_LOCALE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
 _FORMAT_LOCALE_VALUES: Final[frozenset[str]] = frozenset(
     value for value, _ in FORMAT_LOCALE_CHOICES
 )
+DATETIME_FORMAT_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("iso_8601", "ISO 8601"),
+    ("dmy_24h", "DD/MM/YYYY, 24-hour"),
+    ("mdy_12h", "MM/DD/YYYY, 12-hour"),
+)
+_DATETIME_FORMAT_VALUES: Final[frozenset[str]] = frozenset(
+    value for value, _label in DATETIME_FORMAT_CHOICES
+)
 DISPLAY_TIME_ZONE_CHOICES: Final[tuple[tuple[str, str], ...]] = tuple(
     (time_zone, time_zone) for time_zone in sorted(available_timezones())
 )
@@ -173,6 +181,16 @@ def _validate_date_format_locale(value: object) -> str:
     return normalized
 
 
+def _validate_datetime_format(value: object) -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else value
+    if not isinstance(normalized, str) or normalized not in _DATETIME_FORMAT_VALUES:
+        choices = ", ".join(sorted(_DATETIME_FORMAT_VALUES))
+        raise ValidationError(
+            f"Date/time format must be one of {choices} (got {value!r})."
+        )
+    return normalized
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
@@ -254,6 +272,19 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             help_text="Locale used for date and calendar names, not application copy.",
             default_factory=lambda: settings.LANGUAGE_CODE,
             validator=_validate_date_format_locale,
+            widget="select",
+        ),
+        SettingDefinition(
+            "DATETIME_FORMAT",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Date/time format",
+            help_text=(
+                "Numeric date order, separators, and 12- or 24-hour clock used "
+                "for displayed dates and times."
+            ),
+            default_factory=lambda: "iso_8601",
+            validator=_validate_datetime_format,
             widget="select",
         ),
         SettingDefinition(

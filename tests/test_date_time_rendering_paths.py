@@ -80,8 +80,8 @@ def test_non_default_presentation_reaches_every_server_display_path(
 ) -> None:
     monkeypatch.setattr(
         presentation_module,
-        "DEFAULT_DATE_TIME_FORMAT_PROFILE",
-        ALTERNATE_PROFILE,
+        "date_time_format_profile",
+        lambda _profile_id: ALTERNATE_PROFILE,
     )
     monkeypatch.setattr(
         common.layout,

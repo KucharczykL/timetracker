@@ -5268,6 +5268,7 @@ class TestStringFieldNullConvention:
             "UserPreferences.theme",
             "UserPreferences.display_time_zone",
             "UserPreferences.date_format_locale",
+            "UserPreferences.datetime_format",
         }
     )
 
