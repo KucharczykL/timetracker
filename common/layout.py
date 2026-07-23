@@ -214,17 +214,17 @@ def NavbarMenu(
     csrf_token: str,
     authenticated: bool = False,
     is_superuser: bool = False,
+    is_settings_page: bool = False,
     recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
         A,
-        Button,
         Div,
+        DropdownDivider,
         DropdownLinkItem,
+        DropdownPostItem,
         DropdownSubmenu,
-        Form,
-        Input,
         Li,
         MenuDropdown,
         ThemeToggle,
@@ -241,7 +241,9 @@ def NavbarMenu(
             ],
         )
 
-    theme_toggle = Li(class_="flex items-center")[ThemeToggle(instance_key="navbar")]
+    theme_toggle = Li(class_="flex items-center")[
+        ThemeToggle(instance_key="navbar", disabled=is_settings_page)
+    ]
 
     home = Li()[
         A(
@@ -252,6 +254,21 @@ def NavbarMenu(
             aria_current="page",
         )["Home"]
     ]
+
+    account_items = (
+        [
+            DropdownDivider(),
+            DropdownLinkItem(reverse("games:settings"), "Settings"),
+            *(
+                [DropdownLinkItem(reverse("games:admin_settings"), "Admin settings")]
+                if is_superuser
+                else []
+            ),
+            DropdownPostItem(reverse("logout"), "Log out", csrf_token=csrf_token),
+        ]
+        if authenticated
+        else []
+    )
 
     # One entity menu: each entity is a submenu of its actions (Add / List).
     entity_menu = Li()[
@@ -279,6 +296,7 @@ def NavbarMenu(
                 entity_submenu(
                     "Session", "Session", "games:add_session", "games:list_sessions"
                 ),
+                *account_items,
             ],
         )
     ]
@@ -288,39 +306,6 @@ def NavbarMenu(
             href=reverse("games:stats_by_year", args=[current_year]),
             class_=_NAV_LINK_CLASS,
         )["Stats"]
-    ]
-
-    settings_link = (
-        Li()[
-            A(
-                href=reverse("games:settings"),
-                class_=_NAV_LINK_CLASS,
-            )["Settings"]
-        ]
-        if authenticated
-        else ""
-    )
-
-    admin_settings_link = (
-        Li()[
-            A(
-                href=reverse("games:admin_settings"),
-                class_=_NAV_LINK_CLASS,
-            )["Admin settings"]
-        ]
-        if authenticated and is_superuser
-        else ""
-    )
-
-    logout = Li()[
-        Form(method="post", action=reverse("logout"))[
-            Input(
-                type="hidden",
-                name="csrfmiddlewaretoken",
-                value=csrf_token,
-            ),
-            Button(type="submit", class_=_NAV_LINK_CLASS)["Log out"],
-        ]
     ]
 
     # Desktop-only log button: between the playtime counter and Home in the menu
@@ -351,9 +336,6 @@ def NavbarMenu(
             home,
             entity_menu,
             stats,
-            settings_link,
-            admin_settings_link,
-            logout,
         ]
     ]
 
@@ -455,6 +437,7 @@ def Navbar(
     csrf_token: str,
     authenticated: bool = False,
     is_superuser: bool = False,
+    is_settings_page: bool = False,
     recent_resumes: list["Session"] | None = None,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
@@ -490,6 +473,7 @@ def Navbar(
         csrf_token=csrf_token,
         authenticated=authenticated,
         is_superuser=is_superuser,
+        is_settings_page=is_settings_page,
         recent_resumes=recent_resumes or [],
     )
     # Two breakpoint instances of the log button: the mobile one sits in the top
@@ -519,6 +503,7 @@ def TimetrackerDocument(
     title: str = "",
     scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
+    is_settings_page: bool = False,
 ) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
 
@@ -544,6 +529,7 @@ def TimetrackerDocument(
         csrf_token=csrf_token,
         authenticated=request.user.is_authenticated,
         is_superuser=request.user.is_superuser,
+        is_settings_page=is_settings_page,
         recent_resumes=recent_session_resumes(request),
     )
 
@@ -703,12 +689,18 @@ def render_page(
     title: str = "",
     scripts: "Node | SafeText | str" = "",
     mastered: bool = False,
+    is_settings_page: bool = False,
     status: int = 200,
 ) -> HttpResponse:
     """`render()`-style shortcut: build a full page and return an HttpResponse."""
     return HttpResponse(
         TimetrackerDocument(
-            content, request=request, title=title, scripts=scripts, mastered=mastered
+            content,
+            request=request,
+            title=title,
+            scripts=scripts,
+            mastered=mastered,
+            is_settings_page=is_settings_page,
         ),
         status=status,
     )

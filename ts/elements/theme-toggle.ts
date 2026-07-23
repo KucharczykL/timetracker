@@ -7,6 +7,7 @@ import {
   getThemeCoordinator,
   type ThemeCoordinatorState,
 } from "../theme-coordinator.js";
+import { readThemeToggleProps } from "../generated/props.js";
 
 export function nextTheme(theme: ThemePreference): ThemePreference {
   return THEME_PREFERENCES[
@@ -18,9 +19,11 @@ class ThemeToggleElement extends HTMLElement {
   private button: HTMLButtonElement | null = null;
   private tooltip: HTMLElement | null = null;
   private preference: ThemePreference = "system";
+  private permanentlyDisabled = false;
   private unsubscribe: (() => void) | null = null;
 
   connectedCallback(): void {
+    this.permanentlyDisabled = readThemeToggleProps(this).disabled;
     this.button = this.querySelector<HTMLButtonElement>("[data-pop-over-trigger]");
     this.tooltip = this.querySelector<HTMLElement>("[data-theme-tooltip]");
     this.button?.addEventListener("click", this.onClick);
@@ -34,6 +37,7 @@ class ThemeToggleElement extends HTMLElement {
   }
 
   private readonly onClick = (): void => {
+    if (this.permanentlyDisabled) return;
     void getThemeCoordinator().requestPreferenceChange(nextTheme(this.preference));
   };
 
@@ -52,10 +56,12 @@ class ThemeToggleElement extends HTMLElement {
     const next = nextTheme(this.preference);
     const description =
       `Theme: ${THEME_LABELS[this.preference]} — switch to ${THEME_LABELS[next]}`;
-    this.button?.setAttribute("aria-label", description);
-    if (this.tooltip) this.tooltip.textContent = description;
+    if (!this.permanentlyDisabled) {
+      this.button?.setAttribute("aria-label", description);
+      if (this.tooltip) this.tooltip.textContent = description;
+    }
     if (this.button) {
-      this.button.disabled = state.saving;
+      this.button.disabled = this.permanentlyDisabled || state.saving;
       if (state.saving) {
         this.button.setAttribute("aria-busy", "true");
       } else {

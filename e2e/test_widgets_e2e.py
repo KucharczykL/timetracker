@@ -417,6 +417,10 @@ def test_navbar_menu_keyboard_navigation(authenticated_page: Page, live_server):
     # Roving stays on this menu's own rows, not the submenus' hidden items.
     expect(menu.get_by_role("menuitem", name="Device", exact=True)).to_be_focused()
     page.keyboard.press("End")
+    expect(menu.get_by_role("menuitem", name="Log out", exact=True)).to_be_focused()
+    page.keyboard.press("ArrowUp")
+    expect(menu.get_by_role("menuitem", name="Settings", exact=True)).to_be_focused()
+    page.keyboard.press("ArrowUp")
     expect(menu.get_by_role("menuitem", name="Session", exact=True)).to_be_focused()
     page.keyboard.press("ArrowRight")  # enter the Session submenu
     expect(page.locator("#navbarMenuSession")).to_be_visible()
@@ -446,8 +450,8 @@ def test_navbar_menu_arrow_roving(authenticated_page: Page, live_server):
     expect(focused("Game")).to_be_focused()
     page.keyboard.press("ArrowUp")  # -> Device (first)
     expect(focused("Device")).to_be_focused()
-    page.keyboard.press("ArrowUp")  # wrap -> Session (last)
-    expect(focused("Session")).to_be_focused()
+    page.keyboard.press("ArrowUp")  # wrap -> Log out (last)
+    expect(focused("Log out")).to_be_focused()
     page.keyboard.press("ArrowDown")  # wrap -> Device
     expect(focused("Device")).to_be_focused()
 

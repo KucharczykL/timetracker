@@ -310,6 +310,7 @@ def _popover_html(
     *,
     tap: bool = True,
     trigger_label: str = "",
+    trigger_disabled: bool = False,
     preface: "Node | str" = "",
     selectable_text: bool = False,
 ) -> Node:
@@ -346,6 +347,8 @@ def _popover_html(
         ]
         if trigger_label:
             trigger_attributes.append(("aria-label", trigger_label))
+        if trigger_disabled:
+            trigger_attributes.append(("disabled", "disabled"))
         trigger: Node = Button(trigger_attributes)[*trigger_children]
     else:
         trigger = Span(
@@ -391,6 +394,7 @@ def Popover(
     *,
     tap: bool = True,
     trigger_label: str = "",
+    trigger_disabled: bool = False,
     preface: "Node | str" = "",
     selectable_text: bool = False,
 ) -> Node:
@@ -409,6 +413,7 @@ def Popover(
         slot=slot,
         tap=tap,
         trigger_label=trigger_label,
+        trigger_disabled=trigger_disabled,
         preface=preface,
         selectable_text=selectable_text,
     )

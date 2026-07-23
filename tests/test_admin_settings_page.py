@@ -1,3 +1,4 @@
+from html.parser import HTMLParser
 import re
 
 import pytest
@@ -90,6 +91,74 @@ def _is_disabled(control_tag: str) -> bool:
     return re.search(r"\sdisabled(?:=\"disabled\")?(?=\s|>)", control_tag) is not None
 
 
+def _theme_toggle_markup(html: str) -> tuple[str, str]:
+    start = html.index("<theme-toggle")
+    end = html.index("</theme-toggle>", start) + len("</theme-toggle>")
+    markup = html[start:end]
+    button = re.search(r"<button\b[^>]*\bdata-pop-over-trigger\b[^>]*>", markup)
+    assert button is not None
+    return markup, button.group()
+
+
+class _NavbarAccountActions(HTMLParser):
+    _VOID_ELEMENTS = {"input"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[tuple[str, dict[str, str | None]]] = []
+        self.actions: dict[str, dict[str, object]] = {}
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        attributes = dict(attrs)
+        ancestor_ids = {
+            value
+            for _ancestor_tag, ancestor_attributes in self.stack
+            if (value := ancestor_attributes.get("id")) is not None
+        }
+        in_menu = "navbarMenu" in ancestor_ids
+        if tag == "a" and attributes.get("href") == reverse("games:settings"):
+            self.actions["settings"] = {"in_menu": in_menu}
+        elif tag == "a" and attributes.get("href") == reverse("games:admin_settings"):
+            self.actions["admin_settings"] = {"in_menu": in_menu}
+        elif tag == "form" and attributes.get("action") == reverse("logout"):
+            self.actions["logout"] = {
+                "in_menu": in_menu,
+                "method": attributes.get("method"),
+                "role": attributes.get("role"),
+                "csrf": False,
+                "button": {},
+            }
+        elif "logout" in self.actions and self._inside_logout_form():
+            if tag == "input" and attributes.get("name") == "csrfmiddlewaretoken":
+                self.actions["logout"]["csrf"] = True
+            elif tag == "button":
+                self.actions["logout"]["button"] = attributes
+        if tag not in self._VOID_ELEMENTS:
+            self.stack.append((tag, attributes))
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                return
+
+    def _inside_logout_form(self) -> bool:
+        return any(
+            tag == "form" and attrs.get("action") == reverse("logout")
+            for tag, attrs in self.stack
+        )
+
+
+def _navbar_account_actions(html: str) -> dict[str, dict[str, object]]:
+    parser = _NavbarAccountActions()
+    parser.feed(html)
+    return parser.actions
+
+
 def test_admin_settings_page_requires_login(db):
     response = Client().get("/tracker/admin-settings")
 
@@ -122,6 +191,23 @@ def test_superuser_receives_admin_settings_page(
     assert "Admin settings" in html
     assert "Defaults inherited by users who have not saved personal overrides." in html
     assert 'data-settings-scaffold=""' in html
+
+
+def test_admin_settings_page_disables_only_the_navbar_theme_switcher(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+    toggle_markup, toggle_button = _theme_toggle_markup(html)
+
+    assert 'disabled="true"' in toggle_markup.split(">", 1)[0]
+    assert 'disabled="disabled"' in toggle_button
+    assert (
+        'aria-label="Theme switching is unavailable on settings pages."'
+        in toggle_button
+    )
+    assert "disabled:opacity-50" in toggle_button
+    assert not _is_disabled(_opening_control_tag(html, "theme"))
 
 
 def test_admin_page_renders_exact_site_setting_slice_in_stable_order(
@@ -317,30 +403,39 @@ def test_navbar_keeps_personal_settings_for_normal_user_without_admin_link(
     normal_client,
 ):
     html = normal_client.get(reverse("games:list_sessions")).content.decode()
+    actions = _navbar_account_actions(html)
 
-    assert f'href="{reverse("games:settings")}"' in html
-    assert ">Settings</a>" in html
-    assert f'href="{reverse("games:admin_settings")}"' not in html
-    assert ">Admin settings</a>" not in html
+    assert set(actions) == {"settings", "logout"}
+    assert actions["settings"]["in_menu"] is True
+    assert actions["logout"]["in_menu"] is True
+    assert actions["logout"]["method"] == "post"
+    assert actions["logout"]["role"] == "presentation"
+    assert actions["logout"]["csrf"] is True
+    assert actions["logout"]["button"] == {
+        "type": "submit",
+        "role": "menuitem",
+        "tabindex": "-1",
+        "class": (
+            "block w-full text-left px-4 py-2 cursor-pointer no-underline "
+            "rounded-base hover:bg-neutral-tertiary-medium text-body "
+            "hover:text-heading focus:bg-neutral-tertiary-medium "
+            "dark:focus:text-white focus:outline-hidden "
+            "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+        ),
+    }
 
 
-def test_navbar_shows_adjacent_distinct_admin_link_only_to_superuser(
+def test_navbar_menu_shows_all_account_actions_to_superuser(
     superuser_client,
 ):
     html = superuser_client.get(reverse("games:list_sessions")).content.decode()
+    actions = _navbar_account_actions(html)
 
-    settings_link = f'href="{reverse("games:settings")}"'
-    admin_link = f'href="{reverse("games:admin_settings")}"'
-    settings_index = html.index(settings_link)
-    admin_index = html.index(admin_link)
-    logout_index = html.index('action="/logout/"')
-    assert settings_index < admin_index < logout_index
-    assert ">Settings</a>" in html
-    assert ">Admin settings</a>" in html
+    assert set(actions) == {"settings", "admin_settings", "logout"}
+    assert all(action["in_menu"] is True for action in actions.values())
 
 
-def test_anonymous_navbar_omits_both_settings_links(db):
+def test_anonymous_navbar_omits_all_account_actions(db):
     html = Client().get(reverse("login")).content.decode()
 
-    assert f'href="{reverse("games:settings")}"' not in html
-    assert f'href="{reverse("games:admin_settings")}"' not in html
+    assert _navbar_account_actions(html) == {}

@@ -159,7 +159,8 @@ def test_logout_restores_the_anonymous_browser_preference(
     page.wait_for_url(f"{live_server.url}/tracker**")
     expect(page.locator("html")).to_have_class("dark")
 
-    page.get_by_role("button", name="Log out").click()
+    page.locator("#navbarMenuLink").click()
+    page.get_by_role("menuitem", name="Log out").click()
     page.wait_for_url(f"{live_server.url}{reverse('login')}**")
 
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "light")
@@ -185,7 +186,7 @@ def test_prelogin_storage_is_ignored_and_not_migrated_to_account(
     assert page.evaluate("localStorage.getItem('color-theme')") == "dark"
 
 
-def test_settings_and_navbar_share_account_coordinator(
+def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     live_server, page: Page, django_user_model
 ):
     user = django_user_model.objects.create_user(
@@ -199,24 +200,28 @@ def test_settings_and_navbar_share_account_coordinator(
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("light")
+    expect(toggle).to_be_disabled()
+    expect(toggle).to_have_attribute(
+        "aria-label", "Theme switching is unavailable on settings pages."
+    )
+    expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
 
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
         theme.select_option("dark")
     expect(page.locator("html")).to_have_class("dark")
-    expect(toggle).to_have_attribute("aria-label", "Theme: Dark — switch to System")
+    expect(toggle.locator('[data-theme-icon="dark"]')).to_be_visible()
+    expect(toggle).to_be_disabled()
 
-    toggle.hover()
-    expect(tooltip).to_be_visible()
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
-        toggle.click()
+        theme.select_option("system")
     expect(theme).to_have_value("system")
     expect(page.locator("html")).not_to_have_class("dark")
-    expect(tooltip).to_be_visible()
-    expect(tooltip).to_have_text("Theme: System — switch to Light")
+    expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
+    expect(toggle).to_be_disabled()
 
 
 def test_second_browser_reconciles_account_theme_on_navigation(
@@ -296,7 +301,10 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     expect(theme).to_have_value("")
     expect(source).to_have_attribute("data-setting-origin", "database")
     expect(page.locator("html")).to_have_class("dark")
-    toggle.hover()
+    expect(toggle).to_be_disabled()
+    expect(toggle).to_have_attribute(
+        "aria-label", "Theme switching is unavailable on settings pages."
+    )
     page.route(
         "**/api/settings/user/THEME",
         lambda route: route.fulfill(status=500, body="save failed"),
@@ -310,8 +318,7 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "system")
     expect(source).to_have_attribute("data-setting-origin", "database")
     expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
-    expect(tooltip).to_be_visible()
-    expect(tooltip).to_have_text("Theme: System — switch to Light")
+    expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
     expect(page.get_by_text("Couldn't save your theme", exact=False)).to_be_visible()
 
     page.unroute("**/api/settings/user/THEME")

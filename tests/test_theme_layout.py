@@ -1,15 +1,26 @@
+import re
+
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
 
+from common.components import Div, ThemeToggle, assert_unique_element_ids
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
-from common.components import Div, ThemeToggle, assert_unique_element_ids
 
 
 def _root_tag(html: str) -> str:
     start = html.index("<html")
     return html[start : html.index(">", start) + 1]
+
+
+def _theme_toggle_markup(html: str) -> tuple[str, str]:
+    start = html.index("<theme-toggle")
+    end = html.index("</theme-toggle>", start) + len("</theme-toggle>")
+    markup = html[start:end]
+    button = re.search(r"<button\b[^>]*\bdata-pop-over-trigger\b[^>]*>", markup)
+    assert button is not None
+    return markup, button.group()
 
 
 def test_anonymous_document_has_browser_theme_configuration(db):
@@ -90,6 +101,31 @@ def test_theme_component_keeps_three_icons_and_tooltip(db):
     assert 'role="tooltip"' in html
     assert "data-theme-tooltip" in html
     assert "dist/elements/theme-toggle.js" in html
+
+
+def test_theme_toggle_renders_permanent_disabled_state_on_the_real_button():
+    markup, button = _theme_toggle_markup(
+        str(ThemeToggle(instance_key="settings", disabled=True))
+    )
+
+    assert 'disabled="true"' in markup.split(">", 1)[0]
+    assert 'disabled="disabled"' in button
+    assert 'aria-label="Theme switching is unavailable on settings pages."' in button
+    assert "Theme switching is unavailable on settings pages." in markup
+    assert "disabled:opacity-50" in button
+    assert "disabled:cursor-not-allowed" in button
+    assert 'data-theme-icon="system"' in markup
+    assert 'data-theme-icon="light"' in markup
+    assert 'data-theme-icon="dark"' in markup
+
+
+def test_ordinary_page_navbar_theme_toggle_is_server_rendered_enabled(db):
+    html = Client().get(reverse("login")).content.decode()
+    markup, button = _theme_toggle_markup(html)
+
+    assert 'disabled="true"' not in markup.split(">", 1)[0]
+    assert not re.search(r'\sdisabled(?:="disabled")?(?=\s|>)', button)
+    assert 'aria-label="Theme: System — switch to Light"' in button
 
 
 def test_multiple_theme_toggles_have_unique_tooltip_ids():

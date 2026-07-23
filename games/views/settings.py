@@ -309,7 +309,7 @@ def user_settings(request: HttpRequest) -> HttpResponse:
         ContentContainer(class_="mb-6")[PageHeading(["Settings"])],
         SettingsScaffold(sections),
     ]
-    return render_page(request, content, title="Settings")
+    return render_page(request, content, title="Settings", is_settings_page=True)
 
 
 @login_required
@@ -327,6 +327,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             request,
             content,
             title="Admin settings",
+            is_settings_page=True,
             status=403,
         )
 
@@ -357,7 +358,12 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
         ],
         SettingsScaffold(sections),
     ]
-    return render_page(request, content, title="Admin settings")
+    return render_page(
+        request,
+        content,
+        title="Admin settings",
+        is_settings_page=True,
+    )
 
 
 __all__ = [
