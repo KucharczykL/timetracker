@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetThemeCoordinatorForTests } from "../theme-coordinator.js";
+import {
+  getThemeCoordinator,
+  resetThemeCoordinatorForTests,
+} from "../theme-coordinator.js";
 import { nextTheme } from "./theme-toggle.js";
 import "./theme-toggle.js";
 
@@ -18,14 +21,23 @@ function configure(mode: "browser" | "account", preference = "system"): void {
   }
 }
 
-function mount(): HTMLElement {
+function mount(permanentlyDisabled = false): HTMLElement {
+  const disabledHostAttribute = permanentlyDisabled ? ' disabled="true"' : "";
+  const triggerStart = permanentlyDisabled
+    ? '<span data-pop-over-trigger tabindex="0">'
+    : "";
+  const triggerEnd = permanentlyDisabled ? "</span>" : "";
+  const buttonTriggerAttribute = permanentlyDisabled
+    ? ""
+    : " data-pop-over-trigger";
+  const disabledButtonAttribute = permanentlyDisabled ? " disabled" : "";
   document.body.innerHTML = `
-    <theme-toggle class="block">
-      <pop-over><button type="button" data-pop-over-trigger>
+    <theme-toggle class="block"${disabledHostAttribute}>
+      <pop-over>${triggerStart}<button type="button" data-pop-over-control${buttonTriggerAttribute}${disabledButtonAttribute}>
         <svg data-theme-icon="system"></svg>
         <svg data-theme-icon="light" hidden></svg>
         <svg data-theme-icon="dark" hidden></svg>
-      </button><div data-pop-over-panel><span data-theme-tooltip></span></div></pop-over>
+      </button>${triggerEnd}<div data-pop-over-panel><span data-theme-tooltip></span></div></pop-over>
     </theme-toggle>`;
   return document.querySelector("theme-toggle")!;
 }
@@ -65,6 +77,42 @@ describe("nextTheme", () => {
 });
 
 describe("<theme-toggle>", () => {
+  it("keeps a permanently disabled toggle disabled after coordinator updates", async () => {
+    configure("browser");
+    const host = mount(true);
+    const button = host.querySelector<HTMLButtonElement>("button")!;
+    const tooltipTrigger = host.querySelector<HTMLElement>(
+      "[data-pop-over-trigger]",
+    )!;
+
+    await getThemeCoordinator().requestPreferenceChange("light");
+
+    expect(button.disabled).toBe(true);
+    expect(tooltipTrigger).not.toBe(button);
+    expect(tooltipTrigger.tabIndex).toBe(0);
+    expect(host.querySelector('[data-theme-icon="light"]')?.hasAttribute("hidden"))
+      .toBe(false);
+  });
+
+  it("does not request a preference change from a permanently disabled toggle", async () => {
+    configure("account", "dark");
+    const fetchStub = vi.fn();
+    window.fetchWithHtmxTriggers = fetchStub;
+    const host = mount(true);
+    const button = host.querySelector<HTMLButtonElement>("button")!;
+    const requestPreferenceChange = vi.spyOn(
+      getThemeCoordinator(),
+      "requestPreferenceChange",
+    );
+
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(requestPreferenceChange).not.toHaveBeenCalled();
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(button.disabled).toBe(true);
+  });
+
   it("presents coordinator state with distinct icons, tooltip text, and labels", async () => {
     configure("browser");
     const host = mount();
@@ -101,6 +149,7 @@ describe("<theme-toggle>", () => {
     button.click();
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(window.fetchWithHtmxTriggers).toHaveBeenCalledTimes(1);
     expect(document.documentElement.dataset.themePreference).toBe("system");
 
     await vi.waitFor(() => expect(button.disabled).toBe(false));

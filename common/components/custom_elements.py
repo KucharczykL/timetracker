@@ -36,6 +36,7 @@ from common.components.primitives import (
     ButtonColor,
     ControlButton,
     Div,
+    Form,
     Icon,
     Input,
     Label,
@@ -531,7 +532,7 @@ register_element("setting-source-badge", "SettingSourceBadge", SettingSourceBadg
 
 
 class ThemeToggleProps(TypedDict):
-    pass
+    disabled: bool  # permanent page-level disable; coordinator state cannot override
 
 
 register_element("theme-toggle", "ThemeToggle", ThemeToggleProps)
@@ -813,6 +814,25 @@ def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
     if current:
         attributes.append(("aria-current", "page"))
     return Li(role="presentation")[A(attributes)[label]]
+
+
+def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:
+    """A CSRF-protected POST action presented as a menu item."""
+    return Li(role="presentation")[
+        Form(method="post", action=url, role="presentation")[
+            Input(
+                type="hidden",
+                name="csrfmiddlewaretoken",
+                value=csrf_token,
+            ),
+            Button(
+                type="submit",
+                role="menuitem",
+                tabindex="-1",
+                class_=DROPDOWN_ITEM_CLASS,
+            )[label],
+        ]
+    ]
 
 
 class DropdownActionItem(BaseComponent):

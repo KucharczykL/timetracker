@@ -1,3 +1,5 @@
+from typing import cast
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
@@ -21,7 +23,6 @@ from games.models import (
     Purchase,
     Session,
 )
-from timetracker.settings_resolver import resolve_str
 
 custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
@@ -297,17 +298,17 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, default_currency: str, **kwargs):
+        self.default_currency = default_currency
         super().__init__(*args, **kwargs)
-        self.fields["platform"].queryset = Platform.objects.order_by("name")
+        platform_field = cast(forms.ModelChoiceField, self.fields["platform"])
+        platform_field.queryset = Platform.objects.order_by("name")
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
-        # Resolved at instantiation (not class-definition time) so a live-edited
-        # DEFAULT_CURRENCY shows through without a restart.
-        self.fields["price_currency"].widget.attrs["placeholder"] = resolve_str(
-            "DEFAULT_CURRENCY"
-        )
+        if not self.initial.get("price_currency"):
+            self.initial["price_currency"] = default_currency
+        self.fields["price_currency"].widget.attrs["placeholder"] = default_currency
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -339,7 +340,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=forms.TextInput(
             attrs={
                 "x-mask": "aaa",
-                # placeholder is set live in __init__ from the resolved DEFAULT_CURRENCY.
+                # placeholder is set in __init__ from the caller's user context.
                 "x-data": "",
                 "class": "uppercase",
             }
@@ -390,6 +391,8 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # An empty bundle Price (price-per-game mode) saves as 0, not NULL.
         if cleaned_data.get("price") is None:
             cleaned_data["price"] = 0
+        if not cleaned_data.get("price_currency"):
+            cleaned_data["price_currency"] = self.default_currency
 
         return cleaned_data
 

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
@@ -62,6 +64,50 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert " required" not in theme_select
     assert "data-live-setting-control" not in theme_select
     assert "System follows the operating-system theme." in html
+
+
+def test_settings_page_explains_personal_currency_scope(auth_client):
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert (
+        "A personal value affects only your purchase entry; purchases saved "
+        "without user context and FX/reporting continue to use the site value." in html
+    )
+    assert (
+        "Used for purchase entry by users without a personal value, purchases "
+        "saved without user context, and the FX/reporting target." not in html
+    )
+
+
+def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
+    html = auth_client.get(reverse("games:settings")).content.decode()
+    toggle_start = html.index("<theme-toggle")
+    toggle_end = html.index("</theme-toggle>", toggle_start) + len("</theme-toggle>")
+    toggle_markup = html[toggle_start:toggle_end]
+    toggle_button = re.search(
+        r"<button\b[^>]*\bdata-pop-over-control\b[^>]*>",
+        toggle_markup,
+    )
+    assert toggle_button is not None
+
+    assert 'disabled="true"' in toggle_markup.split(">", 1)[0]
+    assert 'disabled="disabled"' in toggle_button.group()
+    assert "aria-label" not in toggle_button.group()
+    interaction_surface = re.search(
+        r"<span\b[^>]*\bdata-pop-over-trigger\b[^>]*>", toggle_markup
+    )
+    assert interaction_surface is not None
+    assert (
+        'aria-label="Theme switching is unavailable on settings pages."'
+        in interaction_surface.group()
+    )
+    assert "disabled:opacity-50" in toggle_button.group()
+    theme_select = html[
+        html.index('<select name="theme"') : html.index(
+            "</select>", html.index('<select name="theme"')
+        )
+    ]
+    assert not re.search(r'\sdisabled(?:="disabled")?(?=\s|>)', theme_select)
 
 
 def test_settings_page_lists_devices_by_name(auth_client):

@@ -1,6 +1,5 @@
 """Tests for the layered, origin-aware settings resolver."""
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -12,10 +11,10 @@ from django.db.utils import OperationalError
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import SettingSource
+from timetracker.settings_commands import change_site_setting
 from timetracker.settings_resolver import (
     resolve,
     resolve_with_origin,
-    set_site_setting,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,7 +57,7 @@ def ini_file(tmp_path, monkeypatch):
 
 def _write_currency_row(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_CURRENCY", value)
 
 
 # --- precedence -----------------------------------------------------------
@@ -132,7 +131,7 @@ def test_secret_key_file_origin(monkeypatch, tmp_path):
 def test_db_value_is_cast_and_validated_like_env(db, no_currency_env):
     from games.models import SiteSetting
 
-    # Raw lowercase row inserted directly (bypassing set_site_setting's normalize)
+    # Raw lowercase row inserted directly (bypassing the command's normalization)
     # must still resolve normalized on read — proving the DB layer runs the cast.
     SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="eur")
     settings_resolver.clear_cache()
@@ -165,7 +164,7 @@ def test_cache_invalidation_on_write(
     assert result.value == "EUR"
     assert result.source is SettingSource.DATABASE
     with django_capture_on_commit_callbacks(execute=True):
-        settings_resolver.clear_site_setting("DEFAULT_CURRENCY")
+        change_site_setting("DEFAULT_CURRENCY", None)
     assert resolve_with_origin("DEFAULT_CURRENCY").source is SettingSource.DEFAULT
 
 
@@ -196,22 +195,22 @@ def test_resolve_pair_hits_db_at_most_once(
 # --- write guards ---------------------------------------------------------
 
 
-def test_set_site_setting_rejects_unknown_key(db):
+def test_change_site_setting_rejects_unknown_key(db):
     with pytest.raises(KeyError):
-        set_site_setting("NOPE", "x")
+        change_site_setting("NOPE", "x")
 
 
-def test_set_site_setting_rejects_infra_key(db):
+def test_change_site_setting_rejects_infra_key(db):
     with pytest.raises(ValueError):
-        set_site_setting("TZ", "Europe/Prague")
+        change_site_setting("TZ", "Europe/Prague")
 
 
-def test_set_site_setting_rejects_invalid_and_writes_nothing(db):
+def test_change_site_setting_rejects_invalid_and_writes_nothing(db):
     from django.core.exceptions import ValidationError
     from games.models import SiteSetting
 
     with pytest.raises(ValidationError):
-        set_site_setting("DEFAULT_CURRENCY", "EURO")
+        change_site_setting("DEFAULT_CURRENCY", "EURO")
     assert not SiteSetting.objects.filter(key="DEFAULT_CURRENCY").exists()
 
 
@@ -260,179 +259,6 @@ def test_infra_resolve_hits_no_db(db, monkeypatch, django_assert_num_queries):
     # INFRA short-circuits before the SiteSetting snapshot read.
     with django_assert_num_queries(0):
         resolve("TZ")
-
-
-# --- admin form guards ----------------------------------------------------
-
-
-def test_admin_form_rejects_unregistered_key(db):
-    from games.admin import SiteSettingForm
-
-    form = SiteSettingForm(data={"key": "NOPE", "value": '"x"'})
-    assert not form.is_valid()
-    assert "key" in form.errors
-
-
-def test_admin_form_rejects_infra_key(db):
-    from games.admin import SiteSettingForm
-
-    form = SiteSettingForm(data={"key": "TZ", "value": '"Europe/Prague"'})
-    assert not form.is_valid()
-    assert "key" in form.errors
-
-
-def test_admin_form_normalizes_currency(db, no_currency_env):
-    from games.admin import SiteSettingForm
-
-    form = SiteSettingForm(data={"key": "DEFAULT_CURRENCY", "value": '"eur"'})
-    assert form.is_valid(), form.errors
-    obj = form.save()
-    assert obj.value == "EUR"
-
-
-def test_admin_form_rejects_invalid_currency(db):
-    from games.admin import SiteSettingForm
-
-    form = SiteSettingForm(data={"key": "DEFAULT_CURRENCY", "value": '"EURO"'})
-    assert not form.is_valid()
-    assert "value" in form.errors
-
-
-# --- UserPreferences admin form guards ------------------------------------
-
-
-def _prefs_user():
-    from django.contrib.auth import get_user_model
-
-    return get_user_model().objects.create_user(username="prefs", password="pw")
-
-
-def test_user_prefs_form_blank_currency_saves_null(db):
-    # empty_value=None: a blank currency must persist NULL, not the "" sentinel
-    # (which would then fail _validate_currency on every resolve).
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "default_currency": "", "extra_preferences": "{}"}
-    )
-    assert form.is_valid(), form.errors
-    obj = form.save()
-    assert obj.default_currency is None
-
-
-def test_user_prefs_form_normalizes_currency(db, no_currency_env):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "default_currency": "eur", "extra_preferences": "{}"}
-    )
-    assert form.is_valid(), form.errors
-    assert form.save().default_currency == "EUR"
-
-
-def test_user_prefs_form_rejects_invalid_currency(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "default_currency": "EURO", "extra_preferences": "{}"}
-    )
-    assert not form.is_valid()
-    assert "default_currency" in form.errors
-
-
-def test_user_prefs_form_accepts_device(db):
-    from games.admin import UserPreferencesForm
-    from games.models import Device
-
-    user = _prefs_user()
-    device = Device.objects.create(name="Deck", type=Device.HANDHELD)
-    form = UserPreferencesForm(
-        data={"user": user.pk, "default_device": device.pk, "extra_preferences": "{}"}
-    )
-    assert form.is_valid(), form.errors
-    assert form.save().default_device_id == device.pk
-
-
-def test_user_prefs_form_rejects_typed_key_in_bag(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "extra_preferences": '{"DEFAULT_CURRENCY": "EUR"}'}
-    )
-    assert not form.is_valid()
-    assert "extra_preferences" in form.errors
-
-
-def test_user_prefs_form_rejects_non_user_key_in_bag(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "extra_preferences": '{"TZ": "Europe/Prague"}'}
-    )
-    assert not form.is_valid()
-    assert "extra_preferences" in form.errors
-
-
-def test_user_prefs_form_rejects_unregistered_key_in_bag(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={"user": user.pk, "extra_preferences": '{"NOPE": 1}'}
-    )
-    assert not form.is_valid()
-    assert "extra_preferences" in form.errors
-
-
-def test_user_prefs_form_normalizes_registered_bag_values(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={
-            "user": user.pk,
-            "extra_preferences": '{"DEFAULT_PAGE_SIZE": "50"}',
-        }
-    )
-
-    assert form.is_valid(), form.errors
-    assert form.save().extra_preferences == {"DEFAULT_PAGE_SIZE": 50}
-
-
-@pytest.mark.parametrize("bad", ["20", True, "lots"])
-def test_user_prefs_form_rejects_invalid_registered_bag_values(db, bad):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={
-            "user": user.pk,
-            "extra_preferences": json.dumps({"DEFAULT_PAGE_SIZE": bad}),
-        }
-    )
-
-    assert not form.is_valid()
-    assert "extra_preferences" in form.errors
-
-
-def test_user_prefs_form_drops_null_bag_values_as_unset(db):
-    from games.admin import UserPreferencesForm
-
-    user = _prefs_user()
-    form = UserPreferencesForm(
-        data={
-            "user": user.pk,
-            "extra_preferences": '{"DEFAULT_PAGE_SIZE": null}',
-        }
-    )
-
-    assert form.is_valid(), form.errors
-    assert form.save().extra_preferences == {}
 
 
 # --- no DB access at settings import --------------------------------------

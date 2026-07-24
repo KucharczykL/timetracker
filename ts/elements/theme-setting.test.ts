@@ -105,7 +105,7 @@ describe("<theme-setting>", () => {
       const setting = `<theme-setting><select><option value=""></option>
         <option value="system">System</option><option value="light">Light</option>
         <option value="dark">Dark</option></select></theme-setting>`;
-      const toggle = `<theme-toggle><button data-pop-over-trigger>
+      const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
         <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
         <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
         </theme-toggle>`;
@@ -138,7 +138,7 @@ describe("<theme-setting>", () => {
     const setting = `<theme-setting><select><option value=""></option>
       <option value="system">System</option><option value="dark">Dark</option>
       </select></theme-setting>`;
-    const toggle = `<theme-toggle><button data-pop-over-trigger>
+    const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
       <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
       <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
       </theme-toggle>`;

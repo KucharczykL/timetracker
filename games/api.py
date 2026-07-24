@@ -29,11 +29,13 @@ from timetracker.settings_registry import (
     UnregisteredSettingError,
     get_definition,
 )
+from timetracker.settings_commands import (
+    SettingLockedError,
+    change_site_setting,
+)
 from timetracker.settings_resolver import (
-    clear_site_setting,
     resolve_for_user_with_origin,
     resolve_with_origin,
-    set_site_setting,
     set_user_preference,
 )
 from games.sorting import (
@@ -633,27 +635,26 @@ def list_site_settings(request):
     ]
 
 
-@settings_router.patch("/site/{key}", response={204: None})
+@settings_router.patch("/site/{key}", response=SettingOut)
 def update_site_setting(request, key: str, payload: SettingValueIn):
     """Set (or clear, with ``value: null``) a site setting's DB value.
     Superuser-only."""
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     try:
-        definition = get_definition(key)
+        resolved = change_site_setting(key, payload.value)
+    except SettingLockedError as error:
+        raise HttpError(
+            409,
+            f"{error.key} is controlled by {error.source.value}.",
+        )
     except UnregisteredSettingError:
         raise HttpError(400, f"Unknown setting {key!r}.")
-    if definition.scope is SettingScope.INFRA:
-        raise HttpError(400, f"{key} is infra-scoped and cannot be stored.")
-    try:
-        if payload.value is None:
-            clear_site_setting(key)
-        else:
-            set_site_setting(key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
+    definition = get_definition(key)
     messages.success(request, f"{definition.label} saved")
-    return Status(204, None)
+    return _setting_out(key, resolved)
 
 
 api.add_router("/settings", settings_router)

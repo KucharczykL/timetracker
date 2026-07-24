@@ -6,7 +6,7 @@ import pytest
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
-from timetracker.settings_resolver import set_site_setting
+from timetracker.settings_commands import change_site_setting
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def game(db):
 
 def _set_currency(django_capture_on_commit_callbacks, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_site_setting("DEFAULT_CURRENCY", value)
+        change_site_setting("DEFAULT_CURRENCY", value)
 
 
 def test_purchase_save_uses_live_db_currency(
@@ -65,12 +65,69 @@ def test_form_placeholder_tracks_live_currency(
     from games.forms import PurchaseForm
 
     _set_currency(django_capture_on_commit_callbacks, "EUR")
-    placeholder = PurchaseForm().fields["price_currency"].widget.attrs["placeholder"]
+    placeholder = (
+        PurchaseForm(default_currency="EUR")
+        .fields["price_currency"]
+        .widget.attrs["placeholder"]
+    )
     assert placeholder == "EUR"
 
     _set_currency(django_capture_on_commit_callbacks, "GBP")
-    placeholder = PurchaseForm().fields["price_currency"].widget.attrs["placeholder"]
+    placeholder = (
+        PurchaseForm(default_currency="GBP")
+        .fields["price_currency"]
+        .widget.attrs["placeholder"]
+    )
     assert placeholder == "GBP"
+
+
+def test_purchase_form_requires_explicit_default_currency(db):
+    from games.forms import PurchaseForm
+
+    with pytest.raises(TypeError):
+        PurchaseForm()
+
+
+def test_purchase_form_explicit_currency_controls_initial_fallback_and_placeholder(
+    game,
+):
+    from games.forms import PurchaseForm
+    from games.models import Purchase
+
+    form = PurchaseForm(default_currency="EUR")
+    assert form.initial["price_currency"] == "EUR"
+    assert form.fields["price_currency"].widget.attrs["placeholder"] == "EUR"
+
+    bound = PurchaseForm(
+        data={
+            "games": [game.pk],
+            "date_purchased": "2025-01-01",
+            "price_currency": "",
+            "ownership_type": Purchase.DIGITAL,
+            "type": Purchase.GAME,
+        },
+        default_currency="EUR",
+    )
+    assert bound.is_valid(), bound.errors
+    assert bound.cleaned_data["price_currency"] == "EUR"
+    assert bound.save(commit=False).price_currency == "EUR"
+
+
+def test_purchase_save_ignores_personal_currency_without_user_context(
+    game, clean_currency_env, django_capture_on_commit_callbacks
+):
+    from django.contrib.auth import get_user_model
+
+    from games.models import Purchase, UserPreferences
+
+    _set_currency(django_capture_on_commit_callbacks, "EUR")
+    user = get_user_model().objects.create_user(username="personal-currency")
+    UserPreferences.objects.create(user=user, default_currency="GBP")
+
+    purchase = Purchase.objects.create(price=10, date_purchased=date(2025, 1, 1))
+    purchase.games.add(game)
+
+    assert purchase.price_currency == "EUR"
 
 
 def test_convert_prices_targets_resolved_currency_identity(
@@ -86,6 +143,29 @@ def test_convert_prices_targets_resolved_currency_identity(
     purchase.games.add(game)
 
     convert_prices()  # EUR == target → identity, no network
+
+    purchase.refresh_from_db()
+    assert purchase.converted_currency == "EUR"
+    assert purchase.converted_price == 50
+
+
+def test_convert_prices_ignores_personal_currency_for_reporting(
+    game, clean_currency_env, django_capture_on_commit_callbacks
+):
+    from django.contrib.auth import get_user_model
+
+    from games.models import Purchase, UserPreferences
+    from games.tasks import convert_prices
+
+    _set_currency(django_capture_on_commit_callbacks, "EUR")
+    user = get_user_model().objects.create_user(username="personal-reporting-currency")
+    UserPreferences.objects.create(user=user, default_currency="GBP")
+    purchase = Purchase.objects.create(
+        price=50, price_currency="EUR", date_purchased=date(2025, 1, 1)
+    )
+    purchase.games.add(game)
+
+    convert_prices()
 
     purchase.refresh_from_db()
     assert purchase.converted_currency == "EUR"

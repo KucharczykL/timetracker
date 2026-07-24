@@ -170,7 +170,7 @@ Filter presets have no classic views: they live on the Ninja API (`/api/presets`
 - `post_save/post_delete` on Session: recalculates `Game.playtime` from session aggregate
 - `pre_save` on Game: creates `GameStatusChange` audit records when `status` changes
 
-**Background tasks**: django-q2 cluster runs `games.tasks.convert_prices()` on a schedule to fetch exchange rates from `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and convert purchase prices to CZK.
+**Background tasks**: django-q2 cluster runs `games.tasks.convert_prices()` on a schedule to fetch exchange rates from `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and convert purchase prices to the resolved site `DEFAULT_CURRENCY`.
 
 **HTMX toast middleware** (`games/htmx_middleware.py`): Converts Django messages into `HX-Trigger` headers with `show-toast` event. Skips if `HX-Redirect` is present. Toast rendering is handled client-side by Alpine.js (`games/static/js/toast.js`).
 

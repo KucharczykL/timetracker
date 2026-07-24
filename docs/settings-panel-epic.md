@@ -36,7 +36,8 @@ enough for a later per-issue planner to execute.
    env/file/ini stay read-only inputs. An export snapshots current DB site settings to
    `[timetracker]` ini for backup / promotion to env-pinned.
 4. **Split pages.** `/settings` (personal prefs, every logged-in user) and `/admin-settings` (site
-   settings + infra inspector, `is_superuser` only). Admin navbar entry renders only for superusers.
+   settings + infra inspector, `is_superuser` only). Settings, Admin settings (superusers only), and
+   POST Logout live inside the existing navbar Menu dropdown.
 5. **Scope in-epic:** new per-user prefs + runtime site settings + infra inspector, **and** the
    harder prefs (theme, date/time format) via their own prerequisite stages.
 6. **Responsive: mobile-first, desktop-enhanced.** Section-nav + content reflowing via container
@@ -86,23 +87,22 @@ Genuinely net-new (nothing to reuse): the responsive **section-nav scaffold**, t
 
 - **No DB access at settings import.** `resolve_with_origin` is lazy/runtime-only; the DB layer
   never participates in `settings.py` module load.
-- **`TZ` is NOT runtime-editable — demoted to display-only.** `TIME_ZONE` is frozen at
-  [settings.py:179](timetracker/settings.py); a DB value could never take effect (the constraint
-  forbids reading DB at import, so even a restart wouldn't apply a DB-stored TZ). The panel shows
-  `TZ` read-only with "change via env/`settings.ini` + restart"; Stage 10's export is the promotion
-  path. **`DEFAULT_CURRENCY` is the only genuinely live-editable site setting in v1.**
-- **`DEFAULT_CURRENCY` live requires routing ALL consumption through the resolver — three sites,
-  not two:** [games/tasks.py:10](games/tasks.py) (module-level capture), [games/forms.py:331](games/forms.py)
-  (class-time placeholder), and [games/models.py:255](games/models.py) (`Purchase.save()` reads the
-  boot-frozen `settings` object). Also reconcile the competing model field `default="USD"`
-  ([games/models.py:187](games/models.py)) against the `CZK` config default.
-- **Resolved-value caching + cross-process invalidation.** `resolve_with_origin` hitting SQLite per
-  call runs from both the web workers (gunicorn/UvicornWorker) **and** the separate django-q qcluster
-  process (`supervisor.conf`). Needs a per-request/TTL cache with an invalidation story on write.
+- **Live display timezone is not infrastructure `TZ`.** Stage 8 edits
+  `DISPLAY_TIME_ZONE` alongside the other seven live site defaults. Boot-time `TZ` is absent from
+  that page and remains deferred to Stage 9's read-only infrastructure inspector; changing `TZ`
+  still requires configuration plus a restart.
+- **Currency has request-aware and context-free consumers.** Purchase-entry views resolve
+  `DEFAULT_CURRENCY` for the authenticated user, including blank submissions and separate-per-game
+  purchases. `Purchase.save()` without request/user context and the FX conversion/reporting target
+  deliberately use the site-wide resolution chain.
+- **One command owns site mutations.** `change_site_setting()` in
+  `timetracker/settings_commands.py` validates, normalizes, enforces higher-source locks, and returns
+  a deterministic resolved result. Resolver mutation helpers do not exist. Cache invalidation is
+  scheduled by model signals on transaction commit; other processes converge within the TTL.
 - **Superuser gating has no 403 template** (`games/templates/` holds only `icons/`). Gate views with
   an `is_superuser` check and render an error page via `render_page()`.
-- **Navbar needs `is_superuser` threaded** into `NavbarMenu()` ([common/layout.py:270](common/layout.py))
-  — it currently receives no `request`.
+- **Navbar needs `is_superuser` threaded** into `NavbarMenu()` ([common/layout.py](common/layout.py))
+  so Admin settings can be included in the existing Menu dropdown for superusers only.
 - **Theme FOUC:** `TimetrackerDocument()` renders account-authoritative theme state
   on the root element, and a synchronous external bootstrap applies it before
   CSS. Anonymous pages alone read `localStorage`; theme cookies and
@@ -130,22 +130,25 @@ Dependency summary: **1** blocks all. **2** needs 1. **3** blocks all pages. **4
 ### Stage 1 — Config registry + layered resolver + SiteSetting store (backend)
 **Depends on:** none.
 **Deliverables:**
-- `SettingDefinition` dataclass + central registry declaring **exactly the 9 existing settings**
-  (`DEFAULT_CURRENCY` = `site`/live; `TZ` = `infra`/display-only/restart; the other 7 = `infra`).
+- `SettingDefinition` dataclass + central registry declaring the boot configuration and the live
+  personal/site-default settings (`DEFAULT_CURRENCY`, `DEFAULT_DEVICE`, `DEFAULT_LANDING_PAGE`,
+  `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`, `DATE_FORMAT_LOCALE`, and `DATETIME_FORMAT`).
+  `TZ` remains `infra`/restart.
   Meta-knobs `ENV_FILE`/`INI_FILE`/deprecated `PROD` are intentionally **not** registered (note why).
   Each definition carries `apply_timing` and, for `DEV_LOGIN_PREFILL`, a note that it must stay
   `restart` (its value is read from the boot-frozen `settings` object; the `@lru_cache` in
   [games/dev_login.py](games/dev_login.py) is value-keyed and would pin a changed value).
 - `SiteSetting` model (global key→value; JSON/text value). **No `swappable_dependency`** (no user FK).
 - `resolve_with_origin(key) -> (value, source, locked)` — precedence env/`.env`/`ini` (locked) >
-  `SiteSetting` (DB) > registry default; **lazy, never at settings import**; with the caching +
-  cross-process invalidation story above.
-- Route **all** `DEFAULT_CURRENCY` consumption through the resolver: [games/tasks.py:10](games/tasks.py),
-  [games/forms.py:331](games/forms.py), [games/models.py:255](games/models.py); reconcile the
-  `default="USD"` field ([games/models.py:187](games/models.py)).
+  `SiteSetting` (DB) > registry default; **lazy, never at settings import**; with TTL-bounded
+  cross-process convergence and transaction-commit invalidation in the writing process.
+- Route context-free `DEFAULT_CURRENCY` consumption through the site resolver in
+  `games/tasks.py` and `Purchase.save()`. Request/view purchase entry uses
+  `resolve_str_for_user(request.user, "DEFAULT_CURRENCY")`.
 **Acceptance:** unit tests for precedence, locking, origin, "no DB query during settings import,"
-cache invalidation on write, and `DEFAULT_CURRENCY` changing behavior in all three sites without
-restart; existing behavior unchanged with an empty table. Update [docs/configuration.md](docs/configuration.md).
+invalidation only after commit, request-aware purchase entry, and site-wide context-free/reporting
+currency; existing behavior unchanged with an empty table. Update
+[docs/configuration.md](docs/configuration.md).
 **Key files:** [timetracker/config.py](timetracker/config.py), `games/models.py`, new registry module, migration.
 
 ### Stage 2 — Per-user preferences store + resolution + Ninja API (backend)
@@ -153,13 +156,13 @@ restart; existing behavior unchanged with an empty table. Update [docs/configura
 **Deliverables:**
 - `UserPreferences` model (`OneToOne` to user, `related_name="preferences"`; typed columns + JSON
   bag), `get_or_create` on access. Migration uses `swappable_dependency(AUTH_USER_MODEL)` (this is
-  the model that needs it). Register in [games/admin.py](games/admin.py) (or record a deliberate no).
+  the model that needs it). Django admin is not a mutation path.
 - Per-user resolution: user value → registry site default → default (reuses Stage 1).
 - Ninja `/api/settings` router: user-scoped `GET`/`PATCH` (`request.user`) + superuser `GET`/`PATCH`
   for site settings (`if not request.user.is_superuser: raise HttpError(403)`). Copy preset-router
   auth/scoping ([games/api.py:382](games/api.py)). Server-side value validation per registry validator.
 **Acceptance:** tests for scoping (A can't read/write B), superuser gate, resolution precedence, validation.
-**Key files:** `games/models.py`, `games/api.py`, `games/admin.py`, migration.
+**Key files:** `games/models.py`, `games/api.py`, migration.
 
 ### Stage 3 — Settings UI kit (audit-first, enhance existing, mobile-first)
 **Depends on:** none (pairs with 1 for widget types). **Blocks:** 4, 7, 8, 9.
@@ -269,23 +272,39 @@ consistent; tests.
 ### Stage 8 — `/admin-settings` page: site settings (superuser)
 **Depends on:** 1, 2, 3, 4 (reuses Stage 4's settings module + navbar plumbing).
 **Deliverables:**
-- `/admin-settings` view gated to `is_superuser` (render an error page via `render_page()`; no 403
-  template). Conditional navbar entry — thread `is_superuser` into `NavbarMenu()`
-  ([common/layout.py:270](common/layout.py)).
-- Editable site setting: `DEFAULT_CURRENCY` (**live**). `TZ` rendered **display-only** with a
-  "change via env/`settings.ini` + restart" note (not a DB-editable control). Env/file/ini-pinned
-  values render locked with source. Assembled from the Stage 3 kit.
-**Acceptance:** non-superuser blocked (view + API + navbar hidden); env-locked field read-only with
-reason; `DEFAULT_CURRENCY` change takes effect without restart across all three consumption sites;
-`TZ` is not editable and shows the restart note; tests.
-**Key files:** `games/views/settings.py` (admin view), `games/urls.py`, [common/layout.py](common/layout.py), `games/api.py`.
+- `/tracker/admin-settings` is login-protected and gated to `is_superuser`; authenticated
+  non-superusers receive a component-rendered 403 page. **Admin settings** is present only for
+  superusers and lives inside the existing navbar **Menu** dropdown beside Settings and POST
+  Logout.
+- The page exposes exactly `DEFAULT_CURRENCY`, `DEFAULT_DEVICE`, `DEFAULT_LANDING_PAGE`,
+  `DEFAULT_PAGE_SIZE`, `THEME`, `DISPLAY_TIME_ZONE`, `DATE_FORMAT_LOCALE`, and
+  `DATETIME_FORMAT`. All eight are live site defaults inherited by users without personal
+  overrides.
+- The site PATCH API delegates every mutation to `change_site_setting()` in
+  `timetracker/settings_commands.py`. Values owned by environment, environment-file, `.env`, or
+  `settings.ini` are disabled with their source and explanation; a direct PATCH returns HTTP 409.
+  Clearing an editable value removes its DB override and returns the configured or built-in
+  fallback.
+- Infrastructure `TZ` is not on this page. `DISPLAY_TIME_ZONE` is the editable wall-clock
+  presentation default and uses the existing reload flow to rebuild the document contract. The
+  navbar theme switcher is unavailable on settings pages.
+- Currency remains scope-aware: purchase-entry views use the user's resolved preference, while
+  `Purchase.save()` without user context and FX conversion/reporting use the site default.
+**Acceptance:** page/API/navbar authorization; exact eight-key surface; normalized set/select/clear
+PATCH responses; committed source badges; locked disabled fields and HTTP 409; display-timezone
+reload contract; usable mobile/desktop section navigation and Menu-dropdown link.
+**Key files:** `timetracker/settings_commands.py`, `games/api.py`,
+`games/views/settings.py`, `games/urls.py`, [common/layout.py](common/layout.py), browser tests.
 
 ### Stage 9 — Infrastructure config inspector
 **Depends on:** 1, 3, 8.
-**Deliverables:** read-only section on `/admin-settings` listing infra settings via
-`resolve_with_origin` with value + source + locked badge; `SECRET_KEY` via the masked-secret field;
-no edit path.
-**Acceptance:** every infra setting shows correct resolved value + source; secret never exposed; tests.
+**Deliverables:** add a read-only section to `/admin-settings` listing infrastructure settings via
+`resolve_with_origin`, including boot-only `TZ`, with effective value, source, and restart
+semantics. Render `SECRET_KEY` only through the masked-secret field. There is no edit or PATCH path;
+Stage 9 is an inspector, not a replacement Django admin.
+**Acceptance:** every infra setting shows its correct resolved value/source and whether a restart is
+required; `TZ` is visibly distinct from live `DISPLAY_TIME_ZONE`; secret material never appears in
+HTML or API output; mutation controls and endpoints are absent.
 **Key files:** `/admin-settings` view, Stage 1 introspection, Stage 3 kit.
 
 ### Stage 10 — Export site settings → `settings.ini` snapshot
@@ -304,16 +323,19 @@ promotion path for `TZ` (edit ini → restart).
 
 - **Docs:** each stage touching config surface updates [docs/configuration.md](docs/configuration.md).
 - **CHANGELOG:** the repo maintains `CHANGELOG.md`; user-facing stages update it.
-- **Admin registration:** `SiteSetting` (Stage 1) and `UserPreferences` (Stage 2) — register in
-  [games/admin.py](games/admin.py) or record a deliberate decision not to.
-- **Caching:** the resolver's per-request/TTL cache + cross-process invalidation (web workers +
-  qcluster) is designed in Stage 1 and honored by every consumer.
+- **Administration:** Django admin is removed. Django auth/superusers remain, and debug builds retain
+  `django_extensions` plus the debug toolbar. Site-default writes use
+  `timetracker/settings_commands.py`.
+- **Caching:** model signals invalidate resolver snapshots on transaction commit. Other web workers
+  and qcluster processes converge through the shared TTL; commands return their canonical result
+  without a resolver readback or immediate pre-commit invalidation.
 - **Verification gate:** every stage runs the full `direnv exec . make check` (lint, format, mypy,
   ts-check, vitest, pytest incl. `e2e/`) in the Nix shell — never a subset. UI stages add e2e at
   mobile + desktop viewports; Stage 5 adds a no-FOUC assertion.
-- **Manual epic check:** set a value via env AND panel → env wins, field shows locked+reason; change
-  `DEFAULT_CURRENCY` in the panel → new purchase form, `Purchase.save()` default, and FX task all
-  pick it up with no restart.
+- **Manual epic check:** set a value via env and panel → env wins, the field is disabled with its
+  source/reason, and direct PATCH returns 409. Change site `DEFAULT_CURRENCY` → inheriting
+  purchase-entry views, context-free `Purchase.save()`, and the FX task use it; save a personal
+  currency → only that user's purchase-entry flow changes.
 - **SOURCE-BADGE DELETION GATE (must be resolved before closing #381):**
   - [ ] List at least one concrete shipped unlocked/editable setting where an inline source badge
     adds user value beyond the field label and help text.

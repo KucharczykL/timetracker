@@ -44,7 +44,9 @@ def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name)
 
     html = auth_client.get(reverse(url_name, args=args)).content.decode()
 
-    assert 'value="EUR"' in _tag_with(html, id="id_price_currency")
+    currency_input = _tag_with(html, id="id_price_currency")
+    assert 'value="EUR"' in currency_input
+    assert 'placeholder="EUR"' in currency_input
 
 
 def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
@@ -71,6 +73,25 @@ def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
 
     assert 'value="EUR"' in _tag_with(empty_html, id="id_price_currency")
     assert 'value="GBP"' in _tag_with(existing_html, id="id_price_currency")
+
+
+def test_purchase_edit_blank_currency_falls_back_to_user_currency(
+    auth_client, user, game
+):
+    UserPreferences.objects.create(user=user, default_currency="EUR")
+    purchase = Purchase.objects.create(
+        date_purchased=date(2026, 1, 1), price_currency="USD"
+    )
+    purchase.games.add(game)
+
+    response = auth_client.post(
+        reverse("games:edit_purchase", args=[purchase.pk]),
+        _purchase_post_data([game.pk], price_currency=""),
+    )
+
+    assert response.status_code == 302
+    purchase.refresh_from_db()
+    assert purchase.price_currency == "EUR"
 
 
 def _purchase_post_data(game_ids: list[int], **overrides: object) -> dict[str, object]:

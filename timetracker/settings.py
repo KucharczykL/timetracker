@@ -88,7 +88,6 @@ Q_CLUSTER = {
 
 if DEBUG:
     INSTALLED_APPS.append("django_extensions")
-    INSTALLED_APPS.append("django.contrib.admin")
     INSTALLED_APPS.append("debug_toolbar")
 
 MIDDLEWARE = [

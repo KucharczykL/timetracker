@@ -310,6 +310,7 @@ def _popover_html(
     *,
     tap: bool = True,
     trigger_label: str = "",
+    trigger_disabled: bool = False,
     preface: "Node | str" = "",
     selectable_text: bool = False,
 ) -> Node:
@@ -323,13 +324,16 @@ def _popover_html(
     ``tap`` (default) renders the trigger as a real ``<button>`` so a tap on a
     touch device toggles the panel; ``tap=False`` keeps the hover/focus-only
     ``<span>`` (used where the popover sits inside a caller's interactive
-    element, so a ``<button>`` would nest illegally). ``preface`` renders a node
-    (e.g. a link) as a sibling *before* the trigger inside the host — the whole
-    host still opens on hover, but only the small ``<button>`` trigger is
-    tappable, keeping the trigger out of the preface link. ``trigger_label``
-    sets the button's ``aria-label`` when its visible content is a bare glyph;
-    ``selectable_text`` re-enables text selection + left alignment on button
-    triggers whose content is meaningful text (e.g. a price).
+    element, so a ``<button>`` would nest illegally). A disabled tap control
+    remains a native disabled button while a focusable wrapper becomes the
+    tooltip trigger, preserving pointer and keyboard access to its explanation.
+    ``preface`` renders a node (e.g. a link) as a sibling *before* the trigger
+    inside the host — the whole host still opens on hover, but only the small
+    ``<button>`` trigger is tappable, keeping the trigger out of the preface
+    link. ``trigger_label`` sets the button's ``aria-label`` when its visible
+    content is a bare glyph; ``selectable_text`` re-enables text selection +
+    left alignment on button triggers whose content is meaningful text (e.g. a
+    price).
     """
     display_content = wrapped_content if wrapped_content else slot
     trigger_children = [display_content] if display_content else []
@@ -338,15 +342,46 @@ def _popover_html(
         button_classes = wrapped_classes
         if selectable_text:
             button_classes = f"{button_classes} select-text text-start".strip()
-        trigger_attributes = [
+        control_attributes = [
             ("type", "button"),
-            ("data-pop-over-trigger", ""),
-            ("aria-describedby", id),
+            ("data-pop-over-control", ""),
             ("class", button_classes),
         ]
-        if trigger_label:
-            trigger_attributes.append(("aria-label", trigger_label))
-        trigger: Node = Button(trigger_attributes)[*trigger_children]
+        if trigger_disabled:
+            # The wrapper span is the interaction and accessibility surface for
+            # the whole disabled control. Browsers never dispatch `click` on a
+            # disabled button, which would kill the tap-to-open path, so
+            # `pointer-events-none` makes taps hit the wrapper instead; the
+            # button is also aria-hidden (its label/description live on the
+            # wrapper, and a role-less span may not carry an accessible name,
+            # hence role="button" + aria-disabled).
+            control_attributes.append(("disabled", "disabled"))
+            control_attributes.append(("aria-hidden", "true"))
+            control_attributes.append(("class", "pointer-events-none"))
+            wrapper_attributes: list[HTMLAttribute] = [
+                ("data-pop-over-trigger", ""),
+                ("role", "button"),
+                ("aria-disabled", "true"),
+                ("tabindex", "0"),
+                ("aria-describedby", id),
+                (
+                    "class",
+                    "inline-flex rounded-base cursor-not-allowed "
+                    "focus:outline-hidden focus:ring-4 "
+                    "focus:ring-neutral-tertiary-medium",
+                ),
+            ]
+            if trigger_label:
+                wrapper_attributes.append(("aria-label", trigger_label))
+            trigger = Span(wrapper_attributes)[
+                Button(control_attributes)[*trigger_children]
+            ]
+        else:
+            control_attributes.append(("aria-describedby", id))
+            if trigger_label:
+                control_attributes.append(("aria-label", trigger_label))
+            control_attributes.append(("data-pop-over-trigger", ""))
+            trigger = Button(control_attributes)[*trigger_children]
     else:
         trigger = Span(
             [
@@ -391,6 +426,7 @@ def Popover(
     *,
     tap: bool = True,
     trigger_label: str = "",
+    trigger_disabled: bool = False,
     preface: "Node | str" = "",
     selectable_text: bool = False,
 ) -> Node:
@@ -409,6 +445,7 @@ def Popover(
         slot=slot,
         tap=tap,
         trigger_label=trigger_label,
+        trigger_disabled=trigger_disabled,
         preface=preface,
         selectable_text=selectable_text,
     )

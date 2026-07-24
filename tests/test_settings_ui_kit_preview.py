@@ -46,6 +46,15 @@ def _named_tag(body: str, tag: str, name: str) -> str:
     return match.group()
 
 
+def _theme_toggle_markup(body: str) -> tuple[str, str]:
+    start = body.index("<theme-toggle")
+    end = body.index("</theme-toggle>", start) + len("</theme-toggle>")
+    markup = body[start:end]
+    button = re.search(r"<button\b[^>]*\bdata-pop-over-control\b[^>]*>", markup)
+    assert button is not None
+    return markup, button.group()
+
+
 def test_preview_requires_authentication(db):
     response = Client().get(_preview_url())
 
@@ -99,6 +108,28 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "dist/elements/live-setting-fields.js" in body
     assert "dist/elements/pop-over.js" in body
     assert _patch_url("__key__") in body
+
+
+def test_preview_disables_only_the_navbar_theme_switcher(preview_client):
+    body = preview_client.get(_preview_url()).content.decode()
+    toggle_markup, toggle_button = _theme_toggle_markup(body)
+
+    assert 'disabled="true"' in toggle_markup.split(">", 1)[0]
+    assert 'disabled="disabled"' in toggle_button
+    assert "aria-label" not in toggle_button
+    interaction_surface = re.search(
+        r"<span\b[^>]*\bdata-pop-over-trigger\b[^>]*>", toggle_markup
+    )
+    assert interaction_surface is not None
+    assert (
+        'aria-label="Theme switching is unavailable on settings pages."'
+        in interaction_surface.group()
+    )
+    assert "disabled:opacity-50" in toggle_button
+    assert not re.search(
+        r'\sdisabled(?:="disabled")?(?=\s|>)',
+        _named_tag(body, "select", "destination"),
+    )
 
 
 def test_preview_patch_succeeds_with_toast_without_persistence(

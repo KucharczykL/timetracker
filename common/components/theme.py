@@ -1,7 +1,12 @@
 """Server-rendered theme presenters backed by the shared browser coordinator."""
 
 from common.components.core import Element, Node, randomid
-from common.components.primitives import Popover, Span, custom_element_builder
+from common.components.primitives import (
+    DISABLED_CONTROL_CLASS,
+    Popover,
+    Span,
+    custom_element_builder,
+)
 
 _ThemeToggle = custom_element_builder("theme-toggle")
 _ThemeSetting = custom_element_builder("theme-setting")
@@ -66,18 +71,26 @@ def _theme_icons() -> list[Element]:
     ]
 
 
-def ThemeToggle(*, instance_key: str) -> Node:
-    label = "Theme: System — switch to Light"
-    return _ThemeToggle(class_="block")[
+def ThemeToggle(*, instance_key: str, disabled: bool = False) -> Node:
+    label = (
+        "Theme switching is unavailable on settings pages."
+        if disabled
+        else "Theme: System — switch to Light"
+    )
+    return _ThemeToggle(
+        disabled="true" if disabled else "false",
+        class_="block",
+    )[
         Popover(
             popover_content=Span(data_theme_tooltip="")[label],
             children=_theme_icons(),
             id=randomid(seed="theme-tip-", content=instance_key, length=20),
             trigger_label=label,
+            trigger_disabled=disabled,
             wrapped_classes="p-2 text-body-subtle "
             "hover:bg-neutral-tertiary-medium focus:outline-hidden focus:ring-4 "
             "focus:ring-neutral-tertiary-medium rounded-base text-type-body "
-            "hover:cursor-pointer",
+            f"hover:cursor-pointer {DISABLED_CONTROL_CLASS}",
         )
     ]
 

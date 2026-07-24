@@ -368,6 +368,7 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
         request,
         Div(class_="flex flex-col")[intro, SettingsScaffold(sections)],
         title="Settings UI kit preview",
+        is_settings_page=True,
     )
 
 

@@ -199,8 +199,8 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             apply_timing=ApplyTiming.LIVE,
             label="Default currency",
             help_text=(
-                "Currency assigned to purchases saved without one, and the "
-                "target the price-conversion task converts into."
+                "Used for purchase entry by users without a personal value, "
+                "purchases saved without user context, and the FX/reporting target."
             ),
             default_factory=lambda: settings.DEFAULT_CURRENCY,
             validator=_validate_currency,
