@@ -635,3 +635,10 @@ def test_user_write_validator_rejects_missing_device(user):
 def test_user_non_user_scope_key_raises(user):
     with pytest.raises(ValueError):
         change_user_setting(user, "TZ", "Europe/Prague")
+
+
+def test_setting_namespace_values():
+    from timetracker.settings_commands import SettingNamespace
+
+    assert SettingNamespace.USER == "user"
+    assert SettingNamespace.SITE == "site"
