@@ -150,7 +150,7 @@ describe("ThemeCoordinator account state", () => {
     expect(await coordinator.requestPreferenceChange("dark")).toBe("busy");
 
     const savedResponse = response({
-      key: "THEME", value: "light", source: "user", locked: false,
+      key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
     });
     resolve(savedResponse);
     expect(await saving).toBe("committed");
@@ -181,6 +181,7 @@ describe("ThemeCoordinator account state", () => {
       value: "dark",
       source: "database",
       locked: false,
+      namespace: "user",
     }));
     const coordinator = new ThemeCoordinator();
 
@@ -200,7 +201,7 @@ describe("ThemeCoordinator account state", () => {
     ["network failure", () => Promise.reject(new Error("offline"))],
     ["malformed response", () => Promise.resolve(response({ key: "THEME" }))],
     ["contract mismatch", () => Promise.resolve(response({
-      key: "THEME", value: "dark", source: "user", locked: false,
+      key: "THEME", value: "dark", source: "user", locked: false, namespace: "user",
     }))],
   ])("rolls back committed state after %s and allows retry", async (_name, fetchResult) => {
     configureAccount();
@@ -221,10 +222,26 @@ describe("ThemeCoordinator account state", () => {
     expect(dispatchHtmxTriggers).not.toHaveBeenCalled();
 
     vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValueOnce(response({
-      key: "THEME", value: "light", source: "user", locked: false,
+      key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
     }));
     expect(await coordinator.requestPreferenceChange("light")).toBe("committed");
     expect(dispatchHtmxTriggers).toHaveBeenCalledTimes(1);
+    coordinator.destroy();
+  });
+
+  it("rolls back when the response namespace is not user", async () => {
+    configureAccount();
+    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValueOnce(response({
+      key: "THEME", value: "light", source: "user", locked: false, namespace: "site",
+    }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const coordinator = new ThemeCoordinator();
+
+    expect(await coordinator.requestPreferenceChange("light")).toBe("rolled-back");
+    expect(window.toast).toHaveBeenCalledWith(
+      "Couldn't save your theme — please try again.",
+      "error",
+    );
     coordinator.destroy();
   });
 
@@ -240,7 +257,9 @@ describe("ThemeCoordinator account state", () => {
     const saving = coordinator.requestPreferenceChange("light");
     unsubscribe();
 
-    resolve(response({ key: "THEME", value: "light", source: "user", locked: false }));
+    resolve(response({
+      key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
+    }));
     expect(await saving).toBe("committed");
     const reconnected = vi.fn();
     coordinator.subscribe(reconnected);

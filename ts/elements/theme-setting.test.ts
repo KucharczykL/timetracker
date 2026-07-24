@@ -85,7 +85,9 @@ describe("<theme-setting>", () => {
     resolve({
       ok: true,
       status: 200,
-      json: async () => ({ key: "THEME", value: "light", source: "user", locked: false }),
+      json: async () => ({
+        key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
+      }),
     } as Response);
     await vi.waitFor(() => expect(select.disabled).toBe(false));
     expect(select.value).toBe("light");
@@ -99,7 +101,7 @@ describe("<theme-setting>", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          key: "THEME", value: "light", source: "user", locked: false,
+          key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
         }),
       } as Response);
       const setting = `<theme-setting><select><option value=""></option>
@@ -132,7 +134,7 @@ describe("<theme-setting>", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        key: "THEME", value: "system", source: "user", locked: false,
+        key: "THEME", value: "system", source: "user", locked: false, namespace: "user",
       }),
     } as Response);
     const setting = `<theme-setting><select><option value=""></option>
@@ -177,7 +179,9 @@ describe("<theme-setting>", () => {
     vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ key: "THEME", value: "system", source: "user", locked: false }),
+      json: async () => ({
+        key: "THEME", value: "system", source: "user", locked: false, namespace: "user",
+      }),
     } as Response);
     const { select } = mount();
 
