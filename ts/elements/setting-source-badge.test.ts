@@ -40,20 +40,25 @@ function mountBadges(): HTMLElement[] {
 beforeEach(() => document.body.replaceChildren());
 
 describe("resolved setting events", () => {
-  it("accepts only complete payloads with recognized sources", () => {
+  it("accepts only complete payloads with recognized sources and namespaces", () => {
     expect(parseResolvedSetting({
       key: "THEME",
       value: "dark",
       source: "user",
       locked: false,
-    })).toEqual({ key: "THEME", value: "dark", source: "user", locked: false });
+      namespace: "user",
+    })).toEqual({
+      key: "THEME", value: "dark", source: "user", locked: false, namespace: "user",
+    });
 
     for (const invalid of [
       null,
-      { key: "THEME", value: "dark", source: "mystery", locked: false },
-      { key: "THEME", value: { nested: true }, source: "user", locked: false },
-      { key: "", value: "dark", source: "user", locked: false },
-      { key: "THEME", value: "dark", source: "user" },
+      { key: "THEME", value: "dark", source: "mystery", locked: false, namespace: "user" },
+      { key: "THEME", value: { nested: true }, source: "user", locked: false, namespace: "user" },
+      { key: "", value: "dark", source: "user", locked: false, namespace: "user" },
+      { key: "THEME", value: "dark", source: "user", namespace: "user" },
+      { key: "THEME", value: "dark", source: "user", locked: false },
+      { key: "THEME", value: "dark", source: "user", locked: false, namespace: "planet" },
     ]) {
       expect(() => parseResolvedSetting(invalid)).toThrow("Invalid resolved setting");
     }
@@ -67,6 +72,7 @@ describe("resolved setting events", () => {
       value: "dark",
       source: "user",
       locked: false,
+      namespace: "user",
     });
 
     expect(theme.querySelector("[data-setting-source-label]")?.textContent).toBe(
