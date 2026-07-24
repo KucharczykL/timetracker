@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import date, datetime
-from typing import Any, List
+from typing import Any, List, NoReturn
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -570,7 +570,7 @@ def _setting_out(key: SettingKey, resolved, *, locked: bool | None = None) -> di
     }
 
 
-def _raise_400(error: Exception):
+def _raise_400(error: Exception) -> NoReturn:
     """400 with a clean message. ``str()`` of a Django ``ValidationError`` is its
     message-*list* repr, so unwrap via ``.messages``."""
     if isinstance(error, ValidationError):

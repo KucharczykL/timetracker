@@ -15,7 +15,7 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Final
+from typing import Callable, Final, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
@@ -146,7 +146,7 @@ def _require_existing_device(value: object) -> None:
         return
     from games.models import Device
 
-    if not Device.objects.filter(pk=value).exists():  # type: ignore[misc]
+    if not Device.objects.filter(pk=cast(int, value)).exists():
         raise ValidationError(f"No device with id {value!r}.")
 
 

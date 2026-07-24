@@ -478,7 +478,7 @@ def test_only_default_device_declares_a_write_validator():
 
 
 @pytest.mark.django_db
-def test_fallthrough_uncached_skip_db_uses_env_normalized(settings, monkeypatch):
+def test_fallthrough_uncached_skip_db_uses_env_normalized(monkeypatch):
     from timetracker.settings_resolver import resolve_fallthrough_uncached
 
     # env shadows DEFAULT_PAGE_SIZE with a string; must come back as a normalized int.

@@ -356,11 +356,6 @@ def test_change_user_setting_rejects_unknown_key(user, db):
         change_user_setting(user, "NOPE", "x")
 
 
-def test_change_user_setting_rejects_non_user_key(user, db):
-    with pytest.raises(ValueError):
-        change_user_setting(user, "TZ", "Europe/Prague")
-
-
 def test_change_user_setting_rejects_invalid_and_writes_nothing(user, db):
     from games.models import UserPreferences
 

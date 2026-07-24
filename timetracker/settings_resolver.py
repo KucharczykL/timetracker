@@ -222,8 +222,14 @@ def resolve_fallthrough_uncached(key: SettingKey, *, skip_db: bool) -> ResolvedS
         if stored is not None:
             try:
                 value = normalize_setting_value(stored, definition)
-            except ValidationError, ValueError, TypeError:
-                pass
+            except (ValidationError, ValueError, TypeError) as error:
+                logger.warning(
+                    "[settings_resolver]: invalid stored %s=%r in fall-through, "
+                    "using default: %s",
+                    key,
+                    stored,
+                    error,
+                )
             else:
                 return ResolvedSetting(value, SettingSource.DATABASE, False)
 
