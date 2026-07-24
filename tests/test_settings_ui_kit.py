@@ -156,6 +156,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             locked=True,
             reason="Change SECRET__FILE and restart.",
             id="env-file-source-tip",
+            namespace="user",
         )
         html = str(node)
         assert "Environment file" in html
@@ -185,16 +186,26 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             "default": "The built-in default, used because no higher-priority value is set.",
         }
         for source, description in descriptions.items():
-            html = str(SettingSourceBadge(source, id=f"{source}-source-tip"))
+            html = str(
+                SettingSourceBadge(source, id=f"{source}-source-tip", namespace="user")
+            )
             assert 'role="tooltip"' in html
             assert ">Source</dt>" in html
             assert str(escape(description)) in html
             assert ">Locked</dt>" not in html
 
     def test_non_default_source_badge_explains_highlight(self):
-        personal = str(SettingSourceBadge("user", id="personal-source-tip"))
-        default = str(SettingSourceBadge("default", id="default-source-tip"))
-        locked = str(SettingSourceBadge("env", locked=True, id="locked-source-tip"))
+        personal = str(
+            SettingSourceBadge("user", id="personal-source-tip", namespace="user")
+        )
+        default = str(
+            SettingSourceBadge("default", id="default-source-tip", namespace="user")
+        )
+        locked = str(
+            SettingSourceBadge(
+                "env", locked=True, id="locked-source-tip", namespace="user"
+            )
+        )
 
         assert "Non-default source (default source: “Default”)" in personal
         assert 'data-setting-source-status=""' in personal
@@ -202,7 +213,9 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "Non-default source" not in locked
 
     def test_default_source_is_neutral_and_overrides_use_brand_tone(self):
-        default = str(SettingSourceBadge("default", id="default-source-tip"))
+        default = str(
+            SettingSourceBadge("default", id="default-source-tip", namespace="user")
+        )
         default_badge = default.split('data-setting-origin="default"')[0].rsplit(
             "<span", 1
         )[1]
@@ -210,7 +223,9 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert "bg-brand-soft" not in default_badge
 
         for source in ("user", "database", "env", "env_file", "dotenv", "ini"):
-            override = str(SettingSourceBadge(source, id=f"{source}-source-tip"))
+            override = str(
+                SettingSourceBadge(source, id=f"{source}-source-tip", namespace="user")
+            )
             override_badge = override.split(f'data-setting-origin="{source}"')[
                 0
             ].rsplit("<span", 1)[1]
@@ -233,6 +248,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
                 states=states,
                 patch_url_template="/api/settings/site/__key__",
                 csrf="token",
+                namespace="site",
             )
         )
         assert form.fields["locked_value"].disabled is True
@@ -270,12 +286,14 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             states=state,
             patch_url_template="/api/settings/user/__key__",
             csrf="token",
+            namespace="user",
         )
         second = LiveSettingFields(
             KitForm(prefix="site"),
             states=state,
             patch_url_template="/api/settings/site/__key__",
             csrf="token",
+            namespace="site",
         )
         combined = Div()[first, second]
 
@@ -305,6 +323,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
                 patch_url_template="/api/settings/user/__key__",
                 csrf="token",
                 presentations={"destination": presentation},
+                namespace="user",
             )
         )
 
@@ -403,13 +422,14 @@ class LiveAndSecretComponentTest(SimpleTestCase):
             patch_url_template="/api/settings/user/__key__",
             csrf="csrf-token",
             groups=[FormFieldGroup("Profile", ("display_name",))],
+            namespace="user",
         )
         html = str(node)
         assert html.startswith("<live-setting-fields")
         assert 'patch-url-template="/api/settings/user/__key__"' in html
         assert 'csrf="csrf-token"' in html
         assert " event=" not in html
-        assert '<setting-source-badge key="DISPLAY_NAME">' in html
+        assert '<setting-source-badge key="DISPLAY_NAME" namespace="user">' in html
         assert 'data-settings-field-layout="1"' in html
         assert "w-full max-w-xl" in html
         assert "dist/elements/live-setting-fields.js" in collect_media(node).js
@@ -422,6 +442,7 @@ class LiveAndSecretComponentTest(SimpleTestCase):
                 states={},
                 patch_url_template="/api/settings/user",
                 csrf="token",
+                namespace="user",
             )
 
     def test_masked_secret_never_accepts_or_renders_a_secret_value(self):
