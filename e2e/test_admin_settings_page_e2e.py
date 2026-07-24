@@ -137,6 +137,7 @@ def test_text_select_and_clear_site_defaults(
         "value": "EUR",
         "source": "database",
         "locked": False,
+        "namespace": "site",
     }
     expect(currency).to_have_value("EUR")
     currency_badge = _source_badge(page, "DEFAULT_CURRENCY")
@@ -167,6 +168,7 @@ def test_text_select_and_clear_site_defaults(
         "value": "CZK",
         "source": "default",
         "locked": False,
+        "namespace": "site",
     }
     expect(currency).to_have_value("CZK")
     expect(currency_badge).to_have_attribute("data-setting-origin", "default")
@@ -225,3 +227,36 @@ def test_configuration_locked_field_shows_owner_and_explanation(
             exact=True,
         )
     ).to_be_visible()
+
+
+def test_site_page_ignores_a_synthetic_user_namespace_event(
+    live_server,
+    superuser_page: Page,
+):
+    """A same-key event from the OTHER namespace must not update this page's
+    badge — issue #488's core acceptance criterion, exercised in the
+    direction real traffic can't reach today (no page hosts both
+    namespaces), so the cross-namespace event is injected synthetically."""
+    page = superuser_page
+    page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
+    _wait_for_live_settings(page)
+
+    badge = _source_badge(page, "DEFAULT_CURRENCY")
+    before = badge.get_attribute("data-setting-origin")
+
+    page.evaluate(
+        """() => {
+            document.body.dispatchEvent(new CustomEvent("setting-committed", {
+                detail: {
+                    key: "DEFAULT_CURRENCY",
+                    value: "USD",
+                    source: "user",
+                    locked: false,
+                    namespace: "user",
+                },
+                bubbles: true,
+            }));
+        }"""
+    )
+
+    expect(badge).to_have_attribute("data-setting-origin", before)
