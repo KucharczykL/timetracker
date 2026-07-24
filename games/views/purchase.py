@@ -271,12 +271,7 @@ def _pricing_controls() -> Node:
 
 
 @transaction.atomic
-def _create_separate_purchases(
-    form: PurchaseForm,
-    post,
-    *,
-    default_currency: str,
-) -> None:
+def _create_separate_purchases(form: PurchaseForm, post) -> None:
     """Create one single-game Purchase per selected game from the shared form
     fields, each priced from its own ``price_for_game_<id>`` input. The
     ``m2m_changed`` signal sets ``num_purchases``/``price_per_game`` once each
@@ -287,7 +282,7 @@ def _create_separate_purchases(
         "date_purchased": data["date_purchased"],
         "date_refunded": data.get("date_refunded"),
         "infinite": data.get("infinite", False),
-        "price_currency": data["price_currency"] or default_currency,
+        "price_currency": data["price_currency"],
         "ownership_type": data["ownership_type"],
         "type": data["type"],
         "related_game": data.get("related_game"),
@@ -320,14 +315,8 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         )
         if form.is_valid():
             if request.POST.get("pricing_mode") == "per_game":
-                _create_separate_purchases(
-                    form,
-                    request.POST,
-                    default_currency=default_currency,
-                )
+                _create_separate_purchases(form, request.POST)
                 return redirect("games:list_purchases")
-            if not form.cleaned_data["price_currency"]:
-                form.instance.price_currency = default_currency
             purchase = form.save()
             if "submit_and_redirect" in request.POST:
                 return HttpResponseRedirect(
@@ -387,8 +376,6 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         default_currency=default_currency,
     )
     if form.is_valid():
-        if not form.cleaned_data["price_currency"]:
-            form.instance.price_currency = default_currency
         form.save()
         return redirect("games:list_sessions")
     return render_page(
