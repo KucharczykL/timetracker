@@ -146,7 +146,7 @@ def _require_existing_device(value: object) -> None:
         return
     from games.models import Device
 
-    if not Device.objects.filter(pk=value).exists():
+    if not Device.objects.filter(pk=value).exists():  # type: ignore[misc]
         raise ValidationError(f"No device with id {value!r}.")
 
 

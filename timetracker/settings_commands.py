@@ -120,7 +120,7 @@ def change_user_setting(
     from games.models import USER_PREFERENCE_FIELD_BY_KEY, UserPreferences
 
     with transaction.atomic():
-        row = UserPreferences.objects.filter(user=user).first()  # non-creating read
+        row = UserPreferences.objects.filter(user=user).first()  # type: ignore[misc]  # non-creating read
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
         if row is None:
             stored_present, stored_raw = False, None
