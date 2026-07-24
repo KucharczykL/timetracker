@@ -99,6 +99,7 @@ function snapshotsEqual(left: ControlSnapshot, right: ControlSnapshot): boolean 
 class LiveSettingFieldsElement extends HTMLElement {
   private patchUrlTemplate = "";
   private csrf = "";
+  private namespace = "";
   private committed = new Map<SettingControl, ControlSnapshot>();
   private pending = new Map<SettingControl, PendingSave>();
 
@@ -106,6 +107,7 @@ class LiveSettingFieldsElement extends HTMLElement {
     const props = readLiveSettingFieldsProps(this);
     this.patchUrlTemplate = props.patchUrlTemplate;
     this.csrf = props.csrf;
+    this.namespace = props.namespace;
     this.querySelectorAll<HTMLElement>("[data-live-setting-control]").forEach((candidate) => {
       if (isSettingControl(candidate)) this.committed.set(candidate, snapshot(candidate));
     });
@@ -191,6 +193,9 @@ class LiveSettingFieldsElement extends HTMLElement {
       if (!response.ok) throw new Error(`PATCH ${url} → ${response.status}`);
       const resolved = parseResolvedSetting(await response.json());
       if (resolved.key !== key) throw new Error(`PATCH ${url} returned ${resolved.key}`);
+      if (resolved.namespace !== this.namespace) {
+        throw new Error(`PATCH ${url} returned namespace ${resolved.namespace}`);
+      }
       if (this.pending.get(control) !== pending) return;
       const committedState = resolvedSnapshot(control, attempt, resolved);
       this.committed.set(control, committedState);

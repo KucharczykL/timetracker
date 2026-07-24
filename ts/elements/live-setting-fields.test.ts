@@ -13,13 +13,13 @@ import "./setting-source-badge.js";
 function mountFields(): HTMLElement {
   document.body.innerHTML = `
     <live-setting-fields patch-url-template="/api/settings/user/__key__"
-        csrf="token">
+        csrf="token" namespace="user">
       <input data-setting-key="ENABLED" data-live-setting-control name="enabled" type="checkbox">
       <select data-setting-key="DESTINATION" data-live-setting-control name="destination">
         <option value="">Unset</option><option value="stats">Statistics</option>
         <option value="sessions">Sessions</option>
       </select>
-      <setting-source-badge key="DESTINATION"><pop-over>
+      <setting-source-badge key="DESTINATION" namespace="user"><pop-over>
         <button data-pop-over-trigger aria-label="Default source">
           <span data-setting-origin="default"
               class="bg-neutral-quaternary text-heading"><span
@@ -111,6 +111,7 @@ describe("<live-setting-fields>", () => {
       value: "After",
       source: "user",
       locked: false,
+      namespace: "user",
     };
     const fetchStub = vi.fn().mockResolvedValue({
       ok: true,
@@ -170,6 +171,32 @@ describe("<live-setting-fields>", () => {
     );
   });
 
+  it("throws when the response namespace does not match its own", async () => {
+    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key: "NAME",
+        value: "After",
+        source: "user",
+        locked: false,
+        namespace: "site",
+      }),
+    } as Response);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mountFields();
+    const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
+    input.value = "After";
+
+    change(input);
+
+    await vi.waitFor(() => expect(input.value).toBe("Before"));
+    expect(window.toast).toHaveBeenCalledWith(
+      "Couldn't save your change — please try again.",
+      "error",
+    );
+  });
+
   it("updates source metadata from each resolved PATCH response", async () => {
     const fetchStub = vi
       .fn()
@@ -181,6 +208,7 @@ describe("<live-setting-fields>", () => {
           value: "stats",
           source: "user",
           locked: false,
+          namespace: "user",
         }),
       } as Response)
       .mockResolvedValueOnce({
@@ -191,6 +219,7 @@ describe("<live-setting-fields>", () => {
           value: "sessions",
           source: "database",
           locked: false,
+          namespace: "user",
         }),
       } as Response)
       .mockResolvedValueOnce({
@@ -201,6 +230,7 @@ describe("<live-setting-fields>", () => {
           value: "stats",
           source: "default",
           locked: false,
+          namespace: "user",
         }),
       } as Response);
     window.fetchWithHtmxTriggers = fetchStub;
@@ -259,6 +289,7 @@ describe("<live-setting-fields>", () => {
         value: "EUR",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     const host = mountFields();
@@ -280,6 +311,7 @@ describe("<live-setting-fields>", () => {
         value: "CZK",
         source: "database",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     const host = mountFields();
@@ -301,6 +333,7 @@ describe("<live-setting-fields>", () => {
         value: "sessions",
         source: "database",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     const host = mountFields();
@@ -322,6 +355,7 @@ describe("<live-setting-fields>", () => {
         value: "Pacific/Kiritimati",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     const host = mountFields();
@@ -344,6 +378,7 @@ describe("<live-setting-fields>", () => {
         value: "mdy_12h",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     const host = mountFields();
@@ -402,6 +437,7 @@ describe("<live-setting-fields>", () => {
         value: "SUBMITTED",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
 
@@ -456,6 +492,7 @@ describe("<live-setting-fields>", () => {
         value: "FIRST",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
@@ -473,6 +510,7 @@ describe("<live-setting-fields>", () => {
         value: "Latest",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
@@ -510,6 +548,7 @@ describe("<live-setting-fields>", () => {
         value: "Newer value",
         source: "user",
         locked: false,
+        namespace: "user",
       }),
     } as Response);
     await vi.waitFor(() => expect(input.hasAttribute("aria-busy")).toBe(false));
@@ -548,7 +587,7 @@ describe("<live-setting-fields>", () => {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => ({ key, value, source: "user", locked: false }),
+        json: async () => ({ key, value, source: "user", locked: false, namespace: "user" }),
       } as Response);
     });
     window.fetchWithHtmxTriggers = fetchStub;
