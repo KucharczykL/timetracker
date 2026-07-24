@@ -48,6 +48,13 @@
   navbar Menu; configured higher-priority sources stay disabled with their
   owner shown, and boot-only infrastructure `TZ` remains outside the page
   (#390).
+* Add a read-only Infrastructure section to the Admin settings page. All eight
+  `INFRA`-scoped settings (`TZ`, `DEBUG`, `SECRET_KEY`, `APP_URL`,
+  `DEV_LOGIN_PREFILL`, `ALLOWED_HOSTS`, `DATA_DIR`, `HASHED_STATIC`) are now
+  visible to superusers with their resolved value and source. `SECRET_KEY` shows
+  only presence (`••••••••`) or absence — the real secret never reaches the HTML.
+  To change any infrastructure setting, update the environment or config file
+  and restart the process (#391).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously

@@ -163,6 +163,7 @@ from common.components.primitives import (
 from common.components.settings_kit import (
     LiveSettingFields,
     MaskedSecretField,
+    ReadonlySettingField,
     SettingFieldState,
     SettingSourceBadge,
     SettingsFieldColumns,
@@ -275,6 +276,7 @@ __all__ = [
     "Radio",
     "LiveSettingFields",
     "MaskedSecretField",
+    "ReadonlySettingField",
     "SettingFieldState",
     "SettingSourceBadge",
     "SettingsFieldColumns",

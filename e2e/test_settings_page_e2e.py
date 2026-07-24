@@ -11,6 +11,70 @@ from games.models import Device, Game
 
 
 @pytest.fixture
+def superuser_page(live_server, page: Page, django_user_model) -> Page:
+    django_user_model.objects.create_superuser(
+        username="infra-admin", password="secret123"
+    )
+    page.goto(f"{live_server.url}{reverse('login')}")
+    page.get_by_label("Username").fill("infra-admin")
+    page.get_by_label("Password").fill("secret123")
+    page.get_by_role("button", name="Login", exact=True).click()
+    page.wait_for_url(f"{live_server.url}/tracker**")
+    return page
+
+
+_INFRA_KEYS = (
+    "TZ",
+    "DEBUG",
+    "SECRET_KEY",
+    "APP_URL",
+    "DEV_LOGIN_PREFILL",
+    "ALLOWED_HOSTS",
+    "DATA_DIR",
+    "HASHED_STATIC",
+)
+
+
+@pytest.mark.parametrize(
+    ("viewport", "mobile"),
+    [
+        ({"width": 390, "height": 844}, True),
+        ({"width": 1280, "height": 900}, False),
+    ],
+)
+def test_superuser_sees_infrastructure_section_on_admin_settings(
+    live_server,
+    superuser_page: Page,
+    viewport,
+    mobile,
+):
+    page = superuser_page
+    page.set_viewport_size(viewport)
+    page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
+    page.wait_for_load_state("load")
+
+    expect(
+        page.get_by_role("heading", name="Infrastructure", exact=True)
+    ).to_be_visible()
+
+    section_trigger = page.locator("[data-section-nav-trigger]")
+    section_rail = page.locator("[data-section-nav-rail]")
+    if mobile:
+        expect(section_trigger).to_be_visible()
+        expect(section_rail).to_be_hidden()
+    else:
+        expect(section_trigger).to_be_hidden()
+        expect(section_rail).to_be_visible()
+
+    for key in _INFRA_KEYS:
+        expect(page.get_by_text(key, exact=True).first).to_be_visible()
+
+    source_badges = page.locator("[data-setting-origin]")
+    infra_badge_count = source_badges.count()
+    assert infra_badge_count >= len(_INFRA_KEYS)
+
+
+@pytest.fixture
 def authenticated_page(
     live_server, page: Page, django_user_model
 ) -> tuple[Page, Device]:

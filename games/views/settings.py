@@ -13,8 +13,11 @@ from common.components import (
     Div,
     FormFieldPresentation,
     LiveSettingFields,
+    Node,
     PageHeading,
+    ReadonlySettingField,
     SettingFieldState,
+    SettingsFieldLayout,
     SettingsScaffold,
     SettingsSection,
     ThemeSetting,
@@ -31,7 +34,9 @@ from timetracker.settings_registry import (
     FORMAT_LOCALE_CHOICES,
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
+    SETTINGS_REGISTRY,
     THEME_CHOICES,
+    SettingScope,
     get_definition,
 )
 from timetracker.settings_resolver import (
@@ -323,6 +328,29 @@ def user_settings(request: HttpRequest) -> HttpResponse:
     return render_page(request, content, title="Settings", is_settings_page=True)
 
 
+def _infra_fields() -> list[Node]:
+    """Build one ReadonlySettingField per INFRA setting, in registry order."""
+    rows: list[Node] = []
+    for definition in SETTINGS_REGISTRY.values():
+        if definition.scope is not SettingScope.INFRA:
+            continue
+        resolved = resolve_with_origin(definition.key)
+        rows.append(
+            ReadonlySettingField(
+                name=definition.env_name or definition.key,
+                value="" if definition.secret else str(resolved.value),
+                source=str(resolved.source),
+                namespace=SettingNamespace.SITE,
+                setting_key=definition.key,
+                locked=resolved.locked,
+                help_text=definition.help_text,
+                note=definition.note,
+                secret_present=bool(resolved.value) if definition.secret else None,
+            )
+        )
+    return rows
+
+
 @login_required
 def admin_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
@@ -359,7 +387,16 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
                 namespace=SettingNamespace.SITE,
             ),
             "Defaults inherited by users who have not saved personal overrides.",
-        )
+        ),
+        SettingsSection(
+            "infrastructure",
+            "Infrastructure",
+            SettingsFieldLayout(1)[*_infra_fields()],
+            (
+                "Deployment and security configuration, resolved read-only. "
+                "Change via env / settings.ini and restart."
+            ),
+        ),
     ]
     content = Div(class_="flex flex-col")[
         ContentContainer(class_="mb-6 flex flex-col gap-2")[

@@ -461,3 +461,85 @@ def test_anonymous_navbar_omits_all_account_actions(db):
     html = Client().get(reverse("login")).content.decode()
 
     assert _navbar_account_actions(html) == {}
+
+
+INFRA_SETTING_KEYS = (
+    "TZ",
+    "DEBUG",
+    "SECRET_KEY",
+    "APP_URL",
+    "DEV_LOGIN_PREFILL",
+    "ALLOWED_HOSTS",
+    "DATA_DIR",
+    "HASHED_STATIC",
+)
+
+
+def test_admin_settings_page_renders_infrastructure_section(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    assert "Infrastructure" in html
+    assert "Deployment and security configuration, resolved read-only." in html
+    for key in INFRA_SETTING_KEYS:
+        assert key in html, f"Expected infra key {key!r} in page HTML"
+
+
+def test_admin_settings_infra_section_shows_source_badge_for_each_key(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    for key in INFRA_SETTING_KEYS:
+        assert f'key="{key}" namespace="site"' in html, (
+            f"Expected source badge for infra key {key!r}"
+        )
+        assert "data-setting-origin=" in html
+
+
+def test_admin_settings_infra_section_does_not_leak_secret_key(
+    db,
+    clean_site_setting_sources,
+    settings,
+):
+    """The real SECRET_KEY value must never appear in the page HTML.
+
+    The secret is planted before login so Django's HMAC-signed session cookies
+    stay consistent with the key in use during the request.
+    """
+    planted_secret = "planted-secret-key-xyzzy-must-not-appear-in-html"
+    settings.SECRET_KEY = planted_secret
+    superuser = get_user_model().objects.create_superuser(
+        username="secret-test-admin", password="pw"
+    )
+    client = Client()
+    client.force_login(superuser)
+
+    html = client.get(reverse("games:admin_settings")).content.decode()
+
+    assert "Infrastructure" in html
+    assert planted_secret not in html
+    assert "SECRET_KEY" in html
+    assert "••••••••" in html
+
+
+def test_non_superuser_still_gets_403_after_infra_section_added(normal_client):
+    response = normal_client.get(reverse("games:admin_settings"))
+
+    assert response.status_code == 403
+
+
+def test_infra_settings_keys_appear_after_site_settings_keys(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    last_site_key_pos = max(html.index(key) for key in SITE_SETTING_KEYS if key in html)
+    first_infra_key_pos = min(
+        html.index(key) for key in INFRA_SETTING_KEYS if key in html
+    )
+    assert last_site_key_pos < first_infra_key_pos
