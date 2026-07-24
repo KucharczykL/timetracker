@@ -441,3 +441,28 @@ def test_only_default_device_declares_a_write_validator():
         if definition.write_validator is not None
     ]
     assert with_validator == ["DEFAULT_DEVICE"]
+
+
+@pytest.mark.django_db
+def test_fallthrough_uncached_skip_db_uses_env_normalized(settings, monkeypatch):
+    from timetracker.settings_resolver import resolve_fallthrough_uncached
+
+    # env shadows DEFAULT_PAGE_SIZE with a string; must come back as a normalized int.
+    monkeypatch.setenv("DEFAULT_PAGE_SIZE", "100")
+    config_module._env_file_cache = None  # env is read live; no file cache interference
+    resolved = resolve_fallthrough_uncached("DEFAULT_PAGE_SIZE", skip_db=True)
+    assert resolved.value == 100
+    assert resolved.source == SettingSource.ENV
+    assert resolved.locked is True
+
+
+@pytest.mark.django_db
+def test_fallthrough_uncached_degrades_malformed_locked_env_to_default(monkeypatch):
+    from timetracker.settings_resolver import resolve_fallthrough_uncached
+    from timetracker.settings_registry import get_definition
+
+    monkeypatch.setenv("DEFAULT_PAGE_SIZE", "not-a-number")
+    resolved = resolve_fallthrough_uncached("DEFAULT_PAGE_SIZE", skip_db=True)
+    assert resolved.value == get_definition("DEFAULT_PAGE_SIZE").default_factory()
+    assert resolved.source == SettingSource.DEFAULT
+    assert resolved.locked is False

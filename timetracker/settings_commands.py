@@ -1,6 +1,7 @@
 """Validated mutation boundary for runtime-editable site settings."""
 
-from typing import cast
+from enum import StrEnum
+from typing import NamedTuple, cast
 
 from django.core.exceptions import ValidationError
 
@@ -18,6 +19,19 @@ from timetracker.settings_resolver import (
     normalize_setting_value,
     resolve_with_origin,
 )
+
+
+class SettingOperation(StrEnum):
+    SET = "set"
+    CLEAR = "clear"
+
+
+class SettingMutation(NamedTuple):
+    effective: ResolvedSetting
+    operation: SettingOperation
+    changed: bool
+    stored: object | None
+    stored_present: bool
 
 
 class SettingLockedError(Exception):
@@ -71,5 +85,7 @@ def change_site_setting(
 
 __all__ = [
     "SettingLockedError",
+    "SettingMutation",
+    "SettingOperation",
     "change_site_setting",
 ]

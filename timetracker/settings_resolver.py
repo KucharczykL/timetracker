@@ -193,6 +193,44 @@ def resolve_with_origin(key: SettingKey) -> ResolvedSetting:
     return ResolvedSetting(definition.default_factory(), SettingSource.DEFAULT, False)
 
 
+def resolve_fallthrough_uncached(key: SettingKey, *, skip_db: bool) -> ResolvedSetting:
+    """Resolve ``key`` ignoring the personal layer and (when ``skip_db``) the site DB
+    layer, WITHOUT populating the module snapshot cache. Best-effort: a malformed value
+    in a consulted layer degrades to the default rather than raising.
+
+    The command layer uses this to compute post-CLEAR effective state — it must not
+    read back the just-deleted layer, and must not leak an outer transaction's
+    uncommitted site row into the shared cache (issue #487)."""
+    definition = get_definition(key)
+    raw = resolve_raw_with_source(
+        definition.env_name or definition.key, allow_file=definition.allow_file
+    )
+    if raw is not None:
+        try:
+            value = normalize_setting_value(raw.raw, definition)
+        except ValidationError, ValueError, TypeError:
+            return ResolvedSetting(
+                definition.default_factory(), SettingSource.DEFAULT, False
+            )
+        return ResolvedSetting(value, raw.source, raw.source in LOCKED_SOURCES)
+
+    if not skip_db and definition.scope in (SettingScope.SITE, SettingScope.USER):
+        from games.models import SiteSetting
+
+        stored = (
+            SiteSetting.objects.filter(key=key).values_list("value", flat=True).first()
+        )
+        if stored is not None:
+            try:
+                value = normalize_setting_value(stored, definition)
+            except ValidationError, ValueError, TypeError:
+                pass
+            else:
+                return ResolvedSetting(value, SettingSource.DATABASE, False)
+
+    return ResolvedSetting(definition.default_factory(), SettingSource.DEFAULT, False)
+
+
 def resolve(key: SettingKey) -> object:
     """Resolved value of ``key`` (drops the origin)."""
     return resolve_with_origin(key).value
@@ -284,6 +322,7 @@ __all__ = [
     "clear_cache",
     "normalize_setting_value",
     "resolve",
+    "resolve_fallthrough_uncached",
     "resolve_for_user",
     "resolve_for_user_with_origin",
     "resolve_str",
