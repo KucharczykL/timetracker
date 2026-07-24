@@ -12,7 +12,9 @@ import common.criteria
 from common.date_time_presentation import DateTimePresentationConfig
 from common.components.custom_elements import render_props_module
 from common.components.ts_codegen import (
+    ChoiceVocab,
     TsConstant,
+    render_choice_vocabularies,
     render_choice_vocabulary,
     render_filter_metadata_module,
 )
@@ -23,6 +25,7 @@ from common.criteria import (
     Modifier,
     ModifierToken,
 )
+from timetracker.config import SETTING_SOURCE_CHOICES
 from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
 
@@ -62,11 +65,21 @@ class Command(BaseCommand):
                 labels_name="THEME_LABELS",
                 choices=THEME_CHOICES,
             ),
-            output_dir / "settings-vocabulary.ts": render_choice_vocabulary(
-                type_name="SettingNamespace",
-                values_name="SETTING_NAMESPACES",
-                labels_name="SETTING_NAMESPACE_LABELS",
-                choices=SETTING_NAMESPACE_CHOICES,
+            output_dir / "settings-vocabulary.ts": render_choice_vocabularies(
+                [
+                    ChoiceVocab(
+                        type_name="SettingNamespace",
+                        values_name="SETTING_NAMESPACES",
+                        labels_name="SETTING_NAMESPACE_LABELS",
+                        choices=SETTING_NAMESPACE_CHOICES,
+                    ),
+                    ChoiceVocab(
+                        type_name="SettingSource",
+                        values_name="SETTING_SOURCES",
+                        labels_name="SETTING_SOURCE_LABELS",
+                        choices=SETTING_SOURCE_CHOICES,
+                    ),
+                ]
             ),
             output_dir / "date-time-presentation.ts": render_filter_metadata_module(
                 [DateTimePresentationConfig]

@@ -1,22 +1,14 @@
 import {
   SETTING_NAMESPACES,
+  SETTING_SOURCES,
   type SettingNamespace,
+  type SettingSource,
 } from "./generated/settings-vocabulary.js";
 
-export type { SettingNamespace };
+export type { SettingNamespace, SettingSource };
+export { SETTING_SOURCES };
 
 export type SettingValue = string | number | boolean | null;
-
-export const SETTING_SOURCES = [
-  "user",
-  "env_file",
-  "env",
-  "dotenv",
-  "ini",
-  "database",
-  "default",
-] as const;
-export type SettingSource = typeof SETTING_SOURCES[number];
 
 /**
  * A committed setting's full resolved state. Two axes commonly get confused
