@@ -33,8 +33,8 @@ function mountDisabledControl(): {
   const host = document.createElement("pop-over");
   host.setAttribute("tap", "true");
   host.innerHTML = `
-    <span data-pop-over-trigger tabindex="0" aria-describedby="pid">
-      <button type="button" data-pop-over-control disabled>word</button>
+    <span data-pop-over-trigger role="button" aria-disabled="true" tabindex="0" aria-describedby="pid">
+      <button type="button" data-pop-over-control disabled aria-hidden="true" class="pointer-events-none">word</button>
     </span>
     <div data-pop-over-panel id="pid" role="tooltip" hidden>why unavailable<div data-pop-over-arrow></div></div>`;
   document.body.appendChild(host);
@@ -175,6 +175,18 @@ describe("<pop-over> tap mode (touch)", () => {
     trigger.dispatchEvent(pointer("pointerdown", "touch"));
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(panel.hidden).toBe(true);
+  });
+
+  it("explains a disabled control on a touch tap via its wrapper trigger", () => {
+    const { panel, trigger } = mountDisabledControl();
+    // Browsers never dispatch `click` on a disabled button, so the button
+    // carries `pointer-events-none` and the wrapper span is the tap target —
+    // the same sequence a real tap produces on the wrapper.
+    trigger.dispatchEvent(pointer("pointerdown", "touch"));
+    trigger.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(panel.hidden).toBe(true); // focusin must NOT open on a touch tap
+    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.hidden).toBe(false);
   });
 
   it("keeps mouse hover working and does not close on a mouse click", () => {

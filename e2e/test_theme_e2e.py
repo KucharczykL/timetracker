@@ -202,7 +202,7 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("light")
     expect(toggle).to_be_disabled()
-    expect(toggle).to_have_attribute(
+    expect(tooltip_surface).to_have_attribute(
         "aria-label", "Theme switching is unavailable on settings pages."
     )
     expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
@@ -305,12 +305,13 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     theme = page.locator('select[name="theme"]')
     source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
     toggle = page.locator("theme-toggle [data-pop-over-control]")
+    tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("")
     expect(source).to_have_attribute("data-setting-origin", "database")
     expect(page.locator("html")).to_have_class("dark")
     expect(toggle).to_be_disabled()
-    expect(toggle).to_have_attribute(
+    expect(tooltip_surface).to_have_attribute(
         "aria-label", "Theme switching is unavailable on settings pages."
     )
     page.route(

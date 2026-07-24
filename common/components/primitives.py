@@ -345,15 +345,23 @@ def _popover_html(
         control_attributes = [
             ("type", "button"),
             ("data-pop-over-control", ""),
-            ("aria-describedby", id),
             ("class", button_classes),
         ]
-        if trigger_label:
-            control_attributes.append(("aria-label", trigger_label))
         if trigger_disabled:
+            # The wrapper span is the interaction and accessibility surface for
+            # the whole disabled control. Browsers never dispatch `click` on a
+            # disabled button, which would kill the tap-to-open path, so
+            # `pointer-events-none` makes taps hit the wrapper instead; the
+            # button is also aria-hidden (its label/description live on the
+            # wrapper, and a role-less span may not carry an accessible name,
+            # hence role="button" + aria-disabled).
             control_attributes.append(("disabled", "disabled"))
+            control_attributes.append(("aria-hidden", "true"))
+            control_attributes.append(("class", "pointer-events-none"))
             wrapper_attributes: list[HTMLAttribute] = [
                 ("data-pop-over-trigger", ""),
+                ("role", "button"),
+                ("aria-disabled", "true"),
                 ("tabindex", "0"),
                 ("aria-describedby", id),
                 (
@@ -369,6 +377,9 @@ def _popover_html(
                 Button(control_attributes)[*trigger_children]
             ]
         else:
+            control_attributes.append(("aria-describedby", id))
+            if trigger_label:
+                control_attributes.append(("aria-label", trigger_label))
             control_attributes.append(("data-pop-over-trigger", ""))
             trigger = Button(control_attributes)[*trigger_children]
     else:

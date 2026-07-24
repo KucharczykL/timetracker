@@ -110,13 +110,22 @@ def test_theme_toggle_renders_permanent_disabled_state_on_the_real_button():
 
     assert 'disabled="true"' in markup.split(">", 1)[0]
     assert 'disabled="disabled"' in button
-    assert 'aria-label="Theme switching is unavailable on settings pages."' in button
+    # The wrapper span is the sole accessibility/interaction surface: the
+    # native disabled button swallows click events and cannot carry the
+    # tooltip contract, so it is hidden from assistive tech and taps pass
+    # through it to the wrapper.
+    assert 'aria-hidden="true"' in button
+    assert "pointer-events-none" in button
+    assert "aria-label" not in button
+    assert "aria-describedby" not in button
     assert "data-pop-over-trigger" not in button
     interaction_surface = re.search(
         r"<span\b[^>]*\bdata-pop-over-trigger\b[^>]*>",
         markup,
     )
     assert interaction_surface is not None
+    assert 'role="button"' in interaction_surface.group()
+    assert 'aria-disabled="true"' in interaction_surface.group()
     assert 'tabindex="0"' in interaction_surface.group()
     assert 'aria-describedby="theme-tip-' in interaction_surface.group()
     assert (

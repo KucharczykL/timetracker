@@ -92,9 +92,14 @@ def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
 
     assert 'disabled="true"' in toggle_markup.split(">", 1)[0]
     assert 'disabled="disabled"' in toggle_button.group()
+    assert "aria-label" not in toggle_button.group()
+    interaction_surface = re.search(
+        r"<span\b[^>]*\bdata-pop-over-trigger\b[^>]*>", toggle_markup
+    )
+    assert interaction_surface is not None
     assert (
         'aria-label="Theme switching is unavailable on settings pages."'
-        in toggle_button.group()
+        in interaction_surface.group()
     )
     assert "disabled:opacity-50" in toggle_button.group()
     theme_select = html[
