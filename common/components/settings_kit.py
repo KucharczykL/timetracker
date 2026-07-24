@@ -522,10 +522,14 @@ def ReadonlySettingField(
     slot blank. When set, ``value`` is ignored — the real secret is never a
     parameter and can never reach the DOM.
     """
+    # A per-setting id: without it the badge's Popover derives its DOM id from
+    # its content, so two rows with the same source/locked/reason (e.g. several
+    # env-locked settings) would collide and fail assert_unique_element_ids.
     badge = SettingSourceBadge(
         source,
         locked=locked,
         reason=reason,
+        id=f"readonly-{namespace}-{setting_key}-setting-source-tooltip",
         setting_key=setting_key,
         namespace=namespace,
     )

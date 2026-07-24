@@ -563,3 +563,20 @@ class ReadonlySettingFieldTest(SimpleTestCase):
         assert "<input" not in html
         assert "<select" not in html
         assert "<textarea" not in html
+
+    def test_same_source_rows_have_unique_element_ids(self):
+        """Two settings resolving to the same source/locked/reason render
+        byte-identical badges; their tooltip ids must stay unique per setting or
+        the document fails assert_unique_element_ids (prod env-locked collision).
+        """
+        from common.components import Fragment
+        from common.components.core import assert_unique_element_ids
+
+        document = Fragment(
+            self._make(name="DEBUG", setting_key="DEBUG", source="env", locked=True),
+            self._make(
+                name="DATA_DIR", setting_key="DATA_DIR", source="env", locked=True
+            ),
+        )
+        # Raises ValueError on a duplicate id; no assertion form needed.
+        assert_unique_element_ids(document)

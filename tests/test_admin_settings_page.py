@@ -17,6 +17,8 @@ from timetracker.settings_registry import (
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
     THEME_CHOICES,
+    SettingScope,
+    get_definition,
 )
 
 SITE_SETTING_KEYS = (
@@ -543,3 +545,31 @@ def test_infra_settings_keys_appear_after_site_settings_keys(
         html.index(key) for key in INFRA_SETTING_KEYS if key in html
     )
     assert last_site_key_pos < first_infra_key_pos
+
+
+def test_admin_settings_renders_when_infra_settings_share_a_source(
+    superuser_client,
+    clean_site_setting_sources,
+    monkeypatch,
+):
+    """Regression: several infra settings resolving to the SAME source/locked
+    produce byte-identical source badges. Their tooltip Popover ids must stay
+    unique per setting, or the whole document fails assert_unique_element_ids
+    and the page 500s (seen with real prod data — env-locked DEBUG/DATA_DIR/…).
+    """
+    from games.views import settings as settings_view
+
+    original_resolve = settings_view.resolve_with_origin
+
+    def force_infra_env_locked(key):
+        resolved = original_resolve(key)
+        if get_definition(key).scope is SettingScope.INFRA:
+            return ResolvedSetting(resolved.value, SettingSource.ENV, True)
+        return resolved
+
+    monkeypatch.setattr(settings_view, "resolve_with_origin", force_infra_env_locked)
+
+    response = superuser_client.get(reverse("games:admin_settings"))
+
+    assert response.status_code == 200
+    assert "Infrastructure" in response.content.decode()
