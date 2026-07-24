@@ -1,4 +1,4 @@
-# Issue 471: Temporal Session-Row Parity Implementation Plan
+# Temporal Session-Row Parity Implementation Plan
 
 **Goal:** After a session PATCH, rebuild changed cells with the exact date/time presentation Django used for the initial row, even when the browser and server use different timezones.
 
