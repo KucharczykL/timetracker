@@ -18,7 +18,7 @@
 - Backend-pure: no TypeScript / HTTP-response-shape changes in this issue. `_setting_out` output stays byte-identical.
 - Commit style: end messages with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
-**Spec:** `docs/superpowers/specs/2026-07-24-issue-487-settings-command-layer-design.md` (read it first).
+**Spec:** design doc verified against shipped code post-merge (matched faithfully) and removed; see `timetracker/settings_commands.py` and `timetracker/settings_resolver.py` for the authoritative contract.
 
 ---
 
