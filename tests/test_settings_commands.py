@@ -174,6 +174,7 @@ def test_site_setting_backend_contract_matrix(
         "value": canonical_value,
         "source": "database",
         "locked": False,
+        "namespace": "site",
     }
     assert SiteSetting.objects.get(key=case.key).value == canonical_value
     assert resolve_with_origin(case.key) == ResolvedSetting(
@@ -209,6 +210,7 @@ def test_site_setting_backend_contract_matrix(
         "value": fallback,
         "source": "default",
         "locked": False,
+        "namespace": "site",
     }
     assert not SiteSetting.objects.filter(key=case.key).exists()
     assert resolve_with_origin(case.key) == ResolvedSetting(
@@ -447,6 +449,7 @@ def test_site_endpoint_returns_command_result_without_resolver_readback(
         "value": "EUR",
         "source": "database",
         "locked": False,
+        "namespace": "site",
     }
     assert command_calls == [("DEFAULT_CURRENCY", "eur")]
 
