@@ -132,6 +132,7 @@ def test_user_patch_and_get_round_trip(auth_client, no_currency_env):
         "value": "EUR",
         "source": "user",
         "locked": False,
+        "namespace": "user",
     }
     body = auth_client.get(_user_url()).json()
     currency = _currency(body)
@@ -175,6 +176,7 @@ def test_user_null_clears_back_to_fallback(auth_client, no_currency_env):
         "value": "USD",
         "source": "database",
         "locked": False,
+        "namespace": "user",
     }
     preferences = UserPreferences.objects.get(user__username="tester")
     assert preferences.default_currency is None
@@ -284,12 +286,14 @@ def test_user_datetime_format_patch_and_clear_to_site_default(auth_client):
         "value": "mdy_12h",
         "source": "user",
         "locked": False,
+        "namespace": "user",
     }
     assert cleared.json() == {
         "key": "DATETIME_FORMAT",
         "value": "dmy_24h",
         "source": "database",
         "locked": False,
+        "namespace": "user",
     }
     assert UserPreferences.objects.get(user__username="tester").datetime_format is None
     assert _setting(auth_client.get(_user_url()).json(), "DATETIME_FORMAT") == {
@@ -297,6 +301,7 @@ def test_user_datetime_format_patch_and_clear_to_site_default(auth_client):
         "value": "dmy_24h",
         "source": "database",
         "locked": False,
+        "namespace": "user",
     }
 
 
@@ -342,6 +347,7 @@ def test_user_theme_null_durably_clears_to_site_default(auth_client):
         "value": "dark",
         "source": "database",
         "locked": False,
+        "namespace": "user",
     }
     assert UserPreferences.objects.get(user__username="tester").theme is None
     assert "color-theme" not in response.cookies
@@ -436,3 +442,24 @@ def test_site_patch_sets_fallback_for_overlayless_user(
     currency = _currency(auth_client.get(_user_url()).json())
     assert currency["value"] == "USD"
     assert currency["source"] == "database"
+
+
+# --- namespace stamping -----------------------------------------------------
+
+
+def test_user_endpoints_report_user_namespace(auth_client):
+    listed = _setting(auth_client.get(_user_url()).json(), "THEME")
+    assert listed["namespace"] == "user"
+
+    patched = _patch(auth_client, _user_patch_url("THEME"), "dark").json()
+    assert patched["namespace"] == "user"
+
+
+def test_site_endpoints_report_site_namespace(superuser_client, no_currency_env):
+    listed = _setting(superuser_client.get(_site_url()).json(), "DEFAULT_CURRENCY")
+    assert listed["namespace"] == "site"
+
+    patched = _patch(
+        superuser_client, _site_patch_url("DEFAULT_CURRENCY"), "eur"
+    ).json()
+    assert patched["namespace"] == "site"
