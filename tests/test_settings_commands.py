@@ -16,6 +16,7 @@ from timetracker.settings_commands import (
     SettingMutation,
     SettingOperation,
     change_site_setting,
+    change_user_setting,
 )
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
@@ -156,7 +157,6 @@ def test_site_setting_backend_contract_matrix(
     from timetracker.settings_resolver import (
         resolve_for_user_with_origin,
         resolve_with_origin,
-        set_user_preference,
     )
 
     valid_input = _materialize(case.valid_input, device_pair)
@@ -190,7 +190,7 @@ def test_site_setting_backend_contract_matrix(
     )
 
     with django_capture_on_commit_callbacks(execute=True):
-        set_user_preference(overlayless_user, case.key, alternate_value)
+        change_user_setting(overlayless_user, case.key, alternate_value)
     personal = resolve_for_user_with_origin(overlayless_user, case.key)
     assert personal == ResolvedSetting(alternate_value, SettingSource.USER, False)
 
@@ -573,3 +573,65 @@ def test_site_noop_fires_no_cache_invalidation(monkeypatch):
     with transaction.atomic():
         change_site_setting("DEFAULT_CURRENCY", "EUR")  # no-op
     assert calls == []  # no post_save -> no on_commit clear
+
+
+# ---------------------------------------------------------------------------
+# change_user_setting tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def user(db):
+    return get_user_model().objects.create_user("member", password="x")
+
+
+@pytest.mark.django_db
+def test_user_first_time_set_does_not_crash_and_reports_changed(user):
+    result = change_user_setting(user, "THEME", "dark")  # column was NULL
+    assert result.operation is SettingOperation.SET
+    assert result.changed is True
+    assert result.effective == ResolvedSetting("dark", SettingSource.USER, False)
+
+
+@pytest.mark.django_db
+def test_user_noop_set_reports_unchanged(user):
+    change_user_setting(user, "THEME", "dark")
+    again = change_user_setting(user, "THEME", "dark")
+    assert again.changed is False
+    assert again.stored_present is True
+
+
+@pytest.mark.django_db
+def test_user_clear_falls_through_and_is_never_locked(user, monkeypatch):
+    change_user_setting(user, "DEFAULT_CURRENCY", "eur")
+    monkeypatch.setenv("DEFAULT_CURRENCY", "GBP")  # locked source
+    settings_resolver.clear_cache()
+
+    cleared = change_user_setting(user, "DEFAULT_CURRENCY", None)
+    assert cleared.operation is SettingOperation.CLEAR
+    assert cleared.changed is True
+    assert cleared.effective.value == "GBP"
+    assert cleared.effective.locked is False  # a user can always re-override
+
+
+@pytest.mark.django_db
+def test_user_noop_clear_on_absent_row_touches_nothing(user):
+    from games.models import UserPreferences
+
+    result = change_user_setting(user, "THEME", None)
+    assert result.changed is False
+    assert not UserPreferences.objects.filter(user=user).exists()  # no phantom row
+
+
+@pytest.mark.django_db
+def test_user_write_validator_rejects_missing_device(user):
+    from django.core.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        change_user_setting(user, "DEFAULT_DEVICE", 9_999_999)
+
+
+@pytest.mark.django_db
+def test_user_non_user_scope_key_raises(user):
+    with pytest.raises(ValueError):
+        change_user_setting(user, "TZ", "Europe/Prague")

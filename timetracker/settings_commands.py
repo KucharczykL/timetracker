@@ -101,9 +101,66 @@ def change_site_setting(key: SettingKey, value: object | None) -> SettingMutatio
         return SettingMutation(effective, operation, changed, None, False)
 
 
+def change_user_setting(
+    user: object, key: SettingKey, value: object | None
+) -> SettingMutation:
+    """Set or clear a user-scoped preference; return an operation-aware envelope.
+
+    Personal overrides are never locked (a user may always override, even over env),
+    so there is no lock branch. No-op writes touch nothing. User effective is always
+    reported ``locked=False``, matching the read endpoint's contract."""
+    definition = get_definition(key)
+    if definition.scope is not SettingScope.USER:
+        raise ValueError(f"{key} is not a user-scoped setting; cannot store per user.")
+
+    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
+
+    from django.db import transaction
+
+    from games.models import USER_PREFERENCE_FIELD_BY_KEY, UserPreferences
+
+    with transaction.atomic():
+        row = UserPreferences.objects.filter(user=user).first()  # non-creating read
+        field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
+        if row is None:
+            stored_present, stored_raw = False, None
+        elif field is not None:
+            stored_raw = getattr(row, field)
+            stored_present = stored_raw is not None
+        else:
+            bag = row.extra_preferences or {}
+            stored_present = key in bag
+            stored_raw = bag.get(key)
+
+        if operation is SettingOperation.SET:
+            normalized = normalize_setting_value(value, definition)
+            if definition.write_validator is not None:
+                definition.write_validator(normalized)
+            changed = (not stored_present) or normalized != stored_raw
+            if changed:
+                UserPreferences.get_for_user(user).set_preference_value(key, normalized)
+            return SettingMutation(
+                ResolvedSetting(normalized, SettingSource.USER, False),
+                operation,
+                changed,
+                normalized,
+                True,
+            )
+
+        # CLEAR
+        changed = stored_present
+        if changed and row is not None:
+            row.set_preference_value(key, None)
+        effective = resolve_fallthrough_uncached(key, skip_db=False)._replace(
+            locked=False
+        )
+        return SettingMutation(effective, operation, changed, None, False)
+
+
 __all__ = [
     "SettingLockedError",
     "SettingMutation",
     "SettingOperation",
     "change_site_setting",
+    "change_user_setting",
 ]
