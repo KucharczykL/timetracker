@@ -69,6 +69,19 @@ class SettingSource(StrEnum):
     DEFAULT = "default"
 
 
+#: (value, label) table for SettingSource, in the same order as the enum —
+#: feeds the generated TS vocabulary (ts/generated/settings-vocabulary.ts).
+SETTING_SOURCE_CHOICES: tuple[tuple[str, str], ...] = (
+    ("user", "Personal"),
+    ("env_file", "Environment file"),
+    ("env", "Environment"),
+    ("dotenv", ".env"),
+    ("ini", "settings.ini"),
+    ("database", "Database"),
+    ("default", "Default"),
+)
+
+
 #: Sources that pin a setting: they win over the DB layer and lock the field.
 LOCKED_SOURCES = frozenset(
     {

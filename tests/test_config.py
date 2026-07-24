@@ -6,7 +6,12 @@ from django.middleware.csrf import CsrfViewMiddleware
 from django.test import RequestFactory, override_settings
 
 from timetracker import config as config_module
-from timetracker.config import config, derive_hosts_and_origins
+from timetracker.config import (
+    SETTING_SOURCE_CHOICES,
+    SettingSource,
+    config,
+    derive_hosts_and_origins,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -275,3 +280,11 @@ def test_derived_origins_accepted_by_csrf_middleware():
             # _check_token is not called here; _is_secure_referer_ok / origin
             # matching is what we want — process_view returns None when trusted.
             assert middleware.process_request(request) is None
+
+
+def test_setting_source_choices_match_enum_members_in_order():
+    # SETTING_SOURCE_CHOICES hand-mirrors SettingSource for the generated TS
+    # vocabulary (issue #497); this guards the one drift point that survives.
+    assert tuple(value for value, _ in SETTING_SOURCE_CHOICES) == tuple(
+        member.value for member in SettingSource
+    )
