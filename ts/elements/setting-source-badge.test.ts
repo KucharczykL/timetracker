@@ -8,7 +8,7 @@ import "./setting-source-badge.js";
 
 function mountBadges(): HTMLElement[] {
   document.body.innerHTML = `
-    <setting-source-badge key="THEME">
+    <setting-source-badge key="THEME" namespace="user">
       <pop-over>
         <button data-pop-over-trigger aria-label="Default source">
           <span data-setting-origin="default"
@@ -24,7 +24,7 @@ function mountBadges(): HTMLElement[] {
         </div>
       </pop-over>
     </setting-source-badge>
-    <setting-source-badge key="PAGE_SIZE">
+    <setting-source-badge key="PAGE_SIZE" namespace="user">
       <pop-over><button data-pop-over-trigger aria-label="Default source">
         <span data-setting-origin="default" class="bg-neutral-quaternary text-heading">
           <span data-setting-source-label>Default</span>
@@ -88,5 +88,41 @@ describe("resolved setting events", () => {
       .toBe(false);
     expect(pageSize.querySelector("[data-setting-source-label]")?.textContent)
       .toBe("Default");
+  });
+
+  it("ignores a same-key event from a different namespace", () => {
+    document.body.innerHTML = `
+    <setting-source-badge key="THEME" namespace="site">
+      <pop-over>
+        <button data-pop-over-trigger aria-label="Default source">
+          <span data-setting-origin="default"
+              class="bg-neutral-quaternary text-heading">
+            <span data-setting-source-label>Default</span>
+          </span>
+        </button>
+        <div data-pop-over-panel>
+          <dl><div data-setting-source-description><dt>Source</dt>
+            <dd>The built-in default.</dd></div>
+            <div data-setting-source-status hidden><dt>Status</dt><dd>Status</dd></div>
+          </dl>
+        </div>
+      </pop-over>
+    </setting-source-badge>`;
+    const badge = document.querySelector<HTMLElement>("setting-source-badge")!;
+
+    dispatchSettingCommitted({
+      key: "THEME",
+      value: "dark",
+      source: "user",
+      locked: false,
+      namespace: "user",
+    });
+
+    expect(badge.querySelector("[data-setting-source-label]")?.textContent).toBe(
+      "Default",
+    );
+    expect(
+      badge.querySelector<HTMLElement>("[data-setting-origin]")?.dataset.settingOrigin,
+    ).toBe("default");
   });
 });
