@@ -69,6 +69,12 @@
   reveals the tooltip, so the button is redundant and hidden. Inline text
   triggers (prices, truncated names) are covered by the criterion's inline
   exception (#454).
+* Concurrent writes no longer fail with "database is locked". SQLite answers a
+  deferred transaction's read-to-write upgrade with an immediate `SQLITE_BUSY`
+  that the connection timeout cannot wait out, so two requests writing at once
+  — a Django-Q task and a web request, or two Gunicorn workers — could error
+  instead of queueing. Transactions now begin in `IMMEDIATE` mode, where the
+  wait applies (#476).
 
 ### Changed
 * Game and purchase names now truncate by their rendered width instead of a

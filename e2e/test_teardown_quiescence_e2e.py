@@ -1,6 +1,7 @@
 """Regression test for issue #277: a request still in flight when a test body
-returns must not break pytest-django's post-test flush of the shared-cache
-in-memory SQLite database ("database table is locked").
+returns must not break pytest-django's post-test flush of the SQLite test
+database (originally "database table is locked" on the shared-cache in-memory
+database; still a lock wait now that #476 put the test database on disk).
 
 The patched paginate holds an unfinished SELECT cursor open across a sleep —
 exactly the state a slow CI request is in when teardown starts. Without the

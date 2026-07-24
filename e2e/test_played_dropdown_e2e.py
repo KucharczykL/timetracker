@@ -152,6 +152,11 @@ def test_played_plus_one_fires_when_clicking_row_edge(
     page.mouse.click(box["x"] + box["width"] - 4, box["y"] + box["height"] / 2)
 
     expect(count).to_have_text("1")
+    # That bump is optimistic — play-event-row.ts increments the display before
+    # it POSTs — so it says nothing about the server. The Play Events section is
+    # server-rendered and swaps in only after the POST commits, so wait for it
+    # before reading the database.
+    expect(page.locator("#playevents-container table tbody tr")).to_have_count(1)
     assert game.playevents.count() == 1
 
 

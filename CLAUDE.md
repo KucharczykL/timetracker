@@ -221,7 +221,7 @@ Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim 
 
 ### Database
 
-SQLite with WAL journal mode. Connection timeout 20s. The `DATA_DIR` setting controls the database file location and is read consistently by both `settings.py` and `entrypoint.sh` (same env var + matching default). Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
+SQLite with WAL journal mode, `IMMEDIATE` transactions, and a 20s connection timeout. `IMMEDIATE` is load-bearing for concurrency: a deferred transaction that upgrades from read to write gets an instant `SQLITE_BUSY` that the timeout cannot wait out, so concurrent writers (Django-Q plus a web request, two Gunicorn workers) would error rather than queue. The `DATA_DIR` setting controls the database file location and is read consistently by both `settings.py` and `entrypoint.sh` (same env var + matching default). Migrations live in `games/migrations/`. There are `GeneratedField`s on the models — these are computed by the database engine and cannot be written from application code.
 
 ### Configuration
 
@@ -257,6 +257,10 @@ Tests live in `tests/`. Run with `make test` or `uv run --with pytest-django pyt
 - `test_search_select.py` — SearchSelect component
 
 Pytest settings are in `pyproject.toml` under `[tool.pytest.ini_options]` (`DJANGO_SETTINGS_MODULE = "timetracker.settings"`).
+
+**The test database is a file** (`test_db.sqlite3`, gitignored), set via `DATABASES["default"]["TEST"]["NAME"]` — not Django's `:memory:` default. In memory it is a *shared-cache* database that locks at table granularity between connections, and the e2e suite hits it from many threads at once (`live_server` serves each request on its own thread), so tests failed intermittently with `database table is locked`, `IndexError` inside `apply_converters`, and browsers that silently lost their session (#476). Keep it on disk; `tests/test_live_server_db_concurrency.py` guards both the setting and the concurrent behaviour.
+
+**A UI assertion is not a database assertion.** Several custom elements update the DOM optimistically before their POST lands (`play-event-row.ts` bumps the play count on click). Before reading the ORM in an e2e test, wait on something *server-rendered* — the htmx section that swaps in after the write commits.
 
 **TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`, run with `make test-ts` (`pnpm test:ts`) — and automatically by `make test` (a prereq) and `make check`. The pnpm script passes Node 26's `--no-experimental-webstorage` flag to Vitest workers so jsdom, rather than Node's experimental global, provides `localStorage`. vitest/Vite resolves the NodeNext-style `.js` import specifiers to the sibling `.ts`, so no compile step is needed; the test files are excluded from the emit build but type-checked by `make ts-check` (via `tsconfig.check.json`). The filter-tree serializer (`ts/elements/filter-tree/`, issue #188) is covered this way, plus a **cross-language contract** (`tests/test_filter_tree_contract.py`): the vitest suite writes `ts/elements/filter-tree/fixtures.canonical.json` (the serializer's actual output for the shared `fixtures.json` cases, gitignored) and the pytest test asserts each is `to_q()`-equivalent to the source filter — so the TS serializer cannot drift from the Python backend. The contract `skipif`-skips when the artifact is absent; `make check`/`make test` order `test-ts` first so it always runs there.
 
