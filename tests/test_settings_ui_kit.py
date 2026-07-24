@@ -531,23 +531,23 @@ class ReadonlySettingFieldTest(SimpleTestCase):
         html = str(self._make(value="/data"))
         assert "/data" in html
 
-    def test_secret_present_true_emits_mask_and_never_the_real_secret(self):
-        """The secret must NEVER reach HTML, and the mask must appear."""
+    def test_secret_present_true_masks_and_drops_any_value_passed(self):
+        """When secret_present is set, `value` is ignored and never rendered.
+
+        Passing a real-looking secret as `value` proves the component drops it
+        (the documented contract), not merely that the view passes value="".
+        """
         SECRET = "super-secret-key-value-that-must-never-appear"  # noqa: N806
-        html = str(
-            self._make(
-                value="",  # caller must NOT pass the real secret as value
-                secret_present=True,
-            )
-        )
+        html = str(self._make(value=SECRET, secret_present=True))
         assert "••••••••" in html
         assert SECRET not in html
         assert "<input" not in html
 
-    def test_secret_present_false_renders_blank(self):
-        html = str(self._make(value="", secret_present=False))
+    def test_secret_present_false_drops_value_and_renders_blank(self):
+        SECRET = "another-secret-that-must-not-appear"  # noqa: N806
+        html = str(self._make(value=SECRET, secret_present=False))
+        assert SECRET not in html
         assert "••••••••" not in html
-        assert "Not set" not in html
 
     def test_secret_present_none_uses_value_verbatim(self):
         html = str(self._make(value="plain-value", secret_present=None))

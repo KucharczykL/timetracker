@@ -69,9 +69,11 @@ def test_superuser_sees_infrastructure_section_on_admin_settings(
     for key in _INFRA_KEYS:
         expect(page.get_by_text(key, exact=True).first).to_be_visible()
 
-    source_badges = page.locator("[data-setting-origin]")
-    infra_badge_count = source_badges.count()
-    assert infra_badge_count >= len(_INFRA_KEYS)
+    # Scope to the infrastructure section: the site-defaults section alone
+    # renders >= 8 badges, so a page-wide count would pass even if this section
+    # rendered none.
+    infra_badges = page.locator("#infrastructure [data-setting-origin]")
+    assert infra_badges.count() >= len(_INFRA_KEYS)
 
 
 @pytest.fixture
