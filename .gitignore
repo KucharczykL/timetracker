@@ -34,3 +34,6 @@ dist/
 
 # Local-only game-name overrides for anonymize_sample (keeps sensitive titles out of the committed fixture)
 games/fixtures/name_overrides.yaml
+
+# Session-local scratch state (subagent-driven-development ledger/briefs/reports)
+/.superpowers/
