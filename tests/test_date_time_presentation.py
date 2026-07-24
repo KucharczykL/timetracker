@@ -23,7 +23,7 @@ from common.date_time_presentation import (
 )
 from timetracker import config as config_module
 from timetracker import settings_resolver
-from timetracker.settings_resolver import set_user_preference
+from timetracker.settings_commands import change_user_setting
 
 
 @pytest.mark.parametrize(
@@ -278,7 +278,7 @@ def test_request_factory_captures_active_language(db) -> None:
 @pytest.mark.django_db
 def test_request_factory_uses_personal_datetime_format() -> None:
     user = get_user_model().objects.create_user(username="profile-user")
-    set_user_preference(user, "DATETIME_FORMAT", "mdy_12h")
+    change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
     request = RequestFactory().get("/")
     request.user = user
 
@@ -355,7 +355,7 @@ def test_authenticated_root_document_emits_personal_mdy_12h_contract(
     db,
 ) -> None:
     user = get_user_model().objects.create_user(username="root-profile-user")
-    set_user_preference(user, "DATETIME_FORMAT", "mdy_12h")
+    change_user_setting(user, "DATETIME_FORMAT", "mdy_12h")
     client = Client()
     client.force_login(user)
     parser = _RootAttributeParser()

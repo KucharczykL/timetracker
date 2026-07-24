@@ -629,7 +629,7 @@ class UserPreferences(models.Model):
 
     def set_preference_value(self, key: SettingKey, value: object) -> None:
         """Store ``value`` for ``key``; ``None`` clears it back to unset. The
-        value must already be normalized — the resolver (``set_user_preference``)
+        value must already be normalized — the command (``change_user_setting``)
         is the one write path and validates before calling this."""
         field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
         if field is not None:

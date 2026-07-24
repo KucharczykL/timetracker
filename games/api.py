@@ -21,7 +21,6 @@ from games.filters import (
 )
 from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
-from timetracker.config import ResolvedSetting, SettingSource
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
     SettingKey,
@@ -32,11 +31,11 @@ from timetracker.settings_registry import (
 from timetracker.settings_commands import (
     SettingLockedError,
     change_site_setting,
+    change_user_setting,
 )
 from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
-    set_user_preference,
 )
 from games.sorting import (
     MODE_SORTS,
@@ -608,19 +607,11 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     if definition.scope is not SettingScope.USER:
         raise HttpError(400, f"{key} is not a user-scoped setting.")
     try:
-        saved_value = set_user_preference(request.user, key, payload.value)
+        mutation = change_user_setting(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
     messages.success(request, f"{definition.label} saved")
-    # Build the immediate response without consulting the per-user snapshot: its
-    # signal invalidation intentionally runs on commit, which may not have happened
-    # yet when this endpoint participates in an outer transaction.
-    resolved = (
-        resolve_with_origin(key)
-        if saved_value is None
-        else ResolvedSetting(saved_value, SettingSource.USER, False)
-    )
-    return _setting_out(key, resolved, locked=False)
+    return _setting_out(key, mutation.effective, locked=False)
 
 
 @settings_router.get("/site", response=list[SettingOut])

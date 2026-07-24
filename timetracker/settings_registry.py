@@ -128,7 +128,7 @@ def _validate_currency(value: object) -> str:
 
 def _validate_optional_device_id(value: object) -> int | None:
     """Type-only check for the personal default-device pref. ``None`` means unset;
-    existence of the device id is enforced at write time (``set_user_preference``),
+    existence of the device id is enforced at write time (``change_user_setting``),
     not here, so a stale registry read never crashes."""
     if value is None:
         return None

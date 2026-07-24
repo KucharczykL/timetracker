@@ -21,7 +21,7 @@ from games.models import (
     Purchase,
     Session,
 )
-from timetracker.settings_resolver import set_user_preference
+from timetracker.settings_commands import change_user_setting
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,8 +89,8 @@ def test_non_default_presentation_reaches_every_server_display_path(
         lambda: datetime(2022, 7, 22, 12, 5, tzinfo=UTC),
     )
     user = django_user_model.objects.create_user(username="dates", password="pw")
-    set_user_preference(user, "DISPLAY_TIME_ZONE", "UTC")
-    set_user_preference(user, "DATE_FORMAT_LOCALE", "cs")
+    change_user_setting(user, "DISPLAY_TIME_ZONE", "UTC")
+    change_user_setting(user, "DATE_FORMAT_LOCALE", "cs")
     client.force_login(user)
 
     platform = Platform.objects.create(name="PC")
