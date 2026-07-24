@@ -1,14 +1,13 @@
 """Validated mutation boundary for runtime-editable site settings."""
 
 from enum import StrEnum
-from typing import NamedTuple, cast
-
-from django.core.exceptions import ValidationError
+from typing import NamedTuple
 
 from timetracker.config import (
     LOCKED_SOURCES,
     ResolvedSetting,
     SettingSource,
+    resolve_raw_with_source,
 )
 from timetracker.settings_registry import (
     SettingKey,
@@ -17,7 +16,7 @@ from timetracker.settings_registry import (
 )
 from timetracker.settings_resolver import (
     normalize_setting_value,
-    resolve_with_origin,
+    resolve_fallthrough_uncached,
 )
 
 
@@ -46,41 +45,60 @@ class SettingLockedError(Exception):
         super().__init__(f"{key} is locked by {source.value}.")
 
 
-def change_site_setting(
-    key: SettingKey,
-    value: object | None,
-) -> ResolvedSetting:
-    """Set or clear a validated site default and return its immediate result."""
+def change_site_setting(key: SettingKey, value: object | None) -> SettingMutation:
+    """Set or clear a validated site default; return an operation-aware envelope.
+
+    Lock guards SET only — a CLEAR removes the DB row even when a locked source
+    (env/file/dotenv/ini) shadows the key, so an operator can drop a stale row
+    before dropping the env var. No-op writes touch nothing (no signal, no cache
+    invalidation). Effective-after-write is computed without a resolver read-back of
+    the just-written layer."""
     definition = get_definition(key)
     if definition.scope is SettingScope.INFRA:
         raise ValueError(f"{key} is infra-scoped (boot-only); cannot store in DB.")
 
-    current = resolve_with_origin(key)
-    if current.source in LOCKED_SOURCES:
-        raise SettingLockedError(key, current.source)
+    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
 
-    normalized = None if value is None else normalize_setting_value(value, definition)
+    from django.db import transaction
 
-    from games.models import Device, SiteSetting
+    from games.models import SiteSetting
 
-    if key == "DEFAULT_DEVICE" and normalized is not None:
-        device_id = cast(int, normalized)
-        if not Device.objects.filter(pk=device_id).exists():
-            raise ValidationError(f"No device with id {device_id!r}.")
+    with transaction.atomic():
+        row = SiteSetting.objects.filter(key=key).first()
+        stored_present = row is not None
+        stored_raw = row.value if row is not None else None
 
-    if normalized is None:
-        SiteSetting.objects.filter(key=key).delete()
-        return ResolvedSetting(
-            definition.default_factory(),
-            SettingSource.DEFAULT,
-            False,
-        )
+        if operation is SettingOperation.SET:
+            raw = resolve_raw_with_source(
+                definition.env_name or definition.key,
+                allow_file=definition.allow_file,
+            )
+            if raw is not None and raw.source in LOCKED_SOURCES:
+                raise SettingLockedError(key, raw.source)
 
-    SiteSetting.objects.update_or_create(
-        key=key,
-        defaults={"value": normalized},
-    )
-    return ResolvedSetting(normalized, SettingSource.DATABASE, False)
+            normalized = normalize_setting_value(value, definition)
+            if definition.write_validator is not None:
+                definition.write_validator(normalized)
+
+            changed = (not stored_present) or normalized != stored_raw
+            if changed:
+                SiteSetting.objects.update_or_create(
+                    key=key, defaults={"value": normalized}
+                )
+            return SettingMutation(
+                ResolvedSetting(normalized, SettingSource.DATABASE, False),
+                operation,
+                changed,
+                normalized,
+                True,
+            )
+
+        # CLEAR — never lock-checked.
+        changed = stored_present
+        if changed:
+            SiteSetting.objects.filter(key=key).delete()
+        effective = resolve_fallthrough_uncached(key, skip_db=True)
+        return SettingMutation(effective, operation, changed, None, False)
 
 
 __all__ = [

@@ -11,7 +11,12 @@ from django.urls import reverse
 
 from timetracker import config as config_module
 from timetracker import settings_resolver
-from timetracker.config import ResolvedSetting, SettingSource
+from timetracker.config import RawConfigValue, ResolvedSetting, SettingSource
+from timetracker.settings_commands import (
+    SettingMutation,
+    SettingOperation,
+    change_site_setting,
+)
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
     get_definition,
@@ -247,10 +252,8 @@ def _configure_locked_source(monkeypatch, tmp_path, source: SettingSource) -> No
         SettingSource.INI,
     ),
 )
-@pytest.mark.parametrize("requested_value", ("GBP", None), ids=("set", "clear"))
-def test_locked_site_set_and_clear_return_409_without_mutation(
+def test_locked_site_set_returns_409_without_mutation(
     source,
-    requested_value,
     superuser_client,
     monkeypatch,
     tmp_path,
@@ -268,26 +271,63 @@ def test_locked_site_set_and_clear_return_409_without_mutation(
         # command's full locked-source contract through the resolver boundary.
         monkeypatch.setattr(
             settings_commands,
-            "resolve_with_origin",
-            lambda key: ResolvedSetting("USD", SettingSource.ENV_FILE, True),
+            "resolve_raw_with_source",
+            lambda name, **kwargs: RawConfigValue("USD", SettingSource.ENV_FILE),
         )
     else:
         _configure_locked_source(monkeypatch, tmp_path, source)
 
     with pytest.raises(SettingLockedError) as raised:
-        change_site_setting("DEFAULT_CURRENCY", requested_value)
+        change_site_setting("DEFAULT_CURRENCY", "GBP")
 
     assert raised.value.key == "DEFAULT_CURRENCY"
     assert raised.value.source is source
     assert SiteSetting.objects.get(key="DEFAULT_CURRENCY").value == "EUR"
 
-    response = _patch_site(
-        superuser_client,
-        "DEFAULT_CURRENCY",
-        requested_value,
-    )
+    response = _patch_site(superuser_client, "DEFAULT_CURRENCY", "GBP")
     assert response.status_code == 409
     assert SiteSetting.objects.get(key="DEFAULT_CURRENCY").value == "EUR"
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        SettingSource.ENV_FILE,
+        SettingSource.ENV,
+        SettingSource.DOTENV,
+        SettingSource.INI,
+    ),
+)
+def test_locked_site_clear_succeeds_without_mutation_to_db(
+    source,
+    superuser_client,
+    monkeypatch,
+    tmp_path,
+):
+    from games.models import SiteSetting
+    from timetracker.settings_commands import change_site_setting
+
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    if source is not SettingSource.ENV_FILE:
+        # ENV_FILE requires allow_file; no live site key opts in, so skip real
+        # setup — CLEAR never lock-checks, so the source is irrelevant here.
+        _configure_locked_source(monkeypatch, tmp_path, source)
+    else:
+        # Simulate ENV_FILE by setting the ENV source (functionally equivalent
+        # for CLEAR: it never queries locked sources at all).
+        monkeypatch.setenv("DEFAULT_CURRENCY", "USD")
+        config_module.reset_caches()
+        settings_resolver.clear_cache()
+
+    # CLEAR must NOT raise even when a locked source is present.
+    result = change_site_setting("DEFAULT_CURRENCY", None)
+    assert result.changed is True
+    assert not SiteSetting.objects.filter(key="DEFAULT_CURRENCY").exists()
+
+    # Re-create the row so the endpoint's second call also clears something.
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    response = _patch_site(superuser_client, "DEFAULT_CURRENCY", None)
+    assert response.status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -320,31 +360,19 @@ def test_unknown_and_infra_site_writes_return_400_without_mutation(
 
 def test_rolled_back_command_returns_canonical_without_caching_uncommitted_data(
     db,
-    monkeypatch,
     clean_site_setting_sources,
 ):
     from django.db import transaction
     from games.models import SiteSetting
-    from timetracker import settings_commands
     from timetracker.settings_commands import change_site_setting
     from timetracker.settings_resolver import resolve_with_origin
 
-    resolver_calls: list[str] = []
-    original_resolve = settings_commands.resolve_with_origin
-
-    def tracked_resolve(key):
-        resolver_calls.append(key)
-        return original_resolve(key)
-
-    monkeypatch.setattr(settings_commands, "resolve_with_origin", tracked_resolve)
-
     with transaction.atomic():
         result = change_site_setting("DEFAULT_CURRENCY", "eur")
-        assert result == ResolvedSetting("EUR", SettingSource.DATABASE, False)
+        assert result.effective == ResolvedSetting("EUR", SettingSource.DATABASE, False)
         assert SiteSetting.objects.get(key="DEFAULT_CURRENCY").value == "EUR"
         transaction.set_rollback(True)
 
-    assert resolver_calls == ["DEFAULT_CURRENCY"]
     assert not SiteSetting.objects.filter(key="DEFAULT_CURRENCY").exists()
     assert resolve_with_origin("DEFAULT_CURRENCY").source is SettingSource.DEFAULT
 
@@ -397,7 +425,13 @@ def test_site_endpoint_returns_command_result_without_resolver_readback(
 
     def fake_change_site_setting(key, value):
         command_calls.append((key, value))
-        return ResolvedSetting("EUR", SettingSource.DATABASE, False)
+        return SettingMutation(
+            ResolvedSetting("EUR", SettingSource.DATABASE, False),
+            SettingOperation.SET,
+            True,
+            "EUR",
+            True,
+        )
 
     def fail_resolver_read(*args, **kwargs):
         raise AssertionError("PATCH must return the command result directly.")
@@ -466,3 +500,76 @@ def test_fallthrough_uncached_degrades_malformed_locked_env_to_default(monkeypat
     assert resolved.value == get_definition("DEFAULT_PAGE_SIZE").default_factory()
     assert resolved.source == SettingSource.DEFAULT
     assert resolved.locked is False
+
+
+@pytest.mark.django_db
+def test_site_set_then_noop_set_distinguishable():
+    first = change_site_setting("DEFAULT_CURRENCY", "eur")
+    assert first.operation is SettingOperation.SET
+    assert first.changed is True
+    assert first.effective == ResolvedSetting("EUR", SettingSource.DATABASE, False)
+
+    second = change_site_setting("DEFAULT_CURRENCY", "EUR")
+    assert second.operation is SettingOperation.SET
+    assert second.changed is False  # already stored
+    assert second.stored_present is True
+
+
+@pytest.mark.django_db
+def test_site_clear_then_noop_clear_distinguishable():
+    change_site_setting("DEFAULT_CURRENCY", "eur")
+    cleared = change_site_setting("DEFAULT_CURRENCY", None)
+    assert cleared.operation is SettingOperation.CLEAR
+    assert cleared.changed is True
+    assert cleared.stored_present is False
+
+    noop = change_site_setting("DEFAULT_CURRENCY", None)
+    assert noop.changed is False
+
+
+@pytest.mark.django_db
+def test_site_clear_allowed_under_env_lock_and_reports_env_effective(monkeypatch):
+    from games.models import SiteSetting
+
+    SiteSetting.objects.create(key="DEFAULT_PAGE_SIZE", value=50)
+    monkeypatch.setenv("DEFAULT_PAGE_SIZE", "100")  # ENV is a locked source
+    settings_resolver.clear_cache()
+
+    result = change_site_setting("DEFAULT_PAGE_SIZE", None)  # must NOT raise
+    assert result.changed is True
+    assert not SiteSetting.objects.filter(key="DEFAULT_PAGE_SIZE").exists()
+    assert result.effective.value == 100  # normalized int, from env
+    assert result.effective.source == SettingSource.ENV
+    assert result.effective.locked is True
+
+
+@pytest.mark.django_db
+def test_site_set_under_env_lock_still_raises(monkeypatch):
+    from timetracker.settings_commands import SettingLockedError
+
+    monkeypatch.setenv("DEFAULT_PAGE_SIZE", "100")
+    settings_resolver.clear_cache()
+    with pytest.raises(SettingLockedError):
+        change_site_setting("DEFAULT_PAGE_SIZE", 50)
+
+
+@pytest.mark.django_db
+def test_site_clear_repairs_poisoned_row(monkeypatch):
+    from games.models import SiteSetting
+
+    SiteSetting.objects.create(key="DEFAULT_PAGE_SIZE", value="garbage")
+    result = change_site_setting("DEFAULT_PAGE_SIZE", None)  # must NOT raise
+    assert result.changed is True
+    assert not SiteSetting.objects.filter(key="DEFAULT_PAGE_SIZE").exists()
+
+
+@pytest.mark.django_db
+def test_site_noop_fires_no_cache_invalidation(monkeypatch):
+    from django.db import transaction
+
+    change_site_setting("DEFAULT_CURRENCY", "eur")
+    calls: list[int] = []
+    monkeypatch.setattr(settings_resolver, "clear_cache", lambda: calls.append(1))
+    with transaction.atomic():
+        change_site_setting("DEFAULT_CURRENCY", "EUR")  # no-op
+    assert calls == []  # no post_save -> no on_commit clear

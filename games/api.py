@@ -642,7 +642,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     try:
-        resolved = change_site_setting(key, payload.value)
+        mutation = change_site_setting(key, payload.value)
     except SettingLockedError as error:
         raise HttpError(
             409,
@@ -654,7 +654,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         _raise_400(error)
     definition = get_definition(key)
     messages.success(request, f"{definition.label} saved")
-    return _setting_out(key, resolved)
+    return _setting_out(key, mutation.effective)
 
 
 api.add_router("/settings", settings_router)
