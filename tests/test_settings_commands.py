@@ -12,6 +12,10 @@ from django.urls import reverse
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import ResolvedSetting, SettingSource
+from timetracker.settings_registry import (
+    SETTINGS_REGISTRY,
+    get_definition,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,12 +422,6 @@ def test_settings_resolver_has_no_public_site_mutation_helpers():
     assert not hasattr(settings_resolver, "clear_site_setting")
     assert "set_site_setting" not in settings_resolver.__all__
     assert "clear_site_setting" not in settings_resolver.__all__
-
-
-from timetracker.settings_registry import (
-    SETTINGS_REGISTRY,
-    get_definition,
-)
 
 
 @pytest.mark.django_db

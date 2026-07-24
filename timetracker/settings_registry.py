@@ -25,7 +25,9 @@ type SettingKey = str  # e.g. "DEFAULT_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
 type DefaultFactory = Callable[[], object]  # lazy default, read at resolve time
 type SettingValidator = Callable[[object], object]  # returns normalized or raises
-type SettingWriteValidator = Callable[[object], None]  # write-time referential check; raises on failure
+type SettingWriteValidator = Callable[
+    [object], None
+]  # write-time referential check; raises on failure
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_sessions", "Sessions"),
@@ -139,7 +141,7 @@ def _validate_optional_device_id(value: object) -> int | None:
 def _require_existing_device(value: object) -> None:
     """Write-time referential check for DEFAULT_DEVICE: the id must name a live
     Device. Read paths never call this (a dangling stored id degrades to the
-    default instead of raising — see #492)."""
+    default instead of raising)."""
     if value is None:
         return
     from games.models import Device
