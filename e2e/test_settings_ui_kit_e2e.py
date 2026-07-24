@@ -29,6 +29,7 @@ from common.components import (
 )
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
+from timetracker.settings_commands import SettingNamespace
 from timetracker.urls import urlpatterns as base_urlpatterns
 
 _BADGE_TONES: tuple[BadgeTone, ...] = (
@@ -79,6 +80,7 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
         states=states,
         patch_url_template="/settings-kit-patch/__key__/",
         csrf=get_token(request),
+        namespace=SettingNamespace.USER,
         groups=groups,
     )
     sections = [
@@ -151,6 +153,7 @@ def settings_kit_patch(request: HttpRequest, key: str) -> HttpResponse:
             "value": payload.get("value"),
             "source": "user",
             "locked": False,
+            "namespace": "user",
         }
     )
 
