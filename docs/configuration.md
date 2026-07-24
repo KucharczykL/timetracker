@@ -81,9 +81,8 @@ the global `SiteSetting` model.
   `DATA_DIR`, `TZ`, `HASHED_STATIC`) are boot-only and never read from the DB.
 - **`TZ` is infrastructure configuration.** `TIME_ZONE` is frozen when
   `settings.py` imports, so a DB value could never take effect. Change it via
-  the environment, `.env`, or `settings.ini` and restart. It is not shown on
-  the Stage 8 Admin settings page; the planned Stage 9 infrastructure
-  inspector will expose it read-only.
+  the environment, `.env`, or `settings.ini` and restart. It is shown
+  read-only in the Infrastructure section of the Admin settings page.
 - **Not runtime-editable, not registered.** `ENV_FILE`/`INI_FILE` *locate* the
   config sources (read before the chain exists) and the deprecated `PROD` alias
   is excluded, so none appear in the registry.
@@ -111,8 +110,11 @@ the global `SiteSetting` model.
 ### Admin settings page
 
 Superusers can open `/tracker/admin-settings` through **Admin settings** inside
-the existing navbar **Menu** dropdown. The page edits exactly these eight live
-site defaults:
+the existing navbar **Menu** dropdown. The page has two sections.
+
+#### Site defaults section
+
+Edits these eight live site defaults:
 
 - `DEFAULT_CURRENCY`
 - `DEFAULT_DEVICE`
@@ -132,8 +134,27 @@ its source and the reason it cannot be changed.
 `DISPLAY_TIME_ZONE` is the live site default for wall-clock display and
 datetime-form interpretation. It is distinct from boot-only `TZ`: changing
 `DISPLAY_TIME_ZONE` rebuilds the document presentation contract after the
-save, while changing `TZ` still requires a process restart. Infrastructure
-`TZ` is not rendered on this page.
+save, while changing `TZ` still requires a process restart.
+
+#### Infrastructure section
+
+A read-only inspector of the eight `INFRA`-scoped settings. Each row shows the
+resolved value and the source that provided it (environment variable, `.env`,
+`settings.ini`, or built-in default). Values are shown as raw repr. The real
+`SECRET_KEY` is never rendered — only its presence (masked as `••••••••`) or
+absence is shown. To change any of these settings, update the environment or
+config file and restart the process.
+
+Settings shown:
+
+- `TZ` — server time zone (IANA name)
+- `DEBUG` — debug mode
+- `SECRET_KEY` — secret key (presence-only)
+- `APP_URL` — application URL
+- `DEV_LOGIN_PREFILL` — dev login prefill
+- `ALLOWED_HOSTS` — allowed hosts
+- `DATA_DIR` — data directory
+- `HASHED_STATIC` — hashed static assets
 
 The navbar theme switcher is unavailable on both personal and Admin settings
 pages so it cannot compete with the settings form's authoritative control.

@@ -496,6 +496,81 @@ def LiveSettingFields(
     ]
 
 
+def ReadonlySettingField(
+    *,
+    name: str,
+    value: str,
+    source: str,
+    namespace: str,
+    setting_key: str,
+    locked: bool = False,
+    reason: str = "",
+    help_text: str = "",
+    note: str = "",
+    secret_present: bool | None = None,
+) -> Node:
+    """Read-only settings row that mirrors the ``FormFields`` row shell.
+
+    Renders through the same label-line / control / metadata skeleton as
+    ``_form_field_row`` (label_extra present path) so infra rows sit in the
+    same visual family as editable site-default rows — same type scale, same
+    label-line layout — without routing through a Django form or emitting any
+    ``<input>`` element.
+
+    ``secret_present`` controls the value slot: ``None`` renders ``value``
+    verbatim; ``True`` emits the fixed mask ``••••••••``; ``False`` leaves the
+    slot blank. When set, ``value`` is ignored — the real secret is never a
+    parameter and can never reach the DOM.
+    """
+    # A per-setting id: without it the badge's Popover derives its DOM id from
+    # its content, so two rows with the same source/locked/reason (e.g. several
+    # env-locked settings) would collide and fail assert_unique_element_ids.
+    badge = SettingSourceBadge(
+        source,
+        locked=locked,
+        reason=reason,
+        id=f"readonly-{namespace}-{setting_key}-setting-source-tooltip",
+        setting_key=setting_key,
+        namespace=namespace,
+    )
+    # Identifier line: mirrors _form_field_label with label_extra present.
+    # Name rendered in monospace; badge in the label_extra slot.
+    label_line = Div(
+        class_="flex min-w-0 flex-wrap items-center gap-2",
+        data_form_field_label_line="",
+    )[
+        Span(class_="text-type-label text-heading font-mono")[name],
+        badge,
+    ]
+    # Value slot: plain monospace static text (no input, no disabled widget).
+    if secret_present is None:
+        displayed_value = value
+    elif secret_present:
+        displayed_value = "••••••••"
+    else:
+        displayed_value = ""
+    value_node = Span(class_="font-mono text-type-body text-heading")[displayed_value]
+    # Metadata: help_text then note, as muted micro-text.
+    metadata_texts = [text for text in (help_text, note) if text]
+    metadata: Node | None = None
+    if metadata_texts:
+        metadata = Div(
+            class_="mt-2 flex flex-col gap-1",
+            data_setting_metadata="",
+        )[*[P(class_="text-type-micro text-body")[text] for text in metadata_texts]]
+
+    # Row shell: mirrors the label_extra-present, non-checkbox branch of
+    # _form_field_row — Div(class_="mb-2.5")[label_line] then control then
+    # optional after_control — using the exact same class strings.
+    row_children: list[Node] = [
+        Div(class_="mb-2.5")[label_line],
+        value_node,
+    ]
+    if metadata is not None:
+        row_children.append(metadata)
+    return Div()[*row_children]
+
+
 def MaskedSecretField(
     *,
     label: str,
@@ -533,6 +608,7 @@ def MaskedSecretField(
 __all__ = [
     "LiveSettingFields",
     "MaskedSecretField",
+    "ReadonlySettingField",
     "SettingFieldState",
     "SettingSourceBadge",
     "SettingsFieldColumns",

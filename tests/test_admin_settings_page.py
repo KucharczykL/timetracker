@@ -17,6 +17,8 @@ from timetracker.settings_registry import (
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
     THEME_CHOICES,
+    SettingScope,
+    get_definition,
 )
 
 SITE_SETTING_KEYS = (
@@ -461,3 +463,124 @@ def test_anonymous_navbar_omits_all_account_actions(db):
     html = Client().get(reverse("login")).content.decode()
 
     assert _navbar_account_actions(html) == {}
+
+
+INFRA_SETTING_KEYS = (
+    "TZ",
+    "DEBUG",
+    "SECRET_KEY",
+    "APP_URL",
+    "DEV_LOGIN_PREFILL",
+    "ALLOWED_HOSTS",
+    "DATA_DIR",
+    "HASHED_STATIC",
+)
+
+
+def test_admin_settings_page_renders_infrastructure_section(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    assert "Infrastructure" in html
+    assert "Deployment and security configuration, resolved read-only." in html
+    for key in INFRA_SETTING_KEYS:
+        assert key in html, f"Expected infra key {key!r} in page HTML"
+
+
+def test_admin_settings_infra_section_shows_source_badge_for_each_key(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    for key in INFRA_SETTING_KEYS:
+        assert f'key="{key}" namespace="site"' in html, (
+            f"Expected source badge for infra key {key!r}"
+        )
+        assert "data-setting-origin=" in html
+
+
+def test_admin_settings_infra_section_does_not_leak_secret_key(
+    db,
+    clean_site_setting_sources,
+    settings,
+):
+    """The real SECRET_KEY value must never appear in the page HTML.
+
+    The secret is planted before login so Django's HMAC-signed session cookies
+    stay consistent with the key in use during the request.
+    """
+    planted_secret = "planted-secret-key-xyzzy-must-not-appear-in-html"
+    settings.SECRET_KEY = planted_secret
+    superuser = get_user_model().objects.create_superuser(
+        username="secret-test-admin", password="pw"
+    )
+    client = Client()
+    client.force_login(superuser)
+
+    html = client.get(reverse("games:admin_settings")).content.decode()
+
+    assert "Infrastructure" in html
+    assert planted_secret not in html
+    assert "SECRET_KEY" in html
+    assert "••••••••" in html
+
+
+def test_non_superuser_still_gets_403_after_infra_section_added(normal_client):
+    response = normal_client.get(reverse("games:admin_settings"))
+
+    assert response.status_code == 403
+
+
+def test_infra_settings_keys_appear_after_site_settings_keys(
+    superuser_client,
+    clean_site_setting_sources,
+):
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    # Anchor on the per-key source-badge markers, not bare key substrings: a bare
+    # "TZ" also matches inside the random CSRF token on <live-setting-fields>,
+    # which sits above the site keys and would flake the ordering ~1-2% of runs.
+    def badge_pos(key):
+        return html.index(f'key="{key}" namespace="site"')
+
+    last_site_key_pos = max(badge_pos(key) for key in SITE_SETTING_KEYS)
+    first_infra_key_pos = min(badge_pos(key) for key in INFRA_SETTING_KEYS)
+    assert last_site_key_pos < first_infra_key_pos
+
+
+def test_admin_settings_renders_when_infra_settings_share_a_source(
+    superuser_client,
+    clean_site_setting_sources,
+    monkeypatch,
+    settings,
+):
+    """Regression: several infra settings resolving to the SAME source/locked
+    produce byte-identical source badges. Their tooltip Popover ids must stay
+    unique per setting, or the whole document fails assert_unique_element_ids
+    and the page 500s (seen with real prod data — env-locked DEBUG/DATA_DIR/…).
+
+    assert_unique_element_ids only runs under settings.DEBUG (common/layout.py),
+    which pytest-django forces off, so DEBUG is enabled here to exercise the real
+    page-level id-uniqueness check — otherwise this passes vacuously even with a
+    live collision.
+    """
+    settings.DEBUG = True
+    from games.views import settings as settings_view
+
+    original_resolve = settings_view.resolve_with_origin
+
+    def force_infra_env_locked(key):
+        resolved = original_resolve(key)
+        if get_definition(key).scope is SettingScope.INFRA:
+            return ResolvedSetting(resolved.value, SettingSource.ENV, True)
+        return resolved
+
+    monkeypatch.setattr(settings_view, "resolve_with_origin", force_infra_env_locked)
+
+    response = superuser_client.get(reverse("games:admin_settings"))
+
+    assert response.status_code == 200
+    assert "Infrastructure" in response.content.decode()

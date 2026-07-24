@@ -458,3 +458,125 @@ class LiveAndSecretComponentTest(SimpleTestCase):
         html = str(MaskedSecretField(label="Secret key", present=False))
         assert 'value=""' in html
         assert 'placeholder="Not set"' in html
+
+
+class ReadonlySettingFieldTest(SimpleTestCase):
+    def _make(self, **kwargs):
+        from common.components import ReadonlySettingField
+
+        defaults = {
+            "name": "APP_URL",
+            "value": "https://example.com",
+            "source": "env",
+            "namespace": "site",
+            "setting_key": "APP_URL",
+        }
+        defaults.update(kwargs)
+        return ReadonlySettingField(**defaults)
+
+    def test_renders_name_as_monospace_identifier(self):
+        html = str(self._make())
+        assert "APP_URL" in html
+        assert "font-mono" in html
+
+    def test_renders_value_verbatim_in_monospace(self):
+        html = str(self._make(value="https://example.com"))
+        assert "https://example.com" in html
+        assert "font-mono" in html
+        assert "<input" not in html
+
+    def test_renders_source_badge(self):
+        html = str(self._make(source="env", setting_key="APP_URL"))
+        assert 'data-setting-origin="env"' in html
+        assert '<setting-source-badge key="APP_URL" namespace="site">' in html
+
+    def test_locked_true_passes_to_badge(self):
+        html = str(self._make(locked=True, source="env"))
+        assert 'data-setting-locked=""' in html
+
+    def test_help_text_appears_as_metadata(self):
+        html = str(self._make(help_text="The URL used for CSRF origins."))
+        assert "The URL used for CSRF origins." in html
+        assert "text-type-micro text-body" in html
+
+    def test_note_appears_as_metadata(self):
+        html = str(self._make(note="Requires restart."))
+        assert "Requires restart." in html
+        assert "text-type-micro text-body" in html
+
+    def test_both_help_text_and_note_appear(self):
+        html = str(self._make(help_text="The URL.", note="Restart needed."))
+        assert "The URL." in html
+        assert "Restart needed." in html
+
+    def test_empty_non_secret_renders_blank_not_placeholder(self):
+        html = str(self._make(value=""))
+        assert "(empty)" not in html
+        assert "Not set" not in html
+
+    def test_bool_value_renders_as_raw_repr(self):
+        html = str(self._make(value="True"))
+        assert "True" in html
+        html_false = str(self._make(value="False"))
+        assert "False" in html_false
+
+    def test_list_value_renders_as_raw_repr(self):
+        from django.utils.html import escape
+
+        raw_value = "['tracker.example.com', 'localhost']"
+        html = str(self._make(value=raw_value))
+        assert str(escape(raw_value)) in html
+
+    def test_path_value_renders_as_raw_repr(self):
+        html = str(self._make(value="/data"))
+        assert "/data" in html
+
+    def test_secret_present_true_masks_and_drops_any_value_passed(self):
+        """When secret_present is set, `value` is ignored and never rendered.
+
+        Passing a real-looking secret as `value` proves the component drops it
+        (the documented contract), not merely that the view passes value="".
+        """
+        SECRET = "super-secret-key-value-that-must-never-appear"  # noqa: N806
+        html = str(self._make(value=SECRET, secret_present=True))
+        assert "••••••••" in html
+        assert SECRET not in html
+        assert "<input" not in html
+
+    def test_secret_present_false_drops_value_and_renders_blank(self):
+        SECRET = "another-secret-that-must-not-appear"  # noqa: N806
+        html = str(self._make(value=SECRET, secret_present=False))
+        assert SECRET not in html
+        assert "••••••••" not in html
+
+    def test_secret_present_none_uses_value_verbatim(self):
+        html = str(self._make(value="plain-value", secret_present=None))
+        assert "plain-value" in html
+        assert "••••••••" not in html
+
+    def test_label_line_uses_form_field_label_line_structure(self):
+        html = str(self._make())
+        assert 'data-form-field-label-line=""' in html
+
+    def test_no_django_form_input_rendered(self):
+        html = str(self._make())
+        assert "<input" not in html
+        assert "<select" not in html
+        assert "<textarea" not in html
+
+    def test_same_source_rows_have_unique_element_ids(self):
+        """Two settings resolving to the same source/locked/reason render
+        byte-identical badges; their tooltip ids must stay unique per setting or
+        the document fails assert_unique_element_ids (prod env-locked collision).
+        """
+        from common.components import Fragment
+        from common.components.core import assert_unique_element_ids
+
+        document = Fragment(
+            self._make(name="DEBUG", setting_key="DEBUG", source="env", locked=True),
+            self._make(
+                name="DATA_DIR", setting_key="DATA_DIR", source="env", locked=True
+            ),
+        )
+        # Raises ValueError on a duplicate id; no assertion form needed.
+        assert_unique_element_ids(document)
