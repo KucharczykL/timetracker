@@ -418,3 +418,28 @@ def test_settings_resolver_has_no_public_site_mutation_helpers():
     assert not hasattr(settings_resolver, "clear_site_setting")
     assert "set_site_setting" not in settings_resolver.__all__
     assert "clear_site_setting" not in settings_resolver.__all__
+
+
+from timetracker.settings_registry import (
+    SETTINGS_REGISTRY,
+    get_definition,
+)
+
+
+@pytest.mark.django_db
+def test_default_device_write_validator_rejects_missing_device():
+    from django.core.exceptions import ValidationError
+
+    validator = get_definition("DEFAULT_DEVICE").write_validator
+    assert validator is not None
+    with pytest.raises(ValidationError):
+        validator(9_999_999)  # no such device
+
+
+def test_only_default_device_declares_a_write_validator():
+    with_validator = [
+        key
+        for key, definition in SETTINGS_REGISTRY.items()
+        if definition.write_validator is not None
+    ]
+    assert with_validator == ["DEFAULT_DEVICE"]

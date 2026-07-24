@@ -25,6 +25,7 @@ type SettingKey = str  # e.g. "DEFAULT_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
 type DefaultFactory = Callable[[], object]  # lazy default, read at resolve time
 type SettingValidator = Callable[[object], object]  # returns normalized or raises
+type SettingWriteValidator = Callable[[object], None]  # write-time referential check; raises on failure
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_sessions", "Sessions"),
@@ -100,6 +101,7 @@ class SettingDefinition:
     superuser_only: bool = False
     secret: bool = False
     note: str = ""
+    write_validator: SettingWriteValidator | None = None
 
     def __post_init__(self) -> None:
         if self.env_name is None:
@@ -132,6 +134,18 @@ def _validate_optional_device_id(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"Device must be an integer id (got {value!r}).")
     return value
+
+
+def _require_existing_device(value: object) -> None:
+    """Write-time referential check for DEFAULT_DEVICE: the id must name a live
+    Device. Read paths never call this (a dangling stored id degrades to the
+    default instead of raising — see #492)."""
+    if value is None:
+        return
+    from games.models import Device
+
+    if not Device.objects.filter(pk=value).exists():
+        raise ValidationError(f"No device with id {value!r}.")
 
 
 def _validate_optional_landing_page(value: object) -> str | None:
@@ -216,6 +230,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             default_factory=lambda: None,
             validator=_validate_optional_device_id,
             widget="device",
+            write_validator=_require_existing_device,
         ),
         SettingDefinition(
             "DEFAULT_LANDING_PAGE",
