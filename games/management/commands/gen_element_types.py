@@ -23,6 +23,7 @@ from common.criteria import (
     Modifier,
     ModifierToken,
 )
+from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
 
 
@@ -60,6 +61,12 @@ class Command(BaseCommand):
                 values_name="THEME_PREFERENCES",
                 labels_name="THEME_LABELS",
                 choices=THEME_CHOICES,
+            ),
+            output_dir / "settings-vocabulary.ts": render_choice_vocabulary(
+                type_name="SettingNamespace",
+                values_name="SETTING_NAMESPACES",
+                labels_name="SETTING_NAMESPACE_LABELS",
+                choices=SETTING_NAMESPACE_CHOICES,
             ),
             output_dir / "date-time-presentation.ts": render_filter_metadata_module(
                 [DateTimePresentationConfig]

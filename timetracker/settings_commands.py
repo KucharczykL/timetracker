@@ -25,6 +25,22 @@ class SettingOperation(StrEnum):
     CLEAR = "clear"
 
 
+class SettingNamespace(StrEnum):
+    """Which mutation surface emitted a settings-committed event: the personal
+    settings page or the site-admin settings page. Distinct from SettingScope
+    (a *key's* registry classification) and from SettingSource (where a
+    resolved *value* came from) — namespace is never derivable from either."""
+
+    USER = "user"
+    SITE = "site"
+
+
+SETTING_NAMESPACE_CHOICES: tuple[tuple[str, str], ...] = (
+    ("user", "User"),
+    ("site", "Site"),
+)
+
+
 class SettingMutation(NamedTuple):
     effective: ResolvedSetting
     operation: SettingOperation
@@ -158,8 +174,10 @@ def change_user_setting(
 
 
 __all__ = [
+    "SETTING_NAMESPACE_CHOICES",
     "SettingLockedError",
     "SettingMutation",
+    "SettingNamespace",
     "SettingOperation",
     "change_site_setting",
     "change_user_setting",

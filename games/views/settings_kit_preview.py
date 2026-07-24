@@ -35,6 +35,7 @@ from common.components import (
 from common.components.primitives import P
 from common.layout import render_page
 from games.forms import INPUT_CLASS, SELECT_CLASS, PrimitiveWidgetsMixin
+from timetracker.settings_commands import SettingNamespace
 
 _PREVIEW_KEYS = {
     "PREVIEW_ENABLED": "Preview enabled",
@@ -130,6 +131,7 @@ def _live_fields(request: HttpRequest):
         patch_url_template=patch_url,
         csrf=get_token(request),
         groups=groups,
+        namespace=SettingNamespace.USER,
     )
 
 
@@ -146,6 +148,7 @@ def _source_gallery():
                 SettingSourceBadge(
                     source,
                     id=f"preview-source-{source}-tooltip",
+                    namespace=SettingNamespace.USER,
                 ),
             ]
             for source in _SOURCES
@@ -159,6 +162,7 @@ def _source_gallery():
                 locked=True,
                 reason="Environment values override saved settings in this example.",
                 id="preview-source-env-locked-tooltip",
+                namespace=SettingNamespace.USER,
             ),
         ],
     ]
@@ -180,7 +184,7 @@ def _preview_label_line(
 ):
     return Div(class_="flex min-w-0 flex-wrap items-center gap-2")[
         Label(for_=field_id, class_="text-type-label text-heading")[label],
-        SettingSourceBadge(source, id=tooltip_id),
+        SettingSourceBadge(source, id=tooltip_id, namespace=SettingNamespace.USER),
     ]
 
 

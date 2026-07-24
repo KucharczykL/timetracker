@@ -214,3 +214,37 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     assert contract["profile"]["date_parts"][0]["name"] == "month"
     assert contract["profile"]["hour_cycle"] == "h12"
     expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")
+
+
+def test_user_page_ignores_a_synthetic_site_namespace_event(
+    live_server,
+    authenticated_page,
+):
+    """Mirror of test_site_page_ignores_a_synthetic_user_namespace_event, in
+    the other direction: a synthetic site-namespace event for a key also
+    shown on the user page must not update this page's badge."""
+    page, _preferred = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:settings')}")
+    _wait_for_live_settings(page)
+
+    badge = page.locator(
+        'setting-source-badge[key="DEFAULT_CURRENCY"] [data-setting-origin]'
+    )
+    before = badge.get_attribute("data-setting-origin")
+
+    page.evaluate(
+        """() => {
+            document.body.dispatchEvent(new CustomEvent("setting-committed", {
+                detail: {
+                    key: "DEFAULT_CURRENCY",
+                    value: "USD",
+                    source: "database",
+                    locked: false,
+                    namespace: "site",
+                },
+                bubbles: true,
+            }));
+        }"""
+    )
+
+    expect(badge).to_have_attribute("data-setting-origin", before)

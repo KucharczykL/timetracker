@@ -24,6 +24,7 @@ from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
 from timetracker.config import SettingSource
+from timetracker.settings_commands import SettingNamespace
 from timetracker.settings_registry import (
     DATETIME_FORMAT_CHOICES,
     DISPLAY_TIME_ZONE_CHOICES,
@@ -307,6 +308,7 @@ def user_settings(request: HttpRequest) -> HttpResponse:
                 states=states,
                 patch_url_template=patch_url,
                 csrf=get_token(request),
+                namespace=SettingNamespace.USER,
                 presentations={
                     "theme": FormFieldPresentation(decorate_control=ThemeSetting)
                 },
@@ -354,6 +356,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
                 states=states,
                 patch_url_template=patch_url,
                 csrf=get_token(request),
+                namespace=SettingNamespace.SITE,
             ),
             "Defaults inherited by users who have not saved personal overrides.",
         )

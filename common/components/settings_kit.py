@@ -291,6 +291,7 @@ def SettingSourceBadge(
     reason: str = "",
     id: str = "",
     setting_key: str = "",
+    namespace: str,
 ) -> Node:
     """One setting-origin badge with an accessible explanatory tooltip."""
     source_value = str(source)
@@ -363,7 +364,7 @@ def SettingSourceBadge(
             "focus:ring-2 focus:ring-fg-brand"
         ),
     )
-    return _SettingSourceBadge(key=setting_key)[popover]
+    return _SettingSourceBadge(key=setting_key, namespace=namespace)[popover]
 
 
 def _lock_reason(state: SettingFieldState) -> str:
@@ -392,6 +393,8 @@ def prepare_setting_fields(
     form,
     states: Mapping[str, SettingFieldState],
     presentations: Mapping[str, FormFieldPresentation] | None = None,
+    *,
+    namespace: str,
 ) -> dict[str, FormFieldPresentation]:
     """Stamp semantics and return one presentation per setting field.
 
@@ -433,6 +436,7 @@ def prepare_setting_fields(
             reason=_lock_reason(state) if state.locked else "",
             id=tooltip_id,
             setting_key=state.key,
+            namespace=namespace,
         )
         metadata = _field_metadata(metadata_id, state)
         if metadata is not None:
@@ -468,16 +472,18 @@ def LiveSettingFields(
     states: Mapping[str, SettingFieldState],
     patch_url_template: str,
     csrf: str,
+    namespace: str,
     groups: Sequence[FormFieldGroup] | None = None,
     presentations: Mapping[str, FormFieldPresentation] | None = None,
 ) -> Node:
     """Render existing ``FormFields`` inside the optimistic live-save host."""
     if "__key__" not in patch_url_template:
         raise ValueError("patch_url_template must contain the literal __key__ token.")
-    prepared = prepare_setting_fields(form, states, presentations)
+    prepared = prepare_setting_fields(form, states, presentations, namespace=namespace)
     return _LiveSettingFields(
         patch_url_template=patch_url_template,
         csrf=csrf,
+        namespace=namespace,
         class_="block w-full @container",
     )[
         SettingsFieldLayout(1)[

@@ -82,7 +82,7 @@ def _opening_control_tag(html: str, field_name: str) -> str:
 
 
 def _field_source_markup(html: str, key: str, field_name: str) -> str:
-    badge_start = html.index(f'<setting-source-badge key="{key}">')
+    badge_start = html.index(f'<setting-source-badge key="{key}" namespace="site">')
     control_start = html.index(f'name="{field_name}"', badge_start)
     return html[badge_start:control_start]
 

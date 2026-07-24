@@ -215,6 +215,7 @@ export class ThemeCoordinator {
       const resolved = parseResolvedSetting(await response.json());
       if (
         resolved.key !== "THEME" ||
+        resolved.namespace !== "user" ||
         !isThemePreference(resolved.value) ||
         resolved.locked ||
         (desired === null && resolved.source === "user") ||

@@ -30,6 +30,7 @@ from timetracker.settings_registry import (
 )
 from timetracker.settings_commands import (
     SettingLockedError,
+    SettingNamespace,
     change_site_setting,
     change_user_setting,
 )
@@ -540,12 +541,16 @@ class SettingOut(Schema):
     ``value`` is ``str | int | None`` (device id is an int, unset is None) — a
     ``str``-only field would 500. ``locked`` marks an env/`.env`/`.ini`-pinned
     value; ``/user`` forces it ``False`` (see :func:`list_user_settings`).
+    ``namespace`` identifies which mutation surface produced this entry — the
+    personal or site-admin page — independent of ``source`` (where the
+    resolved value came from).
     """
 
     key: str
     value: str | int | None
     source: str
     locked: bool
+    namespace: SettingNamespace
 
 
 class SettingValueIn(Schema):
@@ -561,12 +566,19 @@ def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
     ]
 
 
-def _setting_out(key: SettingKey, resolved, *, locked: bool | None = None) -> dict:
+def _setting_out(
+    key: SettingKey,
+    resolved,
+    *,
+    locked: bool | None = None,
+    namespace: SettingNamespace,
+) -> dict:
     return {
         "key": key,
         "value": resolved.value,
         "source": resolved.source,
         "locked": resolved.locked if locked is None else locked,
+        "namespace": namespace,
     }
 
 
@@ -588,7 +600,12 @@ def list_user_settings(request):
     read-only, whatever layer the effective value comes from.
     """
     return [
-        _setting_out(key, resolve_for_user_with_origin(request.user, key), locked=False)
+        _setting_out(
+            key,
+            resolve_for_user_with_origin(request.user, key),
+            locked=False,
+            namespace=SettingNamespace.USER,
+        )
         for key in _settings_of_scope(SettingScope.USER)
     ]
 
@@ -611,7 +628,9 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
     messages.success(request, f"{definition.label} saved")
-    return _setting_out(key, mutation.effective, locked=False)
+    return _setting_out(
+        key, mutation.effective, locked=False, namespace=SettingNamespace.USER
+    )
 
 
 @settings_router.get("/site", response=list[SettingOut])
@@ -621,7 +640,7 @@ def list_site_settings(request):
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     return [
-        _setting_out(key, resolve_with_origin(key))
+        _setting_out(key, resolve_with_origin(key), namespace=SettingNamespace.SITE)
         for key in _settings_of_scope(SettingScope.SITE, SettingScope.USER)
     ]
 
@@ -645,7 +664,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         _raise_400(error)
     definition = get_definition(key)
     messages.success(request, f"{definition.label} saved")
-    return _setting_out(key, mutation.effective)
+    return _setting_out(key, mutation.effective, namespace=SettingNamespace.SITE)
 
 
 api.add_router("/settings", settings_router)

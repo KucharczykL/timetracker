@@ -519,6 +519,7 @@ register_element("settings-section-nav", "SettingsSectionNav", SettingsSectionNa
 class LiveSettingFieldsProps(TypedDict):
     patch_url_template: str  # contains the literal __key__ placeholder
     csrf: str
+    namespace: str
 
 
 register_element("live-setting-fields", "LiveSettingFields", LiveSettingFieldsProps)
@@ -526,6 +527,7 @@ register_element("live-setting-fields", "LiveSettingFields", LiveSettingFieldsPr
 
 class SettingSourceBadgeProps(TypedDict):
     key: str
+    namespace: str
 
 
 register_element("setting-source-badge", "SettingSourceBadge", SettingSourceBadgeProps)

@@ -42,9 +42,12 @@ const ALL_SOURCE_TONE_CLASSES = Object.values(SOURCE_TONE_CLASSES).flat();
 
 class SettingSourceBadgeElement extends HTMLElement {
   private settingKey = "";
+  private namespace = "";
 
   connectedCallback(): void {
-    this.settingKey = readSettingSourceBadgeProps(this).key;
+    const props = readSettingSourceBadgeProps(this);
+    this.settingKey = props.key;
+    this.namespace = props.namespace;
     document.body.addEventListener(SETTING_COMMITTED_EVENT, this.onCommitted);
   }
 
@@ -57,10 +60,13 @@ class SettingSourceBadgeElement extends HTMLElement {
     let resolved: ResolvedSetting;
     try {
       resolved = parseResolvedSetting(event.detail);
-    } catch {
+    } catch (error) {
+      console.error("Ignoring malformed setting-committed event", error);
       return;
     }
-    if (resolved.key !== this.settingKey) return;
+    if (resolved.key !== this.settingKey || resolved.namespace !== this.namespace) {
+      return;
+    }
     this.update(resolved);
   };
 
