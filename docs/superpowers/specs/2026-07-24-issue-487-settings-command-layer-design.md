@@ -72,29 +72,50 @@ The issue's four acceptance cases fall out of `(operation, changed, stored_prese
 `SettingMutation` **composes** `ResolvedSetting` (does not extend it); the read
 result type is untouched.
 
-### `changed` detection (read-before-write)
+### `changed` detection + no-op short-circuit (read-before-write)
 
-`set_preference_value` / `SiteSetting` writes are write-only, so each command reads
-the **raw** currently-stored value once, before writing, and compares to the
-normalized value:
+Each command reads the currently-stored value **before** writing, using a
+**non-creating** read (never `get_for_user`, which does `get_or_create` and would
+insert a phantom row on a no-op):
 
-- **Site:** read the `SiteSetting` row (`.value`) for `key`, if any.
-- **User:** fetch `UserPreferences.get_for_user(user)` **once**; read the current
-  value off that instance — typed column via `getattr(row, field)` for keys in
-  `USER_PREFERENCE_FIELD_BY_KEY`, else `row.extra_preferences.get(key)` — then call
-  `set_preference_value` on the **same** instance. One fetch, not two.
+- **Site:** `SiteSetting.objects.filter(key=key).values_list("value", flat=True).first()`
+  → `(stored, stored_present)`.
+- **User:** `UserPreferences.objects.filter(user=user).first()`; if a row exists, read
+  the current value — typed column via `getattr(row, field)` for keys in
+  `USER_PREFERENCE_FIELD_BY_KEY` (a `None` column means absent), else
+  `row.extra_preferences.get(key)`. No row / `None` column ⇒ `stored_present = False`.
 
-Comparison is normalized-vs-normalized (the stored raw is run through
-`normalize_setting_value` before comparing) so a stored JSON `1` and an incoming
-`"1"` compare equal and don't produce a false `changed=True`.
+**Never re-normalize the stored value.** Stored values were normalized at write time,
+so compare the **normalized incoming** value directly against the **raw stored**
+value. Re-running `normalize_setting_value` on the stored side would crash: the
+validators reject `None` (e.g. `_validate_currency` does `str(value).upper()`), so a
+first-time SET (column `None`) or a poisoned-row repair-by-clear would 400. Direct
+comparison also degrades gracefully — a poisoned `"garbage"` row compares unequal to
+any normalized value, yielding `changed=True` (the clear/overwrite proceeds), never a
+crash. This matches the resolver's deliberate poison tolerance
+(`settings_resolver.py:179-191`).
 
-Wrap each command body in `transaction.atomic()` so the read-then-write sees a
+`changed` and `stored_present`:
+
+- **CLEAR:** `changed = stored_present`; `stored = None`, `stored_present = False`
+  after.
+- **SET:** `stored_present_after = True`, `stored = normalized`;
+  `changed = (not stored_present) or normalized != stored`.
+
+**Short-circuit no-ops: skip the write entirely when `changed` is `False`.** A no-op
+SET (stored equals normalized) and a no-op CLEAR (nothing stored) perform **no**
+`save`/`delete`/`update_or_create`, so no `post_save`/`post_delete` fires and the
+settings cache is not needlessly invalidated. `changed=False` then means literally
+"storage untouched", satisfying the issue's "storage actually changed" contract.
+
+Wrap each command's read-decide-write in `transaction.atomic()` so the decision sees a
 consistent snapshot and the commit-time cache invalidation batches cleanly.
 
 ### `write_validator` registry hook
 
-Add an optional field to `SettingDefinition` — **appended last**, since all 14
-definitions pass leading args positionally:
+Add an optional field to `SettingDefinition` — **appended last**. (Only `key` is
+passed positionally in the 16 definitions — 8 USER + 8 INFRA — so appending is safe
+regardless; last-position is belt-and-suspenders.)
 
 ```python
 write_validator: SettingWriteValidator | None = None  # (value) -> None; raises ValidationError
@@ -126,9 +147,35 @@ else:  # CLEAR
 | command | operation | `effective` |
 |---------|-----------|-------------|
 | user    | SET       | `ResolvedSetting(normalized, USER, locked=False)` |
-| user    | CLEAR     | `resolve_with_origin(key)` — shared chain (env → site DB → default), excludes the user layer — **with `locked` forced `False`** |
+| user    | CLEAR     | fall-through of the shared chain (env → site DB → default), excluding the user layer, **`locked` forced `False`** |
 | site    | SET       | `ResolvedSetting(normalized, DATABASE, locked=False)` |
-| site    | CLEAR     | env/ini raw via `resolve_raw_with_source` if present (`locked=True`), else `default_factory()` — **must bypass the stale DB snapshot** |
+| site    | CLEAR     | fall-through excluding the DB layer (env → default), **bypassing the stale DB snapshot** |
+
+**Shared fall-through helper, in the resolver.** Both CLEAR cells need "resolve as if
+layer X weren't there", and both must (a) normalize like a real resolve, (b) not
+populate the global snapshot cache with possibly-uncommitted state, (c) tolerate
+poison. Add to `settings_resolver.py` a small internal that mirrors the resolver's env
+branch precisely — `resolve_raw_with_source(definition.env_name or key,
+allow_file=definition.allow_file)`, then `normalize_setting_value(raw.raw,
+definition)` with `source = raw.source` and `locked = raw.source in LOCKED_SOURCES` —
+falling through to `default_factory()`/`DEFAULT`/`False`. Requirements this pins down:
+
+- **Normalize the raw** (fixes the type bug — env `DEFAULT_PAGE_SIZE=100` yields int
+  `100`, source `ENV`, not the string `"100"`; the source/locked come from `raw`, not
+  a hardcoded `ENV`).
+- **Uncached read.** The fall-through reads the DB (for user-CLEAR's site layer)
+  **without** writing `_snapshot`/`_user_snapshot`, so a command running inside an
+  outer transaction that later rolls back cannot leak an uncommitted site row into the
+  global cache — honoring the "rollback cannot leak into caches" acceptance criterion.
+- **Best-effort normalization.** A malformed **locked** env value must **not** raise
+  here: the delete has already happened inside `atomic()`, and raising would roll it
+  back and resurrect the row — defeating the whole "clear escapes a bad shadow"
+  feature. On a normalization failure, degrade `effective` to
+  `default_factory()`/`DEFAULT`, mirroring the read path's poison tolerance
+  (`settings_resolver.py:169-191`). The clear still succeeds.
+
+For **user CLEAR**, the fall-through additionally consults the site DB layer (env →
+site DB → default) but reports `locked=False` (a user can always re-override).
 
 Two correctness notes surfaced by review:
 
@@ -185,18 +232,31 @@ test, and endpoint mock stub already assert `ResolvedSetting` returns — update
 
 - Four-way matrix **per scope** (user + site): set / no-op set / clear / no-op clear —
   assert `operation`, `changed`, `stored_present`, and `effective`.
-- Env-shadowed **site** clear: row deleted, `effective.source == ENV`,
-  `effective.locked is True`, `operation == CLEAR`, `changed` reflects the DB row.
+- **First-time SET** on a fresh user (all columns `None`) does not crash and reports
+  `changed=True` (guards the D1 no-normalize-of-stored fix).
+- **No-op writes touch nothing:** a no-op SET and a no-op CLEAR fire **no**
+  `post_save`/`post_delete` and schedule **no** `clear_settings_cache` on-commit
+  (assert via `transaction.on_commit` capture or a signal spy) — `changed=False`.
+- **Poisoned-row repair:** a raw `SiteSetting.objects.update(value="garbage")` row is
+  clearable via `change_site_setting(key, None)` (returns `changed=True`, row gone) —
+  no `ValidationError` on the compare path.
+- Env-shadowed **site** clear (shadow via **ENV/DOTENV/INI**, not ENV_FILE — no
+  writable key opts into `allow_file`; INFRA `SECRET_KEY` is the sole one and is
+  rejected): row deleted, `effective` comes from the real `resolve_raw` fall-through
+  with the correct **normalized type** and `source`/`locked` from that raw layer.
+- Malformed **locked** env + site clear: the delete succeeds and `effective` degrades
+  to the default rather than raising / rolling back (guards the D6 best-effort fix).
 - Env-shadowed **user** clear: personal row deleted, `effective` falls through the
   shared chain, `effective.locked is False`.
 - Locked **site** SET still raises `SettingLockedError`; CLEAR under the same lock
   succeeds and deletes the row.
 - `write_validator` fires on **both** command entry points (bad device id →
   `ValidationError`, nothing written), parametrized over user and site; does **not**
-  fire on CLEAR.
-- Registry: `DEFAULT_DEVICE.write_validator` is set, the other seven are `None`; a
-  `resolve*` of a dangling device id issues no device-existence query and does not
-  raise (guards #492's premise).
+  fire on CLEAR (`normalized is None`).
+- Registry: `DEFAULT_DEVICE.write_validator` is set and **every other registered
+  definition** (USER and INFRA alike) has `write_validator is None`; a `resolve*` of a
+  dangling device id issues no device-existence query and does not raise (guards
+  #492's premise).
 - Endpoints: existing PATCH tests keep passing (response shape unchanged); add a test
   that an env-shadowed site clear returns 200 with the effective env value (was
   impossible before the lock fix).
