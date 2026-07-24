@@ -131,7 +131,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `tests/test_settings_api.py` (matching its existing helper usage):
+Add to `tests/test_settings_api.py` (matching its existing helper usage). The site test takes `no_currency_env` — same as the file's other site-write tests (e.g. `test_site_patch_sets_fallback_for_overlayless_user`) — so a `DEFAULT_CURRENCY`/`DEFAULT_CURRENCY__FILE` env var in the runner's shell can't shadow the key and turn the SET into a 409 (`SettingLockedError`) instead of the 200 this test expects:
 
 ```python
 def test_user_endpoints_report_user_namespace(auth_client):
@@ -142,7 +142,7 @@ def test_user_endpoints_report_user_namespace(auth_client):
     assert patched["namespace"] == "user"
 
 
-def test_site_endpoints_report_site_namespace(superuser_client):
+def test_site_endpoints_report_site_namespace(superuser_client, no_currency_env):
     listed = _setting(superuser_client.get(_site_url()).json(), "DEFAULT_CURRENCY")
     assert listed["namespace"] == "site"
 
@@ -154,8 +154,19 @@ def test_site_endpoints_report_site_namespace(superuser_client):
 
 - [ ] **Step 2: Run to verify failures**
 
-Run: `direnv exec . uv run pytest tests/test_settings_api.py -k "reports_user_namespace or reports_site_namespace" -v`
+Run: `direnv exec . uv run pytest tests/test_settings_api.py -k "report_user_namespace or report_site_namespace" -v`
 Expected: FAIL — `KeyError: 'namespace'`.
+
+- [ ] **Step 3: Fix the file's 6 pre-existing exact-dict `SettingOut` assertions**
+
+Six assertions in this same file compare a PATCH response to a full literal dict with no `namespace` key — once `namespace` is stamped (Step 4 below), these fail on a dict-mismatch instead of passing. Add `"namespace": "user",` (all six are user-endpoint responses) as the last key in each:
+
+- `test_user_patch_and_get_round_trip` (~line 131-136): the `response.json() ==` dict.
+- `test_user_null_clears_back_to_fallback` (~line 173-178): the `response.json() ==` dict.
+- `test_user_datetime_format_patch_and_clear_to_site_default` (~line 272-296): **three** dicts — `saved.json() ==`, `cleared.json() ==`, and `_setting(auth_client.get(_user_url()).json(), "DATETIME_FORMAT") ==`.
+- `test_user_theme_null_durably_clears_to_site_default` (~line 329-339): the `response.json() ==` dict.
+
+Run: `direnv exec . uv run pytest tests/test_settings_api.py -v` once you've made this change alongside Step 4 below (there's no useful red/green split for this step in isolation — these six were already green before `namespace` existed; they only need the literal updated to match the new schema).
 
 - [ ] **Step 4: Update `SettingOut` and `_setting_out`**
 
@@ -412,12 +423,12 @@ export function dispatchSettingCommitted(value: unknown): ResolvedSetting {
 - [ ] **Step 4: Run to verify pass**
 
 Run: `direnv exec . pnpm test:ts -- setting-source-badge`
-Expected: this specific test PASSes; other tests in this file will now fail (their fixtures lack `namespace`) — that's expected, fixed in Task 5. Confirm via the test output that only the fixture-shape failures remain, not the new validation test.
+Expected: this specific test PASSes; other tests in this file will now fail (their fixtures lack `namespace`) — that's expected, fixed in Task 6. Confirm via the test output that only the fixture-shape failures remain, not the new validation test.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ts/settings-events.ts tests/test_settings_commands.py
+git add ts/settings-events.ts ts/elements/setting-source-badge.test.ts
 git commit -m "feat(settings): ResolvedSetting gains namespace; parseResolvedSetting validates it
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -434,7 +445,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Modify: `common/components/settings_kit.py` (`SettingSourceBadge`, `prepare_setting_fields`, `LiveSettingFields`)
 
 **Interfaces:**
-- Produces: `SettingSourceBadge(source, *, locked=False, reason="", id="", setting_key="", namespace: str)`; `prepare_setting_fields(form, states, presentations=None, *, namespace: str)`; `LiveSettingFields(form, *, states, patch_url_template, csrf, namespace: str, groups=None, presentations=None)`. All three take `namespace` as a **required** keyword-only argument (no default) — this deliberately breaks every existing call site so none can be missed; Task 8/9 fix them.
+- Produces: `SettingSourceBadge(source, *, locked=False, reason="", id="", setting_key="", namespace: str)`; `prepare_setting_fields(form, states, presentations=None, *, namespace: str)`; `LiveSettingFields(form, *, states, patch_url_template, csrf, namespace: str, groups=None, presentations=None)`. All three take `namespace` as a **required** keyword-only argument (no default) — this deliberately breaks every existing call site so none can be missed; Tasks 5, 9, and 10 fix them.
 - Note: this layer takes `namespace: str` (loose), **not** the `SettingNamespace` enum — `common/components` does not need to import from `timetracker.settings_commands`; callers pass `SettingNamespace.USER`/`SettingNamespace.SITE` (StrEnum members satisfy a `str` parameter directly, no `.value` needed).
 
 - [ ] **Step 1: Update the TypedDicts in `common/components/custom_elements.py`**
@@ -542,8 +553,8 @@ def LiveSettingFields(
 
 - [ ] **Step 5: Confirm the break is total and expected**
 
-Run: `direnv exec . uv run python manage.py gen_element_types && direnv exec . uv run mypy common/components/settings_kit.py games/views/settings.py`
-Expected: mypy errors on `games/views/settings.py`'s two `LiveSettingFields(...)` calls (missing required `namespace` argument) and on `e2e/test_settings_ui_kit_e2e.py`'s call — this is intentional; fixed in Tasks 8 and 9. Confirm no OTHER unexpected errors.
+Run: `direnv exec . uv run python manage.py gen_element_types && direnv exec . uv run mypy common/components/settings_kit.py games/views/settings.py e2e/test_settings_ui_kit_e2e.py tests/test_settings_ui_kit.py games/views/settings_kit_preview.py`
+Expected: mypy errors on every call site that doesn't yet pass `namespace=` — `games/views/settings.py`'s two `LiveSettingFields(...)` calls, `e2e/test_settings_ui_kit_e2e.py`'s one, `games/views/settings_kit_preview.py`'s four (1 `LiveSettingFields` + 3 `SettingSourceBadge`), and `tests/test_settings_ui_kit.py`'s thirteen (7 `SettingSourceBadge` + 6 `LiveSettingFields`) — all intentional; fixed in Tasks 5, 9, and 10. Confirm no OTHER unexpected errors, and confirm the count of flagged call sites matches: `direnv exec . rg -c "SettingSourceBadge\(|LiveSettingFields\(" common/components/settings_kit.py games/views/settings.py games/views/settings_kit_preview.py e2e/test_settings_ui_kit_e2e.py tests/test_settings_ui_kit.py` (the `settings_kit.py` hits are the definitions/internal call, not call sites needing a fix — everything else should account for 2+1+4+13 = 20 broken call sites total).
 
 - [ ] **Step 6: Commit**
 
@@ -554,11 +565,79 @@ git commit -m "feat(settings): thread namespace through SettingSourceBadge/LiveS
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-(This commit leaves the tree red at 3 call sites by design — Tasks 8/9 fix them, Task 11 is the real gate.)
+(This commit leaves the tree red at 20 call sites by design — Tasks 5, 9, and 10 fix them, Task 12 is the real gate.)
 
 ---
 
-### Task 5: `SettingSourceBadgeElement` filters on key + namespace
+### Task 5: Fix the remaining `SettingSourceBadge`/`LiveSettingFields` call sites
+
+**Files:**
+- Modify: `tests/test_settings_ui_kit.py` (7 `SettingSourceBadge` calls, 6 `LiveSettingFields` calls)
+- Modify: `games/views/settings_kit_preview.py` (1 `LiveSettingFields` call, 3 `SettingSourceBadge` calls — a DEBUG-only component gallery, easy to miss since it's not one of the two real settings pages)
+
+**Interfaces:**
+- Consumes: Task 1's `SettingNamespace`; Task 4's now-required `namespace` parameter.
+
+Neither file corresponds to a real user/site distinction — `tests/test_settings_ui_kit.py` is a component-level unit test file (`SimpleTestCase`, no HTTP), and `games/views/settings_kit_preview.py` is a single DEBUG-only preview gallery. The `namespace` value passed at each site is arbitrary; match it to the call's own `patch_url_template` where one is visible (`/api/settings/user/...` → `namespace="user"`, `/api/settings/site/...` → `namespace="site"`) for readability, and use `"user"` where there's no such hint.
+
+- [ ] **Step 1: Fix `tests/test_settings_ui_kit.py`'s 7 `SettingSourceBadge` calls**
+
+Add `namespace="user"` as a keyword argument to each (line numbers are the call's opening line):
+
+- `~154`: `test_source_lock_composite_is_one_badge_with_an_icon`.
+- `~188`: `test_every_unlocked_source_badge_explains_its_origin` (inside the `for source, description in descriptions.items():` loop).
+- `~195`, `~196`, `~197`: `test_non_default_source_badge_explains_highlight` (three separate calls: `personal`, `default`, `locked`).
+- `~205`: `test_default_source_is_neutral_and_overrides_use_brand_tone` (the `default =` call).
+- `~213`: same test, inside the `for source in (...)：` loop.
+
+- [ ] **Step 2: Fix `tests/test_settings_ui_kit.py`'s 6 `LiveSettingFields` calls**
+
+Add `namespace=` as a keyword argument to each:
+
+- `~231` (`test_locked_state_disables_the_real_django_field_and_adds_reason`, `patch_url_template="/api/settings/site/__key__"`): `namespace="site"`.
+- `~268` (`test_metadata_ids_follow_django_form_prefixes`, `first =`, `patch_url_template="/api/settings/user/__key__"`): `namespace="user"`.
+- `~274` (same test, `second =`, `patch_url_template="/api/settings/site/__key__"`): `namespace="site"`.
+- `~296` (`test_non_live_state_keeps_identity_without_generic_save_ownership`, `patch_url_template="/api/settings/user/__key__"`): `namespace="user"`.
+- `~396` (`test_live_wrapper_uses_registered_codegen_attributes_and_media`, `patch_url_template="/api/settings/user/__key__"`): `namespace="user"`. **Also** update this test's exact-string assertion at `~412`:
+  ```python
+  assert '<setting-source-badge key="DISPLAY_NAME">' in html
+  ```
+  to:
+  ```python
+  assert '<setting-source-badge key="DISPLAY_NAME" namespace="user">' in html
+  ```
+  (Run this one test first and read the actual rendered attribute order from the failure output — attribute order comes from the TypedDict field declaration order in `SettingSourceBadgeProps` (`key` then `namespace`, per Task 4 Step 1), so `key` before `namespace` is expected, but confirm rather than assume.)
+- `~420` (`test_live_wrapper_requires_a_key_placeholder`, `patch_url_template="/api/settings/user"`, no `__key__` token): `namespace="user"`. This one matters beyond cosmetics — `namespace` is a required *keyword-only parameter*, checked before the function body runs, so without it the call raises `TypeError` at the call site instead of reaching the `ValueError` the test's `pytest.raises(ValueError, match="__key__")` expects; omitting the fix here makes the test fail with "DID NOT RAISE" on the wrong exception type.
+
+- [ ] **Step 3: Fix `games/views/settings_kit_preview.py`'s 4 call sites**
+
+Add the import:
+
+```python
+from timetracker.settings_commands import SettingNamespace
+```
+
+Add `namespace=SettingNamespace.USER` to the `LiveSettingFields(...)` call in `_live_fields` (~line 127) and to each of the three `SettingSourceBadge(...)` calls in `_source_gallery` (~lines 146, 157) and `_preview_label_line` (~line 183).
+
+Note: `settings_kit_preview_patch` (~line 377) returns `HttpResponse(status=204)` with **no JSON body** on success — it is not a `SettingOut`-shaped response and needs no `namespace` field; this is pre-existing behavior (a preview endpoint that deliberately doesn't persist), unrelated to this change.
+
+- [ ] **Step 4: Run to verify**
+
+Run: `direnv exec . uv run pytest tests/test_settings_ui_kit.py tests/test_settings_ui_kit_preview.py -v`
+Expected: PASS all (these were passing before Task 4 landed `namespace` as required; this task restores that).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/test_settings_ui_kit.py games/views/settings_kit_preview.py
+git commit -m "fix(settings): thread namespace into the ui-kit test suite and preview gallery
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: `SettingSourceBadgeElement` filters on key + namespace
 
 **Files:**
 - Modify: `ts/elements/setting-source-badge.ts`
@@ -690,7 +769,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: `LiveSettingFieldsElement` self-checks namespace
+### Task 7: `LiveSettingFieldsElement` self-checks namespace
 
 **Files:**
 - Modify: `ts/elements/live-setting-fields.ts`
@@ -808,11 +887,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: `ThemeCoordinator` asserts `namespace === "user"`
+### Task 8: `ThemeCoordinator` asserts `namespace === "user"`
 
 **Files:**
 - Modify: `ts/theme-coordinator.ts`
-- Test: `ts/theme-coordinator.test.ts`
+- Test: `ts/theme-coordinator.test.ts`, `ts/elements/theme-setting.test.ts`
 
 **Interfaces:**
 - Consumes: Task 3's `ResolvedSetting.namespace`.
@@ -827,6 +906,8 @@ In `ts/theme-coordinator.test.ts`, add `namespace: "user"` to each of these obje
 - `~line 203`: `{ key: "THEME", value: "dark", source: "user", locked: false }` (the "contract mismatch" case — keep it hitting its intended value-mismatch check, not an incidental missing-namespace failure).
 - `~line 224`: `{ key: "THEME", value: "light", source: "user", locked: false }`.
 - `~line 243`: `{ key: "THEME", value: "light", source: "user", locked: false }`.
+
+`ts/elements/theme-setting.test.ts` — a separate test file for the `<theme-setting>` wrapper element, which also mocks PATCH responses that flow through `ThemeCoordinator`/`parseResolvedSetting` — needs the identical `namespace: "user"` addition to its 4 response fixtures (none deliberately malformed): `~line 88`, `~line 101-102`, `~line 134-135`, `~line 180`.
 
 - [ ] **Step 2: Add a namespace-mismatch test**
 
@@ -874,13 +955,13 @@ In `ts/theme-coordinator.ts`, extend the existing contract-check condition in `r
 
 - [ ] **Step 5: Run to verify pass**
 
-Run: `direnv exec . pnpm test:ts -- theme-coordinator`
-Expected: PASS all tests in this file.
+Run: `direnv exec . pnpm test:ts -- theme-coordinator theme-setting`
+Expected: PASS all tests in both files.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ts/theme-coordinator.ts ts/theme-coordinator.test.ts
+git add ts/theme-coordinator.ts ts/theme-coordinator.test.ts ts/elements/theme-setting.test.ts
 git commit -m "feat(settings): ThemeCoordinator asserts its PATCH response namespace
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -888,7 +969,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 8: Wire the two real settings pages
+### Task 9: Wire the two real settings pages
 
 **Files:**
 - Modify: `games/views/settings.py`
@@ -941,7 +1022,7 @@ Run: `direnv exec . uv run mypy games/views/settings.py`
 Expected: no errors related to `LiveSettingFields` call sites (other pre-existing errors elsewhere, if any, are unrelated — do not fix them here).
 
 Run: `direnv exec . uv run pytest tests/test_settings_page.py tests/test_admin_settings_page.py -v`
-Expected: PASS (page rendering tests, no behavior change to assert on `namespace` yet — that's Task 10's e2e work).
+Expected: PASS (page rendering tests, no behavior change to assert on `namespace` yet — that's Task 11's e2e work).
 
 - [ ] **Step 5: Commit**
 
@@ -954,7 +1035,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Fix the synthetic e2e harness's third `LiveSettingFields` call site
+### Task 10: Fix the synthetic e2e harness's third `LiveSettingFields` call site
 
 **Files:**
 - Modify: `e2e/test_settings_ui_kit_e2e.py`
@@ -962,7 +1043,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: Task 1's `SettingNamespace`; Task 4's `LiveSettingFields(..., namespace=...)`.
 
-This file's `settings_kit_view` is a **third** real call site of `LiveSettingFields` (a synthetic isolated-URLconf test harness, unrelated to the real user/site pages) — easy to miss since it's in `e2e/`, not `games/`.
+This file's `settings_kit_view` is a real call site of `LiveSettingFields` (a synthetic isolated-URLconf test harness, unrelated to the real user/site pages) — easy to miss since it's in `e2e/`, not `games/`. (It is not the only remaining one — Task 5 covers the others, in `tests/test_settings_ui_kit.py` and `games/views/settings_kit_preview.py`.)
 
 - [ ] **Step 1: Add the import**
 
@@ -1013,7 +1094,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: E2E — response-shape fixes + bidirectional cross-namespace coverage
+### Task 11: E2E — response-shape fixes + bidirectional cross-namespace coverage
 
 **Files:**
 - Modify: `e2e/test_admin_settings_page_e2e.py`
@@ -1093,7 +1174,9 @@ def test_site_page_ignores_a_synthetic_user_namespace_event(
 
 - [ ] **Step 4: Add the mirror test to the user settings page**
 
-`e2e/test_settings_page_e2e.py` already has the `authenticated_page` fixture (returns `(page, preferred_device)`, logs in user `tester`) and the `_wait_for_live_settings(page)` helper. The page's URL name is `games:settings` (registered as `path("settings", settings_views.user_settings, name="settings")` in `games/urls.py`) — **not** `games:user_settings`. Append:
+`e2e/test_settings_page_e2e.py` already has the `authenticated_page` fixture (returns `(page, preferred_device)`, logs in user `tester`) and the `_wait_for_live_settings(page)` helper. The page's URL name is `games:settings` (registered as `path("settings", settings_views.user_settings, name="settings")` in `games/urls.py`) — **not** `games:user_settings`.
+
+This test must assert on a **badge**, not `ThemeCoordinator`'s state: `ThemeCoordinator` never listens to `setting-committed` events (only badges do — Task 8's namespace check is a self-check on its own *outgoing* PATCH response, not an incoming-event listener), so a `document.documentElement.dataset.themePreference` before/after check would pass identically whether or not the namespace filter exists — it asserts nothing. `DEFAULT_CURRENCY` renders a badge on both the user and admin pages (the same key used in the admin-page test above), so use that key here too — a real, listening consumer, mirroring the admin test's actual mechanism instead of a vacuous observable. Append:
 
 ```python
 def test_user_page_ignores_a_synthetic_site_namespace_event(
@@ -1101,20 +1184,23 @@ def test_user_page_ignores_a_synthetic_site_namespace_event(
     authenticated_page,
 ):
     """Mirror of test_site_page_ignores_a_synthetic_user_namespace_event, in
-    the other direction: a synthetic site-namespace THEME event must not
-    affect the user page's theme state."""
+    the other direction: a synthetic site-namespace event for a key also
+    shown on the user page must not update this page's badge."""
     page, _preferred = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
 
-    before = page.evaluate("document.documentElement.dataset.themePreference")
+    badge = page.locator(
+        'setting-source-badge[key="DEFAULT_CURRENCY"] [data-setting-origin]'
+    )
+    before = badge.get_attribute("data-setting-origin")
 
     page.evaluate(
         """() => {
             document.body.dispatchEvent(new CustomEvent("setting-committed", {
                 detail: {
-                    key: "THEME",
-                    value: "dark",
+                    key: "DEFAULT_CURRENCY",
+                    value: "USD",
                     source: "database",
                     locked: false,
                     namespace: "site",
@@ -1124,8 +1210,7 @@ def test_user_page_ignores_a_synthetic_site_namespace_event(
         }"""
     )
 
-    after = page.evaluate("document.documentElement.dataset.themePreference")
-    assert after == before
+    expect(badge).to_have_attribute("data-setting-origin", before)
 ```
 
 - [ ] **Step 5: Run both new tests + the full settings/theme e2e sweep**
@@ -1144,7 +1229,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 11: Full verification gate
+### Task 12: Full verification gate
 
 **Files:** none (verification only)
 
@@ -1155,7 +1240,7 @@ Expected: green — lint, format-check, mypy, ts-check, vitest, and the entire p
 
 - [ ] **Step 2: If anything is red, fix it in place**
 
-Likely candidates if something slipped through: a fourth call site of `LiveSettingFields`/`SettingSourceBadge` not covered above (grep to confirm none remain: `direnv exec . rg -n "LiveSettingFields\(" --type py` and `direnv exec . rg -n "SettingSourceBadge\(" --type py` — every hit must now pass `namespace=`), or a vitest fixture missed in Tasks 5-7 (re-check the enumerated line lists against the current file state).
+Likely candidates if something slipped through: a call site of `LiveSettingFields`/`SettingSourceBadge` not covered by Tasks 5, 9, or 10 (grep to confirm none remain: `direnv exec . rg -n "LiveSettingFields\(" --type py` and `direnv exec . rg -n "SettingSourceBadge\(" --type py` — every hit must now pass `namespace=`), or a vitest fixture missed in Tasks 6-8 (re-check the enumerated line lists in `ts/elements/setting-source-badge.test.ts`, `ts/elements/live-setting-fields.test.ts`, `ts/theme-coordinator.test.ts`, and `ts/elements/theme-setting.test.ts` against the current file state).
 
 - [ ] **Step 3: Commit any fixes**
 
@@ -1176,6 +1261,7 @@ None new — the design already fans out to **#497** (migrate `SettingSource`/`S
 
 ## Self-review notes
 
-- **Spec coverage:** namespace type + codegen (T1), server stamping on all 4 endpoints (T2), event contract + doc-comment (T3), Python prop threading (T4), badge listener (T5), emitter self-check (T6), coordinator self-check (T7), both real pages wired (T8), the synthetic harness's third call site (T9) — easy to have missed, explicitly caught during exploration — response-shape fixes + bidirectional cross-namespace e2e (T10), full gate (T11). All mapped.
+- **Spec coverage:** namespace type + codegen (T1), server stamping on all 4 endpoints (T2), event contract + doc-comment (T3), Python prop threading (T4), the remaining call sites this required-kwarg break touches (T5), badge listener (T6), emitter self-check (T7), coordinator self-check (T8), both real pages wired (T9), the synthetic harness call site (T10), response-shape fixes + bidirectional cross-namespace e2e (T11), full gate (T12). All mapped.
 - **Types:** `SettingNamespace`, `SETTING_NAMESPACE_CHOICES`, `SETTING_NAMESPACES`, generated module path (`ts/generated/settings-vocabulary.ts`) used consistently across tasks.
-- **Exhaustive fixture edits:** Tasks 6 and 7 enumerate every existing test object literal needing `namespace` added, and explicitly call out which deliberately-malformed fixtures must NOT gain it (so they keep testing what they claim to test).
+- **Exhaustive fixture edits:** Tasks 7 and 8 enumerate every existing test object literal needing `namespace` added (including a second test file, `ts/elements/theme-setting.test.ts`, missed in an earlier pass), and explicitly call out which deliberately-malformed fixtures must NOT gain it (so they keep testing what they claim to test). Task 5 enumerates every remaining Python call site of `SettingSourceBadge`/`LiveSettingFields` — the full count (2 real pages + 1 e2e harness + 1 preview gallery + 13 unit-test calls = 20) is checked mechanically in Task 4 Step 5, not just asserted.
+- **Fable review fold-in:** an independent pass against the live repo caught four understated blast-radius gaps (six pre-existing exact-dict `SettingOut` assertions in `tests/test_settings_api.py` itself; the entire `tests/test_settings_ui_kit.py` file; a fourth production call site, `games/views/settings_kit_preview.py`; and `ts/elements/theme-setting.test.ts`'s fixtures) plus a `-k` filter typo, a wrong commit file list, an incorrect mypy-invocation scope claim, and — the one substantive test-design fix — Task 11's original user-page mirror test asserted `ThemeCoordinator` state that no event listener ever touches; it's rewritten to assert on a `DEFAULT_CURRENCY` badge instead, mirroring the admin-page test's actual (listening) mechanism.
