@@ -29,6 +29,9 @@ dist/
 .claude/
 /.worktrees/
 
+# Superpowers local brainstorming session state
+/.superpowers/brainstorm/
+
 # Playwright MCP browser session artifacts
 .playwright-mcp/
 
