@@ -14,11 +14,10 @@ from django.test import override_settings
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.config import SettingSource
-from timetracker.settings_commands import change_site_setting
+from timetracker.settings_commands import change_site_setting, change_user_setting
 from timetracker.settings_resolver import (
     resolve_for_user,
     resolve_for_user_with_origin,
-    set_user_preference,
 )
 
 
@@ -48,7 +47,7 @@ def _write_currency_row(django_capture_on_commit_callbacks, value):
 
 def _set_user(django_capture_on_commit_callbacks, user, key, value):
     with django_capture_on_commit_callbacks(execute=True):
-        set_user_preference(user, key, value)
+        change_user_setting(user, key, value)
 
 
 @pytest.fixture
@@ -308,7 +307,7 @@ def test_datetime_format_rejects_unsupported_values(user, value):
     from games.models import UserPreferences
 
     with pytest.raises(ValidationError):
-        set_user_preference(user, "DATETIME_FORMAT", value)
+        change_user_setting(user, "DATETIME_FORMAT", value)
 
     assert not UserPreferences.objects.filter(user=user).exists()
 
@@ -324,7 +323,7 @@ def test_presentation_preferences_reject_unsupported_values(user, key, value):
     from games.models import UserPreferences
 
     with pytest.raises(ValidationError):
-        set_user_preference(user, key, value)
+        change_user_setting(user, key, value)
 
     assert not UserPreferences.objects.filter(user=user).exists()
 
@@ -352,29 +351,24 @@ def test_poison_user_value_degrades_to_shared_chain(
 # --- write guards ---------------------------------------------------------
 
 
-def test_set_user_preference_rejects_unknown_key(user, db):
+def test_change_user_setting_rejects_unknown_key(user, db):
     with pytest.raises(KeyError):
-        set_user_preference(user, "NOPE", "x")
+        change_user_setting(user, "NOPE", "x")
 
 
-def test_set_user_preference_rejects_non_user_key(user, db):
-    with pytest.raises(ValueError):
-        set_user_preference(user, "TZ", "Europe/Prague")
-
-
-def test_set_user_preference_rejects_invalid_and_writes_nothing(user, db):
+def test_change_user_setting_rejects_invalid_and_writes_nothing(user, db):
     from games.models import UserPreferences
 
     with pytest.raises(ValidationError):
-        set_user_preference(user, "DEFAULT_CURRENCY", "EURO")
+        change_user_setting(user, "DEFAULT_CURRENCY", "EURO")
     assert not UserPreferences.objects.filter(user=user).exists()
 
 
-def test_set_user_preference_rejects_missing_device(user, db):
+def test_change_user_setting_rejects_missing_device(user, db):
     from games.models import UserPreferences
 
     with pytest.raises(ValidationError):
-        set_user_preference(user, "DEFAULT_DEVICE", 9999)
+        change_user_setting(user, "DEFAULT_DEVICE", 9999)
     assert not UserPreferences.objects.filter(user=user).exists()
 
 

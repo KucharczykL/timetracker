@@ -15,7 +15,7 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Final
+from typing import Callable, Final, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
@@ -25,6 +25,9 @@ type SettingKey = str  # e.g. "DEFAULT_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
 type DefaultFactory = Callable[[], object]  # lazy default, read at resolve time
 type SettingValidator = Callable[[object], object]  # returns normalized or raises
+type SettingWriteValidator = Callable[
+    [object], None
+]  # write-time referential check; raises on failure
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_sessions", "Sessions"),
@@ -100,6 +103,7 @@ class SettingDefinition:
     superuser_only: bool = False
     secret: bool = False
     note: str = ""
+    write_validator: SettingWriteValidator | None = None
 
     def __post_init__(self) -> None:
         if self.env_name is None:
@@ -124,7 +128,7 @@ def _validate_currency(value: object) -> str:
 
 def _validate_optional_device_id(value: object) -> int | None:
     """Type-only check for the personal default-device pref. ``None`` means unset;
-    existence of the device id is enforced at write time (``set_user_preference``),
+    existence of the device id is enforced at write time (``change_user_setting``),
     not here, so a stale registry read never crashes."""
     if value is None:
         return None
@@ -132,6 +136,18 @@ def _validate_optional_device_id(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"Device must be an integer id (got {value!r}).")
     return value
+
+
+def _require_existing_device(value: object) -> None:
+    """Write-time referential check for DEFAULT_DEVICE: the id must name a live
+    Device. Read paths never call this (a dangling stored id degrades to the
+    default instead of raising)."""
+    if value is None:
+        return
+    from games.models import Device
+
+    if not Device.objects.filter(pk=cast(int, value)).exists():
+        raise ValidationError(f"No device with id {value!r}.")
 
 
 def _validate_optional_landing_page(value: object) -> str | None:
@@ -216,6 +232,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             default_factory=lambda: None,
             validator=_validate_optional_device_id,
             widget="device",
+            write_validator=_require_existing_device,
         ),
         SettingDefinition(
             "DEFAULT_LANDING_PAGE",

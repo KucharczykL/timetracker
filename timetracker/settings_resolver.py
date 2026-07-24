@@ -22,7 +22,6 @@ Non-obvious points:
 import logging
 import threading
 import time
-from typing import cast
 
 from django.core.exceptions import ValidationError
 from django.db.utils import OperationalError, ProgrammingError
@@ -193,6 +192,50 @@ def resolve_with_origin(key: SettingKey) -> ResolvedSetting:
     return ResolvedSetting(definition.default_factory(), SettingSource.DEFAULT, False)
 
 
+def resolve_fallthrough_uncached(key: SettingKey, *, skip_db: bool) -> ResolvedSetting:
+    """Resolve ``key`` ignoring the personal layer and (when ``skip_db``) the site DB
+    layer, WITHOUT populating the module snapshot cache. Best-effort: a malformed value
+    in a consulted layer degrades to the default rather than raising.
+
+    The command layer uses this to compute post-CLEAR effective state — it must not
+    read back the just-deleted layer, and must not leak an outer transaction's
+    uncommitted site row into the shared cache (issue #487)."""
+    definition = get_definition(key)
+    raw = resolve_raw_with_source(
+        definition.env_name or definition.key, allow_file=definition.allow_file
+    )
+    if raw is not None:
+        try:
+            value = normalize_setting_value(raw.raw, definition)
+        except ValidationError, ValueError, TypeError:
+            return ResolvedSetting(
+                definition.default_factory(), SettingSource.DEFAULT, False
+            )
+        return ResolvedSetting(value, raw.source, raw.source in LOCKED_SOURCES)
+
+    if not skip_db and definition.scope in (SettingScope.SITE, SettingScope.USER):
+        from games.models import SiteSetting
+
+        stored = (
+            SiteSetting.objects.filter(key=key).values_list("value", flat=True).first()
+        )
+        if stored is not None:
+            try:
+                value = normalize_setting_value(stored, definition)
+            except (ValidationError, ValueError, TypeError) as error:
+                logger.warning(
+                    "[settings_resolver]: invalid stored %s=%r in fall-through, "
+                    "using default: %s",
+                    key,
+                    stored,
+                    error,
+                )
+            else:
+                return ResolvedSetting(value, SettingSource.DATABASE, False)
+
+    return ResolvedSetting(definition.default_factory(), SettingSource.DEFAULT, False)
+
+
 def resolve(key: SettingKey) -> object:
     """Resolved value of ``key`` (drops the origin)."""
     return resolve_with_origin(key).value
@@ -252,31 +295,6 @@ def resolve_str_for_user(user: object, key: SettingKey) -> str:
     return value
 
 
-def set_user_preference(user: object, key: SettingKey, value: object) -> object:
-    """Upsert a user-scoped preference (validated + normalized); ``None`` clears.
-
-    Returns the normalized value that was stored, or ``None`` when cleared.
-    Raises for an unregistered key, a non-``USER`` key, a value the definition's
-    validator rejects, or a ``DEFAULT_DEVICE`` id with no matching Device —
-    nothing is written in those cases (validation runs before the write).
-    """
-    definition = get_definition(key)
-    if definition.scope is not SettingScope.USER:
-        raise ValueError(f"{key} is not a user-scoped setting; cannot store per user.")
-    normalized = None if value is None else normalize_setting_value(value, definition)
-
-    from games.models import Device, UserPreferences
-
-    if key == "DEFAULT_DEVICE" and normalized is not None:
-        # normalized is an int here (validated by _validate_optional_device_id).
-        device_id = cast(int, normalized)
-        if not Device.objects.filter(pk=device_id).exists():
-            raise ValidationError(f"No device with id {device_id!r}.")
-
-    UserPreferences.get_for_user(user).set_preference_value(key, normalized)
-    return normalized
-
-
 __all__ = [
     "ResolvedSetting",
     "SITE_SETTINGS_TTL_SECONDS",
@@ -284,10 +302,10 @@ __all__ = [
     "clear_cache",
     "normalize_setting_value",
     "resolve",
+    "resolve_fallthrough_uncached",
     "resolve_for_user",
     "resolve_for_user_with_origin",
     "resolve_str",
     "resolve_str_for_user",
     "resolve_with_origin",
-    "set_user_preference",
 ]

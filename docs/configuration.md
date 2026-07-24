@@ -93,12 +93,15 @@ the global `SiteSetting` model.
   current process's snapshots only after transaction commit; a raw
   `QuerySet.update()` skips those signals and remains invisible until the TTL
   lapses.
-- **Site mutation boundary.** Site-default changes go through
-  `change_site_setting()` in
+- **Mutation boundaries.** Site-default changes go through
+  `change_site_setting()` and personal-preference changes go through
+  `change_user_setting()`, both in
   [`timetracker/settings_commands.py`](../timetracker/settings_commands.py).
-  The command validates and normalizes values, rejects a higher configuration
-  source before touching the database, and returns the canonical result
-  directly. The resolver has no public mutation helpers.
+  Each command validates and normalizes values, rejects a higher configuration
+  source before touching the database, and returns a `SettingMutation` —
+  carrying the resolved effective value, the operation (`set`/`clear`), whether
+  storage actually changed, and the stored value or its absence. The resolver
+  has no public mutation helpers.
 - **API.** `/api/settings/user` (`GET`/`PATCH`, scoped to the requesting user)
   reads and writes personal prefs; `/api/settings/site` (`GET`/`PATCH`,
   superuser-only) reads and writes the site defaults. `PATCH` with `value: null`
