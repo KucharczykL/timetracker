@@ -31,10 +31,12 @@ def _reset_settings_caches():
 def _flush_waits_for_inflight_requests(request: pytest.FixtureRequest):
     """Wait for browser network quiescence before the post-test DB flush (#277).
 
-    pytest-django's teardown flush of the shared-cache in-memory SQLite
-    database fails with "database table is locked" when a live_server request
-    is still mid-read — an unfinished SELECT cursor blocks the flush's
-    DELETEs, even on the shared connection. Tests legitimately end with
+    pytest-django's teardown flush of the SQLite test database contends with
+    a live_server request that is still mid-read: the request's open SELECT
+    holds a read lock that the flush's DELETEs have to wait out. On the
+    shared-cache in-memory database this failed outright with "database table
+    is locked" (#476 moved the test database on disk, where the same overlap
+    is a waitable SQLITE_BUSY instead). Tests legitimately end with
     fire-and-forget requests (htmx refreshes like the play-added /
     status-changed section reloads, filter-count GETs), so before the DB
     teardown runs we wait until no request is in flight and none starts for a
