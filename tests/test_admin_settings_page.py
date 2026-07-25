@@ -555,28 +555,16 @@ def test_admin_settings_renders_when_infra_settings_share_a_source(
     superuser_client,
     clean_site_setting_sources,
     monkeypatch,
-    settings,
+    debug_page_rendering,
 ):
     """Regression: several infra settings resolving to the SAME source/locked
     produce byte-identical source badges. Their tooltip Popover ids must stay
     unique per setting, or the whole document fails assert_unique_element_ids
     and the page 500s (seen with real prod data — env-locked DEBUG/DATA_DIR/…).
 
-    assert_unique_element_ids only runs under settings.DEBUG (common/layout.py),
-    which pytest-django forces off, so DEBUG is enabled here to exercise the real
-    page-level id-uniqueness check — otherwise this passes vacuously even with a
-    live collision.
-
-    INTERNAL_IPS is cleared alongside DEBUG so debug_toolbar's own middleware
-    stays inert (show_toolbar() reads both live): ROOT_URLCONF only appends the
-    djdt route when settings.DEBUG is true at the first (lazy, whole-session)
-    import of timetracker.urls, which pytest-django forces false before any
-    test runs — so djdt is never actually reversible here, and letting the
-    toolbar attempt to render would 500 with NoReverseMatch depending on
-    whichever test happened to run first in the session.
+    Needs the debug_page_rendering fixture: the id check runs only under DEBUG,
+    so without it this passes vacuously even with a live collision.
     """
-    settings.DEBUG = True
-    settings.INTERNAL_IPS = []
     from games.views import settings as settings_view
 
     original_resolve = settings_view.resolve_with_origin
