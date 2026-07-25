@@ -326,6 +326,13 @@ guard). The **color guard is `ts/`-only**: `common/` still carries raw palette m
   `text-type-subheading` (20px/700); nested field-group legends use `text-type-section`
   (18px/600). Keep a section title and description 8px apart, then leave 24px before its
   content. These roles and gaps belong to the shared components, not page-local overrides.
+- **Every settings page opens with `SettingsPageHeader`.** It owns the title, the optional
+  description, and the optional **page-level action** slot (`data-settings-page-actions`) —
+  an action that owns the whole page, such as the site-settings ini export. A page-level
+  action does not belong in a `SettingsSection` panel: that panel is a field container, so
+  an action inside one reads as belonging to that section's fields. Do not hand-roll a
+  heading/action row per page; the header bakes no margin, so the page body is a
+  `gap`-spaced flex column.
 - **A settings form may not be a fluid single column.** `SettingsFieldLayout` owns the only
   three supported flows, and `LiveSettingFields` composes its `w-full max-w-xl` single-column
   mode. Two-column (`@md:grid-cols-2`) and three-column

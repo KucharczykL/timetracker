@@ -9,21 +9,19 @@ from django.middleware.csrf import get_token
 from django.urls import reverse
 
 from common.components import (
-    ContentContainer,
     ControlButton,
     Div,
     FormFieldPresentation,
     LiveSettingFields,
     Node,
-    PageHeading,
     ReadonlySettingField,
     SettingFieldState,
     SettingsFieldLayout,
+    SettingsPageHeader,
     SettingsScaffold,
     SettingsSection,
     ThemeSetting,
 )
-from common.components.primitives import P
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
@@ -323,8 +321,8 @@ def user_settings(request: HttpRequest) -> HttpResponse:
             "Defaults used when creating records and opening Timetracker.",
         )
     ]
-    content = Div(class_="flex flex-col")[
-        ContentContainer(class_="mb-6")[PageHeading(["Settings"])],
+    content = Div(class_="flex flex-col gap-6")[
+        SettingsPageHeader("Settings"),
         SettingsScaffold(sections),
     ]
     return render_page(request, content, title="Settings", is_settings_page=True)
@@ -357,12 +355,10 @@ def _infra_fields() -> list[Node]:
 def admin_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
         content = Div(class_="flex flex-col")[
-            ContentContainer(class_="flex flex-col gap-4")[
-                PageHeading(["Admin settings"]),
-                P(class_="text-type-body text-body")[
-                    "Superuser access is required to manage site defaults."
-                ],
-            ]
+            SettingsPageHeader(
+                "Admin settings",
+                description="Superuser access is required to manage site defaults.",
+            )
         ]
         return render_page(
             request,
@@ -400,22 +396,17 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             ),
         ),
     ]
-    content = Div(class_="flex flex-col")[
-        ContentContainer(class_="mb-6 flex flex-col gap-2")[
-            Div(class_="flex flex-wrap items-start justify-between gap-4")[
-                Div(class_="flex flex-col gap-2")[
-                    PageHeading(["Admin settings"]),
-                    P(class_="text-type-body text-body")[
-                        "Defaults inherited by users who have not saved "
-                        "personal overrides."
-                    ],
-                ],
-                ControlButton(
-                    href=reverse("games:export_admin_settings_ini"),
-                    color="gray",
-                )["Download settings.ini"],
-            ],
-        ],
+    content = Div(class_="flex flex-col gap-6")[
+        SettingsPageHeader(
+            "Admin settings",
+            description=(
+                "Defaults inherited by users who have not saved personal overrides."
+            ),
+            actions=ControlButton(
+                href=reverse("games:export_admin_settings_ini"),
+                color="gray",
+            )["Download settings.ini"],
+        ),
         SettingsScaffold(sections),
     ]
     return render_page(

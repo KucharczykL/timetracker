@@ -11,7 +11,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from common.components.core import Child, Element, Fragment, Node, randomid
+from common.components.core import (
+    Child,
+    Children,
+    Element,
+    Fragment,
+    Node,
+    as_children,
+    randomid,
+)
 from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
     A,
@@ -28,6 +36,7 @@ from common.components.primitives import (
     Label,
     Li,
     P,
+    PageHeading,
     Popover,
     Span,
     TooltipDefinition,
@@ -113,6 +122,44 @@ def SettingsFieldLayout(columns: SettingsFieldColumns = 1) -> Element:
         class_=_SETTINGS_FIELD_LAYOUT_CLASSES[columns],
         data_settings_field_layout=str(columns),
     )
+
+
+def SettingsPageHeader(
+    title: str,
+    *,
+    description: str = "",
+    actions: Children = None,
+) -> Node:
+    """The one header every settings-surface page renders above its content.
+
+    ``actions`` hosts page-level actions — ones that own the whole page, such as
+    the site-settings ini export — which have no other home in the kit: a
+    :class:`SettingsSection` panel is a field container, so an action placed in
+    one reads as belonging to that section's fields.
+
+    Multi-slot (title / description / actions), so it keeps semantic parameters
+    rather than an htpy ``[]`` slot. Bakes no bottom margin — the page body is a
+    ``gap``-spaced flex column that owns the distance to the content below.
+    """
+    heading_children: list[Node] = [PageHeading([title])]
+    if description:
+        heading_children.append(P(class_="text-type-body text-body")[description])
+    # No gap: PageHeading carries its own bottom margin, which a gap would compound.
+    header_children: list[Node] = [Div(class_="flex flex-col")[*heading_children]]
+    action_children = as_children(actions)
+    if action_children:
+        header_children.append(
+            Div(
+                data_settings_page_actions="",
+                class_="flex flex-wrap items-start gap-2",
+            )[*action_children]
+        )
+    return ContentContainer()[
+        Div(
+            data_settings_page_header="",
+            class_="flex flex-wrap items-start justify-between gap-4",
+        )[*header_children]
+    ]
 
 
 def _validate_sections(sections: Sequence[SettingsSection]) -> None:
@@ -613,6 +660,7 @@ __all__ = [
     "SettingSourceBadge",
     "SettingsFieldColumns",
     "SettingsFieldLayout",
+    "SettingsPageHeader",
     "SettingsScaffold",
     "SettingsSection",
     "SettingsSectionNav",
