@@ -477,7 +477,9 @@ def _game_section(
             Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
             "View all",
         ]
-        header = Div(class_="flex items-center justify-between mb-2")[
+        # No margin: the section wrapper's gap owns the distance to the table, so
+        # a section with a "View all" button spaces exactly like one without.
+        header = Div(class_="flex items-center justify-between")[
             PageHeading(children=[title], badge=str(count) if count else ""),
             view_all_link,
         ]
