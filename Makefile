@@ -3,6 +3,12 @@ all: css migrate
 initialize: npm css migrate loadplatforms
 
 PYTHON_VERSION = 3.14
+# ts/date-time-presentation.ts uses Temporal, which lands in Node 26. On an older
+# node it is simply `undefined`, the formatters return null, and vitest fails with
+# ~11 "expected null to be '2026-07-02 19:05 …'" assertions that read like real
+# breakage. shell.nix pins nodejs_26; this guard stops a stray older node on PATH
+# from turning that into a mystery.
+NODE_MAJOR_VERSION = 26
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8000
 
@@ -34,10 +40,24 @@ ensure-python:
 	exit 1
 endif
 
-npm:
+# Fail loudly, before any JS build or test, when PATH's node predates Temporal.
+# Written to run under both `sh` and cmd.exe: node itself does the comparison and
+# sets the exit status, so the recipe needs no shell-specific arithmetic.
+ensure-node:
+	@node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
+	( \
+		echo "==> node $$(node --version 2>/dev/null) is too old — this repo needs node >= $(NODE_MAJOR_VERSION)."; \
+		echo "    ts/date-time-presentation.ts uses Temporal (Node 26+). On an older node the"; \
+		echo "    date/time formatters return null and vitest fails as if the code were broken."; \
+		echo "    shell.nix pins nodejs_26: run from the Nix dev shell, e.g."; \
+		echo "        nix-shell --run 'make $(MAKECMDGOALS)'"; \
+		exit 1 \
+	)
+
+npm: ensure-node
 	pnpm install
 
-css: common/input.css
+css: ensure-node common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
 makemigrations:
@@ -56,7 +76,7 @@ init: ensure-python
 	$(MAKE) loadplatforms
 	$(MAKE) gen-icons
 
-server: gen-element-types
+server: ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
@@ -72,10 +92,10 @@ gen-icons:
 check-icons:
 	uv run --frozen python manage.py gen_icons --check
 
-ts: gen-element-types
+ts: ensure-node gen-element-types
 	pnpm exec tsc
 
-ts-check: gen-element-types
+ts-check: ensure-node gen-element-types
 	pnpm exec tsc --noEmit -p tsconfig.check.json
 
 # Vitest consumes generated modules, and the classic bootstrap tests inspect its
@@ -84,7 +104,7 @@ test-ts: ts
 	pnpm test:ts
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
-dev: ensure-python gen-element-types
+dev: ensure-python ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
@@ -142,13 +162,17 @@ collectstatic:
 uv.lock: pyproject.toml
 	uv sync
 
+# Extra pytest arguments for `test` / `test-e2e`, so a focused run needs no raw
+# tooling: make test ARGS="tests/test_filters.py -k relation -x"
+ARGS ?=
+
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
 test: ensure-python uv.lock css ts test-ts
-	uv run --frozen --with pytest-django pytest
+	uv run --frozen --with pytest-django pytest $(ARGS)
 
 test-e2e: uv.lock css ts
-	uv run --frozen pytest e2e/
+	uv run --frozen pytest e2e/ $(ARGS)
 
 lint:
 	uv run --frozen ruff check

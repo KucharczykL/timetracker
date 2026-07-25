@@ -33,7 +33,16 @@ pkgs.mkShell {
       return $_status
     }
 
-    _timed "uv venv --clear" uv venv --clear
+    # Rebuild the venv only when it is missing or its interpreter no longer runs
+    # — the case this guards is a nixpkgs bump garbage-collecting the store path
+    # .venv/bin/python symlinks. Clearing unconditionally deleted a *working*
+    # venv on every shell entry, so any `direnv exec .` / `nix-shell --run`
+    # yanked the interpreter out from under a running `make dev`, which died as
+    # `Unknown command: 'runserver'`. `uv sync` below reconciles a healthy venv
+    # anyway, so the wipe bought nothing.
+    if [ ! -x .venv/bin/python ] || ! .venv/bin/python -c "" 2>/dev/null; then
+      _timed "uv venv --clear" uv venv --clear
+    fi
     . .venv/bin/activate
     _timed "uv sync" uv sync
   '';
