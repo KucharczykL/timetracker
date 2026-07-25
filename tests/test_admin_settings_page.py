@@ -584,3 +584,34 @@ def test_admin_settings_renders_when_infra_settings_share_a_source(
 
     assert response.status_code == 200
     assert "Infrastructure" in response.content.decode()
+
+
+def test_export_requires_login(db):
+    response = Client().get(reverse("games:export_admin_settings_ini"))
+
+    assert response.status_code == 302
+    assert response.url == "/login/?next=/tracker/admin-settings/export"
+
+
+def test_export_requires_superuser(normal_client):
+    response = normal_client.get(reverse("games:export_admin_settings_ini"))
+    assert response.status_code == 403
+
+
+def test_export_downloads_ini_with_stored_settings(
+    superuser_client, clean_site_setting_sources
+):
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+
+    response = superuser_client.get(reverse("games:export_admin_settings_ini"))
+
+    assert response.status_code == 200
+    assert response["Content-Disposition"] == 'attachment; filename="settings.ini"'
+    content = response.content.decode()
+    assert "[timetracker]" in content
+    assert "DEFAULT_CURRENCY = EUR" in content
+
+
+def test_admin_settings_page_shows_export_button(superuser_client):
+    response = superuser_client.get(reverse("games:admin_settings"))
+    assert reverse("games:export_admin_settings_ini") in response.content.decode()
