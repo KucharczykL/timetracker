@@ -55,6 +55,9 @@
   only presence (`••••••••`) or absence — the real secret never reaches the HTML.
   To change any infrastructure setting, update the environment or config file
   and restart the process (#391).
+* Add a **Download settings.ini** action to `/admin-settings`, exporting every
+  currently-stored site default to a `[timetracker]` ini snapshot for backup
+  or promotion to an env-pinned value (#392).
 
 ### Fixed
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously
