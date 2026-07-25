@@ -23,6 +23,11 @@ urlpatterns = [
         settings_views.admin_settings,
         name="admin_settings",
     ),
+    path(
+        "admin-settings/export",
+        settings_views.export_admin_settings_ini,
+        name="export_admin_settings_ini",
+    ),
     path("device/add", device.add_device, name="add_device"),
     path("device/delete/<int:device_id>", device.delete_device, name="delete_device"),
     path("device/edit/<int:device_id>", device.edit_device, name="edit_device"),

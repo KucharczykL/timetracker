@@ -7,6 +7,7 @@ from django.utils.html import escape
 
 from common.components import (
     Badge,
+    ControlButton,
     Div,
     Element,
     FormFieldGroup,
@@ -18,6 +19,7 @@ from common.components import (
     SettingSourceBadge,
     SettingsFieldColumns,
     SettingsFieldLayout,
+    SettingsPageHeader,
     SettingsScaffold,
     SettingsSection,
     assert_unique_element_ids,
@@ -330,6 +332,58 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
         assert 'data-setting-key="THEME"' in html
         assert "data-live-setting-control" not in html
         assert "<theme-setting><select" in html
+
+
+class SettingsPageHeaderTest(SimpleTestCase):
+    def test_title_only_header_has_no_description_or_action_slot(self):
+        html = str(SettingsPageHeader("Settings"))
+
+        assert 'data-settings-page-header=""' in html
+        assert "<h1" in html and "Settings" in html
+        assert "text-type-body text-body" not in html
+        assert "data-settings-page-actions" not in html
+
+    def test_description_renders_in_the_shared_body_style(self):
+        html = str(
+            SettingsPageHeader("Admin settings", description="Inherited defaults.")
+        )
+
+        assert "Inherited defaults." in html
+        assert "text-type-body text-body" in html
+        assert "data-settings-page-actions" not in html
+
+    def test_actions_render_in_a_dedicated_slot_beside_the_title(self):
+        html = str(
+            SettingsPageHeader(
+                "Admin settings",
+                description="Inherited defaults.",
+                actions=ControlButton(href="/export", color="gray")["Download"],
+            )
+        )
+
+        assert 'data-settings-page-actions=""' in html
+        assert 'href="/export"' in html
+        assert "Download" in html
+        # The title/description block and the actions block are siblings in one
+        # justified row, so an action never lands inside the heading column.
+        assert "justify-between" in html
+        assert html.index('data-settings-page-header=""') < html.index(
+            'data-settings-page-actions=""'
+        )
+        assert html.index("Inherited defaults.") < html.index(
+            'data-settings-page-actions=""'
+        )
+
+    def test_header_owns_its_width_container_and_bakes_no_margin(self):
+        """Per docs/visual-conventions.md, parents own spacing via `gap` and
+        components never bake margins — the page body's gap sets the distance to
+        the content below, so a header dropped into any layout cannot double-space."""
+        html = str(SettingsPageHeader("Settings"))
+
+        header_start = html.index("<div")
+        outer_tag = html[header_start : html.index(">", header_start) + 1]
+        assert "max-w-7xl" in outer_tag
+        assert "mb-" not in html[header_start : html.index("<h1")]
 
 
 class SettingsScaffoldTest(SimpleTestCase):

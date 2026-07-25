@@ -131,6 +131,15 @@ built-in fallback. A value owned by an environment variable, file-backed
 environment variable, `.env`, or `settings.ini` is disabled and displays both
 its source and the reason it cannot be changed.
 
+A **Download settings.ini** button in the page header exports every
+currently-stored site default as a `[timetracker]` ini snapshot — for backup,
+or to promote a database value to an env-pinned one (edit the downloaded
+file, point `INI_FILE`/deploy it as `settings.ini`, restart). Values are
+written unquoted and with any literal `%` doubled, matching how
+`timetracker/config.py` reads `.ini` files (`BasicInterpolation`, no
+`.env`-style unquoting) — a value containing `%` re-imports to the identical
+string.
+
 `DISPLAY_TIME_ZONE` is the live site default for wall-clock display and
 datetime-form interpretation. It is distinct from boot-only `TZ`: changing
 `DISPLAY_TIME_ZONE` rebuilds the document presentation contract after the

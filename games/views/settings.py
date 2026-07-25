@@ -4,30 +4,30 @@ from typing import cast
 
 from django import forms
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.middleware.csrf import get_token
 from django.urls import reverse
 
 from common.components import (
-    ContentContainer,
+    ControlButton,
     Div,
     FormFieldPresentation,
     LiveSettingFields,
     Node,
-    PageHeading,
     ReadonlySettingField,
     SettingFieldState,
     SettingsFieldLayout,
+    SettingsPageHeader,
     SettingsScaffold,
     SettingsSection,
     ThemeSetting,
 )
-from common.components.primitives import P
 from common.layout import render_page
 from games.forms import PrimitiveWidgetsMixin
 from games.models import Device
 from timetracker.config import SettingSource
 from timetracker.settings_commands import SettingNamespace
+from timetracker.settings_export import export_site_settings_ini
 from timetracker.settings_registry import (
     DATETIME_FORMAT_CHOICES,
     DISPLAY_TIME_ZONE_CHOICES,
@@ -321,8 +321,8 @@ def user_settings(request: HttpRequest) -> HttpResponse:
             "Defaults used when creating records and opening Timetracker.",
         )
     ]
-    content = Div(class_="flex flex-col")[
-        ContentContainer(class_="mb-6")[PageHeading(["Settings"])],
+    content = Div(class_="flex flex-col gap-6")[
+        SettingsPageHeader("Settings"),
         SettingsScaffold(sections),
     ]
     return render_page(request, content, title="Settings", is_settings_page=True)
@@ -355,12 +355,10 @@ def _infra_fields() -> list[Node]:
 def admin_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
         content = Div(class_="flex flex-col")[
-            ContentContainer(class_="flex flex-col gap-4")[
-                PageHeading(["Admin settings"]),
-                P(class_="text-type-body text-body")[
-                    "Superuser access is required to manage site defaults."
-                ],
-            ]
+            SettingsPageHeader(
+                "Admin settings",
+                description="Superuser access is required to manage site defaults.",
+            )
         ]
         return render_page(
             request,
@@ -398,13 +396,17 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             ),
         ),
     ]
-    content = Div(class_="flex flex-col")[
-        ContentContainer(class_="mb-6 flex flex-col gap-2")[
-            PageHeading(["Admin settings"]),
-            P(class_="text-type-body text-body")[
+    content = Div(class_="flex flex-col gap-6")[
+        SettingsPageHeader(
+            "Admin settings",
+            description=(
                 "Defaults inherited by users who have not saved personal overrides."
-            ],
-        ],
+            ),
+            actions=ControlButton(
+                href=reverse("games:export_admin_settings_ini"),
+                color="gray",
+            )["Download settings.ini"],
+        ),
         SettingsScaffold(sections),
     ]
     return render_page(
@@ -415,9 +417,24 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
     )
 
 
+@login_required
+def export_admin_settings_ini(request: HttpRequest) -> HttpResponse:
+    # A bare 403 (not the rendered admin_settings() 403 page) is deliberate: this
+    # is a download endpoint reached only via a button superusers already see —
+    # a direct non-superuser hit gets a plain denial, not a styled page.
+    if not request.user.is_superuser:
+        return HttpResponseForbidden("Superuser access is required.")
+    response = HttpResponse(
+        export_site_settings_ini(), content_type="text/plain; charset=utf-8"
+    )
+    response["Content-Disposition"] = 'attachment; filename="settings.ini"'
+    return response
+
+
 __all__ = [
     "SiteSettingsForm",
     "UserSettingsForm",
     "admin_settings",
+    "export_admin_settings_ini",
     "user_settings",
 ]
