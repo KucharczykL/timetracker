@@ -14,24 +14,30 @@ make test ARGS="tests/test_filters.py -k relation -x"
 make test-e2e ARGS="-k widgets"
 ```
 
-Two things the Makefile guarantees for you, because getting either wrong produces
-failures that look like real breakage:
+**`make check` runs anywhere — no Nix shell required.** Both interpreters are
+version-proofed by the Makefile, because getting either wrong produces failures
+that look like the code's fault:
 
 - **Python 3.14** — `ensure-python` finds or provisions it; `uv` pins the
-  interpreter itself, so this works from any shell.
-- **Node ≥ 26** — `ensure-node` fails loudly if `PATH`'s node is older.
-  `ts/date-time-presentation.ts` uses `Temporal`, which arrives in Node 26; on
-  Node 24 it is `undefined`, the date/time formatters silently return `null`, and
-  ~11 vitest assertions fail as though the code were broken. A distro/system node
-  is often older than the `nodejs_26` that `shell.nix` pins, so **the JS targets
-  need the Nix shell** — either your normal direnv-loaded shell, or
-  `nix-shell --run 'make check'` for a one-off.
+  interpreter itself.
+- **Node ≥ 26** — `ts/date-time-presentation.ts` uses `Temporal`, which arrives in
+  Node 26. On Node 24 it is `undefined`, the date/time formatters return `null`,
+  and ~11 vitest assertions fail with `expected null to be '2026-07-02 19:05 …'`.
+  When `PATH` already has 26 (the Nix shell's `nodejs_26`, CI's `setup-node`, the
+  `node:26` Docker stage) it is used as-is; otherwise the Makefile hands pnpm the
+  exact version and pnpm fetches it. `ensure-node` then verifies what the JS
+  commands will *actually* run on — `pnpm exec`, not `PATH` — so an offline first
+  run fails with the reason instead of a wall of null assertions.
 
-`direnv exec . <cmd>` per command is still the wrong habit: it re-enters the shell
-and re-runs `uv sync` every time (~70 packages) for no benefit. It used to be worse
-— the `shellHook` cleared `.venv` unconditionally, which pulled the interpreter out
-from under a running `make dev` (`Unknown command: 'runserver'`); it now rebuilds
-only a missing or broken venv.
+This is why every node invocation in the Makefile goes through `pnpm`: it is the
+single switch that redirects the whole JS toolchain onto the right runtime. A new
+node-using target should follow suit and depend on `ensure-node`.
+
+`direnv exec . <cmd>` per command remains the wrong habit — it re-enters the shell
+and re-runs `uv sync` (~70 packages) for no benefit. It used to be worse: the
+`shellHook` cleared `.venv` unconditionally, pulling the interpreter out from under
+a running `make dev` (`Unknown command: 'runserver'`). It now rebuilds only a
+missing or broken venv.
 
 Notes:
 

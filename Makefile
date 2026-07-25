@@ -3,14 +3,28 @@ all: css migrate
 initialize: npm css migrate loadplatforms
 
 PYTHON_VERSION = 3.14
-# ts/date-time-presentation.ts uses Temporal, which lands in Node 26. On an older
-# node it is simply `undefined`, the formatters return null, and vitest fails with
-# ~11 "expected null to be '2026-07-02 19:05 …'" assertions that read like real
-# breakage. shell.nix pins nodejs_26; this guard stops a stray older node on PATH
-# from turning that into a mystery.
-NODE_MAJOR_VERSION = 26
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8000
+
+# The JS toolchain needs Node >= 26: ts/date-time-presentation.ts uses Temporal,
+# which lands in 26. On an older node Temporal is `undefined`, the date/time
+# formatters return null, and ~11 vitest assertions fail with
+# "expected null to be '2026-07-02 19:05 …'" — breakage that looks like the code's
+# fault rather than the runtime's.
+#
+# uv already makes Python version-proof; this does the same for Node. Where PATH
+# already supplies 26 — the Nix shell's nodejs_26, CI's setup-node, the node:26
+# Docker stage — it is used as-is and this costs nothing. Where it doesn't, pnpm
+# is told the exact version and fetches it (env form of the `use-node-version`
+# setting), so every JS command below runs on 26 and `make check` works on a box
+# with an older system node and no Nix shell. Every node invocation in this file
+# goes through pnpm, which is what makes one switch enough.
+NODE_VERSION = 26.4.0
+NODE_MAJOR_VERSION = 26
+PATH_NODE_SUPPORTED := $(shell node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" 2>/dev/null && echo yes || echo no)
+ifneq ($(PATH_NODE_SUPPORTED),yes)
+export npm_config_use_node_version = $(NODE_VERSION)
+endif
 
 # Ensure a usable CPython 3.14 exists for uv before any target that needs it.
 # Fast no-op when one is already available (a Nix shell puts it on PATH; a
@@ -40,17 +54,22 @@ ensure-python:
 	exit 1
 endif
 
-# Fail loudly, before any JS build or test, when PATH's node predates Temporal.
-# Written to run under both `sh` and cmd.exe: node itself does the comparison and
-# sets the exit status, so the recipe needs no shell-specific arithmetic.
+# Verify what the JS commands will ACTUALLY run on — `pnpm exec`, so it accounts
+# for the version pnpm was told to fetch above, not just PATH. Make runs a given
+# prerequisite once per invocation, so this costs one pnpm call per `make`.
+# On the first run without a suitable PATH node this is where the download
+# happens, so it also fails here (with a reason) rather than deep inside vitest.
+# node itself does the comparison and sets the exit status, keeping the recipe
+# free of shell-specific arithmetic for the Windows cmd.exe case.
 ensure-node:
-	@node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
+	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
 	( \
-		echo "==> node $$(node --version 2>/dev/null) is too old — this repo needs node >= $(NODE_MAJOR_VERSION)."; \
-		echo "    ts/date-time-presentation.ts uses Temporal (Node 26+). On an older node the"; \
+		echo "==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain."; \
+		echo "    PATH has $$(node --version 2>/dev/null || echo 'no node'), and pnpm could not"; \
+		echo "    supply $(NODE_VERSION) either — the first fetch needs network access."; \
+		echo "    ts/date-time-presentation.ts uses Temporal (Node 26+); without it the"; \
 		echo "    date/time formatters return null and vitest fails as if the code were broken."; \
-		echo "    shell.nix pins nodejs_26: run from the Nix dev shell, e.g."; \
-		echo "        nix-shell --run 'make $(MAKECMDGOALS)'"; \
+		echo "    Offline? Run from the Nix dev shell instead: nix-shell --run 'make $(MAKECMDGOALS)'"; \
 		exit 1 \
 	)
 
@@ -116,8 +135,8 @@ dev: ensure-python ensure-node gen-element-types
 caddy:
 	caddy run --watch
 
-dev-prod: migrate collectstatic
-	@npx concurrently \
+dev-prod: ensure-node migrate collectstatic
+	@pnpm concurrently \
 		--names "Caddy,Django,Django-Q" \
 		"caddy run --config Caddyfile.dev" \
 		"$(MAKE) gunicorn-prod" \
