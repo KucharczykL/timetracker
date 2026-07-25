@@ -44,7 +44,10 @@ _PREVIEW_KEYS = {
     "PREVIEW_DISPLAY_NAME": "Display name",
     "PREVIEW_APP_URL": "Application URL",
 }
-_SOURCES = ("user", "database", "env", "env_file", "dotenv", "ini", "default")
+# No "user": badges render only where a control cannot state its own origin —
+# site defaults and locked/read-only rows (#381) — and site resolution never
+# yields a personal value, so a user-sourced badge cannot occur in shipped UI.
+_SOURCES = ("database", "env", "env_file", "dotenv", "ini", "default")
 _BADGE_TONES: tuple[BadgeTone, ...] = (
     "brand",
     "neutral",
@@ -104,15 +107,18 @@ def _live_fields(request: HttpRequest):
     states = {
         "enabled": SettingFieldState(
             "PREVIEW_ENABLED",
-            "user",
+            "database",
             help_text="Toggle the checkbox to trigger a successful preview save.",
         ),
         "destination": SettingFieldState("PREVIEW_DESTINATION", "database"),
         "limit": SettingFieldState("PREVIEW_LIMIT", "default"),
+        # show_source=False mirrors the personal page: the one shipped surface
+        # whose controls state their own origin, so no badge is rendered.
         "display_name": SettingFieldState(
             "PREVIEW_DISPLAY_NAME",
-            "user",
+            "database",
             help_text='Enter "reject" to exercise rollback and the error toast.',
+            show_source=False,
         ),
         "pinned_url": SettingFieldState(
             "PREVIEW_APP_URL",
@@ -194,7 +200,7 @@ def _preview_checkbox_field(prefix: str):
     label_line = _preview_label_line(
         field_id=field_id,
         label="Enable preview behavior",
-        source="user",
+        source="database",
         tooltip_id=f"{field_id}-source-tooltip",
     )
     checkbox = Checkbox(

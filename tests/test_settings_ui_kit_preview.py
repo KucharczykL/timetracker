@@ -95,8 +95,13 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert " disabled" in _named_tag(body, "input", "pinned_url")
     assert "Change APP_URL in the environment and restart" in body
 
-    for source in ("user", "database", "env", "env_file", "dotenv", "ini", "default"):
+    # Every origin a badge can actually carry. "user" is absent by design: badges
+    # render only where a control cannot state its own origin — site defaults and
+    # locked/read-only rows — and site resolution never yields a personal value
+    # (#381).
+    for source in ("database", "env", "env_file", "dotenv", "ini", "default"):
         assert f'data-setting-origin="{source}"' in body
+    assert 'data-setting-origin="user"' not in body
     for tone in ("Brand", "Neutral", "Success", "Warning", "Danger"):
         assert f">{tone}</span>" in body
 

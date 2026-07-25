@@ -336,14 +336,23 @@ promotion path for `TZ` (edit ini → restart).
   source/reason, and direct PATCH returns 409. Change site `DEFAULT_CURRENCY` → inheriting
   purchase-entry views, context-free `Purchase.save()`, and the FX task use it; save a personal
   currency → only that user's purchase-entry flow changes.
-- **SOURCE-BADGE DELETION GATE (must be resolved before closing #381):**
-  - [ ] List at least one concrete shipped unlocked/editable setting where an inline source badge
-    adds user value beyond the field label and help text.
-  - [ ] Verify every badged control still has a visible field label; source metadata must never act
-    as the field's identity.
-  - [ ] If no such unlocked use case exists, delete unlocked inline source badges from
-    `prepare_setting_fields`, the preview gallery/variants, tests, and documentation. Keep
-    source/lock provenance only for concrete locked/read-only use cases in Stages 8 and 9.
+- **SOURCE-BADGE DELETION GATE — resolved.** The settled rule: **a source badge appears only
+  where the control cannot state its own origin.**
+  - [x] Concrete unlocked cases found, on `/admin-settings`. `_site_form_and_states` always seeds
+    `initial` with the *resolved* value, so `25` / `UTC` / `ISO 8601` render identically whether
+    stored in the database or inherited from the code default. The badge is the only signal, and it
+    decides whether **Clear** does anything, whether the value is pinned against a future change of
+    the shipped default, and what the `settings.ini` export (#392) will contain.
+  - [x] Every badged control keeps a real `<label for=…>`; the badge is a sibling on the label line,
+    never the field's identity. The rationale once offered for inline badges — "useful when fields
+    are rendered without labels" — is rejected: this gate forbids it, and no shipped field is
+    label-less.
+  - [x] Unlocked badges removed from `/settings`, where all eight controls already state the value
+    they inherit ("Use site default (25)"). `DEFAULT_CURRENCY` was the one field that could not,
+    because it always prefilled; it now renders empty with a `Use site default (EUR)` placeholder,
+    like its siblings. Consequently no badge can carry source `user` any more, so that swatch is
+    gone from the preview gallery, and the personal-page namespace-isolation e2e moved to
+    `ts/elements/setting-source-badge.test.ts` (its observable no longer exists).
 
 ## Deferred — file as its own issue, linked from the epic, NOT executed here
 

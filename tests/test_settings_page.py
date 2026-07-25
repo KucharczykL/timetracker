@@ -9,6 +9,12 @@ from games.models import Device, SiteSetting, UserPreferences
 from timetracker import settings_resolver
 
 
+def _named_tag(body: str, tag: str, name: str) -> str:
+    match = re.search(rf'<{tag}\b[^>]*\bname="{name}"[^>]*>', body)
+    assert match is not None, f"no <{tag} name={name}> in the rendered page"
+    return match.group()
+
+
 @pytest.fixture
 def user(db):
     return get_user_model().objects.create_user(username="tester", password="pw")
@@ -129,6 +135,33 @@ def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     assert '<option value="" selected>Use site default (25)</option>' in html
     assert '<option value="" selected>Use site default (System)</option>' in html
     assert '<option value="" selected>Use site default (ISO 8601)</option>' in html
+
+
+def test_inherited_currency_is_empty_with_the_site_value_as_placeholder(auth_client):
+    """Currency is a text input, so it carries the "Use site default (X)" message
+    as a placeholder over an empty box rather than an empty option. Prefilling the
+    inherited value instead would render identically to a personal choice."""
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    settings_resolver.clear_cache()
+
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    currency = _named_tag(html, "input", "default_currency")
+    assert 'placeholder="Use site default (EUR)"' in currency
+    assert 'value="' not in currency
+
+
+def test_personal_fields_carry_no_source_badge(auth_client):
+    """Every personal control states the site value it inherits, so an origin
+    badge would only repeat it. Provenance stays where a control cannot express
+    it: site defaults and locked/read-only rows (#381)."""
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    assert "<setting-source-badge" not in html
+    assert "data-setting-origin" not in html
+    # The controls themselves remain fully wired for live save.
+    assert 'data-setting-key="DEFAULT_CURRENCY"' in html
+    assert 'data-live-setting-control=""' in html
 
 
 def test_personal_theme_is_selected(auth_client, user):

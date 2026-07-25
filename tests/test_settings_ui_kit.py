@@ -234,6 +234,50 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
             assert "bg-brand-soft" in override_badge
             assert "bg-neutral-quaternary" not in override_badge
 
+    def test_show_source_false_drops_the_badge_but_keeps_everything_else(self):
+        """The personal page's shape: its controls state their own origin, so the
+        badge is suppressed while identity, live-save wiring, and help text stay
+        (#381)."""
+        form = KitForm()
+        states = {
+            "display_name": SettingFieldState(
+                key="DEFAULT_CURRENCY",
+                source="database",
+                help_text="Used for purchase entry.",
+                show_source=False,
+            )
+        }
+        html = str(
+            LiveSettingFields(
+                form,
+                states=states,
+                patch_url_template="/api/settings/user/__key__",
+                csrf="token",
+                namespace="user",
+            )
+        )
+        assert "<setting-source-badge" not in html
+        assert "data-setting-origin" not in html
+        # Identity and behaviour are untouched by the badge decision.
+        assert 'data-setting-key="DEFAULT_CURRENCY"' in html
+        assert 'data-live-setting-control=""' in html
+        assert "Used for purchase entry." in html
+        assert "<label" in html
+
+    def test_show_source_defaults_to_rendering_the_badge(self):
+        form = KitForm()
+        states = {"display_name": SettingFieldState("THEME", "database")}
+        html = str(
+            LiveSettingFields(
+                form,
+                states=states,
+                patch_url_template="/api/settings/site/__key__",
+                csrf="token",
+                namespace="site",
+            )
+        )
+        assert 'data-setting-origin="database"' in html
+
     def test_locked_state_disables_the_real_django_field_and_adds_reason(self):
         form = KitForm()
         states = {

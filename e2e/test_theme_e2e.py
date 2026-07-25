@@ -268,7 +268,7 @@ def test_second_browser_reconciles_account_theme_on_navigation(
         second_context.close()
 
 
-def test_clearing_personal_theme_commits_inherited_value_and_source(
+def test_clearing_personal_theme_commits_the_inherited_value(
     live_server, page: Page, django_user_model
 ):
     user = django_user_model.objects.create_user(username="inherit-user", password="pw")
@@ -278,7 +278,6 @@ def test_clearing_personal_theme_commits_inherited_value_and_source(
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = page.locator('select[name="theme"]')
-    source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
 
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
@@ -288,7 +287,6 @@ def test_clearing_personal_theme_commits_inherited_value_and_source(
     expect(theme).to_have_value("")
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "dark")
     expect(page.locator("html")).to_have_class("dark")
-    expect(source).to_have_attribute("data-setting-origin", "database")
 
 
 def test_failed_theme_save_restores_system_state_then_allows_retry(
@@ -303,12 +301,10 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = page.locator('select[name="theme"]')
-    source = page.locator('setting-source-badge[key="THEME"] [data-setting-origin]')
     toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
     expect(theme).to_have_value("")
-    expect(source).to_have_attribute("data-setting-origin", "database")
     expect(page.locator("html")).to_have_class("dark")
     expect(toggle).to_be_disabled()
     expect(tooltip_surface).to_have_attribute(
@@ -325,7 +321,6 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     expect(theme).to_be_enabled()
     expect(page.locator("html")).to_have_class("dark")
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "system")
-    expect(source).to_have_attribute("data-setting-origin", "database")
     expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
     expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
     expect(page.get_by_text("Couldn't save your theme", exact=False)).to_be_visible()
