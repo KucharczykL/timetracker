@@ -100,12 +100,6 @@ def _save_select(page: Page, key: str, name: str, value: str) -> None:
     ) as saved:
         page.locator(f'select[name="{name}"]').select_option(value)
     assert saved.value.status == 200
-    badge = page.locator(f'setting-source-badge[key="{key}"] [data-setting-origin]')
-    expect(badge).to_have_attribute("data-setting-origin", "user")
-    expect(badge).to_have_text("Personal")
-    expect(badge).to_have_class(re.compile(r"\bbg-brand-soft\b"))
-    status = badge.locator("xpath=ancestor::pop-over//*[@data-setting-source-status]")
-    expect(status).to_contain_text("Non-default source (default source: “Default”)")
 
 
 def _wait_for_live_settings(page: Page) -> None:
@@ -141,12 +135,6 @@ def test_personal_settings_persist_and_drive_consumers(
     else:
         expect(trigger).to_be_hidden()
         expect(rail).to_be_visible()
-
-    device_badge = page.locator(
-        'setting-source-badge[key="DEFAULT_DEVICE"] [data-setting-origin]'
-    )
-    expect(device_badge).to_have_attribute("data-setting-origin", "default")
-    expect(device_badge).to_have_class(re.compile(r"\bbg-neutral-quaternary\b"))
 
     currency = page.locator('input[name="default_currency"]')
     currency.fill("EUR")
@@ -280,37 +268,3 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     assert contract["profile"]["date_parts"][0]["name"] == "month"
     assert contract["profile"]["hour_cycle"] == "h12"
     expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")
-
-
-def test_user_page_ignores_a_synthetic_site_namespace_event(
-    live_server,
-    authenticated_page,
-):
-    """Mirror of test_site_page_ignores_a_synthetic_user_namespace_event, in
-    the other direction: a synthetic site-namespace event for a key also
-    shown on the user page must not update this page's badge."""
-    page, _preferred = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:settings')}")
-    _wait_for_live_settings(page)
-
-    badge = page.locator(
-        'setting-source-badge[key="DEFAULT_CURRENCY"] [data-setting-origin]'
-    )
-    before = badge.get_attribute("data-setting-origin")
-
-    page.evaluate(
-        """() => {
-            document.body.dispatchEvent(new CustomEvent("setting-committed", {
-                detail: {
-                    key: "DEFAULT_CURRENCY",
-                    value: "USD",
-                    source: "database",
-                    locked: false,
-                    namespace: "site",
-                },
-                bubbles: true,
-            }));
-        }"""
-    )
-
-    expect(badge).to_have_attribute("data-setting-origin", before)

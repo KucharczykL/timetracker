@@ -104,6 +104,13 @@ class SettingFieldState:
     ``live_save=False``.
     A locked state sets Django's real ``Field.disabled`` flag before rendering,
     so native semantics and the shared disabled utility classes do the work.
+
+    ``show_source`` renders the origin badge. Set it only where the control
+    cannot express origin itself: a locked field (the badge carries the reason
+    it is disabled) or a site default, whose control shows the resolved value
+    identically whether it is stored or inherited. A personal control that
+    already reads "Use site default (25)" says it better, so the page turns this
+    off rather than repeating it (#381).
     """
 
     key: str
@@ -112,6 +119,7 @@ class SettingFieldState:
     reason: str = ""
     help_text: str = ""
     live_save: bool = True
+    show_source: bool = True
 
 
 def SettingsFieldLayout(columns: SettingsFieldColumns = 1) -> Element:
@@ -323,13 +331,14 @@ def SettingsScaffold(sections: Sequence[SettingsSection]) -> Node:
     ]
 
 
-# EPIC-FINAL DELETION GATE (#381)
-# Inline source badges on ordinary unlocked/editable fields are provisional. Before
-# closing the settings-panel epic, identify at least one concrete shipped field where
-# visible origin materially helps the user. A source badge must never replace a
-# visible field label. If no such unlocked use case exists, remove the unlocked badge
-# integration from prepare_setting_fields together with its preview, tests, and docs;
-# retain provenance only for concrete locked/read-only settings that require it.
+# Placement rule (#381): a source badge appears only where the control cannot state
+# its own origin. That is every site default — those controls seed from the resolved
+# value, so a stored 25 and an inherited 25 render identically, and only the badge
+# says which — plus locked and read-only rows, where it carries the reason the field
+# is disabled. Personal controls name the value they inherit ("Use site default
+# (25)"), so that page suppresses the badge via SettingFieldState.show_source rather
+# than repeat it. A badge is never the field's identity: it sits beside a real
+# <label>, never instead of one.
 def SettingSourceBadge(
     source: str,
     *,
@@ -476,13 +485,17 @@ def prepare_setting_fields(
             field.widget.attrs["data-live-setting-control"] = ""
         else:
             field.widget.attrs.pop("data-live-setting-control", None)
-        label_extra = SettingSourceBadge(
-            state.source,
-            locked=state.locked,
-            reason=_lock_reason(state) if state.locked else "",
-            id=tooltip_id,
-            setting_key=state.key,
-            namespace=namespace,
+        label_extra = (
+            SettingSourceBadge(
+                state.source,
+                locked=state.locked,
+                reason=_lock_reason(state) if state.locked else "",
+                id=tooltip_id,
+                setting_key=state.key,
+                namespace=namespace,
+            )
+            if state.show_source
+            else None
         )
         metadata = _field_metadata(metadata_id, state)
         if metadata is not None:
@@ -496,8 +509,8 @@ def prepare_setting_fields(
         prepared[field_name] = FormFieldPresentation(
             label_extra=(
                 Fragment(presentation.label_extra, label_extra)
-                if presentation.label_extra is not None
-                else label_extra
+                if presentation.label_extra is not None and label_extra is not None
+                else presentation.label_extra or label_extra
             ),
             after_control=(
                 Fragment(presentation.after_control, metadata)

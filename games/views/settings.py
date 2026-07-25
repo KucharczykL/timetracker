@@ -95,6 +95,7 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
     def __init__(
         self,
         *args,
+        default_currency_label: str = "USD",
         default_device_label: str = "No device",
         default_landing_page_label: str = "Sessions",
         default_page_size_label: str = "25",
@@ -105,6 +106,12 @@ class UserSettingsForm(PrimitiveWidgetsMixin, forms.Form):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        # Every other control states inheritance through its empty option; this
+        # one is a text input, so the placeholder carries the same message and
+        # an empty box means "inherit" (clearing PATCHes value:null).
+        self.fields["default_currency"].widget.attrs["placeholder"] = (
+            f"Use site default ({default_currency_label})"
+        )
         device_field = cast(forms.ModelChoiceField, self.fields["default_device"])
         device_field.queryset = Device.objects.order_by("name")
         device_field.empty_label = f"Use site default ({default_device_label})"
@@ -245,7 +252,7 @@ def _form_and_states(
     for field_name, key in _FIELD_KEYS.items():
         definition = get_definition(key)
         resolved = resolve_for_user_with_origin(user, key)
-        if field_name == "default_currency" or resolved.source is SettingSource.USER:
+        if resolved.source is SettingSource.USER:
             initial[field_name] = resolved.value
         states[field_name] = SettingFieldState(
             key,
@@ -256,7 +263,11 @@ def _form_and_states(
                 else definition.help_text
             ),
             live_save=field_name != "theme",
+            # Each control already names the site value it inherits, so an origin
+            # badge here would only repeat it (#381).
+            show_source=False,
         )
+    site_currency = resolve_with_origin("DEFAULT_CURRENCY").value
     site_device = resolve_with_origin("DEFAULT_DEVICE").value
     site_landing_page = resolve_with_origin("DEFAULT_LANDING_PAGE").value
     site_page_size = resolve_with_origin("DEFAULT_PAGE_SIZE").value
@@ -267,6 +278,7 @@ def _form_and_states(
     return (
         UserSettingsForm(
             initial=initial,
+            default_currency_label=str(site_currency),
             default_device_label=_device_label(site_device),
             default_landing_page_label=_landing_page_label(site_landing_page),
             default_page_size_label=str(site_page_size),
