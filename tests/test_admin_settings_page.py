@@ -566,8 +566,17 @@ def test_admin_settings_renders_when_infra_settings_share_a_source(
     which pytest-django forces off, so DEBUG is enabled here to exercise the real
     page-level id-uniqueness check — otherwise this passes vacuously even with a
     live collision.
+
+    INTERNAL_IPS is cleared alongside DEBUG so debug_toolbar's own middleware
+    stays inert (show_toolbar() reads both live): ROOT_URLCONF only appends the
+    djdt route when settings.DEBUG is true at the first (lazy, whole-session)
+    import of timetracker.urls, which pytest-django forces false before any
+    test runs — so djdt is never actually reversible here, and letting the
+    toolbar attempt to render would 500 with NoReverseMatch depending on
+    whichever test happened to run first in the session.
     """
     settings.DEBUG = True
+    settings.INTERNAL_IPS = []
     from games.views import settings as settings_view
 
     original_resolve = settings_view.resolve_with_origin
