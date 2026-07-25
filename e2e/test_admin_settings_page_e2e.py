@@ -260,3 +260,17 @@ def test_site_page_ignores_a_synthetic_user_namespace_event(
     )
 
     expect(badge).to_have_attribute("data-setting-origin", before)
+
+
+def test_export_button_downloads_settings_ini(
+    live_server,
+    superuser_page: Page,
+):
+    page = superuser_page
+    page.goto(f"{live_server.url}{reverse('games:admin_settings')}")
+
+    with page.expect_download() as download_info:
+        page.get_by_role("link", name="Download settings.ini").click()
+    download = download_info.value
+
+    assert download.suggested_filename == "settings.ini"
