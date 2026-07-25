@@ -20,7 +20,7 @@ from games.forms import LoginForm
 
 
 def _login_content(form, request) -> Node:
-    return Div(class_="flex items-center flex-col")[
+    return Div(class_="flex items-center flex-col gap-4")[
         PageHeading(["Please log in to continue"]),
         Form(
             method="post",

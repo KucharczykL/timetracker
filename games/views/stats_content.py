@@ -467,7 +467,7 @@ def stats_content(ctx: StatsData, presentation: DateTimePresentation) -> Node:
         )
 
     grid = Div(class_="grid grid-cols-1 md:grid-cols-2 gap-6 items-start")[*cards]
-    return ContentContainer(class_="dark:text-white")[
+    return ContentContainer(class_="flex flex-col gap-4 dark:text-white")[
         PageHeading([ctx["title"]]),
         _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
         grid,

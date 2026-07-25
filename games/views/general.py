@@ -16,6 +16,7 @@ from django.utils.timezone import now as timezone_now
 
 from common.components import (
     CsrfInput,
+    Div,
     FilterBuilder,
     FilterCount,
     FilterGroup,
@@ -179,7 +180,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
         id="model-switcher", items=items, label=meta.verbose_name.title()
     )
 
-    content = ContentContainer()[
+    content = ContentContainer(class_="flex flex-col gap-4")[
         PageHeading(
             [
                 Span(class_="flex align-center gap-2")[
@@ -200,13 +201,19 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
             sort=sort,
             per_page=per_page,
         ),
-        FilterSummary(model=model, model_label=label, models=models_json),
-        FilterCount(
-            model=model,
-            noun_singular=str(meta.verbose_name),
-            noun_plural=str(meta.verbose_name_plural),
-            endpoint=reverse("api-1.0.0:filter_count"),
-        ),
+        # Summary and count sit on one line. They are custom elements with no
+        # display rule, so under the old block-flow container they paired up
+        # only by inline formatting; the flex column would stack them, hence
+        # the explicit row.
+        Div(class_="flex flex-wrap items-baseline gap-2")[
+            FilterSummary(model=model, model_label=label, models=models_json),
+            FilterCount(
+                model=model,
+                noun_singular=str(meta.verbose_name),
+                noun_plural=str(meta.verbose_name_plural),
+                endpoint=reverse("api-1.0.0:filter_count"),
+            ),
+        ],
         FilterGroup(presentation=presentation, model=model, filter=filter_json),
     ]
     return render_page(request, content, title=f"Filter {label}")

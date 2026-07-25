@@ -144,8 +144,7 @@ def SettingsPageHeader(
     heading_children: list[Node] = [PageHeading([title])]
     if description:
         heading_children.append(P(class_="text-type-body text-body")[description])
-    # No gap: PageHeading carries its own bottom margin, which a gap would compound.
-    header_children: list[Node] = [Div(class_="flex flex-col")[*heading_children]]
+    header_children: list[Node] = [Div(class_="flex flex-col gap-4")[*heading_children]]
     action_children = as_children(actions)
     if action_children:
         header_children.append(

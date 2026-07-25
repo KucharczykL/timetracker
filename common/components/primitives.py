@@ -234,9 +234,11 @@ Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
 Optgroup = _html_element("optgroup")
-H1 = _html_element("h1", default_class="text-type-title mb-2")
-H2 = _html_element("h2", default_class="text-type-heading mb-2")
-H3 = _html_element("h3", default_class="text-type-subheading mb-2")
+# Size token only, no margin: parents own spacing via `gap` (see
+# docs/visual-conventions.md §3), enforced by tests/test_heading_margins.py.
+H1 = _html_element("h1", default_class="text-type-title")
+H2 = _html_element("h2", default_class="text-type-heading")
+H3 = _html_element("h3", default_class="text-type-subheading")
 
 
 # The <pop-over> hover/focus tooltip element (behavior: ts/elements/pop-over.ts).
@@ -1481,18 +1483,22 @@ def PageHeading(
     children: Children = None,
     badge: str = "",
 ) -> Element:
-    """Page heading (``<h1>``) with optional badge count."""
+    """Page heading (``<h1>``) with optional badge count.
+
+    Carries no margin: the parent owns the distance to the content below, via
+    ``gap``. A baked margin also broke the badge/action layouts that put this
+    heading in an ``items-center`` flex row — the margin inflated the flex item,
+    so the row centred box-plus-margin and the title sat half a margin high.
+    """
     children = children or []
-    heading_class = "mb-4 text-type-title leading-none text-heading"
+    heading_class = "leading-none text-heading"
     badge_html: Node | str = ""
 
     if badge:
         heading_class = "flex items-center " + heading_class
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
-    # Raw Element, not the H1 builder: the baked scale would fight this
-    # heading's own text-type-title/mb-4 (accumulation, not override).
-    return Element("h1", [("class", heading_class)])[
+    return H1(class_=heading_class)[
         *as_children(children), *([badge_html] if badge_html else [])
     ]
 
@@ -1500,8 +1506,9 @@ def PageHeading(
 def DialogTitle(children: Children = None) -> Element:
     """The one dialog/confirm-page title — ``<h1>`` in :data:`DIALOG_TITLE_CLASS`.
 
-    Raw ``Element`` (not the ``H1`` builder) so the baked heading scale does not
-    accumulate underneath — see :data:`DIALOG_TITLE_CLASS`.
+    Raw ``Element`` (not the ``H1`` builder) because this title has its own size
+    token: ``H1``'s baked ``text-type-title`` would accumulate alongside
+    ``text-type-dialog``, leaving two competing size utilities on one element.
     """
     return Element("h1", [("class", DIALOG_TITLE_CLASS)])[*as_children(children)]
 
