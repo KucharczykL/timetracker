@@ -2,27 +2,45 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Environment: run everything inside the Nix dev shell
+## Environment: drive everything through `make`
 
-This repo's toolchain (`pnpm`, `nodejs`, `uv`, `ruff`, and the `LD_LIBRARY_PATH`
-that `pytest-playwright`/greenlet needs) is provided **only** by the Nix dev shell
-defined in `shell.nix`, loaded automatically via `direnv` (`.envrc` = `use nix`).
+**Run `make <target>`. Do not wrap commands in `direnv exec .`, and do not reach
+around the Makefile for raw `uv run` / `pnpm` / `pytest`.** If something has no
+target, **add one or extend an existing one** — that is the intended way to grow
+this file. Focused test runs are already covered:
 
-**Every `make` / `pnpm` / `uv` / `pytest` command MUST run inside that shell.** A
-bare `make check` (or `make ts`, `make css`, `pytest e2e/…`) run outside it has no
-`pnpm` on `PATH`, so the TS compile and Tailwind build silently no-op or error,
-`dist/` and `games/static/base.css` go stale/missing, and the e2e suite then fails
-on CSS/JS-dependent assertions **locally only** — a green local run that breaks CI.
-Do not work around this with a `pnpm` shim or a global install: that still misses
-the pinned node, `LD_LIBRARY_PATH`, and `uv`/`ruff` the shell pins.
+```
+make test ARGS="tests/test_filters.py -k relation -x"
+make test-e2e ARGS="-k widgets"
+```
 
-How to run commands (non-interactive tools/agents):
+**`make check` runs anywhere — no Nix shell required.** Both interpreters are
+version-proofed by the Makefile, because getting either wrong produces failures
+that look like the code's fault:
 
-- **Preferred:** `direnv exec . <command>` — e.g. `direnv exec . make check`. Uses
-  the cached direnv env. In a **fresh worktree** the `.envrc` is unapproved; run
-  `direnv allow .` once first (first load runs `shell.nix`'s `shellHook`:
-  `uv venv --clear` + `uv sync`, so it's slow once).
-- **Fallback (no direnv):** `nix-shell --run "<command>"`.
+- **Python 3.14** — `ensure-python` finds or provisions it; `uv` pins the
+  interpreter itself.
+- **Node ≥ 26** — `ts/date-time-presentation.ts` uses `Temporal`, which arrives in
+  Node 26. On Node 24 it is `undefined`, the date/time formatters return `null`,
+  and ~11 vitest assertions fail with `expected null to be '2026-07-02 19:05 …'`.
+  When `PATH` already has 26 (the Nix shell's `nodejs_26`, CI's `setup-node`, the
+  `node:26` Docker stage) it is used as-is; otherwise the Makefile hands pnpm the
+  exact version and pnpm fetches it. `ensure-node` then verifies what the JS
+  commands will *actually* run on — `pnpm exec`, not `PATH` — so an offline first
+  run fails with the reason instead of a wall of null assertions.
+
+This is why every node invocation in the Makefile goes through `pnpm`: it is the
+single switch that redirects the whole JS toolchain onto the right runtime. A new
+node-using target should follow suit and depend on `ensure-node`.
+
+`direnv exec . <cmd>` per command remains the wrong habit — it re-enters the shell
+and re-runs `uv sync` (~70 packages) for no benefit. It used to be worse: the
+`shellHook` cleared `.venv` unconditionally, pulling the interpreter out from under
+a running `make dev` (`Unknown command: 'runserver'`). It now rebuilds only a
+missing or broken venv.
+
+Notes:
+
 - A real browser for e2e is found from the system; the shell does not vendor one.
   `e2e/conftest.py` discovers it in this order: the `E2E_CHROME` env var (an
   explicit path — a missing file errors), then `google-chrome`/`chromium`/`chrome`
@@ -32,10 +50,10 @@ How to run commands (non-interactive tools/agents):
   `playwright install` download; set `E2E_CHROME` only for a non-standard path.
 
 **Verification gate:** before declaring done / pushing / opening a PR, run the full
-`direnv exec . make check` (lint + format-check + mypy + ts-check + vitest + the
-entire pytest suite **including `e2e/`**) and confirm it is green. Never verify with
-a hand-picked subset of test files — that is how removed-widget e2e breakage reaches
-CI.
+`make check` (lint + format-check + mypy + ts-check + vitest + the entire pytest
+suite **including `e2e/`**) and confirm it is green. Never verify with a hand-picked
+subset of test files — that is how removed-widget e2e breakage reaches CI. `ARGS` is
+for iterating, never for the gate.
 
 ### Python 3.14 is a hard prerequisite
 
@@ -66,7 +84,7 @@ dev shell already provides CPython 3.14; anything else must supply it too.
   Nix shell sets this; a bare conda/uv env may need it exported manually.
 
 Non-Nix setups are best-effort for local dev; **CI runs the Nix path**, so verify
-against `direnv exec . make check` before pushing when possible.
+against `make check` before pushing when possible.
 
 ## Commands
 
@@ -76,6 +94,7 @@ against `direnv exec . make check` before pushing when possible.
 | Development server | `make dev` (runs Django runserver + Tailwind CSS watcher) |
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs the vitest TS suite via its `test-ts` prereq) |
+| Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
 | Make migrations | `make makemigrations` |
 | Apply migrations | `make migrate` |

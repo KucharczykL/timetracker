@@ -329,9 +329,9 @@ promotion path for `TZ` (edit ini → restart).
 - **Caching:** model signals invalidate resolver snapshots on transaction commit. Other web workers
   and qcluster processes converge through the shared TTL; commands return their canonical result
   without a resolver readback or immediate pre-commit invalidation.
-- **Verification gate:** every stage runs the full `direnv exec . make check` (lint, format, mypy,
-  ts-check, vitest, pytest incl. `e2e/`) in the Nix shell — never a subset. UI stages add e2e at
-  mobile + desktop viewports; Stage 5 adds a no-FOUC assertion.
+- **Verification gate:** every stage runs the full `make check` (lint, format, mypy, ts-check,
+  vitest, pytest incl. `e2e/`) — never a subset. UI stages add e2e at mobile + desktop
+  viewports; Stage 5 adds a no-FOUC assertion.
 - **Manual epic check:** set a value via env and panel → env wins, the field is disabled with its
   source/reason, and direct PATCH returns 409. Change site `DEFAULT_CURRENCY` → inheriting
   purchase-entry views, context-free `Purchase.save()`, and the FX task use it; save a personal

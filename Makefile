@@ -6,6 +6,26 @@ PYTHON_VERSION = 3.14
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8000
 
+# The JS toolchain needs Node >= 26: ts/date-time-presentation.ts uses Temporal,
+# which lands in 26. On an older node Temporal is `undefined`, the date/time
+# formatters return null, and ~11 vitest assertions fail with
+# "expected null to be '2026-07-02 19:05 …'" — breakage that looks like the code's
+# fault rather than the runtime's.
+#
+# uv already makes Python version-proof; this does the same for Node. Where PATH
+# already supplies 26 — the Nix shell's nodejs_26, CI's setup-node, the node:26
+# Docker stage — it is used as-is and this costs nothing. Where it doesn't, pnpm
+# is told the exact version and fetches it (env form of the `use-node-version`
+# setting), so every JS command below runs on 26 and `make check` works on a box
+# with an older system node and no Nix shell. Every node invocation in this file
+# goes through pnpm, which is what makes one switch enough.
+NODE_VERSION = 26.4.0
+NODE_MAJOR_VERSION = 26
+PATH_NODE_SUPPORTED := $(shell node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" 2>/dev/null && echo yes || echo no)
+ifneq ($(PATH_NODE_SUPPORTED),yes)
+export npm_config_use_node_version = $(NODE_VERSION)
+endif
+
 # Ensure a usable CPython 3.14 exists for uv before any target that needs it.
 # Fast no-op when one is already available (a Nix shell puts it on PATH; a
 # provisioned .venv counts too). Otherwise try uv's own downloader, and only if
@@ -34,10 +54,29 @@ ensure-python:
 	exit 1
 endif
 
-npm:
+# Verify what the JS commands will ACTUALLY run on — `pnpm exec`, so it accounts
+# for the version pnpm was told to fetch above, not just PATH. Make runs a given
+# prerequisite once per invocation, so this costs one pnpm call per `make`.
+# On the first run without a suitable PATH node this is where the download
+# happens, so it also fails here (with a reason) rather than deep inside vitest.
+# node itself does the comparison and sets the exit status, keeping the recipe
+# free of shell-specific arithmetic for the Windows cmd.exe case.
+ensure-node:
+	@pnpm exec node -e "process.exit(+process.versions.node.split('.')[0] >= $(NODE_MAJOR_VERSION) ? 0 : 1)" || \
+	( \
+		echo "==> Could not get Node >= $(NODE_MAJOR_VERSION) for the JS toolchain."; \
+		echo "    PATH has $$(node --version 2>/dev/null || echo 'no node'), and pnpm could not"; \
+		echo "    supply $(NODE_VERSION) either — the first fetch needs network access."; \
+		echo "    ts/date-time-presentation.ts uses Temporal (Node 26+); without it the"; \
+		echo "    date/time formatters return null and vitest fails as if the code were broken."; \
+		echo "    Offline? Run from the Nix dev shell instead: nix-shell --run 'make $(MAKECMDGOALS)'"; \
+		exit 1 \
+	)
+
+npm: ensure-node
 	pnpm install
 
-css: common/input.css
+css: ensure-node common/input.css
 	pnpm tailwindcss -i ./common/input.css -o  ./games/static/base.css
 
 makemigrations:
@@ -56,7 +95,7 @@ init: ensure-python
 	$(MAKE) loadplatforms
 	$(MAKE) gen-icons
 
-server: gen-element-types
+server: ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,TS" \
 		--prefix-colors "blue,green" \
@@ -72,10 +111,10 @@ gen-icons:
 check-icons:
 	uv run --frozen python manage.py gen_icons --check
 
-ts: gen-element-types
+ts: ensure-node gen-element-types
 	pnpm exec tsc
 
-ts-check: gen-element-types
+ts-check: ensure-node gen-element-types
 	pnpm exec tsc --noEmit -p tsconfig.check.json
 
 # Vitest consumes generated modules, and the classic bootstrap tests inspect its
@@ -84,7 +123,7 @@ test-ts: ts
 	pnpm test:ts
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
-dev: ensure-python gen-element-types
+dev: ensure-python ensure-node gen-element-types
 	@pnpm concurrently \
 		--names "Django,Tailwind,TS" \
 		--prefix-colors "blue,green,magenta" \
@@ -96,8 +135,8 @@ dev: ensure-python gen-element-types
 caddy:
 	caddy run --watch
 
-dev-prod: migrate collectstatic
-	@npx concurrently \
+dev-prod: ensure-node migrate collectstatic
+	@pnpm concurrently \
 		--names "Caddy,Django,Django-Q" \
 		"caddy run --config Caddyfile.dev" \
 		"$(MAKE) gunicorn-prod" \
@@ -142,13 +181,17 @@ collectstatic:
 uv.lock: pyproject.toml
 	uv sync
 
+# Extra pytest arguments for `test` / `test-e2e`, so a focused run needs no raw
+# tooling: make test ARGS="tests/test_filters.py -k relation -x"
+ARGS ?=
+
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
 test: ensure-python uv.lock css ts test-ts
-	uv run --frozen --with pytest-django pytest
+	uv run --frozen --with pytest-django pytest $(ARGS)
 
 test-e2e: uv.lock css ts
-	uv run --frozen pytest e2e/
+	uv run --frozen pytest e2e/ $(ARGS)
 
 lint:
 	uv run --frozen ruff check
