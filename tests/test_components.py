@@ -395,6 +395,39 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate element id"):
             components.assert_unique_element_ids(tree)
 
+    def test_repeated_ids_inside_templates_are_not_document_ids(self):
+        """<template> content parses into an inert DocumentFragment that never
+        joins the document, so getElementById cannot see it and two templates may
+        carry the same inner id. The filter builder depends on this: it renders one
+        blank widget template per reachable model, so fields every model shares
+        (created_at/updated_at) repeat their ids across buckets."""
+        tree = components.Div()[
+            components.Template()[components.Span(id="filter-created_at-min")],
+            components.Template()[components.Span(id="filter-created_at-min")],
+        ]
+
+        components.assert_unique_element_ids(tree)
+
+    def test_template_elements_own_ids_are_still_checked(self):
+        tree = components.Div()[
+            components.Template(id="dupe")[components.Span(id="inner")],
+            components.Template(id="dupe")[components.Span(id="inner")],
+        ]
+
+        with self.assertRaisesRegex(ValueError, "'dupe'"):
+            components.assert_unique_element_ids(tree)
+
+    def test_a_real_duplicate_outside_a_template_still_raises(self):
+        """The template skip must not leak into the surrounding document walk."""
+        tree = components.Div()[
+            components.Template()[components.Span(id="cloned")],
+            components.Span(id="live"),
+            components.Span(id="live"),
+        ]
+
+        with self.assertRaisesRegex(ValueError, "'live'"):
+            components.assert_unique_element_ids(tree)
+
     def test_add_form_has_one_unique_add_form_id(self):
         request = RequestFactory().get("/tracker/purchase/add")
         tree = components.AddForm(forms.Form(), request=request)

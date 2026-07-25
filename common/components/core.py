@@ -468,7 +468,15 @@ def collect_media(node: "Node | str") -> Media:
 
 
 def assert_unique_element_ids(node: "Node | str") -> None:
-    """Raise in DEBUG page assembly when an Element tree repeats a DOM id."""
+    """Raise in DEBUG page assembly when an Element tree repeats a DOM id.
+
+    ``<template>`` content is skipped: it parses into an inert DocumentFragment
+    that never joins the document, so ``getElementById`` cannot see it and two
+    templates may legitimately carry the same inner id. The filter builder relies
+    on that — it renders one blank widget template per reachable model (so the
+    fields every model shares repeat their ids) and the client suffixes every id
+    at clone time. The template element's own id is still checked.
+    """
     seen: set[str] = set()
     duplicates: set[str] = set()
 
@@ -481,6 +489,8 @@ def assert_unique_element_ids(node: "Node | str") -> None:
                 if element_id in seen:
                     duplicates.add(element_id)
                 seen.add(element_id)
+            if current.tag_name == "template":
+                return
             for child in current.children:
                 visit(child)
         elif isinstance(current, Fragment):

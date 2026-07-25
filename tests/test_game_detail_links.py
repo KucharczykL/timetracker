@@ -134,6 +134,28 @@ def test_sessions_section_shows_last_five(db, django_user_model, rf):
     assert session_time_range(oldest, _PRESENTATION) not in html  # day 1 dropped
 
 
+def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, rendered):
+    """A section with a "View all" button must space its heading from the table
+    exactly like one without.
+
+    The header row carried an mb-2 that stacked on the section wrapper's gap, so
+    linked sections (Purchases/Sessions) rendered 30px of heading-to-table space
+    against 16px for unlinked ones and History. Spacing belongs to the wrapper's
+    gap alone, so the row must declare no margin.
+    """
+    from common.components import Div, PageHeading
+
+    header_row = str(
+        Div(class_="flex items-center justify-between")[PageHeading(["x"])]
+    ).split(">")[0]
+    assert header_row in rendered, "the game-detail header row changed shape"
+
+    for margin in ("mb-1", "mb-2", "mb-3", "mb-4"):
+        assert f'class="flex items-center justify-between {margin}"' not in rendered, (
+            f"header row bakes {margin}; the section wrapper's gap owns this spacing"
+        )
+
+
 def test_no_view_all_for_empty_section(db, django_user_model, rf):
     """A game with no sessions/purchases/playevents shows no 'View all' link."""
     platform = Platform.objects.create(name="PC")

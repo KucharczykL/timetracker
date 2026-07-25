@@ -477,13 +477,15 @@ def _game_section(
             Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
             "View all",
         ]
-        header = Div(class_="flex items-center justify-between mb-2")[
+        # No margin: the section wrapper's gap owns the distance to the table, so
+        # a section with a "View all" button spaces exactly like one without.
+        header = Div(class_="flex items-center justify-between")[
             PageHeading(children=[title], badge=str(count) if count else ""),
             view_all_link,
         ]
     else:
         header = PageHeading(children=[title], badge=str(count) if count else "")
-    return Div(class_="mb-6")[
+    return Div(class_="mb-6 flex flex-col gap-4")[
         header,
         table if count else empty_message,
     ]
@@ -707,7 +709,7 @@ def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
     count = statuschanges.count()
     return Div(
-        class_="mb-6",
+        class_="mb-6 flex flex-col gap-4",
         id="history-container",
         hx_get="",
         hx_trigger="status-changed from:body",

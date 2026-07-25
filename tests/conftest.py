@@ -24,6 +24,27 @@ def _reset_settings_caches():
 
 
 @pytest.fixture
+def debug_page_rendering(settings):
+    """Render pages with ``settings.DEBUG`` on, the way a developer sees them.
+
+    Needed because the page-level checks in ``common/layout.py`` (notably
+    ``assert_unique_element_ids``) only run under DEBUG, which pytest-django
+    forces off — so a DEBUG-only page crash passes CI and breaks the moment a
+    human opens the page with ``make dev``.
+
+    ``INTERNAL_IPS`` is cleared alongside it so debug_toolbar's middleware stays
+    inert (``show_toolbar()`` reads both live). ``timetracker.urls`` appends the
+    djdt route only when DEBUG is true at its first, whole-session import, which
+    pytest-django has already forced false — so djdt is never reversible here and
+    letting the toolbar render would 500 with ``NoReverseMatch`` depending on
+    which test happened to run first.
+    """
+    settings.DEBUG = True
+    settings.INTERNAL_IPS = []
+    return settings
+
+
+@pytest.fixture
 def capture_games_logger(caplog):
     """Context manager that wires ``caplog`` to the ``games`` logger.
 

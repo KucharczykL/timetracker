@@ -114,13 +114,25 @@ The dominant rhythm is real and coherent (#400): **`px-3 py-2.5 text-sm`** for c
 the container-query compact tier (`px-3 py-2 text-xs` → `@md:px-5 @md:py-2.5 @md:text-sm`)
 for buttons; gap hierarchy `gap-0.5` micro / `gap-1` intra-chip / `gap-2` icon+label /
 `gap-3` form-and-bar tier / `gap-4` row tier; panel padding progression `p-2` floating →
-`p-4` cards → `p-5` page surfaces; section rhythm `mb-2` headings, `mb-3`/`mb-4` blocks,
-`mt-1` panel offset.
+`p-4` cards → `p-5` page surfaces; section rhythm `mb-3`/`mb-4` blocks, `mt-1` panel offset.
+(The audit also found `mb-2` on headings; that one is gone — see the heading note below.)
 
 **Call: adopt.** One rule made explicit for all new code: **parents own spacing via `gap`;
-components never bake margins.** The `INPUT_CLASS mb-3` is the counter-example — inside
-`gap-3` forms, text inputs double-space while selects don't. Stripping it is a follow-up;
-the settings kit must not inherit the pattern.
+components never bake margins.** The `INPUT_CLASS mb-3` was the original counter-example —
+inside `gap-3` forms, text inputs double-spaced while selects didn't — and has since been
+stripped.
+
+Headings were the other one, and the more instructive: §7's call below originally had the
+`H1`/`H2`/`H3` builders bake `mb-2` and `PageHeading` bake `mb-4`, contradicting this rule
+in the same document. Two defect classes followed (#504). A baked margin inflates the flex
+item, so a heading in an `items-center` row centres box-plus-margin and sits half a margin
+above the button beside it. And any parent that already declared a `gap` rendered
+double-spaced. Both are now enforced by `tests/test_heading_margins.py`, which asserts on
+rendered output — the rule went unenforced for long enough to be contradicted in writing.
+
+`DialogTitle` still builds a raw `Element` rather than using the `H1` builder, but for its
+own size token (`text-type-dialog` would accumulate alongside `H1`'s baked
+`text-type-title`), not for spacing.
 
 Stragglers (textarea `p-3.5`, YearPicker fixed padding, FilterBuilder preset input compact
 padding + 16px radius, navbar `md:space-x-8` + `rtl:space-x-reverse`) are mechanical

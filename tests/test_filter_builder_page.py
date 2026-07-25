@@ -28,6 +28,23 @@ def test_builder_page_renders(logged_in_client, model):
     assert "csrfmiddlewaretoken" in body
 
 
+@pytest.mark.parametrize(
+    "model", ["game", "session", "purchase", "playevent", "device", "platform"]
+)
+def test_builder_page_renders_under_debug(
+    logged_in_client, model, debug_page_rendering
+):
+    """Regression: the page-level id-uniqueness check only runs under DEBUG, which
+    pytest-django forces off — so every other test here passed while all six
+    builder pages 500'd the moment a human opened them with `make dev`. The
+    duplicate ids were the blank widget templates the multi-model builder renders
+    per reachable model, which are inert until the client clones and re-prefixes
+    them."""
+    response = logged_in_client.get(reverse("games:filter_builder", args=[model]))
+
+    assert response.status_code == 200
+
+
 def test_builder_rejects_unknown_model(logged_in_client):
     response = logged_in_client.get(reverse("games:filter_builder", args=["nope"]))
     assert response.status_code == 404
