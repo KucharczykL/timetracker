@@ -275,6 +275,10 @@ def PurchasePrice(purchase) -> Node:
         wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
         wrapped_classes="underline decoration-dotted",
         selectable_text=True,
+        # Without this, Popover derives its id from its own content, so any two
+        # purchases sharing both the original and the converted price collide —
+        # a DEBUG-only 500 on every list that renders more than one purchase.
+        id=f"purchase-price-{purchase.pk}",
     )
 
 
