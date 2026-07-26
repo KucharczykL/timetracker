@@ -138,6 +138,14 @@ Call sites drop the literal and state intent: `games/views/session.py:96`,
 
 - sessions and purchases at 1217 container: 0 dead space, no wrapping.
 - 390 and 640 unchanged.
+- **~1024 is a recorded interim regression, not an oversight.** "Deleting the
+  greed fixes both stated requirements" holds at 1217. Between roughly 768 and
+  each table's overflow-clears width (sessions 848, games 1016, purchases 1140)
+  Phase 0 *introduces* wrapper scroll that the greed used to absorb, while the
+  wrapping bug persists there until Phase 2. Add an explicit acceptance row at
+  1024 stating the intended interim behavior per table, so mid-width laptops are
+  a decision rather than a surprise. That scroll is keyboard-unreachable until
+  the region semantics land in Phase 2d.
 - **`e2e/test_truncated_text_e2e.py:184` changes at 768 and the change is
   intended.** Tailwind `max-md` is `@media (width < 48rem)`, so at exactly 768
   the greed is off *and* all columns are visible — peak pressure. Verified on the
@@ -154,11 +162,45 @@ Call sites drop the literal and state intent: `games/views/session.py:96`,
 
 # Phase 1 — floating panels move to the top layer
 
-**Prerequisite for Phase 4. Independently valuable.**
+**Prerequisite for Phase 4 and for nothing else. Implement it immediately before
+Phase 4, not first.** Today's panels already escape clipping via
+`position: fixed`, guarded by `e2e/test_dropdown_clipping_e2e.py`, so this phase
+has no standalone user-visible payoff — the measured occlusion it fixes only
+exists once Phase 4's sticky cells exist. It is also the highest-risk change in
+the document, touching every tooltip, dropdown and combobox engine. Doing it
+last means a stall after Phase 3 costs nothing.
 
 Promote `[data-pop-over-panel]` (and the dropdown panels) into the top layer via
 the native popover API, in the shared tooltip controller
 (`ts/elements/tooltip-behavior.ts`) and `attachMenu`.
+
+### This phase is not yet an implementation contract
+
+Unlike Phases 0/2/4 it needs decisions made before it can be estimated:
+
+- **`manual` vs `auto`, and state ownership.** Both engines track openness
+  themselves — `tooltip-behavior.ts:83,115` (`isOpen` plus `panel.hidden`),
+  `menu-behavior.ts:169` (`isOpen = !menu.hidden`). Under `popover="auto"` the UA
+  light-dismisses and Esc-closes behind the controller's back: `isOpen` stays
+  true, `open()` becomes a permanent no-op, and the per-open scroll/resize
+  listeners (`tooltip-behavior.ts:122`) leak. Either adopt `manual` and keep the
+  existing dismissal engine, or adopt `auto` and drive state from
+  `beforetoggle`/`toggle`. The modes also differ on nesting — under `auto`, a
+  tooltip opening inside an open dropdown survives only via DOM-ancestor
+  nesting. Pick one explicitly.
+- **UA stylesheet overrides.** `[popover]` brings `margin: auto`, border,
+  padding, `background-color: canvas`, and `overflow: auto`. The last clips the
+  arrow, which deliberately overhangs the panel edge
+  (`tooltip-behavior.ts:67` sets `top`/`bottom: -half`), and `tintArrow`
+  (`:39`) reads the panel's computed background — `canvas` tints arrows wrong.
+  Every panel's classes must neutralise these.
+- **jsdom has no popover API — verified.** jsdom 29.1.1 (`package.json`) exposes
+  no `showPopover`: `HTMLElement.prototype.showPopover` is `undefined` and
+  calling it throws `TypeError`. `pop-over.test.ts`, `menu-behavior.test.ts` and
+  `drop-down.controller.test.ts` all drive open/close through `hidden`, so this
+  phase includes either a popover shim for the vitest environment or a
+  capability check with a `hidden` fallback path. That work is part of the
+  phase's cost and was previously unscoped.
 
 ### Why
 
@@ -175,10 +217,19 @@ flips `side` when there is no room above):
 | same panel, same position, promoted to top layer | **0 / 24** |
 | control: sticky removed | 0 / 24 |
 
-Top-layer promotion also retires the standing fragility at
+Top-layer promotion also relaxes the standing constraint at
 `primitives.py:2124-2129` — the "never add `transform`/`filter`/`contain`/
-`backdrop-filter` to the shell" rule exists only because panels are clippable
-today.
+`backdrop-filter` to the shell" rule exists because a `position: fixed` panel can
+be captured by an ancestor containing block, and top-layer elements cannot be.
+
+**This is conditional on the migration being total, and Phase 4a depends on the
+answer.** If any fixed-positioned, non-top-layer panel survives inside a table
+cell, the constraint stands and Phase 4a's ban on `filter: drop-shadow` for the
+pinned-cell shadow keeps its stated rationale. If the migration is total, that
+rationale is dead and `box-shadow` is preferred merely because it is cheaper and
+has no stacking side effects. Audit the panel inventory during this phase and
+reconcile both claims in one direction; do not delete the `primitives.py:2124`
+comment until the audit says the migration was total.
 
 ### Acceptance
 
@@ -241,6 +292,22 @@ arbitrarily wide first column, and in Phase 4 pins it. Route them through
 `TruncatedText` so the cap and fade apply uniformly, or the "names fade rather
 than hard-cut" requirement holds only on three of seven list pages.
 
+### 2d — the scroll region moves here from Phase 4
+
+Nowrap removes the table's last compressibility. Today, and after Phase 0,
+columns in the over-subscribed band compress by *wrapping* — ugly, but every
+datum stays on screen. After 2a they slide into the `overflow-x-auto` wrapper
+instead, which has no keyboard access, no scroll cue, and on overlay-scrollbar
+platforms no visible affordance at all. A 1024px purchases user would go from
+"PRICE wraps to two lines" to "PRICE, REFUNDED, CREATED and ACTIONS silently do
+not exist" — and if Phase 3 never ships, permanently.
+
+The region semantics in Phase 4b (`role="region"`, `tabindex="0"`, the caption,
+`scroll-padding-inline-start`) depend on neither sticky nor priority-plus, so
+they ship **here**, in the same PR as 2a. Phase 4b keeps only the sticky-specific
+parts. Details of the caption and its `randomid(content=…)` id are unchanged —
+see 4b.
+
 ### Acceptance
 
 - No cell on any of the 10 data tables renders across more than one line, at
@@ -278,7 +345,40 @@ breakpoint, and a user column-toggle feature layers on top as an explicit
 priority override.
 
 Server-rendered initial state keeps the current `max-md` set, so a no-JS page is
-exactly as good as today.
+exactly as good as today. The element must therefore **strip those classes on
+mount** before applying its own decision — otherwise the two systems fight. At
+widths where the JS decision differs from the CSS one this produces a visible
+column-pop on load; decide whether to accept it or to gate the swap on first
+measurement.
+
+### The measurement model is the hard part and is not yet designed
+
+"Reusing the QuickFilterBar primitives" is honest about 25 lines of width
+arithmetic (`ts/elements/priority-plus.ts:8-25`) and misleading about everything
+else. The parts that make QuickFilterBar work do not transfer:
+
+- **It measures once at mount** (`quick-filter-bar.ts:120`, whose comment says
+  exactly that) because ghost triggers have stable, label-driven widths. Table
+  column widths are data-dependent, change with pagination, filtering and htmx
+  row swaps, and — decisively — **change when other columns are hidden**, because
+  auto layout redistributes. There is no stable per-column width to feed
+  `priorityPlusFitCount`.
+- What the algorithm needs is each column's **natural (max-content) width**,
+  which is unobservable while a `w-full` table is slack-distributing, and is
+  literally `0` for any column the server-rendered `max-md` rules have at
+  `display: none` — i.e. every hideable column when the page mounts at 390px.
+- QuickFilterBar *moves* free-floating nodes between two hosts. A table must
+  *hide* the `<th>` plus the `<td>` at one index in every row, in lockstep.
+  Cells cannot be reparented.
+- Per the rule-placement hazard above, the drop state wants to be a
+  `<tbody>`-level rule — but **Tailwind cannot mint `[&_td:nth-child(4)]:hidden`
+  at runtime.** This needs a safelisted per-index rule family in `input.css` up
+  to some maximum column count, following the existing `@source inline`
+  nth-child precedent at `primitives.py:2083`. That maximum is a design
+  decision, not an implementation detail.
+
+Design the measurement model — how natural widths are obtained, when they are
+invalidated, and what the safelist ceiling is — before estimating this phase.
 
 ### Rule-placement hazard
 
@@ -294,9 +394,16 @@ metadata. `ts/session-row.ts:59` survives today only because it
 
 - At 390 / 768 / 1280 on all 10 data tables: no wrapper scroll, and the Name
   column is at least ~150px, without any per-table constant.
-- Toggling a column on beyond the fit budget drops the next-lowest priority
-  rather than overflowing.
-- No-JS render matches today's `max-md` behavior.
+- No-JS render matches today's `max-md` behavior, and the mounted element's
+  decision replaces it without leaving both systems active.
+- Natural widths are recovered correctly when the page mounts at 390px, where
+  every hideable column starts at `display: none`.
+- Re-measurement happens after pagination, filtering and htmx row swaps.
+
+(An earlier draft also required "toggling a column on beyond the fit budget
+drops the next-lowest priority". No phase in this document builds a user column
+toggle, so that criterion was unverifiable; it belongs to whichever change
+introduces the toggle.)
 
 ---
 
@@ -318,10 +425,13 @@ sticky start-0 z-[2] bg-inherit
 (`date_range_picker.py:277`). Under `dir="rtl"` the scroll start edge is the
 right, and a physical `left-0` pins to the wrong edge.
 
-Plus a right-edge **`box-shadow`** so the pinned column reads as a layer. It must
-not be `filter: drop-shadow` — `filter` makes the cell a containing block for
-`position: fixed`, the same hazard `primitives.py:2124` warns about for the
-shell.
+Plus a right-edge **`box-shadow`** so the pinned column reads as a layer, never
+`filter: drop-shadow`. `filter` makes the cell a containing block for
+`position: fixed`; whether that still matters depends on the Phase 1 audit (if
+the top-layer migration was total, no capturable panel remains and the rationale
+is moot). `box-shadow` is the right choice either way — cheaper, no stacking
+side effects — so this does not block on the audit, but the two claims must be
+reconciled in one direction rather than both asserted.
 
 Traps, all confirmed or flagged:
 
@@ -346,12 +456,14 @@ Traps, all confirmed or flagged:
 - **Panels must already be in the top layer** (Phase 1). Without it this phase
   ships the measured 18/24 occlusion.
 
-### 4b — accessible scroll region
+### 4b — accessible scroll region (**ships in Phase 2d**, specified here)
 
 The wrapper is `Div(class_="relative overflow-x-auto")` with no `role`,
 `tabindex` or accessible name, and the tables have no `<caption>` — the
 horizontal scroll is unreachable by keyboard, a live WCAG 2.1.1 failure that
-exists today and that Phases 2–3 make more visible.
+exists today and that Phases 0 and 2 both make more visible. Nothing in it
+depends on sticky or priority-plus, so it lands with 2a; it is written here for
+cohesion with the rest of the pinning work.
 
 Data tables get a visually hidden `<caption class="sr-only">` **prepended as the
 table's first child** (a `<caption>` must be the first child of `<table>`;
@@ -365,10 +477,13 @@ Div(role="region", tabindex="0", aria_labelledby=caption_id,
     class_="relative overflow-x-auto")
 ```
 
-Plus `scroll-padding-inline-start` equal to the pinned column's width: without
-it, tabbing to a control scrolled off to the right scrolls it flush to the
-region's start edge, which is exactly where the pinned cell paints, hiding the
-focused control and its focus ring.
+Plus `scroll-padding-inline-start`: without it, tabbing to a control scrolled off
+to the right scrolls it flush to the region's start edge, which is exactly where
+the pinned cell paints, hiding the focused control and its focus ring. The
+pinned column's actual width is per-table and per-page, so "equal to the pinned
+width" is not expressible as a static class. Pin the value to the cap constant
+(256px + cell padding ≈ 304px) — a safe over-estimate that stays pure CSS —
+rather than measuring and writing a custom property.
 
 `tests/test_components.py:1913` asserts the exact substring
 `"relative overflow-x-auto"` on the wrapper — append classes, never prepend.
@@ -408,11 +523,34 @@ an `hx-swap-oob` template that closes the modal. Its sibling `split_purchase`
 **Do not copy `split_purchase` verbatim.** It redirects to a bare
 `reverse("games:list_purchases")`, so refunding row 30 of
 `?filter=…&sort=-price&page=3` lands on page 1 of the unfiltered, default-sorted
-list. The repo owns the right tool — `use_custom_redirect` /
-`request.session["return_path"]` (`games/views/general.py:93`), already used at
-`purchase.py:365`, `game.py:302`, `platform.py:127`. Use it, so the reload
-returns to the list the user was actually looking at. `split_purchase` losing
-context the same way is a pre-existing bug worth a follow-up.
+list.
+
+**And do not reach for `use_custom_redirect` — it cannot express this.** Verified:
+`request.session["return_path"]` is written in exactly three places —
+`view_game` (`games/views/game.py:735`), `stats_alltime`
+(`games/views/general.py:113`) and `stats` (`:128`). **No list view sets it**, and
+all three store `request.path` with **no query string**. `use_custom_redirect`
+(`general.py:100`) then redirects to whatever stale value is in the session, so a
+user who viewed a game detail earlier and then refunds from the purchases list
+lands on that game's page; a user who never visited one falls through to the
+bare-list redirect this paragraph just condemned. The motivating scenario is
+unreachable with this mechanism as it exists.
+
+Carry the origin explicitly instead: put `request.get_full_path()` of the list
+into the confirmation modal's form as a hidden field and redirect to it after
+validating it as a safe internal URL (`url_has_allowed_host_and_scheme`). That
+keeps filter, sort and page without touching session state.
+
+**Pin the response shape.** The modal form keeps `hx_post`
+(`purchase.py:461`), so a plain `302` would be answered into the form element —
+htmx's default target is the triggering element — and the redirected page would
+be swapped into the modal. Either return `204` + `HX-Redirect` (htmx does the
+navigation) or de-htmx the form to a plain POST. State which; leaving it implicit
+will produce a wrong first implementation.
+
+`split_purchase` losing context the same way is a pre-existing bug worth a
+follow-up, and it needs the same hidden-field treatment rather than
+`use_custom_redirect`.
 
 Also delete: the now-dead `hx_target="#purchase-row-{id}"` / `hx_swap="outerHTML"`
 on `_refund_confirmation_modal` (`purchase.py:461`), and the row `id` if nothing
@@ -433,8 +571,12 @@ The success toast survives — `games/htmx_middleware.py:34` returns early when
 
 1. **Per-row disclosure for columns Phase 3 drops.** DataTables Responsive's
    child-row pattern; today that data is only reachable via the detail page.
-2. **`split_purchase` loses filter/sort/page context** — same `use_custom_redirect`
+2. **`split_purchase` loses filter/sort/page context** — same hidden-origin-field
    fix as refund.
+6. **`use_custom_redirect` is a footgun.** It redirects to a session value that
+   only three unrelated views ever write, never carries a query string, and is
+   never cleared — so any view wearing the decorator can bounce the user to a
+   stale, arbitrary page. Either scope it per-flow or delete it.
 3. **Scroll-cue gradients on the region.** Lea Verou's
    `background-attachment: local, scroll`, recommended by Roselli; left out here
    because it must be reconciled with the shell's rounded clip and the pinned
@@ -450,13 +592,22 @@ The success toast survives — `games/htmx_middleware.py:34` returns early when
 
 ## Implementation order
 
+Phases are numbered by identity, not by sequence. Ship them **0, 2, 3, 1, 4**:
+
 0. Rebase onto `origin/main` before touching anything.
-1. Phase 0 — `shrinkable`, four call sites, e2e 768 branch updated.
-2. Phase 1 — top-layer panels.
-3. Phase 2 — `Column` owns wrap + cap, data-table gate, uncapped first columns.
-4. Phase 3 — priority-plus.
-5. Phase 4 — sticky + scroll region.
-6. Refund reload (independent; may land any time after Phase 0).
+1. **Phase 0** — `shrinkable`, four call sites, e2e 768 branch updated, 1024
+   interim behavior recorded.
+2. **Phase 2** — `Column` owns wrap + cap, data-table gate, uncapped first
+   columns, **and the scroll region (2d)**. 2a and 2d must land together: nowrap
+   without a keyboard-reachable region is a net regression.
+3. **Phase 3** — priority-plus. Design the measurement model first.
+4. **Phase 1** — top-layer panels. Deliberately late: no standalone payoff, high
+   blast radius, and its only beneficiary is Phase 4.
+5. **Phase 4** — sticky column (4a); 4b already shipped with 2d.
+6. Refund reload — independent; any time after Phase 0.
+
+If the work stalls after Phase 3, the app is in a good state and nothing has
+been paid for a beneficiary that never arrived.
 
 Each phase ends on a full `make check` including `e2e/`.
 
