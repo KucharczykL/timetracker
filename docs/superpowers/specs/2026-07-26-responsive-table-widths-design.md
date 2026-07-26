@@ -2,6 +2,7 @@
 
 > Approved design and implementation contract for this branch.
 > Five phases, shipped as separate PRs in dependency order.
+> Tracked by **#523**; stage issues get filed as each phase is picked up.
 
 ## Context
 
