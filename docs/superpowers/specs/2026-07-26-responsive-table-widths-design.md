@@ -567,28 +567,24 @@ The success toast survives — `games/htmx_middleware.py:34` returns early when
 
 ---
 
-## Follow-up issues to file
+## Follow-up issues (filed)
 
-1. **Per-row disclosure for columns Phase 3 drops.** DataTables Responsive's
-   child-row pattern; today that data is only reachable via the detail page.
-2. **`split_purchase` loses filter/sort/page context** — same hidden-origin-field
-   fix as refund.
-6. **`use_custom_redirect` is a footgun.** It redirects to a session value that
-   only three unrelated views ever write, never carries a query string, and is
-   never cleared — so any view wearing the decorator can bounce the user to a
-   stale, arbitrary page. Either scope it per-flow or delete it.
-3. **Scroll-cue gradients on the region.** Lea Verou's
-   `background-attachment: local, scroll`, recommended by Roselli; left out here
-   because it must be reconciled with the shell's rounded clip and the pinned
-   column.
-4. **Print styles.** There are none. Nowrap widens tables inside an
-   `overflow-x-auto` container, and printing an overflow container clips the
-   off-screen columns. Pre-existing, measurably worsened by Phase 2.
-5. **The 51px slack residue.** Ordinary proportional distribution, not a defect.
-   If it ever matters, a zero-min-content filler column carrying `w-full` is a
-   pure-CSS answer — it vanishes when the table overflows and absorbs all slack
-   when it does not. (An earlier draft of this document wrongly claimed removing
-   the residue required JS.)
+- **#517** — `use_custom_redirect` redirects to a stale, arbitrary page. Blocks
+  any attempt to use it for the refund/split origin problem.
+- **#518** — `split_purchase` discards filter/sort/page context on redirect.
+  Same hidden-origin-field fix as refund.
+- **#519** — Per-row disclosure for columns hidden on narrow viewports.
+  DataTables Responsive's child-row pattern; today that data is only reachable
+  via the detail page.
+- **#520** — Scroll-cue gradients on the region. Lea Verou's
+  `background-attachment: local, scroll`, recommended by Roselli; must be
+  reconciled with the shell's rounded clip and the pinned column.
+- **#521** — No print styles; printing a list page clips off-screen columns.
+  Pre-existing, measurably worsened by Phase 2.
+- **#522** — The 51px slack residue. Ordinary proportional distribution, not a
+  defect; a zero-min-content filler column is the pure-CSS answer if it ever
+  matters. (An earlier draft of this document wrongly claimed removing it
+  required JS.)
 
 ## Implementation order
 
