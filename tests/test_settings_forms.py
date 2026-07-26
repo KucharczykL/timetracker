@@ -1,14 +1,19 @@
+import dataclasses
+
 import pytest
 from django import forms
+from django.test import Client
+from django.urls import reverse
 
 from common.components import FormFieldPresentation, Span
 from games.forms import INPUT_CLASS, SELECT_CLASS, apply_primitive_widget_classes
-from games.models import Device, SiteSetting
+from games.models import Device, Platform, SiteSetting
 from games.settings_forms import (
     SiteSettingsForm,
     UserSettingsForm,
     display_label,
     settings_page_data,
+    user_setting_definitions,
 )
 from timetracker import settings_resolver
 from timetracker.settings_registry import (
@@ -147,6 +152,21 @@ def test_display_label_falls_back_to_the_first_choice_only_for_none():
 
 
 @pytest.mark.django_db
+def test_display_label_names_the_unset_landing_page_regardless_of_choice_order():
+    landing_page = get_definition("DEFAULT_LANDING_PAGE")
+    choices = landing_page.choices
+    assert choices is not None
+    reordered = dataclasses.replace(landing_page, choices=tuple(reversed(choices)))
+
+    # The reordered first choice is no longer "Sessions", so a pass here can
+    # only be explained by empty_display, not choices[0].
+    reordered_choices = reordered.choices
+    assert reordered_choices is not None
+    assert reordered_choices[0][1] != "Sessions"
+    assert display_label(reordered, None) == "Sessions"
+
+
+@pytest.mark.django_db
 def test_display_label_names_the_device_or_reports_none():
     device = Device.objects.create(name="Desktop", type="pc")
     definition = get_definition("DEFAULT_DEVICE")
@@ -154,6 +174,43 @@ def test_display_label_names_the_device_or_reports_none():
     assert display_label(definition, device.pk) == str(device)
     assert display_label(definition, None) == "No device"
     assert display_label(definition, device.pk + 1000) == "No device"
+
+
+@pytest.fixture
+def synthetic_model_setting(monkeypatch):
+    """A MODEL-widget setting with an empty_display distinct from every real
+    MODEL setting's, so a hardcoded "No device" cannot pass for it by luck."""
+    definition = SettingDefinition(
+        "SYNTHETIC_MODEL",
+        scope=SettingScope.USER,
+        apply_timing=ApplyTiming.LIVE,
+        label="Synthetic model",
+        default_factory=lambda: None,
+        widget=SettingWidget.MODEL,
+        model_queryset=lambda: Platform.objects.order_by("name"),
+        empty_display="No synthetic platform",
+    )
+    monkeypatch.setitem(SETTINGS_REGISTRY, definition.key, definition)
+    clear_cache()
+    yield definition
+    clear_cache()
+
+
+@pytest.mark.django_db
+def test_display_label_reads_the_empty_display_from_the_definition(
+    synthetic_model_setting,
+):
+    assert display_label(synthetic_model_setting, None) == "No synthetic platform"
+
+
+@pytest.mark.django_db
+def test_the_personal_page_names_the_synthetic_model_empty_display(
+    synthetic_model_setting,
+):
+    field = UserSettingsForm().fields["synthetic_model"]
+
+    assert field.empty_label == "Use site default (No synthetic platform)"
+    assert "No device" not in field.empty_label
 
 
 _SYNTHETIC_CHOICES = (("alpha", "Alpha"), ("beta", "Beta"))
@@ -208,6 +265,38 @@ def test_a_new_registry_entry_reaches_both_state_builders(synthetic_setting):
 
 
 @pytest.mark.django_db
+def test_a_new_registry_entry_renders_on_both_real_settings_pages(
+    django_user_model, synthetic_setting
+):
+    """Reaching both forms and both state builders in isolation does not prove
+    the full page survives prepare_setting_fields and the PATCH-URL/namespace
+    wiring; only a real request through each view does."""
+    normal_user = django_user_model.objects.create_user(
+        username="settings-form-user", password="pw"
+    )
+    superuser = django_user_model.objects.create_superuser(
+        username="settings-form-admin", password="pw"
+    )
+
+    personal_client = Client()
+    personal_client.force_login(normal_user)
+    personal_response = personal_client.get(reverse("games:settings"))
+    assert personal_response.status_code == 200
+    assert (
+        f'data-setting-key="{synthetic_setting.key}"'
+        in personal_response.content.decode()
+    )
+
+    admin_client = Client()
+    admin_client.force_login(superuser)
+    admin_response = admin_client.get(reverse("games:admin_settings"))
+    assert admin_response.status_code == 200
+    assert (
+        f'data-setting-key="{synthetic_setting.key}"' in admin_response.content.decode()
+    )
+
+
+@pytest.mark.django_db
 def test_the_personal_page_prefills_only_its_own_overrides(django_user_model):
     user = django_user_model.objects.create_user(username="tester", password="pw")
     page = settings_page_data(UserSettingsForm, user=user)
@@ -256,3 +345,19 @@ def test_the_site_page_stamps_every_display_setting_for_reload():
         assert "data-reload-after-save" in page.form.fields[field_name].widget.attrs
     for field_name in ("default_currency", "default_device", "default_page_size"):
         assert "data-reload-after-save" not in page.form.fields[field_name].widget.attrs
+
+
+@pytest.mark.django_db
+def test_every_user_scoped_field_label_matches_its_definition_on_both_forms():
+    """Django's auto-generated label from a field name coincidentally matches
+    a definition's label for some settings (e.g. "default_currency" ->
+    "Default currency") but not others (e.g. "default_page_size" ->
+    "Default page size" vs. the registry's "Default rows per page"), so this
+    must compare every field against its definition, not spot-check a few."""
+    user_fields = UserSettingsForm().fields
+    site_fields = SiteSettingsForm().fields
+
+    for definition in user_setting_definitions():
+        field_name = definition.key.lower()
+        assert user_fields[field_name].label == definition.label, field_name
+        assert site_fields[field_name].label == definition.label, field_name

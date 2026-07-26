@@ -137,7 +137,7 @@ def test_datetime_format_registry_contract():
     definition = get_definition("DATETIME_FORMAT")
     assert definition.scope is SettingScope.USER
     assert definition.apply_timing is ApplyTiming.LIVE
-    assert definition.widget == "select"
+    assert definition.widget is SettingWidget.SELECT
     assert definition.default_factory() == "iso_8601"
 
 

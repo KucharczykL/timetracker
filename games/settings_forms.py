@@ -1,9 +1,9 @@
 """Settings controls derived from the registry.
 
-Both settings pages render the same eight user-scoped settings; they differ only
-in how an inherited value is named and in how each value is resolved. The field
-set, its widgets, and its labels come from ``SETTINGS_REGISTRY``, so a new
-user-scoped setting needs no edit here.
+Both settings pages render the user-scoped settings; they differ only in how an
+inherited value is named and in how each value is resolved. The field set, its
+widgets, and its labels come from ``SETTINGS_REGISTRY``, so a new user-scoped
+setting needs no edit here.
 """
 
 from collections.abc import Mapping
@@ -27,6 +27,8 @@ from timetracker.settings_resolver import (
     resolve_for_user_with_origin,
     resolve_with_origin,
 )
+
+type SettingFieldName = str  # e.g. "default_currency" -- the Django form field name
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +65,7 @@ def user_setting_definitions() -> list[SettingDefinition]:
     ]
 
 
-def field_name_for(definition: SettingDefinition) -> str:
+def field_name_for(definition: SettingDefinition) -> SettingFieldName:
     """The Django form field name for a registry key."""
     return definition.key.lower()
 
@@ -88,10 +90,18 @@ def display_label(definition: SettingDefinition, value: object) -> str:
         for choice_value, label in choices:
             if choice_value == value:
                 return label
-        # Only an unset value means "the first option"; anything else prints
-        # itself, so an out-of-choices timezone is not relabeled as another zone.
-        if value is None and choices:
-            return choices[0][1]
+        # An unset value's real destination can be decided by code well away
+        # from this list (e.g. the landing page's fallback lives in the index
+        # view, not in choice order), so an explicit empty_display names it
+        # when the definition has one. Falling back to the first choice is
+        # only a default for a SELECT setting that declares no empty_display.
+        # Anything else prints itself, so an out-of-choices timezone is not
+        # relabeled as another zone.
+        if value is None:
+            if definition.empty_display:
+                return definition.empty_display
+            if choices:
+                return choices[0][1]
         return str(value)
     if definition.widget is SettingWidget.TEXT:
         return str(value)
@@ -248,6 +258,9 @@ class UserSettingsForm(RegistrySettingsForm):
         *,
         live_save: bool,
     ) -> SettingFieldState:
+        # locked is intentionally omitted (stays False): locking exists for a
+        # value frozen by env/ini ahead of the site DB, and this page only
+        # ever writes UserPreferences, which nothing upstream of it can freeze.
         return SettingFieldState(
             definition.key,
             str(resolved.source),
@@ -264,17 +277,25 @@ class SettingsPageData(NamedTuple):
     state policy and the renderer must both see."""
 
     form: RegistrySettingsForm
-    states: dict[str, SettingFieldState]
-    presentations: dict[str, FormFieldPresentation]
+    states: dict[SettingFieldName, SettingFieldState]
+    presentations: dict[SettingFieldName, FormFieldPresentation]
 
 
 def settings_page_data(
     form_class: type[RegistrySettingsForm],
     *,
     user: object = None,
-    presentations: Mapping[str, FormFieldPresentation] | None = None,
+    presentations: Mapping[SettingFieldName, FormFieldPresentation] | None = None,
 ) -> SettingsPageData:
-    """Resolve every user-scoped setting once, then build the page's form and state.
+    """Make one pass over the user-scoped definitions to build a page's form and
+    per-field state, replacing what used to be two separate passes.
+
+    That single pass is not the only resolve on the personal page: building the
+    form also calls ``UserSettingsForm.empty_label``, which separately resolves
+    the *site* value for its "Use site default (…)" text, while this function
+    resolves each setting the way the page itself reads it (the user's own
+    value, for a personal page). They read different things; the resolver's
+    cached DB snapshots make the extra read cheap.
 
     A presentation that replaces the control (``decorate_control``) declares that
     something other than the generic live-save element owns it; a purely cosmetic
@@ -282,15 +303,18 @@ def settings_page_data(
     stamp, since the generic element is what would act on it.
     """
     supplied = dict(presentations or {})
-    initial: dict[str, object] = {}
-    states: dict[str, SettingFieldState] = {}
-    reload_field_names: list[str] = []
+    initial: dict[SettingFieldName, object] = {}
+    states: dict[SettingFieldName, SettingFieldState] = {}
+    reload_field_names: list[SettingFieldName] = []
     for definition in user_setting_definitions():
         field_name = field_name_for(definition)
         resolved = form_class.resolve(definition, user)
         if form_class.keeps_initial(resolved):
             initial[field_name] = resolved.value
         presentation = supplied.get(field_name)
+        # A presentation with decorate_control replaces the generic control and
+        # is assumed to persist the value itself (as ThemeSetting's PATCH does),
+        # so this field is not live-saved by the generic element.
         live_save = presentation is None or presentation.decorate_control is None
         states[field_name] = form_class.field_state(
             definition, resolved, live_save=live_save

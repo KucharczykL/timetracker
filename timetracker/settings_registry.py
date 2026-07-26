@@ -1,5 +1,5 @@
 """Declarative registry — single source of truth for the resolver, introspection,
-and future settings widgets.
+and the settings-page widgets.
 
 ``settings`` is read only inside ``default_factory`` callables, never at import,
 so ``settings.py`` can import this module safely.
@@ -82,11 +82,7 @@ class SettingScope(StrEnum):
 
 
 class SettingWidget(StrEnum):
-    """Control kind a settings page builds for a user-scoped setting.
-
-    StrEnum, not Enum: the registry contract tests compare against the raw
-    string values.
-    """
+    """Control kind a settings page builds for a user-scoped setting."""
 
     TEXT = "text"
     SELECT = "select"
@@ -303,6 +299,10 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_optional_landing_page,
             widget=SettingWidget.SELECT,
             choices=LANDING_PAGE_CHOICES,
+            # index() redirects an unset landing page to games:list_sessions;
+            # that destination is decided there, not by choice order, so it is
+            # named explicitly rather than left to fall back to choices[0].
+            empty_display="Sessions",
         ),
         SettingDefinition(
             "DEFAULT_PAGE_SIZE",

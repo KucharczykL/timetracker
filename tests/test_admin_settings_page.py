@@ -16,6 +16,7 @@ from timetracker.settings_registry import (
     FORMAT_LOCALE_CHOICES,
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_CHOICES,
+    PAGE_SIZE_OPTIONS,
     THEME_CHOICES,
     SettingScope,
     get_definition,
@@ -294,7 +295,7 @@ def test_site_settings_form_uses_typed_fields_and_registry_choices(
     ]
     assert list(form.fields["default_page_size"].choices) == [
         ("", "Use configured default"),
-        *((size, str(size)) for size in PAGE_SIZE_CHOICES),
+        *PAGE_SIZE_OPTIONS,
     ]
     assert list(form.fields["theme"].choices) == [
         ("", "Use configured default"),
