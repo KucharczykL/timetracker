@@ -638,6 +638,16 @@ def TimetrackerDocument(
                             href=static("icons/tesserae-favicon.svg"),
                         ),
                         StaticScript("dist/theme-bootstrap.js"),
+                        # Temporal polyfill, BEFORE every module script: the
+                        # date/time presentation layer (and session-row) use
+                        # Temporal, which Safari still lacks as of iOS 26.5 —
+                        # there it threw "Can't find variable: Temporal",
+                        # blanking the calendar header and the session times.
+                        # Classic (not module) so it runs during parse, ahead
+                        # of the deferred modules that consume it; the vendored
+                        # build self-guards on a native Temporal, so browsers
+                        # that have one keep it.
+                        Script(src=static("js/temporal-polyfill.js")),
                         ModuleScript("dist/global-error-handler.js"),
                         Script(src=static("js/htmx.min.js")),
                         Script(src=static("js/flowbite.min.js")),
