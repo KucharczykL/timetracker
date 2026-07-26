@@ -12,6 +12,7 @@ from timetracker.settings_registry import (
     ApplyTiming,
     SettingDefinition,
     SettingScope,
+    SettingWidget,
     UnregisteredSettingError,
     get_definition,
 )
@@ -238,3 +239,84 @@ def test_infra_setting_must_be_restart():
             label="x",
             default_factory=lambda: None,
         )
+
+
+def test_user_scoped_definition_must_declare_a_widget():
+    with pytest.raises(ValueError, match="must declare a widget"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+        )
+
+
+def test_select_widget_requires_choices():
+    with pytest.raises(ValueError, match="SELECT"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+            widget=SettingWidget.SELECT,
+        )
+
+
+def test_model_widget_requires_a_queryset_factory():
+    with pytest.raises(ValueError, match="MODEL"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+            widget=SettingWidget.MODEL,
+        )
+
+
+def test_choices_require_a_select_widget():
+    with pytest.raises(ValueError, match="SELECT"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+            widget=SettingWidget.TEXT,
+            choices=(("a", "A"),),
+        )
+
+
+def test_reload_after_save_requires_live_apply_timing():
+    with pytest.raises(ValueError, match="reload_after_save"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.INFRA,
+            apply_timing=ApplyTiming.RESTART,
+            label="Synthetic",
+            default_factory=lambda: None,
+            reload_after_save=True,
+        )
+
+
+def test_registered_user_settings_carry_control_data():
+    currency = get_definition("DEFAULT_CURRENCY")
+    assert currency.widget is SettingWidget.TEXT
+    assert currency.user_help_text.startswith("A personal value affects only")
+
+    device = get_definition("DEFAULT_DEVICE")
+    assert device.widget is SettingWidget.MODEL
+    assert device.model_queryset is not None
+
+    landing_page = get_definition("DEFAULT_LANDING_PAGE")
+    assert landing_page.widget is SettingWidget.SELECT
+    assert landing_page.choices == settings_registry.LANDING_PAGE_CHOICES
+
+    page_size = get_definition("DEFAULT_PAGE_SIZE")
+    assert page_size.choices == settings_registry.PAGE_SIZE_OPTIONS
+    assert page_size.reload_after_save is False
+
+    for key in ("THEME", "DISPLAY_TIME_ZONE", "DATE_FORMAT_LOCALE", "DATETIME_FORMAT"):
+        assert get_definition(key).reload_after_save is True, key

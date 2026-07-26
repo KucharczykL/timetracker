@@ -15,11 +15,14 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Final, cast
+from typing import TYPE_CHECKING, Any, Callable, Final, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
 
 type SettingKey = str  # e.g. "DEFAULT_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
@@ -28,6 +31,8 @@ type SettingValidator = Callable[[object], object]  # returns normalized or rais
 type SettingWriteValidator = Callable[
     [object], None
 ]  # write-time referential check; raises on failure
+type SettingOption = tuple[Any, str]  # e.g. ("cs", "Čeština"), (25, "25")
+type QuerysetFactory = Callable[[], "QuerySet[Any]"]  # lazy; imports models when called
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_sessions", "Sessions"),
@@ -41,6 +46,9 @@ _LANDING_PAGE_URL_NAMES: Final[frozenset[str]] = frozenset(
 
 DEFAULT_PAGE_SIZE: Final[int] = 25
 PAGE_SIZE_CHOICES: Final[tuple[int, ...]] = (10, 25, 50, 100, 500, 1000)
+PAGE_SIZE_OPTIONS: Final[tuple[SettingOption, ...]] = tuple(
+    (size, str(size)) for size in PAGE_SIZE_CHOICES
+)
 THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("system", "System"),
     ("light", "Light"),
@@ -73,6 +81,18 @@ class SettingScope(StrEnum):
     INFRA = "infra"  # boot-only; never read from the DB
 
 
+class SettingWidget(StrEnum):
+    """Control kind a settings page builds for a user-scoped setting.
+
+    StrEnum, not Enum: the registry contract tests compare against the raw
+    string values.
+    """
+
+    TEXT = "text"
+    SELECT = "select"
+    MODEL = "model"
+
+
 class ApplyTiming(StrEnum):
     """When a changed value takes effect."""
 
@@ -99,7 +119,11 @@ class SettingDefinition:
     env_name: str | None = None
     allow_file: bool = False
     validator: SettingValidator | None = None
-    widget: str | None = None
+    widget: SettingWidget | None = None
+    choices: tuple[SettingOption, ...] | None = None
+    model_queryset: QuerysetFactory | None = None
+    reload_after_save: bool = False
+    user_help_text: str = ""
     superuser_only: bool = False
     secret: bool = False
     note: str = ""
@@ -115,6 +139,23 @@ class SettingDefinition:
         ):
             raise ValueError(
                 f"{self.key}: INFRA settings must be apply_timing=RESTART."
+            )
+        if self.scope is SettingScope.USER and self.widget is None:
+            raise ValueError(f"{self.key}: user-scoped settings must declare a widget.")
+        if (self.widget is SettingWidget.SELECT) != (self.choices is not None):
+            raise ValueError(
+                f"{self.key}: a SELECT widget needs choices, and choices need a "
+                "SELECT widget."
+            )
+        if (self.widget is SettingWidget.MODEL) != (self.model_queryset is not None):
+            raise ValueError(
+                f"{self.key}: a MODEL widget needs model_queryset, and "
+                "model_queryset needs a MODEL widget."
+            )
+        # A restart-only value cannot be fixed by reloading the page.
+        if self.reload_after_save and self.apply_timing is not ApplyTiming.LIVE:
+            raise ValueError(
+                f"{self.key}: reload_after_save requires apply_timing=LIVE."
             )
 
 
@@ -148,6 +189,14 @@ def _require_existing_device(value: object) -> None:
 
     if not Device.objects.filter(pk=cast(int, value)).exists():
         raise ValidationError(f"No device with id {value!r}.")
+
+
+def _device_queryset() -> "QuerySet[Any]":
+    """Options for the default-device control. The models import happens on call,
+    never at module import, so settings.py can import this module."""
+    from games.models import Device
+
+    return Device.objects.order_by("name")
 
 
 def _validate_optional_landing_page(value: object) -> str | None:
@@ -220,7 +269,12 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: settings.DEFAULT_CURRENCY,
             validator=_validate_currency,
-            widget="text",
+            widget=SettingWidget.TEXT,
+            user_help_text=(
+                "A personal value affects only your purchase entry; purchases "
+                "saved without user context and FX/reporting continue to use the "
+                "site value."
+            ),
         ),
         SettingDefinition(
             "DEFAULT_DEVICE",
@@ -231,7 +285,8 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             cast=int,
             default_factory=lambda: None,
             validator=_validate_optional_device_id,
-            widget="device",
+            widget=SettingWidget.MODEL,
+            model_queryset=_device_queryset,
             write_validator=_require_existing_device,
         ),
         SettingDefinition(
@@ -242,7 +297,8 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             help_text="Page shown right after logging in.",
             default_factory=lambda: None,
             validator=_validate_optional_landing_page,
-            widget="text",
+            widget=SettingWidget.SELECT,
+            choices=LANDING_PAGE_CHOICES,
         ),
         SettingDefinition(
             "DEFAULT_PAGE_SIZE",
@@ -253,7 +309,8 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             cast=int,
             default_factory=lambda: DEFAULT_PAGE_SIZE,
             validator=_validate_page_size,
-            widget="select",
+            widget=SettingWidget.SELECT,
+            choices=PAGE_SIZE_OPTIONS,
         ),
         SettingDefinition(
             "THEME",
@@ -266,7 +323,9 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: "system",
             validator=_validate_theme,
-            widget="select",
+            widget=SettingWidget.SELECT,
+            choices=THEME_CHOICES,
+            reload_after_save=True,
         ),
         SettingDefinition(
             "DISPLAY_TIME_ZONE",
@@ -279,7 +338,9 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: "UTC",
             validator=_validate_display_time_zone,
-            widget="select",
+            widget=SettingWidget.SELECT,
+            choices=DISPLAY_TIME_ZONE_CHOICES,
+            reload_after_save=True,
         ),
         SettingDefinition(
             "DATE_FORMAT_LOCALE",
@@ -289,7 +350,9 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             help_text="Locale used for date and calendar names, not application copy.",
             default_factory=lambda: settings.LANGUAGE_CODE,
             validator=_validate_date_format_locale,
-            widget="select",
+            widget=SettingWidget.SELECT,
+            choices=FORMAT_LOCALE_CHOICES,
+            reload_after_save=True,
         ),
         SettingDefinition(
             "DATETIME_FORMAT",
@@ -302,7 +365,9 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: "iso_8601",
             validator=_validate_datetime_format,
-            widget="select",
+            widget=SettingWidget.SELECT,
+            choices=DATETIME_FORMAT_CHOICES,
+            reload_after_save=True,
         ),
         SettingDefinition(
             "TZ",
