@@ -1790,20 +1790,65 @@ class StyledTableRenderingTest(unittest.TestCase):
         result = str(
             components.StyledTable(
                 columns=[
-                    components.Column("Name", class_="w-full max-w-0"),
+                    components.Column("Name", class_="w-64"),
                     components.Column("Actions"),
                 ],
                 rows=[components.make_row("Game", "Edit")],
             )
         )
-        self.assertIn('class="px-2 sm:px-3 lg:px-6 py-3 w-full max-w-0"', result)
+        self.assertIn('class="px-2 sm:px-3 lg:px-6 py-3 w-64"', result)
         tbody = self._tbody(result)
-        self.assertIn("w-full max-w-0", tbody)
+        self.assertIn("w-64", tbody)
+
+    def test_shrinkable_column_reaches_header_and_body_cell(self):
+        from common.components.primitives import SHRINKABLE_COLUMN_CLASS
+
+        result = str(
+            components.StyledTable(
+                columns=[
+                    components.Column("Name", shrinkable=True),
+                    components.Column("Actions"),
+                ],
+                rows=[components.make_row("Game", "Edit")],
+            )
+        )
+        self.assertIn(SHRINKABLE_COLUMN_CLASS, result)
+        self.assertIn(SHRINKABLE_COLUMN_CLASS, self._tbody(result))
+
+    def test_shrinkable_classes_are_mobile_only(self):
+        """Above md the column must carry no width constraint at all: an
+        unprefixed w-full or max-w-0 would reintroduce the desktop dead space."""
+        result = str(
+            components.StyledTable(
+                columns=[
+                    components.Column("Name", shrinkable=True),
+                    components.Column("Actions"),
+                ],
+                rows=[components.make_row("Game", "Edit")],
+            )
+        )
+        for token in re.findall(r'<(?:th|td)\b[^>]*class="([^"]*)"', result):
+            for css_class in token.split():
+                if css_class in {"w-full", "max-w-0"}:
+                    self.fail(f"unprefixed {css_class} found in: {token}")
+
+    def test_non_shrinkable_column_emits_no_width_classes(self):
+        result = str(
+            components.StyledTable(
+                columns=[
+                    components.Column("Name"),
+                    components.Column("Actions"),
+                ],
+                rows=[components.make_row("Game", "Edit")],
+            )
+        )
+        self.assertNotIn("max-md:w-full", result)
+        self.assertNotIn("max-md:max-w-0", result)
 
     def test_direct_table_row_keeps_columns_optional(self):
         result = str(components.TableRow(components.make_row("Game", "Edit")))
         self.assertIn('th scope="row"', result)
-        self.assertNotIn("w-full max-w-0", result)
+        self.assertNotIn("max-md:w-full", result)
 
     def test_simple_table_rows_with_attributes(self):
         """Verify make_row attributes (id, hx-*) land on the <tr>."""

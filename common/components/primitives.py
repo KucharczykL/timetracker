@@ -482,6 +482,12 @@ def PopoverIf(
     return node
 
 
+# Below md the name cell must be able to shrink under its content so the
+# actions column survives on a phone; max-w-0 is the only way to tell the
+# auto-table algorithm that, and w-full then hands it the leftover. Above md
+# the same pair makes the column eat every spare pixel, so it stops there and
+# ordinary auto layout takes over.
+SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
 _TRUNCATED_CLIP_CLASS = (
     "block min-w-0 overflow-hidden whitespace-nowrap "
@@ -1682,12 +1688,15 @@ class Column(NamedTuple):
     cell owns its own alignment (e.g. an Actions ``ButtonGroup`` right-aligns
     itself), so set both to "right" together for an Actions column. ``class_``
     supplies column sizing classes to the header and, for the row-header first
-    column, its body ``<th>``."""
+    column, its body ``<th>``. ``shrinkable`` marks a column that may shrink
+    below its content width when the table is crowded; its content is expected
+    to self-clip."""
 
     label: str
     sort_key: str | None = None
     align: Align = "left"
     class_: str = ""
+    shrinkable: bool = False
 
 
 class TableData(TypedDict):
@@ -1745,6 +1754,8 @@ def TableRow(data: TableRowData, columns: Sequence[Column] | None = None) -> Ele
     for i, cell in enumerate(cells):
         if i == 0:
             column_class = columns[0].class_ if columns else ""
+            if columns and columns[0].shrinkable:
+                column_class = f"{column_class} {SHRINKABLE_COLUMN_CLASS}".strip()
             cell_elements.append(
                 Th(
                     scope="row",
@@ -1998,6 +2009,8 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
     )
     if column.class_:
         base_class = f"{base_class} {column.class_}"
+    if column.shrinkable:
+        base_class = f"{base_class} {SHRINKABLE_COLUMN_CLASS}"
     if column.sort_key is None:
         return Th(scope="col", class_=base_class)[column.label]
 
