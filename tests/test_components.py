@@ -1502,6 +1502,22 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIn("USD", result)
         self.assertIn("<pop-over", result)
 
+    def test_purchase_price_ids_differ_for_equal_prices(self):
+        """Two purchases at the same price must not share a popover id (#529).
+
+        Popover falls back to hashing its own content, so identical prices used to
+        emit identical ids and blow up assert_unique_element_ids under DEBUG.
+        """
+        platform = self._create_platform()
+        first = self._create_purchase([self._create_game(platform)], price=43)
+        second = self._create_purchase([self._create_game(platform)], price=43)
+
+        first_ids = re.findall(r'id="([^"]+)"', str(components.PurchasePrice(first)))
+        second_ids = re.findall(r'id="([^"]+)"', str(components.PurchasePrice(second)))
+
+        self.assertTrue(first_ids)
+        self.assertEqual(set(first_ids) & set(second_ids), set())
+
     def test_linked_purchase_single_game(self):
         platform = self._create_platform(icon="steam")
         game = self._create_game(platform, name="Single Game")

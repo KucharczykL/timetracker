@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 
@@ -11,6 +11,14 @@ from games.models import Game, Platform, Purchase
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 
+# DEBUG on turns every smoke test below into an id-uniqueness check: the page
+# assembly in common/layout.py only runs assert_unique_element_ids under DEBUG,
+# so with pytest-django's forced DEBUG=False a page that 500s the moment a
+# developer opens it with `make dev` passes CI silently (issue #529). INTERNAL_IPS
+# is cleared for the same reason tests/conftest.py's debug_page_rendering fixture
+# clears it — debug_toolbar's show_toolbar() reads both live, and its URLs were
+# never registered because timetracker.urls saw DEBUG=False at import time.
+@override_settings(DEBUG=True, INTERNAL_IPS=[])
 class PathWorksTest(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_superuser(
@@ -22,8 +30,26 @@ class PathWorksTest(TestCase):
         self.purchase = Purchase.objects.create(
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
+            price=43,
+            price_currency="CZK",
+            converted_price=14.5,
+            converted_currency="CNY",
         )
         self.purchase.games.add(self.game)
+        # A second purchase with identical prices: PurchasePrice's popover used
+        # to hash its id from its own rendered content, so this row collided with
+        # the one above and both the purchase list and the game detail page (which
+        # lists a game's purchases) 500'd under DEBUG. Linked to the same game so
+        # one fixture covers both.
+        self.same_price_purchase = Purchase.objects.create(
+            date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
+            platform=self.platform,
+            price=43,
+            price_currency="CZK",
+            converted_price=14.5,
+            converted_currency="CNY",
+        )
+        self.same_price_purchase.games.add(self.game)
 
     def test_index_redirects_to_tracker(self):
         response = self.client.get("/")
