@@ -78,7 +78,15 @@ dev shell already provides CPython 3.14; anything else must supply it too.
   (`npm install --global pnpm@10.33.0`), and `ruff` (pulled in by `uv sync`). Run the same
   `make`/`pnpm`/`uv`/`pytest` targets from the activated env.
 - **uv-managed Python**: `uv python install 3.14` then `uv sync` (uv builds the
-  venv against 3.14). Still need Node + `pnpm` on `PATH` separately.
+  venv against 3.14). Still need `pnpm` on `PATH` separately — but *not* Node 26
+  itself, which pnpm fetches (see the package-manager section). **Watch uv's own
+  version here:** uv bakes its list of downloadable interpreters into the binary,
+  so uv 0.8.x can only offer **3.14.0rc2**. That rc passes a `>= 3.14` check yet
+  cannot run the project — pydantic calls `typing._eval_type(...,
+  prefer_fwd_module=True)`, a kwarg added in 3.14 *final*, so `import ninja` dies
+  with `AssertionError` deep inside pydantic before any test runs. If
+  `uv python install 3.14` hands you an `rc`, upgrade uv (`pip install --upgrade
+  uv` works where `uv self update` is firewalled) and reinstall.
 - Whichever route: the **e2e suite needs a system Chrome/Chromium** (not vendored)
   and the `LD_LIBRARY_PATH` that greenlet/`pytest-playwright` want on Linux — the
   Nix shell sets this; a bare conda/uv env may need it exported manually.
@@ -236,7 +244,7 @@ New interactive components are **custom elements**, not inline JS in Python. A c
 
 Docker-based: multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor to manage Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via GitHub Actions (`.github/workflows/build-docker.yml`): a `test` job runs `make check` (lint, format-check, mypy, ts-check, icon drift, the vitest suite, and the pytest suite incl. the cross-language filter-tree contract), then a `build-and-push` job builds + pushes the Docker image on `main`.
 
-**Package manager (pnpm):** front-end deps use **pnpm**, not npm. Node 26 does not bundle Corepack: the Nix shell provides `pnpm_10`, while CI, Docker, and the cloud bootstrap helper explicitly install the `pnpm@10.33.0` version declared in `package.json`'s `packageManager` field. To bump pnpm, update that field and every explicit install command. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
+**Package manager (pnpm):** front-end deps use **pnpm**, not npm. Node 26 does not bundle Corepack: the Nix shell provides `pnpm_10`, while CI and Docker explicitly install the `pnpm@10.33.0` version declared in `package.json`'s `packageManager` field. To bump pnpm, update that field and every explicit install command — `scripts/bootstrap-cloud-env.sh` reads the field instead of pinning its own copy, so it needs no edit. pnpm disables dependency lifecycle scripts by default (opt in via `pnpm.onlyBuiltDependencies`), so the project is unaffected by npm v12's install-script changes.
 
 ### Database
 
