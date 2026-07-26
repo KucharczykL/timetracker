@@ -92,6 +92,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     csrf_token = get_token(request)
 
     data: TableData = {
+        "caption": "Sessions",
         "columns": [
             Column("Name", "name", shrinkable=True),
             Column("Date", "date"),

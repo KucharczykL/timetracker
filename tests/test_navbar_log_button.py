@@ -1,7 +1,9 @@
 """The navbar log split button (#419): the `recent_session_resumes` query and
-the rendered navbar (present + auth-gated), plus confirmation that list pages no
-longer carry the deleted `<caption>` action strip."""
+the rendered navbar (present + auth-gated), plus confirmation that the deleted
+`<caption>` action strip stays deleted — a list page's only `<caption>` is the
+screen-reader name its table's scroll region points at."""
 
+import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -86,7 +88,10 @@ class NavbarLogButtonRenderTest(TestCase):
         self.assertIn("Log game", html)
         self.assertIn("Zzq Unique Title", html)
 
-    def test_list_pages_have_no_caption_strip(self) -> None:
+    def test_list_page_captions_are_names_not_action_strips(self) -> None:
+        """The deleted strip was a visible `<caption>` full of controls. A
+        `<caption>` is back, but only as the scroll region's accessible name:
+        screen-reader-only, and holding nothing clickable."""
         self.client.force_login(self.user)
         for url_name in (
             "games:list_games",
@@ -94,7 +99,15 @@ class NavbarLogButtonRenderTest(TestCase):
             "games:list_purchases",
         ):
             html = self.client.get(reverse(url_name), follow=True).content.decode()
-            self.assertNotIn("<caption", html, f"caption still present on {url_name}")
+            captions = re.findall(r"<caption\b[^>]*>(.*?)</caption>", html, re.S)
+            self.assertEqual(len(captions), 1, f"one caption expected on {url_name}")
+            for tag in re.findall(r"<caption\b[^>]*>", html):
+                self.assertIn("sr-only", tag, f"visible caption on {url_name}")
+            for body in captions:
+                for control in ("<a", "<button", "<form", "<input"):
+                    self.assertNotIn(
+                        control, body, f"caption holds {control} on {url_name}"
+                    )
 
     def test_login_page_omits_log_button_and_recent_game_name(self) -> None:
         self.client.logout()

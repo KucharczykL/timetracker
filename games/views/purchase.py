@@ -109,6 +109,22 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
     )
 
 
+# Module-level because the refund endpoint re-renders a single row outside the
+# list view and has to hand TableRow the same column policy the surrounding
+# rows were built with.
+PURCHASE_COLUMNS: list[Column] = [
+    Column("Name", "name", shrinkable=True),
+    Column("Type", "type"),
+    Column("Price", "price"),
+    Column("Infinite", "infinite"),
+    Column("Purchased", "purchased"),
+    Column("Finished", "finished"),
+    Column("Refunded", "refunded"),
+    Column("Created", "created"),
+    Column("Actions", align="right"),
+]
+
+
 def _render_purchase_row(
     purchase: Purchase, presentation: DateTimePresentation
 ) -> TableRowData:
@@ -173,17 +189,8 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     purchases, page_obj, elided_page_range = paginate(purchases, find)
 
     data: TableData = {
-        "columns": [
-            Column("Name", "name", shrinkable=True),
-            Column("Type", "type"),
-            Column("Price", "price"),
-            Column("Infinite", "infinite"),
-            Column("Purchased", "purchased"),
-            Column("Finished", "finished"),
-            Column("Refunded", "refunded"),
-            Column("Created", "created"),
-            Column("Actions", align="right"),
-        ],
+        "caption": "Purchases",
+        "columns": list(PURCHASE_COLUMNS),
         "sort_terms": sort.terms,
         "rows": [
             _render_purchase_row(purchase, presentation) for purchase in purchases
@@ -517,7 +524,7 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     row_data = _render_purchase_row(
         purchase, date_time_presentation_for_request(request)
     )
-    row_html = str(TableRow(data=row_data))
+    row_html = str(TableRow(data=row_data, columns=PURCHASE_COLUMNS, data_table=True))
     modal_close = (
         '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
     )

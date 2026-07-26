@@ -10,6 +10,7 @@ from common.components import (
     ContentContainer,
     Node,
     TableData,
+    TruncatedText,
     make_row,
     paginated_table_content,
 )
@@ -53,6 +54,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
     )
 
     data: TableData = {
+        "caption": "Status changes",
         "columns": [
             Column("Game"),
             Column("Old Status"),
@@ -61,7 +63,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
         ],
         "rows": [
             make_row(
-                sc.game.name,
+                TruncatedText(sc.game.name),
                 sc.get_old_status_display() if sc.old_status else "-",
                 sc.get_new_status_display(),
                 presentation.format(sc.timestamp, "date") if sc.timestamp else "-",

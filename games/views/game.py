@@ -107,6 +107,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     games, page_obj, elided_page_range = paginate(games, find)
 
     data: TableData = {
+        "caption": "Games",
         "columns": [
             Column("Name", "name", shrinkable=True),
             Column("Year", "year"),
@@ -638,6 +639,8 @@ def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
             Column("Actions", align="right"),
         ],
         rows=rows,
+        data_table=True,
+        caption="Purchases of this game",
     )
     return _game_section(
         "Purchases",
@@ -666,6 +669,8 @@ def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
             Column("Device"),
         ],
         rows=rows,
+        data_table=True,
+        caption="Recent sessions of this game",
     )
     return _game_section(
         "Sessions",
@@ -685,7 +690,12 @@ def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
     # the detail page), so render plain headers like the sibling sections do —
     # drop the sort keys the shared list-view builder now sets (#343).
     plain_columns = [column._replace(sort_key=None) for column in data["columns"]]
-    table = StyledTable(columns=plain_columns, rows=data["rows"])
+    table = StyledTable(
+        columns=plain_columns,
+        rows=data["rows"],
+        data_table=True,
+        caption="Play events of this game",
+    )
     section = _game_section(
         "Play Events",
         playevents.count(),

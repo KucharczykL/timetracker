@@ -12,6 +12,7 @@ from common.components import (
     Icon,
     QuickFilterBar,
     TableData,
+    TruncatedText,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -55,6 +56,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     devices, page_obj, elided_page_range = paginate(devices, find)
 
     data: TableData = {
+        "caption": "Devices",
         "columns": [
             Column("Name", "name"),
             Column("Type", "type"),
@@ -64,7 +66,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         "sort_terms": sort.terms,
         "rows": [
             make_row(
-                device.name,
+                TruncatedText(device.name),
                 device.get_type_display(),
                 presentation.format(device.created_at, "date"),
                 ButtonGroup(

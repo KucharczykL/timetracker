@@ -11,6 +11,7 @@ from common.components import (
     Icon,
     QuickFilterBar,
     TableData,
+    TruncatedText,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -55,6 +56,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms, page_obj, elided_page_range = paginate(platforms, find)
 
     data: TableData = {
+        "caption": "Platforms",
         "columns": [
             Column("Name", "name"),
             Column("Icon"),
@@ -65,7 +67,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         "sort_terms": sort.terms,
         "rows": [
             make_row(
-                platform.name,
+                TruncatedText(platform.name),
                 Icon(platform.icon),
                 platform.group,
                 presentation.format(platform.created_at, "date"),
