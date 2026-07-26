@@ -135,5 +135,8 @@ def DatePicker(
         DatePickerCalendar(input_name_prefix=name),
     ]
     return _Dropdown(
-        class_="block", placement="bottom-start", submenu="false", behavior="date-calendar"
+        class_="block",
+        placement="bottom-start",
+        submenu="false",
+        behavior="date-calendar",
     )[picker]
