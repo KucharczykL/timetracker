@@ -120,15 +120,23 @@ CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
     ),
 }
 
-# Range-picker only: the days BETWEEN the two endpoints. Additive on top of a
+# Range-picker only: the days BETWEEN the two endpoints. Layered on top of a
 # day variant, and deliberately not rounded — a continuous track reads as one
 # bar. Outlined while picking the second date, filled once both are set, muted
 # when showing an already-committed range read-only.
+#
+# The background carries Tailwind's `!` important suffix because it has to beat
+# the day variant's own `bg-transparent` (ControlButton's ghost look). Two
+# background utilities on one element are resolved by STYLESHEET order, not
+# class order, so without this the track silently lost and the connective
+# highlight between the two endpoints disappeared. The border colour needs no
+# such treatment — the variant sets `border-transparent`, a different property
+# value, and `border-y` only re-widens the edges this rule colours.
 type CalendarTrackVariant = str  # e.g. "filled"
 CALENDAR_TRACK_CLASSES: dict[CalendarTrackVariant, str] = {
-    "outlined": "border-y border-brand/70 bg-brand/10",
-    "filled": "bg-brand/30",
-    "muted": "bg-brand/15",
+    "outlined": "border-y border-brand/70! bg-brand/10!",
+    "filled": "bg-brand/30!",
+    "muted": "bg-brand/15!",
 }
 
 # The weekday header row (Mo/Tu/…): a label, not a control, so it is not a

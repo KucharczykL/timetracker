@@ -289,6 +289,13 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     const track = trackBounds();
     if (track !== null && isoString > track[0] && isoString < track[1]) {
       classes.push("rounded-none", track[2]);
+    } else if (track !== null && track[0] !== track[1]) {
+      // An endpoint that FACES the track squares only the edge it meets, so
+      // the band joins the pill flush. Leaving both corners rounded leaves a
+      // notch of background above and below the join — the range then reads
+      // as three separate chips instead of one continuous selection.
+      if (isoString === track[0]) classes.push("rounded-e-none");
+      else if (isoString === track[1]) classes.push("rounded-s-none");
     }
     return classes.join(" ");
   }
