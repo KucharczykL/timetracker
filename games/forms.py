@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import cast
 
 from django import forms
@@ -90,29 +91,38 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         )
 
 
+def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
+    """Stamp the shared native-control classes over a form's fields.
+
+    Callable on its own so a form that builds fields after ``super().__init__()``
+    can opt in; :class:`PrimitiveWidgetsMixin` is the declarative path.
+    """
+    for field in fields.values():
+        if isinstance(field, forms.BooleanField):
+            field.widget = PrimitiveCheckboxWidget()
+            # Maintain the field's explicit required status (usually False for booleans)
+            continue
+        widget = field.widget
+        # SearchSelect is a self-styled composite component; never stamp the
+        # native-control classes onto it.
+        if isinstance(widget, SearchSelectWidget):
+            continue
+        if isinstance(widget, forms.Select):
+            control_class = SELECT_CLASS
+        elif isinstance(widget, forms.Textarea):
+            control_class = TEXTAREA_CLASS
+        else:
+            control_class = INPUT_CLASS
+        existing = widget.attrs.get("class", "")
+        widget.attrs["class"] = f"{existing} {control_class}".strip()
+
+
 class PrimitiveWidgetsMixin:
     """Automatically applies primitive custom widgets to native Django form fields."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field_name, field in self.fields.items():
-            if isinstance(field, forms.BooleanField):
-                field.widget = PrimitiveCheckboxWidget()
-                # Maintain the field's explicit required status (usually False for booleans)
-                continue
-            widget = field.widget
-            # SearchSelect is a self-styled composite component; never stamp the
-            # native-control classes onto it.
-            if isinstance(widget, SearchSelectWidget):
-                continue
-            if isinstance(widget, forms.Select):
-                control_class = SELECT_CLASS
-            elif isinstance(widget, forms.Textarea):
-                control_class = TEXTAREA_CLASS
-            else:
-                control_class = INPUT_CLASS
-            existing = widget.attrs.get("class", "")
-            widget.attrs["class"] = f"{existing} {control_class}".strip()
+        apply_primitive_widget_classes(self.fields)
 
 
 class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
