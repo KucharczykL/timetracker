@@ -93,7 +93,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "columns": [
-            Column("Name", "name", class_="w-full max-w-0"),
+            Column("Name", "name", shrinkable=True),
             Column("Date", "date"),
             Column("Duration", "duration"),
             Column("Device", "device"),

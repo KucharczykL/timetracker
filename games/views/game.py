@@ -108,7 +108,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "columns": [
-            Column("Name", "name", class_="w-full max-w-0"),
+            Column("Name", "name", shrinkable=True),
             Column("Year", "year"),
             Column("Playtime", "filtered_playtime"),
             Column("Status", "status"),
@@ -631,7 +631,7 @@ def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
     ]
     table = StyledTable(
         columns=[
-            Column("Name", class_="w-full max-w-0"),
+            Column("Name", shrinkable=True),
             Column("Type"),
             Column("Date"),
             Column("Price"),
