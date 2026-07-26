@@ -143,10 +143,21 @@ Call sites drop the literal and state intent: `games/views/session.py:96`,
   greed fixes both stated requirements" holds at 1217. Between roughly 768 and
   each table's overflow-clears width (sessions 848, games 1016, purchases 1140)
   Phase 0 *introduces* wrapper scroll that the greed used to absorb, while the
-  wrapping bug persists there until Phase 2. Add an explicit acceptance row at
-  1024 stating the intended interim behavior per table, so mid-width laptops are
-  a decision rather than a surprise. That scroll is keyboard-unreachable until
-  the region semantics land in Phase 2d.
+  wrapping bug persists there until Phase 2. Measured after Phase 0 shipped, at
+  a 1024px viewport (961px container):
+
+  | page | dead space | h-scroll | wrapping | name column |
+  |---|---|---|---|---|
+  | sessions | 0 | 0 | none | 185px |
+  | games | 0 | 49px | none | 298px |
+  | purchases | 1px | 174px | TYPE, PRICE | 136px |
+
+  Sessions is already clean at this width. Games gains 49px of scroll that the
+  greed used to absorb — the predicted interim cost. Purchases was **already**
+  overflowing here before Phase 0 (it fits only from a 1048px container up) and
+  the overflow roughly doubles; its TYPE and PRICE columns still wrap, which is
+  Phase 2's job. All of this scroll is keyboard-unreachable until the region
+  semantics land in Phase 2d, which is why 2a and 2d ship together.
 - **`e2e/test_truncated_text_e2e.py:184` changes at 768 and the change is
   intended.** Tailwind `max-md` is `@media (width < 48rem)`, so at exactly 768
   the greed is off *and* all columns are visible — peak pressure. Verified on the
