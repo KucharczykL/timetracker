@@ -1,15 +1,18 @@
 import pytest
 from django import forms
-from django.conf import settings as django_settings
 
 from games.forms import INPUT_CLASS, SELECT_CLASS, apply_primitive_widget_classes
-from games.models import Device
+from games.models import Device, SiteSetting
 from games.settings_forms import SiteSettingsForm, UserSettingsForm, display_label
+from timetracker import settings_resolver
 from timetracker.settings_registry import (
     LANDING_PAGE_CHOICES,
     PAGE_SIZE_OPTIONS,
     SETTINGS_REGISTRY,
+    ApplyTiming,
+    SettingDefinition,
     SettingScope,
+    SettingWidget,
     get_definition,
 )
 
@@ -58,12 +61,34 @@ def test_page_size_is_typed_on_both_pages():
 
 
 @pytest.mark.django_db
-def test_currency_keeps_its_mask_and_length_while_a_plain_text_setting_would_not():
-    currency = UserSettingsForm().fields["default_currency"]
+def test_currency_keeps_its_mask_and_length_while_a_plain_text_setting_would_not(
+    monkeypatch,
+):
+    synthetic_key = "SYNTHETIC_PLAIN_TEXT"
+    monkeypatch.setitem(
+        SETTINGS_REGISTRY,
+        synthetic_key,
+        SettingDefinition(
+            synthetic_key,
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: "unset",
+            widget=SettingWidget.TEXT,
+        ),
+    )
+    settings_resolver.clear_cache()
+
+    fields = UserSettingsForm().fields
+    currency = fields["default_currency"]
+    plain_text = fields[synthetic_key.lower()]
 
     assert currency.max_length == 3
     assert currency.widget.attrs["x-mask"] == "aaa"
     assert "uppercase" in currency.widget.attrs["class"]
+
+    assert plain_text.max_length is None
+    assert "x-mask" not in plain_text.widget.attrs
 
 
 @pytest.mark.django_db
@@ -82,6 +107,12 @@ def test_the_site_page_uses_the_static_empty_label():
 
 @pytest.mark.django_db
 def test_the_user_page_names_the_inherited_site_value():
+    # A value that differs from DEFAULT_CURRENCY's built-in default, so the
+    # assertion below can only pass by reading the DATABASE layer through
+    # resolve_with_origin — not by taking a shortcut to settings.DEFAULT_CURRENCY.
+    SiteSetting.objects.create(key="DEFAULT_CURRENCY", value="EUR")
+    settings_resolver.clear_cache()
+
     fields = UserSettingsForm().fields
 
     assert fields["default_landing_page"].choices[0] == (
@@ -91,7 +122,7 @@ def test_the_user_page_names_the_inherited_site_value():
     assert fields["default_page_size"].choices[0] == ("", "Use site default (25)")
     assert fields["default_device"].empty_label == "Use site default (No device)"
     assert fields["default_currency"].widget.attrs["placeholder"] == (
-        f"Use site default ({django_settings.DEFAULT_CURRENCY})"
+        "Use site default (EUR)"
     )
 
 
