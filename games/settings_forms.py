@@ -8,11 +8,11 @@ user-scoped setting needs no edit here.
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from django import forms
 
-from common.components import SettingFieldState
+from common.components import FormFieldPresentation, SettingFieldState
 from games.forms import apply_primitive_widget_classes
 from timetracker.config import SettingSource
 from timetracker.settings_registry import (
@@ -238,3 +238,47 @@ class UserSettingsForm(RegistrySettingsForm):
             # badge here would only repeat it.
             show_source=False,
         )
+
+
+class SettingsPageData(NamedTuple):
+    """One settings page's form, per-field state, and the presentations that the
+    state policy and the renderer must both see."""
+
+    form: RegistrySettingsForm
+    states: dict[str, SettingFieldState]
+    presentations: dict[str, FormFieldPresentation]
+
+
+def settings_page_data(
+    form_class: type[RegistrySettingsForm],
+    *,
+    user: object = None,
+    presentations: Mapping[str, FormFieldPresentation] | None = None,
+) -> SettingsPageData:
+    """Resolve every user-scoped setting once, then build the page's form and state.
+
+    A presentation that replaces the control (``decorate_control``) declares that
+    something other than the generic live-save element owns it; a purely cosmetic
+    presentation does not. A control someone else owns also skips the reload
+    stamp, since the generic element is what would act on it.
+    """
+    supplied = dict(presentations or {})
+    initial: dict[str, object] = {}
+    states: dict[str, SettingFieldState] = {}
+    reload_field_names: list[str] = []
+    for definition in user_setting_definitions():
+        field_name = field_name_for(definition)
+        resolved = form_class.resolve(definition, user)
+        if form_class.keeps_initial(resolved):
+            initial[field_name] = resolved.value
+        presentation = supplied.get(field_name)
+        live_save = presentation is None or presentation.decorate_control is None
+        states[field_name] = form_class.field_state(
+            definition, resolved, live_save=live_save
+        )
+        if definition.reload_after_save and live_save:
+            reload_field_names.append(field_name)
+    form = form_class(initial=initial)
+    for field_name in reload_field_names:
+        form.fields[field_name].widget.attrs["data-reload-after-save"] = ""
+    return SettingsPageData(form, states, supplied)

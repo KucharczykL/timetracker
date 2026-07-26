@@ -1,9 +1,15 @@
 import pytest
 from django import forms
 
+from common.components import FormFieldPresentation, Span
 from games.forms import INPUT_CLASS, SELECT_CLASS, apply_primitive_widget_classes
 from games.models import Device, SiteSetting
-from games.settings_forms import SiteSettingsForm, UserSettingsForm, display_label
+from games.settings_forms import (
+    SiteSettingsForm,
+    UserSettingsForm,
+    display_label,
+    settings_page_data,
+)
 from timetracker import settings_resolver
 from timetracker.settings_registry import (
     LANDING_PAGE_CHOICES,
@@ -15,6 +21,7 @@ from timetracker.settings_registry import (
     SettingWidget,
     get_definition,
 )
+from timetracker.settings_resolver import clear_cache
 
 
 def test_stamping_applies_the_shared_control_classes_by_widget_type():
@@ -147,3 +154,105 @@ def test_display_label_names_the_device_or_reports_none():
     assert display_label(definition, device.pk) == str(device)
     assert display_label(definition, None) == "No device"
     assert display_label(definition, device.pk + 1000) == "No device"
+
+
+_SYNTHETIC_CHOICES = (("alpha", "Alpha"), ("beta", "Beta"))
+
+
+@pytest.fixture
+def synthetic_setting(monkeypatch):
+    """A ninth user-scoped setting added to the registry and nowhere else."""
+    definition = SettingDefinition(
+        "SYNTHETIC_NINTH",
+        scope=SettingScope.USER,
+        apply_timing=ApplyTiming.LIVE,
+        label="Synthetic ninth",
+        help_text="Added by a test.",
+        default_factory=lambda: "alpha",
+        widget=SettingWidget.SELECT,
+        choices=_SYNTHETIC_CHOICES,
+    )
+    monkeypatch.setitem(SETTINGS_REGISTRY, definition.key, definition)
+    clear_cache()
+    yield definition
+    clear_cache()
+
+
+@pytest.mark.django_db
+def test_a_new_registry_entry_reaches_both_forms_with_no_form_edit(synthetic_setting):
+    user_field = UserSettingsForm().fields["synthetic_ninth"]
+    site_field = SiteSettingsForm().fields["synthetic_ninth"]
+
+    assert isinstance(user_field, forms.ChoiceField)
+    assert user_field.label == "Synthetic ninth"
+    assert list(user_field.choices) == [
+        ("", "Use site default (Alpha)"),
+        *_SYNTHETIC_CHOICES,
+    ]
+    assert list(site_field.choices) == [
+        ("", "Use configured default"),
+        *_SYNTHETIC_CHOICES,
+    ]
+
+
+@pytest.mark.django_db
+def test_a_new_registry_entry_reaches_both_state_builders(synthetic_setting):
+    user_page = settings_page_data(UserSettingsForm, user=None)
+    site_page = settings_page_data(SiteSettingsForm)
+
+    assert user_page.states["synthetic_ninth"].key == "SYNTHETIC_NINTH"
+    assert user_page.states["synthetic_ninth"].source == "default"
+    assert user_page.states["synthetic_ninth"].show_source is False
+    assert site_page.states["synthetic_ninth"].help_text == "Added by a test."
+    assert site_page.form.initial["synthetic_ninth"] == "alpha"
+
+
+@pytest.mark.django_db
+def test_the_personal_page_prefills_only_its_own_overrides(django_user_model):
+    user = django_user_model.objects.create_user(username="tester", password="pw")
+    page = settings_page_data(UserSettingsForm, user=user)
+
+    assert page.form.initial == {}
+    assert page.states["default_page_size"].source == "default"
+
+
+@pytest.mark.django_db
+def test_a_control_decorator_takes_over_saving_and_its_reload_stamp():
+    page = settings_page_data(
+        UserSettingsForm,
+        user=None,
+        presentations={
+            "theme": FormFieldPresentation(decorate_control=lambda node: node)
+        },
+    )
+
+    assert page.states["theme"].live_save is False
+    assert "data-reload-after-save" not in page.form.fields["theme"].widget.attrs
+    assert "data-reload-after-save" in page.form.fields["datetime_format"].widget.attrs
+
+
+@pytest.mark.django_db
+def test_a_cosmetic_presentation_keeps_the_field_live_saving():
+    page = settings_page_data(
+        UserSettingsForm,
+        user=None,
+        presentations={"theme": FormFieldPresentation(after_control=Span()["hint"])},
+    )
+
+    assert page.states["theme"].live_save is True
+    assert "data-reload-after-save" in page.form.fields["theme"].widget.attrs
+
+
+@pytest.mark.django_db
+def test_the_site_page_stamps_every_display_setting_for_reload():
+    page = settings_page_data(SiteSettingsForm)
+
+    for field_name in (
+        "theme",
+        "display_time_zone",
+        "date_format_locale",
+        "datetime_format",
+    ):
+        assert "data-reload-after-save" in page.form.fields[field_name].widget.attrs
+    for field_name in ("default_currency", "default_device", "default_page_size"):
+        assert "data-reload-after-save" not in page.form.fields[field_name].widget.attrs

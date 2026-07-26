@@ -276,7 +276,7 @@ def test_admin_page_uses_generic_site_patch_for_theme_and_reload_controls(
 def test_site_settings_form_uses_typed_fields_and_registry_choices(
     clean_site_setting_sources,
 ):
-    from games.views.settings import SiteSettingsForm
+    from games.settings_forms import SiteSettingsForm
 
     form = SiteSettingsForm()
 
@@ -374,14 +374,16 @@ def test_locked_source_renders_effective_value_badge_reason_and_disabled_control
     monkeypatch,
     tmp_path,
 ):
-    from games.views import settings as settings_view
+    from games import settings_forms
 
     if source is SettingSource.ENV_FILE:
         # No editable site key currently opts into __FILE. Exercise the page's
         # resolver contract, as the command-boundary tests do for this source.
-        original_resolve = settings_view.resolve_with_origin
+        # The site form resolves through games.settings_forms, so that is the
+        # module whose binding needs patching, not the view.
+        original_resolve = settings_forms.resolve_with_origin
         monkeypatch.setattr(
-            settings_view,
+            settings_forms,
             "resolve_with_origin",
             lambda key: (
                 ResolvedSetting("USD", SettingSource.ENV_FILE, True)
