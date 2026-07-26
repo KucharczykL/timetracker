@@ -174,7 +174,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "columns": [
-            Column("Name", "name", class_="w-full max-w-0"),
+            Column("Name", "name", shrinkable=True),
             Column("Type", "type"),
             Column("Price", "price"),
             Column("Infinite", "infinite"),

@@ -56,6 +56,25 @@ def _center_x(locator: Locator) -> float:
     return box["x"] + box["width"] / 2
 
 
+def _name_cell_dead_space(page: Page) -> float:
+    """Pixels the first body cell is wider than the truncated-text inside it.
+
+    The host is w-full, so it fills whatever the cell gets until the 16rem cap;
+    a positive result means the cell outgrew the cap and the surplus is unusable.
+    """
+    return page.evaluate(
+        """() => {
+            const host = document.querySelector('tbody truncated-text');
+            const cell = host.closest('th, td');
+            const style = getComputedStyle(cell);
+            const inner = cell.clientWidth
+                - parseFloat(style.paddingLeft)
+                - parseFloat(style.paddingRight);
+            return inner - host.getBoundingClientRect().width;
+        }"""
+    )
+
+
 def test_desktop_overflow_hover_focus_and_short_name_noop(
     authenticated_page: Page, live_server
 ):
@@ -197,14 +216,26 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
             "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), "
             "' overflow-x-auto ')][1]"
         )
+        row = host.locator("xpath=ancestor::tr[1]")
+        action_cell = row.locator("td").last
+        expect(action_cell).to_be_visible()
+
+        if width == 768:
+            # At exactly md the shrink allowance is already off and every
+            # column is back, so the table is wider than its wrapper. The
+            # wrapper scrolls; what must not happen is the name being crushed
+            # to the platform icon to avoid it. Measured 256px here, against
+            # 109px if the allowance were still applying at this width.
+            assert (
+                host.evaluate("element => element.getBoundingClientRect().width") >= 200
+            )
+            expect(row.locator("td").first).to_be_visible()
+            continue
+
         dimensions = wrapper.evaluate(
             "element => ({client: element.clientWidth, scroll: element.scrollWidth})"
         )
         assert dimensions["scroll"] <= dimensions["client"]
-
-        row = host.locator("xpath=ancestor::tr[1]")
-        action_cell = row.locator("td").last
-        expect(action_cell).to_be_visible()
         if width == 390:
             assert (
                 host.locator("[data-truncated-clip]").evaluate(
@@ -216,10 +247,38 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
             action_box = action_cell.bounding_box()
             assert host_box is not None and action_box is not None
             assert host_box["x"] + host_box["width"] <= action_box["x"]
-        elif width == 768:
-            expect(row.locator("td").first).to_be_visible()
         else:
             expect(row.locator("td").first).to_be_hidden()
+
+
+def test_desktop_name_column_does_not_absorb_the_tables_slack(
+    authenticated_page: Page, live_server
+):
+    """The reported bug: the name cell took every spare pixel — 551px of a
+    1217px table for 256px of text — starving its neighbours.
+
+    A capped name column still receives its proportional share of slack, so a
+    small surplus is expected and correct; only hoarding is the defect. The
+    bound is a fraction of the container so it holds at any window size.
+
+    Measured on this fixture at 1280: 69px surplus of a 1232px container (5.6%)
+    as shipped, against 229px (18.6%) with the allowance reapplied unscoped.
+    The bound sits between the two; a drift back toward the upper figure is the
+    regression it exists to catch.
+    """
+    page = authenticated_page
+    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    Game.objects.create(name=LONG_NAME, platform=platform)
+    Game.objects.create(name="Short", platform=platform)
+
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    _wait_for_fonts(page)
+
+    container_width = page.evaluate(
+        "() => document.querySelector('.overflow-x-auto').clientWidth"
+    )
+    assert _name_cell_dead_space(page) < container_width * 0.1
 
 
 def test_touch_resize_closes_open_panel_when_text_starts_fitting(
