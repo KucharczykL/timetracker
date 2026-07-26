@@ -64,14 +64,14 @@ def create_playevent_tabledata(
         playevents = playevents.all()
     column_list = [
         Column("Game", "name"),
-        Column("Started", "started"),
-        Column("Ended", "ended"),
-        Column("Days to finish", "days"),
+        Column("Started", "started", priority=3),
+        Column("Ended", "ended", priority=2),
+        Column("Days to finish", "days", priority=2),
         # Free text with no natural width: on one line a single long note would
         # widen the table past anything the other columns could reclaim.
         Column("Note", wrap=True),
         Column("Created", "created"),
-        Column("Actions", align="right"),
+        Column("Actions", align="right", priority=4),
     ]
     filtered_column_list = [
         column for column in column_list if column.label not in exclude_columns

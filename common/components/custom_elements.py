@@ -493,6 +493,18 @@ class SortHeaderProps(TypedDict):
 register_element("sort-header", "SortHeader", SortHeaderProps)
 
 
+# The <responsive-table> builder lives in primitives.py (inside StyledTable's
+# data-table gate). Its per-column contract rides on the header cells
+# (data-priority / data-wrap / data-shrinkable), not on element attributes, so
+# the props are empty; registration here is codegen-only. Behavior:
+# ts/elements/responsive-table.ts (priority-plus column dropping).
+class ResponsiveTableProps(TypedDict):
+    pass
+
+
+register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str

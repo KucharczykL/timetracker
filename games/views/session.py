@@ -95,11 +95,11 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         "caption": "Sessions",
         "columns": [
             Column("Name", "name", shrinkable=True),
-            Column("Date", "date"),
-            Column("Duration", "duration"),
+            Column("Date", "date", priority=3),
+            Column("Duration", "duration", priority=2),
             Column("Device", "device"),
             Column("Created", "created"),
-            Column("Actions", align="right"),
+            Column("Actions", align="right", priority=4),
         ],
         "sort_terms": sort.terms,
         "rows": [

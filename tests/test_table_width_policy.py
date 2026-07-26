@@ -104,6 +104,14 @@ class DataTableGateTest(TestCase):
             with self.subTest(page=url_name):
                 self.assertIn('tabindex="0"', _regions(self._html(url_name))[0])
 
+    def test_every_list_page_mounts_one_responsive_table(self) -> None:
+        """The priority-plus element wraps every list table's region; a new
+        list view that forgets the data-table gate is the failure this
+        catches."""
+        for url_name in LIST_PAGES:
+            with self.subTest(page=url_name):
+                self.assertEqual(self._html(url_name).count("<responsive-table"), 1)
+
     def test_first_column_self_clips_on_every_list_page(self) -> None:
         """A pinned single-line first column with no cap can be arbitrarily
         wide, so every list page routes its first cell through TruncatedText."""
@@ -122,6 +130,7 @@ class DataTableGateTest(TestCase):
         self.assertIn("<table", html)
         self.assertEqual(_regions(html), [])
         self.assertNotIn("<caption", html)
+        self.assertNotIn("<responsive-table", html)
 
     def test_playevents_note_column_may_wrap(self) -> None:
         """Free text has no natural width; on one line a long note would widen

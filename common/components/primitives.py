@@ -1698,7 +1698,10 @@ class Column(NamedTuple):
     below its content width when the table is crowded; its content is expected
     to self-clip. ``wrap`` opts a column out of the one-line rule data tables
     otherwise impose — for free-text columns whose value has no useful width
-    (a session note), where a single line would widen the table without limit."""
+    (a session note), where a single line would widen the table without limit.
+    ``priority`` orders column dropping when a data table does not fit: lower
+    drops first, rightmost first among equals. The first column never drops —
+    it is the row header that names every row."""
 
     label: str
     sort_key: str | None = None
@@ -1706,6 +1709,7 @@ class Column(NamedTuple):
     class_: str = ""
     shrinkable: bool = False
     wrap: bool = False
+    priority: int = 1
 
 
 class TableData(TypedDict):
@@ -2020,6 +2024,27 @@ def _pagination_nav(
 # <sort-header> wraps a header anchor; its TS intercepts shift-click to navigate
 # to the multi-column target (data-shift-href). Registered in custom_elements.py.
 _SortHeader = custom_element_builder("sort-header")
+_ResponsiveTable = custom_element_builder("responsive-table")
+
+# The runtime column-drop state is a safelisted nth-child class family in
+# input.css (like the align rules), so it has a hard ceiling: a column past it
+# could never be hidden.
+MAX_DATA_TABLE_COLUMNS = 12
+
+# No-JS fallback for the data-table column drop: while <responsive-table> is
+# not defined (JS off or failed to load), middle columns hide below md exactly
+# as they always have. The selector stops matching the instant the element
+# upgrades, and the element applies its first measured decision synchronously
+# inside that same upgrade — the CSS rule and the element's decision are never
+# active together, with no frame between them.
+_FALLBACK_HIDE_HEADER_CLASS = (
+    "max-md:[responsive-table:not(:defined)_&_th:not(:first-child)"
+    ":not(:last-child)]:hidden"
+)
+_FALLBACK_HIDE_BODY_CLASS = (
+    "max-md:[responsive-table:not(:defined)_&_td:not(:first-child)"
+    ":not(:last-child)]:hidden"
+)
 
 _SORT_HEADER_LINK_CLASS = (
     "flex items-center gap-1 select-none no-underline hover:text-heading"
@@ -2056,8 +2081,18 @@ def _header_cell(
         base_class = f"{base_class} {SHRINKABLE_COLUMN_CLASS}"
     if data_table and not column.wrap:
         base_class = f"{base_class} whitespace-nowrap"
+    # The header cell is where <responsive-table> reads the column's drop
+    # policy: priority, and the flags that change its width cost (a wrap
+    # column measures capped; a shrinkable one is squeezed below md).
+    policy_attrs: list[HTMLAttribute] = []
+    if data_table:
+        policy_attrs.append(("data-priority", str(column.priority)))
+        if column.wrap:
+            policy_attrs.append(("data-wrap", ""))
+        if column.shrinkable:
+            policy_attrs.append(("data-shrinkable", ""))
     if column.sort_key is None:
-        return Th(scope="col", class_=base_class)[column.label]
+        return Th(policy_attrs, scope="col", class_=base_class)[column.label]
 
     active = next(
         (
@@ -2079,7 +2114,9 @@ def _header_cell(
         data_shift_href=_sort_href(request, cycle_sort(sort_terms, column.sort_key)),
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
-    return Th(scope="col", class_=base_class, aria_sort=aria_sort)[_SortHeader()[link]]
+    return Th(policy_attrs, scope="col", class_=base_class, aria_sort=aria_sort)[
+        _SortHeader()[link]
+    ]
 
 
 PAGE_SIZE_PRESETS = PAGE_SIZE_CHOICES
@@ -2153,6 +2190,13 @@ def StyledTable(
             "StyledTable(data_table=True) needs a caption: it names the scroll "
             "region, and an empty name leaves the region unlabelled."
         )
+    if data_table and columns and len(columns) > MAX_DATA_TABLE_COLUMNS:
+        raise ValueError(
+            f"StyledTable(data_table=True) supports at most "
+            f"{MAX_DATA_TABLE_COLUMNS} columns: the column-drop classes are a "
+            f"safelisted nth-child family, so column "
+            f"{MAX_DATA_TABLE_COLUMNS + 1}+ could never be hidden."
+        )
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
@@ -2186,23 +2230,18 @@ def StyledTable(
                 for column in columns
             ]
         ]
-        table_children.append(
-            Thead(
-                class_=(
-                    "text-type-micro text-body uppercase bg-neutral-tertiary "
-                    "max-md:[&_th:not(:first-child):not(:last-child)]:hidden"
-                ),
-            )[header_row]
-        )
+        thead_class = "text-type-micro text-body uppercase bg-neutral-tertiary"
+        if data_table:
+            thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
+        table_children.append(Thead(class_=thead_class)[header_row])
     # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
     # <tr> aligns from the live <tbody> it lands in — the fragment row stays
     # dumb. Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
-    tbody_class = (
-        "font-condensed dark:divide-y "
-        "max-md:[&_td:not(:first-child):not(:last-child)]:hidden"
-    )
+    tbody_class = "font-condensed dark:divide-y"
+    if data_table:
+        tbody_class = f"{tbody_class} {_FALLBACK_HIDE_BODY_CLASS}"
     align_rules = " ".join(
         f"[&_td:nth-child({index + 1})]:text-right"
         for index, column in enumerate(columns)
@@ -2241,9 +2280,12 @@ def StyledTable(
             ("tabindex", "0"),
             ("aria-labelledby", caption_id),
         ]
-    inner_children: list[Node] = [
-        Div([("class", scroll_class), *scroll_attributes])[table]
-    ]
+    region: Node = Div([("class", scroll_class), *scroll_attributes])[table]
+    if data_table:
+        # The element owns the drop decision: it measures column widths and
+        # hides the lowest-priority columns until the table fits the region.
+        region = _ResponsiveTable(class_="block")[region]
+    inner_children: list[Node] = [region]
 
     paginated = bool(page_obj and elided_page_range)
     if paginated and footer is not None:

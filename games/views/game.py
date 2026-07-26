@@ -110,12 +110,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
         "caption": "Games",
         "columns": [
             Column("Name", "name", shrinkable=True),
-            Column("Year", "year"),
-            Column("Playtime", "filtered_playtime"),
-            Column("Status", "status"),
+            Column("Year", "year", priority=2),
+            Column("Playtime", "filtered_playtime", priority=2),
+            Column("Status", "status", priority=3),
             Column("Wikidata", "wikidata"),
             Column("Created", "created"),
-            Column("Actions", align="right"),
+            Column("Actions", align="right", priority=4),
         ],
         "sort_terms": sort.terms,
         "rows": [
@@ -634,9 +634,9 @@ def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
         columns=[
             Column("Name", shrinkable=True),
             Column("Type"),
-            Column("Date"),
-            Column("Price"),
-            Column("Actions", align="right"),
+            Column("Date", priority=2),
+            Column("Price", priority=2),
+            Column("Actions", align="right", priority=3),
         ],
         rows=rows,
         data_table=True,
@@ -665,7 +665,7 @@ def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
     table = StyledTable(
         columns=[
             Column("Date"),
-            Column("Duration"),
+            Column("Duration", priority=2),
             Column("Device"),
         ],
         rows=rows,
