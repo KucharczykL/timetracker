@@ -58,8 +58,8 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
         "columns": [
             Column("Game"),
             Column("Old Status"),
-            Column("New Status"),
-            Column("Timestamp"),
+            Column("New Status", priority=2),
+            Column("Timestamp", priority=3),
         ],
         "rows": [
             make_row(

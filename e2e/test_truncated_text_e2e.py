@@ -221,15 +221,15 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
         expect(action_cell).to_be_visible()
 
         if width == 768:
-            # At exactly md the shrink allowance is already off and every
-            # column is back, so the table is wider than its wrapper. The
-            # wrapper scrolls; what must not happen is the name being crushed
-            # to the platform icon to avoid it. Measured 256px here, against
-            # 109px if the allowance were still applying at this width.
+            # At exactly md the shrink allowance is off, so the name renders
+            # at its natural (capped) width; what must not happen is the name
+            # being crushed to the platform icon. Measured 256px here, against
+            # 109px if the allowance were still applying at this width. Which
+            # OTHER columns render is <responsive-table>'s emergent decision
+            # (covered in test_responsive_table_e2e.py), not asserted here.
             assert (
                 host.evaluate("element => element.getBoundingClientRect().width") >= 200
             )
-            expect(row.locator("td").first).to_be_visible()
             continue
 
         dimensions = wrapper.evaluate(
@@ -247,8 +247,6 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
             action_box = action_cell.bounding_box()
             assert host_box is not None and action_box is not None
             assert host_box["x"] + host_box["width"] <= action_box["x"]
-        else:
-            expect(row.locator("td").first).to_be_hidden()
 
 
 def test_desktop_name_column_does_not_absorb_the_tables_slack(
@@ -305,7 +303,11 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
     button.tap()
     expect(panel).to_be_visible()
 
-    page.set_viewport_size({"width": 600, "height": 844})
+    # Above md: the name renders at its natural (capped) width regardless of
+    # how many columns <responsive-table> keeps, so this medium name fits.
+    # (600 no longer guarantees that — the element keeps more columns there
+    # than the old positional hiding did, and the name stays at its floor.)
+    page.set_viewport_size({"width": 1024, "height": 844})
     expect(host).not_to_have_attribute("data-overflowing", "")
     expect(button).to_be_hidden()
     expect(panel).to_be_hidden()

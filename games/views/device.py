@@ -59,9 +59,9 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         "caption": "Devices",
         "columns": [
             Column("Name", "name"),
-            Column("Type", "type"),
+            Column("Type", "type", priority=2),
             Column("Created", "created"),
-            Column("Actions", align="right"),
+            Column("Actions", align="right", priority=3),
         ],
         "sort_terms": sort.terms,
         "rows": [

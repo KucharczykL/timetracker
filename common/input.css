@@ -14,6 +14,12 @@
    td variants up to 12 columns (the widest table has 8). */
 @source inline("[&_td:nth-child({1,2,3,4,5,6,7,8,9,10,11,12})]:text-right");
 
+/* <responsive-table> toggles its column-drop decision as runtime nth-child
+   classes on the <table> (one selector hides both th and td at that index),
+   invisible to the scanner the same way — safelist indexes 2..12 (the first
+   column, the row header, never drops). */
+@source inline("[&_tr>*:nth-child({2,3,4,5,6,7,8,9,10,11,12})]:hidden");
+
 @theme {
     --font-sans:
         IBM Plex Sans, ui-sans-serif, system-ui, sans-serif,

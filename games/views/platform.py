@@ -59,10 +59,10 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         "caption": "Platforms",
         "columns": [
             Column("Name", "name"),
-            Column("Icon"),
-            Column("Group", "group"),
+            Column("Icon", priority=2),
+            Column("Group", "group", priority=2),
             Column("Created", "created"),
-            Column("Actions", align="right"),
+            Column("Actions", align="right", priority=3),
         ],
         "sort_terms": sort.terms,
         "rows": [

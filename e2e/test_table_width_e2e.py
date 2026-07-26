@@ -192,12 +192,10 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
 def test_scroll_region_is_reachable_and_named(
     authenticated_page: Page, live_server, populated
 ):
-    """A one-line table overflows instead of getting taller, so the scroll has
-    to be operable without a pointer.
-
-    1024 and not 390: below md the positional column-hiding rules remove most
-    columns and the capped name column fits, so the region has nothing to
-    scroll there — at 1024 every column renders and the overflow is real."""
+    """The region's accessibility contract with the app fully running. With
+    <responsive-table> active the table rarely overflows — columns drop
+    instead — so the actually-scrolls proof lives in
+    test_responsive_table_e2e.py's no-JS test, where the overflow is real."""
     page = authenticated_page
     page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
@@ -212,14 +210,3 @@ def test_scroll_region_is_reachable_and_named(
     assert page.evaluate(
         "() => document.activeElement.getAttribute('role') === 'region'"
     )
-    scrolled = region.evaluate(
-        """(element) => {
-            element.scrollLeft = element.scrollWidth;
-            return {left: element.scrollLeft, over: element.scrollWidth
-                - element.clientWidth};
-        }"""
-    )
-    # Unconditional: if the fixture stops overflowing at 390px, the scroll
-    # behaviour is no longer exercised and the test must say so, not pass.
-    assert scrolled["over"] > 0, "the purchases table no longer overflows at 390px"
-    assert scrolled["left"] > 0, "the region does not actually scroll"

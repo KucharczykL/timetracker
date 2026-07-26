@@ -114,14 +114,14 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
 # rows were built with.
 PURCHASE_COLUMNS: list[Column] = [
     Column("Name", "name", shrinkable=True),
-    Column("Type", "type"),
-    Column("Price", "price"),
+    Column("Type", "type", priority=2),
+    Column("Price", "price", priority=3),
     Column("Infinite", "infinite"),
-    Column("Purchased", "purchased"),
+    Column("Purchased", "purchased", priority=2),
     Column("Finished", "finished"),
     Column("Refunded", "refunded"),
     Column("Created", "created"),
-    Column("Actions", align="right"),
+    Column("Actions", align="right", priority=4),
 ]
 
 

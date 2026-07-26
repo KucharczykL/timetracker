@@ -2224,6 +2224,98 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         self.assertIn("orphan", result)
 
 
+class ResponsiveTableGateTest(SimpleTestCase):
+    """Phase 3 of the width policy: a data table mounts <responsive-table>,
+    its header cells carry the per-column drop policy, and the positional
+    max-md hiding survives only as a :not(:defined) no-JS fallback."""
+
+    @staticmethod
+    def _render(columns, rows, **kwargs):
+        return str(components.StyledTable(columns=columns, rows=rows, **kwargs))
+
+    def _data_table(self, columns, rows):
+        return self._render(columns, rows, data_table=True, caption="Records")
+
+    def test_data_table_mounts_the_element_around_the_region(self):
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        before_region = result.split('role="region"')[0]
+        self.assertIn("<responsive-table", before_region)
+
+    def test_non_data_table_mounts_no_element(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Spendings", "12")],
+        )
+        self.assertNotIn("<responsive-table", result)
+
+    def test_header_cells_carry_the_drop_policy(self):
+        result = self._data_table(
+            [
+                components.Column("Name", shrinkable=True),
+                components.Column("Note", wrap=True),
+                components.Column("Actions", priority=4),
+            ],
+            [components.make_row("Game", "a note", "buttons")],
+        )
+        header_cells = result.split("<thead")[1].split("</thead>")[0].split("<th")[1:]
+        self.assertIn('data-priority="1"', header_cells[0])
+        self.assertIn("data-shrinkable", header_cells[0])
+        self.assertIn("data-wrap", header_cells[1])
+        self.assertIn('data-priority="4"', header_cells[2])
+        self.assertNotIn("data-wrap", header_cells[0])
+        self.assertNotIn("data-shrinkable", header_cells[1])
+
+    def test_non_data_table_headers_carry_no_policy(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Spendings", "12")],
+        )
+        self.assertNotIn("data-priority", result)
+
+    def test_fallback_hiding_is_scoped_to_the_undefined_element(self):
+        """No-JS keeps today's max-md behavior; the selector dies the instant
+        the element upgrades, so the CSS and the element never both act."""
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025")],
+        )
+        thead = result.split("<thead")[1].split(">")[0]
+        tbody = result.split("<tbody")[1].split(">")[0]
+        self.assertIn("responsive-table:not(:defined)", thead)
+        self.assertIn("responsive-table:not(:defined)", tbody)
+
+    def test_non_data_table_has_no_positional_hiding_at_all(self):
+        """The old unconditional rule was vacuous on the 2-column stats cards;
+        now it is simply absent there."""
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Spendings", "12")],
+        )
+        self.assertNotIn("max-md:[", result)
+
+    def test_data_table_beyond_the_class_family_ceiling_raises(self):
+        columns = [components.Column(f"C{index}") for index in range(13)]
+        rows = [components.make_row(*[str(index) for index in range(13)])]
+        with self.assertRaises(ValueError):
+            components.StyledTable(
+                columns=columns, rows=rows, data_table=True, caption="Records"
+            )
+        # At the ceiling itself it renders fine.
+        columns_at_ceiling = columns[:12]
+        rows_at_ceiling = [components.make_row(*[str(index) for index in range(12)])]
+        self.assertIn(
+            "<responsive-table",
+            self._render(
+                columns_at_ceiling,
+                rows_at_ceiling,
+                data_table=True,
+                caption="Records",
+            ),
+        )
+
+
 class ColumnAlignmentTest(SimpleTestCase):
     """Column alignment is driven by ``Column.align``: the header per-``<th>``
     (``_header_cell``), the body via a table-level ``td:nth-child`` rule on the
