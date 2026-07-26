@@ -93,15 +93,16 @@ def populated(db) -> None:
         timestamp_start=BASE + timedelta(days=1),
         timestamp_end=BASE + timedelta(days=1, hours=1),
     )
-    for index, name in enumerate((game, short)):
+    # One refunded, one not, so both renderings of the Refunded column appear.
+    for index, purchased_game in enumerate((game, short)):
         purchase = Purchase.objects.create(
             platform=platform,
             date_purchased=BASE + timedelta(days=index),
-            date_refunded=BASE + timedelta(days=index + 5),
+            date_refunded=BASE + timedelta(days=index + 5) if index == 0 else None,
             price=1234,
             price_currency="USD",
         )
-        purchase.games.add(name)
+        purchase.games.add(purchased_game)
     PlayEvent.objects.create(
         game=game, started=BASE, ended=BASE + timedelta(days=3), note=LONG_NOTE
     )
@@ -192,9 +193,13 @@ def test_scroll_region_is_reachable_and_named(
     authenticated_page: Page, live_server, populated
 ):
     """A one-line table overflows instead of getting taller, so the scroll has
-    to be operable without a pointer."""
+    to be operable without a pointer.
+
+    1024 and not 390: below md the positional column-hiding rules remove most
+    columns and the capped name column fits, so the region has nothing to
+    scroll there — at 1024 every column renders and the overflow is real."""
     page = authenticated_page
-    page.set_viewport_size({"width": 390, "height": 900})
+    page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
     page.evaluate("() => document.fonts.ready")
 
@@ -214,5 +219,7 @@ def test_scroll_region_is_reachable_and_named(
                 - element.clientWidth};
         }"""
     )
-    if scrolled["over"] > 0:
-        assert scrolled["left"] > 0, "the region does not actually scroll"
+    # Unconditional: if the fixture stops overflowing at 390px, the scroll
+    # behaviour is no longer exercised and the test must say so, not pass.
+    assert scrolled["over"] > 0, "the purchases table no longer overflows at 390px"
+    assert scrolled["left"] > 0, "the region does not actually scroll"

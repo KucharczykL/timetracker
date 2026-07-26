@@ -2187,7 +2187,7 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         result = self._data_table(
             [components.Column("Name")], [components.make_row("Game")]
         )
-        self.assertIn("relative overflow-x-auto scroll-ps-", result)
+        self.assertIn("relative overflow-x-auto md:scroll-ps-", result)
 
     def test_data_table_without_caption_raises(self):
         with self.assertRaises(ValueError):

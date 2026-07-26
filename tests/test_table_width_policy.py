@@ -28,23 +28,27 @@ from games.models import (
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
 
-# Every list page, and whether its first column is a name that must self-clip.
+# Every list page; each one's first column is a name that must self-clip.
 LIST_PAGES = [
-    ("games:list_sessions", True),
-    ("games:list_games", True),
-    ("games:list_purchases", True),
-    ("games:list_playevents", True),
-    ("games:list_devices", True),
-    ("games:list_platforms", True),
-    ("games:list_statuschanges", True),
+    "games:list_sessions",
+    "games:list_games",
+    "games:list_purchases",
+    "games:list_playevents",
+    "games:list_devices",
+    "games:list_platforms",
+    "games:list_statuschanges",
 ]
-
-# Scoped to the table's scroll wrapper: the toast container is also a region.
-_REGION_RE = re.compile(r'<div[^>]*\boverflow-x-auto\b[^>]*\brole="region"[^>]*>')
 
 
 def _regions(html: str) -> list[str]:
-    return _REGION_RE.findall(html)
+    """The table scroll wrappers: the divs carrying both the overflow class and
+    the region role, matched attribute-order-independently. The toast container
+    is also a region, but has no overflow class."""
+    return [
+        tag
+        for tag in re.findall(r"<div\b[^>]*>", html)
+        if "overflow-x-auto" in tag and 'role="region"' in tag
+    ]
 
 
 def _caption_text(html: str, caption_id: str) -> str | None:
@@ -85,7 +89,7 @@ class DataTableGateTest(TestCase):
         return self.client.get(reverse(url_name), follow=True).content.decode()
 
     def test_every_list_page_has_one_named_scroll_region(self) -> None:
-        for url_name, _ in LIST_PAGES:
+        for url_name in LIST_PAGES:
             with self.subTest(page=url_name):
                 html = self._html(url_name)
                 regions = _regions(html)
@@ -96,16 +100,14 @@ class DataTableGateTest(TestCase):
                 self.assertTrue(text, "region's accessible name must be non-empty")
 
     def test_every_list_page_region_is_keyboard_reachable(self) -> None:
-        for url_name, _ in LIST_PAGES:
+        for url_name in LIST_PAGES:
             with self.subTest(page=url_name):
                 self.assertIn('tabindex="0"', _regions(self._html(url_name))[0])
 
     def test_first_column_self_clips_on_every_list_page(self) -> None:
         """A pinned single-line first column with no cap can be arbitrarily
         wide, so every list page routes its first cell through TruncatedText."""
-        for url_name, has_name_column in LIST_PAGES:
-            if not has_name_column:
-                continue
+        for url_name in LIST_PAGES:
             with self.subTest(page=url_name):
                 body = self._html(url_name).split("<tbody", 1)[1]
                 first_cell = body.split("</th>", 1)[0]

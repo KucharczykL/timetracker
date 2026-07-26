@@ -2233,7 +2233,9 @@ def StyledTable(
         # control that is scrolled out of view never parks it flush there. The
         # reservation is a fixed over-estimate — the name cap plus cell padding
         # — because the first column's real width varies per table and per page.
-        scroll_class = f"{scroll_class} scroll-ps-[19rem]"
+        # Only from md up: 19rem is wider than a phone's scrollport, where the
+        # browser would clamp it into a meaningless snap position anyway.
+        scroll_class = f"{scroll_class} md:scroll-ps-[19rem]"
         scroll_attributes = [
             ("role", "region"),
             ("tabindex", "0"),
