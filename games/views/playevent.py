@@ -17,12 +17,12 @@ from common.components import (
     Column,
     ContentContainer,
     Fragment,
-    GameLink,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     ModuleScript,
     QuickFilterBar,
     TableData,
+    TruncatedText,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -67,7 +67,9 @@ def create_playevent_tabledata(
         Column("Started", "started"),
         Column("Ended", "ended"),
         Column("Days to finish", "days"),
-        Column("Note"),
+        # Free text with no natural width: on one line a single long note would
+        # widen the table past anything the other columns could reclaim.
+        Column("Note", wrap=True),
         Column("Created", "created"),
         Column("Actions", align="right"),
     ]
@@ -82,7 +84,10 @@ def create_playevent_tabledata(
 
     row_list: list[list[Cell]] = [
         [
-            GameLink(playevent.game.id, playevent.game.name),
+            TruncatedText(
+                playevent.game.name,
+                link=reverse("games:view_game", args=[playevent.game.id]),
+            ),
             presentation.format(playevent.started, "date")
             if playevent.started
             else "-",
@@ -112,6 +117,7 @@ def create_playevent_tabledata(
         for row in row_list
     ]
     return {
+        "caption": "Play events",
         "columns": filtered_column_list,
         "sort_terms": sort_terms,
         "rows": [make_row(*cells) for cells in filtered_row_list],

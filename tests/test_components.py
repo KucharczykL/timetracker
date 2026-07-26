@@ -2096,6 +2096,134 @@ class StyledTableColumnGuardTest(SimpleTestCase):
         self.assertIn("<td", result)
 
 
+class DataTableWidthPolicyTest(SimpleTestCase):
+    """``data_table=True`` is the gate for the one-line rule and the scroll
+    region. Everything it turns on must be absent by default, because the stats
+    cards render through the same component and wrap by design."""
+
+    @staticmethod
+    def _thead(result):
+        return result.split("<thead")[1].split("</thead>")[0]
+
+    @staticmethod
+    def _tbody(result):
+        return result.split("<tbody")[1].split("</tbody>")[0]
+
+    @staticmethod
+    def _render(columns, rows, **kwargs):
+        return str(components.StyledTable(columns=columns, rows=rows, **kwargs))
+
+    def _data_table(self, columns, rows):
+        return self._render(columns, rows, data_table=True, caption="Records")
+
+    def test_data_table_pins_header_and_body_cells_to_one_line(self):
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025-01-01")],
+        )
+        self.assertEqual(self._thead(result).count("whitespace-nowrap"), 2)
+        # The row header was already single-line; the <td> is what changes.
+        self.assertIn("whitespace-nowrap", self._tbody(result).split("<td")[1])
+
+    def test_wrap_column_opts_out_in_header_and_body(self):
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Note", wrap=True)],
+            [components.make_row("Game", "a long free-text note")],
+        )
+        note_header = self._thead(result).split("<th")[2]
+        self.assertNotIn("whitespace-nowrap", note_header)
+        self.assertNotIn("whitespace-nowrap", self._tbody(result).split("<td")[1])
+
+    def test_wrap_releases_the_row_header_too(self):
+        result = self._data_table(
+            [components.Column("Note", wrap=True), components.Column("Date")],
+            [components.make_row("a long free-text note", "2025-01-01")],
+        )
+        row_header = self._tbody(result).split("<th")[1].split(">")[0]
+        self.assertNotIn("whitespace-nowrap", row_header)
+
+    def test_non_data_table_pins_nothing_beyond_the_row_header(self):
+        """Guards the stats cards: their value cells must still wrap."""
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Spendings", "12 (3/game)")],
+        )
+        self.assertNotIn("whitespace-nowrap", self._thead(result))
+        self.assertNotIn("whitespace-nowrap", self._tbody(result).split("<td")[1])
+        self.assertNotIn("<caption", result)
+        self.assertNotIn('role="region"', result)
+        self.assertNotIn("scroll-ps-", result)
+
+    def test_data_table_wraps_the_table_in_a_named_scroll_region(self):
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        wrapper = re.search(r"<div[^>]*overflow-x-auto[^>]*>", result)
+        assert wrapper is not None
+        self.assertIn('role="region"', wrapper.group())
+        self.assertIn('tabindex="0"', wrapper.group())
+        labelledby = re.search(r'aria-labelledby="([^"]+)"', wrapper.group())
+        assert labelledby is not None
+        caption = re.search(
+            rf'<caption[^>]*id="{labelledby.group(1)}"[^>]*>(.*?)</caption>', result
+        )
+        assert caption is not None, "aria-labelledby must resolve to the caption"
+        self.assertEqual(caption.group(1), "Records")
+
+    def test_caption_is_the_tables_first_child_and_visually_hidden(self):
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        after_table = result.split("<table", 1)[1].split(">", 1)[1]
+        self.assertTrue(
+            after_table.lstrip().startswith("<caption"),
+            f"caption must open the table, got: {after_table[:80]}",
+        )
+        self.assertIn("sr-only", after_table.split(">", 1)[0])
+
+    def test_scroll_padding_keeps_the_region_class_prefix_intact(self):
+        """Appended, never prepended — the wrapper's leading classes are pinned
+        by the rounding test and by e2e selectors."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        self.assertIn("relative overflow-x-auto scroll-ps-", result)
+
+    def test_data_table_without_caption_raises(self):
+        with self.assertRaises(ValueError):
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game")],
+                data_table=True,
+            )
+
+    def test_row_fragment_can_carry_the_tables_policy(self):
+        """A swapped-in row has to state the gate itself; it has no table."""
+        row = str(
+            components.TableRow(
+                components.make_row("Game", "Note"),
+                [components.Column("Name"), components.Column("Note", wrap=True)],
+                data_table=True,
+            )
+        )
+        self.assertNotIn("whitespace-nowrap", row.split("<td")[1])
+        plain = str(components.TableRow(components.make_row("Game", "Note")))
+        self.assertNotIn("whitespace-nowrap", plain.split("<td")[1])
+
+    def test_ragged_row_still_degrades_instead_of_raising(self):
+        """Outside DEBUG a cell without a column is rendered, not an IndexError:
+        reading per-column policy must not convert that degradation into a 500."""
+        result = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", "orphan")],
+                data_table=True,
+                caption="Records",
+            )
+        )
+        self.assertIn("orphan", result)
+
+
 class ColumnAlignmentTest(SimpleTestCase):
     """Column alignment is driven by ``Column.align``: the header per-``<th>``
     (``_header_cell``), the body via a table-level ``td:nth-child`` rule on the

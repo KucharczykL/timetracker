@@ -1656,10 +1656,16 @@ def ConfirmPage(
 
 def TableTd(
     children: Children = None,
+    *,
+    nowrap: bool = False,
 ) -> Element:
-    """Styled table cell."""
+    """Styled table cell. ``nowrap`` pins the cell to one line; the caller
+    decides, because wrapping is only forbidden on tables that can scroll."""
     children = children or []
-    return Td(class_="px-2 sm:px-3 lg:px-4 py-2")[*as_children(children)]
+    cell_class = "px-2 sm:px-3 lg:px-4 py-2"
+    if nowrap:
+        cell_class = f"{cell_class} whitespace-nowrap"
+    return Td(class_=cell_class)[*as_children(children)]
 
 
 type Cell = Child  # one table cell, e.g. NameWithIcon(game=game) or "2024"
@@ -1690,19 +1696,26 @@ class Column(NamedTuple):
     supplies column sizing classes to the header and, for the row-header first
     column, its body ``<th>``. ``shrinkable`` marks a column that may shrink
     below its content width when the table is crowded; its content is expected
-    to self-clip."""
+    to self-clip. ``wrap`` opts a column out of the one-line rule data tables
+    otherwise impose — for free-text columns whose value has no useful width
+    (a session note), where a single line would widen the table without limit."""
 
     label: str
     sort_key: str | None = None
     align: Align = "left"
     class_: str = ""
     shrinkable: bool = False
+    wrap: bool = False
 
 
 class TableData(TypedDict):
     """Canonical table shape consumed by :func:`StyledTable` /
     :func:`paginated_table_content`. Every list view builds this."""
 
+    # Names the table's scroll region for assistive tech, e.g. "Sessions".
+    # Required, and page-unique: the caption id is derived from this text, so
+    # two same-captioned tables on one page would share it.
+    caption: str
     columns: list[Column]
     rows: Sequence[TableRowData]
     # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
@@ -1731,12 +1744,23 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
     return data
 
 
-def TableRow(data: TableRowData, columns: Sequence[Column] | None = None) -> Element:
+def TableRow(
+    data: TableRowData,
+    columns: Sequence[Column] | None = None,
+    *,
+    data_table: bool = False,
+) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
     First cell is a ``<th scope="row">``, the rest ``<td>``. The cosmetic row
     ``class`` is fixed here; ``data["attributes"]`` (``id``, ``hx-*`` …) is
     applied on top. For a differently-styled row use the generic ``Tr`` builder.
+
+    ``data_table`` mirrors :func:`StyledTable`'s gate: on a table that can
+    scroll, body cells stay on one line unless their column sets ``wrap``. A
+    row fragment swapped into such a table must pass both this flag and the
+    table's ``columns``, or it renders under a different width policy than the
+    rows around it.
     """
     cells = data["cell_data"]
 
@@ -1750,24 +1774,37 @@ def TableRow(data: TableRowData, columns: Sequence[Column] | None = None) -> Ele
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
 
+    # A ragged row is a documented prod degradation (see StyledTable's DEBUG
+    # cell-count guard), so a missing column is read as "no policy", never as
+    # an IndexError.
+    def column_at(index: int) -> Column | None:
+        if columns and index < len(columns):
+            return columns[index]
+        return None
+
     cell_elements: list[Node] = []
     for i, cell in enumerate(cells):
+        column = column_at(i)
         if i == 0:
-            column_class = columns[0].class_ if columns else ""
-            if columns and columns[0].shrinkable:
+            column_class = column.class_ if column else ""
+            if column and column.shrinkable:
                 column_class = f"{column_class} {SHRINKABLE_COLUMN_CLASS}".strip()
+            # The row header has always been single-line; only an explicit
+            # wrap opt-out releases it.
+            wrap_class = "" if column and column.wrap else "whitespace-nowrap "
             cell_elements.append(
                 Th(
                     scope="row",
                     class_=(
                         "px-2 sm:px-3 lg:px-6 py-4 font-medium text-heading "
-                        "whitespace-nowrap "
+                        f"{wrap_class}"
                         f"{column_class}"
                     ).strip(),
                 )[cell]
             )
         else:
-            cell_elements.append(TableTd()[cell])
+            nowrap = data_table and not (column and column.wrap)
+            cell_elements.append(TableTd(nowrap=nowrap)[cell])
 
     return Tr(tr_attrs)[*cell_elements]
 
@@ -2001,7 +2038,13 @@ def _sort_indicator(position: int, descending: bool, total: int) -> Node:
     return Fragment(*children)
 
 
-def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> Node:
+def _header_cell(
+    column: "Column",
+    sort_terms: Sequence[SortTerm],
+    request,
+    *,
+    data_table: bool = False,
+) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
     base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
@@ -2011,6 +2054,8 @@ def _header_cell(column: "Column", sort_terms: Sequence[SortTerm], request) -> N
         base_class = f"{base_class} {column.class_}"
     if column.shrinkable:
         base_class = f"{base_class} {SHRINKABLE_COLUMN_CLASS}"
+    if data_table and not column.wrap:
+        base_class = f"{base_class} whitespace-nowrap"
     if column.sort_key is None:
         return Th(scope="col", class_=base_class)[column.label]
 
@@ -2075,6 +2120,8 @@ def StyledTable(
     page_size: int | None = None,
     show_header: bool = True,
     footer: Node | None = None,
+    data_table: bool = False,
+    caption: str = "",
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -2093,7 +2140,19 @@ def StyledTable(
     consumer: passing ``page_obj``/``elided_page_range`` renders the pagination nav in
     this slot, so supplying an explicit ``footer`` alongside pagination args is a
     contradiction and raises ``ValueError``.
+
+    ``data_table`` marks a table of records that may outgrow the page: its cells
+    stay on one line (per-column opt-out via ``Column.wrap``) and its scroll
+    wrapper becomes a keyboard-reachable landmark named by ``caption``, which is
+    then required. Off by default, because the treatment is wrong for the
+    card-shaped key-value tables in the stats page — their value cells wrap by
+    design and they get no scroll region to reach.
     """
+    if data_table and not caption:
+        raise ValueError(
+            "StyledTable(data_table=True) needs a caption: it names the scroll "
+            "region, and an empty name leaves the region unlabelled."
+        )
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
@@ -2112,11 +2171,20 @@ def StyledTable(
                 )
 
     table_children: list[Node] = []
+    # A <caption> is only valid as the table's first child, and it doubles as
+    # the scroll region's accessible name. Visually hidden: the heading above
+    # each table already says this on screen.
+    caption_id = f"table-caption-{randomid(content=caption)}" if data_table else ""
+    if data_table:
+        table_children.append(Caption(class_="sr-only", id=caption_id)[caption])
     # `columns` still drives the count-guard and align rules when the header is
     # hidden (show_header=False) — e.g. the headerless key-value stats tables.
     if show_header:
         header_row = Tr()[
-            [_header_cell(column, sort_terms, request) for column in columns]
+            [
+                _header_cell(column, sort_terms, request, data_table=data_table)
+                for column in columns
+            ]
         ]
         table_children.append(
             Thead(
@@ -2143,7 +2211,9 @@ def StyledTable(
     if align_rules:
         tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
-        Tbody(class_=tbody_class)[[TableRow(data=row, columns=columns) for row in rows]]
+        Tbody(class_=tbody_class)[
+            [TableRow(data=row, columns=columns, data_table=data_table) for row in rows]
+        ]
     )
 
     table = Table(
@@ -2153,7 +2223,25 @@ def StyledTable(
     # The scroll wrapper owns horizontal scroll only; the shell owns the radius
     # and clips this wrapper to it (a rounded clip can't coexist with overflow-x
     # scroll on one element, so they stay on separate elements).
-    inner_children: list[Node] = [Div(class_="relative overflow-x-auto")[table]]
+    scroll_class = "relative overflow-x-auto"
+    scroll_attributes: list[HTMLAttribute] = []
+    if data_table:
+        # A one-line table overflows instead of getting taller, so the scroll it
+        # produces has to be reachable without a pointer: a named, focusable
+        # region is the only thing that makes an overflow container tabbable.
+        # The scroll padding reserves the region's start edge, so tabbing to a
+        # control that is scrolled out of view never parks it flush there. The
+        # reservation is a fixed over-estimate — the name cap plus cell padding
+        # — because the first column's real width varies per table and per page.
+        scroll_class = f"{scroll_class} scroll-ps-[19rem]"
+        scroll_attributes = [
+            ("role", "region"),
+            ("tabindex", "0"),
+            ("aria-labelledby", caption_id),
+        ]
+    inner_children: list[Node] = [
+        Div([("class", scroll_class), *scroll_attributes])[table]
+    ]
 
     paginated = bool(page_obj and elided_page_range)
     if paginated and footer is not None:
@@ -2222,4 +2310,6 @@ def paginated_table_content(
         request=request,
         sort_terms=data.get("sort_terms"),
         page_size=page_size,
+        data_table=True,
+        caption=data["caption"],
     )
