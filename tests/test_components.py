@@ -1707,6 +1707,10 @@ class StyledTableRenderingTest(unittest.TestCase):
     def _tbody(result):
         return result.split("<tbody")[1].split("</tbody>")[0]
 
+    @staticmethod
+    def _thead(result):
+        return result.split("<thead")[1].split("</thead>")[0]
+
     def test_simple_table_renders_rows(self):
         """Verify make_row rows render as <tr> with <th scope='row'> + <td>."""
         result = str(
@@ -1812,7 +1816,10 @@ class StyledTableRenderingTest(unittest.TestCase):
                 rows=[components.make_row("Game", "Edit")],
             )
         )
-        self.assertIn(SHRINKABLE_COLUMN_CLASS, result)
+        # Assert against each section separately: the whole-document form is
+        # satisfied by the body cell alone, so it cannot prove the header
+        # emitted anything.
+        self.assertIn(SHRINKABLE_COLUMN_CLASS, self._thead(result))
         self.assertIn(SHRINKABLE_COLUMN_CLASS, self._tbody(result))
 
     def test_shrinkable_classes_are_mobile_only(self):

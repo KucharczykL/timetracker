@@ -216,9 +216,6 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
             "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), "
             "' overflow-x-auto ')][1]"
         )
-        dimensions = wrapper.evaluate(
-            "element => ({client: element.clientWidth, scroll: element.scrollWidth})"
-        )
         row = host.locator("xpath=ancestor::tr[1]")
         action_cell = row.locator("td").last
         expect(action_cell).to_be_visible()
@@ -227,13 +224,17 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
             # At exactly md the shrink allowance is already off and every
             # column is back, so the table is wider than its wrapper. The
             # wrapper scrolls; what must not happen is the name being crushed
-            # to the platform icon to avoid it.
+            # to the platform icon to avoid it. Measured 256px here, against
+            # 109px if the allowance were still applying at this width.
             assert (
                 host.evaluate("element => element.getBoundingClientRect().width") >= 200
             )
             expect(row.locator("td").first).to_be_visible()
             continue
 
+        dimensions = wrapper.evaluate(
+            "element => ({client: element.clientWidth, scroll: element.scrollWidth})"
+        )
         assert dimensions["scroll"] <= dimensions["client"]
         if width == 390:
             assert (
@@ -259,6 +260,11 @@ def test_desktop_name_column_does_not_absorb_the_tables_slack(
     A capped name column still receives its proportional share of slack, so a
     small surplus is expected and correct; only hoarding is the defect. The
     bound is a fraction of the container so it holds at any window size.
+
+    Measured on this fixture at 1280: 69px surplus of a 1232px container (5.6%)
+    as shipped, against 229px (18.6%) with the allowance reapplied unscoped.
+    The bound sits between the two; a drift back toward the upper figure is the
+    regression it exists to catch.
     """
     page = authenticated_page
     platform = Platform.objects.create(name="PC", icon="pc", group="PC")
