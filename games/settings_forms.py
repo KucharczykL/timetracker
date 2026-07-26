@@ -28,10 +28,6 @@ from timetracker.settings_resolver import (
     resolve_with_origin,
 )
 
-# DEFAULT_DEVICE is the only MODEL setting; this is the label its unset state
-# reads as in "Use site default (…)".
-_EMPTY_MODEL_LABEL: Final = "No device"
-
 
 @dataclass(frozen=True, slots=True)
 class TextFieldOverride:
@@ -54,7 +50,12 @@ _TEXT_FIELD_OVERRIDES: Final[dict[SettingKey, TextFieldOverride]] = {
 
 
 def user_setting_definitions() -> list[SettingDefinition]:
-    """The user-scoped definitions, in registry order."""
+    """The user-scoped definitions, in registry order.
+
+    Both the personal and the site page render this same set — the site page
+    shows the values users inherit. A SITE-scoped setting is deliberately absent
+    from both, not just this one; it has no per-user override to show.
+    """
     return [
         definition
         for definition in SETTINGS_REGISTRY.values()
@@ -75,7 +76,7 @@ def _model_label(definition: SettingDefinition, value: object) -> str:
             instance = queryset_factory().filter(pk=value).first()
             if instance is not None:
                 return str(instance)
-    return _EMPTY_MODEL_LABEL
+    return definition.empty_display
 
 
 def display_label(definition: SettingDefinition, value: object) -> str:
@@ -91,7 +92,12 @@ def display_label(definition: SettingDefinition, value: object) -> str:
         # itself, so an out-of-choices timezone is not relabeled as another zone.
         if value is None and choices:
             return choices[0][1]
-    return str(value)
+        return str(value)
+    if definition.widget is SettingWidget.TEXT:
+        return str(value)
+    raise ValueError(
+        f"{definition.key}: display_label has no case for widget {definition.widget!r}."
+    )
 
 
 class RegistrySettingsForm(forms.Form):
@@ -111,17 +117,23 @@ class RegistrySettingsForm(forms.Form):
 
     def empty_label(self, definition: SettingDefinition) -> str:
         """Text of the option/placeholder meaning "inherit"."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "empty_label: a RegistrySettingsForm subclass must implement this."
+        )
 
     @classmethod
     def resolve(cls, definition: SettingDefinition, user: object) -> ResolvedSetting:
         """Resolve one setting the way this page reads it."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "resolve: a RegistrySettingsForm subclass must implement this."
+        )
 
     @classmethod
     def keeps_initial(cls, resolved: ResolvedSetting) -> bool:
         """Whether a resolved value is prefilled into the control."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "keeps_initial: a RegistrySettingsForm subclass must implement this."
+        )
 
     @classmethod
     def field_state(
@@ -132,7 +144,9 @@ class RegistrySettingsForm(forms.Form):
         live_save: bool,
     ) -> SettingFieldState:
         """Per-field settings metadata for this page."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "field_state: a RegistrySettingsForm subclass must implement this."
+        )
 
     def _build_fields(self) -> dict[str, forms.Field]:
         fields: dict[str, forms.Field] = {}
@@ -163,13 +177,18 @@ class RegistrySettingsForm(forms.Form):
                     empty_value=None,
                 )
             return forms.ChoiceField(required=False, choices=choices)
-        override = _TEXT_FIELD_OVERRIDES.get(definition.key, TextFieldOverride())
-        return forms.CharField(
-            required=False,
-            max_length=override.max_length,
-            widget=forms.TextInput(
-                attrs={**override.widget_attrs, "placeholder": empty_label}
-            ),
+        if definition.widget is SettingWidget.TEXT:
+            override = _TEXT_FIELD_OVERRIDES.get(definition.key, TextFieldOverride())
+            return forms.CharField(
+                required=False,
+                max_length=override.max_length,
+                widget=forms.TextInput(
+                    attrs={**override.widget_attrs, "placeholder": empty_label}
+                ),
+            )
+        raise ValueError(
+            f"{definition.key}: _build_field has no case for widget "
+            f"{definition.widget!r}."
         )
 
 

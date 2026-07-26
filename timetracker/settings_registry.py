@@ -122,6 +122,7 @@ class SettingDefinition:
     widget: SettingWidget | None = None
     choices: tuple[SettingOption, ...] | None = None
     model_queryset: QuerysetFactory | None = None
+    empty_display: str = ""  # label for a MODEL widget's unset/dangling value
     reload_after_save: bool = False
     user_help_text: str = ""
     superuser_only: bool = False
@@ -152,6 +153,8 @@ class SettingDefinition:
                 f"{self.key}: a MODEL widget needs model_queryset, and "
                 "model_queryset needs a MODEL widget."
             )
+        if self.widget is SettingWidget.MODEL and not self.empty_display:
+            raise ValueError(f"{self.key}: a MODEL widget needs empty_display.")
         # A restart-only value cannot be fixed by reloading the page.
         if self.reload_after_save and self.apply_timing is not ApplyTiming.LIVE:
             raise ValueError(
@@ -287,6 +290,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_optional_device_id,
             widget=SettingWidget.MODEL,
             model_queryset=_device_queryset,
+            empty_display="No device",
             write_validator=_require_existing_device,
         ),
         SettingDefinition(

@@ -276,6 +276,21 @@ def test_model_widget_requires_a_queryset_factory():
         )
 
 
+def test_model_widget_requires_empty_display():
+    device_queryset = get_definition("DEFAULT_DEVICE").model_queryset
+    assert device_queryset is not None
+    with pytest.raises(ValueError, match="empty_display"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+            widget=SettingWidget.MODEL,
+            model_queryset=device_queryset,
+        )
+
+
 def test_choices_require_a_select_widget():
     with pytest.raises(ValueError, match="SELECT"):
         SettingDefinition(
