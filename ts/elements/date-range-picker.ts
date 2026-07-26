@@ -17,14 +17,39 @@
  * The committed value lives in the two hidden ISO inputs ({prefix}-min /
  * {prefix}-max) that filter_bar.ts serializes into a DateCriterion.
  *
+ * The segment-entry grammar (digit typing, arrows, paste) and the month-grid
+ * renderer are shared with date-picker.ts via date-field-core.ts /
+ * date-calendar-core.ts; anchor/track/preset logic below is range-specific.
+ *
+ * The popup (non-panel) variant is hosted in <drop-down behavior="date-calendar">
+ * (issue #485 follow-up): visibility, viewport-aware positioning, and outside-
+ * click/Escape dismiss all come from the shared attachMenu engine (this element
+ * delegates to the host's open()/close(), the same shape SearchSelect(host_dropdown)
+ * uses) instead of a bespoke absolute-positioned Div + its own document listeners.
+ * The static (panel) variant is unaffected — it already lives inside the quick
+ * bar's OWN separate <drop-down>, and never toggles.
+ *
  * NB: class strings below are emitted verbatim so the Tailwind scanner picks
  * them up — keep them as plain literals.
  */
 import {
-  calendarWeekdayLabels,
-  formatCalendarMonthYear,
-} from "../date-time-presentation.js";
-import { bindPopupDismiss } from "../utils.js";
+  addDays,
+  bindSegmentField,
+  dateFromIso,
+  isoFromDate,
+  setSideValue,
+  writeSideValue as writeSideValueCore,
+} from "./date-field-core.js";
+import {
+  bindCalendarNav,
+  bindCalendarPopupHost,
+  dayVariantClass,
+  renderMonthCalendar,
+  trackVariantClass,
+  todayView,
+  viewFromIso,
+  type MonthCalendarView,
+} from "./date-calendar-core.js";
 
 // Fired whenever a committed bound actually changes — segment typing or a
 // calendar/preset pick (issue #192). The flat filter bar reads the hidden inputs
@@ -38,9 +63,12 @@ export interface DateRangeChangeDetail {
   max: string;
 }
 
+function resolveHidden(picker: HTMLElement, side: string): HTMLInputElement | null {
+  return picker.querySelector<HTMLInputElement>(`input[data-date-range-hidden="${side}"]`);
+}
+
 function dispatchDateRangeChange(picker: HTMLElement): void {
-  const read = (side: string): string =>
-    picker.querySelector<HTMLInputElement>(`input[data-date-range-hidden="${side}"]`)?.value ?? "";
+  const read = (side: string): string => resolveHidden(picker, side)?.value ?? "";
   picker.dispatchEvent(
     new CustomEvent<DateRangeChangeDetail>(DATE_RANGE_CHANGE_EVENT, {
       bubbles: true,
@@ -49,12 +77,19 @@ function dispatchDateRangeChange(picker: HTMLElement): void {
   );
 }
 
+/** Push an ISO value (or "") into a side's segments and hidden input, without
+ * dispatching date-range:change — the write half shared with prefill
+ * hydration (#263), which runs on a detached, not-yet-connected clone and
+ * must stay silent. Returns whether the hidden value changed. Kept as the
+ * public contract filter-widgets.ts writes prefilled bounds through. */
+export function writeSideValue(picker: HTMLElement, side: string, isoString: string): boolean {
+  return writeSideValueCore(picker, side, (candidateSide) => resolveHidden(picker, candidateSide), isoString);
+}
+
 type Anchor = "" | "start" | "end";
 
 interface CalendarState {
-  open: boolean;
-  viewYear: number;
-  viewMonth: number;
+  view: MonthCalendarView;
   startIso: string;
   endIso: string;
   // The anchor is the fixed endpoint: "start" while picking the EndDate,
@@ -65,69 +100,6 @@ interface CalendarState {
   // the track renders muted until the first pick.
   readOnly: boolean;
   refreshFromField: () => void;
-}
-
-const WEEKDAY_CLASS =
-  "w-8 h-6 flex items-center justify-center text-type-micro text-body select-none";
-const DAY_BASE_CLASS =
-  "date-range-day w-8 h-8 flex items-center justify-center text-type-body " +
-  "text-heading cursor-pointer hover:bg-neutral-tertiary-medium";
-const DAY_ROUNDED_CLASS = "rounded-base";
-const DAY_OUTSIDE_MONTH_CLASS = "opacity-40";
-const DAY_SELECTED_CLASS = "solid-brand hover:bg-brand-strong";
-const DAY_ANCHOR_CLASS =
-  "solid-brand ring-2 ring-inset ring-brand-strong hover:bg-brand-strong";
-// The three visual states of the date range track (the days between the
-// two endpoints): outlined while picking the second date, filled once both
-// are picked, muted when showing an already-committed range read-only.
-const TRACK_OUTLINED_CLASS = "border-y border-brand/70 bg-brand/10";
-const TRACK_FILLED_CLASS = "bg-brand/30";
-const TRACK_MUTED_CLASS = "bg-brand/15";
-
-// ── Date helpers (all local-time; values are ISO YYYY-MM-DD strings) ──
-
-function padNumber(value: number, width: number): string {
-  let text = String(value);
-  while (text.length < width) text = "0" + text;
-  return text;
-}
-
-function isoFromDate(dateObject: Date): string {
-  return (
-    padNumber(dateObject.getFullYear(), 4) +
-    "-" +
-    padNumber(dateObject.getMonth() + 1, 2) +
-    "-" +
-    padNumber(dateObject.getDate(), 2)
-  );
-}
-
-function dateFromIso(isoString: string): Date {
-  const pieces = isoString.split("-");
-  return new Date(
-    parseInt(pieces[0], 10),
-    parseInt(pieces[1], 10) - 1,
-    parseInt(pieces[2], 10)
-  );
-}
-
-function addDays(dateObject: Date, dayCount: number): Date {
-  const copy = new Date(dateObject.getTime());
-  copy.setDate(copy.getDate() + dayCount);
-  return copy;
-}
-
-/** Validate a (year, month, day) triple as a real calendar date. */
-function isoFromParts(year: number, month: number, day: number): string {
-  const candidate = new Date(year, month - 1, day);
-  if (
-    candidate.getFullYear() !== year ||
-    candidate.getMonth() !== month - 1 ||
-    candidate.getDate() !== day
-  ) {
-    return "";
-  }
-  return isoFromDate(candidate);
 }
 
 function presetRange(presetName: string): [Date, Date] | null {
@@ -158,279 +130,67 @@ function presetRange(presetName: string): [Date, Date] | null {
 
 // ── DateRangeField: segmented manual entry ──────────────────────────────
 
-function segmentBuffer(segment: HTMLInputElement): string {
-  return segment.dataset.typedDigits || "";
-}
-
-// The numeric bounds of a date part plus the value an empty part jumps to on
-// the first ArrowUp/ArrowDown (day/month start at 01, year at the current year
-// rather than 0001).
-interface PartRange {
-  min: number;
-  max: number;
-  empty: number;
-}
-
-function partRange(datePart: string): PartRange {
-  if (datePart === "month") return { min: 1, max: 12, empty: 1 };
-  if (datePart === "year") {
-    return { min: 1, max: 9999, empty: new Date().getFullYear() };
-  }
-  return { min: 1, max: 31, empty: 1 }; // day
-}
-
-interface DigitEntry {
-  buffer: string;
-  complete: boolean;
-}
-
-// Fold a freshly typed digit into a part's buffer, clamping to the part's max
-// and deciding whether to auto-advance. A digit that cannot validly extend the
-// current value (e.g. 9 into a ≤12 month, or a second digit pushing past the
-// max) commits as a zero-padded single digit and completes; an ambiguous digit
-// that could still take another (month 1 → 10/11/12) stays pending.
-//
-// Invariant: complete === true MUST imply buffer.length === width, because
-// syncHiddenFromSegments re-derives completeness from buffer length — that is
-// why a completing single digit is padded to full width before returning.
-function applyDigit(
-  buffer: string,
-  digit: string,
-  width: number,
-  max: number
-): DigitEntry {
-  if (buffer.length >= width) buffer = ""; // restart an already-full part
-  let candidate = buffer + digit;
-  if (parseInt(candidate, 10) > max) candidate = digit; // overflow → fresh ones digit
-  const value = parseInt(candidate, 10);
-  // Strict >: value*10 <= max means another digit could still land in range.
-  const complete = candidate.length === width || value * 10 > max;
-  if (complete) candidate = padNumber(value, width);
-  return { buffer: candidate, complete };
-}
-
-function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
-  segment.dataset.typedDigits = buffer;
-  if (buffer === "") {
-    segment.value = "";
-    return;
-  }
-  const placeholder = segment.getAttribute("placeholder") ?? "";
-  if (segment.dataset.datePart === "year") {
-    // Fill the placeholder from the right: typing 19 into YYYY shows YY19.
-    segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
-  } else {
-    // Day/month show a pending single digit zero-padded: typing 1 shows 01.
-    segment.value = buffer.padStart(placeholder.length, "0");
-  }
-}
-
-function segmentsForSide(picker: HTMLElement, side: string): HTMLInputElement[] {
-  return Array.from(
-    picker.querySelectorAll<HTMLInputElement>(`input[data-date-side="${side}"]`)
-  );
-}
-
-/** Recompute one hidden ISO input from its side's segment buffers. */
-function syncHiddenFromSegments(picker: HTMLElement, side: string): boolean {
-  const hidden = picker.querySelector<HTMLInputElement>(
-    `input[data-date-range-hidden="${side}"]`
-  )!;
-  const partValues: Record<string, string> = {};
-  let complete = true;
-  segmentsForSide(picker, side).forEach((segment) => {
-    const buffer = segmentBuffer(segment);
-    if (buffer.length !== parseInt(segment.getAttribute("maxlength") ?? "", 10)) {
-      complete = false;
-    }
-    partValues[segment.dataset.datePart ?? ""] = buffer;
-  });
-  const previousValue = hidden.value;
-  if (complete) {
-    hidden.value = isoFromParts(
-      parseInt(partValues.year, 10),
-      parseInt(partValues.month, 10),
-      parseInt(partValues.day, 10)
-    );
-  } else {
-    hidden.value = "";
-  }
-  const changed = hidden.value !== previousValue;
-  if (changed) dispatchDateRangeChange(picker);
-  return changed;
-}
-
-/** Push an ISO value (or "") into a side's segments and hidden input WITHOUT
- * dispatching date-range:change — the write half shared with prefill hydration
- * (#263), which runs on a detached, not-yet-connected clone and must stay
- * silent. Returns whether the hidden value changed. Null-guarded so partial
- * markup (synthetic fixtures, malformed ISO) degrades to a no-op, not a throw. */
-export function writeSideValue(picker: HTMLElement, side: string, isoString: string): boolean {
-  const hidden = picker.querySelector<HTMLInputElement>(
-    `input[data-date-range-hidden="${side}"]`
-  );
-  if (!hidden) return false;
-  const previousValue = hidden.value;
-  hidden.value = isoString;
-  let partValues: Record<string, string> = { year: "", month: "", day: "" };
-  if (isoString) {
-    const pieces = isoString.split("-");
-    partValues = { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
-  }
-  segmentsForSide(picker, side).forEach((segment) => {
-    setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""] ?? "");
-  });
-  return hidden.value !== previousValue;
-}
-
-/** Push an ISO value (or "") into a side's segments and hidden input. */
-function setSideValue(picker: HTMLElement, side: string, isoString: string): void {
-  if (writeSideValue(picker, side, isoString)) dispatchDateRangeChange(picker);
-}
-
 function initField(picker: HTMLElement, calendarState: CalendarState): void {
   const field = picker.querySelector<HTMLElement>("[data-date-range-field]")!;
-  const segments = Array.from(
-    picker.querySelectorAll<HTMLInputElement>("input[data-date-part]")
-  );
-
-  // Adopt server-rendered values (prefilled filter) as typed buffers.
-  segments.forEach((segment) => {
-    if (segment.value) setSegmentBuffer(segment, segment.value);
-  });
-
-  // Clicking anywhere in the container that is not a date part activates
-  // the first date part.
-  field.addEventListener("mousedown", (event) => {
-    const target = event.target as Element;
-    if (target.closest("input[data-date-part]")) return;
-    if (target.closest("[data-date-range-calendar-toggle]")) return;
-    event.preventDefault();
-    segments[0].focus();
-  });
-
-  segments.forEach((segment, segmentIndex) => {
-    segment.addEventListener("keydown", (event) => {
-      if (event.key === "Tab") return; // native Tab / Shift+Tab navigation
-      if (event.key === "Enter") return; // let the filter form submit
-      if (event.key === "Backspace" || event.key === "Delete") {
-        event.preventDefault();
-        setSegmentBuffer(segment, "");
-        syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
-        return;
-      }
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      // Arrow keys move between parts (Left/Right) or step the focused part's
-      // value (Up/Down); handled before the digit-only path below. Out-of-range
-      // index clamps (no wrap); Up/Down clamp at the part's range ends.
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        const step = event.key === "ArrowRight" ? 1 : -1;
-        const target = segments[segmentIndex + step];
-        if (target) {
-          target.focus();
-        }
-        return;
-      }
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        event.preventDefault();
-        const range = partRange(segment.dataset.datePart ?? "");
-        const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
-        const buffer = segmentBuffer(segment);
-        let next: number;
-        if (buffer === "") {
-          next = range.empty;
-        } else {
-          next = parseInt(buffer, 10) + (event.key === "ArrowUp" ? 1 : -1);
-        }
-        if (next < range.min) next = range.min;
-        if (next > range.max) next = range.max;
-        setSegmentBuffer(segment, padNumber(next, width));
-        syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
-        return;
-      }
-      event.preventDefault();
-      if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
-      const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
-      const max = partRange(segment.dataset.datePart ?? "").max;
-      const { buffer, complete } = applyDigit(
-        segmentBuffer(segment),
-        event.key,
-        width,
-        max
-      );
-      setSegmentBuffer(segment, buffer);
-      syncHiddenFromSegments(picker, segment.dataset.dateSide ?? "");
-      if (complete && segmentIndex + 1 < segments.length) {
-        segments[segmentIndex + 1].focus();
-      }
-    });
-    // Swallow any input that bypassed keydown (e.g. IME/paste).
-    segment.addEventListener("input", () => {
-      setSegmentBuffer(segment, segmentBuffer(segment));
-    });
-    segment.addEventListener("focus", () => {
-      if (calendarState) calendarState.refreshFromField();
-    });
+  bindSegmentField({
+    picker,
+    field,
+    resolveHidden: (candidateSide) => resolveHidden(picker, candidateSide),
+    onCommit: () => dispatchDateRangeChange(picker),
+    onFocus: () => calendarState?.refreshFromField(),
   });
 }
 
 // ── DateRangeCalendar: popup month grid ────────────────────────────────
 
-function createCalendarState(
-  picker: HTMLElement
-): { state: CalendarState; bindDismiss: () => () => void } {
+function createCalendarState(picker: HTMLElement): CalendarState {
   const popup = picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
   const grid = popup.querySelector<HTMLElement>("[data-date-range-grid]")!;
   const monthLabel = popup.querySelector<HTMLElement>("[data-date-range-month-label]")!;
-
-  const today = new Date();
+  const dayTemplate = popup.querySelector<HTMLTemplateElement>(
+    '[data-date-range-template="day"]',
+  );
+  const toggleButton = picker.querySelector<HTMLElement>(
+    "[data-date-range-calendar-toggle]",
+  );
+  // The static (panel) variant lives inside the quick bar's OWN <drop-down> — it
+  // must never call open()/close() on that unrelated ancestor. It has no toggle
+  // either, so bindCalendarPopupHost's click/aria wiring no-ops naturally; only
+  // `staticAlways` is needed to make isOpen() report true forever.
+  const staticCalendar = picker.hasAttribute("data-static-calendar");
 
   function hiddenValue(side: string): string {
-    return picker.querySelector<HTMLInputElement>(
-      `input[data-date-range-hidden="${side}"]`
-    )!.value;
+    return resolveHidden(picker, side)?.value ?? "";
   }
 
   const state: CalendarState = {
-    open: false,
-    viewYear: today.getFullYear(),
-    viewMonth: today.getMonth(),
+    view: todayView(),
     startIso: "",
     endIso: "",
     anchor: "",
     hoverIso: "",
     readOnly: false,
     refreshFromField() {
-      if (state.open) return;
+      if (host.isOpen()) return;
       state.startIso = hiddenValue("min");
       state.endIso = hiddenValue("max");
     },
   };
 
   function syncSelectionToField(): void {
-    setSideValue(picker, "min", state.startIso);
-    setSideValue(picker, "max", state.endIso);
+    const commit = () => dispatchDateRangeChange(picker);
+    const resolve = (side: string) => resolveHidden(picker, side);
+    setSideValue(picker, "min", resolve, commit, state.startIso);
+    setSideValue(picker, "max", resolve, commit, state.endIso);
   }
 
-  function openPopup(): void {
+  function syncViewFromHidden(): void {
     state.startIso = hiddenValue("min");
     state.endIso = hiddenValue("max");
     state.anchor = state.startIso && state.endIso ? "end" : state.startIso ? "start" : "";
     state.readOnly = Boolean(state.startIso && state.endIso);
     state.hoverIso = "";
-    const focusDate = state.startIso ? dateFromIso(state.startIso) : new Date();
-    state.viewYear = focusDate.getFullYear();
-    state.viewMonth = focusDate.getMonth();
-    state.open = true;
-    popup.classList.remove("hidden");
-    render();
-  }
-
-  function closePopup(): void {
-    state.open = false;
-    state.hoverIso = "";
-    popup.classList.add("hidden");
+    state.view = state.startIso ? viewFromIso(state.startIso) : todayView();
   }
 
   function clearSelection(): void {
@@ -486,8 +246,7 @@ function createCalendarState(
     state.endIso = isoFromDate(range[1]);
     state.anchor = "end";
     state.readOnly = false;
-    state.viewYear = range[0].getFullYear();
-    state.viewMonth = range[0].getMonth();
+    state.view = { year: range[0].getFullYear(), month: range[0].getMonth() };
     syncSelectionToField();
     render();
   }
@@ -500,79 +259,76 @@ function createCalendarState(
       return [
         state.startIso,
         state.endIso,
-        state.readOnly ? TRACK_MUTED_CLASS : TRACK_FILLED_CLASS,
+        trackVariantClass(state.readOnly ? "muted" : "filled"),
       ];
     }
     if (state.startIso && state.hoverIso && state.hoverIso !== state.startIso) {
       const lower = state.hoverIso < state.startIso ? state.hoverIso : state.startIso;
       const upper = state.hoverIso < state.startIso ? state.startIso : state.hoverIso;
-      return [lower, upper, TRACK_OUTLINED_CLASS];
+      return [lower, upper, trackVariantClass("outlined")];
     }
     return null;
   }
 
   function dayCellClass(isoString: string, inViewMonth: boolean): string {
-    const classes = [DAY_BASE_CLASS];
     const isStart = isoString === state.startIso;
     const isEnd = isoString === state.endIso;
     const isAnchor =
       (state.anchor === "start" && isStart) || (state.anchor === "end" && isEnd);
+    // The day's own look: one COMPLETE generated variant, never assembled from
+    // parts. (Hand-combining rounding/fill/dimming is what left the filled
+    // variants square-cornered.)
+    let variant: "default" | "selected" | "adjacent" | "anchor";
+    if (isAnchor && !state.readOnly) variant = "anchor";
+    else if (isStart || isEnd) variant = "selected";
+    else variant = inViewMonth ? "default" : "adjacent";
+    const classes = [dayVariantClass(variant)];
+    // The track is the one genuinely ADDITIVE layer — it paints the days
+    // between the endpoints, and deliberately squares their corners so the
+    // run reads as one continuous bar rather than separate pills.
     const track = trackBounds();
-    const inTrack = track !== null && isoString > track[0] && isoString < track[1];
-    if (inTrack) {
-      classes.push(track![2]);
-    } else {
-      classes.push(DAY_ROUNDED_CLASS);
-    }
-    if (isAnchor && !state.readOnly) {
-      classes.push(DAY_ANCHOR_CLASS);
-    } else if (isStart || isEnd) {
-      classes.push(DAY_SELECTED_CLASS);
-    } else if (!inViewMonth) {
-      classes.push(DAY_OUTSIDE_MONTH_CLASS);
+    if (track !== null && isoString > track[0] && isoString < track[1]) {
+      classes.push("rounded-none", track[2]);
     }
     return classes.join(" ");
   }
 
+  const todayIso = isoFromDate(new Date());
+
+  function dayCellAria(isoString: string, inViewMonth: boolean) {
+    const isStart = isoString === state.startIso;
+    const isEnd = isoString === state.endIso;
+    const monthQualifier = inViewMonth ? "" : " (adjacent month)";
+    return {
+      label: `${isoString}${monthQualifier}`,
+      selected: isStart || isEnd,
+      current: isoString === todayIso,
+    };
+  }
+
   function render(): void {
-    monthLabel.textContent = formatCalendarMonthYear(state.viewYear, state.viewMonth) ?? "";
-
-    grid.textContent = "";
-    calendarWeekdayLabels()?.forEach((weekdayLabel) => {
-      const headerCell = document.createElement("span");
-      headerCell.className = WEEKDAY_CLASS;
-      headerCell.textContent = weekdayLabel;
-      grid.appendChild(headerCell);
+    renderMonthCalendar(state.view, {
+      grid,
+      monthLabel,
+      dayTemplate,
+      dayCellClass,
+      dayCellAria,
     });
-
-    const firstOfMonth = new Date(state.viewYear, state.viewMonth, 1);
-    // Monday-first offset of the leading overflow days.
-    const leadingDays = (firstOfMonth.getDay() + 6) % 7;
-    let cellDate = addDays(firstOfMonth, -leadingDays);
-    for (let cellIndex = 0; cellIndex < 42; cellIndex++) {
-      const isoString = isoFromDate(cellDate);
-      const dayButton = document.createElement("button");
-      dayButton.type = "button";
-      dayButton.setAttribute("data-date", isoString);
-      dayButton.className = dayCellClass(
-        isoString,
-        cellDate.getMonth() === state.viewMonth
-      );
-      dayButton.textContent = String(cellDate.getDate());
-      grid.appendChild(dayButton);
-      cellDate = addDays(cellDate, 1);
-    }
   }
 
   // ── Wiring ──
   // The panel variant (data-static-calendar, DateRangePanel) has no toggle:
-  // its calendar flows statically inside a dropdown dialog and never closes.
-  picker
-    .querySelector<HTMLElement>("[data-date-range-calendar-toggle]")
-    ?.addEventListener("click", () => {
-      if (state.open) closePopup();
-      else openPopup();
-    });
+  // its calendar flows statically inside a dropdown dialog and never closes;
+  // bindCalendarPopupHost's click/aria wiring no-ops since toggleButton is null.
+  const host = bindCalendarPopupHost({
+    picker,
+    popup,
+    toggleButton,
+    idPrefix: "date-range-calendar",
+    staticAlways: staticCalendar,
+    beforeOpen: syncViewFromHidden,
+    render,
+  });
 
   grid.addEventListener("click", (event) => {
     const dayButton = (event.target as Element).closest("button[data-date]");
@@ -589,27 +345,7 @@ function createCalendarState(
     render();
   });
 
-  popup
-    .querySelector<HTMLElement>("[data-date-range-prev]")!
-    .addEventListener("click", () => {
-      state.viewMonth -= 1;
-      if (state.viewMonth < 0) {
-        state.viewMonth = 11;
-        state.viewYear -= 1;
-      }
-      render();
-    });
-
-  popup
-    .querySelector<HTMLElement>("[data-date-range-next]")!
-    .addEventListener("click", () => {
-      state.viewMonth += 1;
-      if (state.viewMonth > 11) {
-        state.viewMonth = 0;
-        state.viewYear += 1;
-      }
-      render();
-    });
+  bindCalendarNav(popup, state, render);
 
   popup.querySelectorAll<HTMLElement>("[data-date-range-preset]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -623,7 +359,7 @@ function createCalendarState(
     .querySelector<HTMLElement>("[data-date-range-cancel]")
     ?.addEventListener("click", () => {
       clearSelection();
-      closePopup();
+      host.close();
     });
 
   // Clear: clear the selected dates but keep the popup open.
@@ -638,46 +374,35 @@ function createCalendarState(
   popup
     .querySelector<HTMLElement>("[data-date-range-select]")
     ?.addEventListener("click", () => {
-      closePopup();
+      host.close();
     });
 
-  // The static variant renders its grid immediately and stays open for the
-  // element's whole life — the hosting dropdown owns visibility, so the
-  // outside-click dismiss must NOT fire (it would blank the grid state while
-  // the dialog merely sits hidden).
-  const staticCalendar = picker.hasAttribute("data-static-calendar");
-  if (staticCalendar) openPopup();
+  // The static variant renders its grid immediately and stays visible for the
+  // element's whole life — the hosting (unrelated) <drop-down> owns its own
+  // visibility, so this variant never delegates open()/close() to anything
+  // (staticAlways above keeps `host`'s own delegation a no-op); this just
+  // reuses the same beforeOpen+render sequence as a real open() would run.
+  if (staticCalendar) host.open();
 
-  // Deferred + re-callable so a reconnection (the nested filter builder moves rows,
-  // reconnecting this element) re-binds the outside-click dismiss without re-wiring
-  // the field/calendar listeners, which persist with the moved subtree.
-  const bindDismiss = (): (() => void) =>
-    staticCalendar
-      ? () => {}
-      : bindPopupDismiss({ host: picker, isOpen: () => state.open, close: closePopup });
-
-  return { state, bindDismiss };
+  return state;
 }
 
-// One-time wiring (field + calendar listeners); returns the dismiss-binder.
-function initPicker(picker: HTMLElement): () => () => void {
-  const { state: calendarState, bindDismiss } = createCalendarState(picker);
+// One-time wiring: field + calendar listeners persist with the subtree across
+// htmx swaps and DOM moves (the nested filter builder reorders rows), so
+// there is nothing left to (re)bind on reconnection — unlike the old bespoke
+// popup, which needed its own document-level dismiss listeners rebound.
+function initPicker(picker: HTMLElement): void {
+  const calendarState = createCalendarState(picker);
   initField(picker, calendarState);
-  return bindDismiss;
 }
 
 class DateRangePickerElement extends HTMLElement {
-  private bindDismiss: (() => () => void) | null = null;
-  private cleanup: (() => void) | null = null;
+  private initialized = false;
 
   connectedCallback(): void {
-    if (!this.bindDismiss) this.bindDismiss = initPicker(this); // one-time
-    this.cleanup = this.bindDismiss(); // (re)bind outside-click dismiss
-  }
-
-  disconnectedCallback(): void {
-    this.cleanup?.();
-    this.cleanup = null;
+    if (this.initialized) return;
+    this.initialized = true;
+    initPicker(this);
   }
 }
 

@@ -170,9 +170,69 @@ class DateRangeFieldTest(SimpleTestCase):
             )
 
 
+class CalendarControlButtonTest(SimpleTestCase):
+    """Every calendar control comes from ControlButton, and the day-cell looks
+    are composed from it in Python (then published to TS by codegen). This is
+    the guard against the calendar drifting away from the app's buttons again —
+    that drift is what produced 16px-wide month-nav hit areas and
+    square-cornered selected/adjacent cells."""
+
+    def test_day_variants_all_come_from_control_button(self):
+        from common.components.date_range_picker import CALENDAR_DAY_CLASSES
+
+        self.assertEqual(
+            set(CALENDAR_DAY_CLASSES), {"default", "selected", "adjacent", "anchor"}
+        )
+        for variant, classes in CALENDAR_DAY_CLASSES.items():
+            with self.subTest(variant=variant):
+                # ControlButton's signature bits: the shared control height and
+                # its disabled treatment.
+                self.assertIn("min-h-control", classes)
+                self.assertIn("disabled:opacity-50", classes)
+
+    def test_every_day_variant_is_rounded(self):
+        """Rounding, fill and dimming are orthogonal. Folding them into one
+        if/else chain is exactly what left selected and adjacent-month cells
+        square, so each variant must carry the radius independently."""
+        from common.components.date_range_picker import CALENDAR_DAY_CLASSES
+
+        for variant, classes in CALENDAR_DAY_CLASSES.items():
+            with self.subTest(variant=variant):
+                self.assertIn("rounded-base", classes)
+
+    def test_selected_variant_never_pairs_a_text_colour_with_the_brand_fill(self):
+        """solid-brand carries its own APCA-picked on-colour; adding
+        text-heading beside it is a coin flip on stylesheet order and painted
+        dark text on the blue fill."""
+        from common.components.date_range_picker import CALENDAR_DAY_CLASSES
+
+        for variant in ("selected", "anchor"):
+            with self.subTest(variant=variant):
+                classes = CALENDAR_DAY_CLASSES[variant]
+                self.assertIn("solid-brand", classes)
+                self.assertNotIn("text-heading", classes)
+
+    def test_calendar_declares_no_hand_rolled_button_classes(self):
+        """The module must not regrow a private *_BUTTON_CLASS table."""
+        import common.components.date_range_picker as module
+
+        leftovers = [
+            name
+            for name in vars(module)
+            if name.endswith("_BUTTON_CLASS") or name.endswith("_PRESET_BUTTON_CLASS")
+        ]
+        self.assertEqual(leftovers, [])
+
+
 class DateRangeCalendarTest(SimpleTestCase):
     def render(self):
         return str(DateRangeCalendar(input_name_prefix="filter-date-purchased"))
+
+    def test_renders_the_day_cell_template_for_the_client_to_clone(self):
+        html = self.render()
+        self.assertIn('data-date-range-template="day"', html)
+        # The prototype is a ControlButton, not a bare <button>.
+        self.assertIn("min-h-control", html)
 
     def test_renders_all_presets(self):
         html = self.render()
@@ -204,7 +264,11 @@ class DateRangeCalendarTest(SimpleTestCase):
         self.assertIn("data-date-range-next", html)
 
     def test_starts_hidden(self):
-        self.assertIn('class="hidden absolute', self.render())
+        # attachMenu owns visibility via the `hidden` attribute + `data-menu`
+        # hook (issue #485 follow-up) — no positioning classes of its own.
+        html = self.render()
+        self.assertIn('data-menu=""', html)
+        self.assertIn('hidden=""', html)
 
     def test_all_buttons_are_type_button(self):
         """No button inside the calendar may submit the surrounding filter form."""
@@ -324,7 +388,7 @@ class DateRangePanelTest(SimpleTestCase):
 
     def test_popup_variant_is_unchanged(self):
         # The panel variant must not leak into the existing widget: the flat
-        # bar's DateRangePicker keeps toggle, hidden popup, and full footer.
+        # bar's DateRangePicker keeps toggle, popup calendar, and full footer.
         html = str(
             DateRangePicker(
                 presentation=DEFAULT_PRESENTATION,
@@ -333,7 +397,38 @@ class DateRangePanelTest(SimpleTestCase):
             )
         )
         self.assertIn("data-date-range-calendar-toggle", html)
-        self.assertIn("hidden absolute", html)
+        self.assertIn('data-menu=""', html)
+        self.assertIn('hidden=""', html)
         self.assertIn("data-date-range-cancel", html)
         self.assertIn("data-date-range-select", html)
         self.assertNotIn("data-static-calendar", html)
+
+    def test_popup_variant_hosted_in_date_calendar_dropdown(self):
+        # issue #485 follow-up: the popup (non-panel) variant is hosted in
+        # <drop-down behavior="date-calendar"> so attachMenu owns visibility/
+        # positioning/dismiss; the field div is the positioning anchor.
+        html = str(
+            DateRangePicker(
+                presentation=DEFAULT_PRESENTATION,
+                label="Started",
+                input_name_prefix="filter-started",
+            )
+        )
+        self.assertIn('<drop-down class="block"', html)
+        self.assertIn('behavior="date-calendar"', html)
+        self.assertIn('data-toggle=""', html)
+
+    def test_panel_variant_has_no_dropdown_wrapper(self):
+        # The static-panel variant already lives inside the quick bar's own
+        # <drop-down> (the "Label ▾" host) and must not get a second one.
+        from common.components import DateRangePanel
+
+        html = str(
+            DateRangePanel(
+                presentation=DEFAULT_PRESENTATION,
+                label="Started",
+                input_name_prefix="quick-timestamp_start",
+            )
+        )
+        self.assertNotIn("<drop-down", html)
+        self.assertNotIn("data-toggle", html)

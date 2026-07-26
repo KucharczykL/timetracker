@@ -221,6 +221,14 @@ register_element("date-range-picker", "DateRangePicker", DateRangePickerProps)
 _DateRangePicker = custom_element_builder("date-range-picker")
 
 
+class DatePickerProps(TypedDict):
+    pass
+
+
+register_element("date-picker", "DatePicker", DatePickerProps)
+_DatePicker = custom_element_builder("date-picker")
+
+
 class FilterGroupProps(TypedDict):
     # Root model key (e.g. "game"); the deserializer selects its serialization model
     # from it and the client reads the root bundle as ``models[model]``.
@@ -670,14 +678,14 @@ _Dropdown = custom_element_builder("drop-down")
 # panel constant below — the single source of truth for "what a dropdown panel
 # looks like" (#295: unshared panel styling is how a text token ends up as a
 # background). Width is per-variant.
-_OVERLAY_SURFACE_CLASS = (
+OVERLAY_SURFACE_CLASS = (
     "bg-surface-overlay text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
 _DROPDOWN_PANEL_SURFACE = (
     "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
-    f"{_OVERLAY_SURFACE_CLASS}"
+    f"{OVERLAY_SURFACE_CLASS}"
 )
 _DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
 DROPDOWN_PANEL_OUTLINE_CLASS = f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
@@ -905,7 +913,7 @@ def DropdownDivider() -> Node:
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
 type DropdownBehaviorName = Literal[
-    "menu", "select", "combobox", "inline-combobox", "sheet"
+    "menu", "select", "combobox", "inline-combobox", "date-calendar", "sheet"
 ]
 
 
@@ -1008,7 +1016,7 @@ def BottomSheet(
             class_=(
                 "relative isolate flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
-                f"shadow-lg/50 {_OVERLAY_SURFACE_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
             ),
         )[
             Div(

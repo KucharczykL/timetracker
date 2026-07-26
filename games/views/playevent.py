@@ -16,6 +16,7 @@ from common.components import (
     Cell,
     Column,
     ContentContainer,
+    Fragment,
     GameLink,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
@@ -249,7 +250,11 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             initial["started"] = None
             initial["ended"] = None
             initial["note"] = "0h 00m"
-    form = PlayEventForm(request.POST or None, initial=initial)
+    form = PlayEventForm(
+        request.POST or None,
+        initial=initial,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         form.save()
         if not game_id:
@@ -261,13 +266,20 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Add new playthrough",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-picker.js"),
+        ),
     )
 
 
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
-    form = PlayEventForm(request.POST or None, instance=playevent)
+    form = PlayEventForm(
+        request.POST or None,
+        instance=playevent,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         form.save()
         return HttpResponseRedirect(
@@ -278,7 +290,10 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
         request,
         AddForm(form, request=request),
         title="Edit Play Event",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-picker.js"),
+        ),
     )
 
 

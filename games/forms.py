@@ -1,19 +1,23 @@
+import datetime
 from collections.abc import Mapping
 from typing import cast
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
+from django.utils import timezone
 
 from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
+    DatePicker,
     SearchSelect,
     SearchSelectOption,
     render,
     searchselect_selected,
 )
 from common.components.primitives import Checkbox
+from common.date_time_presentation import DateTimePresentation
 from games.dev_login import prefill_credentials
 from games.models import (
     Device,
@@ -25,7 +29,6 @@ from games.models import (
     Session,
 )
 
-custom_date_widget = forms.DateInput(attrs={"type": "date"})
 custom_datetime_widget = forms.DateTimeInput(
     attrs={"type": "datetime-local"}, format="%Y-%m-%d %H:%M"
 )
@@ -103,9 +106,9 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
             # Maintain the field's explicit required status (usually False for booleans)
             continue
         widget = field.widget
-        # SearchSelect is a self-styled composite component; never stamp the
-        # native-control classes onto it.
-        if isinstance(widget, SearchSelectWidget):
+        # SearchSelect/DatePicker are self-styled composite components; never
+        # stamp the native-control classes onto them.
+        if isinstance(widget, (SearchSelectWidget, DatePickerWidget)):
             continue
         if isinstance(widget, forms.Select):
             control_class = SELECT_CLASS
@@ -246,6 +249,50 @@ class SearchSelectMultiple(SearchSelectWidget):
         return data.get(name)
 
 
+class DatePickerWidget(forms.Widget):
+    """Thin Django adapter that renders a `DatePicker()` component in place
+    of a native `<input type="date">` (issue #485), so the account's
+    DATETIME_FORMAT preference controls the visible segment order. Submits
+    and binds canonical ISO ``YYYY-MM-DD`` through the hidden input
+    unchanged — Django's default `DateField` parsing is untouched."""
+
+    def __init__(self, *, presentation: DateTimePresentation, label: str, attrs=None):
+        super().__init__(attrs)
+        self.presentation = presentation
+        self.label = label
+
+    def _iso_value(self, value) -> str:
+        if value in (None, ""):
+            return ""
+        if isinstance(value, datetime.datetime):
+            # An aware initial (e.g. add_purchase seeds timezone.now()) is
+            # localized to the active account timezone before taking the
+            # date part, so "today" means today in the user's own zone.
+            localized = timezone.localtime(value, self.presentation.timezone)
+            return localized.date().isoformat()
+        if isinstance(value, datetime.date):
+            return value.isoformat()
+        return str(value)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        return render(
+            DatePicker(
+                presentation=self.presentation,
+                label=self.label,
+                name=name,
+                value=self._iso_value(value),
+                input_id=str(final_attrs.get("id", "")),
+                required=bool(final_attrs.get("required")),
+                invalid=final_attrs.get("aria-invalid") == "true",
+                fallback_class=INPUT_CLASS,
+            )
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
 class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -308,7 +355,13 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, default_currency: str, **kwargs):
+    def __init__(
+        self,
+        *args,
+        default_currency: str,
+        presentation: DateTimePresentation,
+        **kwargs,
+    ):
         self.default_currency = default_currency
         super().__init__(*args, **kwargs)
         platform_field = cast(forms.ModelChoiceField, self.fields["platform"])
@@ -319,6 +372,11 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         if not self.initial.get("price_currency"):
             self.initial["price_currency"] = default_currency
         self.fields["price_currency"].widget.attrs["placeholder"] = default_currency
+        for field_name in ("date_purchased", "date_refunded"):
+            self.fields[field_name].widget = DatePickerWidget(
+                presentation=presentation,
+                label=str(self.fields[field_name].label or field_name),
+            )
 
     games = MultipleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
@@ -359,10 +417,8 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     )
 
     class Meta:
-        widgets = {
-            "date_purchased": custom_date_widget,
-            "date_refunded": custom_date_widget,
-        }
+        # date_purchased/date_refunded get DatePickerWidget in __init__
+        # (needs the per-request presentation, unavailable to a class body).
         model = Purchase
         fields = [
             "games",
@@ -465,6 +521,14 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
+    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in ("started", "ended"):
+            self.fields[field_name].widget = DatePickerWidget(
+                presentation=presentation,
+                label=str(self.fields[field_name].label or field_name),
+            )
+
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=SearchSelectWidget(
@@ -481,12 +545,10 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
     )
 
     class Meta:
+        # started/ended get DatePickerWidget in __init__ (needs the
+        # per-request presentation, unavailable to a class body).
         model = PlayEvent
         fields = ["game", "started", "ended", "note", "mark_as_finished"]
-        widgets = {
-            "started": custom_date_widget,
-            "ended": custom_date_widget,
-        }
 
     def save(self, commit=True):
         with transaction.atomic():

@@ -117,6 +117,57 @@ function mountStatic(): HTMLElement {
   return picker;
 }
 
+function pasteInto(input: HTMLInputElement, text: string): void {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+  input.dispatchEvent(event);
+}
+
+describe("date-range-picker paste parsing (#485)", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("parses a pasted ISO date regardless of separator", () => {
+    const picker = mount();
+    const day = picker.querySelector<HTMLInputElement>('input[data-date-part="day"]')!;
+    pasteInto(day, "2026-06-15");
+    expect(
+      picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!.value,
+    ).toBe("2026-06-15");
+
+    pasteInto(day, "2026/06/16");
+    expect(
+      picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!.value,
+    ).toBe("2026-06-16");
+  });
+
+  it("parses a pasted date in the field's own segment order when not ISO-shaped", () => {
+    const picker = mount(); // day, month, year order
+    const day = picker.querySelector<HTMLInputElement>('input[data-date-part="day"]')!;
+    pasteInto(day, "15/06/2026");
+    expect(
+      picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!.value,
+    ).toBe("2026-06-15");
+  });
+
+  it("rejects a pasted 2-digit year", () => {
+    const picker = mount();
+    const day = picker.querySelector<HTMLInputElement>('input[data-date-part="day"]')!;
+    pasteInto(day, "15/06/26");
+    expect(
+      picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!.value,
+    ).toBe("");
+  });
+
+  it("swallows garbage paste text without writing the hidden input", () => {
+    const picker = mount();
+    const day = picker.querySelector<HTMLInputElement>('input[data-date-part="day"]')!;
+    pasteInto(day, "not a date");
+    expect(
+      picker.querySelector<HTMLInputElement>('[data-date-range-hidden="min"]')!.value,
+    ).toBe("");
+  });
+});
+
 describe("date-range-picker static-calendar variant", () => {
   beforeEach(() => {
     document.body.replaceChildren();

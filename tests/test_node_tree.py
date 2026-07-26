@@ -164,7 +164,11 @@ class RealComponentMediaTest(unittest.TestCase):
                 input_name_prefix="played",
             )
         )
-        self.assertEqual(media.js, ("dist/elements/date-range-picker.js",))
+        # Hosted in <drop-down behavior="date-calendar"> (issue #485
+        # follow-up): the outer wrapper's script is collected too.
+        self.assertEqual(
+            media.js, ("dist/elements/drop-down.js", "dist/elements/date-range-picker.js")
+        )
 
     def test_quick_filter_bar_collects_chrome_and_widget_media(self):
         """A QuickFilterBar's media merges its own chrome script with the

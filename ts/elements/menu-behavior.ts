@@ -47,6 +47,10 @@ export interface MenuOptions {
   // the toggle (the widget owns it on the role="combobox" input). Everything
   // else — positioning, outside-click/Escape/Tab close, single-open — is shared.
   inlineTrigger?: boolean;
+  // Daylight between the toggle and the panel's near edge. Default 0 (flush,
+  // every menu/select/combobox dropdown). A date-calendar popup wants visible
+  // separation from the field it anchors to.
+  gap?: number;
 }
 
 export interface MenuController {
@@ -126,7 +130,7 @@ export function attachMenu(
     positionAnchored(toggle, menu, {
       align,
       side: "bottom",
-      gap: 0,
+      gap: options.gap ?? 0,
       // matchToggleWidth applies only to bottom-start.
       matchWidth: matchToggleWidth && align === "start",
       scrollable: true,

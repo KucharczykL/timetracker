@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
 
+from django import forms
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.test import RequestFactory
 
 from common.middleware import TimezoneActivationMiddleware
-from games.forms import SessionForm
+from games.forms import GameStatusChangeForm, SessionForm, custom_datetime_widget
 from games.models import Game, UserPreferences
 from timetracker import settings_resolver
 
@@ -60,3 +61,27 @@ def test_datetime_local_dst_gap_is_rejected_in_the_account_timezone(db):
     assert "couldn’t be interpreted in time zone America/New_York" in str(
         captured["errors"]
     )
+
+
+def test_session_and_game_status_change_datetime_fields_stay_native_pending_485():
+    """Pin: issue #485 gives Purchase/PlayEvent DateField inputs a
+    presentation-aware segmented `<date-picker>`, but explicitly excludes
+    Session.timestamp_start/timestamp_end and GameStatusChange.timestamp —
+    these are DateTimeField (not DateField) rendered via native
+    `type="datetime-local"`, and need a dedicated time-segment design (plus
+    integration with `session-timestamp-buttons.ts`) tracked as a follow-up:
+    https://github.com/KucharczykL/timetracker/issues/511. This test documents
+    the decision and fails loudly if a future change silently swaps these
+    widgets without updating (or closing) that issue."""
+    session_form = SessionForm()
+    for field_name in ("timestamp_start", "timestamp_end"):
+        widget = session_form.fields[field_name].widget
+        assert isinstance(widget, forms.DateTimeInput)
+        assert widget.input_type == "datetime-local"
+        assert widget.format == custom_datetime_widget.format
+
+    status_change_form = GameStatusChangeForm()
+    widget = status_change_form.fields["timestamp"].widget
+    assert isinstance(widget, forms.DateTimeInput)
+    assert widget.input_type == "datetime-local"
+    assert widget.format == custom_datetime_widget.format

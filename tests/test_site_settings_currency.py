@@ -1,12 +1,21 @@
 """The three DEFAULT_CURRENCY consumption sites read the live resolved value."""
 
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
+
+_PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 @pytest.fixture
@@ -66,7 +75,7 @@ def test_form_placeholder_tracks_live_currency(
 
     _set_currency(django_capture_on_commit_callbacks, "EUR")
     placeholder = (
-        PurchaseForm(default_currency="EUR")
+        PurchaseForm(default_currency="EUR", presentation=_PRESENTATION)
         .fields["price_currency"]
         .widget.attrs["placeholder"]
     )
@@ -74,7 +83,7 @@ def test_form_placeholder_tracks_live_currency(
 
     _set_currency(django_capture_on_commit_callbacks, "GBP")
     placeholder = (
-        PurchaseForm(default_currency="GBP")
+        PurchaseForm(default_currency="GBP", presentation=_PRESENTATION)
         .fields["price_currency"]
         .widget.attrs["placeholder"]
     )
@@ -94,7 +103,7 @@ def test_purchase_form_explicit_currency_controls_initial_fallback_and_placehold
     from games.forms import PurchaseForm
     from games.models import Purchase
 
-    form = PurchaseForm(default_currency="EUR")
+    form = PurchaseForm(default_currency="EUR", presentation=_PRESENTATION)
     assert form.initial["price_currency"] == "EUR"
     assert form.fields["price_currency"].widget.attrs["placeholder"] == "EUR"
 
@@ -107,6 +116,7 @@ def test_purchase_form_explicit_currency_controls_initial_fallback_and_placehold
             "type": Purchase.GAME,
         },
         default_currency="EUR",
+        presentation=_PRESENTATION,
     )
     assert bound.is_valid(), bound.errors
     assert bound.cleaned_data["price_currency"] == "EUR"

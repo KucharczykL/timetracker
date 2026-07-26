@@ -47,6 +47,14 @@ type ButtonVariant = Literal[
     "plain",  # borderless navbar nav-link look (colorless)
     "ghost",  # transparent-until-hover dropdown-toggle look (colorless)
 ]
+# How a button's content sits on its main axis. Centered is the button default;
+# "start" is for buttons rendered as a LIST of choices (the date picker's preset
+# column), where a centered label reads as ragged against its neighbours. This
+# is a real parameter rather than a caller `class_` because justify/text
+# utilities collide: Tailwind resolves same-specificity conflicts by stylesheet
+# order, not class-attribute order, so `class_="justify-start"` on a button
+# whose baked class already says `justify-center` wins only by luck.
+type ButtonAlign = Literal["center", "start"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -234,6 +242,7 @@ Link = _html_element("link")
 Select = _html_element("select")
 Option = _html_element("option")
 Optgroup = _html_element("optgroup")
+Noscript = _html_element("noscript")
 # Size token only, no margin: parents own spacing via `gap` (see
 # docs/visual-conventions.md §3), enforced by tests/test_heading_margins.py.
 H1 = _html_element("h1", default_class="text-type-title")
@@ -587,10 +596,20 @@ def TruncatedText(
 # inline-flex keeps every button the same height regardless of content — an
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
 # text-only siblings and step a segmented group's bottom edge.
+# Alignment is NOT baked in here — it comes from _ALIGN_CLASSES via the `align`
+# parameter, so a start-aligned button never carries a losing justify-center.
 _CONTROL_BASE_CLASS = (
-    "font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center "
+    "font-medium text-type-body hover:cursor-pointer inline-flex items-center "
     f"{DISABLED_CONTROL_CLASS}"
 )
+
+# Both axes together: `justify-*` places the flex content, `text-*` the text
+# inside it. They must move as a unit — setting only one leaves a wrapped or
+# multi-child label disagreeing with its own box.
+_ALIGN_CLASSES: dict[ButtonAlign, str] = {
+    "center": "justify-center text-center",
+    "start": "justify-start text-start",
+}
 
 # Shared by EVERY button-shaped variant. Height is the canonical control
 # height (min-h-control = 42px, from --height-control), floored not fixed so a
@@ -601,7 +620,7 @@ _CONTROL_BASE_CLASS = (
 CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 _FILLED_VARIANT_CLASS = (
-    "gap-2 text-center leading-5 focus:outline-hidden focus:ring-4 rounded-base "
+    "gap-2 leading-5 focus:outline-hidden focus:ring-4 rounded-base "
     f"{CONTROL_SIZE_CLASS}"
 )
 
@@ -700,6 +719,42 @@ _PLAIN_VARIANT_CLASS = (
 )
 
 
+def control_button_class(
+    *,
+    color: ButtonColor = "blue",
+    variant: ButtonVariant = "filled",
+    align: ButtonAlign = "center",
+) -> str:
+    """The exact class string :class:`ControlButton` renders for a combination.
+
+    Exists so a consumer that cannot *call* the component still gets the
+    component's look from one source. The date picker's calendar is the case:
+    its 42 day cells are built client-side in TypeScript, so the day-cell
+    variants are composed from this and published to TS by codegen
+    (``manage.py gen_element_types``) rather than hand-mirrored in a ``.ts``
+    file — which is how they drifted before (square corners on selected and
+    adjacent-month cells).
+
+    ControlButton itself renders through this, so the two cannot disagree.
+    """
+    if variant == "plain":
+        # The navbar nav-link owns its whole layout (flex justify-between,
+        # md:p-0) and sits outside both the base and the sizing contract, so
+        # neither the base nor alignment applies to it.
+        return _PLAIN_VARIANT_CLASS
+    parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align]]
+    if variant == "outline":
+        parts.append(_OUTLINE_VARIANT_CLASS)
+    elif variant == "ghost":
+        parts.append(_GHOST_VARIANT_CLASS)
+    else:
+        if variant == "filled":
+            parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
+        else:
+            parts += [_SEGMENTED_VARIANT_CLASS, _SEGMENTED_COLOR_CLASSES[color]]
+    return " ".join(parts)
+
+
 class ControlButton(BaseComponent):
     """The one polymorphic button/link builder — single home for button styling
     and the ``<a>``-vs-``<button>`` choice (issue #235).
@@ -728,6 +783,12 @@ class ControlButton(BaseComponent):
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
 
+    ``align="start"`` left-aligns the content for buttons rendered as a list of
+    choices (the date picker's preset column); the default is centered. It is a
+    parameter and not a caller ``class_`` because the justify/text utilities
+    collide and Tailwind breaks that tie by stylesheet order, not class order.
+    ``variant="plain"`` ignores it, owning its own layout.
+
     Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
     — which routes into the inner button in post mode. Extra attributes take the
     usual forms: dynamic pairs through the positional slot, static ones as
@@ -740,6 +801,7 @@ class ControlButton(BaseComponent):
         *,
         color: ButtonColor = "blue",
         variant: ButtonVariant = "filled",
+        align: ButtonAlign = "center",
         href: str = "",
         method: str = "",
         action: str = "",
@@ -748,34 +810,9 @@ class ControlButton(BaseComponent):
         _children: Children = None,
         **kwargs: object,
     ) -> None:
-        if variant == "outline":
-            class_attrs: list[HTMLAttribute] = [
-                ("class", _CONTROL_BASE_CLASS),
-                ("class", _OUTLINE_VARIANT_CLASS),
-            ]
-        elif variant == "ghost":
-            class_attrs = [
-                ("class", _CONTROL_BASE_CLASS),
-                ("class", _GHOST_VARIANT_CLASS),
-            ]
-        elif variant == "plain":
-            class_attrs = [("class", _PLAIN_VARIANT_CLASS)]
-        else:
-            variant_class = (
-                _FILLED_VARIANT_CLASS
-                if variant == "filled"
-                else _SEGMENTED_VARIANT_CLASS
-            )
-            color_table = (
-                _FILLED_COLOR_CLASSES
-                if variant == "filled"
-                else _SEGMENTED_COLOR_CLASSES
-            )
-            class_attrs = [
-                ("class", _CONTROL_BASE_CLASS),
-                ("class", variant_class),
-                ("class", color_table[color]),
-            ]
+        class_attrs: list[HTMLAttribute] = [
+            ("class", control_button_class(color=color, variant=variant, align=align))
+        ]
         self._merged_attributes: list[HTMLAttribute] = [
             *class_attrs,
             *_coerce_attrs(attrs),
