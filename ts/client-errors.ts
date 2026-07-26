@@ -25,8 +25,32 @@ export interface ReportOptions {
   toast?: boolean;
 }
 
+// `crypto.randomUUID` is SECURE-CONTEXT ONLY: on a plain-http origin that is
+// not localhost — a LAN dev server at http://10.0.0.x:8000, say — it is
+// `undefined`, and so is `crypto.subtle`. `crypto.getRandomValues` is not
+// gated that way, so it covers the case; Math.random is the last resort.
+//
+// This is load-bearing, not defensive noise: errorId() runs inside
+// reportClientError, which is itself called from `catch` blocks all over the
+// app. A throw here escapes the catch that invoked it and turns a HANDLED
+// degradation into a hard failure — e.g. a missing `Temporal` (Safari < 26)
+// went from "calendar header lacks its month name" to "calendar renders
+// nothing and its toggle does nothing", because the reporting call in the
+// catch threw before the caller could return its fallback.
 function errorId(): string {
-  return crypto.randomUUID().slice(0, 8);
+  const cryptoApi = globalThis.crypto;
+  try {
+    const uuid = cryptoApi?.randomUUID?.();
+    if (uuid) return uuid.slice(0, 8);
+    if (cryptoApi?.getRandomValues) {
+      const bytes = new Uint8Array(4);
+      cryptoApi.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+  } catch {
+    // Fall through: an id is a correlation aid, never a reason to fail.
+  }
+  return Math.random().toString(16).slice(2, 10).padStart(8, "0");
 }
 
 /** Log a browser-side error to the server + console, deduped, best-effort toast.
@@ -57,13 +81,20 @@ export function reportClientError(
   }
 
   if (typeof fetch !== "undefined" && typeof document !== "undefined") {
-    void fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
-      body: JSON.stringify({ error_id: id, context, detail, url: location.href }),
-    }).catch(() => {
-      // Reporting must never break the page: swallow network/HTTP failure.
-    });
+    // The try wraps the CALL SET-UP, not just the promise: getCsrfToken() and
+    // JSON.stringify run synchronously while building the request, so a throw
+    // there would escape past the .catch() and out of this function.
+    try {
+      void fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+        body: JSON.stringify({ error_id: id, context, detail, url: location.href }),
+      }).catch(() => {
+        // Reporting must never break the page: swallow network/HTTP failure.
+      });
+    } catch {
+      // Same contract for a synchronous failure while assembling the request.
+    }
   }
 
   return id;

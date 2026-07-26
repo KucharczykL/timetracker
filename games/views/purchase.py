@@ -302,6 +302,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
 @login_required
 def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
+    presentation = date_time_presentation_for_request(request)
     initial = {
         "date_purchased": timezone.now(),
         "price_currency": default_currency,
@@ -312,6 +313,7 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
             request.POST or None,
             initial=initial,
             default_currency=default_currency,
+            presentation=presentation,
         )
         if form.is_valid():
             if request.POST.get("pricing_mode") == "per_game":
@@ -337,13 +339,18 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                     "platform": game.platform,
                 },
                 default_currency=default_currency,
+                presentation=presentation,
             )
             # Chained from add_game: game and platform are pre-filled, so focus
             # the first empty field the user still needs to fill instead.
             form.fields["games"].widget.autofocus = False
             form.fields["price"].widget.attrs["autofocus"] = "autofocus"
         else:
-            form = PurchaseForm(initial=initial, default_currency=default_currency)
+            form = PurchaseForm(
+                initial=initial,
+                default_currency=default_currency,
+                presentation=presentation,
+            )
 
     return render_page(
         request,
@@ -356,6 +363,7 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         title="Add New Purchase",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-picker.js"),
             ModuleScript("dist/add_purchase.js"),
         ),
     )
@@ -374,6 +382,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         instance=purchase,
         initial=initial,
         default_currency=default_currency,
+        presentation=date_time_presentation_for_request(request),
     )
     if form.is_valid():
         form.save()
@@ -384,6 +393,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         title="Edit Purchase",
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-picker.js"),
             ModuleScript("dist/add_purchase.js"),
         ),
     )

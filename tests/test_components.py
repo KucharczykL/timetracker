@@ -1014,6 +1014,35 @@ class ControlButtonTest(SimpleTestCase):
         red = str(components.ControlButton(variant="outline", color="red")["x"])
         self.assertEqual(red, default)
 
+    def test_align_defaults_to_centered(self):
+        for variant in ("filled", "segmented", "outline", "ghost"):
+            with self.subTest(variant=variant):
+                html = str(components.ControlButton(variant=variant)["x"])
+                self.assertIn("justify-center", html)
+                self.assertIn("text-center", html)
+
+    def test_align_start_left_aligns_and_leaves_no_conflicting_utility(self):
+        """The date picker's preset column renders buttons as a list of
+        choices. Both axes must move together, and — critically — the losing
+        centered utility must be ABSENT, not merely overridden: Tailwind
+        resolves same-specificity conflicts by stylesheet order, not by
+        class-attribute order, so leaving both in place wins only by luck."""
+        for variant in ("filled", "segmented", "outline", "ghost"):
+            with self.subTest(variant=variant):
+                html = str(
+                    components.ControlButton(variant=variant, align="start")["x"]
+                )
+                self.assertIn("justify-start", html)
+                self.assertIn("text-start", html)
+                self.assertNotIn("justify-center", html)
+                self.assertNotIn("text-center", html)
+
+    def test_plain_variant_ignores_align(self):
+        # The navbar nav-link owns its own layout (justify-between).
+        html = str(components.ControlButton(variant="plain", align="start")["x"])
+        self.assertNotIn("justify-start", html)
+        self.assertIn("justify-between", html)
+
     def test_outline_variant_takes_extra_shape_classes(self):
         html = str(
             components.ControlButton([("class", "rounded-e-lg")], variant="outline")[

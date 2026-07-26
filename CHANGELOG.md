@@ -58,8 +58,45 @@
 * Add a **Download settings.ini** action to `/admin-settings`, exporting every
   currently-stored site default to a `[timetracker]` ini snapshot for backup
   or promotion to an env-pinned value (#392).
+* Purchase (date purchased/refunded) and play-event (started/ended) date
+  fields now follow the account's date/time format preference instead of the
+  browser/OS locale. A new `<date-picker>` element — sharing its segmented
+  entry and calendar popup with the filter bar's `<date-range-picker>` —
+  renders the configured segment order and separator, with a hidden ISO input
+  keeping form submission and persisted dates canonical regardless of display
+  profile; a native `<input type="date">` inside `<noscript>` covers
+  JS-disabled clients (#485). Session and GameStatusChange `datetime-local`
+  fields are unchanged, tracked separately (#511).
 
 ### Fixed
+* The calendar's controls are real `ControlButton`s instead of four hand-rolled
+  class tables, so they match every other button in the app and can no longer
+  drift from it. Day cells, `‹`/`›` month nav, the preset column and the
+  Cancel/Clear/Select footer all now come from the shared primitive. This fixes
+  three visible defects at their source rather than one at a time: month-nav
+  buttons were 16px wide (under the 24x24 WCAG 2.5.8 minimum this repo already
+  enforces), selected and adjacent-month day cells rendered square-cornered, and
+  selected days briefly painted dark text on the blue fill. Because the day
+  cells are cloned client-side, their look is composed in Python and published
+  to TypeScript by codegen (`ts/generated/calendar-classes.ts`) with the cell
+  markup itself coming from a server-rendered `<template>` — the same pattern
+  `SearchSelect` uses for option rows — so no calendar styling is hand-written
+  in TypeScript any more. `ControlButton` gained an `align` parameter for the
+  left-aligned preset list.
+* Client-side date and time formatting now works in Safari. The presentation
+  layer uses `Temporal`, which Safari still lacks (verified absent on iOS
+  26.5), so every date/time formatted in the browser failed there — the
+  calendar rendered no month name or weekday row, and session-list times fell
+  back to their server-rendered form. A vendored `temporal-polyfill` (33 KB
+  gzipped) now loads ahead of the modules that need it, and self-guards so
+  browsers with a native `Temporal` keep it.
+* Client-error reporting no longer throws in non-secure contexts, which had
+  turned handled failures into hard ones. `crypto.randomUUID()` is
+  secure-context-only, so on a plain-http origin (a LAN dev server, say) it is
+  `undefined` — and because the reporter is called *from* `catch` blocks, its
+  own throw escaped the `catch` that invoked it. That is what escalated the
+  missing `Temporal` above from a blank calendar header into a calendar with
+  no day cells whose toggle did nothing at all.
 * Popover tooltips (`<pop-over>`) are now reachable on touch devices. Previously
   they showed only on hover/focus, so on phones the trigger — including the
   filter builder's incomplete-condition "!" cue and every truncated-name/price

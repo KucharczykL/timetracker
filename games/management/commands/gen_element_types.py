@@ -9,6 +9,11 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components  # noqa: F401
 import common.criteria
+from common.components.date_range_picker import (
+    CALENDAR_DAY_CLASSES,
+    CALENDAR_TRACK_CLASSES,
+    CALENDAR_WEEKDAY_CLASS,
+)
 from common.date_time_presentation import DateTimePresentationConfig
 from common.components.custom_elements import render_props_module
 from common.components.ts_codegen import (
@@ -83,6 +88,23 @@ class Command(BaseCommand):
             ),
             output_dir / "date-time-presentation.ts": render_filter_metadata_module(
                 [DateTimePresentationConfig]
+            ),
+            # The calendar's day-cell look, composed in Python from
+            # ControlButton (common/components/date_range_picker.py). The 42
+            # cells are cloned client-side, so without this the classes would
+            # have to be hand-mirrored in TypeScript — which is how they drifted
+            # into square corners and a sub-minimum hit area.
+            output_dir / "calendar-classes.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant(
+                        "CALENDAR_DAY_CLASSES", dict[str, str], CALENDAR_DAY_CLASSES
+                    ),
+                    TsConstant(
+                        "CALENDAR_TRACK_CLASSES", dict[str, str], CALENDAR_TRACK_CLASSES
+                    ),
+                    TsConstant("CALENDAR_WEEKDAY_CLASS", str, CALENDAR_WEEKDAY_CLASS),
+                ],
             ),
         }
         for target, content in targets.items():

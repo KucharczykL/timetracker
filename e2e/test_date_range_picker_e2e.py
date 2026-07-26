@@ -63,6 +63,7 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
     <title>Date range picker E2E</title>
     <link rel="stylesheet" href="/static/base.css">
     <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/date-range-picker.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
 </head>
@@ -164,7 +165,9 @@ def _day_cell(page, iso_date: str):
 
 
 def _popup_is_open(page) -> bool:
-    return "hidden" not in (page.locator(POPUP).get_attribute("class") or "")
+    # attachMenu owns visibility via the `hidden` attribute, not a CSS class
+    # (issue #485 follow-up: the popup is hosted in <drop-down>).
+    return page.locator(POPUP).get_attribute("hidden") is None
 
 
 def _submit_filter_bar(page):

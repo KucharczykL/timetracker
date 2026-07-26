@@ -87,6 +87,31 @@ describe("client-errors", () => {
     expect(() => reportClientError("ctx-net", "x")).not.toThrow();
   });
 
+  // A plain-http LAN origin (http://10.0.0.x:8000) is not a secure context, so
+  // crypto.randomUUID and crypto.subtle are undefined there. reportClientError
+  // runs inside catch blocks app-wide, so throwing here escapes the catch that
+  // called it and turns a handled degradation into a hard failure — that is how
+  // a missing Temporal took the whole calendar (and its toggle) down on a phone.
+  it("still reports when crypto.randomUUID is unavailable (insecure context)", () => {
+    vi.stubGlobal("crypto", { getRandomValues: (bytes: Uint8Array) => bytes.fill(7) });
+    let id = "";
+    expect(() => {
+      id = reportClientError("ctx-insecure", "no randomUUID");
+    }).not.toThrow();
+    expect(id).toHaveLength(8);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reports when the crypto API is absent entirely", () => {
+    vi.stubGlobal("crypto", undefined);
+    let id = "";
+    expect(() => {
+      id = reportClientError("ctx-nocrypto", "no crypto at all");
+    }).not.toThrow();
+    expect(id).toHaveLength(8);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("suppresses the toast when options.toast is false but still POSTs", () => {
     reportClientError("ctx-notoast", "detail", { toast: false });
     expect(toast).not.toHaveBeenCalled();
