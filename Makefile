@@ -131,6 +131,33 @@ dev: ensure-python ensure-node gen-element-types
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
 		"pnpm exec tsc --watch"
 
+# `make dev` reachable from another device on the LAN (phone testing of touch
+# targets, responsive layout). Binds every interface instead of loopback, and
+# points APP_URL at the LAN address — that one variable feeds BOTH ALLOWED_HOSTS
+# and CSRF_TRUSTED_ORIGINS, so without it Django refuses the request and form
+# POSTs fail CSRF. The address is auto-detected from the default route, so this
+# needs no per-machine config; override with `make dev-lan LAN_HOST=<ip>`.
+#
+# NB: this serves a DEBUG=True server (tracebacks, settings, the admin/admin
+# dev login) to everything that can reach the port — including any VPN subnet
+# the host is on, not just the LAN. Run it while you need it, not permanently.
+LAN_HOST ?= $(shell ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[\d.]+')
+
+dev-lan: export DEV_LOGIN_PREFILL := admin:admin
+# Both origins: APP_URL alone REPLACES the derived hosts, so listing only the
+# LAN address makes http://localhost:8000 fail with DisallowedHost on the very
+# machine running the server (and the browser preview with it).
+dev-lan: export APP_URL = http://$(LAN_HOST):$(DEV_PORT),http://localhost:$(DEV_PORT)
+dev-lan: ensure-python ensure-node gen-element-types
+	@test -n "$(LAN_HOST)" || { echo "==> Could not detect a LAN address; pass LAN_HOST=<ip>."; exit 1; }
+	@echo "==> Open http://$(LAN_HOST):$(DEV_PORT) on your phone (login admin/admin)."
+	@pnpm concurrently \
+		--names "Django,Tailwind,TS" \
+		--prefix-colors "blue,green,magenta" \
+		"uv run --frozen python -Wa manage.py runserver 0.0.0.0:$(DEV_PORT)" \
+		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
+		"pnpm exec tsc --watch"
+
 
 caddy:
 	caddy run --watch
