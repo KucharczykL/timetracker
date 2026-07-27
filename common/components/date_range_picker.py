@@ -168,7 +168,6 @@ def date_segment_input(
     *,
     part: DateTimeSegmentSpec,
     side: str,
-    label: str,
     value: str,
     side_label: str = "",
     segment_id: str = "",
@@ -178,10 +177,16 @@ def date_segment_input(
     empty for a single-date field. ``segment_id`` stamps a DOM id on this one
     segment — used to put the field's real id on the first segment so a
     ``<label for=>`` focuses it (single-date fields only; range sides have no
-    associated ``<label>`` today)."""
-    aria_label = (
-        f"{label} {side_label} {part.name}" if side_label else f"{label} {part.name}"
-    )
+    associated ``<label>`` today).
+
+    The segment names only its own part, never the field. The enclosing
+    ``role="group"`` already carries the field name, and a screen reader
+    announces that on entry — repeating it per segment made a single date
+    field say "Purchased" three times before reading a value, and again on
+    every arrow across the row. This is what native ``datetime-local``
+    exposes: the group is named once, the segments say "year"/"month"/"day".
+    """
+    aria_label = f"{side_label} {part.name}" if side_label else part.name
     return Input(
         inputmode="numeric",
         autocomplete="off",
@@ -202,7 +207,6 @@ def date_segment_input(
 def date_segment_group(
     *,
     side: str,
-    label: str,
     iso_value: str,
     presentation: DateTimePresentation,
     side_label: str = "",
@@ -221,7 +225,6 @@ def date_segment_group(
             date_segment_input(
                 part=part,
                 side=side,
-                label=label,
                 value=initial_values.get(part.name, ""),
                 side_label=side_label,
                 segment_id=first_segment_id if index == 0 else "",
@@ -275,7 +278,6 @@ def DateRangeField(
         ),
         date_segment_group(
             side="min",
-            label=label,
             iso_value=min_value,
             presentation=presentation,
             side_label="from",
@@ -283,7 +285,6 @@ def DateRangeField(
         Span(class_="text-body select-none px-0.5")["–"],
         date_segment_group(
             side="max",
-            label=label,
             iso_value=max_value,
             presentation=presentation,
             side_label="to",
@@ -301,9 +302,16 @@ def DateRangeField(
                 ),
             )[Safe(CALENDAR_ICON_SVG)]
         )
-    return Div(field_attrs, class_=FIELD_CONTAINER_CLASS, data_date_range_field="")[
-        *children
-    ]
+    # role="group" + the field name, matching DatePickerField: the six segments
+    # have no <label> of their own, so without it a screen reader reaches
+    # "from year" with nothing saying which date field it belongs to.
+    return Div(
+        field_attrs,
+        role="group",
+        aria_label=label,
+        class_=FIELD_CONTAINER_CLASS,
+        data_date_range_field="",
+    )[*children]
 
 
 def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
