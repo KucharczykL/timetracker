@@ -1,3 +1,5 @@
+import { nowInPresentationZone } from "../date-time-presentation.js";
+
 /**
  * @description Formats Date to a UTC string accepted by the datetime-local input field.
  * @param {Date} date
@@ -22,11 +24,15 @@ class SessionTimestampButtonsElement extends HTMLElement {
             const type = button.getAttribute("data-type");
             if (!target || !type) continue;
             const targetElement = document.querySelector(`#id_${target}`);
-            if (!(targetElement instanceof HTMLInputElement)) return;
+            if (!(targetElement instanceof HTMLInputElement)) continue;
             button.addEventListener("click", (event) => {
                 event.preventDefault();
                 if (type == "now") {
-                    targetElement.value = toISOUTCString(new Date());
+                    // The server reads this field in the account's timezone, so
+                    // the browser's wall clock would store the wrong instant for
+                    // anyone whose two zones differ.
+                    targetElement.value =
+                        nowInPresentationZone() ?? toISOUTCString(new Date());
                 } else if (type == "copy") {
                     const oppositeName =
                         targetElement.name == "timestamp_start"

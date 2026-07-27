@@ -279,6 +279,25 @@ export function calendarWeekdayLabels(): readonly string[] | null {
   }
 }
 
+/**
+ * The current wall clock in the contract's zone, shaped for a `datetime-local`
+ * input. `null` when the contract is unusable, so callers can degrade to the
+ * browser's clock rather than losing the button entirely.
+ */
+export function nowInPresentationZone(): string | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+
+  try {
+    return Temporal.Now.plainDateTimeISO(presentation.timeZone).toString({
+      smallestUnit: "minute",
+    });
+  } catch (error) {
+    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    return null;
+  }
+}
+
 /** Format a session range with the server-provided browser presentation contract. */
 export function formatSessionTimeRange(startISO: string, endISO: string | null): string | null {
   const presentation = getPresentation();
