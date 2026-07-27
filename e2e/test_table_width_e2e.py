@@ -13,6 +13,7 @@ from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import settle_layout
 from games.models import (
     Device,
     Game,
@@ -141,7 +142,7 @@ def test_no_data_table_cell_wraps_at_any_viewport(
     page.goto(f"{live_server.url}{reverse(url_name)}")
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
-        page.evaluate("() => document.fonts.ready")
+        settle_layout(page)
         # Note is the one column allowed to wrap; see the test below.
         wrapped = page.evaluate(COUNT_WRAPPED_CELLS, ["Note"])
         assert wrapped == [], f"{url_name} wraps at {width}px: {wrapped}"
@@ -157,7 +158,7 @@ def test_no_game_detail_mini_table_cell_wraps(
     page.goto(f"{live_server.url}{reverse('games:view_game', args=[game.pk])}")
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
-        page.evaluate("() => document.fonts.ready")
+        settle_layout(page)
         wrapped = page.evaluate(COUNT_WRAPPED_CELLS, ["Note"])
         assert wrapped == [], f"game detail wraps at {width}px: {wrapped}"
 
@@ -168,7 +169,7 @@ def test_the_note_column_still_wraps(authenticated_page: Page, live_server, popu
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_playevents')}")
-    page.evaluate("() => document.fonts.ready")
+    settle_layout(page)
 
     lines = page.evaluate(
         """() => {
@@ -199,7 +200,7 @@ def test_scroll_region_is_reachable_and_named(
     page = authenticated_page
     page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    page.evaluate("() => document.fonts.ready")
+    settle_layout(page)
 
     # By role and name, so the visually hidden caption is proven to survive the
     # browser's own accessible-name computation rather than just being present.
