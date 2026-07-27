@@ -75,7 +75,7 @@ breakage. Iterate on `check-fast`, gate on `check` before pushing.
 `pyproject.toml` pins `requires-python = ">=3.14,<4"`, and the code **depends on
 3.14-only syntax** — most notably **PEP 758** unparenthesized `except A, B:`
 ("catch both types", not the Python-2 `except A as B` binding). The pinned
-**ruff 0.15.x** infers target 3.14 from `requires-python` and *formats to* that
+**ruff 0.16.x** infers target 3.14 from `requires-python` and *formats to* that
 bare form, so the source cannot be made to parse on an older interpreter without
 fighting the formatter. On Python ≤3.13 these lines raise
 `SyntaxError: multiple exception types must be parenthesized`.
