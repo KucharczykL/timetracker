@@ -495,11 +495,25 @@ the fit budget.
 
 ### 4a — sticky first column
 
-On the first cell of every row of a data table:
+On the first cell of every row of a data table, **from `md` up only**:
 
 ```
-sticky start-0 z-[2] bg-inherit
+md:sticky md:start-0 md:z-[2] md:bg-inherit
 ```
+
+**The gate is forced, not chosen.** Below `md` the same cell carries
+`SHRINKABLE_COLUMN_CLASS` (`max-md:w-full max-md:max-w-0`), whose `max-w-0` is
+the only thing telling the auto-table algorithm that the name column may go
+below its content width — the mechanism Phase 0 shipped to keep the actions
+column on screen at 390px. A sticky cell does not collapse that way. Pinned
+without the gate, the table outgrew its wrapper by ~200px at 390px and
+`e2e/test_truncated_text_e2e.py` failed `assert 555 <= 358`. The two features
+are mutually exclusive, and a pinned column has nothing to hold still on a
+viewport priority-plus has already cut to two columns. `md:scroll-ps-[19rem]`
+on the region was already gated the same way.
+
+The failure reproduces only in a full suite run — the test passes in isolation —
+so a run that sees it once should bisect rather than write it off as flake.
 
 `start-0`, not `left-0` — the table carries `rtl:text-right`
 (`primitives.py:2259`). Under `dir="rtl"` the scroll start edge is the right, and
@@ -533,11 +547,12 @@ cell-relative ones only once the cell gains `filter` — so **`position: sticky`
 creates a stacking context but never a containing block**, and no portaling was
 ever required.
 
-So the cell carries, alongside the pin:
+So the cell carries, alongside the pin (`md:`-gated with it — below `md` the
+cell is not sticky, so it creates no stacking context to escape):
 
 ```
-has-[[data-pop-over-panel]:not([hidden])]:z-[3]
-has-[[data-menu]:not([hidden])]:z-[3]
+md:has-[[data-pop-over-panel]:not([hidden])]:z-[3]
+md:has-[[data-menu]:not([hidden])]:z-[3]
 ```
 
 **`z-[3]`, not something larger.** The occluders are sibling pinned cells at 2,

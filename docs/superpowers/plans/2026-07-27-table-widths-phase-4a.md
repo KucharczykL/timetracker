@@ -35,6 +35,17 @@ That is not a testing workaround: it is the same CSS, the same overflow, the sam
 
 **Do not try to make the JS page overflow.** There is no viewport width at which it does, and an executor who "widens the viewport until it scrolls" will burn the whole task and then weaken an assertion to make it pass.
 
+## Correction applied during execution
+
+Tasks 1-3 shipped with every class in `PINNED_COLUMN_CLASS` **`md:`-gated**, not
+as this plan's unqualified `sticky start-0 z-[2] bg-inherit`. Below `md` the same
+cell carries `max-md:max-w-0`, the shrink allowance that lets the name column
+collapse so the actions column survives at 390px; a sticky cell will not
+collapse, and the table overflowed its wrapper by ~200px. Caught by the full
+`make check` (`assert 555 <= 358`), bisected to Task 1, and reproducible only in
+a full suite run — the test passes in isolation, which is how an earlier run
+misread it as CPU contention. See `.superpowers/sdd/task-3-report.md`.
+
 ## Already verified — do not re-litigate
 
 Measured in Chrome 149 before this plan was written:
