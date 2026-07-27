@@ -297,6 +297,43 @@ def test_clicking_container_activates_first_part(live_server, page):
     assert focused == "day:min"
 
 
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_date_range_picker_e2e")
+def test_clicking_container_activates_the_nearest_part(live_server, page):
+    """A click in the blank space focuses the closest segment, not the first.
+
+    The test above clicks at (5, 5), where nearest and first are the same
+    segment — so it passes either way and pins nothing. This one clicks at the
+    far end, where focusing the first segment would teleport the caret across
+    the whole field.
+    """
+
+    page.goto(live_server.url + "/test-date-range-picker/")
+    field = page.locator(PICKER + " [data-date-range-field]")
+    box = field.bounding_box()
+    assert box is not None
+
+    field.click(position={"x": box["width"] - 4, "y": box["height"] / 2})
+
+    focused = page.evaluate(
+        "document.activeElement.getAttribute('data-date-part') + ':' +"
+        "document.activeElement.getAttribute('data-date-side')"
+    )
+    last = page.evaluate(
+        """
+        (() => {
+          const parts = document.querySelectorAll(
+            '[data-date-range-field] input[data-date-part]'
+          );
+          const final = parts[parts.length - 1];
+          return final.getAttribute('data-date-part') + ':' +
+                 final.getAttribute('data-date-side');
+        })()
+        """
+    )
+    assert focused == last
+
+
 # ── Calendar popup ──────────────────────────────────────────────────────────
 
 

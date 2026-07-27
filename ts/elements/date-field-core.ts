@@ -1,11 +1,25 @@
 /**
- * Shared segmented-date-entry engine, extracted from date-range-picker.ts so
- * date-picker.ts (single date) and date-range-picker.ts (two dates) drive the
- * same grammar instead of each growing its own. A "side" is an opaque id
- * ("min"/"max" for the range picker, "value" for a single date-picker); the
- * hidden-ISO-input lookup and the commit callback are injected so each caller
- * keeps its own hidden-input naming contract unchanged.
+ * Shared segmented date/time entry engine, driven by an explicit per-segment
+ * config rather than by a hard-coded idea of what a date is.
+ *
+ * date-picker.ts (single date) and date-range-picker.ts (two dates) bind the
+ * same grammar. A "side" is an opaque id ("min"/"max" for the range picker,
+ * "value" for a single date-picker); the hidden-ISO-input lookup and the
+ * commit callback are injected so each caller keeps its own hidden-input
+ * naming contract unchanged.
+ *
+ * Every segment's bounds, width, and stepping behaviour come from
+ * `segmentSpec()`, which reads the active presentation contract first and
+ * falls back to an exhaustive per-name table. There is deliberately no
+ * fall-through: a name the contract does not define is left unbound instead of
+ * being silently treated as a day.
  */
+
+import {
+  dayPeriodLabels,
+  segmentRules,
+} from "../date-time-presentation.js";
+import type { SegmentName } from "../generated/date-time-presentation.js";
 
 // ── Date helpers (all local-time; values are ISO YYYY-MM-DD strings) ──
 
@@ -53,27 +67,124 @@ export function isoFromParts(year: number, month: number, day: number): string {
   return isoFromDate(candidate);
 }
 
+// ── Segment config ───────────────────────────────────────────────────────
+
+/** Everything the engine needs to know about one segment. */
+export interface SegmentSpec {
+  name: SegmentName;
+  kind: "numeric" | "day_period";
+  /** Typed width — how many digits fill this segment. */
+  width: number;
+  placeholder: string;
+  minimum: number;
+  maximum: number;
+  /** Where an empty segment jumps on the first ArrowUp/ArrowDown. */
+  emptyValue: number;
+  /**
+   * Fill the placeholder from the right while typing (`19` into `YYYY` shows
+   * `YY19`) instead of zero-padding from the left (`1` into `MM` shows `01`).
+   */
+  fillFromRight: boolean;
+}
+
+interface SegmentBehaviour {
+  emptyValue: (minimum: number) => number;
+  fillFromRight: boolean;
+  /** Bounds used only when the presentation contract is unreadable. */
+  fallback: { minimum: number; maximum: number };
+}
+
+/**
+ * Per-name behaviour, exhaustive over `SegmentName` so the compiler rejects a
+ * new segment kind that nobody taught the engine about. This is what replaced
+ * the old `partRange` if/else, whose final `return` treated *any* unrecognised
+ * part as a day (1–31).
+ *
+ * The fallback bounds only apply when the contract cannot be read; the hour's
+ * real range depends on `hour_cycle`, which is exactly why bounds are carried
+ * in the contract rather than derived here.
+ */
+const SEGMENT_BEHAVIOUR: Record<SegmentName, SegmentBehaviour> = {
+  // Jumping an empty year to 0001 is useless; start from this year.
+  year: {
+    emptyValue: () => new Date().getFullYear(),
+    fillFromRight: true,
+    fallback: { minimum: 1, maximum: 9999 },
+  },
+  month: {
+    emptyValue: (minimum) => minimum,
+    fillFromRight: false,
+    fallback: { minimum: 1, maximum: 12 },
+  },
+  day: {
+    emptyValue: (minimum) => minimum,
+    fillFromRight: false,
+    fallback: { minimum: 1, maximum: 31 },
+  },
+  hour: {
+    emptyValue: (minimum) => minimum,
+    fillFromRight: false,
+    fallback: { minimum: 0, maximum: 23 },
+  },
+  minute: {
+    emptyValue: (minimum) => minimum,
+    fillFromRight: false,
+    fallback: { minimum: 0, maximum: 59 },
+  },
+  day_period: {
+    emptyValue: (minimum) => minimum,
+    fillFromRight: false,
+    fallback: { minimum: 0, maximum: 1 },
+  },
+};
+
+function isSegmentName(value: string): value is SegmentName {
+  return value in SEGMENT_BEHAVIOUR;
+}
+
+const specCache = new WeakMap<HTMLInputElement, SegmentSpec>();
+
+/**
+ * The config for one rendered segment, or `null` if its `data-date-part` is
+ * not a name the engine knows — in which case the caller leaves it alone
+ * rather than guessing at its bounds.
+ */
+export function segmentSpec(segment: HTMLInputElement): SegmentSpec | null {
+  const cached = specCache.get(segment);
+  if (cached) return cached;
+
+  const name = segment.dataset.datePart ?? "";
+  if (!isSegmentName(name)) return null;
+  const behaviour = SEGMENT_BEHAVIOUR[name];
+  const rules = segmentRules(name);
+  const minimum = rules?.minimumValue ?? behaviour.fallback.minimum;
+  const maximum = rules?.maximumValue ?? behaviour.fallback.maximum;
+  const placeholder = segment.getAttribute("placeholder") ?? "";
+  const spec: SegmentSpec = {
+    name,
+    kind: rules?.kind ?? (name === "day_period" ? "day_period" : "numeric"),
+    width: parseInt(segment.getAttribute("maxlength") ?? "", 10) || placeholder.length,
+    placeholder,
+    minimum,
+    maximum,
+    emptyValue: behaviour.emptyValue(minimum),
+    fillFromRight: behaviour.fillFromRight,
+  };
+  specCache.set(segment, spec);
+  return spec;
+}
+
 // ── Segment digit entry ─────────────────────────────────────────────────
 
+/**
+ * The typed buffer stays on the element (`data-typed-digits`) rather than in
+ * engine-side state, because the filter builder clones widget markup while it
+ * is still detached and prefills it through `writeSideValue` — with no bound
+ * engine in existence yet. Keeping it on the node is what lets that clone
+ * carry its value into the DOM and be adopted when it is finally bound.
+ */
 export function segmentBuffer(segment: HTMLInputElement): string {
   return segment.dataset.typedDigits || "";
-}
-
-// The numeric bounds of a date part plus the value an empty part jumps to on
-// the first ArrowUp/ArrowDown (day/month start at 01, year at the current year
-// rather than 0001).
-export interface PartRange {
-  min: number;
-  max: number;
-  empty: number;
-}
-
-export function partRange(datePart: string): PartRange {
-  if (datePart === "month") return { min: 1, max: 12, empty: 1 };
-  if (datePart === "year") {
-    return { min: 1, max: 9999, empty: new Date().getFullYear() };
-  }
-  return { min: 1, max: 31, empty: 1 }; // day
 }
 
 export interface DigitEntry {
@@ -106,18 +217,49 @@ export function applyDigit(
   return { buffer: candidate, complete };
 }
 
+/**
+ * Announce a segment's current value to assistive technology.
+ *
+ * Stamped here, at runtime, rather than server-side: `aria-valuenow` changes
+ * on every keystroke, so it is widget state, not document structure — and a
+ * JS write to a focused text input's `.value` is not reliably announced, which
+ * is why arrow-stepping was silent to a screen reader before this. The
+ * enclosing `role="group"` and its label are server-rendered and stay so.
+ */
+function applySegmentAria(
+  segment: HTMLInputElement,
+  spec: SegmentSpec,
+  buffer: string,
+): void {
+  segment.setAttribute("role", "spinbutton");
+  segment.setAttribute("aria-valuemin", String(spec.minimum));
+  segment.setAttribute("aria-valuemax", String(spec.maximum));
+  if (buffer === "" || buffer.length !== spec.width) {
+    segment.removeAttribute("aria-valuenow");
+    segment.removeAttribute("aria-valuetext");
+    return;
+  }
+  const value = parseInt(buffer, 10);
+  segment.setAttribute("aria-valuenow", String(value));
+  if (spec.kind === "day_period") {
+    // A two-state toggle: the number alone ("0") announces nothing useful.
+    const labels = dayPeriodLabels();
+    if (labels) segment.setAttribute("aria-valuetext", value === 0 ? labels.am : labels.pm);
+  }
+}
+
 export function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
   segment.dataset.typedDigits = buffer;
+  const spec = segmentSpec(segment);
+  if (spec) applySegmentAria(segment, spec, buffer);
   if (buffer === "") {
     segment.value = "";
     return;
   }
-  const placeholder = segment.getAttribute("placeholder") ?? "";
-  if (segment.dataset.datePart === "year") {
-    // Fill the placeholder from the right: typing 19 into YYYY shows YY19.
+  const placeholder = spec?.placeholder ?? segment.getAttribute("placeholder") ?? "";
+  if (spec?.fillFromRight) {
     segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
   } else {
-    // Day/month show a pending single digit zero-padded: typing 1 shows 01.
     segment.value = buffer.padStart(placeholder.length, "0");
   }
 }
@@ -193,9 +335,8 @@ export function syncHiddenFromSegments(
   let complete = true;
   segmentsForSide(picker, side).forEach((segment) => {
     const buffer = segmentBuffer(segment);
-    if (buffer.length !== parseInt(segment.getAttribute("maxlength") ?? "", 10)) {
-      complete = false;
-    }
+    const spec = segmentSpec(segment);
+    if (!spec || buffer.length !== spec.width) complete = false;
     partValues[segment.dataset.datePart ?? ""] = buffer;
   });
   const previousValue = hidden.value;
@@ -253,7 +394,7 @@ export interface SegmentFieldOptions {
   picker: HTMLElement;
   /** The field container: holds every side's segments (a range field holds
    * both min and max). A mousedown anywhere inside that isn't a segment or
-   * the calendar toggle focuses the first segment; Left/Right navigation and
+   * the calendar toggle focuses the nearest segment; Left/Right navigation and
    * auto-advance flow across ALL segments in DOM order, spanning sides —
    * only hidden-input sync is scoped to the completing segment's own side. */
   field: HTMLElement;
@@ -266,30 +407,76 @@ export interface SegmentFieldOptions {
   onFocus?: () => void;
 }
 
-/** Wire every segment in a field: digit typing, Backspace/Delete, Arrow
- * navigation/stepping (flat across sides), paste parsing (scoped to the
- * pasted-into segment's own side), and click-anywhere-focuses-first. */
-export function bindSegmentField(options: SegmentFieldOptions): void {
-  const segments = Array.from(
-    options.field.querySelectorAll<HTMLInputElement>("input[data-date-part]"),
-  );
+/**
+ * The bound state of one field: its segments, their specs, and the listeners
+ * wiring the grammar onto them.
+ */
+class SegmentedField {
+  private readonly options: SegmentFieldOptions;
+  private readonly segments: HTMLInputElement[];
 
-  // Adopt server-rendered values (prefilled field) as typed buffers.
-  segments.forEach((segment) => {
-    if (segment.value) setSegmentBuffer(segment, segment.value);
-  });
+  constructor(options: SegmentFieldOptions) {
+    this.options = options;
+    this.segments = Array.from(
+      options.field.querySelectorAll<HTMLInputElement>("input[data-date-part]"),
+    );
+  }
 
-  options.field.addEventListener("mousedown", (event) => {
-    const target = event.target as Element;
-    if (target.closest("input[data-date-part]")) return;
-    if (target.closest("[data-date-range-calendar-toggle], [data-date-picker-calendar-toggle]")) {
-      return;
+  bind(): void {
+    // Adopt server-rendered values (prefilled field) as typed buffers, which
+    // also stamps each segment's initial ARIA state.
+    this.segments.forEach((segment) => {
+      if (segment.value) setSegmentBuffer(segment, segment.value);
+      else setSegmentBuffer(segment, "");
+    });
+
+    this.options.field.addEventListener("mousedown", (event) => {
+      const target = event.target as Element;
+      if (target.closest("input[data-date-part]")) return;
+      if (
+        target.closest("[data-date-range-calendar-toggle], [data-date-picker-calendar-toggle]")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      this.nearestSegment(event as MouseEvent)?.focus();
+    });
+
+    this.segments.forEach((segment, index) => this.bindSegment(segment, index));
+  }
+
+  /**
+   * The segment closest to a click in the field's blank space. Focusing the
+   * first one instead teleports focus to the month when the user taps beside
+   * the minutes — wrong on any field wide enough to have blank space, and
+   * wrong on every wrapped one.
+   */
+  private nearestSegment(event: MouseEvent): HTMLInputElement | undefined {
+    let best: HTMLInputElement | undefined;
+    let bestDistance = Infinity;
+    for (const segment of this.segments) {
+      const box = segment.getBoundingClientRect();
+      const horizontal = Math.max(box.left - event.clientX, event.clientX - box.right, 0);
+      const vertical = Math.max(box.top - event.clientY, event.clientY - box.bottom, 0);
+      const distance = Math.hypot(horizontal, vertical);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = segment;
+      }
     }
-    event.preventDefault();
-    segments[0]?.focus();
-  });
+    return best ?? this.segments[0];
+  }
 
-  segments.forEach((segment, segmentIndex) => {
+  private commitSide(side: string): void {
+    syncHiddenFromSegments(
+      this.options.picker,
+      side,
+      this.options.resolveHidden,
+      this.options.onCommit,
+    );
+  }
+
+  private bindSegment(segment: HTMLInputElement, index: number): void {
     const side = segment.dataset.dateSide ?? "";
     segment.addEventListener("keydown", (event) => {
       if (event.key === "Tab") return; // native Tab / Shift+Tab navigation
@@ -297,7 +484,7 @@ export function bindSegmentField(options: SegmentFieldOptions): void {
       if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         setSegmentBuffer(segment, "");
-        syncHiddenFromSegments(options.picker, side, options.resolveHidden, options.onCommit);
+        this.commitSide(side);
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -307,36 +494,36 @@ export function bindSegmentField(options: SegmentFieldOptions): void {
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         const step = event.key === "ArrowRight" ? 1 : -1;
-        const target = segments[segmentIndex + step];
-        if (target) target.focus();
+        this.segments[index + step]?.focus();
         return;
       }
+      const spec = segmentSpec(segment);
+      if (!spec) return; // unknown segment: never guess at its bounds
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
-        const range = partRange(segment.dataset.datePart ?? "");
-        const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
         const buffer = segmentBuffer(segment);
-        let next: number;
-        if (buffer === "") {
-          next = range.empty;
-        } else {
-          next = parseInt(buffer, 10) + (event.key === "ArrowUp" ? 1 : -1);
-        }
-        if (next < range.min) next = range.min;
-        if (next > range.max) next = range.max;
-        setSegmentBuffer(segment, padNumber(next, width));
-        syncHiddenFromSegments(options.picker, side, options.resolveHidden, options.onCommit);
+        let next =
+          buffer === ""
+            ? spec.emptyValue
+            : parseInt(buffer, 10) + (event.key === "ArrowUp" ? 1 : -1);
+        if (next < spec.minimum) next = spec.minimum;
+        if (next > spec.maximum) next = spec.maximum;
+        setSegmentBuffer(segment, padNumber(next, spec.width));
+        this.commitSide(side);
         return;
       }
       event.preventDefault();
       if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
-      const width = parseInt(segment.getAttribute("maxlength") ?? "", 10);
-      const max = partRange(segment.dataset.datePart ?? "").max;
-      const { buffer, complete } = applyDigit(segmentBuffer(segment), event.key, width, max);
+      const { buffer, complete } = applyDigit(
+        segmentBuffer(segment),
+        event.key,
+        spec.width,
+        spec.maximum,
+      );
       setSegmentBuffer(segment, buffer);
-      syncHiddenFromSegments(options.picker, side, options.resolveHidden, options.onCommit);
-      if (complete && segmentIndex + 1 < segments.length) {
-        segments[segmentIndex + 1].focus();
+      this.commitSide(side);
+      if (complete && index + 1 < this.segments.length) {
+        this.segments[index + 1].focus();
       }
     });
     // Swallow any input that bypassed keydown (e.g. IME); paste is handled
@@ -347,14 +534,29 @@ export function bindSegmentField(options: SegmentFieldOptions): void {
     segment.addEventListener("paste", (event) => {
       event.preventDefault();
       const text = (event as ClipboardEvent).clipboardData?.getData("text") ?? "";
-      const partNamesInOrder = segmentsForSide(options.picker, side).map(
+      const partNamesInOrder = segmentsForSide(this.options.picker, side).map(
         (candidate) => candidate.dataset.datePart ?? "",
       );
       const iso = parsePastedDate(text, partNamesInOrder);
-      if (iso) setSideValue(options.picker, side, options.resolveHidden, options.onCommit, iso);
+      if (iso) {
+        setSideValue(
+          this.options.picker,
+          side,
+          this.options.resolveHidden,
+          this.options.onCommit,
+          iso,
+        );
+      }
     });
     segment.addEventListener("focus", () => {
-      options.onFocus?.();
+      this.options.onFocus?.();
     });
-  });
+  }
+}
+
+/** Wire every segment in a field: digit typing, Backspace/Delete, Arrow
+ * navigation/stepping (flat across sides), paste parsing (scoped to the
+ * pasted-into segment's own side), and click-anywhere-focuses-nearest. */
+export function bindSegmentField(options: SegmentFieldOptions): void {
+  new SegmentedField(options).bind();
 }

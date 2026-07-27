@@ -7,9 +7,13 @@ const calendarWeekdayLabels = vi.hoisted(() =>
   vi.fn(() => ["M1", "T2", "W3", "T4", "F5", "S6", "S7"]),
 );
 
+// segmentRules/dayPeriodLabels return null here, so the engine exercises its
+// contract-less fallback path — these pages carry no presentation contract.
 vi.mock("../date-time-presentation.js", () => ({
   formatCalendarMonthYear,
   calendarWeekdayLabels,
+  segmentRules: () => null,
+  dayPeriodLabels: () => null,
 }));
 
 function segment(part: string, width: number, placeholder: string): string {
