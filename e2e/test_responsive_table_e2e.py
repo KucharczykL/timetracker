@@ -14,6 +14,7 @@ from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page
 
+from e2e.helpers import settle_layout
 from games.models import (
     Device,
     Game,
@@ -50,21 +51,6 @@ VISIBLE_HEADER_COUNT = """
     (cell) => cell.getClientRects().length > 0
 ).length
 """
-
-
-def _settle(page: Page) -> None:
-    """Wait out the element's coalesced relayout: a viewport resize is
-    delivered to the ResizeObserver during a frame's rendering steps, which
-    queues the refit for the next frame — so the decision lands two frames
-    after the resize, plus one for paint."""
-    page.evaluate("() => document.fonts.ready")
-    page.evaluate(
-        """() => new Promise((resolve) =>
-            requestAnimationFrame(() =>
-                requestAnimationFrame(() => requestAnimationFrame(resolve))
-            )
-        )"""
-    )
 
 
 @pytest.fixture
@@ -145,7 +131,7 @@ def test_no_wrapper_scroll_at_any_viewport(
     page.goto(f"{live_server.url}{reverse(url_name)}")
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
-        _settle(page)
+        settle_layout(page)
         dimensions = page.evaluate(REGION_DIMENSIONS)
         assert dimensions["scroll"] <= dimensions["client"] + 1, (
             f"{url_name} still scrolls at {width}px: {dimensions}"
@@ -160,7 +146,7 @@ def test_name_column_keeps_the_floor_at_mobile(
     page = authenticated_page
     page.set_viewport_size({"width": 390, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    _settle(page)
+    settle_layout(page)
     name_cell_width = page.evaluate(
         "() => document.querySelector('tbody th').getBoundingClientRect().width"
     )
@@ -178,7 +164,7 @@ def test_columns_reappear_as_the_viewport_widens(
     visible_counts = []
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})
-        _settle(page)
+        settle_layout(page)
         visible_counts.append(page.evaluate(VISIBLE_HEADER_COUNT))
     assert visible_counts == sorted(visible_counts), visible_counts
     assert visible_counts[0] < visible_counts[-1], visible_counts
@@ -194,7 +180,7 @@ def test_a_swapped_in_row_inherits_the_current_decision(
     page = authenticated_page
     page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    _settle(page)
+    settle_layout(page)
     hidden_before = page.evaluate(
         """() => {
             const row = document.querySelector('tbody tr');

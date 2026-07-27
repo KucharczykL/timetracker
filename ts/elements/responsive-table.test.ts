@@ -81,9 +81,21 @@ describe("columnCosts", () => {
   });
 });
 
-function mountTable(headers: string[][]): {
+/** jsdom has no layout engine, so a region only has a width if it is told. */
+function setClientWidth(element: HTMLElement, width: number): void {
+  Object.defineProperty(element, "clientWidth", {
+    value: width,
+    configurable: true,
+  });
+}
+
+function mountTable(
+  headers: string[][],
+  regionWidth?: number,
+): {
   element: ResponsiveTableElement;
   table: HTMLTableElement;
+  region: HTMLElement;
 } {
   const element = document.createElement(
     "responsive-table",
@@ -103,9 +115,11 @@ function mountTable(headers: string[][]): {
         )}</tr></tbody>
       </table>
     </div>`;
+  const region = element.querySelector('[role="region"]') as HTMLElement;
+  if (regionWidth !== undefined) setClientWidth(region, regionWidth);
   document.body.appendChild(element);
   const table = element.querySelector("table") as HTMLTableElement;
-  return { element, table };
+  return { element, table, region };
 }
 
 describe("<responsive-table> applyDecision", () => {
@@ -147,6 +161,18 @@ describe("<responsive-table> applyDecision", () => {
     element.applyDecision([300, 100, 100], 380, false);
     expect(table.classList.contains(hiddenColumnClass(1))).toBe(false);
     expect(table.classList.contains(hiddenColumnClass(2))).toBe(false);
+  });
+
+  it("reports settled once the decision matches the region width", () => {
+    const { element } = mountTable([["1"], ["1"]], 400);
+    expect(element.isSettled()).toBe(true);
+  });
+
+  it("is unsettled the moment the region changes width", () => {
+    const { element, region } = mountTable([["1"], ["1"]], 400);
+    setClientWidth(region, 200);
+    // No observer has fired yet — the stale decision is what is rendered.
+    expect(element.isSettled()).toBe(false);
   });
 
   it("survives connect in an environment with no layout engine", () => {

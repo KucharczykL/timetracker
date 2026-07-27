@@ -99,6 +99,7 @@ export class ResponsiveTableElement extends HTMLElement {
   private policies: ColumnPolicy[] = [];
   private naturalWidths: number[] = [];
   private hasMeasurement = false;
+  private fittedWidth: number | null = null;
   private relayoutQueued = false;
   private resizeObserver: ResizeObserver | null = null;
   private mutationObserver: MutationObserver | null = null;
@@ -215,6 +216,23 @@ export class ResponsiveTableElement extends HTMLElement {
     if (availableWidth === 0) return;
     const aboveMd = window.matchMedia?.(ABOVE_MD_QUERY).matches ?? true;
     this.applyDecision(this.naturalWidths, availableWidth, aboveMd);
+    this.fittedWidth = availableWidth;
+  }
+
+  /** Whether the rendered decision matches the current layout: no refit
+   * queued, and the region has not changed width since the decision was
+   * computed.
+   *
+   * A resize invalidates this synchronously — the region reports its new
+   * width before the ResizeObserver has even fired — so a caller that has to
+   * observe the settled table (an e2e measurement) can poll this instead of
+   * guessing how many frames the coalesced refit takes.
+   */
+  isSettled(): boolean {
+    const region = this.region;
+    // Nothing to fit while the region has no width (a display:none ancestor).
+    if (!region || region.clientWidth === 0) return true;
+    return !this.relayoutQueued && this.fittedWidth === region.clientWidth;
   }
 
   // Public seam for tests (jsdom has no layout engine, so tests supply the

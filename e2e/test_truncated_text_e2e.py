@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Locator, Page, Route, expect
 
+from e2e.helpers import settle_layout
 from games.models import Game, Platform, Purchase, Session
 
 LONG_NAME = (
@@ -40,10 +41,6 @@ def touch_page(live_server, browser, django_user_model):
     page.wait_for_url(f"{live_server.url}/tracker**")
     yield page
     context.close()
-
-
-def _wait_for_fonts(page: Page) -> None:
-    page.evaluate("() => document.fonts.ready")
 
 
 def _host(page: Page, text: str):
@@ -84,7 +81,7 @@ def test_desktop_overflow_hover_focus_and_short_name_noop(
     Game.objects.create(name="Short", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    _wait_for_fonts(page)
+    settle_layout(page)
     long_host = _host(page, LONG_NAME)
     long_clip = long_host.locator("[data-truncated-clip]")
     long_panel = long_host.locator("[data-pop-over-panel]")
@@ -134,7 +131,7 @@ def test_different_sort_name_moves_into_the_name_tooltip(touch_page: Page, live_
     Game.objects.create(name="Same Name", sort_name="Same Name", platform=platform)
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    _wait_for_fonts(page)
+    settle_layout(page)
 
     expect(
         page.get_by_role("columnheader", name="Sort Name", exact=True)
@@ -210,7 +207,7 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
 
     for width in (390, 640, 768):
         page.set_viewport_size({"width": width, "height": 844})
-        _wait_for_fonts(page)
+        settle_layout(page)
         host = _host(page, LONG_NAME)
         wrapper = host.locator(
             "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), "
@@ -271,7 +268,7 @@ def test_desktop_name_column_does_not_absorb_the_tables_slack(
 
     page.set_viewport_size({"width": 1280, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    _wait_for_fonts(page)
+    settle_layout(page)
 
     container_width = page.evaluate(
         "() => document.querySelector('.overflow-x-auto').clientWidth"
@@ -288,7 +285,7 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
     Game.objects.create(name=name, platform=platform)
     page.set_viewport_size({"width": 240, "height": 844})
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    _wait_for_fonts(page)
+    settle_layout(page)
 
     host = _host(page, name)
     button = host.locator("[data-truncated-reveal]")
