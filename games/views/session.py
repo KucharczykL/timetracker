@@ -41,6 +41,7 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
 from common.returns import OriginUrl
@@ -259,5 +260,10 @@ def new_session_from_existing_session(
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
-    session.delete()
-    return redirect(return_url(request, fallback="games:list_sessions"))
+    return confirm_and_delete(
+        request,
+        session,
+        title="Delete session",
+        message=f"Permanently delete this session of {session.game}?",
+        fallback="games:list_sessions",
+    )

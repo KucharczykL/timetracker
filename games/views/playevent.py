@@ -43,6 +43,7 @@ from games.sorting import (
 )
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -321,8 +322,11 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
 @login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
-    game_id = playevent.game.id
-    playevent.delete()
-    return redirect(
-        return_url(request, fallback="games:view_game", fallback_args=[game_id])
+    return confirm_and_delete(
+        request,
+        playevent,
+        title="Delete playthrough",
+        message=f"Permanently delete this playthrough of {playevent.game}?",
+        fallback="games:view_game",
+        fallback_args=[playevent.game.id],
     )

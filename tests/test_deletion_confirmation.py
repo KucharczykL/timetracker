@@ -53,3 +53,44 @@ def test_the_confirmation_form_keeps_the_origin(logged_in, game):
         action_url("games:delete_game", game.id, origin=origin)
     ).content.decode()
     assert "origin=%2Ftracker%2Fgame%2Flist%3Fpage%3D2" in body
+
+
+@pytest.fixture
+def deletables(db):
+    from datetime import date
+
+    from games.models import Device, Purchase
+
+    platform = Platform.objects.create(name="Console")
+    owned = Game.objects.create(name="Deletable", platform=platform)
+    purchase = Purchase.objects.create(
+        date_purchased=date(2024, 6, 1), type=Purchase.GAME
+    )
+    purchase.games.set([owned])
+    return {
+        "session": Session.objects.create(
+            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
+        ),
+        "purchase": purchase,
+        "platform": Platform.objects.create(name="Doomed"),
+        "device": Device.objects.create(name="Doomed"),
+    }
+
+
+@pytest.mark.parametrize(
+    "url_name,key,fallback",
+    [
+        ("games:delete_session", "session", "games:list_sessions"),
+        ("games:delete_purchase", "purchase", "games:list_purchases"),
+        ("games:delete_platform", "platform", "games:list_platforms"),
+        ("games:delete_device", "device", "games:list_devices"),
+    ],
+)
+def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallback):
+    instance = deletables[key]
+    url = reverse(url_name, args=[instance.pk])
+    assert logged_in.get(url).status_code == 200
+    assert type(instance).objects.filter(pk=instance.pk).exists()
+    response = logged_in.post(url)
+    assert response["Location"] == reverse(fallback)
+    assert not type(instance).objects.filter(pk=instance.pk).exists()

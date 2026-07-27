@@ -10,9 +10,11 @@ from common.components import (
     ContentContainer,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
+    Li,
     QuickFilterBar,
     TableData,
     TruncatedText,
+    Ul,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -28,6 +30,7 @@ from games.sorting import (
 )
 from games.filters import parse_device_filter
 from games.forms import DeviceForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -135,8 +138,16 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 @login_required
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     device = get_object_or_404(Device, id=device_id)
-    device.delete()
-    return redirect(return_url(request, fallback="games:list_devices"))
+    return confirm_and_delete(
+        request,
+        device,
+        title="Delete device",
+        message=f"Permanently delete {device.name}?",
+        details=Ul()[
+            Li()[f"{device.session_set.count()} session(s) lose their device"]
+        ],
+        fallback="games:list_devices",
+    )
 
 
 @login_required

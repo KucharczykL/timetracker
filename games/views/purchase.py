@@ -58,6 +58,7 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
 from common.returns import OriginUrl, action_url
 from games.views.returns import origin_from, return_url
@@ -411,10 +412,13 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    detail_url = reverse("games:view_purchase", args=[purchase_id])
-    purchase.delete()
-    return redirect(
-        return_url(request, fallback="games:list_purchases", reject=detail_url)
+    return confirm_and_delete(
+        request,
+        purchase,
+        title="Delete purchase",
+        message=f"Permanently delete this purchase of {purchase.first_game}?",
+        fallback="games:list_purchases",
+        detail_url=reverse("games:view_purchase", args=[purchase_id]),
     )
 
 

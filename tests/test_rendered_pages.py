@@ -485,9 +485,7 @@ class RenderedPagesTest(TestCase):
         self.assertNoEscapedTags(list_html)
 
         confirm_html = self.get("games:delete_statuschange", change.id).content.decode()
-        self.assertIn(
-            "Are you sure you want to delete this status change?", confirm_html
-        )
+        self.assertIn("Permanently delete this status change?", confirm_html)
         self.assertIn("Delete", confirm_html)
         self.assertIn("Cancel", confirm_html)
         self.assertNoEscapedTags(confirm_html)

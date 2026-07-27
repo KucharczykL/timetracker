@@ -9,9 +9,11 @@ from common.components import (
     Column,
     ContentContainer,
     Icon,
+    Li,
     QuickFilterBar,
     TableData,
     TruncatedText,
+    Ul,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -27,6 +29,7 @@ from games.sorting import (
 )
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -125,8 +128,19 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 @login_required
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
-    platform.delete()
-    return redirect(return_url(request, fallback="games:list_platforms"))
+    return confirm_and_delete(
+        request,
+        platform,
+        title="Delete platform",
+        message=f"Permanently delete {platform.name}?",
+        details=Ul()[
+            Li()[
+                f"{platform.game_set.count()} game(s) and "
+                f"{platform.purchase_set.count()} purchase(s) become platformless"
+            ]
+        ],
+        fallback="games:list_platforms",
+    )
 
 
 @login_required
