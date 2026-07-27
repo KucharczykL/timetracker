@@ -201,16 +201,40 @@ def test_the_seam_appears_only_once_the_region_is_scrolled(
     assert box_shadow != "none"
 
 
-def test_a_control_tabbed_into_from_off_screen_is_not_hidden_by_the_pin(
+def test_a_control_scrolled_under_the_pin_is_cleared_of_it_on_focus(
     no_js_page: Page, live_server, populated
 ):
-    """The scroll padding reserves the region's start edge; without it a focused
-    control parks exactly where the pinned cell paints. It is `md:`-gated, so
-    this only holds at the wide viewport."""
+    """The scroll padding reserves the region's start edge. A control that is
+    already onscreen but painted behind the sticky pinned column reads as
+    "visible enough" to the browser without that reservation, so nothing
+    scrolls it clear on focus — it stays hidden under the pin. It is
+    `md:`-gated, so this only holds at the wide viewport."""
     page = no_js_page
     _open(page, live_server, "games:list_purchases", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; nothing can park under the pin"
-    page.locator("tbody tr td a, tbody tr td button").last.focus()
+    # The price column's popover trigger is the earliest control after the
+    # pinned name column. Scroll it to the pin's own midpoint so it is planted
+    # behind the pin, not merely nearby.
+    page.evaluate(
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
+            const control = document.querySelector('tbody tr td a, tbody tr td button');
+            const pin = document.querySelector('tbody tr th').getBoundingClientRect();
+            const before = control.getBoundingClientRect();
+            region.scrollLeft += before.left - (pin.left + pin.width / 2);
+        }}"""
+    )
+    overlap_probe = """() => {
+        const pin = document.querySelector('tbody tr th').getBoundingClientRect();
+        const control = document.querySelector('tbody tr td a, tbody tr td button');
+        const box = control.getBoundingClientRect();
+        return box.left < pin.right && box.right > pin.left;
+    }"""
+    assert page.evaluate(overlap_probe), (
+        "the staged control does not sit behind the pinned column; the scroll "
+        "offset above needs adjusting"
+    )
+    page.locator("tbody tr td a, tbody tr td button").first.focus()
     overlap = page.evaluate(
         """() => {
             const pin = document.querySelector('tbody tr th').getBoundingClientRect();
@@ -307,6 +331,34 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
             panel.style.left = `${target.left}px`;
         }"""
     )
+    # The reposition above only lands where intended because the panel is
+    # `position: fixed` — its offsets are viewport-relative regardless of the
+    # sticky cell it is nested in. If that positioning model ever changes, the
+    # panel drifts somewhere unrelated and the occlusion probe below would
+    # measure nothing while still passing. Confirm it actually landed over the
+    # second row before trusting the probe.
+    overlaps_second_row = page.evaluate(
+        """() => {
+            const panel = document
+                .querySelector('tbody tr th [data-pop-over-panel]')
+                .getBoundingClientRect();
+            const secondRow = document
+                .querySelectorAll('tbody tr')[1]
+                .querySelector('th')
+                .getBoundingClientRect();
+            return (
+                panel.left < secondRow.right &&
+                panel.right > secondRow.left &&
+                panel.top < secondRow.bottom &&
+                panel.bottom > secondRow.top
+            );
+        }"""
+    )
+    assert overlaps_second_row, (
+        "the repositioned panel does not overlap the second row's pinned "
+        "cell; the reposition above relies on the panel being `position: "
+        "fixed`, and the occlusion probe below would be measuring nothing"
+    )
     occluded, total = page.evaluate(OCCLUSION, "tbody tr th [data-pop-over-panel]")
     assert occluded == 0, f"{occluded}/{total} points occluded"
 
@@ -352,8 +404,11 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     # carry a later column in from the right far enough to slide under the pin.
     page.add_style_tag(content="table { min-width: 2200px !important; }")
     toggle = page.locator("tbody tr [data-toggle]:visible").first
-    if toggle.count() == 0:
-        pytest.skip("no row menu is visible at this width")
+    assert toggle.count() > 0, (
+        "expected a visible row-menu toggle in tbody tr [data-toggle] at this "
+        "fixture/viewport; this test owns both, so a missing toggle means the "
+        "staged premise broke, not that the environment lacks one"
+    )
     toggle.click()
     menu = page.locator("tbody tr [data-menu]:not([hidden])").first
     menu.wait_for(state="visible")
