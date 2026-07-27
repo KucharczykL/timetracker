@@ -293,6 +293,23 @@ class DatePickerWidget(forms.Widget):
         return data.get(name)
 
 
+class AwareDateTimeField(forms.DateTimeField):
+    """A ``DateTimeField`` that hands its widget the *aware* stored value.
+
+    Django's ``prepare_value`` runs ``to_current_timezone()``, so a widget
+    normally receives a bare wall clock. For the one hour a DST fall-back
+    repeats, that wall clock happens twice and the naive form no longer says
+    which instant was stored — and Django refuses to bind an ambiguous naive
+    value back, so an untouched edit of such a session could not be saved at
+    all. Keeping it aware lets the widget emit the offset alongside the wall
+    clock, which is exactly what the client commits, so the round-trip is
+    lossless for every instant.
+    """
+
+    def prepare_value(self, value):
+        return value
+
+
 class DateTimeFieldWidget(forms.Widget):
     """Thin Django adapter that renders a `DateTimePicker()` component in place
     of a native `<input type="datetime-local">` (issue #511), so the account's
@@ -407,7 +424,12 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
     class Meta:
         # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
-        # (needs the per-request presentation, unavailable to a class body).
+        # (needs the per-request presentation, unavailable to a class body);
+        # the field class is declarative because it depends on nothing.
+        field_classes = {
+            "timestamp_start": AwareDateTimeField,
+            "timestamp_end": AwareDateTimeField,
+        }
         model = Session
         fields = [
             "game",
@@ -650,7 +672,9 @@ class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
     class Meta:
         # timestamp gets DateTimeFieldWidget in __init__ (needs the
-        # per-request presentation, unavailable to a class body).
+        # per-request presentation, unavailable to a class body); the field
+        # class is declarative because it depends on nothing.
+        field_classes = {"timestamp": AwareDateTimeField}
         model = GameStatusChange
         fields = [
             "game",

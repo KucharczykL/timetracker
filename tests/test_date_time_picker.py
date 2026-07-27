@@ -219,8 +219,10 @@ class DateTimeFieldWidgetTest(TestCase):
                 initial={"timestamp_start": datetime(2026, 7, 27, 14, 30, tzinfo=UTC)},
             )
             html = str(form["timestamp_start"])
-        # UTC+14: the same instant, as the account's own wall clock.
-        self.assertIn('value="2026-07-28T04:30:00"', html)
+        # UTC+14: the same instant, as the account's own wall clock — and the
+        # offset rides along, so the value names an instant rather than a wall
+        # clock a DST fall-back could make ambiguous.
+        self.assertIn('value="2026-07-28T04:30:00+14:00"', html)
         self.assertIn('value="04"', html)
 
     def test_a_rejected_submission_re_renders_what_was_typed(self):
@@ -274,5 +276,5 @@ class DateTimeFieldWidgetTest(TestCase):
                     "timestamp"
                 ]
             )
-        self.assertIn('value="2026-07-27T14:30:00"', html)
+        self.assertIn('value="2026-07-27T14:30:00+00:00"', html)
         self.assertIn('value="14"', html)

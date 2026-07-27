@@ -7,12 +7,14 @@ back the bare wall clock, and *that* is the shape whose interpretation these
 tests pin: it is read in the account's timezone, not the server's.
 """
 
+import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.test import RequestFactory
+from django.utils import timezone
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -20,7 +22,7 @@ from common.date_time_presentation import (
 )
 from common.middleware import TimezoneActivationMiddleware
 from games.forms import DateTimeFieldWidget, GameStatusChangeForm, SessionForm
-from games.models import Game, UserPreferences
+from games.models import Game, Session, UserPreferences
 from timetracker import settings_resolver
 
 
@@ -127,3 +129,33 @@ def test_session_and_game_status_change_use_the_segmented_datetime_widget(db):
     assert isinstance(
         status_change_form.fields["timestamp"].widget, DateTimeFieldWidget
     )
+
+
+def test_an_ambiguous_stored_timestamp_survives_an_untouched_edit(db):
+    """The hour a DST fall-back repeats happens twice, so a bare wall clock no
+    longer says which instant was stored — and Django refuses to bind an
+    ambiguous naive value at all, so re-saving such a session without touching
+    it failed outright. AwareDateTimeField keeps the offset in the rendered
+    value, so both occurrences round-trip to themselves."""
+    game = Game.objects.create(name="Hades")
+    earlier = datetime(2026, 11, 1, 5, 30, tzinfo=UTC)  # 01:30 EDT (-04:00)
+    later = datetime(2026, 11, 1, 6, 30, tzinfo=UTC)  # 01:30 EST (-05:00)
+
+    with timezone.override(ZoneInfo("America/New_York")):
+        for stored in (earlier, later):
+            session = Session.objects.create(game=game, timestamp_start=stored)
+            rendered = SessionForm(
+                instance=session, presentation=_presentation("America/New_York")
+            )["timestamp_start"]
+            hidden = re.search(r'name="timestamp_start" value="([^"]*)"', str(rendered))
+            assert hidden is not None
+            # Both render the same wall clock; only the offset tells them apart.
+            assert hidden.group(1).startswith("2026-11-01T01:30:00")
+
+            resubmitted = SessionForm(
+                data=_session_form_data(game, hidden.group(1)),
+                instance=session,
+                presentation=_presentation("America/New_York"),
+            )
+            assert resubmitted.is_valid(), resubmitted.errors
+            assert resubmitted.cleaned_data["timestamp_start"] == stored
