@@ -246,14 +246,21 @@ function applySegmentAria(
   }
   const value = parseInt(buffer, 10);
   segment.setAttribute("aria-valuenow", String(value));
+  // Every segment states its value as text, not only the day period. A
+  // spinbutton with a bare valuenow invites the reader to announce its
+  // position within valuemin..valuemax as a percentage — VoiceOver read the
+  // year 2026 as "2026, 20.3 percent" (2025/9998) and the month 7 as
+  // "7, 54.5 percent" (6/11). A date segment has no meaningful position in its
+  // range, and valuetext is what suppresses that reading.
   if (spec.kind === "day_period") {
     // A two-state toggle: the number alone ("0") announces nothing useful.
     const labels = dayPeriodLabels();
-    if (labels) segment.setAttribute("aria-valuetext", value === 0 ? labels.am : labels.pm);
+    segment.setAttribute(
+      "aria-valuetext",
+      labels ? (value === 0 ? labels.am : labels.pm) : buffer,
+    );
   } else {
-    // Clear the blank/partial text a numeric segment may have carried on its
-    // way to being filled, so valuenow is what gets announced.
-    segment.removeAttribute("aria-valuetext");
+    segment.setAttribute("aria-valuetext", String(value));
   }
 }
 

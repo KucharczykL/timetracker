@@ -136,9 +136,9 @@ describe("segment ARIA", () => {
     setSegmentBuffer(segment, "1");
     expect(segment.getAttribute("aria-valuetext")).toBe("1");
 
-    // Filled: valuenow carries the value, so stale text must not shadow it.
+    // Filled: the value is stated as text as well as as a number.
     setSegmentBuffer(segment, "07");
-    expect(segment.hasAttribute("aria-valuetext")).toBe(false);
+    expect(segment.getAttribute("aria-valuetext")).toBe("7");
     expect(segment.getAttribute("aria-valuenow")).toBe("7");
 
     setSegmentBuffer(segment, "");
@@ -171,6 +171,19 @@ describe("segment ARIA", () => {
     expect(dayPeriodBufferForKey("d", 2)).toBe("00");
     expect(dayPeriodBufferForKey("o", 2)).toBe("01");
     expect(dayPeriodBufferForKey("a", 2)).toBe("");
+  });
+
+  it("states every segment's value as text so no reader recites a percentage", async () => {
+    // A spinbutton with only aria-valuenow invites a position-in-range
+    // reading: VoiceOver said "2026, 20.3 percent" for the year (2025/9998)
+    // and "7, 54.5 percent" for the month (6/11). A date segment has no
+    // meaningful position in its range.
+    const { setSegmentBuffer } = await importCore();
+    const year = mountSegment("year", 4, "YYYY");
+
+    setSegmentBuffer(year, "2026");
+
+    expect(year.getAttribute("aria-valuetext")).toBe("2026");
   });
 
   it("announces the day period as text, not as a number", async () => {

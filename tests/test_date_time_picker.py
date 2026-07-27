@@ -157,6 +157,21 @@ class DateTimeFieldTest(SimpleTestCase):
         self.assertIn('aria-label="Copy start value to end"', html)
         self.assertIn("↓", html)
 
+    def test_the_group_is_named_by_the_row_label_not_by_a_copy_of_it(self):
+        # The row's <label for> targets the first segment, which names itself
+        # "year", so the label text names nothing — a screen reader announced it
+        # as its own object and the group then repeated the same string.
+        html = self.render(input_id="id_timestamp_start")
+        self.assertIn('aria-labelledby="id_timestamp_start-label"', html)
+        self.assertNotIn('aria-label="Start"', html)
+
+    def test_falls_back_to_its_own_label_when_no_row_rendered_one(self):
+        # Synthetic pages and the filter tiers render the field without a
+        # <label for>, so there is no element to point at.
+        html = self.render()
+        self.assertIn('aria-label="Start"', html)
+        self.assertNotIn("aria-labelledby", html)
+
     def test_marks_required_and_invalid_on_the_group(self):
         html = self.render(required=True, invalid=True)
         self.assertIn('aria-required="true"', html)

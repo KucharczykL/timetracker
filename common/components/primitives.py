@@ -1334,12 +1334,32 @@ class FormFieldPresentation:
     decorate_control: Callable[[Node], Node] | None = None
 
 
+def field_label_id(input_id: str) -> str:
+    """The DOM id of the ``<label>`` for the control identified by ``input_id``.
+
+    A composite control made of several inputs (a segmented date field) cannot
+    take its name from ``<label for>``: the target segment names itself ("year"),
+    so the label text is consumed by nothing and a screen reader announces it as
+    a standalone object — immediately before the field group, which repeats the
+    same string. Such a widget points its group's ``aria-labelledby`` here
+    instead, which makes the label the group's one name source.
+
+    Derived rather than passed, because the label and the widget are rendered by
+    different code that never meet: the row renderer here, and a Django widget.
+    """
+    return f"{input_id}-label" if input_id else ""
+
+
 def _form_field_label(field, label_extra: Node | None = None) -> Node:
     """Render a label, optionally with adjacent label-line metadata."""
     label_class = (
         "text-type-label text-heading" if label_extra is not None else _LABEL_CLASS
     )
-    label = Label(for_=field.id_for_label, class_=label_class)[str(field.label)]
+    label = Label(
+        for_=field.id_for_label,
+        id_=field_label_id(field.id_for_label) or None,
+        class_=label_class,
+    )[str(field.label)]
     if label_extra is None:
         return label
     return Div(

@@ -332,6 +332,10 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:add_session").content.decode()
         for marker in [
             'field-name="timestamp_start"',
+            # The group takes its name from the row label rather than repeating
+            # the string, so the label is not announced as its own object.
+            'id="id_timestamp_start-label"',
+            'aria-labelledby="id_timestamp_start-label"',
             'field-name="timestamp_end"',
             'data-date-time-hidden=""',
             'data-date-part="hour"',
