@@ -5,9 +5,11 @@
 > Tracked by **#523**; stage issues get filed as each phase is picked up.
 >
 > **Status:** Phase 0 shipped (#525), Phase 2 (#531), Phase 3 (#532) — 4b shipped
-> with 2d, as planned. **Phase 1 and Phase 4a remain**, and their sections are the
-> live contract. Shipped sections are kept as the record of why, marked as such and
-> corrected where the implementation decided otherwise.
+> with 2d, as planned. **Phase 4a is the only phase left in this epic**, and its
+> section is the live contract. **Phase 1 is cut** — its prerequisite role is void
+> (see § Phase 4a) and it continues as #544. Shipped sections are kept as the
+> record of why, marked as such and corrected where the implementation decided
+> otherwise.
 >
 > Every `file:line` below points at the tree as of #532.
 
@@ -97,7 +99,9 @@ per-*page* property, so it cannot be pinned per table either. Separately,
 `container-type` implies `contain`; that is safe on the scroll wrapper
 (`primitives.py:2283`) but the neighbouring shell (`primitives.py:2312`) carries
 an explicit prohibition on `contain` because it would become a containing block
-for the `position: fixed` dropdown menus — a hazard Phase 1 removes at the root.
+for the `position: fixed` dropdown menus. That prohibition stands: Phase 1, which
+would have removed the hazard at the root, is cut (#544), and could not have
+removed it entirely anyway.
 
 **Capping the column.** `max-width: 19rem` on the `<th>` holds at 1024 but Chrome
 hands the column slack past it at 1100 and 1217. Table-cell max-width is not
@@ -126,7 +130,8 @@ user-toggleable column set they are undefinable in principle.
   follow-up.
 - **Frozen first column** — Excel freeze-pane, MUI and AG Grid pinned columns.
 - **Top layer for floating UI** — the native popover API, so a panel cannot be
-  occluded or clipped by any ancestor stacking context (Phase 1).
+  occluded or clipped by any ancestor stacking context. Adopted in the original
+  Phase 1, then cut (#544) once the occlusion proved fixable in CSS.
 
 ---
 
@@ -192,13 +197,29 @@ Call sites drop the literal and state intent: `games/views/session.py:97`,
 
 # Phase 1 — floating panels move to the top layer
 
-**Prerequisite for Phase 4 and for nothing else. Implement it immediately before
-Phase 4, not first.** Today's panels already escape clipping via
-`position: fixed`, guarded by `e2e/test_dropdown_clipping_e2e.py`, so this phase
-has no standalone user-visible payoff — the measured occlusion it fixes only
-exists once Phase 4's sticky cells exist. It is also the highest-risk change in
-the document, touching every tooltip, dropdown and combobox engine. Doing it
-last means a stall after Phase 3 costs nothing.
+**Cut from this epic. Tracked separately as #544.**
+
+It was written as "prerequisite for Phase 4 and for nothing else". That premise
+is dead: Phase 4a's occlusion is removed by raising the pinned cell in CSS, which
+measures the same 0/24 as top-layer promotion (see § Phase 4a). Nothing else in
+this document depends on it.
+
+The audit it was supposed to perform has also already answered its own question,
+in the negative: a tooltip-and-dropdown migration could never have been *total*.
+`Modal` renders `fixed z-40 inset-0` (`primitives.py:1608`) and `SessionActions`
+(`domain.py:389`) embeds one in the actions cell of **every** session row
+(`session.py:63`). A fixed, non-top-layer panel therefore survives inside table
+cells regardless, so the shell's `transform`/`filter`/`contain`/`backdrop-filter`
+prohibition (`primitives.py:2306-2311`) keeps its stated rationale and stays.
+
+What remains is a real but independent argument — one dismissal engine instead of
+two, UA-native Esc and light-dismiss, no hand-rolled outside-click — weighed
+against a jsdom shim, a UA-stylesheet neutralisation pass on every panel, and the
+manual-vs-auto state-ownership question below. That trade belongs to #542, judged
+on its own, not to a table-widths epic. Today's panels already escape clipping
+via `position: fixed`, guarded by `e2e/test_dropdown_clipping_e2e.py`.
+
+The rest of this section is preserved as the research #542 starts from.
 
 Promote `[data-pop-over-panel]` (and the dropdown panels) into the top layer via
 the native popover API, in the shared tooltip controller
@@ -224,13 +245,15 @@ Unlike Phases 0/2/4 it needs decisions made before it can be estimated:
   (`tooltip-behavior.ts:67` sets `top`/`bottom: -half`), and `tintArrow`
   (`:37`) reads the panel's computed background — `canvas` tints arrows wrong.
   Every panel's classes must neutralise these.
-- **jsdom has no popover API — verified.** jsdom 29.1.1 (`package.json`) exposes
-  no `showPopover`: `HTMLElement.prototype.showPopover` is `undefined` and
-  calling it throws `TypeError`. `pop-over.test.ts`, `menu-behavior.test.ts` and
+- **jsdom has no popover API — measured, twice.** On the pinned jsdom 29.1.1,
+  `showPopover`, `hidePopover` and `togglePopover` are all `undefined`, the
+  `popover` IDL property is absent from `HTMLElement`, and `ToggleEvent` is
+  undefined. `:popover-open` **does** parse without throwing, so a feature check
+  must test `typeof element.showPopover === "function"` — the selector is
+  useless as a probe. `pop-over.test.ts`, `menu-behavior.test.ts` and
   `drop-down.controller.test.ts` all drive open/close through `hidden`, so this
-  phase includes either a popover shim for the vitest environment or a
-  capability check with a `hidden` fallback path. That work is part of the
-  phase's cost and was previously unscoped.
+  work includes either a popover shim for the vitest environment or a
+  capability check with a `hidden` fallback path.
 
 ### Why
 
@@ -252,14 +275,16 @@ Top-layer promotion also relaxes the standing constraint at
 `backdrop-filter` to the shell" rule exists because a `position: fixed` panel can
 be captured by an ancestor containing block, and top-layer elements cannot be.
 
-**This is conditional on the migration being total, and Phase 4a depends on the
-answer.** If any fixed-positioned, non-top-layer panel survives inside a table
-cell, the constraint stands and Phase 4a's ban on `filter: drop-shadow` for the
-pinned-cell shadow keeps its stated rationale. If the migration is total, that
-rationale is dead and `box-shadow` is preferred merely because it is cheaper and
-has no stacking side effects. Audit the panel inventory during this phase and
-reconcile both claims in one direction; do not delete the `primitives.py:2309`
-comment until the audit says the migration was total.
+**The audit this section demanded has been done, and the answer is no.** The
+migration cannot be total: `Modal` renders `fixed z-40 inset-0`
+(`primitives.py:1608`) and `SessionActions` (`domain.py:389`) embeds one in the
+actions cell of every session row (`session.py:63`). A fixed, non-top-layer panel
+therefore survives inside table cells whatever #544 does, so the
+`primitives.py:2309` comment stays and Phase 4a's ban on `filter: drop-shadow`
+keeps its stated rationale — `box-shadow` is both cheaper *and* required.
+
+The 18/24 above is also no longer an argument for this work: raising the pinned
+cell in CSS scores the same 0/24 (see § Phase 4a).
 
 ### Acceptance
 
@@ -464,7 +489,9 @@ introduces the toggle.)
 # Phase 4 — pinned first column + accessible scroll region
 
 Only meaningful once Phase 3 exists: priority-plus makes overflow *rare*, this
-makes it *navigable* when the user deliberately enables more columns than fit.
+makes it *navigable* in the cases that remain — a first column wider than the
+region on a narrow screen, and later, columns a user deliberately enables beyond
+the fit budget.
 
 ### 4a — sticky first column
 
@@ -482,13 +509,76 @@ the codebase: grepping `start-0`/`end-0`/`inset-inline` across `.py`, `.ts` and
 (`ms-0`, `primitives.py:1970`). The recommendation stands on the `rtl:` variant
 alone, with no in-repo precedent to lean on.
 
-Plus a right-edge **`box-shadow`** so the pinned column reads as a layer, never
-`filter: drop-shadow`. `filter` makes the cell a containing block for
-`position: fixed`; whether that still matters depends on the Phase 1 audit (if
-the top-layer migration was total, no capturable panel remains and the rationale
-is moot). `box-shadow` is the right choice either way — cheaper, no stacking
-side effects — so this does not block on the audit, but the two claims must be
-reconciled in one direction rather than both asserted.
+### The occlusion fix is CSS, not the top layer
+
+A panel that is a DOM descendant of a pinned cell is trapped in that cell's
+stacking context, so a later row's pinned cell paints over it. **Raising the
+pinned cell while it holds an open panel removes the occlusion completely** — the
+same 0/24 the top layer scores, with no engine change. Measured in Chrome 149 on
+a synthetic table (sticky first column at `z-[2]`, a `position: fixed` panel in
+row 0's pinned cell parked over the rows below, 24 sample points through
+`elementFromPoint`), and reproduced independently:
+
+| | occluded |
+|---|---|
+| sticky, panel in normal flow | 24/24 |
+| pinned cell raised while its panel is open | **0/24** |
+| same panel promoted to the top layer | 0/24 |
+
+Two controls establish the mechanism. With the pinned cells at `z-index: auto`
+and the panel at its real `z-10`, occlusion is still 24/24 — the child's z-index
+is scoped inside the cell's context, which is the whole problem. And a fixed
+descendant of a sticky-only ancestor stays at viewport coordinates, moving to
+cell-relative ones only once the cell gains `filter` — so **`position: sticky`
+creates a stacking context but never a containing block**, and no portaling was
+ever required.
+
+So the cell carries, alongside the pin:
+
+```
+has-[[data-pop-over-panel]:not([hidden])]:z-[3]
+has-[[data-menu]:not([hidden])]:z-[3]
+```
+
+**`z-[3]`, not something larger.** The occluders are sibling pinned cells at 2,
+so 3 is sufficient; anything at or above 10 inverts a different pair. Measured: a
+cell raised to `z-[30]` covers an overlapping open dropdown menu (`z-20`,
+`custom_elements.py:699`) at 15 of 24 points. The documented strata — popovers
+10, dropdown panels 20, modal overlay 40, toasts 50 (`primitives.py:1602-1606`) —
+stay intact only if the pinned cell stays beneath them.
+
+**Panels in non-pinned cells need nothing.** A static `<td>` creates no stacking
+context, so a menu's own `z-20` already outranks a pinned cell at 2: measured
+0/24. (With the menu at `z-index: auto` it is 18/24, so the panels' own z-indexes
+are load-bearing and the pin must stay below them.)
+
+This rests on two conventions, each pinned by a test because the rule is silently
+wrong if either breaks:
+
+- **A pinned cell's z-index stays below 10.**
+- **In-table panels toggle the `hidden` *attribute*,** not a class — true of
+  every panel that renders in a table today (tooltips
+  `tooltip-behavior.ts:118,129`; menus `menu-behavior.ts:206,225`; delegated
+  comboboxes `search-select.ts:187-190`; the inline session-reset modal
+  `session-actions.ts:61,66`). The one class-toggling panel is the *standalone*
+  SearchSelect (`search-select.ts:223`), which is `absolute z-10` and never
+  renders in a table.
+
+### The edge cue appears only when something is behind it
+
+The scroll region gets `container-type: scroll-state`, and the pinned cell's
+right-edge **`box-shadow`** lives inside
+`@container scroll-state(scrollable: inline-start)`. Verified in Chrome 149: no
+shadow at rest, shadow once scrolled, none again on return. Priority-plus makes
+most tables fit at most widths, so an unconditional shadow would draw a permanent
+seam down every list page for a scroll that is usually not happening. Where the
+query is unsupported the shadow never paints and the pin still works — the cue
+degrades, the feature does not.
+
+`box-shadow`, never `filter: drop-shadow`: `filter` makes the cell a containing
+block for the `position: fixed` panels it hosts. `container-type: scroll-state`
+does not — a fixed descendant stays at viewport coordinates under one (measured),
+so the region can host the query without tripping the shell's prohibition.
 
 Traps, all confirmed or flagged:
 
@@ -510,8 +600,12 @@ Traps, all confirmed or flagged:
   visible only in dark mode — expect a possible 1px divider discontinuity down
   the pinned column. A background-transparency guard cannot detect this; it needs
   an explicit dark-mode check.
-- **Panels must already be in the top layer** (Phase 1). Without it this phase
-  ships the measured 18/24 occlusion.
+- **Phase 1 is not a prerequisite.** An earlier draft made it one, on the
+  strength of the occlusion the CSS elevation above removes. (The two probes
+  report different totals — 18/24 in § Phase 1 against a real page, 24/24 here
+  against a synthetic table whose panel sits entirely over the rows below. They
+  measure the same defect on different fixtures; what matters is that both fall
+  to 0/24.) Phase 1 survives on its own merits, not this phase's — see #544.
 
 ### 4b — accessible scroll region (**shipped with Phase 2d in #531**, specified here)
 
@@ -560,7 +654,13 @@ a focus stop even on a table that currently fits.
   driven to the end, in both `ltr` and `rtl`.
 - Pinned cell's computed `background-color` is non-transparent in header and body
   rows, in **both themes**, and tracks the row `hover:` surface.
-- Tooltip flipped downward from the top row: 0/24 occluded points.
+- Tooltip flipped downward from the top row: 0/24 occluded points — and an open
+  dropdown menu overlapping a pinned cell: 0/24 the other way, so the elevation
+  does not trade one occlusion for the other.
+- A pinned cell's z-index is below 10, and every in-table panel toggles the
+  `hidden` attribute. Both are asserted, not assumed: the elevation is silently
+  wrong if either drifts.
+- The edge shadow is absent at rest and present once the region is scrolled.
 - Dark mode: row dividers are continuous across the pinned column.
 - Region is focusable, has `role="region"` and a **non-empty** accessible name.
 - Keyboard-focusing the last Actions button does not place it under the pinned
@@ -660,9 +760,10 @@ Phases are numbered by identity, not by sequence. Ship them **0, 2, 3, 1, 4**:
    together: nowrap without a keyboard-reachable region is a net regression.
 3. ~~**Phase 3**~~ — shipped, #532. Priority-plus, measurement model designed
    first.
-4. **Phase 1** — top-layer panels. Deliberately late: no standalone payoff, high
-   blast radius, and its only beneficiary is Phase 4. **Next.**
-5. **Phase 4** — sticky column (4a); 4b already shipped with 2d.
+4. ~~**Phase 1**~~ — cut, continues as #544. Its only claimed beneficiary was
+   Phase 4, which no longer needs it.
+5. **Phase 4** — sticky column (4a), with the CSS elevation in place of the
+   top layer; 4b already shipped with 2d. **Next, and last in this epic.**
 6. Refund reload — independent; any time after Phase 0.
 
 If the work stalls after Phase 3, the app is in a good state and nothing has
