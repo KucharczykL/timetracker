@@ -11,6 +11,7 @@ genuinely scrolls. That is the same state a user-toggleable column set will
 produce deliberately, and the CSS under test is identical in both.
 """
 
+import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -170,6 +171,24 @@ def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
         }}"""
     )
     assert offset == 0
+    # The seam's offset is physical while the pin and the query are logical, so
+    # it has to be mirrored or it paints into the table's edge rather than over
+    # the content sliding underneath. Read the x-offset specifically: the
+    # computed value is "rgba(…) 4px 0px 6px -4px", whose spread is negative in
+    # both directions, so a substring test for "-4px" passes either way.
+    box_shadow = "none"
+    for _ in range(20):
+        box_shadow = page.locator("tbody tr th").first.evaluate(
+            "(node) => getComputedStyle(node).boxShadow"
+        )
+        if box_shadow != "none":
+            break
+        page.wait_for_timeout(50)
+    # Tailwind emits the ring/inset placeholders as transparent layers first,
+    # so the real shadow is the last one.
+    offsets = re.findall(r"\)\s*(-?[\d.]+px)", box_shadow)
+    assert offsets, box_shadow
+    assert offsets[-1].startswith("-"), box_shadow
 
 
 def test_the_seam_appears_only_once_the_region_is_scrolled(

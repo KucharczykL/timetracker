@@ -11,7 +11,7 @@
 > record of why, marked as such and corrected where the implementation decided
 > otherwise.
 >
-> Every `file:line` below points at the tree as of #532.
+> Every `file:line` below points at the tree as of this branch (Phase 4a).
 
 ## Context
 
@@ -489,9 +489,11 @@ introduces the toggle.)
 # Phase 4 — pinned first column + accessible scroll region
 
 Only meaningful once Phase 3 exists: priority-plus makes overflow *rare*, this
-makes it *navigable* in the cases that remain — a first column wider than the
-region on a narrow screen, and later, columns a user deliberately enables beyond
-the fit budget.
+makes it *navigable* in the cases that remain. With JavaScript on there are
+none: priority-plus drops columns until the table fits at every width, so the
+pin is inert for those users. It earns its place on the no-JS path above `md`,
+where every column renders at once and the region genuinely scrolls, and later
+on the columns a user deliberately enables beyond the fit budget.
 
 ### 4a — sticky first column
 
@@ -516,7 +518,7 @@ The failure reproduces only in a full suite run — the test passes in isolation
 so a run that sees it once should bisect rather than write it off as flake.
 
 `start-0`, not `left-0` — the table carries `rtl:text-right`
-(`primitives.py:2259`). Under `dir="rtl"` the scroll start edge is the right, and
+(`primitives.py:2304`). Under `dir="rtl"` the scroll start edge is the right, and
 a physical `left-0` pins to the wrong edge. This is the first logical inset in
 the codebase: grepping `start-0`/`end-0`/`inset-inline` across `.py`, `.ts` and
 `.css` returns nothing, and the one logical utility in use is a margin
@@ -589,6 +591,10 @@ most tables fit at most widths, so an unconditional shadow would draw a permanen
 seam down every list page for a scroll that is usually not happening. Where the
 query is unsupported the shadow never paints and the pin still works — the cue
 degrades, the feature does not.
+
+The offset is mirrored under `rtl` (`md:rtl:…:shadow-[-4px_…]`): the query and
+the pin are logical, but a shadow offset is physical, so an unmirrored seam
+paints into the table's own edge instead of over the content sliding beneath it.
 
 `box-shadow`, never `filter: drop-shadow`: `filter` makes the cell a containing
 block for the `position: fixed` panels it hosts. `container-type: scroll-state`

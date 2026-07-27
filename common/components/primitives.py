@@ -514,8 +514,12 @@ PINNED_COLUMN_CLASS = " ".join(
         # A box-shadow, never a filter: a filtered cell becomes the containing
         # block for the fixed panels it hosts. Scoped to a region that actually
         # has something scrolled behind the column, so a table that fits shows
-        # no seam.
+        # no seam. The offset is physical where the trigger and the pin are
+        # logical, so the direction is mirrored explicitly — otherwise the seam
+        # paints into the table's own edge under rtl instead of over the
+        # content sliding beneath it.
         "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[4px_0_6px_-4px_rgb(0_0_0/0.35)]",
+        "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-4px_0_6px_-4px_rgb(0_0_0/0.35)]",
     ]
 )
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"

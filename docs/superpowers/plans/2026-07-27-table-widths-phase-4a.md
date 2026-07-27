@@ -46,6 +46,21 @@ collapse, and the table overflowed its wrapper by ~200px. Caught by the full
 a full suite run — the test passes in isolation, which is how an earlier run
 misread it as CPU contention. See `.superpowers/sdd/task-3-report.md`.
 
+**Task 4's code below was written before that gate and does not account for it.**
+Three divergences from what shipped, all forced by the same correction or found
+in the browser:
+
+- `NARROW = 420` is **wrong**: every pin class is `md:`-gated, so at 420px
+  nothing is pinned and the panel tests measure an unpinned cell. It shipped at
+  1100 — above `md`, and wide enough that the tooltip panel's own rectangle
+  stays on screen for the occlusion probe.
+- "The panel opens below its anchor by default, i.e. over the rows that would
+  occlude it" is **false for this geometry**; the shipped test repositions the
+  panel explicitly and guards that it really overlaps a later row.
+- The row-menu test's synthetic `min-width` shipped at 2200px, and its
+  `pytest.skip` became a hard failure — the test controls its own fixture, so a
+  missing toggle means the premise broke, not that the environment is unsuitable.
+
 ## Already verified — do not re-litigate
 
 Measured in Chrome 149 before this plan was written:
