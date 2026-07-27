@@ -328,17 +328,22 @@ class RenderedPagesTest(TestCase):
         self.assertIn("autofocus", self._element_with_id(session_html, "id_game"))
         self.assertNotIn("autofocus", self._element_with_id(session_html, "id_device"))
 
-    def test_add_session_form_has_timestamp_helpers(self):
+    def test_add_session_form_has_segmented_timestamp_fields(self):
         html = self.get("games:add_session").content.decode()
-        self.assertIn("session-timestamp-buttons", html)
         for marker in [
-            "Set to now",
-            "Toggle text",
+            'field-name="timestamp_start"',
+            'field-name="timestamp_end"',
+            'data-date-time-hidden=""',
+            'data-date-part="hour"',
+            'data-date-part="minute"',
+            # The helpers the old <session-timestamp-buttons> row carried, now
+            # inside the widget: Now is a calendar footer button, copy is an
+            # arrow addressing the other field.
+            "Now",
+            'data-date-time-copy="timestamp_end"',
+            'data-date-time-copy="timestamp_start"',
             "Copy start value to end",
             "Copy end value to start",
-            'data-target="timestamp_start"',
-            'data-type="now"',
-            'hx-boost="false"',
         ]:
             self.assertIn(marker, html)
         self.assertNoEscapedTags(html)

@@ -183,19 +183,11 @@ register_element("session-actions", "SessionActions", SessionActionsProps)
 
 
 class DateTimeFieldProps(TypedDict):
-    pass
+    field_name: str  # the Django field name, e.g. "timestamp_start" — how a
+    # copy control on one datetime field addresses another one on the same page
 
 
 register_element("date-time-field", "DateTimeField", DateTimeFieldProps)
-
-
-class SessionTimestampButtonsProps(TypedDict):
-    pass
-
-
-register_element(
-    "session-timestamp-buttons", "SessionTimestampButtons", SessionTimestampButtonsProps
-)
 
 
 # ── Named tag builders (consistent htpy-style with Div/Span) ─────────────────
@@ -205,7 +197,6 @@ register_element(
 _DateTimeField = custom_element_builder("date-time-field")
 _PlayEventRow = custom_element_builder("play-event-row")
 _SessionActions = custom_element_builder("session-actions")
-SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")
 
 
 class SelectionFieldsProps(TypedDict):

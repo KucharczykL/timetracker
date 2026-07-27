@@ -11,6 +11,8 @@ from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
     DatePicker,
+    DateTimeCopyTarget,
+    DateTimePicker,
     SearchSelect,
     SearchSelectOption,
     render,
@@ -29,9 +31,6 @@ from games.models import (
     Session,
 )
 
-custom_datetime_widget = forms.DateTimeInput(
-    attrs={"type": "datetime-local"}, format="%Y-%m-%d %H:%M"
-)
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
 # Form controls self-style: these utility strings live on the elements (applied
@@ -106,9 +105,11 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
             # Maintain the field's explicit required status (usually False for booleans)
             continue
         widget = field.widget
-        # SearchSelect/DatePicker are self-styled composite components; never
-        # stamp the native-control classes onto them.
-        if isinstance(widget, (SearchSelectWidget, DatePickerWidget)):
+        # SearchSelect/DatePicker/DateTimeField are self-styled composite
+        # components; never stamp the native-control classes onto them.
+        if isinstance(
+            widget, (SearchSelectWidget, DatePickerWidget, DateTimeFieldWidget)
+        ):
             continue
         if isinstance(widget, forms.Select):
             control_class = SELECT_CLASS
@@ -292,7 +293,88 @@ class DatePickerWidget(forms.Widget):
         return data.get(name)
 
 
+class DateTimeFieldWidget(forms.Widget):
+    """Thin Django adapter that renders a `DateTimePicker()` component in place
+    of a native `<input type="datetime-local">` (issue #511), so the account's
+    DATETIME_FORMAT preference controls the visible segment order and the hour
+    cycle.
+
+    The submitted value is an offset-qualified wall clock, which
+    ``DateTimeField.to_python`` parses as aware — so `from_current_timezone`
+    no-ops and the field binds to exactly the instant the user saw. Two wire
+    shapes therefore reach `render()`: the offset-qualified one this emits, and
+    the bare wall clock a DST-gap submission posts back. `datetime_part_values`
+    reads both, so a rejected form re-renders what was typed."""
+
+    def __init__(
+        self,
+        *,
+        presentation: DateTimePresentation,
+        label: str,
+        copy_target: DateTimeCopyTarget | None = None,
+        attrs=None,
+    ):
+        super().__init__(attrs)
+        self.presentation = presentation
+        self.label = label
+        self.copy_target = copy_target
+
+    def _wire_value(self, value) -> str:
+        if value in (None, ""):
+            return ""
+        if isinstance(value, datetime.datetime):
+            # Django's DateTimeField.prepare_value has already run
+            # to_current_timezone() on anything that reaches a widget, so a
+            # datetime here is naive and reads as the *active* zone's wall
+            # clock — which is the presentation's own zone (both resolve from
+            # DISPLAY_TIME_ZONE). localtime() is for the aware value a caller
+            # can still hand a widget directly.
+            if timezone.is_aware(value):
+                value = timezone.localtime(value, self.presentation.timezone)
+            return value.isoformat()
+        return str(value)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        return render(
+            DateTimePicker(
+                presentation=self.presentation,
+                label=self.label,
+                name=name,
+                value=self._wire_value(value),
+                input_id=str(final_attrs.get("id", "")),
+                required=bool(final_attrs.get("required")),
+                invalid=final_attrs.get("aria-invalid") == "true",
+                copy_target=self.copy_target,
+            )
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
+# Each session timestamp can copy itself into the other one. The arrow points
+# the way the target sits in the form, so the control reads as a direction.
+_TIMESTAMP_COPY_TARGETS = {
+    "timestamp_start": DateTimeCopyTarget(
+        "timestamp_end", "Copy start value to end", "↓"
+    ),
+    "timestamp_end": DateTimeCopyTarget(
+        "timestamp_start", "Copy end value to start", "↑"
+    ),
+}
+
+
 class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
+    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
+            self.fields[field_name].widget = DateTimeFieldWidget(
+                presentation=presentation,
+                label=str(self.fields[field_name].label or field_name),
+                copy_target=copy_target,
+            )
+
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
         widget=SearchSelectWidget(
@@ -324,10 +406,8 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     )
 
     class Meta:
-        widgets = {
-            "timestamp_start": custom_datetime_widget,
-            "timestamp_end": custom_datetime_widget,
-        }
+        # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
+        # (needs the per-request presentation, unavailable to a class body).
         model = Session
         fields = [
             "game",
@@ -561,7 +641,16 @@ class PlayEventForm(PrimitiveWidgetsMixin, forms.ModelForm):
 
 
 class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
+    def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["timestamp"].widget = DateTimeFieldWidget(
+            presentation=presentation,
+            label=str(self.fields["timestamp"].label or "timestamp"),
+        )
+
     class Meta:
+        # timestamp gets DateTimeFieldWidget in __init__ (needs the
+        # per-request presentation, unavailable to a class body).
         model = GameStatusChange
         fields = [
             "game",
@@ -569,9 +658,6 @@ class GameStatusChangeForm(PrimitiveWidgetsMixin, forms.ModelForm):
             "new_status",
             "timestamp",
         ]
-        widgets = {
-            "timestamp": custom_datetime_widget,
-        }
 
 
 class LoginForm(PrimitiveWidgetsMixin, AuthenticationForm):

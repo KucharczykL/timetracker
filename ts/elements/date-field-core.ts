@@ -383,6 +383,17 @@ export const dateCodec: FieldCodec = {
   },
 };
 
+/** The default paste hook: the three-numeric-group date grammar, expressed as
+ * the segment buffers it fills. A datetime field supplies its own, which keeps
+ * whatever segments the pasted text says nothing about. */
+export function pastedDateParts(
+  text: string,
+  partNamesInOrder: string[],
+): PartValues | null {
+  const isoString = parsePastedDate(text, partNamesInOrder);
+  return isoString ? dateCodec.decode(isoString) : null;
+}
+
 /** Read one side's segment buffers, and whether every one of them is filled. */
 export function readSideParts(
   picker: HTMLElement,
@@ -472,9 +483,16 @@ export interface SegmentFieldOptions {
   /** How segment buffers become the value the server binds. Defaults to the
    * `YYYY-MM-DD` date codec. */
   codec?: FieldCodec;
-  /** Parse pasted text into a wire value, or "" to ignore the paste.
-   * Defaults to the three-numeric-group date grammar. */
-  parsePaste?: (text: string, partNamesInOrder: string[]) => string;
+  /** Parse pasted text into the side's new segment buffers, or `null` to
+   * ignore the paste. Takes the side's current buffers so a partial paste (a
+   * bare time into a datetime field) can keep the rest, which a wire value —
+   * all-or-nothing by construction — could not express. Defaults to the
+   * three-numeric-group date grammar. */
+  parsePaste?: (
+    text: string,
+    partNamesInOrder: string[],
+    current: PartValues,
+  ) => PartValues | null;
 }
 
 /**
@@ -514,11 +532,10 @@ class SegmentedField {
     this.options.field.addEventListener("mousedown", (event) => {
       const target = event.target as Element;
       if (target.closest("input[data-date-part]")) return;
-      if (
-        target.closest("[data-date-range-calendar-toggle], [data-date-picker-calendar-toggle]")
-      ) {
-        return;
-      }
+      // Any control in the field owns its own click and its own focus — the
+      // calendar toggle, a datetime field's copy arrow, whatever comes next.
+      // Only genuinely blank space redirects focus into the nearest segment.
+      if (target.closest("button")) return;
       event.preventDefault();
       this.nearestSegment(event as MouseEvent)?.focus();
     });
@@ -628,21 +645,18 @@ class SegmentedField {
     segment.addEventListener("paste", (event) => {
       event.preventDefault();
       const text = (event as ClipboardEvent).clipboardData?.getData("text") ?? "";
-      const partNamesInOrder = segmentsForSide(this.options.picker, side).map(
+      const sideSegments = segmentsForSide(this.options.picker, side);
+      const partNamesInOrder = sideSegments.map(
         (candidate) => candidate.dataset.datePart ?? "",
       );
-      const parse = this.options.parsePaste ?? parsePastedDate;
-      const parsed = parse(text, partNamesInOrder);
-      if (parsed) {
-        setSideValue(
-          this.options.picker,
-          side,
-          this.options.resolveHidden,
-          this.options.onCommit,
-          parsed,
-          this.codec,
-        );
-      }
+      const parse = this.options.parsePaste ?? pastedDateParts;
+      const { values } = readSideParts(this.options.picker, side);
+      const parsed = parse(text, partNamesInOrder, values);
+      if (!parsed) return;
+      sideSegments.forEach((sideSegment) => {
+        setSegmentBuffer(sideSegment, parsed[sideSegment.dataset.datePart ?? ""] ?? "");
+      });
+      this.commitSide(side);
     });
     segment.addEventListener("focus", () => {
       this.options.onFocus?.();

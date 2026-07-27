@@ -4,17 +4,30 @@ import { describe, expect, it, vi } from "vitest";
 const presentationClock = vi.hoisted(() =>
   vi.fn<() => { timeZone: string; hourCycle: "h12" | "h23" } | null>(),
 );
+const dayPeriodLabels = vi.hoisted(() =>
+  vi.fn<() => { am: string; pm: string } | null>(() => ({ am: "AM", pm: "PM" })),
+);
 
-vi.mock("../date-time-presentation.js", () => ({ presentationClock }));
+vi.mock("../date-time-presentation.js", () => ({
+  presentationClock,
+  dayPeriodLabels,
+  // The engine module the codec's paste grammar delegates its date half to
+  // reads these; both are absent on a page with no contract.
+  segmentRules: () => null,
+}));
+
+async function codecModule(timeZone: string, hourCycle: "h12" | "h23") {
+  presentationClock.mockReturnValue({ timeZone, hourCycle });
+  vi.resetModules();
+  return import("./date-time-codec.js");
+}
 
 async function codecFor(
   timeZone: string,
   hourCycle: "h12" | "h23" = "h23",
   initialValue = "",
 ) {
-  presentationClock.mockReturnValue({ timeZone, hourCycle });
-  vi.resetModules();
-  const { createDateTimeCodec } = await import("./date-time-codec.js");
+  const { createDateTimeCodec } = await codecModule(timeZone, hourCycle);
   return createDateTimeCodec(initialValue);
 }
 
@@ -170,5 +183,67 @@ describe("date-time codec decode", () => {
     const parts = { ...PARTS, hour: "02", minute: "30", day_period: "01" };
 
     expect(codec.decode(codec.encode(parts, true))).toMatchObject(parts);
+  });
+});
+
+describe("pasted wall clock", () => {
+  const ISO_DATE_PARTS = ["year", "month", "day"];
+  const MDY_DATE_PARTS = ["month", "day", "year"];
+
+  async function parse(text: string, dateParts = ISO_DATE_PARTS, hourCycle: "h12" | "h23" = "h23") {
+    const { parsePastedWallClock } = await codecModule("Europe/Prague", hourCycle);
+    return parsePastedWallClock(text, dateParts);
+  }
+
+  it("reads an ISO datetime, T glue and all", async () => {
+    expect(await parse("2026-07-27T14:30")).toEqual({
+      date: "2026-07-27",
+      hour: "14",
+      minute: "30",
+    });
+  });
+
+  it("drops seconds and a trailing offset, which the segments do not show", async () => {
+    expect(await parse("2026-07-27T14:30:59.123456+02:00")).toEqual({
+      date: "2026-07-27",
+      hour: "14",
+      minute: "30",
+    });
+  });
+
+  it("folds a day period in the profile's own order", async () => {
+    expect(await parse("07/27/2026 02:30 PM", MDY_DATE_PARTS, "h12")).toEqual({
+      date: "2026-07-27",
+      hour: "14",
+      minute: "30",
+    });
+  });
+
+  it("reads midnight from a 12-hour clock", async () => {
+    expect(await parse("07/27/2026 12:30 AM", MDY_DATE_PARTS, "h12")).toEqual({
+      date: "2026-07-27",
+      hour: "00",
+      minute: "30",
+    });
+  });
+
+  it("accepts a bare date, leaving the time to the caller", async () => {
+    expect(await parse("2026-07-27")).toEqual({ date: "2026-07-27", hour: "", minute: "" });
+  });
+
+  it("accepts a bare time, leaving the date to the caller", async () => {
+    expect(await parse("14:30")).toEqual({ date: "", hour: "14", minute: "30" });
+  });
+
+  it("refuses a half it cannot read rather than taking the other one", async () => {
+    // A present-but-unreadable half means the text was something else; keeping
+    // the readable half of it would be a guess.
+    expect(await parse("not a date 14:30")).toBeNull();
+    expect(await parse("2026-07-27 25:99")).toBeNull();
+    expect(await parse("hello")).toBeNull();
+  });
+
+  it("still refuses a 2-digit year, like the date grammar it delegates to", async () => {
+    expect(await parse("26-07-27 14:30")).toBeNull();
   });
 });

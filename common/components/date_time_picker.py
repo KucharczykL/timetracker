@@ -15,6 +15,7 @@ Django field. ``DateTimeField.to_python`` parses that as aware, so
 """
 
 import re
+from typing import NamedTuple
 
 from common.components.core import Node, Safe
 from common.components.custom_elements import _DateTimeField, _Dropdown
@@ -45,6 +46,19 @@ _WIRE_PATTERN = re.compile(
 )
 
 type SegmentBuffers = dict[str, str]  # e.g. {"year": "2026", "day_period": "01"}
+
+
+class DateTimeCopyTarget(NamedTuple):
+    """Another datetime field on the same page this one can copy itself into.
+
+    The session form's two timestamps point at each other; the arrow points the
+    way the target sits in the form, so the control reads as a direction rather
+    than as an abstract "copy".
+    """
+
+    field_name: str  # the target field's Django name, e.g. "timestamp_end"
+    label: str  # accessible label, e.g. "Copy start value to end"
+    glyph: str  # the arrow shown, e.g. "↓"
 
 
 def datetime_part_values(
@@ -79,6 +93,11 @@ def datetime_part_values(
     return buffers, display
 
 
+_FIELD_ICON_BUTTON_CLASS = (
+    "p-1 text-body hover:text-heading rounded cursor-pointer shrink-0"
+)
+
+
 def DateTimeField(
     *,
     presentation: DateTimePresentation,
@@ -88,9 +107,10 @@ def DateTimeField(
     input_id: str = "",
     required: bool = False,
     invalid: bool = False,
+    copy_target: DateTimeCopyTarget | None = None,
 ) -> Node:
     """The visible half: the hidden input Django binds, one flat run of date
-    and time segments, and a calendar toggle.
+    and time segments, a calendar toggle, and an optional copy-to-peer arrow.
 
     Rendered ``inert`` and freed on upgrade, like the date field — the segments
     carry no ``name`` of their own, so typing before the engine binds would be
@@ -117,12 +137,19 @@ def DateTimeField(
             type="button",
             data_date_picker_calendar_toggle="",
             aria_label=f"Open {label} calendar",
-            class_=(
-                "ms-auto p-1 text-body hover:text-heading rounded "
-                "cursor-pointer shrink-0"
-            ),
+            class_=f"ms-auto {_FIELD_ICON_BUTTON_CLASS}",
         )[Safe(CALENDAR_ICON_SVG)],
     ]
+    if copy_target is not None:
+        children.append(
+            Button(
+                type="button",
+                data_date_time_copy=copy_target.field_name,
+                aria_label=copy_target.label,
+                title=copy_target.label,
+                class_=_FIELD_ICON_BUTTON_CLASS,
+            )[copy_target.glyph]
+        )
     return Div(
         role="group",
         aria_label=label,
@@ -163,11 +190,16 @@ def DateTimePicker(
     input_id: str = "",
     required: bool = False,
     invalid: bool = False,
+    copy_target: DateTimeCopyTarget | None = None,
 ) -> Node:
     """A presentation-aware datetime widget: segmented manual entry plus a
-    calendar popup, submitting an offset-qualified wall clock under ``name``."""
+    calendar popup, submitting an offset-qualified wall clock under ``name``.
 
-    field = _DateTimeField(class_="relative")[
+    ``field-name`` is on the element rather than only on the hidden input: a
+    copy control addresses the *widget* it writes into, and only the element
+    knows how to re-derive its segments from a value."""
+
+    field = _DateTimeField(class_="relative", field_name=name)[
         DateTimeField(
             presentation=presentation,
             label=label,
@@ -176,6 +208,7 @@ def DateTimePicker(
             input_id=input_id,
             required=required,
             invalid=invalid,
+            copy_target=copy_target,
         ),
         DateTimeCalendar(input_name_prefix=name),
     ]

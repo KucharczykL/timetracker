@@ -42,12 +42,12 @@ from common.components.custom_elements import (
     MenuDropdown,
     SelectDropdown,
     SelectionFields,
-    SessionTimestampButtons,
     SplitButtonDropdown,
     register_element,
 )
 from common.components.date_time_picker import (
     DateTimeCalendar,
+    DateTimeCopyTarget,
     DateTimeField,
     DateTimePicker,
 )
@@ -224,7 +224,6 @@ __all__ = [
     "SelectDropdown",
     "SplitButtonDropdown",
     "SelectionFields",
-    "SessionTimestampButtons",
     "custom_element_builder",
     "Document",
     "Element",
@@ -323,6 +322,7 @@ __all__ = [
     "Nav",
     "Noscript",
     "DateTimeCalendar",
+    "DateTimeCopyTarget",
     "DateTimeField",
     "DateTimePicker",
     "Table",

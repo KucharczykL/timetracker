@@ -8,6 +8,7 @@ from common.components import (
     Column,
     ConfirmPage,
     ContentContainer,
+    ModuleScript,
     Node,
     TableData,
     TruncatedText,
@@ -24,24 +25,37 @@ from games.models import GameStatusChange
 
 @login_required
 def add_statuschange(request: HttpRequest) -> HttpResponse:
-    form = GameStatusChangeForm(request.POST or None)
+    form = GameStatusChangeForm(
+        request.POST or None,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         obj = form.save()
         return redirect("games:view_game", game_id=obj.game.id)
     return render_page(
-        request, AddForm(form, request=request), title="Add status change"
+        request,
+        AddForm(form, request=request),
+        title="Add status change",
+        scripts=ModuleScript("dist/elements/date-time-field.js"),
     )
 
 
 @login_required
 def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpResponse:
     statuschange = get_object_or_404(GameStatusChange, id=statuschange_id)
-    form = GameStatusChangeForm(request.POST or None, instance=statuschange)
+    form = GameStatusChangeForm(
+        request.POST or None,
+        instance=statuschange,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         saved = form.save()
         return redirect("games:view_game", game_id=saved.game.id)
     return render_page(
-        request, AddForm(form, request=request), title="Edit status change"
+        request,
+        AddForm(form, request=request),
+        title="Edit status change",
+        scripts=ModuleScript("dist/elements/date-time-field.js"),
     )
 
 
