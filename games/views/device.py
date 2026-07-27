@@ -34,6 +34,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.models import Device
+from games.views.returns import return_url
 
 
 @login_required
@@ -120,7 +121,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
     form = DeviceForm(request.POST or None, instance=device)
     if form.is_valid():
         form.save()
-        return redirect("games:list_devices")
+        return redirect(return_url(request, fallback="games:list_devices"))
 
     return render_page(request, AddForm(form, request=request), title="Edit device")
 
@@ -129,7 +130,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     device = get_object_or_404(Device, id=device_id)
     device.delete()
-    return redirect("games:list_sessions")
+    return redirect(return_url(request, fallback="games:list_devices"))
 
 
 @login_required
@@ -137,6 +138,6 @@ def add_device(request: HttpRequest) -> HttpResponse:
     form = DeviceForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("games:index")
+        return redirect(return_url(request, fallback="games:list_devices"))
 
     return render_page(request, AddForm(form, request=request), title="Add New Device")

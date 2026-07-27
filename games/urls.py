@@ -83,11 +83,6 @@ urlpatterns = [
         name="edit_purchase",
     ),
     path(
-        "purchase/<int:purchase_id>/drop",
-        purchase.drop_purchase,
-        name="drop_purchase",
-    ),
-    path(
         "purchase/<int:purchase_id>/delete",
         purchase.delete_purchase,
         name="delete_purchase",
@@ -96,11 +91,6 @@ urlpatterns = [
         "purchase/<int:purchase_id>/view",
         purchase.view_purchase,
         name="view_purchase",
-    ),
-    path(
-        "purchase/<int:purchase_id>/finish",
-        purchase.finish_purchase,
-        name="finish_purchase",
     ),
     path(
         "purchase/list",
@@ -132,11 +122,6 @@ urlpatterns = [
         "session/add/for-game/<int:game_id>",
         session.add_session,
         name="add_session_for_game",
-    ),
-    path(
-        "session/add/from-game/<int:session_id>",
-        session.new_session_from_existing_session,
-        name="view_game_start_session_from_session",
     ),
     path(
         "session/add/from-list/<int:session_id>",

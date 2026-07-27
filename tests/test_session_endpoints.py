@@ -26,14 +26,21 @@ def running_session(db):
 # is covered by the API tests in tests/test_api.py (test_session_patch_*).
 
 
-def test_clone_htmx_returns_hx_refresh(auth_client, running_session):
-    # Clone is converted in a later phase; still uses the htmx refresh for now.
+def test_clone_is_post_only(auth_client, running_session):
+    url = reverse(
+        "games:list_sessions_start_session_from_session",
+        args=[running_session.pk],
+    )
+    assert auth_client.get(url).status_code == 405
+
+
+def test_clone_post_creates_a_session_and_redirects(auth_client, running_session):
     url = reverse(
         "games:list_sessions_start_session_from_session",
         args=[running_session.pk],
     )
     before = Session.objects.count()
-    response = auth_client.get(url, HTTP_HX_REQUEST="true")
-    assert response.status_code == 204
-    assert response.headers.get("HX-Refresh") == "true"
+    response = auth_client.post(url)
+    assert response.status_code == 302
+    assert response["Location"] == reverse("games:list_sessions")
     assert Session.objects.count() == before + 1

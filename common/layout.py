@@ -313,7 +313,9 @@ def NavbarMenu(
     # instance lives next to the hamburger instead).
     desktop_log = (
         Li(class_="hidden md:flex items-center")[
-            NavbarLogButton(recent_resumes or [], id="navbar-log-desktop")
+            NavbarLogButton(
+                recent_resumes or [], id="navbar-log-desktop", csrf_token=csrf_token
+            )
         ]
         if authenticated
         else ""
@@ -371,7 +373,7 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list["Sessio
 
 
 def NavbarLogButton(
-    recent_resumes: list["Session"], *, id: str = "navbar-log"
+    recent_resumes: list["Session"], *, id: str = "navbar-log", csrf_token: str = ""
 ) -> "Node":
     """The always-visible split button: primary opens the general add-session form,
     the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
@@ -379,7 +381,7 @@ def NavbarLogButton(
     from common.components import (
         ControlButton,
         DropdownActionItem,
-        DropdownLinkItem,
+        DropdownPostItem,
         Icon,
         NameWithIcon,
         Span,
@@ -395,21 +397,22 @@ def NavbarLogButton(
 
     if recent_resumes:
         items: list[Node] = [
-            DropdownLinkItem(
+            DropdownPostItem(
                 reverse(
                     "games:list_sessions_start_session_from_session",
                     args=[session.pk],
                 ),
-                # tap=False: DropdownLinkItem wraps this in its own <a role=
+                # tap=False: DropdownPostItem wraps this in its own <button role=
                 # menuitem>, so the truncation popover must stay a hover-only
-                # <span> (a <button> would nest illegally). On touch the row is
-                # tapped to navigate, revealing the full name on the game page.
+                # <span> (a nested <button> would be illegal). On touch the row is
+                # tapped to submit, resuming straight into the cloned session.
                 NameWithIcon(
                     game=session.game,
                     linkify=False,
                     tap=False,
                     max_width="max-w-full",
                 ),
+                csrf_token=csrf_token,
             )
             for session in recent_resumes
         ]
@@ -483,7 +486,9 @@ def Navbar(
     # the mobile group, and `menu` stays a direct flex child for its mobile wrap.
     mobile_log = (
         Div(class_="md:hidden")[
-            NavbarLogButton(recent_resumes or [], id="navbar-log-mobile")
+            NavbarLogButton(
+                recent_resumes or [], id="navbar-log-mobile", csrf_token=csrf_token
+            )
         ]
         if authenticated
         else ""

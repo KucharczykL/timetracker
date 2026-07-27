@@ -20,6 +20,7 @@ from common.utils import paginate
 from games.sorting import parse_find_filter
 from games.forms import GameStatusChangeForm
 from games.models import GameStatusChange
+from games.views.returns import return_url
 
 
 @login_required
@@ -27,7 +28,9 @@ def add_statuschange(request: HttpRequest) -> HttpResponse:
     form = GameStatusChangeForm(request.POST or None)
     if form.is_valid():
         obj = form.save()
-        return redirect("games:view_game", game_id=obj.game.id)
+        return redirect(
+            return_url(request, fallback="games:view_game", fallback_args=[obj.game.id])
+        )
     return render_page(
         request, AddForm(form, request=request), title="Add status change"
     )
@@ -39,7 +42,11 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
     form = GameStatusChangeForm(request.POST or None, instance=statuschange)
     if form.is_valid():
         saved = form.save()
-        return redirect("games:view_game", game_id=saved.game.id)
+        return redirect(
+            return_url(
+                request, fallback="games:view_game", fallback_args=[saved.game.id]
+            )
+        )
     return render_page(
         request, AddForm(form, request=request), title="Edit status change"
     )
@@ -100,7 +107,9 @@ def delete_statuschange(request: HttpRequest, pk: int) -> HttpResponse:
     if request.method == "POST":
         game_id = statuschange.game.id
         statuschange.delete()
-        return redirect("games:view_game", game_id=game_id)
+        return redirect(
+            return_url(request, fallback="games:view_game", fallback_args=[game_id])
+        )
     return render_page(
         request,
         _delete_statuschange_content(statuschange, request),

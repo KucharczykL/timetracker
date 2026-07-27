@@ -3,7 +3,7 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -65,8 +65,9 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
+from common.returns import action_url
+from games.views.returns import origin_from, return_url
 
 
 @login_required
@@ -178,16 +179,18 @@ def add_game(request: HttpRequest) -> HttpResponse:
     form = GameForm(request.POST or None)
     if form.is_valid():
         game = form.save()
+        origin = origin_from(request)
         if "submit_and_redirect" in request.POST:
-            return HttpResponseRedirect(
-                reverse("games:add_purchase_for_game", kwargs={"game_id": game.id})
+            return redirect(
+                action_url(
+                    "games:add_purchase_for_game", game_id=game.id, origin=origin
+                )
             )
         elif "submit_and_create_session" in request.POST:
-            return HttpResponseRedirect(
-                reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+            return redirect(
+                action_url("games:add_session_for_game", game_id=game.id, origin=origin)
             )
-        else:
-            return redirect("games:list_games")
+        return redirect(return_url(request, fallback="games:list_games"))
 
     return render_page(
         request,
@@ -295,18 +298,18 @@ def delete_game_confirmation(request: HttpRequest, game_id: int) -> HttpResponse
 @login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
+    detail_url = reverse("games:view_game", args=[game_id])
     game.delete()
-    return redirect("games:list_sessions")
+    return redirect(return_url(request, fallback="games:list_games", reject=detail_url))
 
 
 @login_required
-@use_custom_redirect
 def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Game, id=game_id)
-    form = GameForm(request.POST or None, instance=purchase)
+    game = get_object_or_404(Game, id=game_id)
+    form = GameForm(request.POST or None, instance=game)
     if form.is_valid():
         form.save()
-        return redirect("games:list_sessions")
+        return redirect(return_url(request, fallback="games:list_games"))
     return render_page(
         request,
         AddForm(form, request=request),
@@ -742,7 +745,6 @@ def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
         _playevents_section(game, presentation),
         _history_section(game, presentation),
     ]
-    request.session["return_path"] = request.path
     return render_page(
         request,
         content,

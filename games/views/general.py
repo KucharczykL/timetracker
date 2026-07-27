@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
@@ -90,27 +90,8 @@ def global_current_year(request: HttpRequest) -> dict[str, int]:
     return {"global_current_year": datetime.now().year}
 
 
-def use_custom_redirect(
-    func: Callable[..., HttpResponse],
-) -> Callable[..., HttpResponse]:
-    """
-    Will redirect to "return_path" session variable if set.
-    """
-
-    def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        response = func(request, *args, **kwargs)
-        if isinstance(response, HttpResponseRedirect) and (
-            next_url := request.session.get("return_path")
-        ):
-            return HttpResponseRedirect(next_url)
-        return response
-
-    return wrapper
-
-
 @login_required
 def stats_alltime(request: HttpRequest) -> HttpResponse:
-    request.session["return_path"] = request.path
     data = compute_stats(None)
     presentation = date_time_presentation_for_request(request)
     return render_page(request, stats_content(data, presentation), title=data["title"])
@@ -125,7 +106,6 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
         )
     if year == 0:
         return HttpResponseRedirect(reverse("games:stats_alltime"))
-    request.session["return_path"] = request.path
     data = compute_stats(year)
     presentation = date_time_presentation_for_request(request)
     return render_page(request, stats_content(data, presentation), title=data["title"])

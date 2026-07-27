@@ -6,8 +6,8 @@ from typing import Any
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
@@ -49,6 +49,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.models import Game, PlayEvent, Session
+from games.views.returns import return_url
 
 logger = logging.getLogger("games")
 
@@ -266,7 +267,9 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         if not game_id:
             # coming from add_playevent url path
             game_id = form.instance.game.id
-        return HttpResponseRedirect(reverse("games:view_game", args=[game_id]))
+        return redirect(
+            return_url(request, fallback="games:view_game", fallback_args=[game_id])
+        )
 
     return render_page(
         request,
@@ -289,8 +292,10 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     )
     if form.is_valid():
         form.save()
-        return HttpResponseRedirect(
-            reverse("games:view_game", args=[playevent.game.id])
+        return redirect(
+            return_url(
+                request, fallback="games:view_game", fallback_args=[playevent.game.id]
+            )
         )
 
     return render_page(
@@ -307,5 +312,8 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
 @login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
+    game_id = playevent.game.id
     playevent.delete()
-    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+    return redirect(
+        return_url(request, fallback="games:view_game", fallback_args=[game_id])
+    )

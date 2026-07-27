@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import (
     HttpRequest,
     HttpResponse,
-    HttpResponseRedirect,
 )
 from django.db import transaction
 from django.db.models import QuerySet
@@ -60,7 +59,8 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
-from games.views.general import use_custom_redirect
+from common.returns import action_url
+from games.views.returns import origin_from, return_url
 from timetracker.settings_resolver import resolve_str_for_user
 
 
@@ -325,17 +325,17 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         if form.is_valid():
             if request.POST.get("pricing_mode") == "per_game":
                 _create_separate_purchases(form, request.POST)
-                return redirect("games:list_purchases")
+                return redirect(return_url(request, fallback="games:list_purchases"))
             purchase = form.save()
             if "submit_and_redirect" in request.POST:
-                return HttpResponseRedirect(
-                    reverse(
+                return redirect(
+                    action_url(
                         "games:add_session_for_game",
-                        kwargs={"game_id": purchase.first_game.id},
+                        game_id=purchase.first_game.id,
+                        origin=origin_from(request),
                     )
                 )
-            else:
-                return redirect("games:list_purchases")
+            return redirect(return_url(request, fallback="games:list_purchases"))
     else:
         if game_id:
             game = Game.objects.get(id=game_id)
@@ -377,7 +377,6 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 
 @login_required
-@use_custom_redirect
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
@@ -393,7 +392,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     )
     if form.is_valid():
         form.save()
-        return redirect("games:list_sessions")
+        return redirect(return_url(request, fallback="games:list_purchases"))
     return render_page(
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
@@ -409,8 +408,11 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
+    detail_url = reverse("games:view_purchase", args=[purchase_id])
     purchase.delete()
-    return redirect("games:list_purchases")
+    return redirect(
+        return_url(request, fallback="games:list_purchases", reject=detail_url)
+    )
 
 
 def _view_purchase_content(
@@ -461,15 +463,6 @@ def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         _view_purchase_content(purchase, presentation),
         title=f"Purchase: {_purchase_page_title(purchase, presentation)}",
     )
-
-
-@login_required
-def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
-    for game in purchase.games.all():
-        game.status = Game.Status.ABANDONED
-        game.save()
-    return redirect("games:list_purchases")
 
 
 def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
@@ -600,14 +593,11 @@ def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         messages.success(request, f"Split into {count} purchases")
 
     response = HttpResponse(status=204)
-    response["HX-Redirect"] = reverse("games:list_purchases")
+    response["HX-Redirect"] = return_url(
+        request,
+        fallback="games:list_purchases",
+        reject=reverse("games:view_purchase", args=[purchase_id])
+        if count > 1
+        else None,
+    )
     return response
-
-
-@login_required
-def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
-    for game in purchase.games.all():
-        game.status = Game.Status.FINISHED
-        game.save()
-    return redirect("games:list_purchases")

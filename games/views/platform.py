@@ -33,7 +33,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.models import Platform
-from games.views.general import use_custom_redirect
+from games.views.returns import return_url
 
 
 @login_required
@@ -122,17 +122,16 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
     platform.delete()
-    return redirect("games:list_platforms")
+    return redirect(return_url(request, fallback="games:list_platforms"))
 
 
 @login_required
-@use_custom_redirect
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
     form = PlatformForm(request.POST or None, instance=platform)
     if form.is_valid():
         form.save()
-        return redirect("games:list_platforms")
+        return redirect(return_url(request, fallback="games:list_platforms"))
     return render_page(request, AddForm(form, request=request), title="Edit Platform")
 
 
@@ -141,7 +140,7 @@ def add_platform(request: HttpRequest) -> HttpResponse:
     form = PlatformForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("games:index")
+        return redirect(return_url(request, fallback="games:list_platforms"))
 
     return render_page(
         request, AddForm(form, request=request), title="Add New Platform"

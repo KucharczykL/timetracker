@@ -65,10 +65,6 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:edit_statuschange",
         "games:list_sessions_start_session_from_session",
         "games:split_purchase",
-        # Deleted in Task 4 (GET-mutating, no callers anywhere):
-        "games:drop_purchase",
-        "games:finish_purchase",
-        "games:view_game_start_session_from_session",
     }
 )
 
