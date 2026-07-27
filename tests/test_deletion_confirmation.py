@@ -6,7 +6,7 @@ import pytest
 from django.urls import reverse
 
 from common.returns import action_url
-from games.models import Game, Platform, Session
+from games.models import Game, GameStatusChange, Platform, PlayEvent, Session
 
 
 @pytest.fixture
@@ -68,12 +68,15 @@ def deletables(db):
     )
     purchase.games.set([owned])
     return {
+        "game": owned,
         "session": Session.objects.create(
             game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
         ),
         "purchase": purchase,
         "platform": Platform.objects.create(name="Doomed"),
         "device": Device.objects.create(name="Doomed"),
+        "playevent": PlayEvent.objects.create(game=owned),
+        "statuschange": GameStatusChange.objects.create(game=owned, new_status="p"),
     }
 
 
@@ -93,4 +96,25 @@ def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallb
     assert type(instance).objects.filter(pk=instance.pk).exists()
     response = logged_in.post(url)
     assert response["Location"] == reverse(fallback)
+    assert not type(instance).objects.filter(pk=instance.pk).exists()
+
+
+@pytest.mark.parametrize(
+    "url_name,key",
+    [
+        ("games:delete_playevent", "playevent"),
+        ("games:delete_statuschange", "statuschange"),
+    ],
+)
+def test_every_delete_confirms_first_with_owning_game_fallback(
+    logged_in, deletables, url_name, key
+):
+    """These two fall back to the owning game's page, not a bare list URL."""
+    instance = deletables[key]
+    owning_game = deletables["game"]
+    url = reverse(url_name, args=[instance.pk])
+    assert logged_in.get(url).status_code == 200
+    assert type(instance).objects.filter(pk=instance.pk).exists()
+    response = logged_in.post(url)
+    assert response["Location"] == reverse("games:view_game", args=[owning_game.id])
     assert not type(instance).objects.filter(pk=instance.pk).exists()
