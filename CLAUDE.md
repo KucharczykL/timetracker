@@ -55,6 +55,21 @@ suite **including `e2e/`**) and confirm it is green. Never verify with a hand-pi
 subset of test files — that is how removed-widget e2e breakage reaches CI. `ARGS` is
 for iterating, never for the gate.
 
+**The suite runs in parallel locally** (pytest-xdist), because it is dominated by
+browser page loads rather than CPU: 2507 tests take ~55s at 16 workers against
+~370s serial. `PYTEST_WORKERS` defaults to half the cores, capped at 16 — measured
+as the point where it stops getting faster, since at one worker per core the extra
+contention starts flaking timing-sensitive e2e tests instead. **CI sets `CI`, which
+defaults it to `-n 0`** (in-process, xdist inert): `ubuntu-latest` is 4 vCPU, where
+the win is small and a scheduling-induced red CI on a green local run is a bad
+trade. Set `PYTEST_WORKERS=0` when debugging a failure — parallel output
+interleaves and `-x` stops only the worker that hit it.
+
+**While iterating, use `make check-fast`** — the same aggregate minus `e2e/`, which
+is 83% of the suite's serial wall time (269 browser tests ≈ 306s, against 2238
+others ≈ 64s). It is explicitly **not** the gate: only the full `check` catches e2e
+breakage. Iterate on `check-fast`, gate on `check` before pushing.
+
 ### Python 3.14 is a hard prerequisite
 
 `pyproject.toml` pins `requires-python = ">=3.14,<4"`, and the code **depends on
@@ -117,6 +132,8 @@ against `make check` before pushing when possible.
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
 | Lint + format check + mypy + ts-check + vitest + tests | `make check` (CI-style aggregate; CI runs exactly this) |
+| Same aggregate minus `e2e/`, for iterating | `make check-fast` (~70s vs ~6.5 min; **not** the verification gate) |
+| Run every test except `e2e/` | `make test-fast` (`ARGS` works the same) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
