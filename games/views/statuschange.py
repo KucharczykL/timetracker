@@ -56,7 +56,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Status changes",
         "columns": [
-            Column("Game"),
+            Column("Game", shrinkable=True),
             Column("Old Status"),
             Column("New Status", priority=2),
             Column("Timestamp", priority=3),
