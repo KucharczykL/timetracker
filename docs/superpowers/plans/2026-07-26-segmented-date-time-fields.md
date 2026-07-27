@@ -48,14 +48,35 @@ tinted sub-groups (contrast) and the crosshair icon.
 
 **Confirmed sound, do not revisit:** `DateTimeField.to_python` calls
 `parse_datetime` before any strptime, so an offset-qualified value binds aware and
-`from_current_timezone` no-ops on it — **no server-side change needed**;
-`prepare_value` → `to_current_timezone` hands the widget naive local (unlike
-`DateField`, which is why `DatePickerWidget._iso_value` localizes explicitly);
-the degraded gap path produces the exact pinned error string; `render()` returns a
-string so widget Media cannot bubble, making the explicit `ModuleScript` in
-`purchase.py` **necessary, not redundant**; Temporal is already loaded via
-polyfill; `data-date-field-side` is real and unconsumed; the seconds truncation is
-real (`Session.finish_now`, `clone_session_by_id` store microseconds).
+`from_current_timezone` no-ops on it — **no server-side change needed**
+(`forms/fields.py:542-560`, `forms/utils.py:220`); `prepare_value` →
+`to_current_timezone` hands the widget naive local (`fields.py:537-540`,
+`utils.py:239-246`) unlike `DateField`, which is why `DatePickerWidget._iso_value`
+localizes explicitly; the degraded gap path produces the exact pinned error string;
+`render()` returns a string so widget Media cannot bubble, making the explicit
+`ModuleScript` in `purchase.py` **necessary, not redundant**; Temporal is already
+loaded via polyfill, before module scripts (`common/layout.py:650`);
+`data-date-field-side` is real and unconsumed; the seconds truncation is real
+(`Session.finish_now`, `clone_session_by_id` store microseconds).
+
+The DST matrix was **verified empirically** against the repo's own
+`temporal-polyfill.js` under node: `disambiguation: "reject"` throws
+`Ambiguous offset` on both the `2026-03-08T02:30` gap and the `2026-11-01T01:30`
+ambiguity, while `"earlier"` + round-trip yields exactly the decided behaviour
+(gap resolves to 01:30 so the wall clock differs and is detectable; ambiguity
+matches at `-04:00`).
+
+### Second verification pass
+
+A later reviewer re-checked every claim against the code. Seven corrections are
+folded in below and flagged inline as **[corrected]**; the rest confirmed. The two
+substantive ones: phase 2a's "byte-identical markup" and its ARIA work were
+contradictory as written, and one quoted contrast figure was attributed to the
+wrong token.
+
+**Line numbers in this document drifted by one** relative to `main` after the
+branch point. Treat every `file:line` here as approximate and re-locate by
+content; the phase issues carry the corrected figures.
 
 ---
 
@@ -94,12 +115,19 @@ real (`Session.finish_now`, `clone_session_by_id` store microseconds).
 - **Reversed from the prior draft, with the repo's own gate as evidence.** Running
   `scripts/contrast_audit.py`'s math on the tint I had recommended:
   `bg-neutral-tertiary-medium` on `bg-neutral-secondary-medium` is **1.05:1 in
-  light, 1.42:1 in dark** (needs 3:1), and it pushes `text-body` separators and
-  placeholders to **4.39:1 / 3.96:1**, below AA in *both* themes — against a
-  codebase that advertises "WCAG-AA-clean, programmatically verified". No palette
-  step reaches 3:1 as a fill boundary in light mode. `neutral-tertiary-medium` is
-  also the documented *hover* token; using it as a resting fill inverts the
-  vocabulary.
+  light, 1.42:1 in dark**, against the 3:1 a fill boundary needs — that alone
+  kills it, in a codebase that advertises "WCAG-AA-clean, programmatically
+  verified". `neutral-tertiary-medium` is also the documented *hover* token; using
+  it as a resting fill inverts the vocabulary.
+- **[corrected]** The prior draft added that the tint pushes `text-body`
+  separators and placeholders to **4.39:1 / 3.96:1**, "below AA in both themes".
+  Only the dark figure is `text-body` (gray-400 on gray-700 = **3.96:1**, a real
+  AA failure). In light, `text-body` on the tint is gray-600 on gray-100 =
+  **6.87:1** and passes; **4.39:1 is `text-body-subtle`**, which neither the
+  separators (`date_range_picker.py:287`) nor the placeholders (`:57`) use. The
+  companion claim that "no palette step reaches 3:1 as a fill boundary in light
+  mode" is also false as stated (gray-500 on white is 4.84:1) — no *plausible
+  resting tint* does. Do not carry the wrong numbers into the spec doc.
 - **One shell, one flat segment run**, the existing `FIELD_CONTAINER_CLASS`, with
   one trailing calendar toggle and the copy arrow.
 - **Wrapping, not breakpoints.** `flex-wrap`, continuous. Correct arithmetic at
@@ -124,15 +152,27 @@ must implement:
   announced, so today's arrow-stepping is silent to a screen reader.
 - `aria-valuetext` for the day period, whose role as free-text input is simply
   wrong (it's a two-state toggle) — a 4.1.2 Name/Role/Value failure as specced.
-- `role="group"` + `aria-labelledby` binding the segments into one named field
-  (1.3.1); native `datetime-local` exposes exactly this grouping.
-- **Touch-target policy, decided and written down.** Segments are 19.2 × 24px;
-  `e2e/test_touch_targets_e2e.py` asserts raw boxes ≥ 24 with no spacing-exception
-  logic, so "measure it" is hollow — either the segments are exempted explicitly
-  (WCAG 2.5.8's spacing exception does cover them at ~32px centres) or the suite
-  fails. The trailing buttons must be sized from `ControlButton(variant="ghost")`
-  like the calendar nav buttons, not the hand-rolled 24×24 `p-1` pattern that
-  already produced one failure in #485.
+- The segments are already bound into one named field by the server's
+  `role="group"` + `aria-label`, pinned at `tests/test_date_picker.py:129`. That
+  satisfies 1.3.1; **[corrected]** the prior draft's `aria-labelledby` would swap a
+  working attribute for an equivalent one and break the pin for nothing. Keep
+  `aria-label` unless a visible label element actually exists to point at.
+- **[corrected] ARIA is stamped client-side, in `connectedCallback`** — not
+  server-rendered. This is what makes phase 2a's byte-identical-markup contract
+  survivable (see that phase), and it is independently right: `aria-valuenow` and
+  `aria-valuetext` change on every keystroke, so they are widget state, not
+  document structure. The server keeps emitting exactly what it emits today.
+- **Touch-target policy, decided and written down.** Segments are 19.2 × 24px.
+  **[corrected]** `e2e/test_touch_targets_e2e.py` contains two tests — the
+  truncated-text reveal button (`:37-60`) and the calendar toggle plus month nav
+  (`:63-93`) — and **never measures a segment**, so the prior draft's "either they
+  are exempted or the suite fails" describes a forcing function that does not
+  exist. The policy must therefore be *added*: write the WCAG 2.5.8
+  spacing-exception rationale down (it does cover the segments at ~32px centres)
+  and add the test that asserts it, rather than waiting to be failed into it. The
+  trailing buttons must be sized from `ControlButton(variant="ghost")` like the
+  calendar nav buttons, not the hand-rolled 24×24 `p-1` pattern that already
+  produced one failure in #485.
 
 **Sequencing rule:** the ARIA work lands in phase 2a, *before* phase 2c removes
 the last fallback. Do not delete escape hatches while the primary path is unproven.
@@ -179,6 +219,13 @@ user whose zones differ stores a wrong instant *today*. Compute "now" from the
 contract's `time_zone` (already on `<html data-date-time-presentation>`). Fix the
 `return`-instead-of-`continue` bug at line 25 in the same PR.
 
+**[corrected]** "~10 lines" undersells it slightly: the element has **no import
+statements at all** today, and `ts/date-time-presentation.ts` exports only its
+three formatting functions — neither the compiled presentation nor its `timeZone`
+is reachable. The fix needs a new export there first (#535 already specifies
+`nowInPresentationZone()`), not just an edit in place. Temporal itself is fine —
+the polyfill loads before module scripts.
+
 Do not wait for a design doc to fix an active data bug.
 
 ## Phase 1 — presentation contract v2
@@ -200,6 +247,12 @@ live contract), `e2e/test_date_range_picker_e2e.py:117` (builds a profile
 directly), `e2e/test_date_picker_e2e.py:204` (serializes the contract into a
 synthetic page).
 
+**[corrected]** Two more: `e2e/test_admin_settings_page_e2e.py:198-200` is a
+**fourth** raw reader of `data-date-time-presentation` (it only asserts
+`time_zone`, so it should survive v2 — but it belongs on the list), and
+`ts/date-time-presentation.test.ts:50` currently asserts that a `{version: 2}`
+contract is **rejected**. That case does not get re-pointed, it gets *inverted*.
+
 ## Phase 2a — engine parts config, markup byte-identical
 
 Replace `date-field-core.ts`'s free functions + dataset state with a
@@ -209,10 +262,25 @@ placeholder, side, bounds — note **bounds are profile-dependent**: h12 hour is
 that is what lets the existing suites pin this phase verbatim, and it is the claim
 the prior draft's phase 2 contradicted by smuggling a restyle in.
 
-Land the ARIA design here (spinbutton roles, valuetext, group labelling,
-nearest-segment focus). `date-calendar-core.ts:22` is a **fourth** consumer of the
-core (`addDays`, `isoFromDate`) the prior draft missed — keep those helpers
-exported.
+Land the ARIA design here (spinbutton roles, valuetext, nearest-segment focus).
+`date-calendar-core.ts:22` is a **fourth** consumer of the core (`addDays`,
+`isoFromDate`) the prior draft missed — keep those helpers exported.
+
+**[corrected] "Byte-identical markup" and "land the ARIA design" contradict each
+other unless the split is stated, and the prior draft did not state it.** ARIA
+attributes *are* markup, and `tests/test_date_picker.py` pins the server output
+exactly (`:91-99`, `:129-132`, `:233-252`). The resolution, per the a11y section:
+**the server's markup does not change at all; every ARIA attribute this phase adds
+is stamped in `connectedCallback`.** `role="group"`/`aria-label` already exist
+server-side and stay as they are. With that split the phase's contract holds
+literally — and if a suite still needs editing here, that is the signal that
+something non-ARIA leaked in.
+
+**[corrected]** One caveat on "the suites pin this phase": the nearest-segment
+focus change is a behaviour change that the suites do *not* actually catch.
+`e2e/test_date_range_picker_e2e.py:297-304` pins container-click → first segment,
+but it clicks at `(5, 5)`, where nearest *is* first — so it passes by coincidence,
+not by proving anything. Add a far-position click case.
 
 ## Phase 2b — collapse the elements
 
@@ -228,9 +296,21 @@ This is the churn-heavy phase — it rewrites or renames much of #485's
 `tests/test_date_picker.py:233–252`. Budget for rewriting those assertions, not
 re-pointing them.
 
+**[corrected] The blast radius above is the date-picker half only — the range
+half, which this phase also migrates, reaches the filter tier.**
+`common/components/filters.py:412` builds `DateRangePanel`/`DateRangePicker` for
+the quick bar and the nested builder, so add: `tests/test_date_range_picker.py`,
+`tests/test_field_widget.py`, `tests/test_quick_filter_bar.py`,
+`tests/test_node_tree.py`, `e2e/test_date_range_picker_e2e.py`,
+`e2e/test_filter_count_e2e.py`, `ts/elements/date-range-picker.test.ts`. Both tags
+are also *registered* elements (`common/components/custom_elements.py:216-221` for
+`date-range-picker`), so collapsing them means retagging those registrations and
+regenerating `ts/generated/props.ts` — unmentioned anywhere in the prior draft.
+
 ## Phase 2c — remove the `<noscript>` fallback
 
-Delete the noscript input, its `common/input.css:315–318` rule, and the tests
+Delete the noscript input, its `common/input.css:317–321` rule (**[corrected]**),
+and the tests
 pinning it. **Answer the pre-upgrade question explicitly**: `date-picker:not(:defined)`
 also governs what shows during script load. Removing the rule leaves dead,
 focusable segments visible before JS lands; keeping it without the noscript input
@@ -243,10 +323,10 @@ leaves the field blank. Pick one and write it down.
   bound-form re-hydration from both wire shapes.
 - `SessionForm` / `GameStatusChangeForm` take `presentation` and install the
   widget in `__init__`; delete `custom_datetime_widget`. **Four** `SessionForm`
-  sites (`games/views/session.py:182,189,200,219` — the POST branch of
+  sites (`games/views/session.py:183,190,201,220` — the POST branch of
   `add_session` is easy to miss) and **both** `GameStatusChangeForm` sites
-  (`games/views/statuschange.py:26,38`), each page's `scripts=` gaining the
-  element's `ModuleScript`.
+  (`games/views/statuschange.py:27,39`), each page's `scripts=` gaining the
+  element's `ModuleScript`. **[corrected]** line numbers, +1 from the prior draft.
 - Wire value, DST round-trip, and the seconds+microseconds residual per the
   decisions table.
 - **Extend paste parsing to the datetime shape** — `parsePastedDate`
@@ -256,14 +336,18 @@ leaves the field blank. Pick one and write it down.
 - Copy-to-other-field button on the two Session timestamps, direction derived
   from document order.
 - `_timestamp_buttons()` and `ts/elements/session-timestamp-buttons.ts` deleted,
-  their functions absorbed into the field.
+  their functions absorbed into the field — **[corrected]** together with the
+  element *registration* at `common/components/custom_elements.py:190-200`
+  (`SessionTimestampButtonsProps` + `register_element` + builder). Deleting only
+  the Python helper and the `.ts` leaves a live registration codegenning props for
+  a tag nothing renders.
 
 **Test corrections the prior draft got wrong:**
 `tests/test_datetime_local_presentation.py` imports `custom_datetime_widget` at
 line 9, so deleting it breaks the module *import*; and `SessionForm(data=…)` at
 lines 33/53 has no `presentation`. The two timezone **assertions** survive
-verbatim; the **file** needs edits. `tests/test_rendered_pages.py:331–344` dies
-whole, not by dropping one literal. `e2e/test_widgets_e2e.py:208` and
+verbatim; the **file** needs edits. `tests/test_rendered_pages.py:337–350`
+(**[corrected]**, +6) dies whole, not by dropping one literal. `e2e/test_widgets_e2e.py:208` and
 `e2e/test_settings_page_e2e.py:180` load the add-session page for unrelated
 assertions and can be perturbed. `GameStatusChange.timestamp` is nullable —
 blank round-trip needs its own cover.
