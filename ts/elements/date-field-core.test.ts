@@ -122,6 +122,70 @@ describe("segment ARIA", () => {
     expect(segment.hasAttribute("aria-valuenow")).toBe(false);
   });
 
+  it("says an indeterminate segment out loud instead of falling back to zero", async () => {
+    // Dropping aria-valuenow is not silence: a screen reader announces 0, so
+    // an untouched field read every segment as "spinbutton, zero" while
+    // showing YYYY.
+    const { setSegmentBuffer } = await importCore();
+    const segment = mountSegment("month");
+
+    // bind() stamps every segment on upgrade, empty ones included.
+    setSegmentBuffer(segment, "");
+    expect(segment.getAttribute("aria-valuetext")).toBe("blank");
+
+    setSegmentBuffer(segment, "1");
+    expect(segment.getAttribute("aria-valuetext")).toBe("1");
+
+    // Filled: the value is stated as text as well as as a number.
+    setSegmentBuffer(segment, "07");
+    expect(segment.getAttribute("aria-valuetext")).toBe("7");
+    expect(segment.getAttribute("aria-valuenow")).toBe("7");
+
+    setSegmentBuffer(segment, "");
+    expect(segment.getAttribute("aria-valuetext")).toBe("blank");
+  });
+
+  it("shows the day period's label, keeping the buffer numeric", async () => {
+    segmentRules.mockImplementation((name) =>
+      name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,
+    );
+    dayPeriodLabels.mockReturnValue({ am: "dop.", pm: "odp." });
+    const { setSegmentBuffer, segmentBuffer } = await importCore();
+    const segment = mountSegment("day_period", 2, "--");
+
+    setSegmentBuffer(segment, "01");
+
+    expect(segment.value).toBe("odp.");
+    // The wire codec and arrow-stepping both read the numeric buffer.
+    expect(segmentBuffer(segment)).toBe("01");
+  });
+
+  it("selects a day period by the contract's own label, not by a/p", async () => {
+    segmentRules.mockImplementation((name) =>
+      name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,
+    );
+    // Django's cs locale: neither label starts with a or p.
+    dayPeriodLabels.mockReturnValue({ am: "dop.", pm: "odp." });
+    const { dayPeriodBufferForKey } = await importCore();
+
+    expect(dayPeriodBufferForKey("d", 2)).toBe("00");
+    expect(dayPeriodBufferForKey("o", 2)).toBe("01");
+    expect(dayPeriodBufferForKey("a", 2)).toBe("");
+  });
+
+  it("states every segment's value as text so no reader recites a percentage", async () => {
+    // A spinbutton with only aria-valuenow invites a position-in-range
+    // reading: VoiceOver said "2026, 20.3 percent" for the year (2025/9998)
+    // and "7, 54.5 percent" for the month (6/11). A date segment has no
+    // meaningful position in its range.
+    const { setSegmentBuffer } = await importCore();
+    const year = mountSegment("year", 4, "YYYY");
+
+    setSegmentBuffer(year, "2026");
+
+    expect(year.getAttribute("aria-valuetext")).toBe("2026");
+  });
+
   it("announces the day period as text, not as a number", async () => {
     segmentRules.mockImplementation((name) =>
       name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,

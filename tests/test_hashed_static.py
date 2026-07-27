@@ -182,8 +182,8 @@ def test_no_vendored_js_has_dangling_sourcemap():
     """A `//# sourceMappingURL=x.map` whose `.map` isn't shipped fails
     collectstatic under the hashed storage (Django tries to rewrite the ref).
     Guards the flowbite fix from silently regressing. Needs no dist build.
-    (The dead-comment fix in session-timestamp-buttons.ts needs no guard: tsc
-    strips comments, so a reintroduced source comment never reaches dist.)"""
+    (A source comment needs no guard: tsc strips comments, so one never
+    reaches dist.)"""
     offenders: list[str] = []
     for js in VENDORED_JS_DIR.glob("*.js"):
         for match in re.finditer(r"sourceMappingURL=(\S+)", js.read_text()):
