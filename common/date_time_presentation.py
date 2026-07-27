@@ -20,7 +20,11 @@ from django.utils.translation import get_language, override
 
 from timetracker.settings_resolver import resolve_str_for_user
 
-type DatePartName = Literal["day", "month", "year"]
+type SegmentName = Literal["day", "month", "year", "hour", "minute", "day_period"]
+type SegmentKind = Literal["numeric", "day_period"]
+# Which styles a segment participates in: "date" segments render for the "date"
+# style, "time" segments for "time", and both for "datetime".
+type SegmentRun = Literal["date", "time"]
 type HourCycle = Literal["h12", "h23"]
 # Each member is an exact display intent. A missing intent requires a design
 # decision and a new style; callers must never substitute the nearest style.
@@ -28,32 +32,73 @@ type DateTimeStyle = Literal["date", "time", "datetime", "month", "month_year"]
 
 
 @dataclass(frozen=True)
-class DatePartSpec:
-    """One numeric date segment in visible display order."""
+class Affixes:
+    """Literal text printed immediately before and after one segment.
 
-    name: DatePartName
+    Both sides rather than a single joiner, so suffix-shaped formats stay
+    expressible (``2026年7月27日``, or a trailing dot) instead of being a
+    special case the walk has to know about.
+    """
+
+    prefix: str = ""
+    suffix: str = ""
+
+
+@dataclass(frozen=True)
+class DateTimeSegmentSpec:
+    """One segment in visible display order — a numeric part or the day period.
+
+    ``min_value``/``max_value`` are carried here rather than derived by the
+    widget, so the clock rules (h12 hours are 1–12, h23 are 0–23) live in one
+    place. The day period bounds its two states as 0–1: it steps like any other
+    segment.
+    """
+
+    name: SegmentName
+    kind: SegmentKind
+    run: SegmentRun
     placeholder: str
     input_length: int
     display_min_digits: int
+    min_value: int
+    max_value: int
+    display: Affixes = Affixes()
+    segmented: Affixes = Affixes()
 
 
 @dataclass(frozen=True)
 class DateTimeFormatProfile:
     """Structured punctuation, order, and clock rules for display values."""
 
-    date_parts: tuple[DatePartSpec, DatePartSpec, DatePartSpec]
-    date_separator: str
-    segmented_date_separator: str
-    time_separator: str
-    date_time_separator: str
+    segments: tuple[DateTimeSegmentSpec, ...]
     hour_cycle: HourCycle
 
+    def segments_for(self, *runs: SegmentRun) -> tuple[DateTimeSegmentSpec, ...]:
+        """The profile's segments belonging to ``runs``, in display order.
 
-class DatePartConfig(TypedDict):
-    name: DatePartName
+        The composition axis for widgets: a date field takes ``("date",)``, a
+        datetime field both runs, and a time field falls out for free.
+        """
+
+        return tuple(segment for segment in self.segments if segment.run in runs)
+
+
+class AffixesConfig(TypedDict):
+    prefix: str
+    suffix: str
+
+
+class SegmentConfig(TypedDict):
+    name: SegmentName
+    kind: SegmentKind
+    run: SegmentRun
     placeholder: str
     input_length: int
     display_min_digits: int
+    min_value: int
+    max_value: int
+    display: AffixesConfig
+    segmented: AffixesConfig
 
 
 class DayPeriodsConfig(TypedDict):
@@ -62,63 +107,166 @@ class DayPeriodsConfig(TypedDict):
 
 
 class DateTimeFormatProfileConfig(TypedDict):
-    date_parts: list[DatePartConfig]
-    date_separator: str
-    segmented_date_separator: str
-    time_separator: str
-    date_time_separator: str
+    segments: list[SegmentConfig]
     hour_cycle: HourCycle
 
 
 class DateTimePresentationConfig(TypedDict):
-    version: Literal[1]
+    version: Literal[2]
     locale: str
     time_zone: str
     profile: DateTimeFormatProfileConfig
     day_periods: DayPeriodsConfig
 
 
-_ISO_DATE_PARTS = (
-    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-)
-_DMY_DATE_PARTS = (
-    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-)
-_MDY_DATE_PARTS = (
-    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-)
+_DATE_PART_SHAPES: dict[SegmentName, tuple[str, int, int, int]] = {
+    # name: (placeholder, width, minimum, maximum). Days are bounded at 31 for
+    # every month — the exact length is a calendar question the value carries,
+    # not a segment property.
+    "year": ("YYYY", 4, 1, 9999),
+    "month": ("MM", 2, 1, 12),
+    "day": ("DD", 2, 1, 31),
+}
+
+
+def _date_segments(
+    order: tuple[SegmentName, SegmentName, SegmentName],
+    *,
+    display_separator: str,
+    segmented_separator: str,
+) -> tuple[DateTimeSegmentSpec, ...]:
+    """The date run in ``order``, joined by the two separators.
+
+    Both separators land on the *following* segment, so the leading one is
+    empty and the walk's "drop the first prefix" rule needs no exception here.
+    """
+
+    return tuple(
+        DateTimeSegmentSpec(
+            name=name,
+            kind="numeric",
+            run="date",
+            placeholder=placeholder,
+            input_length=width,
+            display_min_digits=width,
+            min_value=minimum,
+            max_value=maximum,
+            display=Affixes(prefix="" if index == 0 else display_separator),
+            segmented=Affixes(prefix="" if index == 0 else segmented_separator),
+        )
+        for index, name in enumerate(order)
+        for placeholder, width, minimum, maximum in (_DATE_PART_SHAPES[name],)
+    )
+
+
+def _time_segments(
+    *,
+    hour_cycle: HourCycle,
+    time_separator: str,
+    date_time_separator: str,
+    day_period_separator: str = " ",
+) -> tuple[DateTimeSegmentSpec, ...]:
+    """The time run: hour, minute, and — under h12 — a trailing day period.
+
+    The hour's prefix is the date/time glue, which is exactly why formatting a
+    time on its own needs no separate rule: the walk drops the first prefix it
+    emits.
+    """
+
+    segments = (
+        DateTimeSegmentSpec(
+            name="hour",
+            kind="numeric",
+            run="time",
+            placeholder="HH",
+            input_length=2,
+            display_min_digits=2,
+            min_value=1 if hour_cycle == "h12" else 0,
+            max_value=12 if hour_cycle == "h12" else 23,
+            display=Affixes(prefix=date_time_separator),
+            segmented=Affixes(prefix=date_time_separator),
+        ),
+        DateTimeSegmentSpec(
+            name="minute",
+            kind="numeric",
+            run="time",
+            placeholder="mm",
+            input_length=2,
+            display_min_digits=2,
+            min_value=0,
+            max_value=59,
+            display=Affixes(prefix=time_separator),
+            segmented=Affixes(prefix=time_separator),
+        ),
+    )
+    if hour_cycle == "h23":
+        return segments
+    return segments + (
+        DateTimeSegmentSpec(
+            name="day_period",
+            kind="day_period",
+            run="time",
+            placeholder="--",
+            input_length=2,
+            display_min_digits=0,
+            min_value=0,
+            max_value=1,
+            display=Affixes(prefix=day_period_separator),
+            segmented=Affixes(prefix=day_period_separator),
+        ),
+    )
+
+
+def build_format_profile(
+    order: tuple[SegmentName, SegmentName, SegmentName],
+    *,
+    hour_cycle: HourCycle,
+    display_separator: str,
+    segmented_separator: str,
+    time_separator: str = ":",
+    date_time_separator: str = " ",
+) -> DateTimeFormatProfile:
+    """Assemble a profile from a date order and the punctuation between runs.
+
+    The registered profiles and any test profile go through here, so the
+    segment invariants (bounds, widths, which separator lands on which segment)
+    have exactly one definition.
+    """
+
+    return DateTimeFormatProfile(
+        segments=_date_segments(
+            order,
+            display_separator=display_separator,
+            segmented_separator=segmented_separator,
+        )
+        + _time_segments(
+            hour_cycle=hour_cycle,
+            time_separator=time_separator,
+            date_time_separator=date_time_separator,
+        ),
+        hour_cycle=hour_cycle,
+    )
+
 
 DATE_TIME_FORMAT_PROFILES = MappingProxyType(
     {
-        "iso_8601": DateTimeFormatProfile(
-            date_parts=_ISO_DATE_PARTS,
-            date_separator="-",
-            segmented_date_separator="-",
-            time_separator=":",
-            date_time_separator=" ",
+        "iso_8601": build_format_profile(
+            ("year", "month", "day"),
             hour_cycle="h23",
+            display_separator="-",
+            segmented_separator="-",
         ),
-        "dmy_24h": DateTimeFormatProfile(
-            date_parts=_DMY_DATE_PARTS,
-            date_separator="/",
-            segmented_date_separator="-",
-            time_separator=":",
-            date_time_separator=" ",
+        "dmy_24h": build_format_profile(
+            ("day", "month", "year"),
             hour_cycle="h23",
+            display_separator="/",
+            segmented_separator="-",
         ),
-        "mdy_12h": DateTimeFormatProfile(
-            date_parts=_MDY_DATE_PARTS,
-            date_separator="/",
-            segmented_date_separator="-",
-            time_separator=":",
-            date_time_separator=" ",
+        "mdy_12h": build_format_profile(
+            ("month", "day", "year"),
             hour_cycle="h12",
+            display_separator="/",
+            segmented_separator="-",
         ),
     }
 )
@@ -167,33 +315,50 @@ class DateTimePresentation:
             raise ValueError("DateTimePresentation requires an aware datetime")
         return value.astimezone(self.timezone)
 
-    def _format_date(self, value: date | datetime) -> str:
-        part_values = {
-            "day": value.day,
-            "month": value.month,
-            "year": value.year,
-        }
-        return self.profile.date_separator.join(
-            _format_numeric_date_part(part_values[part.name], part.display_min_digits)
-            for part in self.profile.date_parts
+    def _segment_text(
+        self, segment: DateTimeSegmentSpec, value: date | datetime
+    ) -> str:
+        if segment.kind == "day_period":
+            assert isinstance(value, datetime)
+            day_periods = _day_periods_for_locale(self.locale)
+            return day_periods["am" if value.hour < 12 else "pm"]
+        if segment.name == "hour":
+            assert isinstance(value, datetime)
+            hour = value.hour
+            if self.profile.hour_cycle == "h12":
+                hour = hour % 12 or 12
+            return _format_numeric_date_part(hour, segment.display_min_digits)
+        if segment.name == "minute":
+            assert isinstance(value, datetime)
+            return _format_numeric_date_part(value.minute, segment.display_min_digits)
+        return _format_numeric_date_part(
+            getattr(value, segment.name), segment.display_min_digits
         )
 
-    def _format_time(self, value: datetime) -> str:
-        if self.profile.hour_cycle == "h23":
-            hour = value.hour
-            day_period = ""
-        else:
-            hour = value.hour % 12 or 12
-            day_periods = _day_periods_for_locale(self.locale)
-            day_period = f" {day_periods['am' if value.hour < 12 else 'pm']}"
-        return f"{hour:02d}{self.profile.time_separator}{value.minute:02d}{day_period}"
+    def _walk(self, runs: tuple[SegmentRun, ...], value: date | datetime) -> str:
+        """Render the segments belonging to ``runs`` in profile order.
+
+        The first emitted segment drops its prefix — that single rule is what
+        makes "date", "time", and "datetime" the same walk: the date/time glue
+        lives on the hour's prefix and simply disappears when the hour leads.
+        """
+
+        pieces: list[str] = []
+        for segment in self.profile.segments:
+            if segment.run not in runs:
+                continue
+            prefix = "" if not pieces else segment.display.prefix
+            pieces.append(
+                f"{prefix}{self._segment_text(segment, value)}{segment.display.suffix}"
+            )
+        return "".join(pieces)
 
     def format(self, value: date | datetime, style: DateTimeStyle) -> str:
         """Format ``value`` using a semantic style, never a caller pattern."""
 
         localized = self._localized(value)
         if style == "date":
-            return self._format_date(localized)
+            return self._walk(("date",), localized)
         if style == "month":
             with override(self.locale):
                 return date_format(localized, "F")
@@ -206,36 +371,40 @@ class DateTimePresentation:
         if not isinstance(localized, datetime):
             raise TypeError(f"{style} formatting requires a datetime")
         if style == "time":
-            return self._format_time(localized)
+            return self._walk(("time",), localized)
         if style == "datetime":
-            return (
-                f"{self._format_date(localized)}"
-                f"{self.profile.date_time_separator}"
-                f"{self._format_time(localized)}"
-            )
+            return self._walk(("date", "time"), localized)
         raise ValueError(f"unknown date/time style: {style!r}")
 
     def to_client_config(self) -> DateTimePresentationConfig:
         """Return the versioned JSON-compatible browser contract."""
 
         return {
-            "version": 1,
+            "version": 2,
             "locale": self.locale,
             "time_zone": self.timezone.key,
             "profile": {
-                "date_parts": [
+                "segments": [
                     {
-                        "name": part.name,
-                        "placeholder": part.placeholder,
-                        "input_length": part.input_length,
-                        "display_min_digits": part.display_min_digits,
+                        "name": segment.name,
+                        "kind": segment.kind,
+                        "run": segment.run,
+                        "placeholder": segment.placeholder,
+                        "input_length": segment.input_length,
+                        "display_min_digits": segment.display_min_digits,
+                        "min_value": segment.min_value,
+                        "max_value": segment.max_value,
+                        "display": {
+                            "prefix": segment.display.prefix,
+                            "suffix": segment.display.suffix,
+                        },
+                        "segmented": {
+                            "prefix": segment.segmented.prefix,
+                            "suffix": segment.segmented.suffix,
+                        },
                     }
-                    for part in self.profile.date_parts
+                    for segment in self.profile.segments
                 ],
-                "date_separator": self.profile.date_separator,
-                "segmented_date_separator": self.profile.segmented_date_separator,
-                "time_separator": self.profile.time_separator,
-                "date_time_separator": self.profile.date_time_separator,
                 "hour_cycle": self.profile.hour_cycle,
             },
             "day_periods": _day_periods_for_locale(self.locale),

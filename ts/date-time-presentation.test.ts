@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DateTimePresentationConfig } from "./generated/date-time-presentation.js";
+import type {
+  DateTimePresentationConfig,
+  HourCycle,
+  SegmentConfig,
+  SegmentName,
+  SegmentRun,
+} from "./generated/date-time-presentation.js";
 
 const reportClientError = vi.hoisted(() => vi.fn());
 
@@ -8,25 +14,85 @@ vi.mock("./client-errors.js", () => ({ reportClientError }));
 
 const CONTRACT_ATTRIBUTE = "data-date-time-presentation";
 
-function validConfig(): DateTimePresentationConfig {
+function segment(
+  name: SegmentName,
+  run: SegmentRun,
+  prefix: string,
+  overrides: Partial<SegmentConfig> = {},
+): SegmentConfig {
+  const width = name === "year" ? 4 : 2;
   return {
-    version: 1,
+    name,
+    kind: "numeric",
+    run,
+    placeholder: name.toUpperCase(),
+    input_length: width,
+    display_min_digits: width,
+    min_value: 0,
+    max_value: 9999,
+    display: { prefix, suffix: "" },
+    segmented: { prefix, suffix: "" },
+    ...overrides,
+  };
+}
+
+function dateSegments(order: SegmentName[], separator: string): SegmentConfig[] {
+  return order.map((name, index) =>
+    segment(name, "date", index === 0 ? "" : separator),
+  );
+}
+
+function timeSegments(
+  hourCycle: HourCycle,
+  timeSeparator: string,
+  dateTimeSeparator: string,
+): SegmentConfig[] {
+  const segments = [
+    segment("hour", "time", dateTimeSeparator, {
+      min_value: hourCycle === "h12" ? 1 : 0,
+      max_value: hourCycle === "h12" ? 12 : 23,
+    }),
+    segment("minute", "time", timeSeparator, { min_value: 0, max_value: 59 }),
+  ];
+  if (hourCycle === "h23") return segments;
+  return [
+    ...segments,
+    segment("day_period", "time", " ", {
+      kind: "day_period",
+      placeholder: "--",
+      display_min_digits: 0,
+      min_value: 0,
+      max_value: 1,
+    }),
+  ];
+}
+
+function configWith(
+  order: SegmentName[],
+  {
+    hourCycle = "h23" as HourCycle,
+    dateSeparator = "-",
+    timeSeparator = ":",
+    dateTimeSeparator = " ",
+  } = {},
+): DateTimePresentationConfig {
+  return {
+    version: 2,
     locale: "en-US",
     time_zone: "Europe/Prague",
     day_periods: { am: "AM", pm: "PM" },
     profile: {
-      date_parts: [
-        { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
-        { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
-        { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
+      segments: [
+        ...dateSegments(order, dateSeparator),
+        ...timeSegments(hourCycle, timeSeparator, dateTimeSeparator),
       ],
-      date_separator: "-",
-      segmented_date_separator: "-",
-      time_separator: ":",
-      date_time_separator: " ",
-      hour_cycle: "h23",
+      hour_cycle: hourCycle,
     },
   };
+}
+
+function validConfig(): DateTimePresentationConfig {
+  return configWith(["year", "month", "day"]);
 }
 
 function installConfig(config: unknown): void {
@@ -44,21 +110,73 @@ function alteredConfig(change: (config: DateTimePresentationConfig) => void): un
   return config;
 }
 
+/** The first segment of the date run — the one every shape test reaches for. */
+function firstSegment(config: DateTimePresentationConfig): SegmentConfig {
+  return config.profile.segments[0];
+}
+
 const invalidContracts = [
   { name: "an absent contract", raw: null },
   { name: "invalid JSON", raw: "{not json" },
-  { name: "a v2 contract", raw: JSON.stringify({ ...validConfig(), version: 2 }) },
+  // v1 is the shape this validator used to accept; it must now be rejected.
+  { name: "a v1 contract", raw: JSON.stringify({ ...validConfig(), version: 1 }) },
   { name: "a non-record profile", raw: JSON.stringify({ ...validConfig(), profile: [] }) },
   {
-    name: "duplicate and missing date parts",
+    name: "duplicate segment names",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        config.profile.date_parts[0] = {
-          name: "day",
-          placeholder: "DD",
-          input_length: 2,
-          display_min_digits: 2,
-        };
+        config.profile.segments[0] = segment("day", "date", "");
+      }),
+    ),
+  },
+  {
+    name: "an incomplete date run",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        config.profile.segments = config.profile.segments.filter(
+          (part) => part.name !== "month",
+        );
+      }),
+    ),
+  },
+  {
+    name: "an unknown segment name",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        (firstSegment(config) as { name: unknown }).name = "century";
+      }),
+    ),
+  },
+  {
+    name: "an unknown segment kind",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        (firstSegment(config) as { kind: unknown }).kind = "text";
+      }),
+    ),
+  },
+  {
+    name: "an unknown segment run",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        (firstSegment(config) as { run: unknown }).run = "era";
+      }),
+    ),
+  },
+  {
+    name: "inverted bounds",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        firstSegment(config).min_value = 10;
+        firstSegment(config).max_value = 1;
+      }),
+    ),
+  },
+  {
+    name: "a non-integer bound",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        (firstSegment(config) as { min_value: unknown }).min_value = "1";
       }),
     ),
   },
@@ -66,15 +184,23 @@ const invalidContracts = [
     name: "a non-string placeholder",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        (config.profile.date_parts[0] as { placeholder: unknown }).placeholder = 1;
+        (firstSegment(config) as { placeholder: unknown }).placeholder = 1;
       }),
     ),
   },
   {
-    name: "non-string separators",
+    name: "a non-record affix group",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        (config.profile as { date_separator: unknown }).date_separator = 1;
+        (firstSegment(config) as { display: unknown }).display = "-";
+      }),
+    ),
+  },
+  {
+    name: "a non-string affix",
+    raw: JSON.stringify(
+      alteredConfig((config) => {
+        (firstSegment(config).display as { prefix: unknown }).prefix = 1;
       }),
     ),
   },
@@ -114,7 +240,7 @@ const invalidContracts = [
     name: "an input width of zero",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        config.profile.date_parts[0].input_length = 0;
+        firstSegment(config).input_length = 0;
       }),
     ),
   },
@@ -122,7 +248,7 @@ const invalidContracts = [
     name: "a display width of zero",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        config.profile.date_parts[0].display_min_digits = 0;
+        firstSegment(config).display_min_digits = 0;
       }),
     ),
   },
@@ -130,7 +256,7 @@ const invalidContracts = [
     name: "a display width above Intl's maximum",
     raw: JSON.stringify(
       alteredConfig((config) => {
-        config.profile.date_parts[0].display_min_digits = 22;
+        firstSegment(config).display_min_digits = 22;
       }),
     ),
   },
@@ -163,17 +289,18 @@ describe("formatSessionTimeRange", () => {
     expect(formatSessionTimeRange("2026-01-01T23:30:00Z", null)).toBe("2026-01-02 13:30");
   });
 
-  it("uses the contract's date order, punctuation, and display widths", async () => {
+  it("uses the contract's segment order, punctuation, and display widths", async () => {
     installConfig(
       alteredConfig((config) => {
-        config.profile.date_parts = [
-          { name: "year", placeholder: "YEAR", input_length: 9, display_min_digits: 1 },
-          { name: "month", placeholder: "MONTH", input_length: 8, display_min_digits: 1 },
-          { name: "day", placeholder: "DAY", input_length: 7, display_min_digits: 1 },
-        ];
-        config.profile.date_separator = "·";
-        config.profile.time_separator = "h";
-        config.profile.date_time_separator = " @ ";
+        const narrowed = configWith(["year", "month", "day"], {
+          dateSeparator: "·",
+          timeSeparator: "h",
+          dateTimeSeparator: " @ ",
+        });
+        for (const part of narrowed.profile.segments) {
+          if (part.run === "date") part.display_min_digits = 1;
+        }
+        config.profile = narrowed.profile;
       }),
     );
     const { formatSessionTimeRange } = await importFormatter();
@@ -181,10 +308,33 @@ describe("formatSessionTimeRange", () => {
     expect(formatSessionTimeRange("2026-07-02T17:05:00Z", null)).toBe("2026·7·2 @ 19h05");
   });
 
+  it("renders a segment's suffix, not only its prefix", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // The suffix-shaped case a leading-separator-only model cannot express.
+        const labels = ["年", "月", "日"];
+        config.profile.segments
+          .filter((part) => part.run === "date")
+          .forEach((part, index) => {
+            part.display = { prefix: "", suffix: labels[index] };
+          });
+      }),
+    );
+    const { formatSessionTimeRange } = await importFormatter();
+
+    // The date run's own prefixes are gone, but the hour keeps the date/time
+    // glue on its prefix — the two sides compose rather than replacing.
+    expect(formatSessionTimeRange("2026-07-02T17:05:00Z", null)).toBe(
+      "2026年07月02日 19:05",
+    );
+  });
+
   it("uses the contract's h12 day-period labels instead of Intl labels", async () => {
     installConfig(
       alteredConfig((config) => {
-        config.profile.hour_cycle = "h12";
+        config.profile = configWith(["year", "month", "day"], {
+          hourCycle: "h12",
+        }).profile;
         config.day_periods = { am: "before", pm: "after" };
       }),
     );
@@ -197,14 +347,7 @@ describe("formatSessionTimeRange", () => {
 
   it("formats the registered DMY 24-hour profile", async () => {
     installConfig(
-      alteredConfig((config) => {
-        config.profile.date_parts = [
-          { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
-          { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
-          { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
-        ];
-        config.profile.date_separator = "/";
-      }),
+      configWith(["day", "month", "year"], { dateSeparator: "/" }),
     );
     const { formatSessionTimeRange } = await importFormatter();
 
@@ -215,14 +358,9 @@ describe("formatSessionTimeRange", () => {
 
   it("formats the registered MDY 12-hour profile", async () => {
     installConfig(
-      alteredConfig((config) => {
-        config.profile.date_parts = [
-          { name: "month", placeholder: "MM", input_length: 2, display_min_digits: 2 },
-          { name: "day", placeholder: "DD", input_length: 2, display_min_digits: 2 },
-          { name: "year", placeholder: "YYYY", input_length: 4, display_min_digits: 4 },
-        ];
-        config.profile.date_separator = "/";
-        config.profile.hour_cycle = "h12";
+      configWith(["month", "day", "year"], {
+        dateSeparator: "/",
+        hourCycle: "h12",
       }),
     );
     const { formatSessionTimeRange } = await importFormatter();

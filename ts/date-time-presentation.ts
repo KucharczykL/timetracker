@@ -1,25 +1,49 @@
 import { reportClientError } from "./client-errors.js";
-import type { DatePartName, HourCycle } from "./generated/date-time-presentation.js";
+import type {
+  HourCycle,
+  SegmentKind,
+  SegmentName,
+  SegmentRun,
+} from "./generated/date-time-presentation.js";
 
 const CONTRACT_ATTRIBUTE = "data-date-time-presentation";
-const DATE_PART_NAMES = new Set<DatePartName>(["day", "month", "year"]);
-const TIME_MINIMUM_DIGITS = 2;
+const SEGMENT_NAMES = new Set<SegmentName>([
+  "day",
+  "month",
+  "year",
+  "hour",
+  "minute",
+  "day_period",
+]);
+const SEGMENT_KINDS = new Set<SegmentKind>(["numeric", "day_period"]);
+const SEGMENT_RUNS = new Set<SegmentRun>(["date", "time"]);
+const REQUIRED_DATE_SEGMENTS: SegmentName[] = ["day", "month", "year"];
 const NUMERIC_PART_NAMES = ["day", "month", "year", "hour", "minute"] as const;
 
 type NumericPartName = (typeof NUMERIC_PART_NAMES)[number];
 
-interface DatePart {
-  name: DatePartName;
+interface Affixes {
+  prefix: string;
+  suffix: string;
+}
+
+interface Segment {
+  name: SegmentName;
+  kind: SegmentKind;
+  run: SegmentRun;
+  placeholder: string;
+  inputLength: number;
   displayMinimumDigits: number;
+  minimumValue: number;
+  maximumValue: number;
+  display: Affixes;
+  segmented: Affixes;
 }
 
 interface CompiledPresentation {
   locale: string;
   timeZone: string;
-  dateParts: DatePart[];
-  dateSeparator: string;
-  timeSeparator: string;
-  dateTimeSeparator: string;
+  segments: Segment[];
   hourCycle: HourCycle;
   dayPeriods: { am: string; pm: string };
   dateTimeFormatter: Intl.DateTimeFormat;
@@ -63,44 +87,87 @@ function requirePositiveInteger(record: Record<string, unknown>, name: string): 
   return value as number;
 }
 
+function requireInteger(record: Record<string, unknown>, name: string): number {
+  const value = record[name];
+  if (!Number.isInteger(value)) invalidContract(`${name} must be an integer`);
+  return value as number;
+}
+
+function requireAffixes(value: unknown, name: string): Affixes {
+  const record = requireRecord(value, name);
+  return {
+    prefix: requireString(record, "prefix"),
+    suffix: requireString(record, "suffix"),
+  };
+}
+
+function compileSegment(value: unknown): Segment {
+  const raw = requireRecord(value, "segment");
+  const name = raw.name;
+  if (typeof name !== "string" || !SEGMENT_NAMES.has(name as SegmentName)) {
+    invalidContract(`unknown segment name ${String(name)}`);
+  }
+  const kind = raw.kind;
+  if (typeof kind !== "string" || !SEGMENT_KINDS.has(kind as SegmentKind)) {
+    invalidContract("segment kind must be numeric or day_period");
+  }
+  const run = raw.run;
+  if (typeof run !== "string" || !SEGMENT_RUNS.has(run as SegmentRun)) {
+    invalidContract("segment run must be date or time");
+  }
+
+  // Only numeric segments are zero-padded, so only they need a positive width;
+  // the day period carries 0 rather than a meaningless 1.
+  const displayMinimumDigits =
+    kind === "numeric" ? requirePositiveInteger(raw, "display_min_digits") : 0;
+  if (displayMinimumDigits > 21) {
+    invalidContract("display_min_digits must be no greater than 21");
+  }
+  const minimumValue = requireInteger(raw, "min_value");
+  const maximumValue = requireInteger(raw, "max_value");
+  if (minimumValue > maximumValue) invalidContract("min_value must not exceed max_value");
+
+  return {
+    name: name as SegmentName,
+    kind: kind as SegmentKind,
+    run: run as SegmentRun,
+    placeholder: requireString(raw, "placeholder"),
+    inputLength: requirePositiveInteger(raw, "input_length"),
+    displayMinimumDigits,
+    minimumValue,
+    maximumValue,
+    display: requireAffixes(raw.display, "display"),
+    segmented: requireAffixes(raw.segmented, "segmented"),
+  };
+}
+
 function compilePresentation(raw: unknown): CompiledPresentation {
   const config = requireRecord(raw, "date-time presentation");
-  if (config.version !== 1) invalidContract("version must be 1");
+  if (config.version !== 2) invalidContract("version must be 2");
 
   const locale = requireNonemptyString(config, "locale");
   const timeZone = requireNonemptyString(config, "time_zone");
   const dayPeriods = requireRecord(config.day_periods, "day_periods");
   const profile = requireRecord(config.profile, "profile");
-  const datePartsValue = profile.date_parts;
-  if (!Array.isArray(datePartsValue)) invalidContract("profile.date_parts must be an array");
+  const segmentsValue = profile.segments;
+  if (!Array.isArray(segmentsValue)) invalidContract("profile.segments must be an array");
 
-  const dateParts: DatePart[] = [];
-  const seenDateParts = new Set<DatePartName>();
-  for (const value of datePartsValue) {
-    const part = requireRecord(value, "date part");
-    const name = part.name;
-    if (typeof name !== "string" || !DATE_PART_NAMES.has(name as DatePartName)) {
-      invalidContract("date part name must be day, month, or year");
-    }
-    if (seenDateParts.has(name as DatePartName)) invalidContract("date part names must be unique");
-    seenDateParts.add(name as DatePartName);
-
-    requireString(part, "placeholder");
-    requirePositiveInteger(part, "input_length");
-    const displayMinimumDigits = requirePositiveInteger(part, "display_min_digits");
-    if (displayMinimumDigits > 21) {
-      invalidContract("display_min_digits must be no greater than 21");
-    }
-    dateParts.push({ name: name as DatePartName, displayMinimumDigits });
+  const segments = segmentsValue.map(compileSegment);
+  const seen = new Set<SegmentName>();
+  for (const segment of segments) {
+    if (seen.has(segment.name)) invalidContract("segment names must be unique");
+    seen.add(segment.name);
   }
-  if (dateParts.length !== 3 || seenDateParts.size !== 3) {
-    invalidContract("date_parts must contain day, month, and year exactly once");
+  // The widget cannot render a partial date, so this stays a contract-level
+  // invariant rather than a per-widget check.
+  const dateNames = segments.filter((s) => s.run === "date").map((s) => s.name);
+  if (
+    dateNames.length !== REQUIRED_DATE_SEGMENTS.length ||
+    !REQUIRED_DATE_SEGMENTS.every((name) => dateNames.includes(name))
+  ) {
+    invalidContract("the date run must contain day, month, and year exactly once");
   }
 
-  const dateSeparator = requireString(profile, "date_separator");
-  requireString(profile, "segmented_date_separator");
-  const timeSeparator = requireString(profile, "time_separator");
-  const dateTimeSeparator = requireString(profile, "date_time_separator");
   const hourCycle = profile.hour_cycle;
   if (hourCycle !== "h12" && hourCycle !== "h23") {
     invalidContract("hour_cycle must be h12 or h23");
@@ -133,7 +200,11 @@ function compilePresentation(raw: unknown): CompiledPresentation {
     weekday: "short",
   });
   const numberFormats = new Map<number, Intl.NumberFormat>();
-  const widths = new Set([...dateParts.map((part) => part.displayMinimumDigits), TIME_MINIMUM_DIGITS]);
+  const widths = new Set(
+    segments
+      .filter((segment) => segment.kind === "numeric")
+      .map((segment) => segment.displayMinimumDigits),
+  );
   for (const width of widths) {
     numberFormats.set(
       width,
@@ -149,10 +220,7 @@ function compilePresentation(raw: unknown): CompiledPresentation {
   return {
     locale,
     timeZone,
-    dateParts,
-    dateSeparator,
-    timeSeparator,
-    dateTimeSeparator,
+    segments,
     hourCycle,
     dayPeriods: { am, pm },
     dateTimeFormatter,
@@ -201,34 +269,45 @@ function numericParts(
   return values as Record<NumericPartName, number>;
 }
 
+function segmentText(
+  segment: Segment,
+  presentation: CompiledPresentation,
+  parts: Record<NumericPartName, number>,
+  value: Temporal.PlainDateTime,
+): string {
+  if (segment.kind === "day_period") {
+    return value.hour < 12 ? presentation.dayPeriods.am : presentation.dayPeriods.pm;
+  }
+  const numberFormat = presentation.numberFormats.get(segment.displayMinimumDigits);
+  if (!numberFormat) throw new Error("missing number formatter");
+  return numberFormat.format(parts[segment.name as NumericPartName]);
+}
+
+/**
+ * Render the segments belonging to `runs`, in profile order.
+ *
+ * The first emitted segment drops its prefix, which is the one rule that makes
+ * date, time, and datetime the same walk: the date/time glue rides on the
+ * hour's prefix and disappears when the hour leads.
+ */
 function formatDateTime(
   iso: string,
   presentation: CompiledPresentation,
-  includeDate: boolean,
+  runs: readonly SegmentRun[],
 ): string {
   const value = Temporal.Instant.from(iso)
     .toZonedDateTimeISO(presentation.timeZone)
     .toPlainDateTime();
-  const formatter = presentation.dateTimeFormatter;
-  const parts = numericParts(formatter, value);
-  const date = includeDate
-    ? presentation.dateParts
-        .map((part) => {
-          const numberFormat = presentation.numberFormats.get(part.displayMinimumDigits);
-          if (!numberFormat) throw new Error("missing date number formatter");
-          return numberFormat.format(parts[part.name]);
-        })
-        .join(presentation.dateSeparator) + presentation.dateTimeSeparator
-    : "";
-  const timeNumberFormat = presentation.numberFormats.get(TIME_MINIMUM_DIGITS);
-  if (!timeNumberFormat) throw new Error("missing time number formatter");
-  const time = `${timeNumberFormat.format(parts.hour)}` +
-    `${presentation.timeSeparator}${timeNumberFormat.format(parts.minute)}`;
-  const dayPeriod =
-    presentation.hourCycle === "h12"
-      ? ` ${value.hour < 12 ? presentation.dayPeriods.am : presentation.dayPeriods.pm}`
-      : "";
-  return `${date}${time}${dayPeriod}`;
+  const parts = numericParts(presentation.dateTimeFormatter, value);
+  let rendered = "";
+  let first = true;
+  for (const segment of presentation.segments) {
+    if (!runs.includes(segment.run)) continue;
+    const prefix = first ? "" : segment.display.prefix;
+    rendered += `${prefix}${segmentText(segment, presentation, parts, value)}${segment.display.suffix}`;
+    first = false;
+  }
+  return rendered;
 }
 
 /** Convert a civil calendar date to a local-noon instant in the active zone. */
@@ -304,8 +383,10 @@ export function formatSessionTimeRange(startISO: string, endISO: string | null):
   if (!presentation) return null;
 
   try {
-    const start = formatDateTime(startISO, presentation, true);
-    return endISO === null ? start : `${start} — ${formatDateTime(endISO, presentation, false)}`;
+    const start = formatDateTime(startISO, presentation, ["date", "time"]);
+    return endISO === null
+      ? start
+      : `${start} — ${formatDateTime(endISO, presentation, ["time"])}`;
   } catch (error) {
     reportClientError("date-time-presentation", errorDetail(error), { toast: false });
     return null;

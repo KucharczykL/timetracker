@@ -6,9 +6,8 @@ from django.conf import settings
 from django.test import TestCase
 
 from common.date_time_presentation import (
-    DatePartSpec,
-    DateTimeFormatProfile,
     DateTimePresentation,
+    build_format_profile,
     date_time_format_profile,
 )
 from games.formatting import session_time_range
@@ -47,17 +46,13 @@ class FormatDurationTest(TestCase):
             timestamp_end=datetime(2026, 7, 2, 19, 15, tzinfo=ZoneInfo("UTC")),
         )
         presentation = DateTimePresentation(
-            DateTimeFormatProfile(
-                date_parts=(
-                    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-                    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-                    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-                ),
-                date_separator=".",
-                segmented_date_separator="-",
+            build_format_profile(
+                ("year", "month", "day"),
+                hour_cycle="h12",
+                display_separator=".",
+                segmented_separator="-",
                 time_separator="h",
                 date_time_separator=" @ ",
-                hour_cycle="h12",
             ),
             "en-us",
             ZoneInfo("UTC"),

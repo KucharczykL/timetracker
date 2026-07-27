@@ -8,10 +8,7 @@ from django.urls import reverse
 
 import common.layout
 from common import date_time_presentation as presentation_module
-from common.date_time_presentation import (
-    DatePartSpec,
-    DateTimeFormatProfile,
-)
+from common.date_time_presentation import build_format_profile
 from games.models import (
     Device,
     Game,
@@ -60,17 +57,13 @@ class _DatePartParser(HTMLParser):
             self.parts.append(part)
 
 
-ALTERNATE_PROFILE = DateTimeFormatProfile(
-    date_parts=(
-        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-    ),
-    date_separator=".",
-    segmented_date_separator="·",
+ALTERNATE_PROFILE = build_format_profile(
+    ("year", "day", "month"),
+    hour_cycle="h23",
+    display_separator=".",
+    segmented_separator="·",
     time_separator="h",
     date_time_separator=" @ ",
-    hour_cycle="h23",
 )
 
 
