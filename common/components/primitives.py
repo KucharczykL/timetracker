@@ -488,6 +488,23 @@ def PopoverIf(
 # the same pair makes the column eat every spare pixel, so it stops there and
 # ordinary auto layout takes over.
 SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
+
+# The pinned first column of a data table. `start-0`, not `left-0`: the table
+# flips to rtl:text-right, where the scroll start edge is the right one.
+# `bg-inherit` picks up the row's zebra and hover surface — a sticky cell is
+# transparent by default and would let the scrolled content show through it.
+# The cell outranks its sibling pinned cells only while it holds an open panel:
+# a panel nested inside a sticky cell is scoped to that cell's stacking context,
+# so a later row's cell would paint over it. 3 clears the siblings at 2 and
+# stays under the popover (10) and menu (20) strata, which a higher value would
+# cover instead.
+PINNED_COLUMN_CLASS = " ".join(
+    [
+        "sticky start-0 z-[2] bg-inherit",
+        "has-[[data-pop-over-panel]:not([hidden])]:z-[3]",
+        "has-[[data-menu]:not([hidden])]:z-[3]",
+    ]
+)
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
 _TRUNCATED_CLIP_CLASS = (
     "block min-w-0 overflow-hidden whitespace-nowrap "
@@ -1793,6 +1810,8 @@ def TableRow(
             column_class = column.class_ if column else ""
             if column and column.shrinkable:
                 column_class = f"{column_class} {SHRINKABLE_COLUMN_CLASS}".strip()
+            if data_table:
+                column_class = f"{column_class} {PINNED_COLUMN_CLASS}".strip()
             # The row header has always been single-line; only an explicit
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
@@ -2069,6 +2088,7 @@ def _header_cell(
     request,
     *,
     data_table: bool = False,
+    pinned: bool = False,
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
@@ -2081,6 +2101,8 @@ def _header_cell(
         base_class = f"{base_class} {SHRINKABLE_COLUMN_CLASS}"
     if data_table and not column.wrap:
         base_class = f"{base_class} whitespace-nowrap"
+    if pinned:
+        base_class = f"{base_class} {PINNED_COLUMN_CLASS}"
     # The header cell is where <responsive-table> reads the column's drop
     # policy: priority, and the flags that change its width cost (a wrap
     # column measures capped; a shrinkable one is squeezed below md).
@@ -2226,8 +2248,14 @@ def StyledTable(
     if show_header:
         header_row = Tr()[
             [
-                _header_cell(column, sort_terms, request, data_table=data_table)
-                for column in columns
+                _header_cell(
+                    column,
+                    sort_terms,
+                    request,
+                    data_table=data_table,
+                    pinned=data_table and index == 0,
+                )
+                for index, column in enumerate(columns)
             ]
         ]
         thead_class = "text-type-micro text-body uppercase bg-neutral-tertiary"
