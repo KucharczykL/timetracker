@@ -302,7 +302,7 @@ class SessionActionsTest(unittest.TestCase):
     def test_open_session_renders_finish_reset_csrf_and_modal(self):
         from common.components.domain import SessionActions
 
-        html = str(SessionActions(self._session(), "tok123"))
+        html = str(SessionActions(self._session(), "tok123", None))
         self.assertIn("<session-actions", html)
         self.assertIn('api-url="/api/session/7"', html)
         self.assertIn('csrf="tok123"', html)
@@ -321,7 +321,7 @@ class SessionActionsTest(unittest.TestCase):
                 2026, 6, 24, 19, 0, tzinfo=datetime.timezone.utc
             )
         )
-        html = str(SessionActions(ended, "tok123"))
+        html = str(SessionActions(ended, "tok123", None))
         self.assertIn("<session-actions", html)
         self.assertNotIn("data-finish", html)
         self.assertNotIn("data-reset", html)

@@ -43,6 +43,7 @@ from games.sorting import (
 )
 from games.views.filtering import warn_unknown_sort
 from games.views.returns import return_url
+from common.returns import OriginUrl
 from timetracker.settings_resolver import resolve_for_user
 
 
@@ -51,6 +52,8 @@ def session_row_data(
     device_list,
     csrf_token: str,
     presentation: DateTimePresentation,
+    *,
+    origin: OriginUrl | None,
 ) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
     table. Finish/reset are driven by the <session-actions> custom element
@@ -61,7 +64,7 @@ def session_row_data(
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
-        SessionActions(session, csrf_token),
+        SessionActions(session, csrf_token, origin),
         id=f"session-row-{session.pk}",
     )
 
@@ -69,6 +72,7 @@ def session_row_data(
 @login_required
 def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
     )
@@ -104,7 +108,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         ],
         "sort_terms": sort.terms,
         "rows": [
-            session_row_data(session, device_list, csrf_token, presentation)
+            session_row_data(
+                session, device_list, csrf_token, presentation, origin=origin
+            )
             for session in sessions
         ],
     }

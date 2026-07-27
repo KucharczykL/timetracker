@@ -66,13 +66,14 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playevent import create_playevent_tabledata
-from common.returns import action_url
+from common.returns import OriginUrl, action_url
 from games.views.returns import origin_from, return_url
 
 
 @login_required
 def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     games = Game.objects.select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
@@ -130,12 +131,16 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_game", args=[game.pk]),
+                            "href": action_url(
+                                "games:edit_game", game.pk, origin=origin
+                            ),
                             "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
-                            "href": reverse("games:delete_game", args=[game.pk]),
+                            "href": action_url(
+                                "games:delete_game", game.pk, origin=origin
+                            ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
@@ -328,7 +333,7 @@ _STAT_SVGS = {
 }
 
 
-def _played_row(game: Game, request: HttpRequest) -> Node:
+def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> Node:
     """'Played N times' split button: a generic outlined Dropdown wrapped in
     <play-event-row>, which owns only the 'Played +1' action."""
     from common.components import (
@@ -344,7 +349,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
         variant="outline",
-        href=reverse("games:add_playevent"),
+        href=action_url("games:add_playevent", origin=origin),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -358,7 +363,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                reverse("games:add_playevent_for_game", args=[game.id]),
+                action_url("games:add_playevent_for_game", game.id, origin=origin),
                 "Add playthrough...",
             ),
             DropdownActionItem(data_add_play="")["Played times +1"],
@@ -395,15 +400,15 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     return Div(class_="flex gap-2 items-center")[*children]
 
 
-def _game_action_buttons(game: Game) -> Node:
+def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
     # A segmented button group, same component as the table Actions cells. The
     # group owns position-based rounding and hover styling; margin is ours.
     return Div(class_="mb-3")[
         ButtonGroup(
             [
                 {
-                    "href": reverse(
-                        "games:add_session_for_game", kwargs={"game_id": game.id}
+                    "href": action_url(
+                        "games:add_session_for_game", game_id=game.id, origin=origin
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
                         Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"
@@ -411,7 +416,7 @@ def _game_action_buttons(game: Game) -> Node:
                     "color": "green",
                 },
                 {
-                    "href": reverse("games:edit_game", args=[game.id]),
+                    "href": action_url("games:edit_game", game.id, origin=origin),
                     "slot": "Edit",
                     "color": "gray",
                 },
@@ -419,7 +424,9 @@ def _game_action_buttons(game: Game) -> Node:
                     "href": "#",
                     "slot": "Delete",
                     "color": "red",
-                    "hx_get": reverse("games:delete_game_confirmation", args=[game.id]),
+                    "hx_get": action_url(
+                        "games:delete_game_confirmation", game.id, origin=origin
+                    ),
                     "hx_target": "#global-modal-container",
                 },
             ],
@@ -430,6 +437,7 @@ def _game_action_buttons(game: Game) -> Node:
 def _game_history(
     statuschanges: QuerySet[GameStatusChange],
     presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
     items = []
     for change in statuschanges:
@@ -445,10 +453,12 @@ def _game_history(
             status=change.new_status,
             children=[change.get_new_status_display()],
         )
-        edit = A(href=reverse("games:edit_statuschange", args=[change.id]))["Edit"]
-        delete = A(href=reverse("games:delete_statuschange", args=[change.id]))[
-            "Delete"
+        edit = A(href=action_url("games:edit_statuschange", change.id, origin=origin))[
+            "Edit"
         ]
+        delete = A(
+            href=action_url("games:delete_statuschange", change.id, origin=origin)
+        )["Delete"]
         items.append(
             Li(class_="text-slate-500")[
                 f"{prefix} status from",
@@ -524,6 +534,7 @@ def _game_header(
     request: HttpRequest,
     metrics: dict[str, Any],
     presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -592,7 +603,7 @@ def _game_header(
             Span()[GameStatusSelector(game, Game.Status.choices, get_token(request))],
             "👑" if game.mastered else "",
         ),
-        _played_row(game, request),
+        _played_row(game, request, origin),
         _meta_row(
             "Platform",
             Span(class_=grey_value_class)[
@@ -604,11 +615,13 @@ def _game_header(
         Div(class_="flex gap-5 mb-3")[title_span],
         stats_row,
         metadata,
-        _game_action_buttons(game),
+        _game_action_buttons(game, origin),
     ]
 
 
-def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _purchases_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     purchases = game.purchases.order_by("date_purchased")
     rows = [
         make_row(
@@ -619,12 +632,16 @@ def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
             ButtonGroup(
                 [
                     {
-                        "href": reverse("games:edit_purchase", args=[purchase.pk]),
+                        "href": action_url(
+                            "games:edit_purchase", purchase.pk, origin=origin
+                        ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
-                        "href": reverse("games:delete_purchase", args=[purchase.pk]),
+                        "href": action_url(
+                            "games:delete_purchase", purchase.pk, origin=origin
+                        ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
@@ -684,10 +701,12 @@ def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
     )
 
 
-def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _playevents_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(
-        playevents, presentation, exclude_columns=["Game"]
+        playevents, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
     # the detail page), so render plain headers like the sibling sections do —
@@ -718,7 +737,9 @@ def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
     )[section]
 
 
-def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _history_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
     count = statuschanges.count()
     return Div(
@@ -730,7 +751,7 @@ def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
         hx_swap="outerHTML",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
-        _game_history(statuschanges, presentation),
+        _game_history(statuschanges, presentation, origin),
     ]
 
 
@@ -738,12 +759,13 @@ def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     content = ContentContainer(class_="dark:text-white")[
-        _game_header(game, request, _game_overview_metrics(game), presentation),
-        _purchases_section(game, presentation),
+        _game_header(game, request, _game_overview_metrics(game), presentation, origin),
+        _purchases_section(game, presentation, origin),
         _sessions_section(game, presentation),
-        _playevents_section(game, presentation),
-        _history_section(game, presentation),
+        _playevents_section(game, presentation, origin),
+        _history_section(game, presentation, origin),
     ]
     return render_page(
         request,

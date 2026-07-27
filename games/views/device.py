@@ -33,6 +33,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import action_url
 from games.models import Device
 from games.views.returns import return_url
 
@@ -40,6 +41,7 @@ from games.views.returns import return_url
 @login_required
 def list_devices(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     devices = Device.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -73,12 +75,16 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_device", args=[device.pk]),
+                            "href": action_url(
+                                "games:edit_device", device.pk, origin=origin
+                            ),
                             "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
-                            "href": reverse("games:delete_device", args=[device.pk]),
+                            "href": action_url(
+                                "games:delete_device", device.pk, origin=origin
+                            ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },

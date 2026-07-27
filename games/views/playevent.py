@@ -48,6 +48,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import OriginUrl, action_url
 from games.models import Game, PlayEvent, Session
 from games.views.returns import return_url
 
@@ -60,6 +61,8 @@ def create_playevent_tabledata(
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
     sort_terms: Sequence[SortTerm] = (),
+    *,
+    origin: OriginUrl | None,
 ) -> TableData:
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
@@ -99,12 +102,16 @@ def create_playevent_tabledata(
             ButtonGroup(
                 [
                     {
-                        "href": reverse("games:edit_playevent", args=[playevent.pk]),
+                        "href": action_url(
+                            "games:edit_playevent", playevent.pk, origin=origin
+                        ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
-                        "href": reverse("games:delete_playevent", args=[playevent.pk]),
+                        "href": action_url(
+                            "games:delete_playevent", playevent.pk, origin=origin
+                        ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
@@ -161,6 +168,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     playevents = PlayEvent.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -181,6 +189,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         presentation,
         request=request,
         sort_terms=sort.terms,
+        origin=origin,
     )
     content = paginated_table_content(
         data,

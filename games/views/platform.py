@@ -32,6 +32,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import action_url
 from games.models import Platform
 from games.views.returns import return_url
 
@@ -39,6 +40,7 @@ from games.views.returns import return_url
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     platforms = Platform.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -74,13 +76,15 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_platform", args=[platform.pk]),
+                            "href": action_url(
+                                "games:edit_platform", platform.pk, origin=origin
+                            ),
                             "slot": Icon("edit"),
                             "color": "gray",
                         },
                         {
-                            "href": reverse(
-                                "games:delete_platform", args=[platform.pk]
+                            "href": action_url(
+                                "games:delete_platform", platform.pk, origin=origin
                             ),
                             "slot": Icon("delete"),
                             "color": "red",

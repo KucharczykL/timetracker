@@ -47,6 +47,7 @@ from timetracker.settings_resolver import (
 
 if TYPE_CHECKING:
     from common.components import Node
+    from common.returns import OriginUrl
     from games.models import Session
 
 _MAIN_SCRIPT_A = """
@@ -216,6 +217,7 @@ def NavbarMenu(
     is_superuser: bool = False,
     is_settings_page: bool = False,
     recent_resumes: list["Session"] | None = None,
+    origin: "OriginUrl | None" = None,
 ) -> "Node":
     """The responsive ``#navbar-dropdown`` collapse menu, built from components."""
     from common.components import (
@@ -230,13 +232,16 @@ def NavbarMenu(
         ThemeToggle,
         Ul,
     )
+    from common.returns import action_url
 
     def entity_submenu(label, slug, add_url, list_url):
         return DropdownSubmenu(
             label,
             id=f"navbarMenu{slug}",
             items=[
-                DropdownLinkItem(reverse(add_url), f"Add {label.lower()}"),
+                DropdownLinkItem(
+                    action_url(add_url, origin=origin), f"Add {label.lower()}"
+                ),
                 DropdownLinkItem(reverse(list_url), f"List {label.lower()}s"),
             ],
         )
@@ -314,7 +319,10 @@ def NavbarMenu(
     desktop_log = (
         Li(class_="hidden md:flex items-center")[
             NavbarLogButton(
-                recent_resumes or [], id="navbar-log-desktop", csrf_token=csrf_token
+                recent_resumes or [],
+                id="navbar-log-desktop",
+                csrf_token=csrf_token,
+                origin=origin,
             )
         ]
         if authenticated
@@ -373,7 +381,11 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list["Sessio
 
 
 def NavbarLogButton(
-    recent_resumes: list["Session"], *, id: str = "navbar-log", csrf_token: str = ""
+    recent_resumes: list["Session"],
+    *,
+    id: str = "navbar-log",
+    csrf_token: str = "",
+    origin: "OriginUrl | None" = None,
 ) -> "Node":
     """The always-visible split button: primary opens the general add-session form,
     the caret dropdown one-click-resumes each recent game. ``id`` disambiguates the
@@ -387,10 +399,11 @@ def NavbarLogButton(
         Span,
         SplitButtonDropdown,
     )
+    from common.returns import action_url
 
     primary = ControlButton(
         color="green",
-        href=reverse("games:add_session"),
+        href=action_url("games:add_session", origin=origin),
         aria_label="Log game",
         class_="rounded-s-base rounded-e-none",
     )[Icon("play"), Span(class_="hidden sm:inline")["Log game"]]
@@ -398,9 +411,10 @@ def NavbarLogButton(
     if recent_resumes:
         items: list[Node] = [
             DropdownPostItem(
-                reverse(
+                action_url(
                     "games:list_sessions_start_session_from_session",
-                    args=[session.pk],
+                    session.pk,
+                    origin=origin,
                 ),
                 # tap=False: DropdownPostItem wraps this in its own <button role=
                 # menuitem>, so the truncation popover must stay a hover-only
@@ -442,6 +456,7 @@ def Navbar(
     is_superuser: bool = False,
     is_settings_page: bool = False,
     recent_resumes: list["Session"] | None = None,
+    origin: "OriginUrl | None" = None,
 ) -> "Node":
     """Top navigation bar, assembled from components (logo + hamburger + menu)."""
     from common.components import A, Div, Icon, Span
@@ -478,6 +493,7 @@ def Navbar(
         is_superuser=is_superuser,
         is_settings_page=is_settings_page,
         recent_resumes=recent_resumes or [],
+        origin=origin,
     )
     # Two breakpoint instances of the log button: the mobile one sits in the top
     # bar next to the hamburger (`md:hidden`); the desktop one lives inside the
@@ -487,7 +503,10 @@ def Navbar(
     mobile_log = (
         Div(class_="md:hidden")[
             NavbarLogButton(
-                recent_resumes or [], id="navbar-log-mobile", csrf_token=csrf_token
+                recent_resumes or [],
+                id="navbar-log-mobile",
+                csrf_token=csrf_token,
+                origin=origin,
             )
         ]
         if authenticated
@@ -517,14 +536,27 @@ def TimetrackerDocument(
     for the whole page. The `scripts` argument remains for page-specific glue
     that isn't owned by a reusable component (e.g. the add-form helpers).
     """
+    from django.urls import Resolver404, resolve
+
     from common.components import Media, ModuleScript, StaticScript, collect_media
     from common.date_time_presentation import date_time_presentation_for_request
     from games.views.general import global_current_year, model_counts
+    from games.views.returns import READ_ONLY
 
     date_time_presentation = date_time_presentation_for_request(request)
     counts = model_counts(request)
     year = global_current_year(request)["global_current_year"]
     csrf_token = get_token(request)
+    # The navbar's Add/Log links return to the current page, but only when the
+    # current page is itself somewhere a mutation may return to — a form or
+    # confirmation page has nothing meaningful to return to, and the
+    # READ_ONLY allow-list would refuse an origin naming one anyway.
+    try:
+        current_route = resolve(request.path)
+        current_name = f"{current_route.app_name}:{current_route.url_name}"
+    except Resolver404:
+        current_name = None
+    navbar_origin = request.get_full_path() if current_name in READ_ONLY else None
     navbar = Navbar(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
@@ -536,6 +568,7 @@ def TimetrackerDocument(
         is_superuser=request.user.is_superuser,
         is_settings_page=is_settings_page,
         recent_resumes=recent_session_resumes(request),
+        origin=navbar_origin,
     )
 
     # Collect JS from both the page body and the navbar (the navbar owns the

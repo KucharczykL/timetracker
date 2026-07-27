@@ -1,6 +1,6 @@
 """Domain components for games / purchases / sessions."""
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -21,6 +21,9 @@ from common.components.primitives import (
     Ul,
 )
 from games.models import Game, Purchase, Session
+
+if TYPE_CHECKING:
+    from common.returns import OriginUrl
 
 
 def GameLink(
@@ -335,7 +338,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     )
 
 
-def SessionActions(session, csrf_token: str) -> Node:
+def SessionActions(session, csrf_token: str, origin: "OriginUrl | None") -> Node:
     """Row actions for a session: Finish + Reset (only while the session is open),
     Edit, Delete. The finish/reset buttons drive ``PATCH /api/session/<id>`` and
     swap the row client-side; reset opens an inline confirm modal. Edit/Delete stay
@@ -343,6 +346,7 @@ def SessionActions(session, csrf_token: str) -> Node:
     this server-renders the full light DOM so the row works on first paint."""
     from common.components.custom_elements import _SessionActions
     from common.components.primitives import ButtonGroup, ControlButton, Modal
+    from common.returns import action_url
 
     is_open = session.timestamp_end is None
     game_name = session.game.name if session.game else "this session"
@@ -367,12 +371,12 @@ def SessionActions(session, csrf_token: str) -> Node:
             if is_open
             else {},
             {
-                "href": reverse("games:edit_session", args=[session.pk]),
+                "href": action_url("games:edit_session", session.pk, origin=origin),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Edit",
             },
             {
-                "href": reverse("games:delete_session", args=[session.pk]),
+                "href": action_url("games:delete_session", session.pk, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",
