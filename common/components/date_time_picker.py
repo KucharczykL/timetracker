@@ -93,8 +93,14 @@ def datetime_part_values(
     return buffers, display
 
 
+# size-6 is the WCAG 2.5.8 floor stated as a box, not inferred from padding
+# around a child. The calendar toggle already came out 24x24 that way (16px svg
+# + p-1), but the copy arrow is a text glyph ~9px wide, so the same padding gave
+# it 17.6x32 — the failure the calendar's own ‹/› buttons hit in #485. Sizing
+# both means neither depends on what its child happens to measure.
 _FIELD_ICON_BUTTON_CLASS = (
-    "p-1 text-body hover:text-heading rounded cursor-pointer shrink-0"
+    "size-6 flex items-center justify-center text-body hover:text-heading "
+    "rounded cursor-pointer shrink-0"
 )
 
 

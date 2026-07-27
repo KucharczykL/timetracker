@@ -90,3 +90,27 @@ def test_calendar_controls_meet_min_touch_target(touch_page: Page, live_server):
         assert box["height"] >= MIN_TOUCH_TARGET, (
             f"{hook} height {box['height']} too small"
         )
+
+
+def test_datetime_field_controls_meet_min_touch_target(touch_page: Page, live_server):
+    """The session form's datetime fields carry two glyph-only controls each: the
+    calendar toggle and the copy-to-the-other-timestamp arrow. The arrow is a
+    text glyph, so padding alone gave it a 17.6px-wide hit area (#511) — the same
+    failure the ‹/› nav buttons had. Both are sized boxes now, and this covers
+    the add-session page, which no touch-target test reached before."""
+    page = touch_page
+    page.goto(f"{live_server.url}{reverse('games:add_session')}")
+
+    for field_name in ("timestamp_start", "timestamp_end"):
+        field = f'date-time-field[field-name="{field_name}"]'
+        for hook in ("[data-date-picker-calendar-toggle]", "[data-date-time-copy]"):
+            button = page.locator(f"{field} {hook}")
+            expect(button).to_be_visible()
+            box = button.bounding_box()
+            assert box is not None
+            assert box["width"] >= MIN_TOUCH_TARGET, (
+                f"{field_name} {hook} width {box['width']} too small"
+            )
+            assert box["height"] >= MIN_TOUCH_TARGET, (
+                f"{field_name} {hook} height {box['height']} too small"
+            )
