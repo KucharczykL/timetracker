@@ -597,7 +597,18 @@ the pin are logical, but a shadow offset is physical, so an unmirrored seam
 paints into the table's own edge instead of over the content sliding beneath it.
 
 `box-shadow`, never `filter: drop-shadow`: `filter` makes the cell a containing
-block for the `position: fixed` panels it hosts. `container-type: scroll-state`
+block for the `position: fixed` panels it hosts.
+
+**The seam only paints in the separated border model.** Chrome draws no
+box-shadow on a table cell under `border-collapse: collapse`, so the rule
+computes, `getComputedStyle` reports it, the container query flips it on scroll
+— and the screen shows nothing. Verified by substituting an opaque 20px red
+shadow: invisible collapsed, immediate under `border-separate`. Data tables
+therefore carry `border-separate border-spacing-0`, which also settles the
+collapsed-border trap below: a `<tr>` border is ignored in the separated model,
+so the row divider moves onto the cells and travels with the pinned cell instead
+of being painted over by it. Stats cards keep the collapsed model — no pin, no
+seam. `container-type: scroll-state`
 does not — a fixed descendant stays at viewport coordinates under one (measured),
 so the region can host the query without tripping the shell's prohibition.
 
@@ -614,13 +625,12 @@ Traps, all confirmed or flagged:
   `<thead[^>]*bg-neutral-tertiary` and is deliberately anchored on `<thead>` so a
   row's `hover:bg-neutral-tertiary-medium` cannot false-match — update it to
   match the header row with the same anti-false-match property.
-- **Collapsed borders do not travel (flagged, must verify).** Preflight sets
-  `border-collapse: collapse`, so borders live in the table's collapsed-border
-  layer rather than the cell box and may not move with a sticky cell.
-  `dark:divide-y` on `<tbody>` puts a `border-bottom` on each non-last `<tr>`,
-  visible only in dark mode — expect a possible 1px divider discontinuity down
-  the pinned column. A background-transparency guard cannot detect this; it needs
-  an explicit dark-mode check.
+- **Collapsed borders do not travel (resolved).** The trap was real but reached
+  from the other direction: the collapsed model's first casualty was the seam,
+  not the divider. Data tables now use `border-separate border-spacing-0`, so
+  cells own their borders — the divider is a cell `border-b` and moves with the
+  pinned cell by construction. A screenshot at page scale could not have settled
+  this either way; the deciding evidence was the seam failing to paint at all.
 - **Phase 1 is not a prerequisite.** An earlier draft made it one, on the
   strength of the occlusion the CSS elevation above removes. (The two probes
   report different totals — 18/24 in § Phase 1 against a real page, 24/24 here
