@@ -498,11 +498,24 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # so a later row's cell would paint over it. 3 clears the siblings at 2 and
 # stays under the popover (10) and menu (20) strata, which a higher value would
 # cover instead.
+#
+# From md up only, and not by preference: below md the same cell carries
+# SHRINKABLE_COLUMN_CLASS, whose max-w-0 is what lets the name column collapse
+# under its content so the actions column survives on a phone. A sticky cell
+# will not collapse that way, so pinning below md costs ~200px of horizontal
+# scroll on the narrow viewports the allowance exists to protect. The two are
+# mutually exclusive, and a pinned column has nothing to hold still on a
+# viewport where the table has already been cut to two columns.
 PINNED_COLUMN_CLASS = " ".join(
     [
-        "sticky start-0 z-[2] bg-inherit",
-        "has-[[data-pop-over-panel]:not([hidden])]:z-[3]",
-        "has-[[data-menu]:not([hidden])]:z-[3]",
+        "md:sticky md:start-0 md:z-[2] md:bg-inherit",
+        "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3]",
+        "md:has-[[data-menu]:not([hidden])]:z-[3]",
+        # A box-shadow, never a filter: a filtered cell becomes the containing
+        # block for the fixed panels it hosts. Scoped to a region that actually
+        # has something scrolled behind the column, so a table that fits shows
+        # no seam.
+        "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[4px_0_6px_-4px_rgb(0_0_0/0.35)]",
     ]
 )
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
@@ -2306,7 +2319,12 @@ def StyledTable(
         # — because the first column's real width varies per table and per page.
         # Only from md up: 19rem is wider than a phone's scrollport, where the
         # browser would clamp it into a meaningless snap position anyway.
-        scroll_class = f"{scroll_class} md:scroll-ps-[19rem]"
+        # The scroll-state container type lets the pinned column show its seam
+        # only while something is scrolled behind it. It is not a containing
+        # block, so the fixed panels inside the table are unaffected.
+        scroll_class = (
+            f"{scroll_class} md:scroll-ps-[19rem] [container-type:scroll-state]"
+        )
         scroll_attributes = [
             ("role", "region"),
             ("tabindex", "0"),

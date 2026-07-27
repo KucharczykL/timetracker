@@ -2240,9 +2240,24 @@ class DataTableWidthPolicyTest(SimpleTestCase):
             self._first_header_cell(self._thead(result)),
             self._row_header_cell(self._tbody(result)),
         ):
-            self.assertIn("sticky", cell)
-            self.assertIn("start-0", cell)
-            self.assertIn("bg-inherit", cell)
+            # md-gated: below md the same cell carries max-w-0 so the name
+            # column can collapse, and a sticky cell will not collapse.
+            self.assertIn("md:sticky", cell)
+            self.assertIn("md:start-0", cell)
+            self.assertIn("md:bg-inherit", cell)
+
+    def test_the_pin_never_applies_below_md(self):
+        """The mobile shrink allowance and the pin fight over the same cell:
+        max-w-0 lets the name column collapse to its icon, which a sticky cell
+        refuses to do, costing ~200px of scroll at 390px."""
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025-01-01")],
+        )
+        for token in re.findall(r'class="([^"]*)"', result):
+            for css_class in token.split():
+                if css_class in {"sticky", "start-0", "bg-inherit"}:
+                    self.fail(f"ungated {css_class} found in: {token}")
 
     def test_only_the_first_column_is_pinned(self):
         result = self._data_table(
@@ -2292,6 +2307,37 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         thead = self._thead(result)
         header_row = thead.split("<tr")[1].split(">")[0]
         self.assertIn("bg-neutral-tertiary", header_row)
+
+    def test_the_scroll_region_is_a_scroll_state_container(self):
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        region = result.split('role="region"')[0].split("<div")[-1]
+        self.assertIn("[container-type:scroll-state]", region)
+
+    def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
+        """An unconditional shadow would draw a seam down every table that fits,
+        which after priority-plus is most of them at most widths."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        self.assertIn(
+            "[@container_scroll-state(scrollable:inline-start)]:shadow-",
+            PINNED_COLUMN_CLASS,
+        )
+
+    def test_the_pinned_cell_casts_no_filter_shadow(self):
+        """`filter` would make the cell a containing block for the fixed panels
+        it hosts; `box-shadow` has no such side effect."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        self.assertNotIn("drop-shadow", PINNED_COLUMN_CLASS)
+
+    def test_non_data_table_gets_no_scroll_state_container(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("container-type", result)
 
 
 class ResponsiveTableGateTest(SimpleTestCase):
