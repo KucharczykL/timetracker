@@ -658,9 +658,18 @@ def test_the_seam_appears_only_once_the_region_is_scrolled(
             region.scrollLeft = region.scrollWidth;
         }}"""
     )
-    # The scroll-state query settles on the next frame, not synchronously.
-    settle_layout(page)
-    assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") != "none"
+    # The scroll-state query recomputes on its own rendering step, not
+    # synchronously with the scroll. settle_layout has nothing to poll here —
+    # a no-JS page has no <responsive-table> to report settled — and
+    # wait_for_function's rAF-driven polling never wakes with scripting off,
+    # so poll on Playwright's own timer instead.
+    box_shadow = "none"
+    for _ in range(20):
+        box_shadow = cell.evaluate("(node) => getComputedStyle(node).boxShadow")
+        if box_shadow != "none":
+            break
+        page.wait_for_timeout(50)
+    assert box_shadow != "none"
 
 
 def test_a_control_tabbed_into_from_off_screen_is_not_hidden_by_the_pin(
