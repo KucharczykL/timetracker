@@ -2321,9 +2321,12 @@ def StyledTable(
     # The nth-child literals are safelisted via @source inline in input.css.
     # In the separated model a <tr> border is ignored, so the divider lives on
     # the cells — which also means it travels with the pinned cell instead of
-    # being painted over by it.
+    # being painted over by it. The color must live on the cells too: border
+    # color does not inherit, and without it each cell falls back to
+    # currentColor — a bright heading-colored line under the row-header <th>.
     tbody_class = (
-        "font-condensed dark:[&_tr:not(:last-child)>*]:border-b"
+        "font-condensed dark:[&_tr:not(:last-child)>*]:border-b "
+        "dark:[&_tr:not(:last-child)>*]:border-default-medium"
         if data_table
         else "font-condensed dark:divide-y"
     )
