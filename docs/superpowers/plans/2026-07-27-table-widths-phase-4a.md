@@ -501,6 +501,7 @@ from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page
 
+from e2e.helpers import settle_layout
 from games.models import Device, Game, Platform, Purchase, Session
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -575,6 +576,11 @@ def no_js_page(live_server, browser: Browser, django_user_model):
 def _open(page: Page, live_server, url_name: str, viewport: dict) -> None:
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse(url_name)}")
+    # <responsive-table> coalesces its column-drop decision into a later frame,
+    # so a measurement taken right after a resize reads the previous one. The
+    # shared helper polls the element's own settled state; on the no-JS pages
+    # there is no element and it falls through to the font wait.
+    settle_layout(page)
 
 
 OVERFLOW = f"""
@@ -653,7 +659,7 @@ def test_the_seam_appears_only_once_the_region_is_scrolled(
         }}"""
     )
     # The scroll-state query settles on the next frame, not synchronously.
-    page.wait_for_timeout(100)
+    settle_layout(page)
     assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") != "none"
 
 
