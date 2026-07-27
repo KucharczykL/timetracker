@@ -15,7 +15,7 @@ the *unhashed* name in DEBUG, which the test suite otherwise runs with.
 """
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 from django.conf import settings
@@ -24,6 +24,8 @@ from django.core.management import call_command
 from django.templatetags.static import static
 from django.test import Client, override_settings
 from django.urls import reverse
+
+from common.storage import HashedStaticStorage
 
 VENDORED_JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "js"
 DIST_DIR = VENDORED_JS_DIR / "dist"
@@ -120,6 +122,60 @@ def test_no_hashed_dist_module_keeps_an_unhashed_import(tmp_path):
                 if not _HASHED_FRAGMENT.search(spec):
                     offenders.append(f"{stored}: {spec}")
         assert not offenders, "unrewritten relative imports:\n" + "\n".join(offenders)
+
+
+def _import_graph() -> dict[str, set[str]]:
+    """Every dist module's relative imports, keyed by path relative to dist."""
+    modules = {
+        path.relative_to(DIST_DIR).as_posix(): path for path in DIST_DIR.rglob("*.js")
+    }
+    graph: dict[str, set[str]] = {}
+    for name, path in modules.items():
+        targets = set()
+        for match in _RELATIVE_IMPORT.finditer(path.read_text()):
+            parts: list[str] = []
+            for part in (PurePosixPath(name).parent / match.group("spec")).parts:
+                if part == "..":
+                    if parts:
+                        parts.pop()
+                elif part != ".":
+                    parts.append(part)
+            target = "/".join(parts)
+            if target in modules:
+                targets.add(target)
+        graph[name] = targets
+    return graph
+
+
+def _longest_import_chain(graph: dict[str, set[str]]) -> int:
+    """Modules on the longest import chain, counting both ends."""
+    depths: dict[str, int] = {}
+
+    def depth(name: str, seen: frozenset[str]) -> int:
+        if name in seen:
+            raise RecursionError(f"import cycle through {name}")
+        if name not in depths:
+            depths[name] = 1 + max(
+                (depth(target, seen | {name}) for target in graph[name]), default=0
+            )
+        return depths[name]
+
+    return max(depth(name, frozenset()) for name in graph)
+
+
+@needs_dist
+def test_post_process_passes_clear_the_dist_import_depth():
+    """Django settles a module's hash only once its imports have theirs, so a
+    deep chain can cost one pass per link. What it actually costs also depends
+    on the order collectstatic walks the files — the filesystem's, not ours —
+    so the cap has to clear the worst case, or the same commit collects on one
+    machine and raises "Max post-process passes exceeded" on another."""
+    depth = _longest_import_chain(_import_graph())
+    # The chain, plus the pass that finds nothing left to substitute.
+    assert HashedStaticStorage.max_post_process_passes >= depth + 1, (
+        f"dist imports run {depth} deep but collectstatic gives up after "
+        f"{HashedStaticStorage.max_post_process_passes} passes"
+    )
 
 
 def test_no_vendored_js_has_dangling_sourcemap():
