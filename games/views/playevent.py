@@ -279,6 +279,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     )
 
 
+@login_required
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
     form = PlayEventForm(
@@ -303,6 +304,7 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     )
 
 
+@login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
     playevent.delete()
