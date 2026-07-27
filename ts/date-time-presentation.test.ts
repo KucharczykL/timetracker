@@ -260,6 +260,47 @@ describe("formatSessionTimeRange", () => {
   });
 });
 
+describe("nowInPresentationZone", () => {
+  beforeEach(() => {
+    reportClientError.mockClear();
+    document.documentElement.removeAttribute(CONTRACT_ATTRIBUTE);
+  });
+
+  it("reads the clock in the contract's zone, not the browser's", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // Fixed UTC+14 year-round, so the expected offset needs no DST logic
+        // and is far enough from any plausible test-runner zone to be decisive.
+        config.time_zone = "Pacific/Kiritimati";
+      }),
+    );
+    const { nowInPresentationZone } = await importFormatter();
+
+    const value = nowInPresentationZone();
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+    const minutesAheadOfUTC = Temporal.PlainDateTime.from(value!)
+      .since(Temporal.Now.plainDateTimeISO("UTC"))
+      .total({ unit: "minute" });
+    expect(Math.abs(minutesAheadOfUTC - 14 * 60)).toBeLessThan(2);
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("truncates to the minute the datetime-local input accepts", async () => {
+    installConfig(validConfig());
+    const { nowInPresentationZone } = await importFormatter();
+
+    expect(nowInPresentationZone()).toHaveLength("2026-07-27T08:34".length);
+  });
+
+  it("returns null on a missing contract so callers can degrade", async () => {
+    const { nowInPresentationZone } = await importFormatter();
+
+    expect(nowInPresentationZone()).toBeNull();
+    expect(reportClientError).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("calendar presentation", () => {
   beforeEach(() => {
     reportClientError.mockClear();
