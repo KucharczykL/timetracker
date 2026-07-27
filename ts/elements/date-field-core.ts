@@ -321,57 +321,93 @@ export function segmentsForSide(
 
 export type HiddenResolver = (side: string) => HTMLInputElement | null;
 
-/** Recompute one side's hidden ISO input from its segment buffers. Returns
+/** Per-segment buffers keyed by `data-date-part`. */
+export type PartValues = Record<string, string>;
+
+/**
+ * Translates between the segment buffers and the value the server binds.
+ *
+ * The engine deliberately knows nothing about the wire format: a date field's
+ * is `YYYY-MM-DD`, a datetime field's is an offset-qualified wall clock. This
+ * is the last of the "it's a date" assumptions that used to be baked into the
+ * sync helpers below.
+ */
+export interface FieldCodec {
+  /** Segment buffers → wire value. `""` when the field is incomplete. */
+  encode(values: PartValues, complete: boolean): string;
+  /** Wire value → segment buffers. Missing parts come back as `""`. */
+  decode(value: string): PartValues;
+}
+
+/** The `YYYY-MM-DD` codec every date field uses. */
+export const dateCodec: FieldCodec = {
+  encode(values, complete) {
+    if (!complete) return "";
+    return isoFromParts(
+      parseInt(values.year, 10),
+      parseInt(values.month, 10),
+      parseInt(values.day, 10),
+    );
+  },
+  decode(value) {
+    if (!value) return { year: "", month: "", day: "" };
+    const pieces = value.split("-");
+    return { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
+  },
+};
+
+/** Read one side's segment buffers, and whether every one of them is filled. */
+export function readSideParts(
+  picker: HTMLElement,
+  side: string,
+): { values: PartValues; complete: boolean } {
+  const values: PartValues = {};
+  let complete = true;
+  segmentsForSide(picker, side).forEach((segment) => {
+    const buffer = segmentBuffer(segment);
+    const spec = segmentSpec(segment);
+    if (!spec || buffer.length !== spec.width) complete = false;
+    values[segment.dataset.datePart ?? ""] = buffer;
+  });
+  return { values, complete };
+}
+
+/** Recompute one side's hidden input from its segment buffers. Returns
  * whether the hidden value changed. */
 export function syncHiddenFromSegments(
   picker: HTMLElement,
   side: string,
   resolveHidden: HiddenResolver,
   onCommit: (side: string) => void,
+  codec: FieldCodec = dateCodec,
 ): boolean {
   const hidden = resolveHidden(side);
   if (!hidden) return false;
-  const partValues: Record<string, string> = {};
-  let complete = true;
-  segmentsForSide(picker, side).forEach((segment) => {
-    const buffer = segmentBuffer(segment);
-    const spec = segmentSpec(segment);
-    if (!spec || buffer.length !== spec.width) complete = false;
-    partValues[segment.dataset.datePart ?? ""] = buffer;
-  });
+  const { values, complete } = readSideParts(picker, side);
   const previousValue = hidden.value;
-  hidden.value = complete
-    ? isoFromParts(
-        parseInt(partValues.year, 10),
-        parseInt(partValues.month, 10),
-        parseInt(partValues.day, 10),
-      )
-    : "";
+  hidden.value = codec.encode(values, complete);
   const changed = hidden.value !== previousValue;
   if (changed) onCommit(side);
   return changed;
 }
 
-/** Push an ISO value (or "") into a side's segments and hidden input WITHOUT
+/** Push a wire value (or "") into a side's segments and hidden input WITHOUT
  * invoking onCommit — the write half shared with prefill hydration, which
  * runs on a detached, not-yet-connected clone and must stay silent. Returns
  * whether the hidden value changed. Null-guarded so partial markup
- * (synthetic fixtures, malformed ISO) degrades to a no-op, not a throw. */
+ * (synthetic fixtures, malformed values) degrades to a no-op, not a throw. */
 export function writeSideValue(
   picker: HTMLElement,
   side: string,
   resolveHidden: HiddenResolver,
   isoString: string,
+  codec: FieldCodec = dateCodec,
 ): boolean {
   const hidden = resolveHidden(side);
   if (!hidden) return false;
   const previousValue = hidden.value;
   hidden.value = isoString;
-  let partValues: Record<string, string> = { year: "", month: "", day: "" };
-  if (isoString) {
-    const pieces = isoString.split("-");
-    partValues = { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
-  }
+  const partValues = codec.decode(isoString);
   segmentsForSide(picker, side).forEach((segment) => {
     setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""] ?? "");
   });
@@ -386,8 +422,9 @@ export function setSideValue(
   resolveHidden: HiddenResolver,
   onCommit: (side: string) => void,
   isoString: string,
+  codec: FieldCodec = dateCodec,
 ): void {
-  if (writeSideValue(picker, side, resolveHidden, isoString)) onCommit(side);
+  if (writeSideValue(picker, side, resolveHidden, isoString, codec)) onCommit(side);
 }
 
 export interface SegmentFieldOptions {
@@ -405,6 +442,12 @@ export interface SegmentFieldOptions {
   /** Called when a segment gains focus (e.g. to refresh a calendar's view
    * from the current field value before it opens). */
   onFocus?: () => void;
+  /** How segment buffers become the value the server binds. Defaults to the
+   * `YYYY-MM-DD` date codec. */
+  codec?: FieldCodec;
+  /** Parse pasted text into a wire value, or "" to ignore the paste.
+   * Defaults to the three-numeric-group date grammar. */
+  parsePaste?: (text: string, partNamesInOrder: string[]) => string;
 }
 
 /**
@@ -475,12 +518,17 @@ class SegmentedField {
     return best ?? this.segments[0];
   }
 
+  private get codec(): FieldCodec {
+    return this.options.codec ?? dateCodec;
+  }
+
   private commitSide(side: string): void {
     syncHiddenFromSegments(
       this.options.picker,
       side,
       this.options.resolveHidden,
       this.options.onCommit,
+      this.codec,
     );
   }
 
@@ -545,14 +593,16 @@ class SegmentedField {
       const partNamesInOrder = segmentsForSide(this.options.picker, side).map(
         (candidate) => candidate.dataset.datePart ?? "",
       );
-      const iso = parsePastedDate(text, partNamesInOrder);
-      if (iso) {
+      const parse = this.options.parsePaste ?? parsePastedDate;
+      const parsed = parse(text, partNamesInOrder);
+      if (parsed) {
         setSideValue(
           this.options.picker,
           side,
           this.options.resolveHidden,
           this.options.onCommit,
-          iso,
+          parsed,
+          this.codec,
         );
       }
     });
