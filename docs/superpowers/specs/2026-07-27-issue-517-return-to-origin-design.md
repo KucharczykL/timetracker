@@ -37,8 +37,9 @@ some flows land on an arbitrary stale page.
 
 - No navigation history stack; one hop of origin, not a breadcrumb trail.
 - No scroll-position restoration.
-- Not converting confirmation modals into dedicated pages. That belongs to the
-  HTMX-removal work, and this design does not preempt it.
+- The refund and split confirmations keep their htmx modals. Their post-action
+  semantics are an in-place row swap, which a full page would change; only the
+  delete flows move to confirmation pages.
 
 ## Design
 
@@ -150,20 +151,28 @@ Row deletes are currently plain GET `href`s that destroy on click — no
 confirmation, and any prefetcher or crawler that follows one deletes data. Only
 the game detail page confirms.
 
-- Extract a generic `ConfirmationModal(*, title, body, post_url, confirm_label,
-  request)` into `common/components/primitives.py`, beside the existing `Modal`,
-  and port the three bespoke modals onto it (`_delete_game_confirmation_modal`,
-  `_refund_confirmation_modal`, `_split_confirmation_modal`).
-- Add confirmation views and `<entity>/<id>/delete/confirm` routes for the
-  entities that lack them: purchase, session, playevent, platform, device,
-  statuschange. Per-entity views remain, because the body copy differs
-  (associated-data counts); only the markup is shared.
-- Every delete view gains `@require_POST`. Row buttons become
-  `hx_get=action_url("games:delete_X_confirmation", pk, origin=origin)` with
-  `hx_target="#global-modal-container"`.
+The project already has the right primitive: `ConfirmPage`
+(`common/components/primitives.py:1657`) renders a full-page prompt with a POST
+form and a cancel link, and `delete_statuschange` is already built on it —
+GET renders the confirmation, POST performs the delete, both on the same URL.
+Generalise that pattern instead of adding a modal:
 
-This drops the no-JS delete path. Acceptable: the modal flow is already the
-detail-page pattern, and the project's direction treats JS as mandatory.
+- Every delete view answers GET with a `ConfirmPage` and POST with the delete.
+  One URL, so `?next=` rides through the confirmation into the POST with no
+  extra plumbing, and the cancel link is simply the origin.
+- Extract `confirm_and_delete()` into `games/views/deletion.py`, since all six
+  deletes are "render the prompt, then `instance.delete()`". Per-entity views
+  supply only the copy and the fallback.
+- `ConfirmPage` gains an optional `details` block slot for the associated-data
+  counts the game modal shows today. They cannot go in `message`, which renders
+  inside a `<p>`, and `tests/test_html_validity.py` would reject a `<ul>` there.
+  Its `action_url` parameter is renamed `post_url` to avoid reading as a call to
+  the new `action_url()` helper.
+- The bespoke `_delete_game_confirmation_modal`, its view and its
+  `game/<id>/delete/confirm` route are deleted.
+- Row delete buttons stay plain links — they now lead to a confirmation page
+  rather than destroying on click, so the no-JS path survives and no prefetcher
+  can delete anything.
 
 ## Authentication hole found while classifying
 
@@ -214,10 +223,11 @@ Each commit leaves the tree green and shippable.
    this commit is fallback-only — correct, just not yet origin-aware.
 4. `feat(links)`: stamp origins at every call site via `action_url`; add the
    href parity test.
-5. `refactor(components)`: extract `ConfirmationModal`; port the three existing
-   modals.
-6. `feat(deletes)`: confirmation views and POST-only deletes for the remaining
-   entities.
+5. `refactor(components)`: `ConfirmPage` gains `details`; `action_url` renamed
+   to `post_url`; the game delete modal, view and route are replaced by a
+   confirmation page.
+6. `feat(deletes)`: `confirm_and_delete()` and GET-confirm/POST-delete for
+   purchase, session, playevent, platform and device.
 7. `test(e2e)`: the filtered round trips.
 
 ## Risks
