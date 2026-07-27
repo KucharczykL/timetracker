@@ -81,6 +81,19 @@ def populated(db) -> None:
     GameStatusChange.objects.create(game=game, new_status="p", timestamp=BASE)
 
 
+@pytest.fixture
+def bundled_purchase(populated) -> None:
+    """A two-game purchase: it carries the extra Split action, which widens the
+    Actions column past what a single-game row needs."""
+    bundle = Purchase.objects.create(
+        platform=Platform.objects.first(),
+        date_purchased=BASE + timedelta(days=9),
+        price=4321,
+        price_currency="USD",
+    )
+    bundle.games.add(*Game.objects.all())
+
+
 def _login(page: Page, live_server, django_user_model) -> Page:
     django_user_model.objects.get_or_create(username="tester")
     user = django_user_model.objects.get(username="tester")
@@ -170,6 +183,42 @@ def test_columns_reappear_as_the_viewport_widens(
     assert visible_counts[0] < visible_counts[-1], visible_counts
     # The row header and the Actions column survive even the narrowest fit.
     assert visible_counts[0] >= 2, visible_counts
+
+
+@pytest.mark.parametrize("url_name", LIST_PAGES)
+def test_a_table_never_collapses_to_its_row_header(
+    authenticated_page: Page, live_server, populated, url_name: str
+):
+    """Dropping down to the row header alone is never the better fit: it leaves
+    a full-width column with its content stranded against empty space, and
+    nothing left to act on."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse(url_name)}")
+    for width in (320, 390):
+        page.set_viewport_size({"width": width, "height": 900})
+        settle_layout(page)
+        visible = page.evaluate(VISIBLE_HEADER_COUNT)
+        assert visible >= 2, f"{url_name} kept only {visible} column(s) at {width}px"
+
+
+def test_actions_survive_a_multi_game_purchase(
+    authenticated_page: Page, live_server, bundled_purchase
+):
+    """The Split action a bundle adds widens the Actions column; the fit must
+    squeeze the elastic name column rather than drop the only column that
+    offers interaction."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 390, "height": 900})
+    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
+    settle_layout(page)
+    actions_header = page.locator("thead th").last
+    # Rendered uppercase by the header style, so compare case-insensitively.
+    assert actions_header.inner_text().strip().lower() == "actions"
+    assert actions_header.is_visible(), "Actions dropped on a bundled-purchase row"
+    name_width = page.evaluate(
+        "() => document.querySelector('tbody th').getBoundingClientRect().width"
+    )
+    assert name_width >= 150, f"name column squeezed to {name_width}px"
 
 
 def test_a_swapped_in_row_inherits_the_current_decision(

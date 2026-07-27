@@ -38,8 +38,27 @@ describe("computeHiddenColumns", () => {
   });
 
   it("never drops the first column, even when it alone overflows", () => {
+    // Nor the one column beside it: dropping it cannot make an oversized row
+    // header fit, so it would discard content and buy nothing.
     const hidden = computeHiddenColumns([400, 100], [1, 1], 300);
-    expect(hidden).toEqual(new Set([1]));
+    expect(hidden).toEqual(new Set());
+  });
+
+  it("keeps the most important column instead of stripping to the row header", () => {
+    // The row header plus one column overflows by 2px. Dropping that column
+    // would "fit" by leaving a one-column table; the row header is elastic and
+    // absorbs the shortfall instead.
+    const hidden = computeHiddenColumns([160, 200], [1, 4], 358);
+    expect(hidden).toEqual(new Set());
+  });
+
+  it("keeps the Actions column on a crowded purchases row", () => {
+    // Measured on /purchase/list at a 390px viewport with a two-game purchase:
+    // the Split action widens Actions to 200, and the name floor is 160.
+    const costs = [160, 49.5, 52.25, 70.2, 128.3, 73.9, 79.4, 109.6, 200];
+    const priorities = [1, 2, 3, 1, 2, 1, 1, 1, 4];
+    const hidden = computeHiddenColumns(costs, priorities, 358);
+    expect(hidden).toEqual(new Set([1, 2, 3, 4, 5, 6, 7]));
   });
 });
 

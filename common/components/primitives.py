@@ -1735,7 +1735,8 @@ class Column(NamedTuple):
     (a session note), where a single line would widen the table without limit.
     ``priority`` orders column dropping when a data table does not fit: lower
     drops first, rightmost first among equals. The first column never drops —
-    it is the row header that names every row."""
+    it is the row header that names every row — and neither does the highest-
+    priority column beside it, so a table never collapses to names alone."""
 
     label: str
     sort_key: str | None = None
