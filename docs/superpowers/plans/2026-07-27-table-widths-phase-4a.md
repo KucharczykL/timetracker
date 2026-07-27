@@ -25,6 +25,16 @@
 
 No top-layer/popover migration — that was Phase 1, now cut and tracked as #544. No vertical sticky header. No last-column pin (the session-reset `Modal` lives in the actions cell and would need its own treatment). No user column toggle.
 
+## When the pin actually engages — read this before writing the e2e
+
+**With JavaScript on, no list table overflows at any width.** Priority-plus (#532) drops columns until the table fits; measured 0 overflow from 320px to 1024px on purchases, games and sessions, which is also what the shipped `e2e/test_responsive_table_e2e.py::test_no_wrapper_scroll_at_any_viewport` asserts on all seven list pages. A sticky column has nothing to do when nothing scrolls.
+
+The pin exists for the state where all columns are present at once. Today that state is the **no-JS path above `md`**: `<responsive-table>` never defines, the `:not(:defined)` positional hiding only applies below `md`, so every column renders and the region genuinely overflows — measured 309px on purchases at 800px, 282px at 1024px, 115px on games at 800px. Tomorrow it is a user-toggleable column set, which produces the same state deliberately.
+
+That is not a testing workaround: it is the same CSS, the same overflow, the same pinned cell. So the scroll-dependent tests run against `no_js_page` at 800–1024, and the tests that need a live panel (elevation, occlusion, opacity) run on the JS page, where they need no overflow at all.
+
+**Do not try to make the JS page overflow.** There is no viewport width at which it does, and an executor who "widens the viewport until it scrolls" will burn the whole task and then weaken an assertion to make it pass.
+
 ## Already verified — do not re-litigate
 
 Measured in Chrome 149 before this plan was written:
@@ -147,8 +157,10 @@ Append to `DataTableWidthPolicyTest` in `tests/test_components.py`:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `make test ARGS="tests/test_components.py -k pinned -v"`
+Run: `make test ARGS="tests/test_components.py -k 'pinned or pins' -v"`
 Expected: FAIL — `AssertionError: 'sticky' not found`, and `ImportError` on `PINNED_COLUMN_CLASS`.
+
+`-k pinned` alone would miss `test_data_table_pins_…` and `test_non_data_table_pins_nothing`, which are the two core assertions.
 
 - [ ] **Step 3: Add the constant**
 
@@ -375,8 +387,10 @@ Add to `DataTableWidthPolicyTest`:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `make test ARGS="tests/test_components.py -k scroll_state or shadow -v"`
+Run: `make test ARGS="tests/test_components.py -k 'scroll_state or shadow' -v"`
 Expected: FAIL — neither the container type nor the shadow exists yet.
+
+The inner quotes are required: the Makefile expands `pytest $(ARGS)` unquoted, so a bare `-k scroll_state or shadow` reaches pytest as two extra positional paths and errors with `file or directory not found: or`.
 
 - [ ] **Step 3: Add the shadow to the pinned class**
 
@@ -420,8 +434,12 @@ Expected: PASS.
 
 - [ ] **Step 6: Confirm Tailwind actually emitted the rules**
 
-Run: `make css && grep -c 'container-type: scroll-state' games/static/base.css && grep -c '@container scroll-state' games/static/base.css`
-Expected: both counts ≥ 1. A zero means a class got split across string literals and the scanner never saw it.
+A bare grep for the tokens is **vacuous**: Tailwind v4 scans committed `.md` files too, so this plan document and the spec already put `container-type: scroll-state` and `@container scroll-state(scrollable:inline-start)` into `base.css` on their own. The split-literal failure mode would sail straight through it — and the shipped feature would silently depend on the docs staying in the repo.
+
+Grep for the emitted rule *paired with the shadow declaration*, which only the component's class can produce:
+
+Run: `make css && grep -A3 '@container scroll-state(scrollable:inline-start)' games/static/base.css | grep -c 'box-shadow\|--tw-shadow'`
+Expected: ≥ 1. Zero means the class was split across string literals and the scanner never saw the joined token.
 
 - [ ] **Step 7: Commit**
 
@@ -441,7 +459,12 @@ git commit -m "feat(table): show the pinned column's seam only while scrolled"
 - Consumes: everything from Tasks 1-3
 - Produces: no exported helpers; this file is self-contained (pytest fixtures do not cross files unless they live in `conftest.py`)
 
-Purchases and games are the pages under test: purchases has the widest natural column total of the set and is the first to overflow.
+Two fixtures, two jobs — see "When the pin actually engages" above:
+
+- **`no_js_page` at 800-1024** for everything that needs the region to actually scroll (pin offset, rtl, seam, focus). This is the only context in which a list table overflows today, and it is the same state a user column toggle will produce.
+- **`authenticated_page` at 420** for everything that needs a live panel (elevation, occlusion, opacity). These need no overflow at all — the pinned cell's stacking context exists whether or not anything scrolls.
+
+Purchases is the page under test for overflow: it has the widest natural column total of the set (309px of overflow at 800px, measured). Games is the second case where the plan says "purchases and games".
 
 - [ ] **Step 1: Write the file**
 
@@ -451,6 +474,12 @@ Purchases and games are the pages under test: purchases has the widest natural c
 The pin is only correct if three things hold at once: the column stays put
 while the rest scrolls, its surface is opaque in both themes, and it does not
 swallow the panels that live inside it.
+
+Scrolling is exercised without JavaScript. With <responsive-table> live, no
+list table overflows at any width — priority-plus drops columns until it fits —
+so the no-JS path above md is where every column renders at once and the region
+genuinely scrolls. That is the same state a user-toggleable column set will
+produce deliberately, and the CSS under test is identical in both.
 """
 
 from datetime import datetime, timedelta
@@ -459,7 +488,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.conf import settings
 from django.urls import reverse
-from playwright.sync_api import Page
+from playwright.sync_api import Browser, Page
 
 from games.models import Device, Game, Platform, Purchase, Session
 
@@ -471,12 +500,15 @@ LONG_NAME = (
     "Name Column And Therefore Must Be Clipped By Its Rendered Width"
 )
 
-# A narrow viewport guarantees the region overflows even after priority-plus has
-# dropped what it can, which is the only state where a pinned column does
-# anything at all.
+# Wide enough that the md-gated scroll padding applies and the no-JS fallback
+# shows every column; narrow enough that purchases still overflows by ~300px.
+WIDE = {"width": 800, "height": 900}
+# The panel tests need no overflow, only a clipped name to hover.
 NARROW = {"width": 420, "height": 900}
 
-PAGES = ["games:list_purchases", "games:list_games"]
+# The toast container is also role="region"; the scroll region is the focusable
+# one. Same selector the shipped responsive-table suite uses.
+REGION = '[role="region"][tabindex="0"]'
 
 
 @pytest.fixture
@@ -501,9 +533,11 @@ def populated(db) -> None:
         purchase.games.add(subject)
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
+def _login(page: Page, live_server, django_user_model) -> Page:
+    django_user_model.objects.get_or_create(username="tester")
+    user = django_user_model.objects.get(username="tester")
+    user.set_password("secret123")
+    user.save()
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -512,63 +546,124 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
     return page
 
 
-def _open_page(page: Page, live_server, url_name: str) -> None:
-    page.set_viewport_size(NARROW)
+@pytest.fixture
+def authenticated_page(live_server, page: Page, django_user_model) -> Page:
+    return _login(page, live_server, django_user_model)
+
+
+@pytest.fixture
+def no_js_page(live_server, browser: Browser, django_user_model):
+    """Every column renders at once, so the region overflows. Login is a plain
+    form POST, so it works without scripts."""
+    context = browser.new_context(java_script_enabled=False)
+    page = context.new_page()
+    yield _login(page, live_server, django_user_model)
+    context.close()
+
+
+def _open(page: Page, live_server, url_name: str, viewport: dict) -> None:
+    page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse(url_name)}")
-    page.evaluate("() => document.fonts.ready")
 
 
-SCROLL_TO_END = """
-() => {
-  const region = document.querySelector('[role="region"]');
-  region.scrollLeft = region.scrollWidth;
-  return region.scrollLeft > 0;
-}
+OVERFLOW = f"""
+() => {{
+  const region = document.querySelector('{REGION}');
+  return region.scrollWidth - region.clientWidth;
+}}
 """
 
-PIN_OFFSET = """
-() => {
-  const region = document.querySelector('[role="region"]');
+PIN_OFFSET = f"""
+() => {{
+  const region = document.querySelector('{REGION}');
   const cell = document.querySelector('tbody tr th');
   return Math.round(
     cell.getBoundingClientRect().left - region.getBoundingClientRect().left
   );
-}
+}}
 """
 
 
-@pytest.mark.parametrize("url_name", PAGES)
+@pytest.mark.parametrize("url_name", ["games:list_purchases", "games:list_games"])
 def test_the_pinned_column_stays_at_the_regions_start_edge(
-    authenticated_page: Page, live_server, populated, url_name: str
+    no_js_page: Page, live_server, populated, url_name: str
 ):
-    page = authenticated_page
-    _open_page(page, live_server, url_name)
+    page = no_js_page
+    _open(page, live_server, url_name, WIDE)
+    assert page.evaluate(OVERFLOW) > 0, (
+        "the fixture no longer overflows without JS; the pin has nothing to do "
+        "and this test would pass vacuously"
+    )
     at_rest = page.evaluate(PIN_OFFSET)
-    scrolled = page.evaluate(SCROLL_TO_END)
-    if not scrolled:
-        pytest.skip(f"{url_name} does not overflow at {NARROW['width']}px")
+    page.evaluate(
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
+            region.scrollLeft = region.scrollWidth;
+        }}"""
+    )
     assert page.evaluate(PIN_OFFSET) == at_rest
 
 
 def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
-    authenticated_page: Page, live_server, populated
+    no_js_page: Page, live_server, populated
 ):
     """`start-0` is a logical inset: under rtl the scroll start edge is the
     right one, where a physical `left-0` would pin to the wrong side."""
-    page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
+    page = no_js_page
+    _open(page, live_server, "games:list_purchases", WIDE)
     page.evaluate("() => document.documentElement.setAttribute('dir', 'rtl')")
+    assert page.evaluate(OVERFLOW) > 0, "no overflow under rtl; nothing to measure"
     offset = page.evaluate(
-        """() => {
-            const region = document.querySelector('[role="region"]');
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
             const cell = document.querySelector('tbody tr th');
+            // Chrome reports rtl scrollLeft as negative; this reaches the far edge.
             region.scrollLeft = -region.scrollWidth;
             return Math.round(
                 region.getBoundingClientRect().right - cell.getBoundingClientRect().right
             );
-        }"""
+        }}"""
     )
     assert offset == 0
+
+
+def test_the_seam_appears_only_once_the_region_is_scrolled(
+    no_js_page: Page, live_server, populated
+):
+    page = no_js_page
+    _open(page, live_server, "games:list_purchases", WIDE)
+    assert page.evaluate(OVERFLOW) > 0, "no overflow; the seam could never appear"
+    cell = page.locator("tbody tr th").first
+    assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") == "none"
+    page.evaluate(
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
+            region.scrollLeft = region.scrollWidth;
+        }}"""
+    )
+    # The scroll-state query settles on the next frame, not synchronously.
+    page.wait_for_timeout(100)
+    assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") != "none"
+
+
+def test_a_control_tabbed_into_from_off_screen_is_not_hidden_by_the_pin(
+    no_js_page: Page, live_server, populated
+):
+    """The scroll padding reserves the region's start edge; without it a focused
+    control parks exactly where the pinned cell paints. It is `md:`-gated, so
+    this only holds at the wide viewport."""
+    page = no_js_page
+    _open(page, live_server, "games:list_purchases", WIDE)
+    assert page.evaluate(OVERFLOW) > 0, "no overflow; nothing can park under the pin"
+    page.locator("tbody tr td a, tbody tr td button").last.focus()
+    overlap = page.evaluate(
+        """() => {
+            const pin = document.querySelector('tbody tr th').getBoundingClientRect();
+            const focused = document.activeElement.getBoundingClientRect();
+            return focused.left < pin.right && focused.right > pin.left;
+        }"""
+    )
+    assert overlap is False
 
 
 @pytest.mark.parametrize("dark", [False, True])
@@ -577,7 +672,7 @@ def test_the_pinned_surface_is_opaque_in_both_themes(
 ):
     """A transparent sticky cell lets the scrolled columns show through it."""
     page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
+    _open(page, live_server, "games:list_purchases", NARROW)
     if dark:
         page.evaluate("() => document.documentElement.classList.add('dark')")
     backgrounds = page.evaluate(
@@ -588,6 +683,20 @@ def test_the_pinned_surface_is_opaque_in_both_themes(
     )
     for background in backgrounds:
         assert background not in ("rgba(0, 0, 0, 0)", "transparent"), backgrounds
+
+
+def test_the_pinned_surface_follows_the_row_hover(
+    authenticated_page: Page, live_server, populated
+):
+    """`bg-inherit` is what buys this: the cell has no surface of its own, so
+    the row's hover state has to reach it."""
+    page = authenticated_page
+    _open(page, live_server, "games:list_purchases", NARROW)
+    cell = page.locator("tbody tr th").first
+    at_rest = cell.evaluate("(node) => getComputedStyle(node).backgroundColor")
+    page.locator("tbody tr").first.hover()
+    hovered = cell.evaluate("(node) => getComputedStyle(node).backgroundColor")
+    assert hovered != at_rest
 
 
 OCCLUSION = """
@@ -618,13 +727,13 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
 
     Purchases renders its first cell through `LinkedPurchase` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually
-    clipped — which the long fixture name guarantees at this width.
+    clipped — which the long fixture name guarantees at this width. The panel
+    opens below its anchor by default, i.e. over the rows that would occlude it.
     """
     page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
+    _open(page, live_server, "games:list_purchases", NARROW)
     page.locator("tbody tr th truncated-text").first.hover()
-    panel = page.locator("tbody tr th [data-pop-over-panel]").first
-    panel.wait_for(state="visible")
+    page.locator("tbody tr th [data-pop-over-panel]").first.wait_for(state="visible")
     occluded, total = page.evaluate(OCCLUSION, "tbody tr th [data-pop-over-panel]")
     assert occluded == 0, f"{occluded}/{total} points occluded"
 
@@ -636,7 +745,7 @@ def test_the_open_panel_raises_its_host_cell_and_releases_it(
     itself with a class instead, the selector goes blind and the occlusion
     above comes back silently."""
     page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
+    _open(page, live_server, "games:list_purchases", NARROW)
     cell = page.locator("tbody tr th").first
     assert cell.evaluate("(node) => getComputedStyle(node).zIndex") == "2"
     page.locator("tbody tr th truncated-text").first.hover()
@@ -647,84 +756,57 @@ def test_the_open_panel_raises_its_host_cell_and_releases_it(
     assert cell.evaluate("(node) => getComputedStyle(node).zIndex") == "2"
 
 
-MENU_OVERLAPS_PIN = """
-() => {
-  const menu = document.querySelector('tbody tr [data-menu]:not([hidden])');
-  const pin = document.querySelector('tbody tr th');
-  if (!menu) return false;
-  const menuBox = menu.getBoundingClientRect();
-  const pinBox = pin.getBoundingClientRect();
-  return menuBox.left < pinBox.right && menuBox.right > pinBox.left;
-}
-"""
-
-
 def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     authenticated_page: Page, live_server, populated
 ):
     """The other direction: the pin must stay under the panel strata, or it
-    covers the menus of the rows it overlaps. The sessions list carries a
-    <drop-down> device selector in every row (`SessionDeviceSelector`), which is
-    the panel the pinned column can get in front of."""
+    covers the menus of the rows it overlaps.
+
+    This one has to be staged. The menu needs JavaScript, and with JavaScript
+    the table never overflows, so the pinned column never slides over anything
+    on its own. Widening the table past its region reproduces the geometry a
+    column toggle will create — the same thing the design's own measurement did
+    on a synthetic table.
+    """
     page = authenticated_page
-    _open_page(page, live_server, "games:list_sessions")
-    toggle = page.locator("tbody tr [data-toggle]").first
+    _open(page, live_server, "games:list_sessions", NARROW)
+    page.add_style_tag(content="table { min-width: 1400px !important; }")
+    toggle = page.locator("tbody tr [data-toggle]:visible").first
     if toggle.count() == 0:
-        pytest.skip("no row menu rendered at this width")
+        pytest.skip("no row menu is visible at this width")
     toggle.click()
-    page.locator("tbody tr [data-menu]").first.wait_for(state="visible")
-    # Without horizontal overlap the occlusion count is trivially zero and the
-    # assertion below would pass while measuring nothing.
-    assert page.evaluate(MENU_OVERLAPS_PIN), (
-        "the open menu does not overlap the pinned column at this width; widen "
-        "NARROW or pick a page whose menu column sits beside the first"
-    )
-    occluded, total = page.evaluate(OCCLUSION, "tbody tr [data-menu]:not([hidden])")
-    assert occluded == 0, f"{occluded}/{total} points occluded"
-
-
-def test_the_seam_appears_only_once_the_region_is_scrolled(
-    authenticated_page: Page, live_server, populated
-):
-    page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
-    cell = page.locator("tbody tr th").first
-    assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") == "none"
-    if not page.evaluate(SCROLL_TO_END):
-        pytest.skip("the purchases table does not overflow at this width")
+    menu = page.locator("tbody tr [data-menu]:not([hidden])").first
+    menu.wait_for(state="visible")
     page.evaluate(
-        "() => new Promise((resolve) => requestAnimationFrame("
-        "() => requestAnimationFrame(resolve)))"
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
+            region.scrollLeft = region.scrollWidth;
+        }}"""
     )
-    assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") != "none"
-
-
-def test_a_control_tabbed_into_from_off_screen_is_not_hidden_by_the_pin(
-    authenticated_page: Page, live_server, populated
-):
-    """The scroll padding reserves the region's start edge; without it a focused
-    control parks exactly where the pinned cell paints."""
-    page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
-    if not page.evaluate(SCROLL_TO_END):
-        pytest.skip("the purchases table does not overflow at this width")
-    last_action = page.locator("tbody tr td a, tbody tr td button").last
-    last_action.focus()
-    overlap = page.evaluate(
+    overlaps = page.evaluate(
         """() => {
-            const cell = document.querySelector('tbody tr th');
-            const focused = document.activeElement.getBoundingClientRect();
-            const pin = cell.getBoundingClientRect();
-            return focused.left < pin.right && focused.right > pin.left;
+            const menu = document.querySelector('tbody tr [data-menu]:not([hidden])');
+            const pin = document.querySelector('tbody tr th').getBoundingClientRect();
+            const box = menu.getBoundingClientRect();
+            return box.left < pin.right && box.right > pin.left;
         }"""
     )
-    assert overlap is False
+    # Without horizontal overlap the occlusion count is trivially zero and the
+    # assertion below would pass while measuring nothing.
+    assert overlaps, "the open menu does not overlap the pinned column"
+    occluded, total = page.evaluate(OCCLUSION, "tbody tr [data-menu]:not([hidden])")
+    assert occluded == 0, f"{occluded}/{total} points occluded"
 ```
 
 - [ ] **Step 2: Run the new file**
 
 Run: `make test-e2e ARGS="-k pinned_column -v"`
-Expected: PASS. A `skip` on the overflow-dependent tests means the page fits even at 420px — widen `NARROW` until it does not, rather than deleting the assertion.
+Expected: PASS.
+
+Two failure modes worth naming, because the wrong reaction to either is to weaken the assertion:
+
+- **An overflow assertion fires** (`the fixture no longer overflows without JS`). The no-JS fallback or the fixture changed. Re-measure the real overflow at 800px and pick a viewport where it is positive again — do not delete the guard, it is what stops the test passing vacuously.
+- **The menu test cannot find a visible toggle.** The sessions Device column is `priority=1` (`games/views/session.py:100`) and is dropped at narrow widths; the `[data-toggle]` stays in the DOM inside a `display: none` cell, which is why the locator filters on `:visible` rather than counting nodes. Raise the viewport for that test until the Device column survives.
 
 - [ ] **Step 3: Commit**
 
@@ -748,44 +830,62 @@ git commit -m "test(e2e): cover the pinned first column"
 
 - [ ] **Step 1: Capture the boundary in dark mode**
 
-Add a temporary test to `e2e/test_pinned_column_e2e.py`:
+Add a temporary test to `e2e/test_pinned_column_e2e.py`. It uses the no-JS
+fixture, because the dividers only meet a *scrolled* pinned column there:
 
 ```python
-def test_zz_capture_dark_divider(authenticated_page: Page, live_server, populated):
-    page = authenticated_page
-    _open_page(page, live_server, "games:list_purchases")
+def test_zz_capture_dark_divider(no_js_page: Page, live_server, populated):
+    page = no_js_page
+    _open(page, live_server, "games:list_purchases", WIDE)
     page.evaluate("() => document.documentElement.classList.add('dark')")
-    page.evaluate(SCROLL_TO_END)
-    region = page.locator('[role="region"]')
-    region.screenshot(path="/tmp/pinned-dark.png")
+    page.evaluate(
+        f"""() => {{
+            const region = document.querySelector('{REGION}');
+            region.scrollLeft = region.scrollWidth;
+        }}"""
+    )
+    page.locator(REGION).screenshot(path="pinned-dark.png")
 ```
 
 Run: `make test-e2e ARGS="-k zz_capture_dark_divider"`
 
 - [ ] **Step 2: Look at it**
 
-Open `/tmp/pinned-dark.png` and follow the row dividers across the boundary between the pinned column and the scrolled columns.
+Open `pinned-dark.png` and follow the row dividers across the boundary between the pinned column and the scrolled columns.
 
-- If the dividers run continuously across the pinned column: delete the temporary test, note the result in the PR body, and skip to Task 6.
+- If the dividers run continuously across the pinned column: delete the temporary test and the PNG, note the result in the PR body, and skip to Task 6.
 - If they break at the pinned column's edge: continue to Step 3.
 
-- [ ] **Step 3 (only if broken): Move the divider onto the cells**
+- [ ] **Step 3 (only if broken): First try moving the divider onto the cells**
 
-The divider travels with a sticky cell when it belongs to the cell box rather than the collapsed-border layer. In `StyledTable`, replace `dark:divide-y` in `tbody_class` (2242):
+In `StyledTable`, replace `dark:divide-y` in `tbody_class` (2242):
 
 ```python
-    # The divider lives on the cells, not on the row: a row border sits in the
-    # collapsed-border layer, which a sticky cell's own background paints over.
+    # The divider lives on the cells, not on the row, so it travels with the
+    # pinned cell instead of being painted over by it.
     tbody_class = "font-condensed dark:[&_tr:not(:last-child)>*]:border-b"
 ```
 
-Add the safelist entry to `common/input.css`, beside the existing nth-child families:
+No `@source inline` entry is needed: the class is one contiguous literal in a scanned source file. The safelist exists only for the nth-child families built at runtime.
 
-```css
-@source inline("dark:[&_tr:not(:last-child)>*]:border-b");
+Re-capture (Step 1) and look again.
+
+**This may not be enough, and knowing why saves a loop.** Under `border-collapse: collapse` a *cell* border also participates in the collapsed-border layer — moving the declaration from the row to the cells does not by itself move the border into the cell box. If the discontinuity survives, the border has to stop being collapsed at all:
+
+```python
+    # Separated borders so the pinned cell owns its own edges: under
+    # border-collapse they live in the table's collapsed layer, where the
+    # sticky cell's background paints over them.
+    table = Table(
+        class_="w-full text-type-body text-left rtl:text-right text-body-subtle border-separate border-spacing-0",
+    )[*table_children]
 ```
 
-and a component test:
+`border-separate` changes how every data table's borders resolve, so re-check the light theme too, and the stats cards (they render through the same component with `data_table=False` — if the class is added unconditionally they are affected, so gate it on `data_table`).
+
+- [ ] **Step 4: Add the component test for whichever fix landed**
+
+For the cell-border fix:
 
 ```python
     def test_the_row_divider_lives_on_the_cells(self):
@@ -799,18 +899,37 @@ and a component test:
         self.assertNotIn("divide-y", tbody)
 ```
 
-- [ ] **Step 4: Re-capture and confirm**
+For the `border-separate` fix:
 
-Re-run Step 1 and look again. The dividers must now be continuous.
+```python
+    def test_a_data_table_separates_its_borders(self):
+        """Collapsed borders live in the table's own layer, where the pinned
+        cell's background paints over them."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        self.assertIn("border-separate border-spacing-0", result)
 
-- [ ] **Step 5: Delete the temporary capture test and commit**
+    def test_a_plain_table_keeps_collapsed_borders(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("border-separate", result)
+```
+
+Run: `make test ARGS="tests/test_components.py -v"`
+Expected: PASS.
+
+- [ ] **Step 5: Delete the temporary capture test and the PNG, then commit**
 
 ```bash
+rm -f pinned-dark.png
 git add -A
 git commit -m "fix(table): keep row dividers continuous across the pinned column"
 ```
 
-(If Step 2 found nothing wrong, this commit is just the deletion of the temporary test — or nothing at all, if it was never committed.)
+(If Step 2 found nothing wrong, there is nothing to commit here beyond removing the temporary test, which was never committed in the first place.)
 
 ---
 
@@ -853,10 +972,13 @@ Merge with `gh pr merge --merge`. Never squash or rebase.
 
 ## Self-Review
 
-**Spec coverage.** § Phase 4a asks for: the sticky cell with `start-0`/`z-[2]`/`bg-inherit` (Task 1); the `:has()` elevation at `z-[3]` (Task 1); the invariant that the pin stays below 10 (Task 1, Step 1) and that panels toggle the `hidden` attribute (Task 4, `test_the_open_panel_raises_its_host_cell_and_releases_it` — asserted through behaviour rather than by policing the TypeScript, so it fails if any panel ever switches to a class); the background-bleed and header-background traps (Tasks 1-2); the `box-shadow`-not-`filter` rule and the scroll-state scoping (Task 3); the collapsed-border trap (Task 5); and the acceptance list — flush after `scrollLeft` in ltr and rtl, opaque in both themes, 0/24 both directions, seam only when scrolled, focus not parking under the pin, measured on purchases and games (Task 4). All covered.
+**Spec coverage.** § Phase 4a asks for: the sticky cell with `start-0`/`z-[2]`/`bg-inherit` (Task 1); the `:has()` elevation at `z-[3]` (Task 1); the invariant that the pin stays below 10 (Task 1, Step 1) and that panels toggle the `hidden` attribute (Task 4, `test_the_open_panel_raises_its_host_cell_and_releases_it` — asserted through behaviour rather than by policing the TypeScript, so it fails if any panel ever switches to a class); the background-bleed and header-background traps (Tasks 1-2), including the `hover:` surface (Task 4); the `box-shadow`-not-`filter` rule and the scroll-state scoping (Task 3); the collapsed-border trap (Task 5); and the acceptance list — flush after `scrollLeft` in ltr and rtl, opaque in both themes, 0/24 both directions, seam only when scrolled, focus not parking under the pin, measured on purchases and games (Task 4). All covered.
 
-**Placeholders.** None. Task 5 is conditional rather than open-ended: both branches are written out, including the exact replacement class, its safelist entry, and its test.
+**Placeholders.** None. Task 5 is conditional rather than open-ended: every branch is written out, including both candidate fixes, their tests, and why the first one may not work.
 
-**Type consistency.** `PINNED_COLUMN_CLASS` is defined once (Task 1, Step 3), extended once (Task 3, Step 3), and referenced by that name in both tasks' tests. `_header_cell` gains one keyword-only `pinned: bool`, passed from the single call site, which Task 2 Step 2 rewrites wholesale rather than patching twice. `TableRow` needs no signature change — it already takes `data_table`.
+**Type consistency.** `PINNED_COLUMN_CLASS` is defined once (Task 1, Step 3), extended once (Task 3, Step 3), and referenced by that name in both tasks' tests. `_header_cell` gains one keyword-only `pinned: bool`, passed from the single call site, which Task 2 Step 2 rewrites wholesale rather than patching twice. `TableRow` needs no signature change — it already takes `data_table`. Task 4's helpers (`_open`, `REGION`, `WIDE`, `NARROW`, `OVERFLOW`, `PIN_OFFSET`, `OCCLUSION`) are defined once at the top of the file and reused by Task 5's temporary capture test.
 
-**One risk worth flagging to the reviewer.** Task 2 moves a background that has been on `<thead>` for the life of the component. Any style or test that reaches for `thead.bg-neutral-tertiary` breaks — `make check` catches the tests, but a screenshot of a list page in both themes is the cheap confirmation that the header still looks right, and it costs one browser visit.
+**Two risks worth flagging to the reviewer.**
+
+1. Task 2 moves a background that has been on `<thead>` for the life of the component. Anything reaching for `thead.bg-neutral-tertiary` breaks — `make check` catches the tests, but a screenshot of a list page in both themes is the cheap confirmation the header still looks right.
+2. Every scroll-dependent assertion runs without JavaScript, because that is the only context in which a list table overflows today. That is honest about what ships: with JS on, the pin is inert until a user-toggleable column set exists. If someone later makes the JS path overflow, these tests keep passing but stop being the *primary* evidence — add a JS-on case then rather than rewriting these.
