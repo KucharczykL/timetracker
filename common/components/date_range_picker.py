@@ -309,6 +309,7 @@ def DateRangeField(
         field_attrs,
         role="group",
         aria_label=label,
+        inert=True,
         class_=FIELD_CONTAINER_CLASS,
         data_date_range_field="",
     )[*children]

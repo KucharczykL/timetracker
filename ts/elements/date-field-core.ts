@@ -423,6 +423,14 @@ class SegmentedField {
   }
 
   bind(): void {
+    // The server renders the field `inert`, so before this runs it is visible
+    // but unreachable: it shows the stored date and cannot be focused or
+    // typed into. That matters because the segments carry no `name` — they
+    // are not submitted — so anything typed before the engine binds would be
+    // silently discarded. If the script never arrives, an inert field showing
+    // the date read-only is the honest degraded state.
+    this.options.field.removeAttribute("inert");
+
     // Adopt server-rendered values (prefilled field) as typed buffers, which
     // also stamps each segment's initial ARIA state.
     this.segments.forEach((segment) => {

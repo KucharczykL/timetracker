@@ -8,12 +8,13 @@ calendar (pick commits and closes; no presets, no anchor) instead of an
 anchor-style range.
 
 The committed value lives in one hidden ISO-date input named after the real
-Django field, so ``DateField`` binding is unchanged. A ``<noscript>``
-fallback renders a native ``<input type="date">`` under the same name for
-clients without JavaScript — both inputs submit the same field name, and the
-noscript one, later in DOM order, wins when scripting is disabled; with
-scripting enabled the noscript subtree is inert text, never a real control.
-All behaviour is wired by ``ts/elements/date-picker.ts``.
+Django field, so ``DateField`` binding is unchanged. There is no no-JS
+fallback: the forms this appears on cannot be submitted without scripting
+anyway (their game/games fields are required ``SearchSelect`` widgets). The
+field is rendered ``inert`` and freed on upgrade, so before the script lands
+it shows the stored date but cannot be typed into — its segments carry no
+``name``, so anything typed there would be discarded. All behaviour is wired
+by ``ts/elements/date-picker.ts``.
 """
 
 from common.components.core import Node, Safe
@@ -25,7 +26,7 @@ from common.components.date_range_picker import (
     date_segment_group,
     footer_button,
 )
-from common.components.primitives import Button, Div, Input, Noscript
+from common.components.primitives import Button, Div, Input
 from common.date_time_presentation import DateTimePresentation
 
 # The single side id DatePicker's segment/hidden-input hooks use — DateRangePicker's
@@ -45,9 +46,8 @@ def DatePickerField(
 ) -> Node:
     """The visible half of DatePicker: a single-input-looking container
     holding the hidden ISO input Django binds, one segmented date, and a
-    calendar toggle. The ``<noscript>`` native fallback is a sibling at the
-    :func:`DatePicker` level, not inside this container — it must stay
-    visible when the container is hidden pre-upgrade/no-JS.
+    calendar toggle. Rendered ``inert``; ``bindSegmentField`` frees it once
+    the element upgrades.
 
     Carries ``data-toggle``: this field is the ``<drop-down>`` positioning
     anchor for the popup calendar (issue #485 follow-up)."""
@@ -79,6 +79,7 @@ def DatePickerField(
         aria_label=label,
         aria_required="true" if required else None,
         aria_invalid="true" if invalid else None,
+        inert=True,
         data_date_picker_field="",
         data_toggle="",
         class_=FIELD_CONTAINER_CLASS,
@@ -106,7 +107,6 @@ def DatePicker(
     input_id: str = "",
     required: bool = False,
     invalid: bool = False,
-    fallback_class: str = "",
 ) -> Node:
     """A presentation-aware single-date widget: segmented manual entry plus
     a calendar popup, submitting canonical ISO ``YYYY-MM-DD`` under ``name``.
@@ -130,7 +130,6 @@ def DatePicker(
             required=required,
             invalid=invalid,
         ),
-        Noscript()[Input(type="date", name=name, value=value, class_=fallback_class)],
         DatePickerCalendar(input_name_prefix=name),
     ]
     return _Dropdown(
