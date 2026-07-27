@@ -235,8 +235,13 @@ function applySegmentAria(
   segment.setAttribute("aria-valuemin", String(spec.minimum));
   segment.setAttribute("aria-valuemax", String(spec.maximum));
   if (buffer === "" || buffer.length !== spec.width) {
+    // The value is genuinely indeterminate, so aria-valuenow stays absent —
+    // but absent alone is not silence: a screen reader falls back to zero, so
+    // an untouched field announced every segment as "spinbutton, zero" while
+    // showing YYYY. Say the indeterminate state in words instead, and let a
+    // half-typed buffer read back the digits entered so far.
     segment.removeAttribute("aria-valuenow");
-    segment.removeAttribute("aria-valuetext");
+    segment.setAttribute("aria-valuetext", buffer === "" ? "blank" : buffer);
     return;
   }
   const value = parseInt(buffer, 10);
@@ -245,6 +250,10 @@ function applySegmentAria(
     // A two-state toggle: the number alone ("0") announces nothing useful.
     const labels = dayPeriodLabels();
     if (labels) segment.setAttribute("aria-valuetext", value === 0 ? labels.am : labels.pm);
+  } else {
+    // Clear the blank/partial text a numeric segment may have carried on its
+    // way to being filled, so valuenow is what gets announced.
+    segment.removeAttribute("aria-valuetext");
   }
 }
 

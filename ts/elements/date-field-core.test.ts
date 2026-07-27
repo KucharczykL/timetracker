@@ -122,6 +122,29 @@ describe("segment ARIA", () => {
     expect(segment.hasAttribute("aria-valuenow")).toBe(false);
   });
 
+  it("says an indeterminate segment out loud instead of falling back to zero", async () => {
+    // Dropping aria-valuenow is not silence: a screen reader announces 0, so
+    // an untouched field read every segment as "spinbutton, zero" while
+    // showing YYYY.
+    const { setSegmentBuffer } = await importCore();
+    const segment = mountSegment("month");
+
+    // bind() stamps every segment on upgrade, empty ones included.
+    setSegmentBuffer(segment, "");
+    expect(segment.getAttribute("aria-valuetext")).toBe("blank");
+
+    setSegmentBuffer(segment, "1");
+    expect(segment.getAttribute("aria-valuetext")).toBe("1");
+
+    // Filled: valuenow carries the value, so stale text must not shadow it.
+    setSegmentBuffer(segment, "07");
+    expect(segment.hasAttribute("aria-valuetext")).toBe(false);
+    expect(segment.getAttribute("aria-valuenow")).toBe("7");
+
+    setSegmentBuffer(segment, "");
+    expect(segment.getAttribute("aria-valuetext")).toBe("blank");
+  });
+
   it("shows the day period's label, keeping the buffer numeric", async () => {
     segmentRules.mockImplementation((name) =>
       name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,
