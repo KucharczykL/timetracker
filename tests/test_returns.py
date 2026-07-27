@@ -49,6 +49,17 @@ def test_unsafe_or_unroutable_origins_are_rejected(rf, db, candidate):
     assert parse_origin(_request(rf, candidate), returnable=RETURNABLE) is None
 
 
+def test_external_host_with_valid_returnable_path_is_rejected(rf, db):
+    """A crafted origin can pair an external host with a path that legitimately
+    resolves to a url name in RETURNABLE. Without the host check, this becomes
+    an open redirect. This test pins that the host/scheme validation runs *before*
+    the route resolver, not after."""
+    # /tracker/game/list resolves to games:list_games, which IS in RETURNABLE.
+    # But the host is external.
+    candidate = "https://evil.example/tracker/game/list"
+    assert parse_origin(_request(rf, candidate), returnable=RETURNABLE) is None
+
+
 @pytest.mark.parametrize(
     "candidate",
     ["/tracker/game/1/delete", "/api/games/search", "/logout/"],
