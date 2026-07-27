@@ -2259,6 +2259,19 @@ class DataTableWidthPolicyTest(SimpleTestCase):
                 if css_class in {"sticky", "start-0", "bg-inherit"}:
                     self.fail(f"ungated {css_class} found in: {token}")
 
+    def test_every_pinned_class_is_gated(self):
+        """The rendered-markup scan above only knows the three tokens it names.
+        An ungated z-[2], elevation or shadow would slip past it — the shadow
+        visibly, as a seam on a phone where nothing is pinned."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        ungated = [
+            css_class
+            for css_class in PINNED_COLUMN_CLASS.split()
+            if not css_class.startswith("md:")
+        ]
+        self.assertEqual(ungated, [])
+
     def test_only_the_first_column_is_pinned(self):
         result = self._data_table(
             [components.Column("Name"), components.Column("Date")],
@@ -2313,7 +2326,7 @@ class DataTableWidthPolicyTest(SimpleTestCase):
             [components.Column("Name")], [components.make_row("Game")]
         )
         region = result.split('role="region"')[0].split("<div")[-1]
-        self.assertIn("[container-type:scroll-state]", region)
+        self.assertIn("md:[container-type:scroll-state]", region)
 
     def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
         """An unconditional shadow would draw a seam down every table that fits,

@@ -2323,7 +2323,7 @@ def StyledTable(
         # only while something is scrolled behind it. It is not a containing
         # block, so the fixed panels inside the table are unaffected.
         scroll_class = (
-            f"{scroll_class} md:scroll-ps-[19rem] [container-type:scroll-state]"
+            f"{scroll_class} md:scroll-ps-[19rem] md:[container-type:scroll-state]"
         )
         scroll_attributes = [
             ("role", "region"),

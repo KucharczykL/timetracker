@@ -97,7 +97,7 @@ one name at the cap**:
 Games needs ≤1016, purchases ≥1140 — empty intersection. The window is a
 per-*page* property, so it cannot be pinned per table either. Separately,
 `container-type` implies `contain`; that is safe on the scroll wrapper
-(`primitives.py:2283`) but the neighbouring shell (`primitives.py:2312`) carries
+(`primitives.py:2333`) but the neighbouring shell (`primitives.py:2362`) carries
 an explicit prohibition on `contain` because it would become a containing block
 for the `position: fixed` dropdown menus. That prohibition stands: Phase 1, which
 would have removed the hazard at the root, is cut (#544), and could not have
@@ -175,7 +175,7 @@ Call sites drop the literal and state intent: `games/views/session.py:97`,
   Phase 2's job. All of this scroll is keyboard-unreachable until the region
   semantics land in Phase 2d, which is why 2a and 2d ship together.
 - **`test_table_constraints_hold_at_mobile_and_intermediate_widths`
-  (`e2e/test_truncated_text_e2e.py:203`) changes at 768 and the change is
+  (`e2e/test_truncated_text_e2e.py:200`) changes at 768 and the change is
   intended.** Tailwind `max-md` is `@media (width < 48rem)`, so at exactly 768
   the greed is off *and* all columns are visible — peak pressure. Verified on the
   test's own fixture (games list, one long-named row): wrapper overflow goes
@@ -191,7 +191,7 @@ Call sites drop the literal and state intent: `games/views/session.py:97`,
   ones. The mobile-only assertion scans `<th>`
   and `<td>` class attributes specifically — a document-wide scan for a bare
   `w-full` can never pass, because `StyledTable`'s own `<table>` carries one
-  (`primitives.py:2259`).
+  (`primitives.py:2304`).
 
 ---
 
@@ -206,11 +206,11 @@ this document depends on it.
 
 The audit it was supposed to perform has also already answered its own question,
 in the negative: a tooltip-and-dropdown migration could never have been *total*.
-`Modal` renders `fixed z-40 inset-0` (`primitives.py:1608`) and `SessionActions`
+`Modal` renders `fixed z-40 inset-0` (`primitives.py:1638`) and `SessionActions`
 (`domain.py:389`) embeds one in the actions cell of **every** session row
 (`session.py:63`). A fixed, non-top-layer panel therefore survives inside table
 cells regardless, so the shell's `transform`/`filter`/`contain`/`backdrop-filter`
-prohibition (`primitives.py:2306-2311`) keeps its stated rationale and stays.
+prohibition (`primitives.py:2356-2361`) keeps its stated rationale and stays.
 
 What remains is a real but independent argument — one dismissal engine instead of
 two, UA-native Esc and light-dismiss, no hand-rolled outside-click — weighed
@@ -271,16 +271,16 @@ flips `side` when there is no room above):
 | control: sticky removed | 0 / 24 |
 
 Top-layer promotion also relaxes the standing constraint at
-`primitives.py:2306-2311` — the "never add `transform`/`filter`/`contain`/
+`primitives.py:2356-2361` — the "never add `transform`/`filter`/`contain`/
 `backdrop-filter` to the shell" rule exists because a `position: fixed` panel can
 be captured by an ancestor containing block, and top-layer elements cannot be.
 
 **The audit this section demanded has been done, and the answer is no.** The
 migration cannot be total: `Modal` renders `fixed z-40 inset-0`
-(`primitives.py:1608`) and `SessionActions` (`domain.py:389`) embeds one in the
+(`primitives.py:1638`) and `SessionActions` (`domain.py:389`) embeds one in the
 actions cell of every session row (`session.py:63`). A fixed, non-top-layer panel
 therefore survives inside table cells whatever #544 does, so the
-`primitives.py:2309` comment stays and Phase 4a's ban on `filter: drop-shadow`
+`primitives.py:2359` comment stays and Phase 4a's ban on `filter: drop-shadow`
 keeps its stated rationale — `box-shadow` is both cheaper *and* required.
 
 The 18/24 above is also no longer an argument for this work: raising the pinned
@@ -304,19 +304,19 @@ cell in CSS scores the same 0/24 (see § Phase 4a).
 during implementation for where the shipped code chose differently.
 
 Policy was split: `Column.class_` on the `<th>` plus `NAME_MAX_WIDTH_CLASS`
-on the leaf `TruncatedText` (`primitives.py:491`). A new column re-introduces two
+on the leaf `TruncatedText` (`primitives.py:521`). A new column re-introduces two
 authorities. `Column` becomes the single declaration site for `wrap`, the name
 cap, and (Phase 3) `priority`.
 
 ### 2a — cells do not wrap
 
 `TableTd` set no `white-space`; the row-header `<th>` already carried
-`whitespace-nowrap`; the header `<th>` (`_header_cell`, `primitives.py:2066`)
+`whitespace-nowrap`; the header `<th>` (`_header_cell`, `primitives.py:2098`)
 did not. Both gain it **only on data tables** (see the gate below).
 `Column.wrap = True` opts a column out.
 
 `TableTd()` gains a nowrap flag; `TableRow` reads the column's `wrap`
-**with a bounds guard** — `primitives.py:2204-2215` deliberately raises
+**with a bounds guard** — `primitives.py:2239-2249` deliberately raises
 the cell-count mismatch in DEBUG only, because "prod degrades to a ragged table
 over a 500". Indexing `columns[i]` unguarded converts that documented
 degradation into an `IndexError`. (Shipped as `TableTd(nowrap=…)` with the cell
@@ -418,7 +418,7 @@ mount** before applying its own decision — otherwise the two systems fight. At
 widths where the JS decision differs from the CSS one this produces a visible
 column-pop on load; decide whether to accept it or to gate the swap on first
 measurement. (Shipped differently and better: the fallback rules were rescoped
-to `responsive-table:not(:defined)` — `primitives.py:2040-2047` — so they stop
+to `responsive-table:not(:defined)` — `primitives.py:2072-2078` — so they stop
 matching the instant the element upgrades and there is nothing to strip. The
 element applies its first decision synchronously inside that upgrade, so the two
 systems are never both live and there is no frame to pop in.)
@@ -446,9 +446,9 @@ else. The parts that make QuickFilterBar work do not transfer:
   `<tbody>`-level rule — but **Tailwind cannot mint `[&_td:nth-child(4)]:hidden`
   at runtime.** This needs a safelisted per-index rule family in `input.css` up
   to some maximum column count, following the existing `@source inline`
-  nth-child precedent at `primitives.py:2241`. That maximum is a design
+  nth-child precedent at `primitives.py:2286`. That maximum is a design
   decision, not an implementation detail. (Shipped as
-  `MAX_DATA_TABLE_COLUMNS = 12`, `primitives.py:2032`, enforced by a
+  `MAX_DATA_TABLE_COLUMNS = 12`, `primitives.py:2064`, enforced by a
   `StyledTable` `ValueError`; the safelist is `common/input.css:21`.)
 
 Design the measurement model — how natural widths are obtained, when they are
@@ -460,7 +460,7 @@ valid inside the breakpoint regime they were taken in; ceiling 12.)
 ### Rule-placement hazard
 
 `align_rules` stay on `<tbody>` deliberately, "so an htmx-swapped `<tr>` aligns
-from the live `<tbody>` it lands in" (`primitives.py:2237-2241`). Anything Phase 3
+from the live `<tbody>` it lands in" (`primitives.py:2282-2286`). Anything Phase 3
 moves per-cell loses that property, and any future row fragment silently loses
 it again. Either keep the drop state as a `<tbody>`-level rule driven by
 attributes the element sets, or make row fragments go through the same column
@@ -520,7 +520,7 @@ so a run that sees it once should bisect rather than write it off as flake.
 a physical `left-0` pins to the wrong edge. This is the first logical inset in
 the codebase: grepping `start-0`/`end-0`/`inset-inline` across `.py`, `.ts` and
 `.css` returns nothing, and the one logical utility in use is a margin
-(`ms-0`, `primitives.py:1970`). The recommendation stands on the `rtl:` variant
+(`ms-0`, `primitives.py:2002`). The recommendation stands on the `rtl:` variant
 alone, with no in-repo precedent to lean on.
 
 ### The occlusion fix is CSS, not the top layer
@@ -559,7 +559,7 @@ md:has-[[data-menu]:not([hidden])]:z-[3]
 so 3 is sufficient; anything at or above 10 inverts a different pair. Measured: a
 cell raised to `z-[30]` covers an overlapping open dropdown menu (`z-20`,
 `custom_elements.py:699`) at 15 of 24 points. The documented strata — popovers
-10, dropdown panels 20, modal overlay 40, toasts 50 (`primitives.py:1602-1606`) —
+10, dropdown panels 20, modal overlay 40, toasts 50 (`primitives.py:1632-1636`) —
 stay intact only if the pinned cell stays beneath them.
 
 **Panels in non-pinned cells need nothing.** A static `<td>` creates no stacking
@@ -604,7 +604,7 @@ Traps, all confirmed or flagged:
 - **Header background must move (confirmed).** `<thead>` carries
   `bg-neutral-tertiary`, so `bg-inherit` on a header `<th>` resolves to
   transparent. Move it onto the header `<tr>`. This breaks
-  `tests/test_rendered_pages.py:543`, which asserts
+  `tests/test_rendered_pages.py:544`, which asserts
   `<thead[^>]*bg-neutral-tertiary` and is deliberately anchored on `<thead>` so a
   row's `hover:bg-neutral-tertiary-medium` cannot false-match — update it to
   match the header row with the same anti-false-match property.
@@ -651,7 +651,7 @@ pinned column's actual width is per-table and per-page, so "equal to the pinned
 width" is not expressible as a static class. Pin the value to the cap constant
 (256px + cell padding ≈ 304px) — a safe over-estimate that stays pure CSS —
 rather than measuring and writing a custom property. (Shipped as
-`md:scroll-ps-[19rem]`, `primitives.py:2277`: from `md` up only, because 19rem
+`md:scroll-ps-[19rem]`, `primitives.py:2326`: from `md` up only, because 19rem
 is wider than a phone's scrollport and the browser clamps the reservation into a
 meaningless snap position there.)
 
