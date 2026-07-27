@@ -1199,12 +1199,15 @@ git commit -m "feat(links): carry the origin page on every mutating link"
 ### Task 6: Game delete becomes a confirmation page
 
 **Files:**
+- Create: `games/views/deletion.py`
 - Modify: `common/components/primitives.py:1657` (`ConfirmPage`), `games/views/statuschange.py:90`, `games/views/game.py` (delete the modal, its view; rewrite `delete_game`), `games/urls.py` (lines **38–42**), `games/views/returns.py` (drop `delete_game_confirmation`), `tests/test_rendered_pages.py:437`, `tests/test_html_validity.py`
 - Test: `tests/test_components.py` (extend), `tests/test_deletion_confirmation.py` (create)
 
 **Interfaces:**
 - Consumes: `common.returns.action_url`, `games.views.returns.return_url`.
-- Produces: `ConfirmPage(*, title, message, post_url, csrf_token, cancel_url, confirm_label="Confirm", confirm_color="red", details: Children = None) -> Node`.
+- Produces:
+  - `ConfirmPage(*, title, message, post_url, csrf_token, cancel_url, confirm_label="Confirm", confirm_color="red", details: Children = None) -> Node`
+  - `confirm_and_delete(request, instance, *, title, message, fallback, fallback_args=(), details=None, detail_url=None) -> HttpResponse` — the shared flow, introduced here with its first caller so `delete_game` is not written twice.
 
 - [ ] **Step 1: Write the failing component test**
 
@@ -1368,161 +1371,7 @@ make test ARGS="tests/test_deletion_confirmation.py -x"
 
 Expected: FAIL — the GET deletes the game instead of confirming.
 
-- [ ] **Step 7: Rewrite delete_game as confirm-then-delete**
-
-In `games/views/game.py`, add `ConfirmPage` to the `common.components` import block (lines 11–51 already bring in `Node`, `Ul`, `Li`; `get_token`, `render_page` and `reverse` are present). Replace `delete_game`, and delete `_delete_game_confirmation_modal` (lines **218–276**) and `delete_game_confirmation` (lines **279–292**, decorator included):
-
-```python
-@login_required
-def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
-    detail_url = reverse("games:view_game", args=[game_id])
-    if request.method != "POST":
-        return render_page(
-            request,
-            ConfirmPage(
-                title="Delete game",
-                message=(
-                    f"This will permanently delete {game.name} "
-                    "and all associated data:"
-                ),
-                details=_deleted_with_game(game),
-                post_url=request.get_full_path(),
-                csrf_token=get_token(request),
-                cancel_url=return_url(request, fallback="games:list_games"),
-                confirm_label="Delete",
-            ),
-            title="Delete game",
-        )
-    game.delete()
-    return redirect(
-        return_url(request, fallback="games:list_games", reject=detail_url)
-    )
-
-
-def _deleted_with_game(game: Game) -> Node:
-    counts = [
-        (game.sessions.count(), "session"),
-        (game.purchases.count(), "purchase"),
-        (game.playevents.count(), "play event"),
-    ]
-    present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
-    return Ul()[*(present or [Li()["No associated data"]])]
-```
-
-Remove the `game/<int:game_id>/delete/confirm` route from `games/urls.py` — it occupies lines **38–42** (line 37 is the `view_game` route; line 42 is the route's closing `),`). Drop `"games:delete_game_confirmation"` from `CONFIRMATION` in `games/views/returns.py`. In `_game_action_buttons`, the Delete member becomes a plain link:
-
-```python
-                {
-                    "href": action_url("games:delete_game", game.id, origin=origin),
-                    "slot": "Delete",
-                    "color": "red",
-                },
-```
-
-- [ ] **Step 8: Update the two tests that pin the old markup**
-
-Replace `tests/test_rendered_pages.py:437` (`test_delete_game_confirmation_modal`) with:
-
-```python
-    def test_delete_game_confirmation_page(self):
-        html = self.get("games:delete_game", self.game.id).content.decode()
-        self.assertIn(self.game.name, html)
-        self.assertIn("session(s)", html)  # seeded session
-        self.assertIn("purchase(s)", html)  # seeded purchase
-        self.assertIn('method="post"', html)
-        self.assertNoEscapedTags(html)
-```
-
-Add `games:delete_game` to `tests/test_html_validity.py`'s `_urls()` list (line 142) so the new page gets duplicate-id and interactive-nesting coverage. Nothing else covers this markup — contrary to an earlier note, that suite has no `<p>`-content-model check.
-
-- [ ] **Step 9: Run the delete-flow tests**
-
-```bash
-make test ARGS="tests/test_deletion_confirmation.py tests/test_rendered_pages.py -v"
-```
-
-Expected: all PASS.
-
-- [ ] **Step 10: Full gate, then commit**
-
-```bash
-make check
-```
-
-```bash
-git add common/components/primitives.py games tests
-git commit -m "refactor(delete): confirm game deletion on a page instead of a modal"
-```
-
----
-
-### Task 7: The remaining deletes confirm too
-
-**Files:**
-- Create: `games/views/deletion.py`
-- Modify: `games/views/{purchase,session,playevent,platform,device,game,statuschange}.py`, `tests/test_html_validity.py`
-- Test: `tests/test_deletion_confirmation.py` (extend), `tests/test_rendered_pages.py:489`
-
-**Interfaces:**
-- Consumes: `games.views.returns.return_url`, `common.components.ConfirmPage`.
-- Produces: `confirm_and_delete(request, instance, *, title, message, fallback, fallback_args=(), details=None, detail_url=None) -> HttpResponse`.
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `tests/test_deletion_confirmation.py`:
-
-```python
-@pytest.fixture
-def deletables(db):
-    from datetime import date
-
-    from games.models import Device, Purchase
-
-    platform = Platform.objects.create(name="Console")
-    owned = Game.objects.create(name="Deletable", platform=platform)
-    purchase = Purchase.objects.create(
-        date_purchased=date(2024, 6, 1), type=Purchase.GAME
-    )
-    purchase.games.set([owned])
-    return {
-        "session": Session.objects.create(
-            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
-        ),
-        "purchase": purchase,
-        "platform": Platform.objects.create(name="Doomed"),
-        "device": Device.objects.create(name="Doomed"),
-    }
-
-
-@pytest.mark.parametrize(
-    "url_name,key,fallback",
-    [
-        ("games:delete_session", "session", "games:list_sessions"),
-        ("games:delete_purchase", "purchase", "games:list_purchases"),
-        ("games:delete_platform", "platform", "games:list_platforms"),
-        ("games:delete_device", "device", "games:list_devices"),
-    ],
-)
-def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallback):
-    instance = deletables[key]
-    url = reverse(url_name, args=[instance.pk])
-    assert logged_in.get(url).status_code == 200
-    assert type(instance).objects.filter(pk=instance.pk).exists()
-    response = logged_in.post(url)
-    assert response["Location"] == reverse(fallback)
-    assert not type(instance).objects.filter(pk=instance.pk).exists()
-```
-
-- [ ] **Step 2: Run them and watch them fail**
-
-```bash
-make test ARGS="tests/test_deletion_confirmation.py -k every_delete -x"
-```
-
-Expected: FAIL — the GET deletes and returns a 302.
-
-- [ ] **Step 3: Write the shared flow**
+- [ ] **Step 7: Write the shared delete flow and put game delete on it**
 
 Create `games/views/deletion.py`:
 
@@ -1591,7 +1440,145 @@ def confirm_and_delete(
     )
 ```
 
-- [ ] **Step 4: Move every delete view onto it**
+In `games/views/game.py`, add `ConfirmPage` to the `common.components` import block (lines 11–51 already bring in `Node`, `Ul`, `Li`; `get_token`, `render_page` and `reverse` are present). Replace `delete_game`, and delete `_delete_game_confirmation_modal` (lines **218–276**) and `delete_game_confirmation` (lines **279–292**, decorator included):
+
+```python
+@login_required
+def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
+    game = get_object_or_404(Game, id=game_id)
+    return confirm_and_delete(
+        request,
+        game,
+        title="Delete game",
+        message=f"This will permanently delete {game.name} and all associated data:",
+        details=_deleted_with_game(game),
+        fallback="games:list_games",
+        detail_url=reverse("games:view_game", args=[game_id]),
+    )
+
+
+def _deleted_with_game(game: Game) -> Node:
+    counts = [
+        (game.sessions.count(), "session"),
+        (game.purchases.count(), "purchase"),
+        (game.playevents.count(), "play event"),
+    ]
+    present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
+    return Ul()[*(present or [Li()["No associated data"]])]
+```
+
+Remove the `game/<int:game_id>/delete/confirm` route from `games/urls.py` — it occupies lines **38–42** (line 37 is the `view_game` route; line 42 is the route's closing `),`). Drop `"games:delete_game_confirmation"` from `CONFIRMATION` in `games/views/returns.py`. In `_game_action_buttons`, the Delete member becomes a plain link:
+
+```python
+                {
+                    "href": action_url("games:delete_game", game.id, origin=origin),
+                    "slot": "Delete",
+                    "color": "red",
+                },
+```
+
+- [ ] **Step 8: Update the two tests that pin the old markup**
+
+Replace `tests/test_rendered_pages.py:437` (`test_delete_game_confirmation_modal`) with:
+
+```python
+    def test_delete_game_confirmation_page(self):
+        html = self.get("games:delete_game", self.game.id).content.decode()
+        self.assertIn(self.game.name, html)
+        self.assertIn("session(s)", html)  # seeded session
+        self.assertIn("purchase(s)", html)  # seeded purchase
+        self.assertIn('method="post"', html)
+        self.assertNoEscapedTags(html)
+```
+
+Add `games:delete_game` to `tests/test_html_validity.py`'s `_urls()` list (line 142) so the new page gets duplicate-id and interactive-nesting coverage. Nothing else covers this markup — contrary to an earlier note, that suite has no `<p>`-content-model check.
+
+- [ ] **Step 9: Run the delete-flow tests**
+
+```bash
+make test ARGS="tests/test_deletion_confirmation.py tests/test_rendered_pages.py -v"
+```
+
+Expected: all PASS.
+
+- [ ] **Step 10: Full gate, then commit**
+
+```bash
+make check
+```
+
+```bash
+git add common/components/primitives.py games tests
+git commit -m "refactor(delete): confirm game deletion on a page instead of a modal"
+```
+
+---
+
+### Task 7: The remaining deletes confirm too
+
+**Files:**
+- Modify: `games/views/{purchase,session,playevent,platform,device,statuschange}.py`, `tests/test_html_validity.py`
+- Test: `tests/test_deletion_confirmation.py` (extend), `tests/test_rendered_pages.py:489`
+
+**Interfaces:**
+- Consumes: `games.views.deletion.confirm_and_delete` (created in Task 6, signature `confirm_and_delete(request, instance, *, title, message, fallback, fallback_args=(), details=None, detail_url=None) -> HttpResponse`); `delete_game` is already on it and is the worked example.
+- Produces: nothing new.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/test_deletion_confirmation.py`:
+
+```python
+@pytest.fixture
+def deletables(db):
+    from datetime import date
+
+    from games.models import Device, Purchase
+
+    platform = Platform.objects.create(name="Console")
+    owned = Game.objects.create(name="Deletable", platform=platform)
+    purchase = Purchase.objects.create(
+        date_purchased=date(2024, 6, 1), type=Purchase.GAME
+    )
+    purchase.games.set([owned])
+    return {
+        "session": Session.objects.create(
+            game=owned, timestamp_start=datetime(2024, 6, 1, 12, tzinfo=timezone.utc)
+        ),
+        "purchase": purchase,
+        "platform": Platform.objects.create(name="Doomed"),
+        "device": Device.objects.create(name="Doomed"),
+    }
+
+
+@pytest.mark.parametrize(
+    "url_name,key,fallback",
+    [
+        ("games:delete_session", "session", "games:list_sessions"),
+        ("games:delete_purchase", "purchase", "games:list_purchases"),
+        ("games:delete_platform", "platform", "games:list_platforms"),
+        ("games:delete_device", "device", "games:list_devices"),
+    ],
+)
+def test_every_delete_confirms_first(logged_in, deletables, url_name, key, fallback):
+    instance = deletables[key]
+    url = reverse(url_name, args=[instance.pk])
+    assert logged_in.get(url).status_code == 200
+    assert type(instance).objects.filter(pk=instance.pk).exists()
+    response = logged_in.post(url)
+    assert response["Location"] == reverse(fallback)
+    assert not type(instance).objects.filter(pk=instance.pk).exists()
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+```bash
+make test ARGS="tests/test_deletion_confirmation.py -k every_delete -x"
+```
+
+Expected: FAIL — the GET deletes and returns a 302.
+
+- [ ] **Step 3: Move every delete view onto it**
 
 `games/views/purchase.py`:
 
@@ -1679,32 +1666,15 @@ def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
 
 `Game.platform`, `Purchase.platform` and `Session.device` declare no `related_name`, hence `game_set` / `purchase_set` / `session_set`; all three are `on_delete=SET_NULL`, so the rows survive — the copy above is accurate.
 
-`games/views/game.py`'s `delete_game` collapses onto the helper:
-
-```python
-@login_required
-def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
-    return confirm_and_delete(
-        request,
-        game,
-        title="Delete game",
-        message=f"This will permanently delete {game.name} and all associated data:",
-        details=_deleted_with_game(game),
-        fallback="games:list_games",
-        detail_url=reverse("games:view_game", args=[game_id]),
-    )
-```
-
 `games/views/statuschange.py`'s `delete_statuschange` does the same with `fallback="games:view_game"` and `fallback_args=[statuschange.game.id]`; its bespoke `_delete_statuschange_content` is deleted.
 
-- [ ] **Step 5: Update the statuschange copy assertion**
+- [ ] **Step 4: Update the statuschange copy assertion**
 
 `tests/test_rendered_pages.py:497` asserts the literal `"Are you sure you want to delete this status change?"`, which `_delete_statuschange_content` owned. Change the assertion to the new message (`"Permanently delete this status change?"`) and use that exact string in the view.
 
 Add the five remaining delete URLs to `tests/test_html_validity.py`'s `_urls()`.
 
-- [ ] **Step 6: Run the delete tests**
+- [ ] **Step 5: Run the delete tests**
 
 ```bash
 make test ARGS="tests/test_deletion_confirmation.py tests/test_rendered_pages.py tests/test_html_validity.py -v"
@@ -1712,7 +1682,7 @@ make test ARGS="tests/test_deletion_confirmation.py tests/test_rendered_pages.py
 
 Expected: all PASS.
 
-- [ ] **Step 7: Full gate, then commit**
+- [ ] **Step 6: Full gate, then commit**
 
 ```bash
 make check
