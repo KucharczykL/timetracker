@@ -3,6 +3,13 @@
 > Approved design and implementation contract for this branch.
 > Five phases, shipped as separate PRs in dependency order.
 > Tracked by **#523**; stage issues get filed as each phase is picked up.
+>
+> **Status:** Phase 0 shipped (#525), Phase 2 (#531), Phase 3 (#532) — 4b shipped
+> with 2d, as planned. **Phase 1 and Phase 4a remain**, and their sections are the
+> live contract. Shipped sections are kept as the record of why, marked as such and
+> corrected where the implementation decided otherwise.
+>
+> Every `file:line` below points at the tree as of #532.
 
 ## Context
 
@@ -88,7 +95,7 @@ one name at the cap**:
 Games needs ≤1016, purchases ≥1140 — empty intersection. The window is a
 per-*page* property, so it cannot be pinned per table either. Separately,
 `container-type` implies `contain`; that is safe on the scroll wrapper
-(`primitives.py:2106`) but the neighbouring shell (`primitives.py:2130`) carries
+(`primitives.py:2283`) but the neighbouring shell (`primitives.py:2312`) carries
 an explicit prohibition on `contain` because it would become a containing block
 for the `position: fixed` dropdown menus — a hazard Phase 1 removes at the root.
 
@@ -125,19 +132,23 @@ user-toggleable column set they are undefinable in principle.
 
 # Phase 0 — greed becomes mobile-only
 
-**This is the reported bug fix and it ships alone.**
+**Shipped in #525.** **This is the reported bug fix and it ships alone.**
 
 `Column` gains `shrinkable: bool = False`. When set, its header `<th>` and the
 row-header `<th>` get `max-md:w-full max-md:max-w-0`; above `md`, nothing.
 `Column.class_` stays for genuine per-view sizing.
 
-Call sites drop the literal and state intent: `games/views/session.py:96`,
-`games/views/game.py:111`, `games/views/game.py:634`,
-`games/views/purchase.py:177`.
+Call sites drop the literal and state intent: `games/views/session.py:97`,
+`games/views/game.py:112`, `games/views/game.py:635`,
+`games/views/purchase.py:116`.
 
 ### Acceptance
 
-- sessions and purchases at 1217 container: 0 dead space, no wrapping.
+- sessions and purchases at 1217 container: no wrapping, and the name column
+  stops hoarding — **not** literally 0 dead space. A capped column still takes
+  its proportional share of the table's slack; that residue is #522, and the
+  shipped test bounds it at under 10% of the container (measured 69px of 1232px
+  on its fixture, against 229px with the allowance reapplied unscoped).
 - 390 and 640 unchanged.
 - **~1024 is a recorded interim regression, not an oversight.** "Deleting the
   greed fixes both stated requirements" holds at 1217. Between roughly 768 and
@@ -158,7 +169,8 @@ Call sites drop the literal and state intent: `games/views/session.py:96`,
   the overflow roughly doubles; its TYPE and PRICE columns still wrap, which is
   Phase 2's job. All of this scroll is keyboard-unreachable until the region
   semantics land in Phase 2d, which is why 2a and 2d ship together.
-- **`e2e/test_truncated_text_e2e.py:184` changes at 768 and the change is
+- **`test_table_constraints_hold_at_mobile_and_intermediate_widths`
+  (`e2e/test_truncated_text_e2e.py:203`) changes at 768 and the change is
   intended.** Tailwind `max-md` is `@media (width < 48rem)`, so at exactly 768
   the greed is off *and* all columns are visible — peak pressure. Verified on the
   test's own fixture (games list, one long-named row): wrapper overflow goes
@@ -167,8 +179,14 @@ Call sites drop the literal and state intent: `games/views/session.py:96`,
   branches stay as they are.
 - Component test: `shrinkable=True` emits the `max-md:` classes on header and
   row-header `<th>` and nothing above `md`; `shrinkable=False` emits neither.
-  Replaces the literal-string assertions at `tests/test_components.py:1770`,
-  `:1772` and `:1777` (the last in `test_direct_table_row_keeps_columns_optional`).
+  Replaces the literal-string assertions that lived in
+  `test_first_column_class_reaches_header_and_body_cell` and
+  `test_direct_table_row_keeps_columns_optional`; the shipped block is
+  `tests/test_components.py:1809-1874`, three new tests among the two rewritten
+  ones. The mobile-only assertion scans `<th>`
+  and `<td>` class attributes specifically — a document-wide scan for a bare
+  `w-full` can never pass, because `StyledTable`'s own `<table>` carries one
+  (`primitives.py:2259`).
 
 ---
 
@@ -191,8 +209,8 @@ the native popover API, in the shared tooltip controller
 Unlike Phases 0/2/4 it needs decisions made before it can be estimated:
 
 - **`manual` vs `auto`, and state ownership.** Both engines track openness
-  themselves — `tooltip-behavior.ts:83,115` (`isOpen` plus `panel.hidden`),
-  `menu-behavior.ts:169` (`isOpen = !menu.hidden`). Under `popover="auto"` the UA
+  themselves — `tooltip-behavior.ts:83,118` (`isOpen` plus `panel.hidden`),
+  `menu-behavior.ts:185` (`isOpen = !menu.hidden`). Under `popover="auto"` the UA
   light-dismisses and Esc-closes behind the controller's back: `isOpen` stays
   true, `open()` becomes a permanent no-op, and the per-open scroll/resize
   listeners (`tooltip-behavior.ts:122`) leak. Either adopt `manual` and keep the
@@ -204,7 +222,7 @@ Unlike Phases 0/2/4 it needs decisions made before it can be estimated:
   padding, `background-color: canvas`, and `overflow: auto`. The last clips the
   arrow, which deliberately overhangs the panel edge
   (`tooltip-behavior.ts:67` sets `top`/`bottom: -half`), and `tintArrow`
-  (`:39`) reads the panel's computed background — `canvas` tints arrows wrong.
+  (`:37`) reads the panel's computed background — `canvas` tints arrows wrong.
   Every panel's classes must neutralise these.
 - **jsdom has no popover API — verified.** jsdom 29.1.1 (`package.json`) exposes
   no `showPopover`: `HTMLElement.prototype.showPopover` is `undefined` and
@@ -230,7 +248,7 @@ flips `side` when there is no room above):
 | control: sticky removed | 0 / 24 |
 
 Top-layer promotion also relaxes the standing constraint at
-`primitives.py:2124-2129` — the "never add `transform`/`filter`/`contain`/
+`primitives.py:2306-2311` — the "never add `transform`/`filter`/`contain`/
 `backdrop-filter` to the shell" rule exists because a `position: fixed` panel can
 be captured by an ancestor containing block, and top-layer elements cannot be.
 
@@ -240,7 +258,7 @@ cell, the constraint stands and Phase 4a's ban on `filter: drop-shadow` for the
 pinned-cell shadow keeps its stated rationale. If the migration is total, that
 rationale is dead and `box-shadow` is preferred merely because it is cheaper and
 has no stacking side effects. Audit the panel inventory during this phase and
-reconcile both claims in one direction; do not delete the `primitives.py:2124`
+reconcile both claims in one direction; do not delete the `primitives.py:2309`
 comment until the audit says the migration was total.
 
 ### Acceptance
@@ -256,23 +274,28 @@ comment until the audit says the migration was total.
 
 # Phase 2 — `Column` owns width policy
 
-Today policy is split: `Column.class_` on the `<th>` plus `NAME_MAX_WIDTH_CLASS`
-on the leaf `TruncatedText` (`primitives.py:476`). A new column re-introduces two
+**Shipped in #531.** Written before implementation; see
+`docs/superpowers/plans/2026-07-26-table-widths-phase-2.md` § Decisions made
+during implementation for where the shipped code chose differently.
+
+Policy was split: `Column.class_` on the `<th>` plus `NAME_MAX_WIDTH_CLASS`
+on the leaf `TruncatedText` (`primitives.py:491`). A new column re-introduces two
 authorities. `Column` becomes the single declaration site for `wrap`, the name
 cap, and (Phase 3) `priority`.
 
 ### 2a — cells do not wrap
 
-`TableTd` sets no `white-space` today; the row-header `<th>` already carries
-`whitespace-nowrap`; the header `<th>` (`_header_cell`, `primitives.py:1959`)
-does not. Both gain it **only on data tables** (see the gate below).
+`TableTd` set no `white-space`; the row-header `<th>` already carried
+`whitespace-nowrap`; the header `<th>` (`_header_cell`, `primitives.py:2066`)
+did not. Both gain it **only on data tables** (see the gate below).
 `Column.wrap = True` opts a column out.
 
-`TableTd()` gains `wrap: bool = False`; `TableRow` passes `columns[i].wrap`
-**with a bounds-guarded read** — `primitives.py:2051-2062` deliberately raises
+`TableTd()` gains a nowrap flag; `TableRow` reads the column's `wrap`
+**with a bounds guard** — `primitives.py:2204-2215` deliberately raises
 the cell-count mismatch in DEBUG only, because "prod degrades to a ragged table
 over a 500". Indexing `columns[i]` unguarded converts that documented
-degradation into an `IndexError`.
+degradation into an `IndexError`. (Shipped as `TableTd(nowrap=…)` with the cell
+taking the decision, `column_at()` doing the guarded read.)
 
 ### 2b — the data-table gate
 
@@ -282,13 +305,13 @@ the 26 `StyledTable` call sites (18 are tests, 8 production):
 | call sites | treatment |
 |---|---|
 | 7 list tables via `paginated_table_content` — session, game, purchase, playevent, device, platform, **statuschange** | full treatment |
-| 3 game-detail mini-tables (`game.py:632`, `:662`, `:688`) | full treatment — they scroll, and `game.py:634` is one of the four Phase 0 conversions |
+| 3 game-detail mini-tables (`game.py:633`, `:665`, `:693`) | full treatment — they scroll, and `game.py:635` is one of the four Phase 0 conversions |
 | 4 stats tables (`stats_content.py:84`, `:297`, `:318`, `:333`) | **untouched** |
 
 The stats tables must be excluded on their own merits, not by omission: they are
 2-column cards inside `md:grid-cols-2`, and their value cells wrap today by
 design — `f"{floatformat(total_spent)} ({floatformat(spent_per_game)}/game)"`
-(`stats_content.py:284`), the `_count_link` percent strings (`:270`). Nowrap
+(`stats_content.py:286-287`), the `_count_link` percent strings (`:265`). Nowrap
 would convert that wrapping into per-card horizontal scroll inside a `min-w-0`
 card, on tables that get no scroll region.
 
@@ -297,12 +320,15 @@ call path.
 
 ### 2c — uncapped first columns
 
-`statuschange.py:65`, `device.py:67` and `platform.py:67` render the first cell
+`statuschange.py`, `device.py` and `platform.py` rendered the first cell
 as a **bare string**, not `TruncatedText` — no 16rem cap, no fade. They sit in an
 already-`whitespace-nowrap` row-header `<th>`, so a long name makes an
 arbitrarily wide first column, and in Phase 4 pins it. Route them through
 `TruncatedText` so the cap and fade apply uniformly, or the "names fade rather
-than hard-cut" requirement holds only on three of seven list pages.
+than hard-cut" requirement holds only on three of seven list pages. (Shipped;
+play events needed it too — a `GameLink` has no cap or fade either. The four
+call sites are now `statuschange.py:66`, `device.py:69`, `platform.py:70` and
+`playevent.py:87`.)
 
 ### 2d — the scroll region moves here from Phase 4
 
@@ -337,6 +363,11 @@ see 4b.
 
 # Phase 3 — priority-plus column dropping
 
+**Shipped in #532.** The measurement model this section demands was designed
+first and is written up in
+`docs/superpowers/plans/2026-07-26-table-widths-phase-3.md` § The measurement
+model.
+
 **The mechanism that makes a growing / user-toggleable column set work.**
 
 `Column` gains `priority: int`. A `<responsive-table>` element observes the
@@ -361,15 +392,19 @@ exactly as good as today. The element must therefore **strip those classes on
 mount** before applying its own decision — otherwise the two systems fight. At
 widths where the JS decision differs from the CSS one this produces a visible
 column-pop on load; decide whether to accept it or to gate the swap on first
-measurement.
+measurement. (Shipped differently and better: the fallback rules were rescoped
+to `responsive-table:not(:defined)` — `primitives.py:2040-2047` — so they stop
+matching the instant the element upgrades and there is nothing to strip. The
+element applies its first decision synchronously inside that upgrade, so the two
+systems are never both live and there is no frame to pop in.)
 
-### The measurement model is the hard part and is not yet designed
+### The measurement model is the hard part and was designed before implementation
 
 "Reusing the QuickFilterBar primitives" is honest about 25 lines of width
-arithmetic (`ts/elements/priority-plus.ts:8-25`) and misleading about everything
+arithmetic (`ts/elements/priority-plus.ts:8-24`) and misleading about everything
 else. The parts that make QuickFilterBar work do not transfer:
 
-- **It measures once at mount** (`quick-filter-bar.ts:120`, whose comment says
+- **It measures once at mount** (`quick-filter-bar.ts:36`, whose comment says
   exactly that) because ghost triggers have stable, label-driven widths. Table
   column widths are data-dependent, change with pagination, filtering and htmx
   row swaps, and — decisively — **change when other columns are hidden**, because
@@ -386,21 +421,28 @@ else. The parts that make QuickFilterBar work do not transfer:
   `<tbody>`-level rule — but **Tailwind cannot mint `[&_td:nth-child(4)]:hidden`
   at runtime.** This needs a safelisted per-index rule family in `input.css` up
   to some maximum column count, following the existing `@source inline`
-  nth-child precedent at `primitives.py:2083`. That maximum is a design
-  decision, not an implementation detail.
+  nth-child precedent at `primitives.py:2241`. That maximum is a design
+  decision, not an implementation detail. (Shipped as
+  `MAX_DATA_TABLE_COLUMNS = 12`, `primitives.py:2032`, enforced by a
+  `StyledTable` `ValueError`; the safelist is `common/input.css:21`.)
 
 Design the measurement model — how natural widths are obtained, when they are
 invalidated, and what the safelist ceiling is — before estimating this phase.
+(Done: measure on the live table under a forced `width: max-content`, inside one
+synchronous task; re-measure on every trigger, because cached widths are only
+valid inside the breakpoint regime they were taken in; ceiling 12.)
 
 ### Rule-placement hazard
 
 `align_rules` stay on `<tbody>` deliberately, "so an htmx-swapped `<tr>` aligns
-from the live `<tbody>` it lands in" (`primitives.py:2079`). Anything Phase 3
+from the live `<tbody>` it lands in" (`primitives.py:2237-2241`). Anything Phase 3
 moves per-cell loses that property, and any future row fragment silently loses
 it again. Either keep the drop state as a `<tbody>`-level rule driven by
 attributes the element sets, or make row fragments go through the same column
 metadata. `ts/session-row.ts:59` survives today only because it
-`cloneNode(true)`s the server row.
+`cloneNode(true)`s the server row. (Shipped as table-level
+`[&_tr>*:nth-child(N)]:hidden` classes on the `<table>`, so a swapped `<tr>`
+inherits the drop state the same way it inherits alignment.)
 
 ### Acceptance
 
@@ -433,9 +475,12 @@ sticky start-0 z-[2] bg-inherit
 ```
 
 `start-0`, not `left-0` — the table carries `rtl:text-right`
-(`primitives.py:2100`) and the codebase already uses logical insets
-(`date_range_picker.py:277`). Under `dir="rtl"` the scroll start edge is the
-right, and a physical `left-0` pins to the wrong edge.
+(`primitives.py:2259`). Under `dir="rtl"` the scroll start edge is the right, and
+a physical `left-0` pins to the wrong edge. This is the first logical inset in
+the codebase: grepping `start-0`/`end-0`/`inset-inline` across `.py`, `.ts` and
+`.css` returns nothing, and the one logical utility in use is a margin
+(`ms-0`, `primitives.py:1970`). The recommendation stands on the `rtl:` variant
+alone, with no in-repo precedent to lean on.
 
 Plus a right-edge **`box-shadow`** so the pinned column reads as a layer, never
 `filter: drop-shadow`. `filter` makes the cell a containing block for
@@ -468,12 +513,13 @@ Traps, all confirmed or flagged:
 - **Panels must already be in the top layer** (Phase 1). Without it this phase
   ships the measured 18/24 occlusion.
 
-### 4b — accessible scroll region (**ships in Phase 2d**, specified here)
+### 4b — accessible scroll region (**shipped with Phase 2d in #531**, specified here)
 
-The wrapper is `Div(class_="relative overflow-x-auto")` with no `role`,
-`tabindex` or accessible name, and the tables have no `<caption>` — the
-horizontal scroll is unreachable by keyboard, a live WCAG 2.1.1 failure that
-exists today and that Phases 0 and 2 both make more visible. Nothing in it
+Written against the pre-#531 tree, where the wrapper was
+`Div(class_="relative overflow-x-auto")` with no `role`,
+`tabindex` or accessible name, and the tables had no `<caption>` — the
+horizontal scroll was unreachable by keyboard, a WCAG 2.1.1 failure that already
+existed and that Phases 0 and 2 both make more visible. Nothing in it
 depends on sticky or priority-plus, so it lands with 2a; it is written here for
 cohesion with the rest of the pinning work.
 
@@ -495,9 +541,13 @@ the pinned cell paints, hiding the focused control and its focus ring. The
 pinned column's actual width is per-table and per-page, so "equal to the pinned
 width" is not expressible as a static class. Pin the value to the cap constant
 (256px + cell padding ≈ 304px) — a safe over-estimate that stays pure CSS —
-rather than measuring and writing a custom property.
+rather than measuring and writing a custom property. (Shipped as
+`md:scroll-ps-[19rem]`, `primitives.py:2277`: from `md` up only, because 19rem
+is wider than a phone's scrollport and the browser clamps the reservation into a
+meaningless snap position there.)
 
-`tests/test_components.py:1913` asserts the exact substring
+`tests/test_components.py:2011`
+(`test_scroll_and_clip_live_on_separate_elements`) asserts the exact substring
 `"relative overflow-x-auto"` on the wrapper — append classes, never prepend.
 
 Accepted trade-offs, stated rather than discovered later: the caption is
@@ -528,21 +578,21 @@ Requested directly, and not a prerequisite for anything once Phase 3 owns column
 hiding. Kept because it removes an htmx fragment endpoint, in the direction of
 the wider HTMX-removal work.
 
-`refund_purchase` (`games/views/purchase.py:497`) currently returns row HTML plus
+`refund_purchase` (`games/views/purchase.py:514`) currently returns row HTML plus
 an `hx-swap-oob` template that closes the modal. Its sibling `split_purchase`
-(`:585`) returns `204` with `HX-Redirect`.
+(`:574`) returns `204` with `HX-Redirect`.
 
 **Do not copy `split_purchase` verbatim.** It redirects to a bare
-`reverse("games:list_purchases")`, so refunding row 30 of
+`reverse("games:list_purchases")` (`:603`), so refunding row 30 of
 `?filter=…&sort=-price&page=3` lands on page 1 of the unfiltered, default-sorted
 list.
 
 **And do not reach for `use_custom_redirect` — it cannot express this.** Verified:
 `request.session["return_path"]` is written in exactly three places —
-`view_game` (`games/views/game.py:735`), `stats_alltime`
+`view_game` (`games/views/game.py:745`), `stats_alltime`
 (`games/views/general.py:113`) and `stats` (`:128`). **No list view sets it**, and
 all three store `request.path` with **no query string**. `use_custom_redirect`
-(`general.py:100`) then redirects to whatever stale value is in the session, so a
+(`general.py:93`) then redirects to whatever stale value is in the session, so a
 user who viewed a game detail earlier and then refunds from the purchases list
 lands on that game's page; a user who never visited one falls through to the
 bare-list redirect this paragraph just condemned. The motivating scenario is
@@ -554,7 +604,7 @@ validating it as a safe internal URL (`url_has_allowed_host_and_scheme`). That
 keeps filter, sort and page without touching session state.
 
 **Pin the response shape.** The modal form keeps `hx_post`
-(`purchase.py:461`), so a plain `302` would be answered into the form element —
+(`purchase.py:477`), so a plain `302` would be answered into the form element —
 htmx's default target is the triggering element — and the redirected page would
 be swapped into the modal. Either return `204` + `HX-Redirect` (htmx does the
 navigation) or de-htmx the form to a plain POST. State which; leaving it implicit
@@ -565,7 +615,7 @@ follow-up, and it needs the same hidden-field treatment rather than
 `use_custom_redirect`.
 
 Also delete: the now-dead `hx_target="#purchase-row-{id}"` / `hx_swap="outerHTML"`
-on `_refund_confirmation_modal` (`purchase.py:461`), and the row `id` if nothing
+on `_refund_confirmation_modal` (`purchase.py:478-479`), and the row `id` if nothing
 else consumes it.
 
 **`tests/test_middleware_integration.py:74-101` exists to forbid exactly this
@@ -603,14 +653,15 @@ The success toast survives — `games/htmx_middleware.py:34` returns early when
 Phases are numbered by identity, not by sequence. Ship them **0, 2, 3, 1, 4**:
 
 0. Rebase onto `origin/main` before touching anything.
-1. **Phase 0** — `shrinkable`, four call sites, e2e 768 branch updated, 1024
-   interim behavior recorded.
-2. **Phase 2** — `Column` owns wrap + cap, data-table gate, uncapped first
-   columns, **and the scroll region (2d)**. 2a and 2d must land together: nowrap
-   without a keyboard-reachable region is a net regression.
-3. **Phase 3** — priority-plus. Design the measurement model first.
+1. ~~**Phase 0**~~ — shipped, #525. `shrinkable`, four call sites, e2e 768 branch
+   updated, 1024 interim behavior recorded.
+2. ~~**Phase 2**~~ — shipped, #531. `Column` owns wrap + cap, data-table gate,
+   uncapped first columns, **and the scroll region (2d)**. 2a and 2d landed
+   together: nowrap without a keyboard-reachable region is a net regression.
+3. ~~**Phase 3**~~ — shipped, #532. Priority-plus, measurement model designed
+   first.
 4. **Phase 1** — top-layer panels. Deliberately late: no standalone payoff, high
-   blast radius, and its only beneficiary is Phase 4.
+   blast radius, and its only beneficiary is Phase 4. **Next.**
 5. **Phase 4** — sticky column (4a); 4b already shipped with 2d.
 6. Refund reload — independent; any time after Phase 0.
 
