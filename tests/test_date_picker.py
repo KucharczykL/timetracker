@@ -2,8 +2,8 @@
 
 Pins the structural contract of DatePickerField / DatePickerCalendar /
 DatePicker — segments ordered by the active presentation profile, the
-hidden ISO input Django binds under the field's real name, the noscript
-native fallback, and the widget/form integration (three profiles, blank
+hidden ISO input Django binds under the field's real name, the inert-until-
+upgraded field, and the widget/form integration (three profiles, blank
 optional values, bound invalid data, canonical field names, edit round-trip).
 """
 
@@ -109,9 +109,6 @@ class DatePickerFieldTest(SimpleTestCase):
         self.assertIn('aria-label="Open Purchased calendar"', html)
 
     def test_no_native_date_input(self):
-        # DatePickerField itself never renders a native date input — the
-        # noscript fallback is a DatePicker-level sibling, not nested here
-        # (it must stay visible when this container is CSS-hidden pre-JS).
         self.assertNotIn('type="date"', self.render())
 
     def test_role_group_and_aria_label(self):
@@ -218,30 +215,36 @@ class DatePickerTest(SimpleTestCase):
         self.assertIn('behavior="date-calendar"', html)
         self.assertIn('data-toggle=""', html)
 
-    def test_noscript_fallback_is_a_sibling_of_the_field_not_nested_in_it(self):
-        """The no-JS fallback must sit OUTSIDE [data-date-picker-field] — that
-        container is CSS-hidden pre-upgrade (:not(:defined)), so nesting the
-        fallback inside it would hide the fallback too (issue #485)."""
+    def test_no_noscript_fallback(self):
+        """The native fallback is gone (#539).
+
+        It was the only ``<noscript>`` in the app, and the forms it guarded
+        cannot be submitted without scripting anyway — their game/games fields
+        are required ``SearchSelect`` widgets.
+        """
+
         html = str(
             DatePicker(
                 presentation=DEFAULT_PRESENTATION,
                 label="Purchased",
                 name="date_purchased",
                 value="2024-03-15",
-                fallback_class="native-fallback",
             )
-        )
-        field_open = html.index("data-date-picker-field")
-        field_close = html.index("</div>", field_open)
-        noscript_index = html.index("<noscript>")
-        self.assertGreater(noscript_index, field_close)
-        self.assertIn(
-            '<noscript><input name="date_purchased" value="2024-03-15" '
-            'class="native-fallback" type="date"></noscript>',
-            html,
         )
 
-    def test_hidden_input_named_after_field_precedes_noscript(self):
+        self.assertNotIn("<noscript>", html)
+        self.assertNotIn('type="date"', html)
+
+    def test_field_is_inert_until_the_element_upgrades(self):
+        """Pre-upgrade the field shows the date but cannot be interacted with.
+
+        The segments carry no ``name``, so they are never submitted — typing
+        into them before the engine binds is silently discarded. ``inert``
+        (removed in ``bindSegmentField``) makes that window unreachable
+        instead, and leaves a script-less page showing the stored date
+        read-only rather than blank.
+        """
+
         html = str(
             DatePicker(
                 presentation=DEFAULT_PRESENTATION,
@@ -250,9 +253,25 @@ class DatePickerTest(SimpleTestCase):
                 value="2024-03-15",
             )
         )
-        hidden_index = html.index("data-date-picker-hidden")
-        noscript_index = html.index("<noscript>")
-        self.assertLess(hidden_index, noscript_index)
+
+        field_open = html.index("data-date-picker-field")
+        self.assertIn("inert", html[html.rindex("<div", 0, field_open) : field_open])
+        # The value is still rendered: inert hides interaction, not content.
+        self.assertIn('value="2024"', html)
+
+    def test_hidden_input_named_after_field_precedes_the_calendar(self):
+        html = str(
+            DatePicker(
+                presentation=DEFAULT_PRESENTATION,
+                label="Purchased",
+                name="date_purchased",
+                value="2024-03-15",
+            )
+        )
+        self.assertLess(
+            html.index("data-date-picker-hidden"),
+            html.index("data-date-range-calendar"),
+        )
 
 
 class DatePickerWidgetFormTest(TestCase):

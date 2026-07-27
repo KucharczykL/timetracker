@@ -315,14 +315,6 @@ dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
     }
 }
 
-/* Before date-picker upgrades (or with JS disabled, where it never will),
-   hide the inert segmented field/calendar so only the <noscript> native
-   date input shows. :not(:defined) covers both cases with no JS handshake. */
-date-picker:not(:defined) [data-date-picker-field],
-date-picker:not(:defined) [data-date-range-calendar] {
-    display: none;
-}
-
 /* The touch reveal button occupies the final 1.5rem of a truncated-text host.
    Keep that region fully transparent without putting the overflow-only button
    in layout (which would make its visibility change the overflow measurement). */

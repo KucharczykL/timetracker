@@ -285,7 +285,6 @@ class DatePickerWidget(forms.Widget):
                 input_id=str(final_attrs.get("id", "")),
                 required=bool(final_attrs.get("required")),
                 invalid=final_attrs.get("aria-invalid") == "true",
-                fallback_class=INPUT_CLASS,
             )
         )
 

@@ -196,7 +196,7 @@ def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server)
     expect(page.locator(popup)).to_be_hidden()
 
 
-# ── Synthetic page: JS-disabled native fallback ──────────────────────────────
+# ── Synthetic page: the pre-upgrade (inert) state ───────────────────────────
 
 
 def date_picker_page_view(request):
@@ -206,8 +206,9 @@ def date_picker_page_view(request):
         presentation=presentation,
         label="Purchased",
         name="date_purchased",
-        value="",
-        fallback_class="native-date-fallback",
+        # A stored value, so the no-JS case can assert the field still shows
+        # the date rather than rendering blank.
+        value="2024-03-15",
     )
     html = f"""<!DOCTYPE html>
 <html data-date-time-presentation='{contract}'>
@@ -237,32 +238,45 @@ urlpatterns = [
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_date_picker_e2e")
-def test_js_disabled_uses_native_fallback_and_submits_it(live_server, browser):
-    """With JS disabled the segmented UI never upgrades (:not(:defined) hides
-    it) and the noscript native `<input type="date">` is the visible,
-    submittable control under the same field name."""
+def test_js_disabled_leaves_the_field_visible_but_inert(live_server, browser):
+    """With scripting off the element never upgrades, so `inert` is never
+    removed: the field still shows its stored date, but cannot be focused or
+    typed into.
+
+    That is the intended degraded state now that the `<noscript>` native input
+    is gone (#539). Showing the date read-only beats both alternatives — a
+    blank field (what the old `:not(:defined)` rule would leave behind), and a
+    field that looks editable while silently discarding input, since the
+    segments carry no `name` and are never submitted.
+    """
+
     context = browser.new_context(java_script_enabled=False)
     page = context.new_page()
     page.goto(f"{live_server.url}/test-date-picker/")
 
-    segmented_field = page.locator("[data-date-picker-field]")
-    native_fallback = page.locator('noscript input[type="date"][name="date_purchased"]')
+    field = page.locator("[data-date-picker-field]")
+    expect(field).to_be_visible()
+    assert page.locator('input[type="date"][name="date_purchased"]').count() == 0
 
-    expect(segmented_field).to_be_hidden()
-    expect(native_fallback).to_be_visible()
-
-    native_fallback.fill("2026-04-01")
-    page.locator('button[type="submit"]').click()
-    expect(page.locator("body")).to_have_text("submitted:2026-04-01")
+    year = page.locator('input[data-date-part="year"]')
+    expect(year).to_have_value("2024")
+    # inert removes the subtree from focus order entirely.
+    year.focus()
+    assert page.evaluate("document.activeElement.tagName.toLowerCase()") == "body"
     context.close()
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_date_picker_e2e")
-def test_js_enabled_hides_native_fallback(live_server, page):
-    """With JS enabled the custom element upgrades and the segmented UI is
-    the visible control; the noscript fallback never renders (browsers only
-    parse <noscript> content when scripting is disabled)."""
+def test_js_enabled_frees_the_field(live_server, page):
+    """Upgrading removes `inert`, so the segments become reachable."""
     page.goto(f"{live_server.url}/test-date-picker/")
     expect(page.locator("[data-date-picker-field]")).to_be_visible()
+    assert page.locator("[data-date-picker-field][inert]").count() == 0
     assert page.locator('input[type="date"][name="date_purchased"]').count() == 0
+
+    year = page.locator('input[data-date-part="year"]')
+    year.focus()
+    assert (
+        page.evaluate("document.activeElement.getAttribute('data-date-part')") == "year"
+    )
