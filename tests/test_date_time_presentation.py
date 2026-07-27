@@ -15,9 +15,11 @@ from django.utils import timezone, translation
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DatePartSpec,
+    Affixes,
     DateTimeFormatProfile,
     DateTimePresentation,
+    DateTimeSegmentSpec,
+    build_format_profile,
     date_time_format_profile,
     date_time_presentation_for_request,
 )
@@ -77,17 +79,13 @@ def test_unsupported_profile_id_fails_loudly() -> None:
 
 
 def test_alternate_profile_controls_order_separators_and_hour_cycle() -> None:
-    profile = DateTimeFormatProfile(
-        date_parts=(
-            DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-            DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-            DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-        ),
-        date_separator=".",
-        segmented_date_separator="·",
+    profile = build_format_profile(
+        ("year", "month", "day"),
+        hour_cycle="h12",
+        display_separator=".",
+        segmented_separator="·",
         time_separator="h",
         date_time_separator=" @ ",
-        hour_cycle="h12",
     )
     presentation = DateTimePresentation(
         profile=profile,
@@ -101,18 +99,36 @@ def test_alternate_profile_controls_order_separators_and_hour_cycle() -> None:
     )
 
 
-def test_date_parts_can_have_shorter_display_than_input_width() -> None:
+def _numeric(
+    name: str, *, width: int, display: int, prefix: str
+) -> DateTimeSegmentSpec:
+    return DateTimeSegmentSpec(
+        name=name,  # type: ignore[arg-type]
+        kind="numeric",
+        run="date",
+        placeholder=name.upper(),
+        input_length=width,
+        display_min_digits=display,
+        min_value=1,
+        max_value=9999,
+        display=Affixes(prefix=prefix),
+    )
+
+
+def test_segments_can_have_shorter_display_than_input_width() -> None:
+    """Display width is independent of typed width — an unpadded d/m/yyyy.
+
+    ``build_format_profile`` ties the two together because every registered
+    profile pads; the contract itself does not require it.
+    """
+
     presentation = DateTimePresentation(
         profile=DateTimeFormatProfile(
-            date_parts=(
-                DatePartSpec("day", "DD", input_length=2, display_min_digits=1),
-                DatePartSpec("month", "MM", input_length=2, display_min_digits=1),
-                DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
+            segments=(
+                _numeric("day", width=2, display=1, prefix=""),
+                _numeric("month", width=2, display=1, prefix="/"),
+                _numeric("year", width=4, display=4, prefix="/"),
             ),
-            date_separator="/",
-            segmented_date_separator="-",
-            time_separator=":",
-            date_time_separator=" ",
             hour_cycle="h23",
         ),
         locale="en-us",
@@ -124,13 +140,11 @@ def test_date_parts_can_have_shorter_display_than_input_width() -> None:
 
 def test_h12_time_uses_the_exact_client_day_period_for_non_english_locale() -> None:
     presentation = DateTimePresentation(
-        profile=DateTimeFormatProfile(
-            date_parts=DEFAULT_DATE_TIME_FORMAT_PROFILE.date_parts,
-            date_separator="/",
-            segmented_date_separator="-",
-            time_separator=":",
-            date_time_separator=" ",
+        profile=build_format_profile(
+            ("year", "month", "day"),
             hour_cycle="h12",
+            display_separator="/",
+            segmented_separator="-",
         ),
         locale="cs",
         timezone=ZoneInfo("UTC"),
@@ -207,49 +221,94 @@ def test_presentation_and_nested_profile_are_immutable() -> None:
     with pytest.raises(FrozenInstanceError):
         presentation.locale = "cs"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
-        presentation.profile.date_separator = "."  # type: ignore[misc]
+        presentation.profile.hour_cycle = "h12"  # type: ignore[misc]
 
 
 def test_client_config_is_exact_and_versioned() -> None:
+    """The one exhaustive pin on the wire shape.
+
+    Spelled out rather than rebuilt from the profile, so a field that silently
+    changes name, moves run, or loses its bounds fails here."""
+
     presentation = DateTimePresentation(
         profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
         locale="en-us",
         timezone=ZoneInfo("Europe/Prague"),
     )
 
-    assert presentation.to_client_config() == {
-        "version": 1,
-        "locale": "en-us",
-        "time_zone": "Europe/Prague",
-        "profile": {
-            "date_parts": [
-                {
-                    "name": "year",
-                    "placeholder": "YYYY",
-                    "input_length": 4,
-                    "display_min_digits": 4,
-                },
-                {
-                    "name": "month",
-                    "placeholder": "MM",
-                    "input_length": 2,
-                    "display_min_digits": 2,
-                },
-                {
-                    "name": "day",
-                    "placeholder": "DD",
-                    "input_length": 2,
-                    "display_min_digits": 2,
-                },
-            ],
-            "date_separator": "-",
-            "segmented_date_separator": "-",
-            "time_separator": ":",
-            "date_time_separator": " ",
-            "hour_cycle": "h23",
-        },
-        "day_periods": {"am": "AM", "pm": "PM"},
-    }
+    assert presentation.to_client_config() == (
+        {
+            "version": 2,
+            "locale": "en-us",
+            "time_zone": "Europe/Prague",
+            "profile": {
+                "segments": [
+                    {
+                        "name": "year",
+                        "kind": "numeric",
+                        "run": "date",
+                        "placeholder": "YYYY",
+                        "input_length": 4,
+                        "display_min_digits": 4,
+                        "min_value": 1,
+                        "max_value": 9999,
+                        "display": {"prefix": "", "suffix": ""},
+                        "segmented": {"prefix": "", "suffix": ""},
+                    },
+                    {
+                        "name": "month",
+                        "kind": "numeric",
+                        "run": "date",
+                        "placeholder": "MM",
+                        "input_length": 2,
+                        "display_min_digits": 2,
+                        "min_value": 1,
+                        "max_value": 12,
+                        "display": {"prefix": "-", "suffix": ""},
+                        "segmented": {"prefix": "-", "suffix": ""},
+                    },
+                    {
+                        "name": "day",
+                        "kind": "numeric",
+                        "run": "date",
+                        "placeholder": "DD",
+                        "input_length": 2,
+                        "display_min_digits": 2,
+                        "min_value": 1,
+                        "max_value": 31,
+                        "display": {"prefix": "-", "suffix": ""},
+                        "segmented": {"prefix": "-", "suffix": ""},
+                    },
+                    {
+                        "name": "hour",
+                        "kind": "numeric",
+                        "run": "time",
+                        "placeholder": "HH",
+                        "input_length": 2,
+                        "display_min_digits": 2,
+                        "min_value": 0,
+                        "max_value": 23,
+                        "display": {"prefix": " ", "suffix": ""},
+                        "segmented": {"prefix": " ", "suffix": ""},
+                    },
+                    {
+                        "name": "minute",
+                        "kind": "numeric",
+                        "run": "time",
+                        "placeholder": "mm",
+                        "input_length": 2,
+                        "display_min_digits": 2,
+                        "min_value": 0,
+                        "max_value": 59,
+                        "display": {"prefix": ":", "suffix": ""},
+                        "segmented": {"prefix": ":", "suffix": ""},
+                    },
+                ],
+                "hour_cycle": "h23",
+            },
+            "day_periods": {"am": "AM", "pm": "PM"},
+        }
+    )
 
 
 @override_settings(LANGUAGE_CODE="cs")
@@ -318,36 +377,25 @@ def test_root_document_emits_active_client_contract(db) -> None:
     parser.feed(Client().get(reverse("login")).content.decode())
 
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
-    assert contract["version"] == 1
+    assert contract["version"] == 2
     assert contract["locale"] == "en-us"
     assert contract["time_zone"] == "UTC"
-    assert contract["profile"] == {
-        "date_parts": [
-            {
-                "name": "year",
-                "placeholder": "YYYY",
-                "input_length": 4,
-                "display_min_digits": 4,
-            },
-            {
-                "name": "month",
-                "placeholder": "MM",
-                "input_length": 2,
-                "display_min_digits": 2,
-            },
-            {
-                "name": "day",
-                "placeholder": "DD",
-                "input_length": 2,
-                "display_min_digits": 2,
-            },
-        ],
-        "date_separator": "-",
-        "segmented_date_separator": "-",
-        "time_separator": ":",
-        "date_time_separator": " ",
-        "hour_cycle": "h23",
-    }
+    segments = contract["profile"]["segments"]
+    assert [(segment["name"], segment["run"]) for segment in segments] == [
+        ("year", "date"),
+        ("month", "date"),
+        ("day", "date"),
+        ("hour", "time"),
+        ("minute", "time"),
+    ]
+    assert [segment["display"]["prefix"] for segment in segments] == [
+        "",
+        "-",
+        "-",
+        " ",
+        ":",
+    ]
+    assert contract["profile"]["hour_cycle"] == "h23"
     assert contract["day_periods"] == {"am": "AM", "pm": "PM"}
 
 
@@ -363,28 +411,20 @@ def test_authenticated_root_document_emits_personal_mdy_12h_contract(
     parser.feed(client.get(reverse("games:list_games")).content.decode())
 
     contract = json.loads(parser.attributes["data-date-time-presentation"] or "")
-    assert contract["profile"]["date_parts"] == [
-        {
-            "name": "month",
-            "placeholder": "MM",
-            "input_length": 2,
-            "display_min_digits": 2,
-        },
-        {
-            "name": "day",
-            "placeholder": "DD",
-            "input_length": 2,
-            "display_min_digits": 2,
-        },
-        {
-            "name": "year",
-            "placeholder": "YYYY",
-            "input_length": 4,
-            "display_min_digits": 4,
-        },
+    segments = contract["profile"]["segments"]
+    assert [segment["name"] for segment in segments] == [
+        "month",
+        "day",
+        "year",
+        "hour",
+        "minute",
+        # h12 is the only reason this segment exists at all.
+        "day_period",
     ]
-    assert contract["profile"]["date_separator"] == "/"
+    assert [segment["display"]["prefix"] for segment in segments[:3]] == ["", "/", "/"]
     assert contract["profile"]["hour_cycle"] == "h12"
+    hour = next(segment for segment in segments if segment["name"] == "hour")
+    assert (hour["min_value"], hour["max_value"]) == (1, 12)
     assert "profile_id" not in contract
     assert "profile_id" not in contract["profile"]
 
@@ -408,11 +448,19 @@ def test_codegen_command_emits_date_time_presentation_type(tmp_path: Path) -> No
         call_command("gen_element_types", verbosity=0)
 
     output = (tmp_path / "ts/generated/date-time-presentation.ts").read_text()
-    assert 'export type DatePartName = "day" | "month" | "year";' in output
+    assert (
+        'export type SegmentName = "day" | "month" | "year" | "hour" | "minute"'
+        ' | "day_period";'
+    ) in output
+    assert 'export type SegmentKind = "numeric" | "day_period";' in output
+    assert 'export type SegmentRun = "date" | "time";' in output
     assert 'export type HourCycle = "h12" | "h23";' in output
     assert "export interface DateTimePresentationConfig" in output
-    assert "version: 1;" in output
+    assert "version: 2;" in output
     assert "profile: DateTimeFormatProfileConfig;" in output
     assert "day_periods: DayPeriodsConfig;" in output
+    assert "segments: SegmentConfig[];" in output
     assert "input_length: number;" in output
     assert "display_min_digits: number;" in output
+    assert "min_value: number;" in output
+    assert "display: AffixesConfig;" in output

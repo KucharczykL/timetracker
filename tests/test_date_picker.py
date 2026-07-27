@@ -15,9 +15,9 @@ from django.test import SimpleTestCase, TestCase
 from common.components import DatePicker, DatePickerCalendar, DatePickerField
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DatePartSpec,
     DateTimeFormatProfile,
     DateTimePresentation,
+    build_format_profile,
 )
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
@@ -25,29 +25,17 @@ DEFAULT_PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
 
-_DMY_PROFILE = DateTimeFormatProfile(
-    date_parts=(
-        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-    ),
-    date_separator="/",
-    segmented_date_separator="/",
-    time_separator=":",
-    date_time_separator=" ",
+_DMY_PROFILE = build_format_profile(
+    ("day", "month", "year"),
     hour_cycle="h23",
+    display_separator="/",
+    segmented_separator="/",
 )
-_MDY_PROFILE = DateTimeFormatProfile(
-    date_parts=(
-        DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-        DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-        DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-    ),
-    date_separator="/",
-    segmented_date_separator="/",
-    time_separator=":",
-    date_time_separator=" ",
+_MDY_PROFILE = build_format_profile(
+    ("month", "day", "year"),
     hour_cycle="h12",
+    display_separator="/",
+    segmented_separator="/",
 )
 
 

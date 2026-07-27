@@ -253,7 +253,7 @@ def test_presentation_preferences_reload_with_the_updated_contract(
           const config = JSON.parse(
             document.documentElement.dataset.dateTimePresentation
           );
-          return config.profile.date_parts[0].name === "month"
+          return config.profile.segments[0].name === "month"
             && config.profile.hour_cycle === "h12";
         })()
         """
@@ -265,6 +265,6 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     contract = json.loads(
         page.locator("html").get_attribute("data-date-time-presentation") or "{}"
     )
-    assert contract["profile"]["date_parts"][0]["name"] == "month"
+    assert contract["profile"]["segments"][0]["name"] == "month"
     assert contract["profile"]["hour_cycle"] == "h12"
     expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")

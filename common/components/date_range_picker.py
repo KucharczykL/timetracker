@@ -34,7 +34,7 @@ from common.components.primitives import (
     control_button_class,
     filter_widget_attributes,
 )
-from common.date_time_presentation import DatePartSpec, DateTimePresentation
+from common.date_time_presentation import DateTimePresentation, DateTimeSegmentSpec
 
 # font-mono: every glyph (placeholder letters and digits alike) is exactly
 # 1ch wide, so the exact segment widths below leave no slack and the gaps
@@ -147,7 +147,7 @@ CALENDAR_WEEKDAY_CLASS = (
 )
 
 
-def iso_part_values(iso_value: str, parts: list[DatePartSpec]) -> dict[str, str]:
+def iso_part_values(iso_value: str, parts: list[DateTimeSegmentSpec]) -> dict[str, str]:
     """Split an ISO ``YYYY-MM-DD`` string into per-part initial values.
 
     Returns an empty mapping for empty/malformed input so a bad stored filter
@@ -166,7 +166,7 @@ def iso_part_values(iso_value: str, parts: list[DatePartSpec]) -> dict[str, str]
 
 def date_segment_input(
     *,
-    part: DatePartSpec,
+    part: DateTimeSegmentSpec,
     side: str,
     label: str,
     value: str,
@@ -211,16 +211,12 @@ def date_segment_group(
     """One date's worth of segments (``DD - MM - YYYY``), ordered by the
     active presentation profile, for one side (a range's "min"/"max", or a
     single-date field's own side id)."""
-    parts = list(presentation.profile.date_parts)
+    parts = list(presentation.profile.segments_for("date"))
     initial_values = iso_part_values(iso_value, parts)
     children: list[Node] = []
     for index, part in enumerate(parts):
-        if index > 0:
-            children.append(
-                Span(class_="text-body select-none")[
-                    presentation.profile.segmented_date_separator
-                ]
-            )
+        if index > 0 and part.segmented.prefix:
+            children.append(Span(class_="text-body select-none")[part.segmented.prefix])
         children.append(
             date_segment_input(
                 part=part,

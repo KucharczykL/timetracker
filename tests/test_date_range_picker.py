@@ -16,8 +16,7 @@ from django.test import SimpleTestCase, TestCase
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DatePartSpec,
-    DateTimeFormatProfile,
+    build_format_profile,
     DateTimePresentation,
 )
 from common.components import (
@@ -34,7 +33,7 @@ DEFAULT_PRESENTATION = DateTimePresentation(
 
 class DatePartsTest(SimpleTestCase):
     def test_default_format_yields_year_month_day(self):
-        parts = DEFAULT_PRESENTATION.profile.date_parts
+        parts = DEFAULT_PRESENTATION.profile.segments_for("date")
         self.assertEqual([part.name for part in parts], ["year", "month", "day"])
         self.assertEqual([part.placeholder for part in parts], ["YYYY", "MM", "DD"])
         self.assertEqual([part.input_length for part in parts], [4, 2, 2])
@@ -99,17 +98,11 @@ class DateRangeFieldTest(SimpleTestCase):
 
     def test_alternate_presentation_controls_segment_order_and_separator(self):
         presentation = DateTimePresentation(
-            DateTimeFormatProfile(
-                date_parts=(
-                    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-                    DatePartSpec("day", "DD", input_length=2, display_min_digits=1),
-                    DatePartSpec("month", "MM", input_length=2, display_min_digits=1),
-                ),
-                date_separator="/",
-                segmented_date_separator="·",
-                time_separator=":",
-                date_time_separator=" ",
+            build_format_profile(
+                ("year", "day", "month"),
                 hour_cycle="h23",
+                display_separator="/",
+                segmented_separator="·",
             ),
             "en-us",
             ZoneInfo("UTC"),
@@ -130,17 +123,11 @@ class DateRangeFieldTest(SimpleTestCase):
 
     def test_alternate_presentation_prefills_each_side_from_iso(self):
         presentation = DateTimePresentation(
-            DateTimeFormatProfile(
-                date_parts=(
-                    DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-                    DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-                    DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-                ),
-                date_separator=".",
-                segmented_date_separator="·",
-                time_separator=":",
-                date_time_separator=" ",
+            build_format_profile(
+                ("year", "day", "month"),
                 hour_cycle="h23",
+                display_separator=".",
+                segmented_separator="·",
             ),
             "en-us",
             ZoneInfo("UTC"),

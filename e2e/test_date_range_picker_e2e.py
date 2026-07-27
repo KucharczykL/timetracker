@@ -25,8 +25,7 @@ from playwright.sync_api import expect
 from common.components import parse_filter_dict
 from common.components.filters import field_widget
 from common.date_time_presentation import (
-    DatePartSpec,
-    DateTimeFormatProfile,
+    build_format_profile,
     DateTimePresentation,
     date_time_format_profile,
     date_time_presentation_for_request,
@@ -113,17 +112,11 @@ def prefilled_bar_view(request):
 
 
 CZECH_YEAR_DAY_MONTH_PRESENTATION = DateTimePresentation(
-    DateTimeFormatProfile(
-        date_parts=(
-            DatePartSpec("year", "YYYY", input_length=4, display_min_digits=4),
-            DatePartSpec("day", "DD", input_length=2, display_min_digits=2),
-            DatePartSpec("month", "MM", input_length=2, display_min_digits=2),
-        ),
-        date_separator=".",
-        segmented_date_separator="·",
-        time_separator=":",
-        date_time_separator=" ",
+    build_format_profile(
+        ("year", "day", "month"),
         hour_cycle="h23",
+        display_separator=".",
+        segmented_separator="·",
     ),
     "cs-CZ",
     ZoneInfo("Pacific/Kiritimati"),
