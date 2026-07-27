@@ -2282,6 +2282,17 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         self.assertTrue(levels, "the pinned class declares no z-index")
         self.assertLess(max(levels), 10)
 
+    def test_the_header_row_carries_the_header_surface(self):
+        """The pinned header cell inherits its background from the row, so the
+        surface has to live there — on <thead> it resolves to transparent and
+        the scrolled columns show through the pinned cell."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        thead = self._thead(result)
+        header_row = thead.split("<tr")[1].split(">")[0]
+        self.assertIn("bg-neutral-tertiary", header_row)
+
 
 class ResponsiveTableGateTest(SimpleTestCase):
     """Phase 3 of the width policy: a data table mounts <responsive-table>,

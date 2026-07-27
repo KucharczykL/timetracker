@@ -538,9 +538,10 @@ class RenderedPagesTest(TestCase):
         ]:
             self.assertIn(marker, html)
         # Stats tables are StyledTables now: the ranked (Games/Platforms) tables
-        # render a tokenized <thead>. Anchor on the thead so a row's
-        # hover:bg-neutral-tertiary-medium doesn't false-match.
-        self.assertRegex(html, r"<thead[^>]*bg-neutral-tertiary")
+        # render a tokenized <thead>. Anchored on the header row rather than any
+        # <tr>: a body row's hover:bg-neutral-tertiary-medium would otherwise
+        # false-match.
+        self.assertRegex(html, r"<thead[^>]*>\s*<tr[^>]*bg-neutral-tertiary")
         self.assertNoEscapedTags(html)
         self.assertEqual(html.count("<table"), html.count("</table>"))
 

@@ -2246,7 +2246,11 @@ def StyledTable(
     # `columns` still drives the count-guard and align rules when the header is
     # hidden (show_header=False) — e.g. the headerless key-value stats tables.
     if show_header:
-        header_row = Tr()[
+        # The surface sits on the row, not on <thead>: the pinned first cell
+        # takes its background from its parent row, and a <thead>-level surface
+        # would leave it transparent.
+        header_row_class = "bg-neutral-tertiary"
+        header_row = Tr(class_=header_row_class)[
             [
                 _header_cell(
                     column,
@@ -2258,7 +2262,7 @@ def StyledTable(
                 for index, column in enumerate(columns)
             ]
         ]
-        thead_class = "text-type-micro text-body uppercase bg-neutral-tertiary"
+        thead_class = "text-type-micro text-body uppercase"
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
         table_children.append(Thead(class_=thead_class)[header_row])
