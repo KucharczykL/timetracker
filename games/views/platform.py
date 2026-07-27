@@ -9,9 +9,11 @@ from common.components import (
     Column,
     ContentContainer,
     Icon,
+    Li,
     QuickFilterBar,
     TableData,
     TruncatedText,
+    Ul,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -27,18 +29,21 @@ from games.sorting import (
 )
 from games.filters import parse_platform_filter
 from games.forms import PlatformForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import action_url
 from games.models import Platform
-from games.views.general import use_custom_redirect
+from games.views.returns import return_url
 
 
 @login_required
 def list_platforms(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     platforms = Platform.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -74,13 +79,15 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_platform", args=[platform.pk]),
+                            "href": action_url(
+                                "games:edit_platform", platform.pk, origin=origin
+                            ),
                             "slot": Icon("edit"),
                             "color": "gray",
                         },
                         {
-                            "href": reverse(
-                                "games:delete_platform", args=[platform.pk]
+                            "href": action_url(
+                                "games:delete_platform", platform.pk, origin=origin
                             ),
                             "slot": Icon("delete"),
                             "color": "red",
@@ -121,18 +128,28 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 @login_required
 def delete_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
-    platform.delete()
-    return redirect("games:list_platforms")
+    return confirm_and_delete(
+        request,
+        platform,
+        title="Delete platform",
+        message=f"Permanently delete {platform.name}?",
+        details=Ul()[
+            Li()[
+                f"{platform.game_set.count()} game(s) and "
+                f"{platform.purchase_set.count()} purchase(s) become platformless"
+            ]
+        ],
+        fallback="games:list_platforms",
+    )
 
 
 @login_required
-@use_custom_redirect
 def edit_platform(request: HttpRequest, platform_id: int) -> HttpResponse:
     platform = get_object_or_404(Platform, id=platform_id)
     form = PlatformForm(request.POST or None, instance=platform)
     if form.is_valid():
         form.save()
-        return redirect("games:list_platforms")
+        return redirect(return_url(request, fallback="games:list_platforms"))
     return render_page(request, AddForm(form, request=request), title="Edit Platform")
 
 
@@ -141,7 +158,7 @@ def add_platform(request: HttpRequest) -> HttpResponse:
     form = PlatformForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("games:index")
+        return redirect(return_url(request, fallback="games:list_platforms"))
 
     return render_page(
         request, AddForm(form, request=request), title="Add New Platform"

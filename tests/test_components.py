@@ -302,7 +302,7 @@ class SessionActionsTest(unittest.TestCase):
     def test_open_session_renders_finish_reset_csrf_and_modal(self):
         from common.components.domain import SessionActions
 
-        html = str(SessionActions(self._session(), "tok123"))
+        html = str(SessionActions(self._session(), "tok123", None))
         self.assertIn("<session-actions", html)
         self.assertIn('api-url="/api/session/7"', html)
         self.assertIn('csrf="tok123"', html)
@@ -321,7 +321,7 @@ class SessionActionsTest(unittest.TestCase):
                 2026, 6, 24, 19, 0, tzinfo=datetime.timezone.utc
             )
         )
-        html = str(SessionActions(ended, "tok123"))
+        html = str(SessionActions(ended, "tok123", None))
         self.assertIn("<session-actions", html)
         self.assertNotIn("data-finish", html)
         self.assertNotIn("data-reset", html)
@@ -2740,6 +2740,26 @@ class BadgeTokenTest(SimpleTestCase):
                     "put shared shape, spacing, typography, and border treatment "
                     "in _BADGE_BASE_CLASS instead.",
                 )
+
+
+def test_confirm_page_renders_details_outside_the_message_paragraph():
+    from common.components import ConfirmPage, Li, Ul
+
+    markup = str(
+        ConfirmPage(
+            title="Delete game",
+            message="Permanently delete this game?",
+            post_url="/tracker/game/1/delete?origin=%2Ftracker%2Fgame%2Flist",
+            csrf_token="token",
+            cancel_url="/tracker/game/list",
+            confirm_label="Delete",
+            details=Ul()[Li()["2 session(s)"]],
+        )
+    )
+    assert 'action="/tracker/game/1/delete?origin=%2Ftracker%2Fgame%2Flist"' in markup
+    # A <ul> inside the message <p> would be invalid HTML.
+    before_list = markup.split("<ul")[0]
+    assert "<p" in before_list and "</p>" in before_list
 
 
 if __name__ == "__main__":

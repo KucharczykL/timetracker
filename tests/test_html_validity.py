@@ -127,13 +127,13 @@ class HtmlValidityTest(TestCase):
         )
         self.other_bundle.games.add(self.long_game, self.other_game)
 
-        Session.objects.create(
+        self.session = Session.objects.create(
             game=self.long_game,
             timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
             device=self.device,
         )
-        PlayEvent.objects.create(
+        self.playevent = PlayEvent.objects.create(
             game=self.long_game,
             started=date(2022, 9, 1),
             ended=date(2022, 9, 26),
@@ -150,6 +150,12 @@ class HtmlValidityTest(TestCase):
             reverse("games:view_game", args=[self.long_game.id]),
             reverse("games:view_purchase", args=[self.bundle.id]),
             reverse("games:edit_game", args=[self.long_game.id]),
+            reverse("games:delete_game", args=[self.long_game.id]),
+            reverse("games:delete_session", args=[self.session.id]),
+            reverse("games:delete_purchase", args=[self.bundle.id]),
+            reverse("games:delete_playevent", args=[self.playevent.id]),
+            reverse("games:delete_platform", args=[self.platform.id]),
+            reverse("games:delete_device", args=[self.device.id]),
             reverse("games:add_game"),
             reverse("games:add_purchase"),
             reverse("games:add_session"),

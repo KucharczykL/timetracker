@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import (
     HttpRequest,
     HttpResponse,
-    HttpResponseRedirect,
 )
 from django.db import transaction
 from django.db.models import QuerySet
@@ -59,20 +58,23 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
-from games.views.general import use_custom_redirect
+from common.returns import OriginUrl, action_url
+from games.views.returns import origin_from, return_url
 from timetracker.settings_resolver import resolve_str_for_user
 
 
-def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
+def _render_purchase_buttons(
+    purchase_id, is_refunded, can_split=False, *, origin: OriginUrl | None
+):
     """Return button group HTML for a purchase row."""
     return ButtonGroup(
         [
             {
                 "href": "#",
-                "hx_get": reverse(
-                    "games:refund_purchase_confirmation",
-                    args=[purchase_id],
+                "hx_get": action_url(
+                    "games:refund_purchase_confirmation", purchase_id, origin=origin
                 ),
                 "hx_target": "#global-modal-container",
                 "slot": Icon("refund", size=ICON_BUTTON_SIZE_CLASS),
@@ -82,9 +84,8 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
             else {},
             {
                 "href": "#",
-                "hx_get": reverse(
-                    "games:split_purchase_confirmation",
-                    args=[purchase_id],
+                "hx_get": action_url(
+                    "games:split_purchase_confirmation", purchase_id, origin=origin
                 ),
                 "hx_target": "#global-modal-container",
                 "slot": Icon("split", size=ICON_BUTTON_SIZE_CLASS),
@@ -94,13 +95,13 @@ def _render_purchase_buttons(purchase_id, is_refunded, can_split=False):
             if can_split
             else {},
             {
-                "href": reverse("games:edit_purchase", args=[purchase_id]),
+                "href": action_url("games:edit_purchase", purchase_id, origin=origin),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Edit",
                 "color": "gray",
             },
             {
-                "href": reverse("games:delete_purchase", args=[purchase_id]),
+                "href": action_url("games:delete_purchase", purchase_id, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",
                 "color": "red",
@@ -126,7 +127,7 @@ PURCHASE_COLUMNS: list[Column] = [
 
 
 def _render_purchase_row(
-    purchase: Purchase, presentation: DateTimePresentation
+    purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
 ) -> TableRowData:
     """Return a row for simple-table rendering."""
     # TODO: simplify if multiple purchases are no longer allowed
@@ -158,6 +159,7 @@ def _render_purchase_row(
             purchase.id,
             bool(purchase.date_refunded),
             can_split=purchase.num_purchases > 1,
+            origin=origin,
         ),
         id=f"purchase-row-{purchase.id}",
     )
@@ -166,6 +168,7 @@ def _render_purchase_row(
 @login_required
 def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     purchases: QuerySet[Purchase] = Purchase.objects.select_related(
         "platform"
     ).prefetch_related("games", "games__platform")
@@ -193,7 +196,8 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         "columns": list(PURCHASE_COLUMNS),
         "sort_terms": sort.terms,
         "rows": [
-            _render_purchase_row(purchase, presentation) for purchase in purchases
+            _render_purchase_row(purchase, presentation, origin=origin)
+            for purchase in purchases
         ],
     }
     content = paginated_table_content(
@@ -325,17 +329,17 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         if form.is_valid():
             if request.POST.get("pricing_mode") == "per_game":
                 _create_separate_purchases(form, request.POST)
-                return redirect("games:list_purchases")
+                return redirect(return_url(request, fallback="games:list_purchases"))
             purchase = form.save()
             if "submit_and_redirect" in request.POST:
-                return HttpResponseRedirect(
-                    reverse(
+                return redirect(
+                    action_url(
                         "games:add_session_for_game",
-                        kwargs={"game_id": purchase.first_game.id},
+                        game_id=purchase.first_game.id,
+                        origin=origin_from(request),
                     )
                 )
-            else:
-                return redirect("games:list_purchases")
+            return redirect(return_url(request, fallback="games:list_purchases"))
     else:
         if game_id:
             game = Game.objects.get(id=game_id)
@@ -377,7 +381,6 @@ def add_purchase(request: HttpRequest, game_id: int = 0) -> HttpResponse:
 
 
 @login_required
-@use_custom_redirect
 def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
     default_currency = resolve_str_for_user(request.user, "DEFAULT_CURRENCY")
@@ -393,7 +396,7 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     )
     if form.is_valid():
         form.save()
-        return redirect("games:list_sessions")
+        return redirect(return_url(request, fallback="games:list_purchases"))
     return render_page(
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
@@ -409,8 +412,14 @@ def edit_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 @login_required
 def delete_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    purchase.delete()
-    return redirect("games:list_purchases")
+    return confirm_and_delete(
+        request,
+        purchase,
+        title="Delete purchase",
+        message=f"Permanently delete this purchase of {purchase.first_game}?",
+        fallback="games:list_purchases",
+        detail_url=reverse("games:view_purchase", args=[purchase_id]),
+    )
 
 
 def _view_purchase_content(
@@ -463,18 +472,11 @@ def view_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     )
 
 
-@login_required
-def drop_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
-    for game in purchase.games.all():
-        game.status = Game.Status.ABANDONED
-        game.save()
-    return redirect("games:list_purchases")
-
-
-def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
+def _refund_confirmation_modal(
+    purchase_id: int, request: HttpRequest, origin: OriginUrl | None
+) -> Node:
     form = Form(
-        hx_post=reverse("games:refund_purchase", args=[purchase_id]),
+        hx_post=action_url("games:refund_purchase", purchase_id, origin=origin),
         hx_target=f"#purchase-row-{purchase_id}",
         hx_swap="outerHTML",
     )[
@@ -506,7 +508,9 @@ def _refund_confirmation_modal(purchase_id: int, request: HttpRequest) -> Node:
 def refund_purchase_confirmation(
     request: HttpRequest, purchase_id: int
 ) -> HttpResponse:
-    return HttpResponse(_refund_confirmation_modal(purchase_id, request))
+    return HttpResponse(
+        _refund_confirmation_modal(purchase_id, request, origin_from(request))
+    )
 
 
 @login_required
@@ -522,7 +526,9 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
 
     messages.success(request, "Purchase refunded")
     row_data = _render_purchase_row(
-        purchase, date_time_presentation_for_request(request)
+        purchase,
+        date_time_presentation_for_request(request),
+        origin=origin_from(request),
     )
     row_html = str(TableRow(data=row_data, columns=PURCHASE_COLUMNS, data_table=True))
     modal_close = (
@@ -531,10 +537,12 @@ def refund_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
     return HttpResponse(row_html + modal_close, status=200)
 
 
-def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
+def _split_confirmation_modal(
+    purchase: Purchase, request: HttpRequest, origin: OriginUrl | None
+) -> Node:
     count = purchase.num_purchases
     form = Form(
-        hx_post=reverse("games:split_purchase", args=[purchase.id]),
+        hx_post=action_url("games:split_purchase", purchase.id, origin=origin),
     )[
         CsrfInput(request),
         P(class_="dark:text-white text-center mt-3 text-type-body")[
@@ -565,7 +573,9 @@ def _split_confirmation_modal(purchase: Purchase, request: HttpRequest) -> Node:
 @login_required
 def split_purchase_confirmation(request: HttpRequest, purchase_id: int) -> HttpResponse:
     purchase = get_object_or_404(Purchase, id=purchase_id)
-    return HttpResponse(_split_confirmation_modal(purchase, request))
+    return HttpResponse(
+        _split_confirmation_modal(purchase, request, origin_from(request))
+    )
 
 
 @login_required
@@ -600,14 +610,11 @@ def split_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
         messages.success(request, f"Split into {count} purchases")
 
     response = HttpResponse(status=204)
-    response["HX-Redirect"] = reverse("games:list_purchases")
+    response["HX-Redirect"] = return_url(
+        request,
+        fallback="games:list_purchases",
+        reject=reverse("games:view_purchase", args=[purchase_id])
+        if count > 1
+        else None,
+    )
     return response
-
-
-@login_required
-def finish_purchase(request: HttpRequest, purchase_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Purchase, id=purchase_id)
-    for game in purchase.games.all():
-        game.status = Game.Status.FINISHED
-        game.save()
-    return redirect("games:list_purchases")

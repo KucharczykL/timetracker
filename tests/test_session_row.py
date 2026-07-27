@@ -27,12 +27,18 @@ def running_session(db):
 
 def render_row(session) -> str:
     device_list = Device.objects.order_by("name")
-    return str(TableRow(session_row_data(session, device_list, "tok", _PRESENTATION)))
+    return str(
+        TableRow(
+            session_row_data(session, device_list, "tok", _PRESENTATION, origin=None)
+        )
+    )
 
 
 def test_session_row_data_shape(running_session):
     device_list = Device.objects.order_by("name")
-    data = session_row_data(running_session, device_list, "tok", _PRESENTATION)
+    data = session_row_data(
+        running_session, device_list, "tok", _PRESENTATION, origin=None
+    )
     assert len(data["cell_data"]) == 6
     assert ("id", f"session-row-{running_session.pk}") in data["attributes"]
     # No htmx row-swap wiring remains on the row.

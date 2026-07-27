@@ -10,9 +10,11 @@ from common.components import (
     ContentContainer,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
+    Li,
     QuickFilterBar,
     TableData,
     TruncatedText,
+    Ul,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -28,17 +30,21 @@ from games.sorting import (
 )
 from games.filters import parse_device_filter
 from games.forms import DeviceForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import action_url
 from games.models import Device
+from games.views.returns import return_url
 
 
 @login_required
 def list_devices(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     devices = Device.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -72,12 +78,16 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_device", args=[device.pk]),
+                            "href": action_url(
+                                "games:edit_device", device.pk, origin=origin
+                            ),
                             "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
-                            "href": reverse("games:delete_device", args=[device.pk]),
+                            "href": action_url(
+                                "games:delete_device", device.pk, origin=origin
+                            ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
@@ -120,7 +130,7 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
     form = DeviceForm(request.POST or None, instance=device)
     if form.is_valid():
         form.save()
-        return redirect("games:list_devices")
+        return redirect(return_url(request, fallback="games:list_devices"))
 
     return render_page(request, AddForm(form, request=request), title="Edit device")
 
@@ -128,8 +138,16 @@ def edit_device(request: HttpRequest, device_id: int = 0) -> HttpResponse:
 @login_required
 def delete_device(request: HttpRequest, device_id: int) -> HttpResponse:
     device = get_object_or_404(Device, id=device_id)
-    device.delete()
-    return redirect("games:list_sessions")
+    return confirm_and_delete(
+        request,
+        device,
+        title="Delete device",
+        message=f"Permanently delete {device.name}?",
+        details=Ul()[
+            Li()[f"{device.session_set.count()} session(s) lose their device"]
+        ],
+        fallback="games:list_devices",
+    )
 
 
 @login_required
@@ -137,6 +155,6 @@ def add_device(request: HttpRequest) -> HttpResponse:
     form = DeviceForm(request.POST or None)
     if form.is_valid():
         form.save()
-        return redirect("games:index")
+        return redirect(return_url(request, fallback="games:list_devices"))
 
     return render_page(request, AddForm(form, request=request), title="Add New Device")

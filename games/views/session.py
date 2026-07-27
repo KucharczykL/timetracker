@@ -7,6 +7,7 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
@@ -28,7 +29,6 @@ from common.date_time_presentation import (
 )
 from games.formatting import session_time_range
 from common.utils import paginate
-from common.http import HtmxHttpRequest
 from games.forms import SessionForm
 from games.models import Device, Game, Session
 from games.sorting import (
@@ -37,7 +37,10 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import warn_unknown_sort
+from games.views.returns import return_url
+from common.returns import OriginUrl
 from timetracker.settings_resolver import resolve_for_user
 
 
@@ -46,6 +49,8 @@ def session_row_data(
     device_list,
     csrf_token: str,
     presentation: DateTimePresentation,
+    *,
+    origin: OriginUrl | None,
 ) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
     table. Finish/reset are driven by the <session-actions> custom element
@@ -56,7 +61,7 @@ def session_row_data(
         session.duration_formatted_with_mark(),
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
-        SessionActions(session, csrf_token),
+        SessionActions(session, csrf_token, origin),
         id=f"session-row-{session.pk}",
     )
 
@@ -64,6 +69,7 @@ def session_row_data(
 @login_required
 def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     sessions: QuerySet[Session] = Session.objects.select_related(
         "game", "game__platform", "device"
     )
@@ -99,7 +105,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         ],
         "sort_terms": sort.terms,
         "rows": [
-            session_row_data(session, device_list, csrf_token, presentation)
+            session_row_data(
+                session, device_list, csrf_token, presentation, origin=origin
+            )
             for session in sessions
         ],
     }
@@ -159,7 +167,7 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         )
         if form.is_valid():
             form.save()
-            return redirect("games:list_sessions")
+            return redirect(return_url(request, fallback="games:list_sessions"))
     else:
         if game_id:
             game = get_object_or_404(Game, id=game_id)
@@ -205,7 +213,7 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
     )
     if form.is_valid():
         form.save()
-        return redirect("games:list_sessions")
+        return redirect(return_url(request, fallback="games:list_sessions"))
     return render_page(
         request,
         AddForm(form, request=request, submit_class=""),
@@ -229,21 +237,21 @@ def clone_session_by_id(session_id: int) -> Session:
 
 
 @login_required
+@require_POST
 def new_session_from_existing_session(
-    request: HtmxHttpRequest, session_id: int
+    request: HttpRequest, session_id: int
 ) -> HttpResponse:
     clone_session_by_id(session_id)
-    if request.htmx:
-        # Clone adds a new row whose position depends on sort + pagination,
-        # which a single-row swap cannot place — refresh the list instead.
-        response = HttpResponse(status=204)
-        response["HX-Refresh"] = "true"
-        return response
-    return redirect("games:list_sessions")
+    return redirect(return_url(request, fallback="games:list_sessions"))
 
 
 @login_required
 def delete_session(request: HttpRequest, session_id: int = 0) -> HttpResponse:
     session = get_object_or_404(Session, id=session_id)
-    session.delete()
-    return redirect("games:list_sessions")
+    return confirm_and_delete(
+        request,
+        session,
+        title="Delete session",
+        message=f"Permanently delete this session of {session.game}?",
+        fallback="games:list_sessions",
+    )

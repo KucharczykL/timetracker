@@ -6,8 +6,8 @@ from typing import Any
 from django.contrib.auth.decorators import login_required
 from django.db.models import QuerySet
 from django.db.models.manager import BaseManager
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 
 from common.components import (
@@ -43,12 +43,15 @@ from games.sorting import (
 )
 from games.filters import parse_playevent_filter
 from games.forms import PlayEventForm
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
+from common.returns import OriginUrl, action_url
 from games.models import Game, PlayEvent, Session
+from games.views.returns import return_url
 
 logger = logging.getLogger("games")
 
@@ -59,6 +62,8 @@ def create_playevent_tabledata(
     exclude_columns: list[str] = [],
     request: HttpRequest | None = None,
     sort_terms: Sequence[SortTerm] = (),
+    *,
+    origin: OriginUrl | None,
 ) -> TableData:
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
@@ -98,12 +103,16 @@ def create_playevent_tabledata(
             ButtonGroup(
                 [
                     {
-                        "href": reverse("games:edit_playevent", args=[playevent.pk]),
+                        "href": action_url(
+                            "games:edit_playevent", playevent.pk, origin=origin
+                        ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
-                        "href": reverse("games:delete_playevent", args=[playevent.pk]),
+                        "href": action_url(
+                            "games:delete_playevent", playevent.pk, origin=origin
+                        ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
@@ -160,6 +169,7 @@ def _get_formatted_playtime_for_game_sessions_in_range(
 @login_required
 def list_playevents(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     playevents = PlayEvent.objects.all()
 
     filter_json = request.GET.get("filter", "")
@@ -180,6 +190,7 @@ def list_playevents(request: HttpRequest) -> HttpResponse:
         presentation,
         request=request,
         sort_terms=sort.terms,
+        origin=origin,
     )
     content = paginated_table_content(
         data,
@@ -266,7 +277,9 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
         if not game_id:
             # coming from add_playevent url path
             game_id = form.instance.game.id
-        return HttpResponseRedirect(reverse("games:view_game", args=[game_id]))
+        return redirect(
+            return_url(request, fallback="games:view_game", fallback_args=[game_id])
+        )
 
     return render_page(
         request,
@@ -279,6 +292,7 @@ def add_playevent(request: HttpRequest, game_id: int = 0) -> HttpResponse:
     )
 
 
+@login_required
 def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
     form = PlayEventForm(
@@ -288,8 +302,10 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     )
     if form.is_valid():
         form.save()
-        return HttpResponseRedirect(
-            reverse("games:view_game", args=[playevent.game.id])
+        return redirect(
+            return_url(
+                request, fallback="games:view_game", fallback_args=[playevent.game.id]
+            )
         )
 
     return render_page(
@@ -303,7 +319,14 @@ def edit_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     )
 
 
+@login_required
 def delete_playevent(request: HttpRequest, playevent_id: int) -> HttpResponse:
     playevent = get_object_or_404(PlayEvent, id=playevent_id)
-    playevent.delete()
-    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+    return confirm_and_delete(
+        request,
+        playevent,
+        title="Delete playthrough",
+        message=f"Permanently delete this playthrough of {playevent.game}?",
+        fallback="games:view_game",
+        fallback_args=[playevent.game.id],
+    )

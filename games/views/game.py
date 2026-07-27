@@ -3,7 +3,7 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Sum
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -15,17 +15,13 @@ from common.components import (
     ButtonGroup,
     Column,
     ContentContainer,
-    CsrfInput,
-    DialogTitle,
     Div,
-    Form,
     Fragment,
     GameStatus,
     GameStatusSelector,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     LinkedPurchase,
-    Modal,
     ModuleScript,
     NameWithIcon,
     Node,
@@ -41,7 +37,7 @@ from common.components import (
     make_row,
     paginated_table_content,
 )
-from common.components.primitives import Li, P, Span, Strong
+from common.components.primitives import Li, Span
 from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -60,18 +56,21 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.general import use_custom_redirect
 from games.views.playevent import create_playevent_tabledata
+from common.returns import OriginUrl, action_url
+from games.views.returns import origin_from, return_url
 
 
 @login_required
 def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     games = Game.objects.select_related("platform")
 
     # Playtime column sums only the sessions matching the active session
@@ -129,12 +128,16 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 ButtonGroup(
                     [
                         {
-                            "href": reverse("games:edit_game", args=[game.pk]),
+                            "href": action_url(
+                                "games:edit_game", game.pk, origin=origin
+                            ),
                             "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "gray",
                         },
                         {
-                            "href": reverse("games:delete_game", args=[game.pk]),
+                            "href": action_url(
+                                "games:delete_game", game.pk, origin=origin
+                            ),
                             "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                             "color": "red",
                         },
@@ -178,16 +181,18 @@ def add_game(request: HttpRequest) -> HttpResponse:
     form = GameForm(request.POST or None)
     if form.is_valid():
         game = form.save()
+        origin = origin_from(request)
         if "submit_and_redirect" in request.POST:
-            return HttpResponseRedirect(
-                reverse("games:add_purchase_for_game", kwargs={"game_id": game.id})
+            return redirect(
+                action_url(
+                    "games:add_purchase_for_game", game_id=game.id, origin=origin
+                )
             )
         elif "submit_and_create_session" in request.POST:
-            return HttpResponseRedirect(
-                reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+            return redirect(
+                action_url("games:add_session_for_game", game_id=game.id, origin=origin)
             )
-        else:
-            return redirect("games:list_games")
+        return redirect(return_url(request, fallback="games:list_games"))
 
     return render_page(
         request,
@@ -215,98 +220,37 @@ def add_game(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _delete_game_confirmation_modal(
-    game: Game,
-    session_count: int,
-    purchase_count: int,
-    playevent_count: int,
-    request: HttpRequest,
-) -> Node:
-    data_items = []
-    if session_count:
-        data_items.append(Li()[f"{session_count} session(s)"])
-    if purchase_count:
-        data_items.append(Li()[f"{purchase_count} purchase(s)"])
-    if playevent_count:
-        data_items.append(Li()[f"{playevent_count} play event(s)"])
-    if not (session_count or purchase_count or playevent_count):
-        data_items.append(Li()["No associated data"])
-
-    form = Form(
-        hx_post=reverse("games:delete_game", args=[game.id]),
-        hx_replace_url="true",
-        hx_target="#main-container",
-        hx_select="#main-container",
-        hx_swap="outerHTML",
-    )[
-        CsrfInput(request),
-        P(
-            class_="dark:text-white text-center mt-3 text-type-body text-gray-600 "
-            "dark:text-gray-400",
-        )["This will permanently delete this game and all associated data:"],
-        Ul(
-            class_="dark:text-white text-center mt-1 text-type-body text-gray-600 "
-            "dark:text-gray-400 list-disc list-inside",
-        )[*data_items],
-        P(
-            class_="dark:text-white text-center mt-3 text-type-body font-medium "
-            "text-red-600 dark:text-red-400",
-        )["This action cannot be undone."],
-        Div(class_="flex flex-col gap-2 mt-5")[
-            ControlButton(
-                color="red",
-                type="submit",
-            )["Delete"],
-            ControlButton(
-                color="gray",
-                data_modal_dismiss="",
-            )["Cancel"],
-        ],
-    ]
-    return Modal("delete-game-confirmation-modal")[
-        DialogTitle("Delete Game"),
-        P(
-            class_="dark:text-white text-center mt-5",
-        )[
-            "Are you sure you want to delete ",
-            Strong()[game.name],
-            "?",
-        ],
-        form,
-    ]
-
-
-@login_required
-def delete_game_confirmation(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
-    return HttpResponse(
-        str(
-            _delete_game_confirmation_modal(
-                game,
-                game.sessions.count(),
-                game.purchases.count(),
-                game.playevents.count(),
-                request,
-            )
-        )
-    )
-
-
 @login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
-    game.delete()
-    return redirect("games:list_sessions")
+    return confirm_and_delete(
+        request,
+        game,
+        title="Delete game",
+        message=f"This will permanently delete {game.name} and all associated data:",
+        details=_deleted_with_game(game),
+        fallback="games:list_games",
+        detail_url=reverse("games:view_game", args=[game_id]),
+    )
+
+
+def _deleted_with_game(game: Game) -> Node:
+    counts = [
+        (game.sessions.count(), "session"),
+        (game.purchases.count(), "purchase"),
+        (game.playevents.count(), "play event"),
+    ]
+    present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
+    return Ul()[*(present or [Li()["No associated data"]])]
 
 
 @login_required
-@use_custom_redirect
 def edit_game(request: HttpRequest, game_id: int) -> HttpResponse:
-    purchase = get_object_or_404(Game, id=game_id)
-    form = GameForm(request.POST or None, instance=purchase)
+    game = get_object_or_404(Game, id=game_id)
+    form = GameForm(request.POST or None, instance=game)
     if form.is_valid():
         form.save()
-        return redirect("games:list_sessions")
+        return redirect(return_url(request, fallback="games:list_games"))
     return render_page(
         request,
         AddForm(form, request=request),
@@ -325,7 +269,7 @@ _STAT_SVGS = {
 }
 
 
-def _played_row(game: Game, request: HttpRequest) -> Node:
+def _played_row(game: Game, request: HttpRequest, origin: OriginUrl | None) -> Node:
     """'Played N times' split button: a generic outlined Dropdown wrapped in
     <play-event-row>, which owns only the 'Played +1' action."""
     from common.components import (
@@ -341,7 +285,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
     count_button = ControlButton(
         [("class", "rounded-s-lg")],
         variant="outline",
-        href=reverse("games:add_playevent"),
+        href=action_url("games:add_playevent", origin=origin),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -355,7 +299,7 @@ def _played_row(game: Game, request: HttpRequest) -> Node:
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                reverse("games:add_playevent_for_game", args=[game.id]),
+                action_url("games:add_playevent_for_game", game.id, origin=origin),
                 "Add playthrough...",
             ),
             DropdownActionItem(data_add_play="")["Played times +1"],
@@ -392,15 +336,15 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     return Div(class_="flex gap-2 items-center")[*children]
 
 
-def _game_action_buttons(game: Game) -> Node:
+def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
     # A segmented button group, same component as the table Actions cells. The
     # group owns position-based rounding and hover styling; margin is ours.
     return Div(class_="mb-3")[
         ButtonGroup(
             [
                 {
-                    "href": reverse(
-                        "games:add_session_for_game", kwargs={"game_id": game.id}
+                    "href": action_url(
+                        "games:add_session_for_game", game_id=game.id, origin=origin
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
                         Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"
@@ -408,16 +352,14 @@ def _game_action_buttons(game: Game) -> Node:
                     "color": "green",
                 },
                 {
-                    "href": reverse("games:edit_game", args=[game.id]),
+                    "href": action_url("games:edit_game", game.id, origin=origin),
                     "slot": "Edit",
                     "color": "gray",
                 },
                 {
-                    "href": "#",
+                    "href": action_url("games:delete_game", game.id, origin=origin),
                     "slot": "Delete",
                     "color": "red",
-                    "hx_get": reverse("games:delete_game_confirmation", args=[game.id]),
-                    "hx_target": "#global-modal-container",
                 },
             ],
         )
@@ -427,6 +369,7 @@ def _game_action_buttons(game: Game) -> Node:
 def _game_history(
     statuschanges: QuerySet[GameStatusChange],
     presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
     items = []
     for change in statuschanges:
@@ -442,10 +385,12 @@ def _game_history(
             status=change.new_status,
             children=[change.get_new_status_display()],
         )
-        edit = A(href=reverse("games:edit_statuschange", args=[change.id]))["Edit"]
-        delete = A(href=reverse("games:delete_statuschange", args=[change.id]))[
-            "Delete"
+        edit = A(href=action_url("games:edit_statuschange", change.id, origin=origin))[
+            "Edit"
         ]
+        delete = A(
+            href=action_url("games:delete_statuschange", change.id, origin=origin)
+        )["Delete"]
         items.append(
             Li(class_="text-slate-500")[
                 f"{prefix} status from",
@@ -521,6 +466,7 @@ def _game_header(
     request: HttpRequest,
     metrics: dict[str, Any],
     presentation: DateTimePresentation,
+    origin: OriginUrl | None,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -589,7 +535,7 @@ def _game_header(
             Span()[GameStatusSelector(game, Game.Status.choices, get_token(request))],
             "👑" if game.mastered else "",
         ),
-        _played_row(game, request),
+        _played_row(game, request, origin),
         _meta_row(
             "Platform",
             Span(class_=grey_value_class)[
@@ -601,11 +547,13 @@ def _game_header(
         Div(class_="flex gap-5 mb-3")[title_span],
         stats_row,
         metadata,
-        _game_action_buttons(game),
+        _game_action_buttons(game, origin),
     ]
 
 
-def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _purchases_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     purchases = game.purchases.order_by("date_purchased")
     rows = [
         make_row(
@@ -616,12 +564,16 @@ def _purchases_section(game: Game, presentation: DateTimePresentation) -> Node:
             ButtonGroup(
                 [
                     {
-                        "href": reverse("games:edit_purchase", args=[purchase.pk]),
+                        "href": action_url(
+                            "games:edit_purchase", purchase.pk, origin=origin
+                        ),
                         "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "gray",
                     },
                     {
-                        "href": reverse("games:delete_purchase", args=[purchase.pk]),
+                        "href": action_url(
+                            "games:delete_purchase", purchase.pk, origin=origin
+                        ),
                         "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                         "color": "red",
                     },
@@ -681,10 +633,12 @@ def _sessions_section(game: Game, presentation: DateTimePresentation) -> Node:
     )
 
 
-def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _playevents_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     playevents = game.playevents.all()
     data = create_playevent_tabledata(
-        playevents, presentation, exclude_columns=["Game"]
+        playevents, presentation, exclude_columns=["Game"], origin=origin
     )
     # This embedded mini-table isn't a sortable list view (no ?sort= handling on
     # the detail page), so render plain headers like the sibling sections do —
@@ -715,7 +669,9 @@ def _playevents_section(game: Game, presentation: DateTimePresentation) -> Node:
     )[section]
 
 
-def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
+def _history_section(
+    game: Game, presentation: DateTimePresentation, origin: OriginUrl | None
+) -> Node:
     statuschanges: QuerySet[GameStatusChange] = game.status_changes.all()
     count = statuschanges.count()
     return Div(
@@ -727,7 +683,7 @@ def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
         hx_swap="outerHTML",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
-        _game_history(statuschanges, presentation),
+        _game_history(statuschanges, presentation, origin),
     ]
 
 
@@ -735,14 +691,14 @@ def _history_section(game: Game, presentation: DateTimePresentation) -> Node:
 def view_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = Game.objects.get(id=game_id)
     presentation = date_time_presentation_for_request(request)
+    origin = request.get_full_path()
     content = ContentContainer(class_="dark:text-white")[
-        _game_header(game, request, _game_overview_metrics(game), presentation),
-        _purchases_section(game, presentation),
+        _game_header(game, request, _game_overview_metrics(game), presentation, origin),
+        _purchases_section(game, presentation, origin),
         _sessions_section(game, presentation),
-        _playevents_section(game, presentation),
-        _history_section(game, presentation),
+        _playevents_section(game, presentation, origin),
+        _history_section(game, presentation, origin),
     ]
-    request.session["return_path"] = request.path
     return render_page(
         request,
         content,
