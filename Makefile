@@ -212,18 +212,42 @@ uv.lock: pyproject.toml
 # tooling: make test ARGS="tests/test_filters.py -k relation -x"
 ARGS ?=
 
+# The suite is dominated by browser page loads rather than CPU, so it shards
+# well: 2507 tests drop from ~370s to ~55s on a 32-core box. Half the cores is
+# where it stops getting faster — measured, at one worker per core the added
+# contention starts failing timing-sensitive e2e tests instead of finishing
+# sooner (32/32 workers: same wall time, one flake), which is why this is not
+# `-n auto`.
+#
+# CI opts out: `ubuntu-latest` is 4 vCPU, where the win is small and the
+# contention risk is the same one that flakes a loaded desktop — a green local
+# run and a red CI run for no reason but scheduling is a bad trade. `-n 0` runs
+# in-process, so xdist is inert there rather than merely single-worker.
+#
+# Override to debug (`make test PYTEST_WORKERS=0`): parallel output interleaves
+# and `-x` stops only the worker that hit the failure.
+ifneq ($(CI),)
+PYTEST_WORKERS ?= 0
+else
+PYTEST_WORKERS ?= $(shell cores=$$(nproc 2>/dev/null || echo 2); \
+	workers=$$((cores / 2)); \
+	if [ $$workers -lt 1 ]; then workers=1; fi; \
+	if [ $$workers -gt 16 ]; then workers=16; fi; \
+	echo $$workers)
+endif
+
 # base.css (Tailwind) and js/dist (TS) are build artifacts, gitignored and not
 # tracked — build both before tests so e2e/static serving has fresh assets.
 test: ensure-python uv.lock css ts test-ts
-	uv run --frozen --with pytest-django pytest $(ARGS)
+	uv run --frozen --with pytest-django pytest -n $(PYTEST_WORKERS) $(ARGS)
 
 # The iteration counterpart to `test`: everything except e2e/, which is 83% of
 # the suite's wall time (269 browser tests ~ 306s, against 2238 others ~ 64s).
 test-fast: ensure-python uv.lock css ts test-ts
-	uv run --frozen --with pytest-django pytest tests/ $(ARGS)
+	uv run --frozen --with pytest-django pytest tests/ -n $(PYTEST_WORKERS) $(ARGS)
 
 test-e2e: uv.lock css ts
-	uv run --frozen pytest e2e/ $(ARGS)
+	uv run --frozen pytest e2e/ -n $(PYTEST_WORKERS) $(ARGS)
 
 lint:
 	uv run --frozen ruff check

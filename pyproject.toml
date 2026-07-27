@@ -41,6 +41,7 @@ dev = [
     "ruff",
     "pytest-django>=4.12.0",
     "pytest-playwright>=0.8.0",
+    "pytest-xdist>=3.6.1,<4",
     "django-stubs[compatible-mypy]>=6.0.5",
 ]
 
