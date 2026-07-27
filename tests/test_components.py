@@ -2223,6 +2223,171 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         )
         self.assertIn("orphan", result)
 
+    @staticmethod
+    def _first_header_cell(thead):
+        return thead.split("<th")[1].split(">")[0]
+
+    @staticmethod
+    def _row_header_cell(tbody):
+        return tbody.split("<th")[1].split(">")[0]
+
+    def test_data_table_pins_the_header_and_row_header_of_the_first_column(self):
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025-01-01")],
+        )
+        for cell in (
+            self._first_header_cell(self._thead(result)),
+            self._row_header_cell(self._tbody(result)),
+        ):
+            # md-gated: below md the same cell carries max-w-0 so the name
+            # column can collapse, and a sticky cell will not collapse.
+            self.assertIn("md:sticky", cell)
+            self.assertIn("md:start-0", cell)
+            self.assertIn("md:bg-inherit", cell)
+
+    def test_the_pin_never_applies_below_md(self):
+        """The mobile shrink allowance and the pin fight over the same cell:
+        max-w-0 lets the name column collapse to its icon, which a sticky cell
+        refuses to do, costing ~200px of scroll at 390px."""
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025-01-01")],
+        )
+        for token in re.findall(r'class="([^"]*)"', result):
+            for css_class in token.split():
+                if css_class in {"sticky", "start-0", "bg-inherit"}:
+                    self.fail(f"ungated {css_class} found in: {token}")
+
+    def test_every_pinned_class_is_gated(self):
+        """The rendered-markup scan above only knows the three tokens it names.
+        An ungated z-[2], elevation or shadow would slip past it — the shadow
+        visibly, as a seam on a phone where nothing is pinned."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        ungated = [
+            css_class
+            for css_class in PINNED_COLUMN_CLASS.split()
+            if not css_class.startswith("md:")
+        ]
+        self.assertEqual(ungated, [])
+
+    def test_only_the_first_column_is_pinned(self):
+        result = self._data_table(
+            [components.Column("Name"), components.Column("Date")],
+            [components.make_row("Game", "2025-01-01")],
+        )
+        self.assertEqual(self._thead(result).count("sticky"), 1)
+        self.assertEqual(self._tbody(result).count("sticky"), 1)
+
+    def test_non_data_table_pins_nothing(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("sticky", result)
+
+    def test_an_open_panel_raises_the_pinned_cell_above_its_siblings(self):
+        """A panel nested in a sticky cell is trapped in that cell's stacking
+        context, so a later row would paint over it unless the host cell
+        outranks its siblings while the panel is open."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        cell = self._row_header_cell(self._tbody(result))
+        self.assertIn("has-[[data-pop-over-panel]:not([hidden])]:z-[3]", cell)
+        self.assertIn("has-[[data-menu]:not([hidden])]:z-[3]", cell)
+
+    def test_the_pinned_cell_never_outranks_the_panel_strata(self):
+        """Popovers sit at z-10 and dropdown panels at z-20. A pinned cell that
+        reached either would cover the panels of *other* rows: measured, a cell
+        at z-30 hides an overlapping open menu at 15 of 24 sample points."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        levels = [
+            int(value) for value in re.findall(r"z-\[(\d+)\]", PINNED_COLUMN_CLASS)
+        ]
+        self.assertTrue(levels, "the pinned class declares no z-index")
+        self.assertLess(max(levels), 10)
+
+    def test_the_header_row_carries_the_header_surface(self):
+        """The pinned header cell inherits its background from the row, so the
+        surface has to live there — on <thead> it resolves to transparent and
+        the scrolled columns show through the pinned cell."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        thead = self._thead(result)
+        header_row = thead.split("<tr")[1].split(">")[0]
+        self.assertIn("bg-neutral-tertiary", header_row)
+
+    def test_the_scroll_region_is_a_scroll_state_container(self):
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        region = result.split('role="region"')[0].split("<div")[-1]
+        self.assertIn("md:[container-type:scroll-state]", region)
+
+    def test_the_pinned_shadow_is_scoped_to_a_scrolled_region(self):
+        """An unconditional shadow would draw a seam down every table that fits,
+        which after priority-plus is most of them at most widths."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        self.assertIn(
+            "[@container_scroll-state(scrollable:inline-start)]:shadow-",
+            PINNED_COLUMN_CLASS,
+        )
+
+    def test_a_data_table_separates_its_borders(self):
+        """Chrome paints no box-shadow on a cell in the collapsed model, so the
+        pinned column's seam computes and never renders. The separated model is
+        what makes the cue real."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        self.assertIn("border-separate border-spacing-0", result)
+
+    def test_a_plain_table_keeps_collapsed_borders(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("border-separate", result)
+
+    def test_a_data_tables_row_divider_lives_on_the_cells(self):
+        """A <tr> border is ignored in the separated model, and a cell border
+        travels with the pinned cell instead of being painted over by it."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        # The class arrives HTML-escaped in the attribute.
+        tbody = (
+            self._tbody(result).split(">")[0].replace("&amp;", "&").replace("&gt;", ">")
+        )
+        self.assertIn("dark:[&_tr:not(:last-child)>*]:border-b", tbody)
+        self.assertNotIn("divide-y", tbody)
+
+    def test_a_plain_table_keeps_its_row_divider(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertIn("dark:divide-y", result)
+
+    def test_the_pinned_cell_casts_no_filter_shadow(self):
+        """`filter` would make the cell a containing block for the fixed panels
+        it hosts; `box-shadow` has no such side effect."""
+        from common.components.primitives import PINNED_COLUMN_CLASS
+
+        self.assertNotIn("drop-shadow", PINNED_COLUMN_CLASS)
+
+    def test_non_data_table_gets_no_scroll_state_container(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("container-type", result)
+
 
 class ResponsiveTableGateTest(SimpleTestCase):
     """Phase 3 of the width policy: a data table mounts <responsive-table>,

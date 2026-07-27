@@ -488,6 +488,40 @@ def PopoverIf(
 # the same pair makes the column eat every spare pixel, so it stops there and
 # ordinary auto layout takes over.
 SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
+
+# The pinned first column of a data table. `start-0`, not `left-0`: the table
+# flips to rtl:text-right, where the scroll start edge is the right one.
+# `bg-inherit` picks up the row's zebra and hover surface — a sticky cell is
+# transparent by default and would let the scrolled content show through it.
+# The cell outranks its sibling pinned cells only while it holds an open panel:
+# a panel nested inside a sticky cell is scoped to that cell's stacking context,
+# so a later row's cell would paint over it. 3 clears the siblings at 2 and
+# stays under the popover (10) and menu (20) strata, which a higher value would
+# cover instead.
+#
+# From md up only, and not by preference: below md the same cell carries
+# SHRINKABLE_COLUMN_CLASS, whose max-w-0 is what lets the name column collapse
+# under its content so the actions column survives on a phone. A sticky cell
+# will not collapse that way, so pinning below md costs ~200px of horizontal
+# scroll on the narrow viewports the allowance exists to protect. The two are
+# mutually exclusive, and a pinned column has nothing to hold still on a
+# viewport where the table has already been cut to two columns.
+PINNED_COLUMN_CLASS = " ".join(
+    [
+        "md:sticky md:start-0 md:z-[2] md:bg-inherit",
+        "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3]",
+        "md:has-[[data-menu]:not([hidden])]:z-[3]",
+        # A box-shadow, never a filter: a filtered cell becomes the containing
+        # block for the fixed panels it hosts. Scoped to a region that actually
+        # has something scrolled behind the column, so a table that fits shows
+        # no seam. The offset is physical where the trigger and the pin are
+        # logical, so the direction is mirrored explicitly — otherwise the seam
+        # paints into the table's own edge under rtl instead of over the
+        # content sliding beneath it.
+        "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)]",
+        "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-6px_0_8px_-2px_rgb(0_0_0/0.28)]",
+    ]
+)
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
 _TRUNCATED_CLIP_CLASS = (
     "block min-w-0 overflow-hidden whitespace-nowrap "
@@ -1793,6 +1827,8 @@ def TableRow(
             column_class = column.class_ if column else ""
             if column and column.shrinkable:
                 column_class = f"{column_class} {SHRINKABLE_COLUMN_CLASS}".strip()
+            if data_table:
+                column_class = f"{column_class} {PINNED_COLUMN_CLASS}".strip()
             # The row header has always been single-line; only an explicit
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
@@ -2069,6 +2105,7 @@ def _header_cell(
     request,
     *,
     data_table: bool = False,
+    pinned: bool = False,
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
@@ -2081,6 +2118,8 @@ def _header_cell(
         base_class = f"{base_class} {SHRINKABLE_COLUMN_CLASS}"
     if data_table and not column.wrap:
         base_class = f"{base_class} whitespace-nowrap"
+    if pinned:
+        base_class = f"{base_class} {PINNED_COLUMN_CLASS}"
     # The header cell is where <responsive-table> reads the column's drop
     # policy: priority, and the flags that change its width cost (a wrap
     # column measures capped; a shrinkable one is squeezed below md).
@@ -2224,13 +2263,23 @@ def StyledTable(
     # `columns` still drives the count-guard and align rules when the header is
     # hidden (show_header=False) — e.g. the headerless key-value stats tables.
     if show_header:
-        header_row = Tr()[
+        # The surface sits on the row, not on <thead>: the pinned first cell
+        # takes its background from its parent row, and a <thead>-level surface
+        # would leave it transparent.
+        header_row_class = "bg-neutral-tertiary"
+        header_row = Tr(class_=header_row_class)[
             [
-                _header_cell(column, sort_terms, request, data_table=data_table)
-                for column in columns
+                _header_cell(
+                    column,
+                    sort_terms,
+                    request,
+                    data_table=data_table,
+                    pinned=data_table and index == 0,
+                )
+                for index, column in enumerate(columns)
             ]
         ]
-        thead_class = "text-type-micro text-body uppercase bg-neutral-tertiary"
+        thead_class = "text-type-micro text-body uppercase"
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
         table_children.append(Thead(class_=thead_class)[header_row])
@@ -2239,7 +2288,14 @@ def StyledTable(
     # dumb. Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
-    tbody_class = "font-condensed dark:divide-y"
+    # In the separated model a <tr> border is ignored, so the divider lives on
+    # the cells — which also means it travels with the pinned cell instead of
+    # being painted over by it.
+    tbody_class = (
+        "font-condensed dark:[&_tr:not(:last-child)>*]:border-b"
+        if data_table
+        else "font-condensed dark:divide-y"
+    )
     if data_table:
         tbody_class = f"{tbody_class} {_FALLBACK_HIDE_BODY_CLASS}"
     align_rules = " ".join(
@@ -2255,9 +2311,14 @@ def StyledTable(
         ]
     )
 
-    table = Table(
-        class_="w-full text-type-body text-left rtl:text-right text-body-subtle",
-    )[*table_children]
+    # Data tables separate their borders: Chrome paints no box-shadow on a cell
+    # in the collapsed model, so the pinned column's seam would compute and
+    # never render. Separated borders also let the row divider belong to the
+    # cells, which is what carries it across the sticky column.
+    table_class = "w-full text-type-body text-left rtl:text-right text-body-subtle"
+    if data_table:
+        table_class = f"{table_class} border-separate border-spacing-0"
+    table = Table(class_=table_class)[*table_children]
 
     # The scroll wrapper owns horizontal scroll only; the shell owns the radius
     # and clips this wrapper to it (a rounded clip can't coexist with overflow-x
@@ -2274,7 +2335,12 @@ def StyledTable(
         # — because the first column's real width varies per table and per page.
         # Only from md up: 19rem is wider than a phone's scrollport, where the
         # browser would clamp it into a meaningless snap position anyway.
-        scroll_class = f"{scroll_class} md:scroll-ps-[19rem]"
+        # The scroll-state container type lets the pinned column show its seam
+        # only while something is scrolled behind it. It is not a containing
+        # block, so the fixed panels inside the table are unaffected.
+        scroll_class = (
+            f"{scroll_class} md:scroll-ps-[19rem] md:[container-type:scroll-state]"
+        )
         scroll_attributes = [
             ("role", "region"),
             ("tabindex", "0"),
