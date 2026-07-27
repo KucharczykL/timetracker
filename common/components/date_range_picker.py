@@ -169,6 +169,7 @@ def date_segment_input(
     part: DateTimeSegmentSpec,
     side: str,
     value: str,
+    display_value: str = "",
     side_label: str = "",
     segment_id: str = "",
 ) -> Node:
@@ -187,15 +188,19 @@ def date_segment_input(
     exposes: the group is named once, the segments say "year"/"month"/"day".
     """
     aria_label = f"{side_label} {part.name}" if side_label else part.name
+    # A day period shows its label ("PM") but steps and encodes as a number, so
+    # the buffer is stated separately; every other segment displays its buffer.
+    is_day_period = part.kind == "day_period"
     return Input(
-        inputmode="numeric",
+        inputmode="text" if is_day_period else "numeric",
         autocomplete="off",
         maxlength=str(part.input_length),
         placeholder=part.placeholder,
-        value=value,
+        value=display_value if is_day_period else value,
         id_=segment_id or None,
         data_date_part=part.name,
         data_date_side=side,
+        data_typed_digits=value if is_day_period else None,
         aria_label=aria_label,
         class_=(
             f"{_SEGMENT_INPUT_CLASS} "
@@ -216,7 +221,31 @@ def date_segment_group(
     active presentation profile, for one side (a range's "min"/"max", or a
     single-date field's own side id)."""
     parts = list(presentation.profile.segments_for("date"))
-    initial_values = iso_part_values(iso_value, parts)
+    return segment_group(
+        side=side,
+        parts=parts,
+        initial_values=iso_part_values(iso_value, parts),
+        side_label=side_label,
+        first_segment_id=first_segment_id,
+    )
+
+
+def segment_group(
+    *,
+    side: str,
+    parts: list[DateTimeSegmentSpec],
+    initial_values: dict[str, str],
+    display_values: dict[str, str] | None = None,
+    side_label: str = "",
+    first_segment_id: str = "",
+) -> Node:
+    """One flat run of segments with their separators, for one side.
+
+    The composition point: a date field passes the date run, a datetime field
+    both runs, and the date/time separator falls out of the first time
+    segment's own prefix — the group needs no notion of where one ends.
+    """
+
     children: list[Node] = []
     for index, part in enumerate(parts):
         if index > 0 and part.segmented.prefix:
@@ -226,10 +255,13 @@ def date_segment_group(
                 part=part,
                 side=side,
                 value=initial_values.get(part.name, ""),
+                display_value=(display_values or {}).get(part.name, ""),
                 side_label=side_label,
                 segment_id=first_segment_id if index == 0 else "",
             )
         )
+        if part.segmented.suffix:
+            children.append(Span(class_="text-body select-none")[part.segmented.suffix])
     return Span(class_="flex items-center gap-0.5", data_date_field_side=side)[
         *children
     ]

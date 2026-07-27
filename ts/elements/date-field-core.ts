@@ -235,17 +235,42 @@ function applySegmentAria(
   segment.setAttribute("aria-valuemin", String(spec.minimum));
   segment.setAttribute("aria-valuemax", String(spec.maximum));
   if (buffer === "" || buffer.length !== spec.width) {
+    // The value is genuinely indeterminate, so aria-valuenow stays absent —
+    // but absent alone is not silence: a screen reader falls back to zero, so
+    // an untouched field announced every segment as "spinbutton, zero" while
+    // showing YYYY. Say the indeterminate state in words instead, and let a
+    // half-typed buffer read back the digits entered so far.
     segment.removeAttribute("aria-valuenow");
-    segment.removeAttribute("aria-valuetext");
+    segment.setAttribute("aria-valuetext", buffer === "" ? "blank" : buffer);
     return;
   }
   const value = parseInt(buffer, 10);
   segment.setAttribute("aria-valuenow", String(value));
+  // Every segment states its value as text, not only the day period. A
+  // spinbutton with a bare valuenow invites the reader to announce its
+  // position within valuemin..valuemax as a percentage — VoiceOver read the
+  // year 2026 as "2026, 20.3 percent" (2025/9998) and the month 7 as
+  // "7, 54.5 percent" (6/11). A date segment has no meaningful position in its
+  // range, and valuetext is what suppresses that reading.
   if (spec.kind === "day_period") {
     // A two-state toggle: the number alone ("0") announces nothing useful.
     const labels = dayPeriodLabels();
-    if (labels) segment.setAttribute("aria-valuetext", value === 0 ? labels.am : labels.pm);
+    segment.setAttribute(
+      "aria-valuetext",
+      labels ? (value === 0 ? labels.am : labels.pm) : buffer,
+    );
+  } else {
+    segment.setAttribute("aria-valuetext", String(value));
   }
+}
+
+/** The visible text for a day-period buffer ("00"/"01" → the contract's own
+ * AM/PM labels). Django's `cs` locale renders "dop."/"odp.", so the labels
+ * cannot be hard-coded and neither can the keys that select them. */
+export function dayPeriodText(buffer: string): string {
+  const labels = dayPeriodLabels();
+  if (!labels || buffer === "") return "";
+  return parseInt(buffer, 10) === 0 ? labels.am : labels.pm;
 }
 
 export function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
@@ -256,12 +281,30 @@ export function setSegmentBuffer(segment: HTMLInputElement, buffer: string): voi
     segment.value = "";
     return;
   }
+  if (spec?.kind === "day_period") {
+    // The buffer stays numeric so stepping and the wire codec need no special
+    // case; only what the user sees is the label.
+    segment.value = dayPeriodText(buffer);
+    return;
+  }
   const placeholder = spec?.placeholder ?? segment.getAttribute("placeholder") ?? "";
   if (spec?.fillFromRight) {
     segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
   } else {
     segment.value = buffer.padStart(placeholder.length, "0");
   }
+}
+
+/** The buffer a typed key selects in a day-period segment, or "" if the key
+ * matches neither label. Matched against the contract's labels rather than a
+ * literal a/p, which "dop."/"odp." would both fail. */
+export function dayPeriodBufferForKey(key: string, width: number): string {
+  const labels = dayPeriodLabels();
+  if (!labels) return "";
+  const typed = key.toLowerCase();
+  if (labels.am.toLowerCase().startsWith(typed)) return padNumber(0, width);
+  if (labels.pm.toLowerCase().startsWith(typed)) return padNumber(1, width);
+  return "";
 }
 
 // ── Paste parsing ────────────────────────────────────────────────────────
@@ -321,57 +364,104 @@ export function segmentsForSide(
 
 export type HiddenResolver = (side: string) => HTMLInputElement | null;
 
-/** Recompute one side's hidden ISO input from its segment buffers. Returns
+/** Per-segment buffers keyed by `data-date-part`. */
+export type PartValues = Record<string, string>;
+
+/**
+ * Translates between the segment buffers and the value the server binds.
+ *
+ * The engine deliberately knows nothing about the wire format: a date field's
+ * is `YYYY-MM-DD`, a datetime field's is an offset-qualified wall clock. This
+ * is the last of the "it's a date" assumptions that used to be baked into the
+ * sync helpers below.
+ */
+export interface FieldCodec {
+  /** Segment buffers → wire value. `""` when the field is incomplete. */
+  encode(values: PartValues, complete: boolean): string;
+  /** Wire value → segment buffers. Missing parts come back as `""`. */
+  decode(value: string): PartValues;
+}
+
+/** The `YYYY-MM-DD` codec every date field uses. */
+export const dateCodec: FieldCodec = {
+  encode(values, complete) {
+    if (!complete) return "";
+    return isoFromParts(
+      parseInt(values.year, 10),
+      parseInt(values.month, 10),
+      parseInt(values.day, 10),
+    );
+  },
+  decode(value) {
+    if (!value) return { year: "", month: "", day: "" };
+    const pieces = value.split("-");
+    return { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
+  },
+};
+
+/** The default paste hook: the three-numeric-group date grammar, expressed as
+ * the segment buffers it fills. A datetime field supplies its own, which keeps
+ * whatever segments the pasted text says nothing about. */
+export function pastedDateParts(
+  text: string,
+  partNamesInOrder: string[],
+): PartValues | null {
+  const isoString = parsePastedDate(text, partNamesInOrder);
+  return isoString ? dateCodec.decode(isoString) : null;
+}
+
+/** Read one side's segment buffers, and whether every one of them is filled. */
+export function readSideParts(
+  picker: HTMLElement,
+  side: string,
+): { values: PartValues; complete: boolean } {
+  const values: PartValues = {};
+  let complete = true;
+  segmentsForSide(picker, side).forEach((segment) => {
+    const buffer = segmentBuffer(segment);
+    const spec = segmentSpec(segment);
+    if (!spec || buffer.length !== spec.width) complete = false;
+    values[segment.dataset.datePart ?? ""] = buffer;
+  });
+  return { values, complete };
+}
+
+/** Recompute one side's hidden input from its segment buffers. Returns
  * whether the hidden value changed. */
 export function syncHiddenFromSegments(
   picker: HTMLElement,
   side: string,
   resolveHidden: HiddenResolver,
   onCommit: (side: string) => void,
+  codec: FieldCodec = dateCodec,
 ): boolean {
   const hidden = resolveHidden(side);
   if (!hidden) return false;
-  const partValues: Record<string, string> = {};
-  let complete = true;
-  segmentsForSide(picker, side).forEach((segment) => {
-    const buffer = segmentBuffer(segment);
-    const spec = segmentSpec(segment);
-    if (!spec || buffer.length !== spec.width) complete = false;
-    partValues[segment.dataset.datePart ?? ""] = buffer;
-  });
+  const { values, complete } = readSideParts(picker, side);
   const previousValue = hidden.value;
-  hidden.value = complete
-    ? isoFromParts(
-        parseInt(partValues.year, 10),
-        parseInt(partValues.month, 10),
-        parseInt(partValues.day, 10),
-      )
-    : "";
+  hidden.value = codec.encode(values, complete);
   const changed = hidden.value !== previousValue;
   if (changed) onCommit(side);
   return changed;
 }
 
-/** Push an ISO value (or "") into a side's segments and hidden input WITHOUT
+/** Push a wire value (or "") into a side's segments and hidden input WITHOUT
  * invoking onCommit — the write half shared with prefill hydration, which
  * runs on a detached, not-yet-connected clone and must stay silent. Returns
  * whether the hidden value changed. Null-guarded so partial markup
- * (synthetic fixtures, malformed ISO) degrades to a no-op, not a throw. */
+ * (synthetic fixtures, malformed values) degrades to a no-op, not a throw. */
 export function writeSideValue(
   picker: HTMLElement,
   side: string,
   resolveHidden: HiddenResolver,
   isoString: string,
+  codec: FieldCodec = dateCodec,
 ): boolean {
   const hidden = resolveHidden(side);
   if (!hidden) return false;
   const previousValue = hidden.value;
   hidden.value = isoString;
-  let partValues: Record<string, string> = { year: "", month: "", day: "" };
-  if (isoString) {
-    const pieces = isoString.split("-");
-    partValues = { year: pieces[0] ?? "", month: pieces[1] ?? "", day: pieces[2] ?? "" };
-  }
+  const partValues = codec.decode(isoString);
   segmentsForSide(picker, side).forEach((segment) => {
     setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""] ?? "");
   });
@@ -386,8 +476,9 @@ export function setSideValue(
   resolveHidden: HiddenResolver,
   onCommit: (side: string) => void,
   isoString: string,
+  codec: FieldCodec = dateCodec,
 ): void {
-  if (writeSideValue(picker, side, resolveHidden, isoString)) onCommit(side);
+  if (writeSideValue(picker, side, resolveHidden, isoString, codec)) onCommit(side);
 }
 
 export interface SegmentFieldOptions {
@@ -405,6 +496,19 @@ export interface SegmentFieldOptions {
   /** Called when a segment gains focus (e.g. to refresh a calendar's view
    * from the current field value before it opens). */
   onFocus?: () => void;
+  /** How segment buffers become the value the server binds. Defaults to the
+   * `YYYY-MM-DD` date codec. */
+  codec?: FieldCodec;
+  /** Parse pasted text into the side's new segment buffers, or `null` to
+   * ignore the paste. Takes the side's current buffers so a partial paste (a
+   * bare time into a datetime field) can keep the rest, which a wire value —
+   * all-or-nothing by construction — could not express. Defaults to the
+   * three-numeric-group date grammar. */
+  parsePaste?: (
+    text: string,
+    partNamesInOrder: string[],
+    current: PartValues,
+  ) => PartValues | null;
 }
 
 /**
@@ -434,18 +538,20 @@ class SegmentedField {
     // Adopt server-rendered values (prefilled field) as typed buffers, which
     // also stamps each segment's initial ARIA state.
     this.segments.forEach((segment) => {
-      if (segment.value) setSegmentBuffer(segment, segment.value);
-      else setSegmentBuffer(segment, "");
+      // A day period renders its label ("PM"), not its buffer ("01"), so the
+      // server states the buffer explicitly; everywhere else the two agree
+      // and the rendered value is the buffer.
+      const rendered = segment.dataset.typedDigits || segment.value;
+      setSegmentBuffer(segment, rendered);
     });
 
     this.options.field.addEventListener("mousedown", (event) => {
       const target = event.target as Element;
       if (target.closest("input[data-date-part]")) return;
-      if (
-        target.closest("[data-date-range-calendar-toggle], [data-date-picker-calendar-toggle]")
-      ) {
-        return;
-      }
+      // Any control in the field owns its own click and its own focus — the
+      // calendar toggle, a datetime field's copy arrow, whatever comes next.
+      // Only genuinely blank space redirects focus into the nearest segment.
+      if (target.closest("button")) return;
       event.preventDefault();
       this.nearestSegment(event as MouseEvent)?.focus();
     });
@@ -475,12 +581,17 @@ class SegmentedField {
     return best ?? this.segments[0];
   }
 
+  private get codec(): FieldCodec {
+    return this.options.codec ?? dateCodec;
+  }
+
   private commitSide(side: string): void {
     syncHiddenFromSegments(
       this.options.picker,
       side,
       this.options.resolveHidden,
       this.options.onCommit,
+      this.codec,
     );
   }
 
@@ -521,6 +632,14 @@ class SegmentedField {
         return;
       }
       event.preventDefault();
+      if (spec.kind === "day_period") {
+        const buffer = dayPeriodBufferForKey(event.key, spec.width);
+        if (!buffer) return;
+        setSegmentBuffer(segment, buffer);
+        this.commitSide(side);
+        if (index + 1 < this.segments.length) this.segments[index + 1].focus();
+        return;
+      }
       if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
       const { buffer, complete } = applyDigit(
         segmentBuffer(segment),
@@ -542,19 +661,18 @@ class SegmentedField {
     segment.addEventListener("paste", (event) => {
       event.preventDefault();
       const text = (event as ClipboardEvent).clipboardData?.getData("text") ?? "";
-      const partNamesInOrder = segmentsForSide(this.options.picker, side).map(
+      const sideSegments = segmentsForSide(this.options.picker, side);
+      const partNamesInOrder = sideSegments.map(
         (candidate) => candidate.dataset.datePart ?? "",
       );
-      const iso = parsePastedDate(text, partNamesInOrder);
-      if (iso) {
-        setSideValue(
-          this.options.picker,
-          side,
-          this.options.resolveHidden,
-          this.options.onCommit,
-          iso,
-        );
-      }
+      const parse = this.options.parsePaste ?? pastedDateParts;
+      const { values } = readSideParts(this.options.picker, side);
+      const parsed = parse(text, partNamesInOrder, values);
+      if (!parsed) return;
+      sideSegments.forEach((sideSegment) => {
+        setSegmentBuffer(sideSegment, parsed[sideSegment.dataset.datePart ?? ""] ?? "");
+      });
+      this.commitSide(side);
     });
     segment.addEventListener("focus", () => {
       this.options.onFocus?.();

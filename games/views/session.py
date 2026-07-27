@@ -12,15 +12,11 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     Column,
-    FormFieldPresentation,
-    FormFields,
+    Fragment,
     ModuleScript,
     NameWithIcon,
-    Node,
     SessionActions,
     SessionDeviceSelector,
-    SessionTimestampButtons,
-    ControlButton,
     TableData,
     TableRowData,
     make_row,
@@ -152,43 +148,23 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _timestamp_buttons(field_name: str) -> Node:
-    """The now/toggle/copy helper buttons appended to a timestamp field's row."""
-    this_side = "start" if field_name == "timestamp_start" else "end"
-    other_side = "end" if field_name == "timestamp_start" else "start"
-    return SessionTimestampButtons(
-        class_="flex flex-row gap-3 justify-start mt-3",
-        hx_boost="false",
-    )[
-        ControlButton(data_target=field_name, data_type="now")["Set to now"],
-        ControlButton(data_target=field_name, data_type="toggle")["Toggle text"],
-        ControlButton(data_target=field_name, data_type="copy")[
-            f"Copy {this_side} value to {other_side}"
-        ],
-    ]
-
-
-def _session_fields(form) -> Node:
-    """Session form fields via the shared renderer, with timestamp helper
-    buttons appended to the two timestamp rows."""
-    return FormFields(
-        form,
-        presentations={
-            name: FormFieldPresentation(after_control=_timestamp_buttons(name))
-            for name in ("timestamp_start", "timestamp_end")
-        },
-    )
-
-
 @login_required
 def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
+    presentation = date_time_presentation_for_request(request)
     initial: dict[str, Any] = {
-        "timestamp_start": timezone.now(),
+        # Truncated to the minute, which is as precise as the field's segments
+        # go. The widget carries any sub-minute part of the value it was
+        # rendered with through to submission — that is what stops an edit from
+        # shifting a stored session's duration — so seeding the raw instant
+        # would attach this page load's microseconds to a hand-typed time.
+        "timestamp_start": timezone.now().replace(second=0, microsecond=0),
         "device": resolve_for_user(request.user, "DEFAULT_DEVICE"),
     }
 
     if request.method == "POST":
-        form = SessionForm(request.POST or None, initial=initial)
+        form = SessionForm(
+            request.POST or None, initial=initial, presentation=presentation
+        )
         if form.is_valid():
             form.save()
             return redirect(return_url(request, fallback="games:list_sessions"))
@@ -199,21 +175,25 @@ def add_session(request: HttpRequest, game_id: int = 0) -> HttpResponse:
                 initial={
                     **initial,
                     "game": game,
-                }
+                },
+                presentation=presentation,
             )
             # Chained with a pre-filled game: focus the device field instead of
             # the already-selected game.
             form.fields["game"].widget.autofocus = False
             form.fields["device"].widget.autofocus = True
         else:
-            form = SessionForm(initial=initial)
+            form = SessionForm(initial=initial, presentation=presentation)
 
     # TODO: re-add custom buttons #91
     return render_page(
         request,
-        AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
+        AddForm(form, request=request, submit_class=""),
         title="Add New Session",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-time-field.js"),
+        ),
     )
 
 
@@ -225,15 +205,23 @@ def edit_session(request: HttpRequest, session_id: int) -> HttpResponse:
         if session.device_id is None
         else None
     )
-    form = SessionForm(request.POST or None, instance=session, initial=initial)
+    form = SessionForm(
+        request.POST or None,
+        instance=session,
+        initial=initial,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         form.save()
         return redirect(return_url(request, fallback="games:list_sessions"))
     return render_page(
         request,
-        AddForm(form, request=request, fields=_session_fields(form), submit_class=""),
+        AddForm(form, request=request, submit_class=""),
         title="Edit Session",
-        scripts=ModuleScript("dist/elements/search-select.js"),
+        scripts=Fragment(
+            ModuleScript("dist/elements/search-select.js"),
+            ModuleScript("dist/elements/date-time-field.js"),
+        ),
     )
 
 

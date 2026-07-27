@@ -376,6 +376,17 @@ export function dayPeriodLabels(): { am: string; pm: string } | null {
 }
 
 /**
+ * The zone and clock a datetime field encodes against, or `null` if the
+ * contract is unusable — in which case the field has no basis for resolving a
+ * wall clock to an instant and must degrade rather than guess.
+ */
+export function presentationClock(): { timeZone: string; hourCycle: HourCycle } | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+  return { timeZone: presentation.timeZone, hourCycle: presentation.hourCycle };
+}
+
+/**
  * The current wall clock in the contract's zone, shaped for a `datetime-local`
  * input. `null` when the contract is unusable, so callers can degrade to the
  * browser's clock rather than losing the button entirely.

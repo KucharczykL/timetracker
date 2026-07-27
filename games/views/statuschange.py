@@ -5,6 +5,7 @@ from common.components import (
     AddForm,
     Column,
     ContentContainer,
+    ModuleScript,
     TableData,
     TruncatedText,
     make_row,
@@ -22,21 +23,31 @@ from games.views.returns import return_url
 
 @login_required
 def add_statuschange(request: HttpRequest) -> HttpResponse:
-    form = GameStatusChangeForm(request.POST or None)
+    form = GameStatusChangeForm(
+        request.POST or None,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         obj = form.save()
         return redirect(
             return_url(request, fallback="games:view_game", fallback_args=[obj.game.id])
         )
     return render_page(
-        request, AddForm(form, request=request), title="Add status change"
+        request,
+        AddForm(form, request=request),
+        title="Add status change",
+        scripts=ModuleScript("dist/elements/date-time-field.js"),
     )
 
 
 @login_required
 def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpResponse:
     statuschange = get_object_or_404(GameStatusChange, id=statuschange_id)
-    form = GameStatusChangeForm(request.POST or None, instance=statuschange)
+    form = GameStatusChangeForm(
+        request.POST or None,
+        instance=statuschange,
+        presentation=date_time_presentation_for_request(request),
+    )
     if form.is_valid():
         saved = form.save()
         return redirect(
@@ -45,7 +56,10 @@ def edit_statuschange(request: HttpRequest, statuschange_id: int) -> HttpRespons
             )
         )
     return render_page(
-        request, AddForm(form, request=request), title="Edit status change"
+        request,
+        AddForm(form, request=request),
+        title="Edit status change",
+        scripts=ModuleScript("dist/elements/date-time-field.js"),
     )
 
 
@@ -60,7 +74,7 @@ def list_statuschanges(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Status changes",
         "columns": [
-            Column("Game"),
+            Column("Game", shrinkable=True),
             Column("Old Status"),
             Column("New Status", priority=2),
             Column("Timestamp", priority=3),

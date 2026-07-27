@@ -26,7 +26,7 @@ from common.components.date_range_picker import (
     date_segment_group,
     footer_button,
 )
-from common.components.primitives import Button, Div, Input
+from common.components.primitives import Button, Div, Input, field_label_id
 from common.date_time_presentation import DateTimePresentation
 
 # The single side id DatePicker's segment/hidden-input hooks use — DateRangePicker's
@@ -74,9 +74,15 @@ def DatePickerField(
             ),
         )[Safe(CALENDAR_ICON_SVG)],
     ]
+    # aria-labelledby when the form row rendered a <label> for this field: that
+    # label names itself at nobody (its `for` target is the first segment, which
+    # names itself "year"), so without this it is announced as a standalone
+    # object and the group repeats the same string right after it.
+    label_id = field_label_id(input_id)
     return Div(
         role="group",
-        aria_label=label,
+        aria_labelledby=label_id or None,
+        aria_label=None if label_id else label,
         aria_required="true" if required else None,
         aria_invalid="true" if invalid else None,
         inert=True,

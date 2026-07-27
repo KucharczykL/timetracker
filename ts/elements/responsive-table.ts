@@ -18,8 +18,10 @@
  * max-md greed below md, so it costs a flat floor there).
  */
 
-// The guaranteed minimum for the squeezed name column below md — the "Name is
-// at least ~150px" contract, and deliberately not a per-table constant.
+// What the fit reserves for the squeezed name column below md — the "Name is
+// at least ~150px" contract, and deliberately not a per-table constant. It
+// bends only where computeHiddenColumns runs out of columns it may drop: the
+// name giving up a few pixels beats losing the row's actions.
 const NAME_FLOOR_PX = 160;
 
 // What a wrap column can cost at most: the 16rem TruncatedText cap plus cell
@@ -46,9 +48,17 @@ export function hiddenColumnClass(index: number): string {
  *
  * Drop order is priority ascending (least important first), index descending
  * among equals (rightmost first). Column 0 never drops — it is the row header
- * that names every row. Not a prefix fit, which is why this does not reuse
- * priorityPlusFitCount: the QuickFilterBar collapses a row from the right,
- * while a table drops columns from anywhere in the middle.
+ * that names every row. Neither does the last column standing beside it: a
+ * table stripped to its row header alone is a list of names with nothing to
+ * read or act on, and the row header, left holding the whole width, renders
+ * with its content stranded against a wide empty cell. The shrinkable row
+ * header absorbs the shortfall instead (below md it is elastic), so this
+ * bound trades a few pixels of name width for the column that carries the
+ * row's actions.
+ *
+ * Not a prefix fit, which is why this does not reuse priorityPlusFitCount:
+ * the QuickFilterBar collapses a row from the right, while a table drops
+ * columns from anywhere in the middle.
  */
 export function computeHiddenColumns(
   costs: number[],
@@ -64,7 +74,7 @@ export function computeHiddenColumns(
     .sort(
       (left, right) => priorities[left] - priorities[right] || right - left,
     );
-  for (const index of dropOrder) {
+  for (const index of dropOrder.slice(0, -1)) {
     if (total <= availableWidth) break;
     hidden.add(index);
     total -= costs[index];

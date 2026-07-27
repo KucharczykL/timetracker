@@ -68,7 +68,7 @@ def create_playevent_tabledata(
     if isinstance(playevents, BaseManager):
         playevents = playevents.all()
     column_list = [
-        Column("Game", "name"),
+        Column("Game", "name", shrinkable=True),
         Column("Started", "started", priority=3),
         Column("Ended", "ended", priority=2),
         Column("Days to finish", "days", priority=2),
