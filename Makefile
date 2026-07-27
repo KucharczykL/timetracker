@@ -217,6 +217,11 @@ ARGS ?=
 test: ensure-python uv.lock css ts test-ts
 	uv run --frozen --with pytest-django pytest $(ARGS)
 
+# The iteration counterpart to `test`: everything except e2e/, which is 83% of
+# the suite's wall time (269 browser tests ~ 306s, against 2238 others ~ 64s).
+test-fast: ensure-python uv.lock css ts test-ts
+	uv run --frozen --with pytest-django pytest tests/ $(ARGS)
+
 test-e2e: uv.lock css ts
 	uv run --frozen pytest e2e/ $(ARGS)
 
@@ -236,6 +241,11 @@ typecheck:
 	uv run --frozen mypy .
 
 check: ensure-python lint format-check typecheck ts-check check-icons test-ts test
+
+# Same gate minus the browser suite, for iterating. NOT the verification gate:
+# `check` is, and only it can catch e2e breakage. Run this while working, `check`
+# before pushing.
+check-fast: ensure-python lint format-check typecheck ts-check check-icons test-ts test-fast
 
 date:
 	uv run --frozen python scripts/print_local_time.py

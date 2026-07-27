@@ -55,6 +55,12 @@ suite **including `e2e/`**) and confirm it is green. Never verify with a hand-pi
 subset of test files — that is how removed-widget e2e breakage reaches CI. `ARGS` is
 for iterating, never for the gate.
 
+**While iterating, use `make check-fast`** — the same aggregate minus `e2e/`, which
+is 83% of the suite's wall time (269 browser tests ≈ 306s, against 2238 others
+≈ 64s), so it finishes in ~70s instead of ~6.5 minutes. It is explicitly **not** the
+gate: only the full `check` catches e2e breakage. Iterate on `check-fast`, gate on
+`check` before pushing.
+
 ### Python 3.14 is a hard prerequisite
 
 `pyproject.toml` pins `requires-python = ">=3.14,<4"`, and the code **depends on
@@ -117,6 +123,8 @@ against `make check` before pushing when possible.
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
 | Lint + format check + mypy + ts-check + vitest + tests | `make check` (CI-style aggregate; CI runs exactly this) |
+| Same aggregate minus `e2e/`, for iterating | `make check-fast` (~70s vs ~6.5 min; **not** the verification gate) |
+| Run every test except `e2e/` | `make test-fast` (`ARGS` works the same) |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Load platform fixtures | `make loadplatforms` |
 | Load sample data | `make loadsample` |
