@@ -198,6 +198,15 @@ def test_the_seam_appears_only_once_the_region_is_scrolled(
     _open(page, live_server, "games:list_purchases", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; the seam could never appear"
     cell = page.locator("tbody tr th").first
+    # The seam only paints in the separated border model — Chrome draws no
+    # box-shadow on a cell under border-collapse, so the rule would compute and
+    # render nothing.
+    assert (
+        page.locator("table").first.evaluate(
+            "(node) => getComputedStyle(node).borderCollapse"
+        )
+        == "separate"
+    )
     assert cell.evaluate("(node) => getComputedStyle(node).boxShadow") == "none"
     page.evaluate(
         f"""() => {{

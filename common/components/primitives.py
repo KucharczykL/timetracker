@@ -518,8 +518,8 @@ PINNED_COLUMN_CLASS = " ".join(
         # logical, so the direction is mirrored explicitly — otherwise the seam
         # paints into the table's own edge under rtl instead of over the
         # content sliding beneath it.
-        "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[4px_0_6px_-4px_rgb(0_0_0/0.35)]",
-        "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-4px_0_6px_-4px_rgb(0_0_0/0.35)]",
+        "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)]",
+        "md:rtl:[@container_scroll-state(scrollable:inline-start)]:shadow-[-6px_0_8px_-2px_rgb(0_0_0/0.28)]",
     ]
 )
 NAME_MAX_WIDTH_CLASS = "max-w-[16rem]"
@@ -2288,7 +2288,14 @@ def StyledTable(
     # dumb. Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
-    tbody_class = "font-condensed dark:divide-y"
+    # In the separated model a <tr> border is ignored, so the divider lives on
+    # the cells — which also means it travels with the pinned cell instead of
+    # being painted over by it.
+    tbody_class = (
+        "font-condensed dark:[&_tr:not(:last-child)>*]:border-b"
+        if data_table
+        else "font-condensed dark:divide-y"
+    )
     if data_table:
         tbody_class = f"{tbody_class} {_FALLBACK_HIDE_BODY_CLASS}"
     align_rules = " ".join(
@@ -2304,9 +2311,14 @@ def StyledTable(
         ]
     )
 
-    table = Table(
-        class_="w-full text-type-body text-left rtl:text-right text-body-subtle",
-    )[*table_children]
+    # Data tables separate their borders: Chrome paints no box-shadow on a cell
+    # in the collapsed model, so the pinned column's seam would compute and
+    # never render. Separated borders also let the row divider belong to the
+    # cells, which is what carries it across the sticky column.
+    table_class = "w-full text-type-body text-left rtl:text-right text-body-subtle"
+    if data_table:
+        table_class = f"{table_class} border-separate border-spacing-0"
+    table = Table(class_=table_class)[*table_children]
 
     # The scroll wrapper owns horizontal scroll only; the shell owns the radius
     # and clips this wrapper to it (a rounded clip can't coexist with overflow-x

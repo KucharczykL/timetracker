@@ -2338,6 +2338,42 @@ class DataTableWidthPolicyTest(SimpleTestCase):
             PINNED_COLUMN_CLASS,
         )
 
+    def test_a_data_table_separates_its_borders(self):
+        """Chrome paints no box-shadow on a cell in the collapsed model, so the
+        pinned column's seam computes and never renders. The separated model is
+        what makes the cue real."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        self.assertIn("border-separate border-spacing-0", result)
+
+    def test_a_plain_table_keeps_collapsed_borders(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertNotIn("border-separate", result)
+
+    def test_a_data_tables_row_divider_lives_on_the_cells(self):
+        """A <tr> border is ignored in the separated model, and a cell border
+        travels with the pinned cell instead of being painted over by it."""
+        result = self._data_table(
+            [components.Column("Name")], [components.make_row("Game")]
+        )
+        # The class arrives HTML-escaped in the attribute.
+        tbody = (
+            self._tbody(result).split(">")[0].replace("&amp;", "&").replace("&gt;", ">")
+        )
+        self.assertIn("dark:[&_tr:not(:last-child)>*]:border-b", tbody)
+        self.assertNotIn("divide-y", tbody)
+
+    def test_a_plain_table_keeps_its_row_divider(self):
+        result = self._render(
+            [components.Column("Name"), components.Column("Value")],
+            [components.make_row("Total", "5")],
+        )
+        self.assertIn("dark:divide-y", result)
+
     def test_the_pinned_cell_casts_no_filter_shadow(self):
         """`filter` would make the cell a containing block for the fixed panels
         it hosts; `box-shadow` has no such side effect."""
