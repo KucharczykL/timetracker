@@ -213,11 +213,16 @@ uv.lock: pyproject.toml
 ARGS ?=
 
 # The suite is dominated by browser page loads rather than CPU, so it shards
-# well: 2507 tests drop from ~370s to ~55s on a 32-core box. Half the cores is
-# where it stops getting faster — measured, at one worker per core the added
-# contention starts failing timing-sensitive e2e tests instead of finishing
-# sooner (32/32 workers: same wall time, one flake), which is why this is not
-# `-n auto`.
+# well: 2507 tests drop from ~370s to ~55s on a 32-core box.
+#
+# Half the cores is a headroom choice, not the throughput peak. Measured on an
+# idle 32-core box, e2e only, interleaved runs: 16 workers 30.1s, 24 workers
+# 25.3s, 28 workers 25.5s, 32 workers 29.6s plus a flaked test. So throughput
+# peaks at 24 and 28 buys nothing — but 24 costs a third of the machine to save
+# ~5s on a ~55s suite, and the saturation failure mode is a flaky test rather
+# than a slow one. Anything else running on the box (a browser, a compile) eats
+# that margin, which makes an aggressive default behave like the 32-worker run.
+# Leave half the machine usable; that is also why this is not `-n auto`.
 #
 # CI opts out: `ubuntu-latest` is 4 vCPU, where the win is small and the
 # contention risk is the same one that flakes a loaded desktop — a green local
