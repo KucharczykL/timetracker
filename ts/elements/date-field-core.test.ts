@@ -122,6 +122,34 @@ describe("segment ARIA", () => {
     expect(segment.hasAttribute("aria-valuenow")).toBe(false);
   });
 
+  it("shows the day period's label, keeping the buffer numeric", async () => {
+    segmentRules.mockImplementation((name) =>
+      name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,
+    );
+    dayPeriodLabels.mockReturnValue({ am: "dop.", pm: "odp." });
+    const { setSegmentBuffer, segmentBuffer } = await importCore();
+    const segment = mountSegment("day_period", 2, "--");
+
+    setSegmentBuffer(segment, "01");
+
+    expect(segment.value).toBe("odp.");
+    // The wire codec and arrow-stepping both read the numeric buffer.
+    expect(segmentBuffer(segment)).toBe("01");
+  });
+
+  it("selects a day period by the contract's own label, not by a/p", async () => {
+    segmentRules.mockImplementation((name) =>
+      name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,
+    );
+    // Django's cs locale: neither label starts with a or p.
+    dayPeriodLabels.mockReturnValue({ am: "dop.", pm: "odp." });
+    const { dayPeriodBufferForKey } = await importCore();
+
+    expect(dayPeriodBufferForKey("d", 2)).toBe("00");
+    expect(dayPeriodBufferForKey("o", 2)).toBe("01");
+    expect(dayPeriodBufferForKey("a", 2)).toBe("");
+  });
+
   it("announces the day period as text, not as a number", async () => {
     segmentRules.mockImplementation((name) =>
       name === "day_period" ? rules("day_period", 0, 1, "day_period") : null,

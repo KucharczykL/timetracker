@@ -248,6 +248,15 @@ function applySegmentAria(
   }
 }
 
+/** The visible text for a day-period buffer ("00"/"01" → the contract's own
+ * AM/PM labels). Django's `cs` locale renders "dop."/"odp.", so the labels
+ * cannot be hard-coded and neither can the keys that select them. */
+export function dayPeriodText(buffer: string): string {
+  const labels = dayPeriodLabels();
+  if (!labels || buffer === "") return "";
+  return parseInt(buffer, 10) === 0 ? labels.am : labels.pm;
+}
+
 export function setSegmentBuffer(segment: HTMLInputElement, buffer: string): void {
   segment.dataset.typedDigits = buffer;
   const spec = segmentSpec(segment);
@@ -256,12 +265,30 @@ export function setSegmentBuffer(segment: HTMLInputElement, buffer: string): voi
     segment.value = "";
     return;
   }
+  if (spec?.kind === "day_period") {
+    // The buffer stays numeric so stepping and the wire codec need no special
+    // case; only what the user sees is the label.
+    segment.value = dayPeriodText(buffer);
+    return;
+  }
   const placeholder = spec?.placeholder ?? segment.getAttribute("placeholder") ?? "";
   if (spec?.fillFromRight) {
     segment.value = placeholder.slice(0, placeholder.length - buffer.length) + buffer;
   } else {
     segment.value = buffer.padStart(placeholder.length, "0");
   }
+}
+
+/** The buffer a typed key selects in a day-period segment, or "" if the key
+ * matches neither label. Matched against the contract's labels rather than a
+ * literal a/p, which "dop."/"odp." would both fail. */
+export function dayPeriodBufferForKey(key: string, width: number): string {
+  const labels = dayPeriodLabels();
+  if (!labels) return "";
+  const typed = key.toLowerCase();
+  if (labels.am.toLowerCase().startsWith(typed)) return padNumber(0, width);
+  if (labels.pm.toLowerCase().startsWith(typed)) return padNumber(1, width);
+  return "";
 }
 
 // ── Paste parsing ────────────────────────────────────────────────────────
@@ -477,8 +504,11 @@ class SegmentedField {
     // Adopt server-rendered values (prefilled field) as typed buffers, which
     // also stamps each segment's initial ARIA state.
     this.segments.forEach((segment) => {
-      if (segment.value) setSegmentBuffer(segment, segment.value);
-      else setSegmentBuffer(segment, "");
+      // A day period renders its label ("PM"), not its buffer ("01"), so the
+      // server states the buffer explicitly; everywhere else the two agree
+      // and the rendered value is the buffer.
+      const rendered = segment.dataset.typedDigits || segment.value;
+      setSegmentBuffer(segment, rendered);
     });
 
     this.options.field.addEventListener("mousedown", (event) => {
@@ -569,6 +599,14 @@ class SegmentedField {
         return;
       }
       event.preventDefault();
+      if (spec.kind === "day_period") {
+        const buffer = dayPeriodBufferForKey(event.key, spec.width);
+        if (!buffer) return;
+        setSegmentBuffer(segment, buffer);
+        this.commitSide(side);
+        if (index + 1 < this.segments.length) this.segments[index + 1].focus();
+        return;
+      }
       if (!/^[0-9]$/.test(event.key)) return; // only numbers can be typed
       const { buffer, complete } = applyDigit(
         segmentBuffer(segment),

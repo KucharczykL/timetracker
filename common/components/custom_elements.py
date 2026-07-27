@@ -182,6 +182,13 @@ class SessionActionsProps(TypedDict):
 register_element("session-actions", "SessionActions", SessionActionsProps)
 
 
+class DateTimeFieldProps(TypedDict):
+    pass
+
+
+register_element("date-time-field", "DateTimeField", DateTimeFieldProps)
+
+
 class SessionTimestampButtonsProps(TypedDict):
     pass
 
@@ -195,6 +202,7 @@ register_element(
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
 
+_DateTimeField = custom_element_builder("date-time-field")
 _PlayEventRow = custom_element_builder("play-event-row")
 _SessionActions = custom_element_builder("session-actions")
 SessionTimestampButtons = custom_element_builder("session-timestamp-buttons")

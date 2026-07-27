@@ -284,7 +284,7 @@ def date_time_format_profile(profile_id: str) -> DateTimeFormatProfile:
 
 
 @cache
-def _day_periods_for_locale(locale: str) -> DayPeriodsConfig:
+def day_periods_for_locale(locale: str) -> DayPeriodsConfig:
     """Return the locale's AM/PM text shared by server and client formatting."""
 
     with override(locale):
@@ -320,7 +320,7 @@ class DateTimePresentation:
     ) -> str:
         if segment.kind == "day_period":
             assert isinstance(value, datetime)
-            day_periods = _day_periods_for_locale(self.locale)
+            day_periods = day_periods_for_locale(self.locale)
             return day_periods["am" if value.hour < 12 else "pm"]
         if segment.name == "hour":
             assert isinstance(value, datetime)
@@ -407,7 +407,7 @@ class DateTimePresentation:
                 ],
                 "hour_cycle": self.profile.hour_cycle,
             },
-            "day_periods": _day_periods_for_locale(self.locale),
+            "day_periods": day_periods_for_locale(self.locale),
         }
 
 
