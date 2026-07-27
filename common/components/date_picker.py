@@ -60,7 +60,6 @@ def DatePickerField(
         ),
         date_segment_group(
             side=_SIDE,
-            label=label,
             iso_value=value,
             presentation=presentation,
             first_segment_id=input_id,

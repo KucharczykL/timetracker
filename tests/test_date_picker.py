@@ -119,6 +119,21 @@ class DatePickerFieldTest(SimpleTestCase):
         self.assertIn('role="group"', html)
         self.assertIn('aria-label="Purchased"', html)
 
+    def test_field_name_is_announced_once_not_per_segment(self):
+        """The group carries the field name; segments name only their part.
+
+        Repeating it per segment made a screen reader say "Purchased" three
+        times before reading a value, and again on every arrow across the row.
+        Native ``datetime-local`` names the group once.
+        """
+
+        html = self.render()
+
+        self.assertIn('aria-label="Purchased"', html)
+        for part in ("year", "month", "day"):
+            self.assertIn(f'aria-label="{part}"', html)
+            self.assertNotIn(f'aria-label="Purchased {part}"', html)
+
     def test_required_sets_aria_required(self):
         html = self.render(required=True)
         self.assertIn('aria-required="true"', html)

@@ -22,12 +22,12 @@ const NUMERIC_PART_NAMES = ["day", "month", "year", "hour", "minute"] as const;
 
 type NumericPartName = (typeof NUMERIC_PART_NAMES)[number];
 
-interface Affixes {
+export interface Affixes {
   prefix: string;
   suffix: string;
 }
 
-interface Segment {
+export interface Segment {
   name: SegmentName;
   kind: SegmentKind;
   run: SegmentRun;
@@ -356,6 +356,23 @@ export function calendarWeekdayLabels(): readonly string[] | null {
     reportClientError("date-time-presentation", errorDetail(error), { toast: false });
     return null;
   }
+}
+
+/**
+ * The rules a segmented field needs for one segment, from the active contract.
+ *
+ * Returns `null` when the contract is unusable or does not describe this
+ * segment, so the caller can fall back explicitly instead of guessing.
+ */
+export function segmentRules(name: string): Segment | null {
+  const presentation = getPresentation();
+  if (!presentation) return null;
+  return presentation.segments.find((segment) => segment.name === name) ?? null;
+}
+
+/** The active contract's day-period labels, or `null` if it is unusable. */
+export function dayPeriodLabels(): { am: string; pm: string } | null {
+  return getPresentation()?.dayPeriods ?? null;
 }
 
 /**

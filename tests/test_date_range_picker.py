@@ -88,6 +88,19 @@ class DateRangeFieldTest(SimpleTestCase):
         html = self.render(min_value="not-a-date")
         self.assertIn('value="" data-date-part="day" data-date-side="min"', html)
 
+    def test_sides_are_named_by_side_and_part_not_by_field(self):
+        """A range side names "from"/"to" plus its part; the group names the
+        field. Prefixing every segment with the field name made a screen
+        reader repeat it six times across one range field."""
+
+        html = self.render()
+
+        self.assertIn('aria-label="Purchased"', html)
+        for side in ("from", "to"):
+            for part in ("year", "month", "day"):
+                self.assertIn(f'aria-label="{side} {part}"', html)
+        self.assertNotIn('aria-label="Purchased from', html)
+
     def test_renders_calendar_toggle(self):
         html = self.render()
         self.assertIn("data-date-range-calendar-toggle", html)

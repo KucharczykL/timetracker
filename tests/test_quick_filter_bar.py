@@ -116,7 +116,10 @@ class QuickFilterBarRenderingTest(TestCase):
         # the group's slice: the date facets' calendars carry their own
         # ">Clear<" buttons earlier in the document.
         self.assertIn('role="group"', html)
-        group_html = html[html.index('role="group"') :]
+        # Anchored on ButtonGroup's own wrapper class, not on the first
+        # role="group" in the document — the date facets' fields are labelled
+        # groups too, and they come earlier.
+        group_html = html[html.index('class="inline-flex rounded-base shadow-xs') :]
         self.assertLess(group_html.index(">Apply<"), group_html.index(">Clear<"))
         derived_labels = {
             meta["name"]: meta["label"]
