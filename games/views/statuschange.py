@@ -2,7 +2,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
 from common.components import (
     AddForm,
     Column,
@@ -94,9 +93,11 @@ def _delete_statuschange_content(statuschange, request: HttpRequest) -> Node:
     return ConfirmPage(
         title="Delete status change",
         message="Are you sure you want to delete this status change?",
-        action_url=reverse("games:delete_statuschange", args=[statuschange.id]),
+        post_url=request.get_full_path(),
         csrf_token=get_token(request),
-        cancel_url=reverse("games:view_game", args=[statuschange.game.id]),
+        cancel_url=return_url(
+            request, fallback="games:view_game", fallback_args=[statuschange.game.id]
+        ),
         confirm_label="Delete",
     )
 

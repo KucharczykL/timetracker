@@ -150,6 +150,7 @@ class HtmlValidityTest(TestCase):
             reverse("games:view_game", args=[self.long_game.id]),
             reverse("games:view_purchase", args=[self.bundle.id]),
             reverse("games:edit_game", args=[self.long_game.id]),
+            reverse("games:delete_game", args=[self.long_game.id]),
             reverse("games:add_game"),
             reverse("games:add_purchase"),
             reverse("games:add_session"),

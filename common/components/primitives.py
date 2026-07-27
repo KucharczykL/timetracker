@@ -1658,25 +1658,35 @@ def ConfirmPage(
     *,
     title: str,
     message: Children,
-    action_url: str,
+    post_url: str,
     csrf_token: str,
     cancel_url: str,
     confirm_label: str = "Confirm",
     confirm_color: ButtonColor = "red",
+    details: Children = None,
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
     and a cancel link back to the origin. The no-JS replacement for the htmx
     confirmation modals — reusable across delete/refund/split/reset flows.
+
+    ``details`` is block content rendered after the prompt (a list of the data a
+    delete would take with it); it cannot live in ``message``, which renders
+    inside a ``<p>``.
     """
     return Div(
         class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5 @container",
     )[
-        Form(method="post", action=action_url)[
+        Form(method="post", action=post_url)[
             Safe(
                 f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
             ),
             DialogTitle(title),
             P(class_="text-heading text-center mt-5")[*as_children(message)],
+            *(
+                [Div(class_="text-heading text-center mt-3")[*as_children(details)]]
+                if details
+                else []
+            ),
             Div(class_="flex flex-col gap-2 mt-6")[
                 ControlButton(
                     color=confirm_color,

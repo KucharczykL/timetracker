@@ -15,17 +15,13 @@ from common.components import (
     ButtonGroup,
     Column,
     ContentContainer,
-    CsrfInput,
-    DialogTitle,
     Div,
-    Form,
     Fragment,
     GameStatus,
     GameStatusSelector,
     ICON_BUTTON_SIZE_CLASS,
     Icon,
     LinkedPurchase,
-    Modal,
     ModuleScript,
     NameWithIcon,
     Node,
@@ -41,7 +37,7 @@ from common.components import (
     make_row,
     paginated_table_content,
 )
-from common.components.primitives import Li, P, Span, Strong
+from common.components.primitives import Li, Span
 from common.layout import render_page
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -60,6 +56,7 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.models import Game, GameStatusChange, Session
 from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.views.deletion import confirm_and_delete
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -223,89 +220,28 @@ def add_game(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _delete_game_confirmation_modal(
-    game: Game,
-    session_count: int,
-    purchase_count: int,
-    playevent_count: int,
-    request: HttpRequest,
-) -> Node:
-    data_items = []
-    if session_count:
-        data_items.append(Li()[f"{session_count} session(s)"])
-    if purchase_count:
-        data_items.append(Li()[f"{purchase_count} purchase(s)"])
-    if playevent_count:
-        data_items.append(Li()[f"{playevent_count} play event(s)"])
-    if not (session_count or purchase_count or playevent_count):
-        data_items.append(Li()["No associated data"])
-
-    form = Form(
-        hx_post=reverse("games:delete_game", args=[game.id]),
-        hx_replace_url="true",
-        hx_target="#main-container",
-        hx_select="#main-container",
-        hx_swap="outerHTML",
-    )[
-        CsrfInput(request),
-        P(
-            class_="dark:text-white text-center mt-3 text-type-body text-gray-600 "
-            "dark:text-gray-400",
-        )["This will permanently delete this game and all associated data:"],
-        Ul(
-            class_="dark:text-white text-center mt-1 text-type-body text-gray-600 "
-            "dark:text-gray-400 list-disc list-inside",
-        )[*data_items],
-        P(
-            class_="dark:text-white text-center mt-3 text-type-body font-medium "
-            "text-red-600 dark:text-red-400",
-        )["This action cannot be undone."],
-        Div(class_="flex flex-col gap-2 mt-5")[
-            ControlButton(
-                color="red",
-                type="submit",
-            )["Delete"],
-            ControlButton(
-                color="gray",
-                data_modal_dismiss="",
-            )["Cancel"],
-        ],
-    ]
-    return Modal("delete-game-confirmation-modal")[
-        DialogTitle("Delete Game"),
-        P(
-            class_="dark:text-white text-center mt-5",
-        )[
-            "Are you sure you want to delete ",
-            Strong()[game.name],
-            "?",
-        ],
-        form,
-    ]
-
-
-@login_required
-def delete_game_confirmation(request: HttpRequest, game_id: int) -> HttpResponse:
-    game = get_object_or_404(Game, id=game_id)
-    return HttpResponse(
-        str(
-            _delete_game_confirmation_modal(
-                game,
-                game.sessions.count(),
-                game.purchases.count(),
-                game.playevents.count(),
-                request,
-            )
-        )
-    )
-
-
 @login_required
 def delete_game(request: HttpRequest, game_id: int) -> HttpResponse:
     game = get_object_or_404(Game, id=game_id)
-    detail_url = reverse("games:view_game", args=[game_id])
-    game.delete()
-    return redirect(return_url(request, fallback="games:list_games", reject=detail_url))
+    return confirm_and_delete(
+        request,
+        game,
+        title="Delete game",
+        message=f"This will permanently delete {game.name} and all associated data:",
+        details=_deleted_with_game(game),
+        fallback="games:list_games",
+        detail_url=reverse("games:view_game", args=[game_id]),
+    )
+
+
+def _deleted_with_game(game: Game) -> Node:
+    counts = [
+        (game.sessions.count(), "session"),
+        (game.purchases.count(), "purchase"),
+        (game.playevents.count(), "play event"),
+    ]
+    present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
+    return Ul()[*(present or [Li()["No associated data"]])]
 
 
 @login_required
@@ -421,13 +357,9 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
                     "color": "gray",
                 },
                 {
-                    "href": "#",
+                    "href": action_url("games:delete_game", game.id, origin=origin),
                     "slot": "Delete",
                     "color": "red",
-                    "hx_get": action_url(
-                        "games:delete_game_confirmation", game.id, origin=origin
-                    ),
-                    "hx_target": "#global-modal-container",
                 },
             ],
         )

@@ -360,7 +360,6 @@ class RenderedPagesTest(TestCase):
             'id="history-container"',
             "status-changed from:body",
             "<play-event-row",  # the played-row custom element
-            'hx-target="#global-modal-container"',  # delete trigger
             "Purchases",
             "Sessions",
             "Play Events",
@@ -434,20 +433,12 @@ class RenderedPagesTest(TestCase):
 
     # --- HTMX fragments ------------------------------------------------------
 
-    def test_delete_game_confirmation_modal(self):
-        html = self.get("games:delete_game_confirmation", self.game.id).content.decode()
-        # A fragment (no full-page layout).
-        self.assertNotIn("<!DOCTYPE html>", html)
-        self.assertIn('id="delete-game-confirmation-modal"', html)
-        self.assertIn("hx-post", html)
+    def test_delete_game_confirmation_page(self):
+        html = self.get("games:delete_game", self.game.id).content.decode()
         self.assertIn(self.game.name, html)
         self.assertIn("session(s)", html)  # seeded session
         self.assertIn("purchase(s)", html)  # seeded purchase
-        # Dismiss is the <modal-dialog> contract (Escape/backdrop/button), no
-        # inline JS.
-        self.assertIn("<modal-dialog", html)
-        self.assertIn("data-modal-dismiss", html)
-        self.assertNotIn("onclick", html)
+        self.assertIn('method="post"', html)
         self.assertNoEscapedTags(html)
 
     def test_refund_confirmation_modal(self):

@@ -2742,5 +2742,25 @@ class BadgeTokenTest(SimpleTestCase):
                 )
 
 
+def test_confirm_page_renders_details_outside_the_message_paragraph():
+    from common.components import ConfirmPage, Li, Ul
+
+    markup = str(
+        ConfirmPage(
+            title="Delete game",
+            message="Permanently delete this game?",
+            post_url="/tracker/game/1/delete?origin=%2Ftracker%2Fgame%2Flist",
+            csrf_token="token",
+            cancel_url="/tracker/game/list",
+            confirm_label="Delete",
+            details=Ul()[Li()["2 session(s)"]],
+        )
+    )
+    assert 'action="/tracker/game/1/delete?origin=%2Ftracker%2Fgame%2Flist"' in markup
+    # A <ul> inside the message <p> would be invalid HTML.
+    before_list = markup.split("<ul")[0]
+    assert "<p" in before_list and "</p>" in before_list
+
+
 if __name__ == "__main__":
     unittest.main()

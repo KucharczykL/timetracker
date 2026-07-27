@@ -73,8 +73,6 @@ CONFIRMATION: frozenset[UrlName] = frozenset(
     {
         "games:refund_purchase_confirmation",
         "games:split_purchase_confirmation",
-        # Deleted in Task 6, replaced by a confirmation page:
-        "games:delete_game_confirmation",
     }
 )
 
