@@ -567,6 +567,39 @@ describe("nowInPresentationZone", () => {
     expect(nowInPresentationZone()).toBeNull();
     expect(reportClientError).toHaveBeenCalledTimes(1);
   });
+
+  it("projects into an override zone when one is named", async () => {
+    installConfig(
+      alteredConfig((config) => {
+        // The contract says +14 year-round; the override says +09. Reading
+        // back +09 is only possible if the override won.
+        config.time_zone = "Pacific/Kiritimati";
+      }),
+    );
+    const { nowInPresentationZone } = await importFormatter();
+
+    const value = nowInPresentationZone("Asia/Tokyo");
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+    const minutesAheadOfUTC = Temporal.PlainDateTime.from(value!)
+      .since(Temporal.Now.plainDateTimeISO("UTC"))
+      .total({ unit: "minute" });
+    expect(Math.abs(minutesAheadOfUTC - 9 * 60)).toBeLessThan(2);
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("toasts and returns null for an override zone tzdata does not know", async () => {
+    installConfig(validConfig());
+    const { nowInPresentationZone } = await importFormatter();
+
+    expect(nowInPresentationZone("Not/AZone")).toBeNull();
+    // A click is waiting on this one, unlike the contract-zone failures.
+    expect(reportClientError).toHaveBeenCalledWith(
+      "date-time-presentation",
+      expect.any(String),
+      { toast: true },
+    );
+  });
 });
 
 describe("calendar presentation", () => {

@@ -409,20 +409,31 @@ export function presentationClock(): { timeZone: string; hourCycle: HourCycle } 
 }
 
 /**
- * The current wall clock in the contract's zone, shaped for a `datetime-local`
- * input. `null` when the contract is unusable, so callers can degrade to the
- * browser's clock rather than losing the button entirely.
+ * The current wall clock in the contract's zone — or in `timeZoneOverride`
+ * when the caller's field follows a session zone — shaped for a
+ * `datetime-local` input. `null` when the contract or override is unusable,
+ * so callers can degrade to the browser's clock rather than losing the
+ * button entirely.
  */
-export function nowInPresentationZone(): string | null {
+export function nowInPresentationZone(
+  timeZoneOverride: string | null = null,
+): string | null {
   const presentation = getPresentation();
   if (!presentation) return null;
 
   try {
-    return Temporal.Now.plainDateTimeISO(presentation.timeZone).toString({
+    return Temporal.Now.plainDateTimeISO(
+      timeZoneOverride ?? presentation.timeZone,
+    ).toString({
       smallestUnit: "minute",
     });
   } catch (error) {
-    reportClientError("date-time-presentation", errorDetail(error), { toast: false });
+    // With an override there is a "Now" click waiting on this: returning null
+    // makes the button do visibly nothing, so say so. Without one nothing
+    // interactive is blocked, and the quiet degrade stands.
+    reportClientError("date-time-presentation", errorDetail(error), {
+      toast: timeZoneOverride !== null,
+    });
     return null;
   }
 }
