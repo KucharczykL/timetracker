@@ -1009,3 +1009,21 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
                 html = self._html(layout)
                 pill_tag = _tag_around(html, 'data-search-select-type="include"')
                 self.assertIn("max-w-full", pill_tag)
+
+
+def test_panel_personality_is_always_visible_with_the_panel_classes():
+    """The composition PresetSelect and FilterSelect(layout="panel") already
+    use by hand: no hidden panel (the hosting dialog owns open/close) and the
+    static panel classes instead of the absolutely-positioned field ones."""
+    html = str(
+        SearchSelect(name="zone", search_url="/api/timezones/search", panel=True)
+    )
+    assert 'always-visible="true"' in html
+    assert "mt-2 overflow-y-auto" in html  # _PANEL_OPTIONS_CLASS
+    assert "block text-type-body" in html  # _PANEL_CONTAINER_CLASS
+
+
+def test_default_search_select_keeps_the_field_personality():
+    html = str(SearchSelect(name="zone", search_url="/api/timezones/search"))
+    assert 'always-visible="false"' in html
+    assert "mt-2 overflow-y-auto" not in html

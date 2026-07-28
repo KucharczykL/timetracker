@@ -19,7 +19,7 @@ def _presentation_in_zone(
         return None
     try:
         zone = ZoneInfo(zone_name)
-    except (ZoneInfoNotFoundError, ValueError):
+    except ZoneInfoNotFoundError, ValueError:
         return None
     return replace(presentation, timezone=zone)
 

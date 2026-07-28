@@ -200,6 +200,7 @@ from common.components.settings_kit import (
     prepare_setting_fields,
 )
 from common.components.theme import ThemeSetting, ThemeToggle
+from common.components.time_zone_row import TimeZoneRow
 from common.utils import Truncation, truncate, truncate_info
 
 __all__ = [
@@ -355,6 +356,7 @@ __all__ = [
     "Thead",
     "ThemeSetting",
     "ThemeToggle",
+    "TimeZoneRow",
     "TooltipDefinition",
     "TooltipDefinitionList",
     "Tr",

@@ -22,8 +22,8 @@ from games.filters import (
     filter_for_model,
     parse_session_filter,
 )
-from games.forms import game_option_data
 from games.formatting import zone_label
+from games.forms import game_option_data
 from games.models import Device, FilterPreset, Game, Platform, PlayEvent, Session
 from games.sorting import (
     MODE_SORTS,
@@ -270,7 +270,7 @@ def _endpoint_zone_label(
         return None
     try:
         zone = ZoneInfo(zone_name)
-    except (ZoneInfoNotFoundError, ValueError):
+    except ZoneInfoNotFoundError, ValueError:
         return None
     if zone.key == date_time_presentation_for_request(request).timezone.key:
         return None

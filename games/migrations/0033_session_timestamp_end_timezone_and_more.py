@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0032_userpreferences_datetime_format'),
+        ("games", "0032_userpreferences_datetime_format"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='session',
-            name='timestamp_end_timezone',
+            model_name="session",
+            name="timestamp_end_timezone",
             field=models.CharField(blank=True, default=None, max_length=64, null=True),
         ),
         migrations.AddField(
-            model_name='session',
-            name='timestamp_start_timezone',
+            model_name="session",
+            name="timestamp_start_timezone",
             field=models.CharField(blank=True, default=None, max_length=64, null=True),
         ),
     ]

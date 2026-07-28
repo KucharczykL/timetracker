@@ -190,6 +190,16 @@ class DateTimeFieldProps(TypedDict):
 register_element("date-time-field", "DateTimeField", DateTimeFieldProps)
 
 
+class TimeZoneRowProps(TypedDict):
+    field_name: str  # the posted Django field, e.g. "timestamp_start_timezone"
+    stored_zone: str  # bound IANA zone id; "" when NULL (assume display zone)
+    display_zone: str  # account display zone NULL resolves to, e.g. "Europe/Prague"
+    capture_default: bool  # unsaved record: stamp the browser zone when unset
+
+
+register_element("time-zone-row", "TimeZoneRow", TimeZoneRowProps)
+
+
 # ── Named tag builders (consistent htpy-style with Div/Span) ─────────────────
 # Underscore-prefixed: used internally by domain wrappers.
 # Public ones (no domain wrapper): exported directly.
@@ -197,6 +207,7 @@ register_element("date-time-field", "DateTimeField", DateTimeFieldProps)
 _DateTimeField = custom_element_builder("date-time-field")
 _PlayEventRow = custom_element_builder("play-event-row")
 _SessionActions = custom_element_builder("session-actions")
+_TimeZoneRow = custom_element_builder("time-zone-row")
 
 
 class SelectionFieldsProps(TypedDict):
