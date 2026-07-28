@@ -6,8 +6,9 @@
  * popup, replacing native `<input type="date">` on add/edit forms so the
  * account's DATETIME_FORMAT preference controls the visible segment order.
  *
- * Shares the segment-entry engine (date-field-core.ts) and the month-grid
- * calendar renderer (date-calendar-core.ts) with date-range-picker.ts:
+ * Shares the segment-entry engine (date-field-core.ts) and the whole
+ * single-select calendar wiring (bindSingleSelectCalendar in
+ * date-calendar-core.ts) with date-time-field.ts:
  * - Segments: identical digit-typing/arrow/backspace/paste grammar, driving
  *   one side ("value") instead of two.
  * - Calendar: no presets, no anchor — clicking a day commits the value and
@@ -23,16 +24,8 @@
  * The committed value lives in the hidden ISO input Django binds
  * (`[data-date-picker-hidden]`), named after the real form field.
  */
-import { bindSegmentField, isoFromDate, setSideValue } from "./date-field-core.js";
-import {
-  bindCalendarNav,
-  bindCalendarPopupHost,
-  dayVariantClass,
-  renderMonthCalendar,
-  todayView,
-  viewFromIso,
-  type MonthCalendarView,
-} from "./date-calendar-core.js";
+import { bindSegmentField, setSideValue } from "./date-field-core.js";
+import { bindSingleSelectCalendar } from "./date-calendar-core.js";
 
 export const DATE_PICKER_CHANGE_EVENT = "date-picker:change";
 
@@ -57,45 +50,11 @@ function dispatchDatePickerChange(picker: HTMLElement): void {
   );
 }
 
-interface CalendarState {
-  view: MonthCalendarView;
-  selectedIso: string;
-  refreshFromField: () => void;
-}
-
-function initField(picker: HTMLElement, calendarState: CalendarState): void {
-  const field = picker.querySelector<HTMLElement>("[data-date-picker-field]")!;
-  bindSegmentField({
-    picker,
-    field,
-    resolveHidden: () => resolveHidden(picker),
-    onCommit: () => dispatchDatePickerChange(picker),
-    onFocus: () => calendarState?.refreshFromField(),
-  });
-}
-
-function createCalendarState(picker: HTMLElement): CalendarState {
-  // The calendar shell reuses DateRangePicker's data-date-range-* hooks
-  // (documented shared contract, not a range-specific naming leak).
-  const popup = picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
-  const grid = popup.querySelector<HTMLElement>("[data-date-range-grid]")!;
-  const monthLabel = popup.querySelector<HTMLElement>("[data-date-range-month-label]")!;
-  const dayTemplate = popup.querySelector<HTMLTemplateElement>(
-    '[data-date-range-template="day"]',
-  );
-  const toggleButton = picker.querySelector<HTMLElement>(
-    "[data-date-picker-calendar-toggle]",
-  );
-
-  const state: CalendarState = {
-    view: todayView(),
-    selectedIso: "",
-    refreshFromField() {
-      if (host.isOpen()) return;
-      state.selectedIso = resolveHidden(picker)?.value ?? "";
-    },
-  };
-
+// One-time wiring: field + calendar listeners persist with the subtree across
+// htmx swaps and DOM moves, so there is nothing left to (re)bind on
+// reconnection — unlike the old bespoke popup, which needed its own
+// document-level dismiss listeners rebound.
+function initPicker(picker: HTMLElement): void {
   function commitSelection(isoString: string): void {
     setSideValue(
       picker,
@@ -106,78 +65,22 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     );
   }
 
-  const todayIso = isoFromDate(new Date());
-
-  function dayCellClass(isoString: string, inViewMonth: boolean): string {
-    // One complete generated class list per state — never additive. Rounding,
-    // fill and dimming are orthogonal, and combining them by hand is what left
-    // selected and adjacent-month cells square-cornered.
-    if (isoString === state.selectedIso) return dayVariantClass("selected");
-    return dayVariantClass(inViewMonth ? "default" : "adjacent");
-  }
-
-  function dayCellAria(isoString: string, inViewMonth: boolean) {
-    const monthQualifier = inViewMonth ? "" : " (adjacent month)";
-    return {
-      label: `${isoString}${monthQualifier}`,
-      selected: isoString === state.selectedIso,
-      current: isoString === todayIso,
-    };
-  }
-
-  function render(): void {
-    renderMonthCalendar(state.view, {
-      grid,
-      monthLabel,
-      dayTemplate,
-      dayCellClass,
-      dayCellAria,
-    });
-  }
-
-  const host = bindCalendarPopupHost({
+  const calendar = bindSingleSelectCalendar({
     picker,
-    popup,
-    toggleButton,
     idPrefix: "date-picker-calendar",
-    beforeOpen: () => {
-      state.selectedIso = resolveHidden(picker)?.value ?? "";
-      state.view = state.selectedIso ? viewFromIso(state.selectedIso) : todayView();
-    },
-    render,
+    selectedIso: () => resolveHidden(picker)?.value ?? "",
+    onPickDay: commitSelection,
+    onClear: () => commitSelection(""),
   });
 
-  grid.addEventListener("click", (event) => {
-    const dayButton = (event.target as Element).closest("button[data-date]");
-    if (!dayButton) return;
-    const isoString = dayButton.getAttribute("data-date") ?? "";
-    state.selectedIso = isoString;
-    commitSelection(isoString);
-    host.close();
+  const field = picker.querySelector<HTMLElement>("[data-date-picker-field]")!;
+  bindSegmentField({
+    picker,
+    field,
+    resolveHidden: () => resolveHidden(picker),
+    onCommit: () => dispatchDatePickerChange(picker),
+    onFocus: () => calendar.refreshFromField(),
   });
-
-  bindCalendarNav(popup, state, render);
-
-  // Clear: empty the value but keep the popup open (same as the range
-  // picker's Clear — the footer here has no Cancel/Select, only Clear).
-  popup
-    .querySelector<HTMLElement>("[data-date-range-clear]")!
-    .addEventListener("click", () => {
-      state.selectedIso = "";
-      commitSelection("");
-      render();
-    });
-
-  return state;
-}
-
-// One-time wiring: field + calendar listeners persist with the subtree across
-// htmx swaps and DOM moves, so there is nothing left to (re)bind on
-// reconnection — unlike the old bespoke popup, which needed its own
-// document-level dismiss listeners rebound.
-function initPicker(picker: HTMLElement): void {
-  const calendarState = createCalendarState(picker);
-  initField(picker, calendarState);
 }
 
 class DatePickerElement extends HTMLElement {

@@ -209,6 +209,134 @@ export function bindCalendarPopupHost(options: {
   return { isOpen, open, close };
 }
 
+// ── Single-select calendar (shared by date-picker.ts / date-time-field.ts) ──
+
+export interface SingleSelectCalendar {
+  /** Re-read the selected day from the committed value while the popup is
+   * closed — the segment engine's `onFocus` hook. A no-op while open, so a
+   * half-picked calendar is not yanked out from under the user. */
+  refreshFromField: () => void;
+  /** Re-sync the selected day and view from the committed value and
+   * re-render — for programmatic writes while the popup is open (the
+   * datetime field's Now button). */
+  syncFromValue: () => void;
+}
+
+/**
+ * Wires a complete single-select calendar popup: element lookup (the shell's
+ * `data-date-range-*` hooks are a documented shared contract, not a
+ * range-specific naming leak), selected-day state, day-cell class/aria,
+ * rendering, host delegation, month nav, and the footer buttons. What varies
+ * per caller is only what a value *is*:
+ *
+ * - `selectedIso` reads the committed value's date half ("" when empty),
+ * - `onPickDay` commits a picked day (the popup closes right after),
+ * - `onClear` commits the empty value (the grid re-renders, popup stays open),
+ * - `onNow`, when the shell renders a Now button, commits the current moment
+ *   and resyncs via the returned handle.
+ */
+export function bindSingleSelectCalendar(options: {
+  picker: HTMLElement;
+  idPrefix: string;
+  selectedIso: () => string;
+  onPickDay: (isoString: string) => void;
+  onClear: () => void;
+  onNow?: () => void;
+}): SingleSelectCalendar {
+  const popup = options.picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
+  const grid = popup.querySelector<HTMLElement>("[data-date-range-grid]")!;
+  const monthLabel = popup.querySelector<HTMLElement>("[data-date-range-month-label]")!;
+  const dayTemplate = popup.querySelector<HTMLTemplateElement>(
+    '[data-date-range-template="day"]',
+  );
+  const toggleButton = options.picker.querySelector<HTMLElement>(
+    "[data-date-picker-calendar-toggle]",
+  );
+
+  const state = { view: todayView() };
+  let selectedIso = "";
+  const todayIso = isoFromDate(new Date());
+
+  function dayCellClass(isoString: string, inViewMonth: boolean): string {
+    // One complete generated class list per state — never additive. Rounding,
+    // fill and dimming are orthogonal, and combining them by hand is what left
+    // selected and adjacent-month cells square-cornered.
+    if (isoString === selectedIso) return dayVariantClass("selected");
+    return dayVariantClass(inViewMonth ? "default" : "adjacent");
+  }
+
+  function dayCellAria(isoString: string, inViewMonth: boolean): DayCellAria {
+    const monthQualifier = inViewMonth ? "" : " (adjacent month)";
+    return {
+      label: `${isoString}${monthQualifier}`,
+      selected: isoString === selectedIso,
+      current: isoString === todayIso,
+    };
+  }
+
+  function render(): void {
+    renderMonthCalendar(state.view, {
+      grid,
+      monthLabel,
+      dayTemplate,
+      dayCellClass,
+      dayCellAria,
+    });
+  }
+
+  function syncSelection(): void {
+    selectedIso = options.selectedIso();
+    state.view = selectedIso ? viewFromIso(selectedIso) : todayView();
+  }
+
+  const host = bindCalendarPopupHost({
+    picker: options.picker,
+    popup,
+    toggleButton,
+    idPrefix: options.idPrefix,
+    beforeOpen: syncSelection,
+    render,
+  });
+
+  grid.addEventListener("click", (event) => {
+    const dayButton = (event.target as Element).closest("button[data-date]");
+    if (!dayButton) return;
+    const isoString = dayButton.getAttribute("data-date") ?? "";
+    selectedIso = isoString;
+    options.onPickDay(isoString);
+    host.close();
+  });
+
+  bindCalendarNav(popup, state, render);
+
+  if (options.onNow) {
+    popup
+      .querySelector<HTMLElement>("[data-date-range-now]")
+      ?.addEventListener("click", options.onNow);
+  }
+
+  // Clear: empty the value but keep the popup open (the single-select footer
+  // has no Cancel/Select, only Clear — and, for the datetime field, Now).
+  popup
+    .querySelector<HTMLElement>("[data-date-range-clear]")!
+    .addEventListener("click", () => {
+      selectedIso = "";
+      options.onClear();
+      render();
+    });
+
+  return {
+    refreshFromField(): void {
+      if (host.isOpen()) return;
+      selectedIso = options.selectedIso();
+    },
+    syncFromValue(): void {
+      syncSelection();
+      render();
+    },
+  };
+}
+
 /** Wires the shared prev/next month-nav buttons: step `state.view` and
  * re-render. `state` is whichever calendar-state object the caller keeps —
  * it only needs a mutable `view` field. */
