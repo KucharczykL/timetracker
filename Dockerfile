@@ -76,7 +76,10 @@ COPY --chown=timetracker:timetracker entrypoint.sh /
 RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile \
     && chmod +x /entrypoint.sh
 
-ENV VERSION_NUMBER=1.7.0
+# Displayed in the footer. CI bakes main-<sha> for main builds, <slug>-<sha>
+# for staging, vX.Y.Z for release rebuilds; "dev" is the no-CI fallback.
+ARG VERSION_NUMBER=dev
+ENV VERSION_NUMBER=$VERSION_NUMBER
 
 USER timetracker
 

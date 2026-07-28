@@ -159,7 +159,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
         html = client.get(url).content.decode()
         for expected in expected_values:
             assert expected in html, url
-        assert "git-main (2022.22.07 @ 12h05)" in html, url
+        assert "dev (2022.22.07 @ 12h05)" in html, url
 
         if url == reverse("games:list_purchases"):
             date_part_parser = _DatePartParser()

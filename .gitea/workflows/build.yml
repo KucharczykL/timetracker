@@ -60,3 +60,5 @@ jobs:
           tags: |
             registry.kucharczyk.xyz/timetracker:latest
             registry.kucharczyk.xyz/timetracker:main-${{ env.SHORT_SHA }}
+          build-args: |
+            VERSION_NUMBER=main-${{ env.SHORT_SHA }}

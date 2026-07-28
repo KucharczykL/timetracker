@@ -37,7 +37,7 @@ jobs:
         # driver on the podman socket), which otherwise leaves the result in
         # the build cache — silent success, no image. localhost/: podman
         # short-name resolution would try docker.io for a bare tag.
-        run: docker build --load -t "localhost/timetracker:staging-${SLUG}" .
+        run: docker build --load --build-arg "VERSION_NUMBER=${SLUG}-${GITHUB_SHA::7}" -t "localhost/timetracker:staging-${SLUG}" .
 
       - name: Seed database from prod (first deploy of this branch only)
         run: |

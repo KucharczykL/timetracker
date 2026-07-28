@@ -19,4 +19,4 @@ def version_modified_at() -> datetime:
 
 @register.simple_tag
 def version():
-    return os.environ.get("VERSION_NUMBER", "git-main")
+    return os.environ.get("VERSION_NUMBER", "dev")
