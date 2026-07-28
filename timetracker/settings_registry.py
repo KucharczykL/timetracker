@@ -74,6 +74,13 @@ _DATETIME_FORMAT_VALUES: Final[frozenset[str]] = frozenset(
 DISPLAY_TIME_ZONE_CHOICES: Final[tuple[tuple[str, str], ...]] = tuple(
     (time_zone, time_zone) for time_zone in sorted(available_timezones())
 )
+SESSION_TIME_ZONE_DISPLAY_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("account", "My current time zone"),
+    ("own", "The session's own time zone"),
+)
+_SESSION_TIME_ZONE_DISPLAY_VALUES: Final[frozenset[str]] = frozenset(
+    value for value, _label in SESSION_TIME_ZONE_DISPLAY_CHOICES
+)
 
 
 class SettingScope(StrEnum):
@@ -256,6 +263,18 @@ def _validate_datetime_format(value: object) -> str:
     return normalized
 
 
+def _validate_session_time_zone_display(value: object) -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else value
+    if (
+        not isinstance(normalized, str)
+        or normalized not in _SESSION_TIME_ZONE_DISPLAY_VALUES
+    ):
+        raise ValidationError(
+            f"Session time zone display must be one of account, own (got {value!r})."
+        )
+    return normalized
+
+
 def _build_registry() -> dict[SettingKey, SettingDefinition]:
     definitions = [
         SettingDefinition(
@@ -345,6 +364,21 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_display_time_zone,
             widget=SettingWidget.SELECT,
             choices=DISPLAY_TIME_ZONE_CHOICES,
+            reload_after_save=True,
+        ),
+        SettingDefinition(
+            "SESSION_TIME_ZONE_DISPLAY",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Session time zone display",
+            help_text=(
+                "Show each session in your current time zone, or in the zone "
+                "it was logged in (the zone is labelled when it differs)."
+            ),
+            default_factory=lambda: "account",
+            validator=_validate_session_time_zone_display,
+            widget=SettingWidget.SELECT,
+            choices=SESSION_TIME_ZONE_DISPLAY_CHOICES,
             reload_after_save=True,
         ),
         SettingDefinition(
