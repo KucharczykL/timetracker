@@ -36,7 +36,8 @@ jobs:
           fi
           docker volume create "timetracker-staging-${SLUG}"
           # sqlite3.backup() takes a consistent online snapshot (WAL-safe);
-          # prod is only read, never written.
+          # prod is only read, never written. uid 1000 must own /dest itself
+          # (not just the db file) to create the WAL/SHM sidecars.
           docker run --rm \
             -v /docker/timetracker/data:/prod \
             -v "timetracker-staging-${SLUG}:/dest" \
@@ -51,7 +52,7 @@ jobs:
           print(f'Seeded staging database: {games} games, {sessions} sessions')
           destination.close()
           source.close()
-          \" && chown 1000:100 /dest/db.sqlite3"
+          \" && chown -R 1000:100 /dest"
 
       - name: Deploy staging container
         run: |
@@ -59,8 +60,6 @@ jobs:
           docker run -d --name "timetracker-staging-${SLUG}" \
             --network docker-compose-templates_public \
             -e TZ=Europe/Prague \
-            -e PUID=1000 \
-            -e PGID=100 \
             -e DATA_DIR=/home/timetracker/app/data \
             -e STAGING=true \
             -e "SECRET_KEY=${STAGING_SECRET_KEY}" \
