@@ -131,6 +131,11 @@ class GameFilter(OperatorFilter):
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
+    # TODO(py3.15, ~Oct 2026): these read-only ClassVar dict tables (here and in
+    # forms.py Meta) exist to satisfy RUF012; once the project moves to 3.15,
+    # consider the builtin ``frozendict`` (PEP 814) instead — but verify first
+    # that RUF012 treats it as immutable and that each consumer accepts a
+    # non-dict Mapping (frozendict does not subclass dict).
     fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "sort_name": FilterField(),

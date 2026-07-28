@@ -426,6 +426,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # timestamp_start/timestamp_end get DateTimeFieldWidget in __init__
         # (needs the per-request presentation, unavailable to a class body);
         # the field class is declarative because it depends on nothing.
+        # TODO(py3.15, ~Oct 2026): the ClassVar dict annotations on these Meta
+        # tables satisfy RUF012 — candidates for the builtin ``frozendict``
+        # (PEP 814) on 3.15; see the note on GameFilter.fields in filters.py.
         field_classes: ClassVar[dict[str, type[forms.Field]]] = {
             "timestamp_start": AwareDateTimeField,
             "timestamp_end": AwareDateTimeField,
