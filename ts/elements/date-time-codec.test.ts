@@ -7,6 +7,7 @@ const presentationClock = vi.hoisted(() =>
 const dayPeriodLabels = vi.hoisted(() =>
   vi.fn<() => { am: string; pm: string } | null>(() => ({ am: "AM", pm: "PM" })),
 );
+const reportClientError = vi.hoisted(() => vi.fn());
 
 vi.mock("../date-time-presentation.js", () => ({
   presentationClock,
@@ -15,6 +16,8 @@ vi.mock("../date-time-presentation.js", () => ({
   // reads these; both are absent on a page with no contract.
   segmentRules: () => null,
 }));
+
+vi.mock("../client-errors.js", () => ({ reportClientError }));
 
 async function codecModule(timeZone: string, hourCycle: "h12" | "h23") {
   presentationClock.mockReturnValue({ timeZone, hourCycle });
@@ -106,6 +109,38 @@ describe("date-time codec encode", () => {
     const { createDateTimeCodec } = await import("./date-time-codec.js");
 
     expect(createDateTimeCodec("").encode(PARTS, true)).toBe("");
+  });
+
+  it("encodes against the zone the resolver names, not the contract's", async () => {
+    const { createDateTimeCodec } = await codecModule("Europe/Prague", "h23");
+    const codec = createDateTimeCodec("", () => "Asia/Tokyo");
+
+    expect(codec.encode(PARTS, true)).toBe("2026-07-27T14:30:00.000000+09:00");
+  });
+
+  it("falls back to the contract zone when the resolver has nothing", async () => {
+    const { createDateTimeCodec } = await codecModule("Europe/Prague", "h23");
+    const codec = createDateTimeCodec("", () => null);
+
+    expect(codec.encode(PARTS, true)).toBe("2026-07-27T14:30:00.000000+02:00");
+  });
+
+  it("submits a resolver-zone DST gap bare, exactly like a contract-zone gap", async () => {
+    const { createDateTimeCodec } = await codecModule("Asia/Tokyo", "h23");
+    const codec = createDateTimeCodec("", () => "America/New_York");
+
+    // 02:30 on 2026-03-08 does not exist in New York; Tokyo would accept it.
+    expect(
+      codec.encode({ ...PARTS, month: "03", day: "08", hour: "02" }, true),
+    ).toBe("2026-03-08T02:30:00.000000");
+  });
+
+  it("submits bare when the resolver names a zone this runtime does not know", async () => {
+    const { createDateTimeCodec } = await codecModule("Europe/Prague", "h23");
+    const codec = createDateTimeCodec("", () => "Not/AZone");
+
+    expect(codec.encode(PARTS, true)).toBe("2026-07-27T14:30:00.000000");
+    expect(reportClientError).toHaveBeenCalled();
   });
 });
 

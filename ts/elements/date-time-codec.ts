@@ -10,6 +10,7 @@
  * halves are already there.
  */
 
+import { reportClientError } from "../client-errors.js";
 import { dayPeriodLabels, presentationClock } from "../date-time-presentation.js";
 import { parsePastedDate, type PartValues } from "./date-field-core.js";
 
@@ -163,7 +164,10 @@ export interface DateTimeCodec {
   adopt(value: string): void;
 }
 
-export function createDateTimeCodec(initialValue: string): DateTimeCodec {
+export function createDateTimeCodec(
+  initialValue: string,
+  resolveZone?: () => string | null,
+): DateTimeCodec {
   let residual = residualFrom(initialValue);
 
   return {
@@ -195,14 +199,22 @@ export function createDateTimeCodec(initialValue: string): DateTimeCodec {
         return ""; // an impossible date (e.g. 31 February) commits nothing
       }
       const wallClock = plain.toString({ fractionalSecondDigits: 6 });
+      const timeZone = resolveZone?.() ?? clock.timeZone;
 
       // "earlier" resolves an ambiguous wall clock to its first occurrence and
       // silently shifts a nonexistent one forward. Round-tripping tells the two
       // apart: only a gap comes back as a different wall clock. `"reject"`
       // cannot express this — it throws on ambiguity as well as on gaps.
-      const zoned = plain.toZonedDateTime(clock.timeZone, {
-        disambiguation: "earlier",
-      });
+      let zoned: Temporal.ZonedDateTime;
+      try {
+        zoned = plain.toZonedDateTime(timeZone, { disambiguation: "earlier" });
+      } catch (error) {
+        // A zone this runtime's tzdata does not know: report it, then submit
+        // the bare wall clock and let the server's own zone resolution
+        // interpret it.
+        reportClientError("date-time-codec", String(error), { toast: false });
+        return wallClock;
+      }
       if (!zoned.toPlainDateTime().equals(plain)) {
         // A time that does not exist. Submit it bare and let Django reject it
         // with the message it already produces, rather than inventing an
