@@ -40,7 +40,10 @@ FROM python:3.14-slim-bookworm
 
 ENV PROD=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/home/timetracker/app/.venv/bin:$PATH"
+    PATH="/home/timetracker/app/.venv/bin:$PATH" \
+    # Django's in-code default is BASE_DIR; pin the image default so the
+    # database lands inside the expected volume even without -e DATA_DIR.
+    DATA_DIR=/home/timetracker/app/data
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
