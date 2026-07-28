@@ -21,12 +21,23 @@ jobs:
           SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-40)
           echo "SLUG=${SLUG}" >> "$GITHUB_ENV"
           echo "HOST=tracker-${SLUG}.home.arpa" >> "$GITHUB_ENV"
+          # Deterministic per-branch gateway port: CI runs on the rootless
+          # podman socket, so caddy can't dial staging containers directly
+          # ({{ upstreams }} needs a shared docker network) — each staging
+          # publishes on the docker-bridge gateway instead and the caddy
+          # label points there. 500 slots; collisions vanishingly rare for
+          # a handful of parallel staging branches.
+          echo "STAGING_PORT=$((20000 + $(cksum <<<"$SLUG" | cut -d" " -f1) % 500))" >> "$GITHUB_ENV"
           # Per-staging secret so each instance has its own key, decoupling it
           # from prod even though the database is seeded from a prod snapshot.
           echo "STAGING_SECRET_KEY=staging-${SLUG}-$(head -c16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" >> "$GITHUB_ENV"
 
       - name: Build image
-        run: docker build -t "timetracker:staging-${SLUG}" .
+        # --load: the docker CLI aliases build to buildx (docker-container
+        # driver on the podman socket), which otherwise leaves the result in
+        # the build cache — silent success, no image. localhost/: podman
+        # short-name resolution would try docker.io for a bare tag.
+        run: docker build --load -t "localhost/timetracker:staging-${SLUG}" .
 
       - name: Seed database from prod (first deploy of this branch only)
         run: |
@@ -58,7 +69,7 @@ jobs:
         run: |
           docker rm -f "timetracker-staging-${SLUG}" 2>/dev/null || true
           docker run -d --name "timetracker-staging-${SLUG}" \
-            --network docker-compose-templates_public \
+            -p "192.168.240.1:${STAGING_PORT}:8000" \
             -e TZ=Europe/Prague \
             -e DATA_DIR=/home/timetracker/app/data \
             -e STAGING=true \
@@ -66,11 +77,11 @@ jobs:
             -e "APP_URL=https://${HOST}" \
             -v "timetracker-staging-${SLUG}:/home/timetracker/app/data" \
             -l "caddy=${HOST}" \
-            -l 'caddy.reverse_proxy={{ upstreams 8000 }}' \
+            -l "caddy.reverse_proxy=192.168.240.1:${STAGING_PORT}" \
             -l xyz.kucharczyk.staging=timetracker \
             -l "xyz.kucharczyk.staging.branch=${BRANCH}" \
             --restart unless-stopped \
-            "timetracker:staging-${SLUG}"
+            "localhost/timetracker:staging-${SLUG}"
 
       - name: Summary
         run: |
