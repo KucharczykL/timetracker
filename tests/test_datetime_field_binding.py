@@ -167,3 +167,49 @@ def test_zone_or_none_parses_valid_zones_and_rejects_junk():
     assert zone_or_none(None) is None
     assert zone_or_none("") is None
     assert zone_or_none("Not/AZone") is None
+
+
+def test_edit_form_renders_the_wall_clock_in_the_sessions_own_zone(db):
+    """A Tokyo-tagged 06:37 UTC start must render as Tokyo's 15:37+09:00, not
+    the account's 08:37+02:00 — the digits shown are the digits that were
+    typed against that zone."""
+    game = Game.objects.create(name="Hades")
+    session = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
+        timestamp_start_timezone="Asia/Tokyo",
+    )
+    rendered = str(
+        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
+            "timestamp_start"
+        ]
+    )
+    hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
+    assert hidden is not None
+    assert hidden.group(1) == "2026-07-28T15:37:00+09:00"
+
+
+def test_an_unusable_stored_zone_falls_back_to_the_display_zone(db):
+    game = Game.objects.create(name="Hades")
+    session = Session.objects.create(
+        game=game,
+        timestamp_start=datetime(2026, 7, 28, 6, 37, tzinfo=UTC),
+        timestamp_start_timezone="Not/AZone",
+    )
+    rendered = str(
+        SessionForm(instance=session, presentation=_presentation("Europe/Prague"))[
+            "timestamp_start"
+        ]
+    )
+    hidden = re.search(r'name="timestamp_start" value="([^"]*)"', rendered)
+    assert hidden is not None
+    assert hidden.group(1) == "2026-07-28T08:37:00+02:00"
+
+
+def test_session_datetime_widgets_name_their_paired_zone_row(db):
+    form = SessionForm(presentation=_presentation("Europe/Prague"))
+    assert 'zone-field-name="timestamp_start_timezone"' in str(form["timestamp_start"])
+    assert 'zone-field-name="timestamp_end_timezone"' in str(form["timestamp_end"])
+    # The GameStatusChange form has no zone rows: its widget stays unpaired.
+    status_form = GameStatusChangeForm(presentation=_presentation("Europe/Prague"))
+    assert 'zone-field-name=""' in str(status_form["timestamp"])

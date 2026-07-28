@@ -185,6 +185,8 @@ register_element("session-actions", "SessionActions", SessionActionsProps)
 class DateTimeFieldProps(TypedDict):
     field_name: str  # the Django field name, e.g. "timestamp_start" — how a
     # copy control on one datetime field addresses another one on the same page
+    zone_field_name: str  # the paired time-zone-row's field name, e.g.
+    # "timestamp_start_timezone"; "" = no paired row, the display zone applies
 
 
 register_element("date-time-field", "DateTimeField", DateTimeFieldProps)

@@ -1,6 +1,8 @@
 import datetime
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from functools import partial
 from typing import ClassVar, Final, cast
+from zoneinfo import ZoneInfo
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -20,7 +22,7 @@ from common.components import (
     searchselect_selected,
 )
 from common.components.primitives import Checkbox
-from common.date_time_presentation import DateTimePresentation
+from common.date_time_presentation import DateTimePresentation, zone_or_none
 from games.dev_login import prefill_credentials
 from games.models import (
     Device,
@@ -337,12 +339,16 @@ class DateTimeFieldWidget(forms.Widget):
         presentation: DateTimePresentation,
         label: str,
         copy_target: DateTimeCopyTarget | None = None,
+        zone_field_name: str = "",
+        zone_resolver: Callable[[], ZoneInfo] | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
         self.presentation = presentation
         self.label = label
         self.copy_target = copy_target
+        self.zone_field_name = zone_field_name
+        self.zone_resolver = zone_resolver
 
     def _wire_value(self, value) -> str:
         if value in (None, ""):
@@ -355,7 +361,12 @@ class DateTimeFieldWidget(forms.Widget):
             # DISPLAY_TIME_ZONE). localtime() is for the aware value a caller
             # can still hand a widget directly.
             if timezone.is_aware(value):
-                value = timezone.localtime(value, self.presentation.timezone)
+                zone = (
+                    self.zone_resolver()
+                    if self.zone_resolver
+                    else self.presentation.timezone
+                )
+                value = timezone.localtime(value, zone)
             return value.isoformat()
         return str(value)
 
@@ -371,6 +382,7 @@ class DateTimeFieldWidget(forms.Widget):
                 required=bool(final_attrs.get("required")),
                 invalid=final_attrs.get("aria-invalid") == "true",
                 copy_target=self.copy_target,
+                zone_field_name=self.zone_field_name,
             )
         )
 
@@ -436,16 +448,25 @@ SESSION_TIMEZONE_EMBEDS: Final[dict[str, str]] = {
     "timestamp_start_timezone": "timestamp_start",
     "timestamp_end_timezone": "timestamp_end",
 }
+# Host timestamp → its zone field: the inverse view the datetime widgets need.
+_TIMESTAMP_ZONE_FIELDS: Final[dict[str, str]] = {
+    host_name: zone_name for zone_name, host_name in SESSION_TIMEZONE_EMBEDS.items()
+}
 
 
 class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
     def __init__(self, *args, presentation: DateTimePresentation, **kwargs):
         super().__init__(*args, **kwargs)
+        self._presentation = presentation
         for field_name, copy_target in _TIMESTAMP_COPY_TARGETS.items():
+            zone_field_name = _TIMESTAMP_ZONE_FIELDS[field_name]
+            zone_resolver = partial(self._resolved_field_zone, zone_field_name)
             self.fields[field_name].widget = DateTimeFieldWidget(
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
                 copy_target=copy_target,
+                zone_field_name=zone_field_name,
+                zone_resolver=zone_resolver,
             )
         is_new_record = self.instance.pk is None
         # The end zone is only meaningful once an end timestamp exists: an open
@@ -466,6 +487,16 @@ class SessionForm(PrimitiveWidgetsMixin, forms.ModelForm):
                 display_zone=presentation.timezone.key,
                 capture_default=captures_by_field[field_name],
             )
+
+    def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
+        """The zone this timestamp's digits are meant in: the paired zone
+        picker's current value when usable, else the account display zone."""
+        if self.is_bound:
+            raw_zone = self.data.get(zone_field_name)
+        else:
+            raw_zone = self.initial.get(zone_field_name)
+        zone = zone_or_none(raw_zone if isinstance(raw_zone, str) else None)
+        return zone or self._presentation.timezone
 
     game = SingleGameChoiceField(
         queryset=Game.objects.order_by("sort_name"),
