@@ -308,6 +308,17 @@ class Session(models.Model):
     timestamp_end = models.DateTimeField(
         blank=True, null=True, verbose_name="Session end"
     )
+    # IANA zone id the timestamp was committed in. NULL means "assume the
+    # account's display zone" — exactly the pre-existing behaviour, so old
+    # rows need no backfill. No `choices`: the valid set is the running
+    # interpreter's tzdata, validated at the form/API edge, so tzdata
+    # updates never churn migrations.
+    timestamp_start_timezone = models.CharField(
+        max_length=64, null=True, blank=True, default=None
+    )
+    timestamp_end_timezone = models.CharField(
+        max_length=64, null=True, blank=True, default=None
+    )
     duration_manual = models.DurationField(
         blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"
     )
