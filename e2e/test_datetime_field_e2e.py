@@ -1,7 +1,7 @@
 """End-to-end Playwright tests for the DateTimeField element (issue #511):
 the Session form's two timestamps under different account display profiles,
 the calendar's Now/day-pick footer, the copy-to-the-other-timestamp arrow, and
-the timezone guard that issue #535 added to the button this widget absorbed.
+Now/copy semantics under per-timestamp zones.
 """
 
 import datetime as dt
@@ -63,28 +63,130 @@ def test_session_timestamps_render_date_and_time_segments(
     assert part_names == ["year", "month", "day", "hour", "minute"]
 
 
-def test_typed_session_timestamp_persists_as_the_instant_it_shows(
-    authenticated_page, live_server
+def test_typed_wall_clock_means_the_picked_zone(
+    browser: Browser, live_server, django_user_model
 ):
-    page, user = authenticated_page
+    """The reverse-engineered check for the reported bug: account zone Prague,
+    zone picker flipped to Tokyo, typed 15:37 → the stored instant must be
+    06:37 UTC (15:37 Tokyo), not 13:37 UTC (15:37 Prague)."""
+    user = django_user_model.objects.create_user(
+        username="tester", password="secret123"
+    )
     UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
     Game.objects.create(name="Alpha Game")
+    # Browser pinned to the account zone: the capture default stamps Prague,
+    # so the flip to Tokyo below is a deliberate user act, as in the report.
+    context = browser.new_context(timezone_id="Europe/Prague")
+    try:
+        page = context.new_page()
+        _login(page, live_server)
+        page.goto(f"{live_server.url}{reverse('games:add_session')}")
+        _select_first_game(page)
+        # Digits first, zone second — the order that exercises the live
+        # reinterpretation, not just encode-at-typing-time.
+        _fill_segments(
+            page,
+            START_FIELD,
+            {"year": "2026", "month": "07", "day": "28", "hour": "15", "minute": "37"},
+        )
+        start_zone_row = page.locator(
+            'time-zone-row[field-name="timestamp_start_timezone"]'
+        )
+        start_zone_row.locator('button[aria-haspopup="dialog"]').click()
+        start_zone_row.locator("input[data-search-select-search]").fill("Tokyo")
+        start_zone_row.locator(
+            '[data-search-select-option][data-value="Asia/Tokyo"]'
+        ).click()
+        expect(
+            page.locator(f"{START_FIELD} input[data-date-time-hidden]")
+        ).to_have_value("2026-07-28T15:37:00.000000+09:00")
 
-    page.goto(f"{live_server.url}{reverse('games:add_session')}")
-    _select_first_game(page)
-    # The field is seeded with "now"; retype it wholesale.
-    _fill_segments(
-        page,
-        START_FIELD,
-        {"year": "2026", "month": "03", "day": "15", "hour": "14", "minute": "30"},
+        with page.expect_navigation():
+            page.get_by_role("button", name="Submit", exact=True).click()
+
+        session = Session.objects.get()
+        assert session.timestamp_start_timezone == "Asia/Tokyo"
+        assert session.timestamp_start == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
+        assert session.timestamp_start != dt.datetime(
+            2026, 7, 28, 13, 37, tzinfo=dt.UTC
+        ), "digits were interpreted in the account zone, not the picked zone"
+    finally:
+        context.close()
+
+
+def test_capture_default_makes_typed_digits_mean_the_browser_zone(
+    browser: Browser, live_server, django_user_model
+):
+    """Browser in Tokyo, account in Prague, and the zone picker never touched:
+    the capture default alone must make the typed 15:37 a Tokyo wall clock
+    (06:37 UTC), not a Prague one (13:37 UTC)."""
+    user = django_user_model.objects.create_user(
+        username="tester", password="secret123"
     )
+    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
+    Game.objects.create(name="Alpha Game")
+    context = browser.new_context(timezone_id="Asia/Tokyo")
+    try:
+        page = context.new_page()
+        _login(page, live_server)
+        page.goto(f"{live_server.url}{reverse('games:add_session')}")
+        _select_first_game(page)
+        # Not one click on the zone picker below this line.
+        _fill_segments(
+            page,
+            START_FIELD,
+            {"year": "2026", "month": "07", "day": "28", "hour": "15", "minute": "37"},
+        )
+        expect(
+            page.locator(f"{START_FIELD} input[data-date-time-hidden]")
+        ).to_have_value("2026-07-28T15:37:00.000000+09:00")
 
-    with page.expect_navigation():
-        page.get_by_role("button", name="Submit", exact=True).click()
+        with page.expect_navigation():
+            page.get_by_role("button", name="Submit", exact=True).click()
 
-    session = Session.objects.get()
-    # 14:30 in Prague on 2026-03-15 is CET (+01:00).
-    assert session.timestamp_start == dt.datetime(2026, 3, 15, 13, 30, tzinfo=dt.UTC)
+        session = Session.objects.get()
+        assert session.timestamp_start_timezone == "Asia/Tokyo"
+        assert session.timestamp_start == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
+        assert session.timestamp_start != dt.datetime(
+            2026, 7, 28, 13, 37, tzinfo=dt.UTC
+        ), "the capture default's zone never reached the datetime field"
+    finally:
+        context.close()
+
+
+def test_typed_session_timestamp_persists_as_the_instant_it_shows(
+    browser: Browser, live_server, django_user_model
+):
+    """Browser pinned to the account zone, so the capture default stamps
+    Europe/Prague and the typed digits mean exactly what they show."""
+    user = django_user_model.objects.create_user(
+        username="tester", password="secret123"
+    )
+    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
+    Game.objects.create(name="Alpha Game")
+    context = browser.new_context(timezone_id="Europe/Prague")
+    try:
+        page = context.new_page()
+        _login(page, live_server)
+        page.goto(f"{live_server.url}{reverse('games:add_session')}")
+        _select_first_game(page)
+        # The field is seeded with "now"; retype it wholesale.
+        _fill_segments(
+            page,
+            START_FIELD,
+            {"year": "2026", "month": "03", "day": "15", "hour": "14", "minute": "30"},
+        )
+
+        with page.expect_navigation():
+            page.get_by_role("button", name="Submit", exact=True).click()
+
+        session = Session.objects.get()
+        # 14:30 in Prague on 2026-03-15 is CET (+01:00).
+        assert session.timestamp_start == dt.datetime(
+            2026, 3, 15, 13, 30, tzinfo=dt.UTC
+        )
+    finally:
+        context.close()
 
 
 def test_a_12_hour_account_gets_a_day_period_segment(authenticated_page, live_server):
@@ -98,25 +200,44 @@ def test_a_12_hour_account_gets_a_day_period_segment(authenticated_page, live_se
     assert part_names == ["month", "day", "year", "hour", "minute", "day_period"]
 
 
-def test_copy_arrow_fills_the_other_timestamp(authenticated_page, live_server):
-    page, _user = authenticated_page
+def test_copy_arrow_fills_the_other_timestamp(
+    browser: Browser, live_server, django_user_model
+):
+    """The dominant real-world case — filling in one session's start and end
+    together — has both endpoints in the same zone: the browser is pinned to
+    match the account zone, so the start's capture default and the end's
+    display-zone fallback agree, and the copy preserves identical digits and
+    identical instants. (When the two zones genuinely differ, the copy still
+    carries the digits verbatim per decision 4 — see the date-time-field
+    vitest suite for that case; two fields landing on different capture
+    defaults purely by machine happenstance is not the scenario this test is
+    about.)"""
+    user = django_user_model.objects.create_user(
+        username="tester", password="secret123"
+    )
+    UserPreferences.objects.create(user=user, display_time_zone="Europe/Prague")
     Game.objects.create(name="Alpha Game")
+    context = browser.new_context(timezone_id="Europe/Prague")
+    try:
+        page = context.new_page()
+        _login(page, live_server)
+        page.goto(f"{live_server.url}{reverse('games:add_session')}")
+        _fill_segments(
+            page,
+            START_FIELD,
+            {"year": "2026", "month": "03", "day": "15", "hour": "14", "minute": "30"},
+        )
+        start_value = page.locator(
+            f"{START_FIELD} input[data-date-time-hidden]"
+        ).input_value()
 
-    page.goto(f"{live_server.url}{reverse('games:add_session')}")
-    _fill_segments(
-        page,
-        START_FIELD,
-        {"year": "2026", "month": "03", "day": "15", "hour": "14", "minute": "30"},
-    )
-    start_value = page.locator(
-        f"{START_FIELD} input[data-date-time-hidden]"
-    ).input_value()
+        page.locator(f"{START_FIELD} [data-date-time-copy]").click()
 
-    page.locator(f"{START_FIELD} [data-date-time-copy]").click()
-
-    expect(page.locator(f"{END_FIELD} input[data-date-time-hidden]")).to_have_value(
-        start_value
-    )
+        expect(page.locator(f"{END_FIELD} input[data-date-time-hidden]")).to_have_value(
+            start_value
+        )
+    finally:
+        context.close()
 
 
 def test_picking_a_calendar_day_keeps_the_typed_time(authenticated_page, live_server):
@@ -149,20 +270,15 @@ def account_in_kiritimati(django_user_model) -> None:
 
 
 @pytest.mark.usefixtures("account_in_kiritimati")
-def test_now_writes_the_account_wall_clock(browser: Browser, live_server):
-    """Issue #535, carried over from <session-timestamp-buttons>: the server
-    reads this field in the *account's* timezone, so writing the browser's wall
-    clock would store a wrong instant for anyone whose two zones differ. The
-    browser here is deliberately a full day away from the account."""
+def test_now_writes_the_selected_zones_wall_clock(browser: Browser, live_server):
+    """The add form's capture default selects the *browser* zone, so "Now"
+    writes the browser's wall clock with the browser zone's offset — the pair
+    that names the true current instant. The account's wall clock (a full day
+    away here) with that offset would be an instant the user never meant."""
     context = browser.new_context(timezone_id=BROWSER_TIME_ZONE)
     try:
         page = context.new_page()
         _login(page, live_server)
-        assert (
-            page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
-            == BROWSER_TIME_ZONE
-        )
-
         page.goto(f"{live_server.url}{reverse('games:add_session')}")
         hidden = page.locator(f"{START_FIELD} input[data-date-time-hidden]")
         expect(hidden).to_be_attached()
@@ -171,15 +287,14 @@ def test_now_writes_the_account_wall_clock(browser: Browser, live_server):
         page.locator(f"{START_FIELD} [data-date-range-now]").click()
         expect(hidden).not_to_have_value("")
 
-        written = dt.datetime.fromisoformat(hidden.input_value()).replace(tzinfo=None)
-        account_now = dt.datetime.now(ZoneInfo(ACCOUNT_TIME_ZONE)).replace(tzinfo=None)
+        written = dt.datetime.fromisoformat(hidden.input_value())
+        assert written.utcoffset() is not None, "Now must commit offset-qualified"
+        # The digits are the selected (browser) zone's wall clock…
+        wall_clock = written.replace(tzinfo=None)
         browser_now = dt.datetime.now(ZoneInfo(BROWSER_TIME_ZONE)).replace(tzinfo=None)
-
-        assert abs(written - account_now) < dt.timedelta(minutes=2), (
-            f"'Now' wrote {written}, but the account's wall clock in "
-            f"{ACCOUNT_TIME_ZONE} is {account_now}. A value near {browser_now} "
-            "means the browser's clock was used, so the stored instant is wrong."
-        )
+        assert abs(wall_clock - browser_now) < dt.timedelta(minutes=2)
+        # …and digits + offset together name the actual current instant.
+        assert abs(written - dt.datetime.now(dt.UTC)) < dt.timedelta(minutes=2)
     finally:
         context.close()
 
